@@ -1,0 +1,9 @@
+version = 1
+SPDX-PackageName = "datarecord"
+SPDX-PackageSupplier = "Jonas Hörsch <jonas.hoersch@openenergytransition.org>"
+SPDX-PackageDownloadLocation = "https://github.com/energy-models/datarecord"
+
+[[annotations]]
+path = ["**"]
+SPDX-FileCopyrightText = "datarecord contributors"
+SPDX-License-Identifier = "MIT"

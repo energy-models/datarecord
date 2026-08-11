@@ -1,0 +1,312 @@
+"""The typed schema: declarations, derived keys, validation, versioning (§5)."""
+
+import pytest
+from pydantic import ValidationError
+
+from datarecord.schema import AttributeSpec, Dimension, Schema, flag_type
+
+
+def _schema(**overrides) -> Schema:
+    """A schema shaped like a stochastic multi-period store."""
+    kwargs = {
+        "dimensions": {
+            "period": Dimension(dtype="BIGINT"),
+            "timestep": Dimension(dtype="TIMESTAMP", within={"period"}),
+            "scenario": Dimension(dtype="VARCHAR", keys={"component", "connection"}),
+        },
+        "attributes": {
+            "Generator": {
+                "p_nom": AttributeSpec(dtype="DOUBLE"),
+                "p_max_pu": AttributeSpec(
+                    dtype="DOUBLE", dims={"scenario", "timestep"}
+                ),
+                "marginal_cost": AttributeSpec(
+                    dtype="DOUBLE", dims={"scenario"}, breakpoints=True
+                ),
+                "carrier": AttributeSpec(dtype="VARCHAR"),
+            },
+            "Link": {
+                "efficiency": AttributeSpec(
+                    dtype="DOUBLE", dims={"scenario", "timestep"}, bus="connection"
+                )
+            },
+        },
+        "partial": frozenset({"scenario"}),
+    }
+    kwargs.update(overrides)
+    return Schema(**kwargs)
+
+
+# -- derived keys (§5.5) -----------------------------------------------------
+
+
+def test_ownership_is_derived_not_declared():
+    """`owned_per` is `dims` and `partial` together, never a third declaration."""
+    s = _schema()
+    # Varies over both axes, but only `scenario` is partial - so a patch to one
+    # timestep restates that scenario's whole series.
+    assert s.owned_per("Generator", "p_max_pu") == frozenset({"scenario"})
+    assert s.owned_per("Generator", "marginal_cost") == frozenset({"scenario"})
+    # A first-stage decision: one value, owned once across everything.
+    assert s.owned_per("Generator", "p_nom") == frozenset()
+    assert s.owned_per("Generator", "carrier") == frozenset()
+
+
+def test_a_scenario_varying_capacity_is_a_schema_violation():
+    """`dims` is what forbids it: a capacity is decided before the scenario is known."""
+    s = _schema()
+    assert "scenario" not in s.attributes["Generator"]["p_nom"].dims
+    # Nothing owns it per scenario, so the fold writes NULL there and one value
+    # applies to every scenario.
+    assert s.owned_per("Generator", "p_nom") == frozenset()
+
+
+def test_input_dims_is_the_union_over_attributes():
+    """The fold's key is one fixed tuple, so an unowned dim is NULL rather than absent."""
+    s = _schema()
+    assert s.input_dims == ("scenario",)
+
+    # Make `timestep` partial too and it joins the key.
+    wider = _schema(partial=frozenset({"scenario", "timestep"}))
+    assert wider.input_dims == ("period", "timestep", "scenario")[1:]
+
+
+def test_file_split_follows_dims():
+    """Varying over nothing is what puts an attribute in `dims/components/` (§3.1)."""
+    s = _schema()
+    assert not s.attributes["Generator"]["p_nom"].varying
+    assert not s.attributes["Generator"]["carrier"].varying
+    assert s.attributes["Generator"]["p_max_pu"].varying
+
+
+# -- membership keys (§5.3) --------------------------------------------------
+
+
+def test_keys_are_per_dim_not_per_attribute():
+    """Existence is not an attribute's property, so it is declared on the axis."""
+    s = _schema()
+    assert s.component_dims == ("scenario",)
+    assert s.connection_dims == ("scenario",)
+
+
+def test_a_membership_key_must_be_partial():
+    """Scoping membership per value of an axis owned whole has no meaning."""
+    with pytest.raises(ValidationError, match="not `partial`"):
+        _schema(partial=frozenset())
+
+
+# -- nesting (§5.4) ----------------------------------------------------------
+
+
+def test_axis_key_is_parents_then_dim():
+    """A nested axis's labels identify only within its parents."""
+    s = _schema()
+    assert s.axis_key("timestep") == ("period", "timestep")
+    assert s.axis_key("period") == ("period",)
+    assert s.axis_key("scenario") == ("scenario",)
+
+
+def test_nesting_is_transitive():
+    """Naming a parent pulls in that parent's own parents (§5.4)."""
+    s = Schema(
+        dimensions={
+            "horizon": Dimension(dtype="BIGINT"),
+            "period": Dimension(dtype="BIGINT", within={"horizon"}),
+            "timestep": Dimension(dtype="TIMESTAMP", within={"period"}),
+        }
+    )
+    assert s.axis_key("timestep") == ("horizon", "period", "timestep")
+
+
+def test_several_direct_parents():
+    """A set, since two axes may each qualify a label without containing each other."""
+    s = Schema(
+        dimensions={
+            "period": Dimension(dtype="BIGINT"),
+            "stage": Dimension(dtype="VARCHAR"),
+            "timestep": Dimension(dtype="TIMESTAMP", within={"period", "stage"}),
+        }
+    )
+    assert s.axis_key("timestep") == ("period", "stage", "timestep")
+
+
+def test_nesting_must_name_declared_dims():
+    with pytest.raises(ValidationError, match="undeclared"):
+        Schema(dimensions={"timestep": Dimension(dtype="TIMESTAMP", within={"nope"})})
+
+
+def test_nesting_must_be_acyclic():
+    with pytest.raises(ValidationError, match="cyclic"):
+        Schema(
+            dimensions={
+                "a": Dimension(dtype="BIGINT", within={"b"}),
+                "b": Dimension(dtype="BIGINT", within={"a"}),
+            }
+        )
+
+
+def test_a_dim_cannot_be_within_itself():
+    with pytest.raises(ValidationError, match="within` itself"):
+        Schema(dimensions={"a": Dimension(dtype="BIGINT", within={"a"})})
+
+
+def test_an_attribute_cannot_vary_over_an_undeclared_dim():
+    with pytest.raises(ValidationError, match="undeclared"):
+        Schema(
+            dimensions={"scenario": Dimension(dtype="VARCHAR")},
+            attributes={
+                "Generator": {"p": AttributeSpec(dtype="DOUBLE", dims={"nope"})}
+            },
+        )
+
+
+# -- versioning (§5.7) -------------------------------------------------------
+
+
+def test_adding_an_attribute_is_compatible():
+    old = _schema()
+    new = _schema()
+    new.attributes["Generator"]["p_min_pu"] = AttributeSpec(
+        dtype="DOUBLE", dims={"scenario"}
+    )
+    assert new.compatible_with(old) == []
+
+
+def test_widening_dims_is_compatible():
+    """Rows that set fewer dims still decode: an unset dim is NULL, and NULL means all."""
+    old = _schema()
+    new = _schema()
+    new.attributes["Generator"]["marginal_cost"] = AttributeSpec(
+        dtype="DOUBLE", dims={"scenario", "timestep"}, breakpoints=True
+    )
+    assert new.compatible_with(old) == []
+
+
+def test_widening_partial_is_compatible():
+    """Ownership becomes finer; an old row is owned at the coarser granularity."""
+    old = _schema()
+    new = _schema(partial=frozenset({"scenario", "timestep"}))
+    assert new.compatible_with(old) == []
+
+
+def test_narrowing_dims_is_incompatible():
+    old = _schema()
+    new = _schema()
+    new.attributes["Generator"]["p_max_pu"] = AttributeSpec(
+        dtype="DOUBLE", dims={"scenario"}
+    )
+    (reason,) = new.compatible_with(old)
+    assert "no longer varies over ['timestep']" in reason
+
+
+def test_changing_a_dtype_is_incompatible():
+    old = _schema()
+    new = _schema()
+    new.attributes["Generator"]["p_nom"] = AttributeSpec(dtype="BIGINT")
+    (reason,) = new.compatible_with(old)
+    assert "DOUBLE -> BIGINT" in reason
+
+
+def test_removing_from_partial_is_incompatible():
+    """A layer that patched one value is now a partial override of a whole axis."""
+    old = _schema(partial=frozenset({"scenario", "timestep"}))
+    new = _schema()
+    reasons = new.compatible_with(old)
+    assert any("no longer `partial`" in r for r in reasons)
+
+
+def test_changing_nesting_is_incompatible():
+    old = _schema()
+    new = _schema(
+        dimensions={
+            "period": Dimension(dtype="BIGINT"),
+            "timestep": Dimension(dtype="TIMESTAMP"),
+            "scenario": Dimension(dtype="VARCHAR", keys={"component", "connection"}),
+        }
+    )
+    reasons = new.compatible_with(old)
+    assert any("nesting changed" in r for r in reasons)
+
+
+# -- unit and description (§5.8) ---------------------------------------------
+
+
+def test_unit_and_description_are_declared_on_both():
+    """An axis may carry them too, not just an attribute (§5.8)."""
+    s = Schema(
+        dimensions={
+            "vintage": Dimension(
+                dtype="BIGINT", unit="year", description="Build year."
+            ),
+            "scenario": Dimension(dtype="VARCHAR", description="One realisation."),
+        },
+        attributes={
+            "Generator": {
+                "p_nom": AttributeSpec(
+                    dtype="DOUBLE", unit="MW", description="Nominal power."
+                )
+            }
+        },
+    )
+    assert s.dimensions["vintage"].unit == "year"
+    assert s.attributes["Generator"]["p_nom"].unit == "MW"
+    # An axis whose labels are not a quantity declares none.
+    assert s.dimensions["scenario"].unit is None
+
+
+def test_undeclared_is_none_not_empty():
+    """`None` is "undeclared", `""` is "genuinely dimensionless" (§5.8)."""
+    assert AttributeSpec(dtype="DOUBLE").unit is None
+    assert AttributeSpec(dtype="DOUBLE", unit="").unit == ""
+
+
+def test_changing_a_unit_is_compatible():
+    """Neither field decides how a row decodes, so editing one is compatible (§5.7)."""
+    old = _schema()
+    new = _schema()
+    spec = new.attributes["Generator"]["p_nom"]
+    new.attributes["Generator"]["p_nom"] = spec.model_copy(
+        update={"unit": "kW", "description": "Rated power."}
+    )
+    assert new.compatible_with(old) == []
+
+
+# -- serialisation (§5.6) ----------------------------------------------------
+
+
+def test_round_trips_through_json():
+    """`manifest.json` is how a schema is written down, so this must be lossless."""
+    s = _schema()
+    back = Schema.model_validate_json(s.model_dump_json())
+    assert back == s
+
+
+def test_column_types_cover_structural_dims_and_flags():
+    s = _schema()
+    assert s.column_type("component_type") == "VARCHAR"
+    assert s.column_type("timestep") == "TIMESTAMP"
+    # One struct per flag column, a BOOLEAN field per declared dim (§9.1), so
+    # the map's column set does not widen when a dim is declared.
+    for column in ("varies", "broadcast"):
+        assert s.column_type(column) == flag_type(s.dims)
+        assert '"scenario" BOOLEAN' in s.column_type(column)
+    assert s.column_type("value") is None
+    assert s.value_type("Generator", "p_nom") == "DOUBLE"
+
+
+def test_attributes_need_at_least_one_dim():
+    """Attribute data varying over no axis is a table, not a record (§5.1).
+
+    Rejected at the schema rather than handled in the fold: the owner map's
+    flag columns are structs with a field per dim, and DuckDB has no empty
+    struct - so forbidding the case is what keeps a placeholder field out of
+    every fold.
+    """
+    with pytest.raises(ValidationError, match="at least one dim"):
+        Schema(attributes={"Generator": {"p_nom": AttributeSpec(dtype="DOUBLE")}})
+
+
+def test_a_schema_declaring_nothing_stays_legal():
+    """`Schema()` is "no manifest yet" (§5.6), not a claim that there are no axes."""
+    assert Schema().dims == ()
+    assert Schema().attributes == {}

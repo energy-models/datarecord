@@ -5,7 +5,9 @@ build-backend = "hatchling.build"
 [project]
 name = "datarecord"
 description = "Dimensioned attribute data with a declared schema"
-authors = [{ name = "Jonas Hörsch", email = "jonas.hoersch@openenergytransition.org" }]
+authors = [
+  { name = "Jonas Hörsch", email = "jonas.hoersch@openenergytransition.org" },
+]
 license = "MIT"
 license-files = ["LICENSE"]
 # replaced in CI
@@ -19,7 +21,10 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 readme = "README.md"
-dependencies = []
+dependencies = ["duckdb>=1.5.4", "narwhals>=2,<3", "pydantic>=2"]
+
+[project.optional-dependencies]
+pypsa = ["pypsa"]
 
 [project.urls]
 repository = "https://github.com/energy-models/datarecord"
@@ -36,6 +41,7 @@ line-length = 88
 ignore = [
   "N803", # https://docs.astral.sh/ruff/rules/invalid-argument-name
   "N806", # https://docs.astral.sh/ruff/rules/non-lowercase-variable-in-function
+  "N813", # deliberate: col/lit/star/sql/coalesce read as SQL, not classes
   "E501", # https://docs.astral.sh/ruff/faq/#is-the-ruff-linter-compatible-with-black
 ]
 select = [
@@ -70,3 +76,7 @@ check_untyped_defs = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "slow: long-running checks (large fixtures); deselect with -m \"not slow\"",
+]
+addopts = '-m "not slow"'
