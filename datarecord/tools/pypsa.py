@@ -213,7 +213,7 @@ class Index:
 
 def _assign_static(
     static: DuckDBPyRelation,
-    attributes: dict[str, tuple[DuckDBPyRelation, bool, bool]],
+    attributes: dict[str, tuple[DuckDBPyRelation, Flags]],
     shape: NetworkShape,
     scenarios: Index,
 ) -> pd.DataFrame:
@@ -460,7 +460,7 @@ def _add_component_type(
     n: pypsa.Network,
     ctype: str,
     static: DuckDBPyRelation,
-    attributes: dict[str, tuple[DuckDBPyRelation, bool, bool]],
+    attributes: dict[str, tuple[DuckDBPyRelation, Flags]],
     shape: NetworkShape,
     con: DuckDBPyConnection,
 ) -> None:

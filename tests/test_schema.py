@@ -288,8 +288,10 @@ def test_column_types_cover_structural_dims_and_flags():
     # One struct per flag column, a BOOLEAN field per declared dim (§9.1), so
     # the map's column set does not widen when a dim is declared.
     for column in ("varies", "broadcast"):
-        assert s.column_type(column) == flag_type(s.dims)
-        assert '"scenario" BOOLEAN' in s.column_type(column)
+        column_type = s.column_type(column)
+        assert column_type == flag_type(s.dims)
+        assert column_type is not None
+        assert '"scenario" BOOLEAN' in column_type
     assert s.column_type("value") is None
     assert s.value_type("Generator", "p_nom") == "DOUBLE"
 

@@ -69,17 +69,20 @@ def test_scalar_applies_to_every_name():
 
 def test_a_sequence_is_positional():
     names, values, _ = normalise_value([150.0, 80.0], ["wind1", "wind2"], {})
+    assert names is not None
     assert dict(zip(names, values, strict=True)) == {"wind1": 150.0, "wind2": 80.0}
 
 
 def test_a_mapping_supplies_its_own_names():
     names, values, _ = normalise_value({"wind1": 150.0, "wind2": 80.0}, None, {})
+    assert names is not None
     assert dict(zip(names, values, strict=True)) == {"wind1": 150.0, "wind2": 80.0}
 
 
 def test_a_series_indexed_by_names_is_per_name():
     series = pd.Series({"wind1": 1.0, "wind2": 2.0})
     names, values, dims = normalise_value(series, ["wind1", "wind2"], {})
+    assert names is not None
     assert dict(zip(names, values, strict=True)) == {"wind1": 1.0, "wind2": 2.0}
     assert dims == {}
 

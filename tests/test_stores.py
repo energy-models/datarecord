@@ -99,6 +99,7 @@ def test_record_exposes_its_store(written):
     """`record.store` is the entry point; `node_cache` stays the DuckDB view."""
     store = written.store
     assert isinstance(store, Store)
+    assert isinstance(store, LayeredStore)
     assert store.node_cache is written.node_cache
 
 

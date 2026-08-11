@@ -47,6 +47,7 @@ Decided by the attribute's declared `dims` (§5.2), not by a particular value:
 So a component type's constant frame is assembled from both: the non-varying columns, and the dim-NULL rows of the varying files.
 
 ### 3.2 The long schema
+
 Frames
 Every `inputs/` and `outputs/` file carries:
 
@@ -72,7 +73,7 @@ Broadcast form is preserved rather than incidental: a writer that holds a value 
 
 ### 3.4 Axis order
 
-An axis is ordered, by the row order of its `<dim>s.parquet`. Nothing declares this and nothing needs to: the row order *is* the order.
+An axis is ordered, by the row order of its `<dim>s.parquet`. Nothing declares this and nothing needs to: the row order _is_ the order.
 
 Under resolution the same rule extends across layers by first-introduced position — a descendant appending a new period lands after the parent's. Components and connections get the same semantics from the owner map's `order_key` (§9.1).
 
@@ -118,7 +119,7 @@ Called `Store` rather than `Layer` because a layer is one node's own contributio
 
 ### 4.1 A protocol, not a base class
 
-A `Store` is a *view*, and the two implementations share no state: one resolves a fold, the other reads files. Structural typing also lets a consumer satisfy it without depending on this package at all — which is how a framework object can present itself as a store, and how a framework could implement `n.import_from_store` against nothing but the protocol.
+A `Store` is a _view_, and the two implementations share no state: one resolves a fold, the other reads files. Structural typing also lets a consumer satisfy it without depending on this package at all — which is how a framework object can present itself as a store, and how a framework could implement `n.import_from_store` against nothing but the protocol.
 
 ### 4.2 `Frames`
 
@@ -128,7 +129,7 @@ Frames = Mapping[str, nw.LazyFrame]
 
 The `Mapping` ABC, deliberately. What the protocol requires is that the **values** be unmaterialised; whether the mapping builds them up front or on lookup is an implementation's own business, so a plain `dict` satisfies it as fully as a lazily-building mapping does.
 
-narwhals is the boundary type because it is a *protocol over dataframes* rather than a dataframe: a store may hand back a DuckDB relation, a polars plan or a pandas frame and the consumer's code is the same. A native representation is reached only where parquet is written (§10).
+narwhals is the boundary type because it is a _protocol over dataframes_ rather than a dataframe: a store may hand back a DuckDB relation, a polars plan or a pandas frame and the consumer's code is the same. A native representation is reached only where parquet is written (§10).
 
 `LazyFrames` is the lazily-building implementation, used where constructing a frame is itself I/O: `read_parquet` reads the parquet footer to bind the schema, so it opens the file. Locally that is a page-cache hit; against a remote store it is a round trip per attribute, so a consumer wanting three of forty attributes pays three rather than forty, and listing the keys pays none.
 
@@ -160,7 +161,7 @@ Not complements. An attribute may have per-timestep rows for one component and a
 
 That is not an ambiguity the consumer has to resolve — it is an instruction to use both containers. A framework splitting constant from time-varying data reads the two sets in two passes: `timestep in broadcast` selects the NULL-timestep rows into the constant frame, `timestep in varies` selects the rest into the series frame, and a type whose components disagree goes down both paths with each row landing in the right one. Collapsing to one boolean would force a choice that has no correct answer.
 
-Per component the two *would* be complements, which is why the aggregation is what makes the pair carry information rather than what costs it.
+Per component the two _would_ be complements, which is why the aggregation is what makes the pair carry information rather than what costs it.
 
 #### `varies | broadcast` — on this axis at all
 
@@ -226,7 +227,7 @@ class Schema(BaseModel):
 
 Every dim is declared: a record with `region`, `technology` or `vintage` needs no code change, and `dtype` is the axis's own property.
 
-A `Dimension` declares the axis's shape — its type, its nesting (§5.4), which entity tables it keys (§5.3). It does not declare which dims an *attribute* varies over (that is per attribute, §5.2), nor the patch granularity (§5.5), nor order (§3.4).
+A `Dimension` declares the axis's shape — its type, its nesting (§5.4), which entity tables it keys (§5.3). It does not declare which dims an _attribute_ varies over (that is per attribute, §5.2), nor the patch granularity (§5.5), nor order (§3.4).
 
 ### 5.2 `AttributeSpec`
 
@@ -249,12 +250,12 @@ What one attribute may do over those axes:
 
 The rest answers what a bare column set cannot:
 
-- *May it carry breakpoints?* — `breakpoints`, so a curve on an attribute that takes one value is rejected on write rather than reported unbuildable later (§7).
-- *Is it bus-relative?* — `bus`, so `efficiency` is known to be a connection attribute and `p_max_pu` a component one, rather than inferred from whether a `bus` value happens to be present.
+- _May it carry breakpoints?_ — `breakpoints`, so a curve on an attribute that takes one value is rejected on write rather than reported unbuildable later (§7).
+- _Is it bus-relative?_ — `bus`, so `efficiency` is known to be a connection attribute and `p_max_pu` a component one, rather than inferred from whether a `bus` value happens to be present.
 
 ### 5.3 `keys` — which entity tables a dim keys
 
-Whether a component or a connection exists *per value* of a dim:
+Whether a component or a connection exists _per value_ of a dim:
 
 ```python
 dimensions = {
@@ -263,10 +264,10 @@ dimensions = {
 }
 ```
 
-| `KeyKind` | keys | consequence |
-|---|---|---|
-| `component` | `dims/components/<Type>.parquet` | a component exists per value, and is deleted per value |
-| `connection` | `dims/connections/<Type>.parquet` | a connection exists per value |
+| `KeyKind`    | keys                              | consequence                                            |
+| ------------ | --------------------------------- | ------------------------------------------------------ |
+| `component`  | `dims/components/<Type>.parquet`  | a component exists per value, and is deleted per value |
+| `connection` | `dims/connections/<Type>.parquet` | a connection exists per value                          |
 
 On `Dimension` rather than `AttributeSpec` because existence is not an attribute's property: a component exists in scenario `high` or it does not, and `p_max_pu` gets no vote.
 
@@ -276,7 +277,7 @@ A dim in `keys` must be in `partial` where that section exists, since keying mem
 
 ### 5.4 `within` — an axis inside an axis
 
-A dim whose labels identify a point only *within* another dim's value. Multi-period time is the case: the axis is a `(period, timestep)` pair, so `t1` alone names nothing and two periods may hold different timesteps.
+A dim whose labels identify a point only _within_ another dim's value. Multi-period time is the case: the axis is a `(period, timestep)` pair, so `t1` alone names nothing and two periods may hold different timesteps.
 
 ```python
 dimensions = {
@@ -289,12 +290,12 @@ dimensions = {
 
 A **set**, because two different things could each be one parent:
 
-- *Chained* — `timestep` in `period` in `horizon`. Each dim names its immediate parent and the chain is walked, giving `(horizon, period, timestep)`.
-- *Several direct parents* — `timestep` identified only within a `(period, stage)` pair, where neither contains the other. This is what a multi-stage stochastic program with investment periods looks like.
+- _Chained_ — `timestep` in `period` in `horizon`. Each dim names its immediate parent and the chain is walked, giving `(horizon, period, timestep)`.
+- _Several direct parents_ — `timestep` identified only within a `(period, stage)` pair, where neither contains the other. This is what a multi-stage stochastic program with investment periods looks like.
 
 So the axis key is `(*parents, dim)`, parents in declaration order. Every name in `within` must be a declared dim, and the nesting graph must be acyclic.
 
-Distinct from `AttributeSpec.dims` despite the similar shape: `dims` names *independent coordinates* — a value exists at each combination and the set never chains — whereas `within` *qualifies a label* and is transitive, so naming `period` pulls in `period`'s own parents.
+Distinct from `AttributeSpec.dims` despite the similar shape: `dims` names _independent coordinates_ — a value exists at each combination and the set never chains — whereas `within` _qualifies a label_ and is transitive, so naming `period` pulls in `period`'s own parents.
 
 The inner dim is named for the thing it indexes (`timestep`) rather than for the pair (`snapshot`), because once nesting exists the pair needs its own name: a framework consuming the store calls `(period, timestep)` a snapshot.
 
@@ -302,14 +303,14 @@ The inner dim is named for the thing it indexes (`timestep`) rather than for the
 
 Everything is overridable; a layer exists in order to override. The remaining question is at what granularity along each axis, and it splits from §5.2's question because the two are properties of different things:
 
-- *Which dims may this attribute vary over at all?* — per **attribute**. `p_max_pu` varies over scenario and timestep; `p_nom` over neither. `AttributeSpec.dims`.
-- *May a layer patch individual values along this axis, or must it restate the axis whole?* — per **dimension**. `scenario` is patchable value by value; `timestep` is not, for any attribute. `schema.partial`.
+- _Which dims may this attribute vary over at all?_ — per **attribute**. `p_max_pu` varies over scenario and timestep; `p_nom` over neither. `AttributeSpec.dims`.
+- _May a layer patch individual values along this axis, or must it restate the axis whole?_ — per **dimension**. `scenario` is patchable value by value; `timestep` is not, for any attribute. `schema.partial`.
 
 ```python
 partial = {"scenario"}  # timestep absent, so a patch restates the series
 ```
 
-A dim outside `partial` is one a layer owns entirely once it touches it: overriding one timestep of `p_max_pu` means carrying that component's *entire* series, because a partial series would resolve across two layers and produce a curve with a hole. The reason is a consumer's rather than the format's — a framework that splits constant from varying data cannot receive half a series — which is why it belongs to the axis: it is true of every attribute varying over it.
+A dim outside `partial` is one a layer owns entirely once it touches it: overriding one timestep of `p_max_pu` means carrying that component's _entire_ series, because a partial series would resolve across two layers and produce a curve with a hole. The reason is a consumer's rather than the format's — a framework that splits constant from varying data cannot receive half a series — which is why it belongs to the axis: it is true of every attribute varying over it.
 
 The dims a layer owns an attribute per follow from the two declarations:
 
@@ -334,7 +335,7 @@ record-root/
 └── nodes/<uuid>/               # caches (owner map, resolved dims)
 ```
 
-A schema is not layered data. Folding it would let a layer change what `p_nom` *means* — its dtype, which dims it varies over — which is not a patch to data but a redefinition of the thing being patched, and it makes the schema unknowable without walking the ancestry. One schema makes it a property of the store, validatable before anything is read and stated once for a hundred-layer tree.
+A schema is not layered data. Folding it would let a layer change what `p_nom` _means_ — its dtype, which dims it varies over — which is not a patch to data but a redefinition of the thing being patched, and it makes the schema unknowable without walking the ancestry. One schema makes it a property of the store, validatable before anything is read and stated once for a hundred-layer tree.
 
 The cost is that adding an attribute amends the root schema rather than shipping inside the layer that introduces it. That is the right trade: a new attribute is a schema change, and one buried several layers deep is exactly what should be visible.
 
@@ -368,11 +369,11 @@ An incompatible change therefore needs the layers rewritten rather than the sche
 
 Both a `Dimension` and an `AttributeSpec` may carry a `unit` and a `description`. Neither is interpreted: no conversion, no dimensional analysis, no validation that `MW` and `kW` are not being added. They are stored, read back, and handed to whatever displays or documents the store.
 
-They belong in the schema rather than in `meta` because they describe the *dimensioned data* — which is exactly the line `meta` is on the other side of (§5). A `unit` is a property of an attribute in the same way its `dtype` is, and a consumer asking "what is `p_nom` and what is it measured in" should not have to know a framework's own metadata layout to find out.
+They belong in the schema rather than in `meta` because they describe the _dimensioned data_ — which is exactly the line `meta` is on the other side of (§5). A `unit` is a property of an attribute in the same way its `dtype` is, and a consumer asking "what is `p_nom` and what is it measured in" should not have to know a framework's own metadata layout to find out.
 
 `None` means undeclared, not dimensionless. A quantity that genuinely has no unit is `""` — the distinction matters to a renderer choosing between showing nothing and showing an empty unit, and to a later pass that wants to find what is still undocumented.
 
-A dimension's `unit` describes what its *labels* measure, which is only sometimes meaningful: a `vintage` axis labelled in years or a `distance` axis in km has one, while `scenario` and `timestep` do not — a timestamp is not a quantity. `description` applies to any axis.
+A dimension's `unit` describes what its _labels_ measure, which is only sometimes meaningful: a `vintage` axis labelled in years or a `distance` axis in km has one, while `scenario` and `timestep` do not — a timestamp is not a quantity. `description` applies to any axis.
 
 Neither field changes how a row decodes, so adding or editing one is a compatible change (§5.7).
 
@@ -384,7 +385,7 @@ A connection is identified by **the bus it attaches to**. Position is a framewor
 
 So connections are rows in `dims/connections/<Type>.parquet`, keyed by `(component_type, name, bus, *connection key dims)`, carrying their own tombstones. `role` — which end of the component it is — is an ordinary described column, not part of the key.
 
-`bus` is also part of the **inputs** key, `(component_type, name, bus, *owned_per dims, attribute)`, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected. That is what makes a per-connection attribute owned *per connection*: without it, a patch changing one connection's `efficiency` would own — and so have to restate — every connection's.
+`bus` is also part of the **inputs** key, `(component_type, name, bus, *owned_per dims, attribute)`, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected. That is what makes a per-connection attribute owned _per connection_: without it, a patch changing one connection's `efficiency` would own — and so have to restate — every connection's.
 
 A per-connection attribute is otherwise an ordinary long-schema row: `efficiency` on one connection may vary by timestep and scenario like any other attribute, and resolves by the same rules with no special case.
 
@@ -471,9 +472,9 @@ For **components** it is a stability guarantee rather than a correctness one: no
 
 Each map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys. A node whose maps are materialised (§8.2) persists all three, so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property. Elsewhere the fold runs live over that node's persisted maps, cached per connection; since layers are write-once (§8.1), such a cache never needs invalidating.
 
-The flags (§4.3) are folded in alongside the ownership group-by, so they cost nothing beyond it. They are computed **per key**, so per component: whether *this* component's `p_max_pu` sets `timestep` is a different question from whether any does.
+The flags (§4.3) are folded in alongside the ownership group-by, so they cost nothing beyond it. They are computed **per key**, so per component: whether _this_ component's `p_max_pu` sets `timestep` is a different question from whether any does.
 
-Two **structs** rather than a `varies_<dim>` column per dim, because which dims exist is declared (§5.1) and a flat layout would make the map's *column set* depend on the schema. §5.7 calls adding a dim compatible; that has to hold for a map already persisted at a materialised node (§8.2), not only for the layers. With a struct the difference is a missing *field*, which `UNION ALL BY NAME` fills with NULL exactly as it would a missing column, and the new dim reads as unset — which it is, since no row mentions it. The map's columns are then fixed, and only the fields move.
+Two **structs** rather than a `varies_<dim>` column per dim, because which dims exist is declared (§5.1) and a flat layout would make the map's _column set_ depend on the schema. §5.7 calls adding a dim compatible; that has to hold for a map already persisted at a materialised node (§8.2), not only for the layers. With a struct the difference is a missing _field_, which `UNION ALL BY NAME` fills with NULL exactly as it would a missing column, and the new dim reads as unset — which it is, since no row mentions it. The map's columns are then fixed, and only the fields move.
 
 `breakpoints` stays outside both structs, being no dim (§7). That also means the dim namespace lives entirely inside `varies`/`broadcast`, so a dim named `breakpoints` would collide with nothing.
 
@@ -515,12 +516,12 @@ An attribute no layer wrote is absent from the map; its relation is empty, and t
 
 ### 9.3 What differs between the implementations
 
-| | `DirectoryStore` | `LayeredStore` |
-|---|---|---|
-| resolution | none — one store | owner-map fold along ancestry |
-| `flags` | `GROUP BY` scan over `inputs/` | free, folded with ownership |
-| member order | file order | `order_key`, first-introduced across layers |
-| `schema.partial` | absent | the granularity of every patch |
+|                  | `DirectoryStore`               | `LayeredStore`                              |
+| ---------------- | ------------------------------ | ------------------------------------------- |
+| resolution       | none — one store               | owner-map fold along ancestry               |
+| `flags`          | `GROUP BY` scan over `inputs/` | free, folded with ownership                 |
+| member order     | file order                     | `order_key`, first-introduced across layers |
+| `schema.partial` | absent                         | the granularity of every patch              |
 
 `flags` from a directory needs a real aggregate: parquet's footer statistics are per row group, not per component type, so a file mixing one type's series rows with another's constant says nothing about either.
 
@@ -598,7 +599,7 @@ Built over a base `Store` and a DuckDB connection: `MutableStore(record.store, c
 
 A **class, not a protocol**. `Store` is a protocol because several things satisfy it — two backings, a framework object presenting itself as one (§4.1), the two readings commit writes — and structural typing is what lets a consumer satisfy it without depending on this package. There is one way to edit a store, so a second name for it would be an interface over its only implementation. Where the staged rows live is this class's own business (§11.9), which is why the name says what it is rather than how.
 
-It **satisfies** `Store`, which is the load-bearing decision: a mutable store reads as a store, and what it reads is the data *with its pending edits applied*. So an edit can be read back, or the store handed to something that only knows `Store`, without committing. Structurally, not by inheritance — the read members are implemented here over base-plus-staged (§11.10).
+It **satisfies** `Store`, which is the load-bearing decision: a mutable store reads as a store, and what it reads is the data _with its pending edits applied_. So an edit can be read back, or the store handed to something that only knows `Store`, without committing. Structurally, not by inheritance — the read members are implemented here over base-plus-staged (§11.10).
 
 Two properties follow from accumulate-then-commit, and both are the point:
 
@@ -609,14 +610,14 @@ Two properties follow from accumulate-then-commit, and both are the point:
 
 Each edit maps onto exactly one part of the format:
 
-| edit | writes | key it targets |
-|---|---|---|
-| set an attribute on a group | `inputs/<attr>.parquet` rows | `(component_type, name, bus, *owned_per dims, attribute)` |
-| add components | `dims/components/` rows, plus `inputs/` rows for varying attributes | `(component_type, name, *component key dims)` |
-| remove components | a `deleted = true` tombstone | `(component_type, name, *component key dims)` |
-| connect / disconnect | `dims/connections/` rows and tombstones | `(component_type, name, bus, *connection key dims)` |
+| edit                        | writes                                                              | key it targets                                            |
+| --------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------- |
+| set an attribute on a group | `inputs/<attr>.parquet` rows                                        | `(component_type, name, bus, *owned_per dims, attribute)` |
+| add components              | `dims/components/` rows, plus `inputs/` rows for varying attributes | `(component_type, name, *component key dims)`             |
+| remove components           | a `deleted = true` tombstone                                        | `(component_type, name, *component key dims)`             |
+| connect / disconnect        | `dims/connections/` rows and tombstones                             | `(component_type, name, bus, *connection key dims)`       |
 
-The crucial property: **an edit is expressed in the format's own terms.** Setting `p_nom` on twenty components *is* twenty `inputs/p_nom.parquet` rows, which is what a patch layer would hold anyway. So a staged edit is already the row it will be written as, and `commit()` is a concatenation rather than a translation.
+The crucial property: **an edit is expressed in the format's own terms.** Setting `p_nom` on twenty components _is_ twenty `inputs/p_nom.parquet` rows, which is what a patch layer would hold anyway. So a staged edit is already the row it will be written as, and `commit()` is a concatenation rather than a translation.
 
 ### 11.2 `set`
 
@@ -633,12 +634,12 @@ store.set("Generator", "p_nom", 200.0, names=["wind1"], scenario="high")  # scop
 
 `value` takes four forms, because assigning one value to a group and assigning a different value to each member are equally ordinary and neither should require building a frame:
 
-| `value` | meaning | `names` |
-|---|---|---|
-| scalar | broadcast to every name | required unless `None` means all |
-| sequence | aligned positionally to `names` | required, same length |
-| mapping | keys are names | ignored if given, else the keys are the names |
-| frame | supplies its own keys | redundant |
+| `value`  | meaning                         | `names`                                       |
+| -------- | ------------------------------- | --------------------------------------------- |
+| scalar   | broadcast to every name         | required unless `None` means all              |
+| sequence | aligned positionally to `names` | required, same length                         |
+| mapping  | keys are names                  | ignored if given, else the keys are the names |
+| frame    | supplies its own keys           | redundant                                     |
 
 The first three normalise to a long frame before staging, so there is one staging path. A length mismatch between a sequence and `names` is an error at the call, not a silently truncated edit.
 
@@ -655,13 +656,13 @@ store.update("Generator", "p_nom", nw.col("value") * 1.1)  # scale up
 store.update("Generator", "p_max_pu", nw.col("value").clip(upper=0.9))
 ```
 
-Separate from `set` rather than a fifth `value` form, because the two differ in kind: every form `set` accepts *is* a value, whereas an expression is a **function of the current value**. Folding it in would make one method mean two things, and the difference is visible to a caller — `set` on a component with no existing value writes that value, while `update` on one has nothing to derive from.
+Separate from `set` rather than a fifth `value` form, because the two differ in kind: every form `set` accepts _is_ a value, whereas an expression is a **function of the current value**. Folding it in would make one method mean two things, and the difference is visible to a caller — `set` on a component with no existing value writes that value, while `update` on one has nothing to derive from.
 
 Consequences that follow from being a read-modify-write:
 
 - It reads before it stages, so what it derives from is the resolved value **including earlier pending edits** (§11.10). Two `update`s compose.
 - Where `set` stages without touching parent data, `update` must resolve the keys it targets first. On a layered store that is a fold, so a broad `update` is the one edit whose cost scales with the ancestry rather than with the rows written.
-- What is staged is the *result*, not the expression. So a committed layer holds ordinary rows, and nothing in the format records that a value was derived — replaying an edit sequence is not a thing the store supports.
+- What is staged is the _result_, not the expression. So a committed layer holds ordinary rows, and nothing in the format records that a value was derived — replaying an edit sequence is not a thing the store supports.
 
 The expression is evaluated by narwhals against the resolved long frame, so it names `value` rather than the attribute: the frame is long, and one attribute per call means the column is always `value`.
 
@@ -719,7 +720,7 @@ Target = NewChild | Directory
 ```
 
 - **`NewChild(record)`** — create a child of `record` and write the staged rows as its layer. The patch-layer path: read a parent, edit, commit a child. Any node may be a parent (§8.1), so this needs no preparation of the one being branched from.
-- **`Directory(uri)`** — write a standalone store. What is staged *plus what the store already reads*, flattened into one layer.
+- **`Directory(uri)`** — write a standalone store. What is staged _plus what the store already reads_, flattened into one layer.
 
 The two write different things. A `NewChild` writes **only the edits** — that is what a patch layer is, and the fold resolves the rest from the parent. A `Directory` writes **the resolved result**, since there is no parent to resolve against. Both go through `write_layer`, which is possible because each reading is presented as a `Store` — the one place the protocol's several implementations earn it twice over.
 
@@ -735,7 +736,7 @@ Three interactions need stating, because each is where a naive append is wrong:
 - **`add` after `remove`** of the same name: the component exists again. Commit must not write both a member row and a tombstone — the later operation wins.
 - **`set` on a component this store also added**: correct as-is, since the two live in different files.
 
-The non-`partial` rule (§5.5) is the subtle one. Overwriting one value along a non-partial axis means the layer must carry that component's *whole* extent along it, so such a `set` must at commit read the resolved series for that key and write it out complete. That is the one commit-time read of parent data.
+The non-`partial` rule (§5.5) is the subtle one. Overwriting one value along a non-partial axis means the layer must carry that component's _whole_ extent along it, so such a `set` must at commit read the resolved series for that key and write it out complete. That is the one commit-time read of parent data.
 
 ### 11.8 Validation
 
@@ -793,7 +794,7 @@ A store is the input to a translation, not the owner of one, so there is no regi
 
 A tool's `verify` catches what the record layer cannot: a component type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks the framework's constant-versus-varying split. It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by `order_key`, and where a curve is either translated or reported unbuildable.
 
-The tool's own `Schema` reconciles vocabularies: per component type, which record attribute a tool's attribute is renamed from, or which several it is computed from. Since §5's schema makes a record's attribute names *declared* rather than conventional, this maps one declared vocabulary to another.
+The tool's own `Schema` reconciles vocabularies: per component type, which record attribute a tool's attribute is renamed from, or which several it is computed from. Since §5's schema makes a record's attribute names _declared_ rather than conventional, this maps one declared vocabulary to another.
 
 Frames are built and handed over one component type at a time, so peak memory is one type's frames rather than the whole model.
 
@@ -828,9 +829,8 @@ A tool lives outside this core, under `datarecord/tools/<name>.py` — one modul
 
   What blocks it is that `bus` inverts the rule NULL follows for a dim. A NULL declared dim means "all values", and the fold expands it against the axis (§9.2); a NULL `bus` means "this attribute belongs to the component rather than to any connection", and is compared NULL-safely, never expanded. So `bus` would be a dim carrying an explicit exception to the one behaviour that makes a dim a dim. With one instance of each relation in hand there is nothing to generalise against, and unifying them would touch every key and every NULL comparison.
 
-- **Whether `partial` should ever be per attribute.** §5.5 puts it on the axis because it is true of every attribute varying over that axis. A counter-example would be an attribute whose series a consumer *can* accept in pieces while others cannot — none known, and permitting it would make the fold's key vary per attribute, which the fixed inputs key assumes it does not.
+- **Whether `partial` should ever be per attribute.** §5.5 puts it on the axis because it is true of every attribute varying over that axis. A counter-example would be an attribute whose series a consumer _can_ accept in pieces while others cannot — none known, and permitting it would make the fold's key vary per attribute, which the fixed inputs key assumes it does not.
 
 - **Whether a `MutableStore` over an open record stages against a snapshot.** Writing into an open record invalidates its owner-map cache. A mutable store would need the same invalidation per edit, or to stage against a snapshot taken at construction. The second is simpler and arguably more correct — an edit sequence should not see another writer's changes mid-flight — but it means a store can go stale.
-
 
 - **Registering a store's relations as named views.** A frontend issuing ad-hoc SQL needs names in a catalog rather than Python objects, which `CREATE VIEW` against a file-backed catalog provides — each view's definition being the resolved overlay, materialising nothing. Creating a view binds its schema, so registering N attributes costs N footer reads; and catalog reopen cost is linear in view count, which argues for one catalog per record rather than one shared.

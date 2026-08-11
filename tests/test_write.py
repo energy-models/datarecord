@@ -327,4 +327,4 @@ def test_written_layer_overlays(con, base_uri, ac_dc):
 def test_add_patch_is_not_implemented(con, base_uri):
     """Superseded by `MutableStore`, which needs no diff at all (§11)."""
     with pytest.raises(NotImplementedError, match="MutableStore"):
-        add_patch(None, None, None, con)
+        add_patch(None, None, None, con)  # type: ignore[arg-type]

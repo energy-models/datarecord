@@ -197,7 +197,7 @@ class Store(Protocol):
 
 
 @runtime_checkable
-class Solved(Protocol):
+class Solved(Store, Protocol):
     """A store that also carries results (§9.4).
 
     Separate from `Store` because `outputs` does not behave like its

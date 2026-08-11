@@ -174,7 +174,7 @@ def try_read_parquet(
         for a missing layer.
     """
     try:
-        return con.read_parquet(uri, **kwargs)
+        return con.read_parquet(uri, **kwargs)  # type: ignore[arg-type]
     except duckdb.HTTPException as e:
         # This duckdb build exposes no status code, only the message ("HTTP
         # Error: ... (HTTP 404 Not Found)"). 403 also counts as a miss: S3

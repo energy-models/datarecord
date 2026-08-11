@@ -122,10 +122,8 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
 
 # -- nesting (§5.4) ----------------------------------------------------------
 
-_NESTED = {
-    "dims": {"snapshot": "TIMESTAMP", "period": "BIGINT", "scenario": "VARCHAR"},
-    "within": {"snapshot": {"period"}},
-}
+_NESTED_DIMS = {"snapshot": "TIMESTAMP", "period": "BIGINT", "scenario": "VARCHAR"}
+_NESTED_WITHIN = {"snapshot": {"period"}}
 
 
 def test_a_nested_axis_keeps_a_label_per_parent(con, base_uri):
@@ -136,7 +134,7 @@ def test_a_nested_axis_keeps_a_label_per_parent(con, base_uri):
     collapse them into one row.
     """
     record = DataRecord.create(con)
-    write_schema(schema(**_NESTED))
+    write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN))
     write_snapshots(
         layer_dir(record.id),
         [
@@ -159,7 +157,7 @@ def test_a_child_overrides_one_nested_point(con, base_uri):
     labelled hour to the parent.
     """
     record = DataRecord.create(con)
-    write_schema(schema(**_NESTED))
+    write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN))
     write_snapshots(
         layer_dir(record.id),
         [

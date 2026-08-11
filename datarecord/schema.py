@@ -235,8 +235,8 @@ class Schema(BaseModel):
             raise ValueError(msg)
 
         for ctype, attrs in self.attributes.items():
-            for attr, spec in attrs.items():
-                unknown = sorted(spec.dims - declared)
+            for attr, attr_spec in attrs.items():
+                unknown = sorted(attr_spec.dims - declared)
                 if unknown:
                     msg = f"{ctype}.{attr} varies over undeclared dims {unknown}"
                     raise ValueError(msg)

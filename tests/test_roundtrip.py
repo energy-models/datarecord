@@ -86,7 +86,7 @@ def test_roundtrip_matches_pypsa_reader(con, base_uri, single_record, ac_dc):
     plain = str(Path(base_uri) / "pypsa-written")
     ac_dc.export_to_parquet(plain)
     reference = pypsa.Network()
-    reference.import_from_parquet(plain)
+    reference.import_from_parquet(plain)  # type: ignore[attr-defined]
 
     assert_networks_equal(PyPSA.build(single_record), reference)
 

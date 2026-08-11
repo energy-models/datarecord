@@ -30,14 +30,14 @@ if TYPE_CHECKING:
     import pypsa
 
 _ANCESTRY = """
-WITH RECURSIVE anc(id, parent, depth) AS (
+WITH RECURSIVE ancestors(id, parent, depth) AS (
   SELECT id, parent, 0 FROM data_records WHERE id = ?
   UNION ALL
-  SELECT d.id, d.parent, anc.depth + 1
+  SELECT d.id, d.parent, ancestors.depth + 1
   FROM data_records d
-  JOIN anc ON d.id = anc.parent
+  JOIN ancestors ON d.id = ancestors.parent
 )
-SELECT id FROM anc ORDER BY depth DESC
+SELECT id FROM ancestors ORDER BY depth DESC
 """
 
 

@@ -18,6 +18,20 @@ from tests.fixtures import (
 PROCESS = "Process"
 
 
+def _connections(record, ctype=PROCESS):
+    """`connection_frame`, asserted non-`None` for tests where a row must exist."""
+    frame = record.node_cache.connection_frame(ctype)
+    assert frame is not None
+    return frame
+
+
+def _components(record, ctype=PROCESS):
+    """`component_frame`, asserted non-`None` for tests where a row must exist."""
+    frame = record.node_cache.component_frame(ctype)
+    assert frame is not None
+    return frame
+
+
 def _root(con) -> DataRecord:
     """A record whose layer has one Process with three connections."""
     record = DataRecord.create(con)
@@ -52,7 +66,7 @@ def _efficiencies(record) -> dict[str, float]:
 def test_connections_resolve_in_order(con, base_uri):
     """A component's connections come back in first-introduced order."""
     record = _root(con)
-    frame = record.node_cache.connection_frame(PROCESS).order("order_key").df()
+    frame = _connections(record).order("order_key").df()
     assert list(frame["bus"]) == ["h2_north", "iron_ore", "dri"]
     # `role` describes the connection rather than keying it, so it rides along
     # from the owning layer's file (§6).
@@ -203,7 +217,7 @@ def test_connection_tombstone_removes_one_connection(con, base_uri):
     child = root.child()
     tombstone_connection(layer_dir(child.id), PROCESS, [("steel_dri", "iron_ore")])
 
-    frame = child.node_cache.connection_frame(PROCESS).df()
+    frame = _connections(child).df()
     assert set(frame["bus"]) == {"h2_north", "dri"}
     # ... and the attribute rows go with it, which the map can scope per
     # connection only because `bus` is in `input_key`.
@@ -245,7 +259,7 @@ def test_connection_exists_per_scenario(con, base_uri):
         layer_dir(child.id), PROCESS, [("steel_dri", "co2")], scenario="high"
     )
 
-    frame = child.node_cache.connection_frame(PROCESS).df()
+    frame = _connections(child).df()
     assert list(zip(frame["bus"], frame["scenario"], strict=True)) == [("co2", "low")]
 
 
@@ -296,5 +310,5 @@ def test_narrower_connection_key_than_component_key(con, base_uri):
 
     # The component survives in `low`, and so the connection does - the
     # widened match drops it only when no owning component row remains.
-    assert list(child.node_cache.component_frame(PROCESS).df()["scenario"]) == ["low"]
-    assert list(child.node_cache.connection_frame(PROCESS).df()["bus"]) == ["co2"]
+    assert list(_components(child).df()["scenario"]) == ["low"]
+    assert list(_connections(child).df()["bus"]) == ["co2"]

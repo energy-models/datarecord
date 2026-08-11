@@ -13,7 +13,7 @@ the store until `commit()`.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -106,7 +106,7 @@ def _as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelati
     return con.sql("FROM arrow")
 
 
-def _null_safe_on(columns: Sequence[str]) -> str:
+def _null_safe_on(columns: Iterable[str]) -> str:
     """A NULL-safe join condition over `columns`, for aliases `b` and `s`."""
     return " AND ".join(f'b."{c}" IS NOT DISTINCT FROM s."{c}"' for c in columns)
 
@@ -182,7 +182,7 @@ def normalise_value(
             raise ValueError(msg)
         if matches_axis:
             dim = matches_axis[0]
-            return None, list(value), {dim: labels}
+            return None, list(value), {dim: list(labels)}
         return list(labels), list(value), {}
 
     if isinstance(value, Mapping):

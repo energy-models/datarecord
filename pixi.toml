@@ -27,13 +27,14 @@ pytest-cov = "*"
 mypy = "*"
 pandas = "*"
 pyarrow = "*"
+pypsa = "*"
 [feature.test.tasks]
 test = "pytest"
 test-coverage = "pytest --cov=datarecord --cov-report=xml --cov-report=term-missing"
 
 # `datarecord.tools.pypsa` is an optional extra (§13: no tool import may leak
-# into core datarecord), so its tests get their own feature/environment
-# rather than being installed by default.
+# into core datarecord); kept as its own feature/environment too, as a model
+# for integrating further tools, even though `test` now pulls it in directly.
 [feature.pypsa.dependencies]
 pypsa = "*"
 
