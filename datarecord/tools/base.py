@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
     import narwhals as nw
 
-    from datarecord.data_record import DataRecord
+    from datarecord.layered.record import DataRecord
     from datarecord.store import Store
 
 

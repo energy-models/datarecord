@@ -5,11 +5,12 @@ import pandas as pd
 import pytest
 
 from datarecord import DataRecord
+from datarecord.directory import DirectoryStore
 from datarecord.duck import layer_dir
+from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.mutable import Directory, MutableStore, NewChild, normalise_value
-from datarecord.node_cache import read_schema, write_schema
 from datarecord.schema import AttributeSpec
-from datarecord.store import DirectoryStore, Store
+from datarecord.store import Store
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network
 

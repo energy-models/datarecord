@@ -1192,7 +1192,7 @@ class MutableStore:
         just wrote without going back to the record table; `None` for a
         `Directory`, which belongs to no record.
         """
-        from datarecord.write import write_layer  # circular at module level
+        from datarecord.layered.write import write_layer  # circular at module level
 
         if isinstance(target, NewChild):
             child = target.record.child()

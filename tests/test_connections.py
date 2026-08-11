@@ -3,8 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from datarecord.data_record import DataRecord
 from datarecord.duck import layer_dir
+from datarecord.layered.record import DataRecord
 from tests.fixtures import (
     schema,
     tombstone,

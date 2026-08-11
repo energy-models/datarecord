@@ -6,18 +6,13 @@ import narwhals as nw
 import pytest
 
 from datarecord import DataRecord
+from datarecord.directory import DirectoryStore
 from datarecord.duck import layer_dir, node_dir
+from datarecord.layered.record import LayeredStore
+from datarecord.layered.write import write_layer
 from datarecord.schema import Schema
-from datarecord.store import (
-    DirectoryStore,
-    Flags,
-    Frames,
-    LayeredStore,
-    Solved,
-    Store,
-)
+from datarecord.store import Flags, Frames, Solved, Store
 from datarecord.tools.pypsa import PyPSA
-from datarecord.write import write_layer
 from tests.fixtures import schema, write_components, write_input, write_schema
 
 MEMBERS = ("dims", "components", "connections", "attributes")
@@ -414,7 +409,7 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
     two roots therefore disagree about their dims without either being wrong.
     """
     from datarecord import duck
-    from datarecord.node_cache import write_schema as write_manifest
+    from datarecord.layered.resolve import write_schema as write_manifest
 
     roots = {}
     for name, dims in (("a", {"scenario": "VARCHAR"}), ("b", {"vintage": "BIGINT"})):

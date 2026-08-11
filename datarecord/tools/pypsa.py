@@ -40,7 +40,7 @@ from datarecord.tools.base import (
 if TYPE_CHECKING:
     import pypsa
 
-    from datarecord.data_record import DataRecord
+    from datarecord.layered.record import DataRecord
 
 # The axes a PyPSA network is built from; all three must be declared in the
 # schema's `dimensions`, since a network shape is built from them (§12).

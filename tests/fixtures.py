@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from datarecord.node_cache import write_schema as record_write_schema
+from datarecord.layered.resolve import write_schema as record_write_schema
 from datarecord.schema import AttributeSpec, Dimension, Schema
 
 LONG_COLUMNS = [
@@ -151,8 +151,8 @@ def export_network(n, record, con) -> None:
     Going through `write_layer` means a test store is written exactly as
     `blocks` writes one.
     """
+    from datarecord.layered.write import write_layer
     from datarecord.tools.pypsa import PyPSA
-    from datarecord.write import write_layer
 
     write_layer(record.id, PyPSA.to_datarecord(n), con)
 

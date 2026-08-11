@@ -7,11 +7,12 @@ import pandas as pd
 import pytest
 
 from datarecord import DataRecord
+from datarecord.directory import DirectoryStore
 from datarecord.duck import layer_dir
-from datarecord.node_cache import read_schema
-from datarecord.store import EMPTY, DirectoryStore, LazyFrames, Store
+from datarecord.layered.resolve import read_schema
+from datarecord.layered.write import add_patch, write_layer
+from datarecord.store import EMPTY, LazyFrames, Store
 from datarecord.tools.pypsa import PyPSA
-from datarecord.write import add_patch, write_layer
 from tests.fixtures import schema
 
 

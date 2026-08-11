@@ -23,7 +23,12 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.records import CREATE_TABLE
+CREATE_TABLE = """
+CREATE TABLE IF NOT EXISTS data_records (
+  id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  parent   UUID
+)
+"""
 
 # Where layers live; `layer_dir(id)` derives every store path from it (§13).
 DEFAULT_BASE_URI = os.environ.get("BLOCKS_RECORD_BASE_URI", "")

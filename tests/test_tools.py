@@ -8,10 +8,10 @@ import pytest
 
 from datarecord import DataRecord
 from datarecord.duck import layer_dir
-from datarecord.node_cache import read_schema, write_schema
+from datarecord.layered.resolve import read_schema, write_schema
+from datarecord.layered.write import write_layer
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import PyPSA
-from datarecord.write import write_layer
 from tests.fixtures import export_network, schema, write_components, write_input
 
 

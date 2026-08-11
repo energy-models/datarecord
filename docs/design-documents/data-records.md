@@ -814,7 +814,7 @@ datarecord/                     # the standalone concept
 └── duck.py                     # connection setup, path derivation
 ```
 
-Today it is `datarecord/`, flat, with the same split under different filenames: `schema.py`, `store.py` (the protocols and both backings), `mutable.py`, `node_cache.py` (the fold), `data_record.py`, `records.py`, `write.py`, `duck.py`. §1's "depends on `duckdb`, `narwhals` and `pydantic`, and on nothing else" is achieved at this layer — `datarecord/tools/` is where a framework-specific tool lives instead (below), and nothing under it is imported by the package's own `__init__.py`.
+§1's "depends on `duckdb`, `narwhals` and `pydantic`, and on nothing else" is achieved at this layer — `datarecord/tools/` is where a framework-specific tool lives instead (below), and nothing under it is imported by the package's own `__init__.py`.
 
 The protocol lives with its implementations rather than with any one consumer, because there are several: `write_layer` consumes a `Store`, a tool both implements and consumes one, and `MutableStore` satisfies it.
 

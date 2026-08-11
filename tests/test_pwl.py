@@ -1,7 +1,7 @@
 """Piecewise-linear values as breakpoint rows (design doc §7)."""
 
-from datarecord.data_record import DataRecord
 from datarecord.duck import layer_dir
+from datarecord.layered.record import DataRecord
 from datarecord.store import Flags
 from tests.fixtures import (
     schema,

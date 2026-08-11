@@ -5,7 +5,7 @@ format is experimental, and the connection rows and `breakpoint` column of
 §6/§7 are proposals for it (§2), so this is that proposal's reference
 implementation.
 
-Framework-independent, per §13's one-way dependency: a `Store` (`stores.py`)
+Framework-independent, per §13's one-way dependency: a `Store` (`store.py`)
 hands over narwhals frames and this module turns them into parquet. Producing
 one from a modelling framework's own object is a tool's job
 (`datarecord.tools.pypsa.PyPSA.to_datarecord`).
@@ -22,7 +22,7 @@ import narwhals as nw
 from duckdb import DuckDBPyRelation
 
 from datarecord.duck import base_uri_of, layer_dir
-from datarecord.node_cache import read_schema, write_schema
+from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.schema import Schema
 from datarecord.store import Solved, Store
 
