@@ -572,9 +572,8 @@ class WorkingRecord:
     def flags(self, ctype: str) -> dict[str, Flags]:
         """Base flags unioned with what the staged rows use (§11.10).
 
-        The staged rows carry no `component_type` (§3.5), so scoping them to one
-        type is a semi-join against the names this store resolves for it - base
-        members plus pending additions, which is what `components` already is.
+        Scoped by the names this store resolves for the type - base members plus
+        pending additions - the staged rows carrying no type (§3.5).
         """
         out = dict(self.base.flags(ctype))
         rel = self._rows("inputs")
@@ -636,26 +635,22 @@ class WorkingRecord:
         return [str(n) for n in frame["name"].to_list()]
 
     def _require_unique(self, ctype: str, lazy: nw.LazyFrame) -> None:
-        """Reject an `add` whose names collide with another type's (§3.5, §11.8).
+        """Reject an `add` whose names another type already holds (§3.5, §11.8).
 
-        A name identifies one component store-wide, so a name already resolving
-        under a *different* type is a collision: the two would share every
-        attribute key, and the rows record no type to tell them apart.
-
-        Re-adding a name of the *same* type is not a collision but an edit to
-        that member, which `_entity_union` resolves last-writer-wins - so only a
-        cross-type clash raises.
+        Re-adding a name of the *same* type is an edit to that member, which
+        `_entity_union` resolves last-writer-wins - so only a cross-type clash
+        raises.
         """
-        known = self._types_by_name()
-        clashing = sorted(
-            {
-                (str(n), known[str(n)])
-                for n in lazy.select("name").collect()["name"].to_list()
-                if str(n) in known and known[str(n)] != ctype
-            }
-        )
+        incoming = {str(n) for n in lazy.select("name").collect()["name"].to_list()}
+        clashing = {
+            n: t
+            for n, t in self._types_by_name().items()
+            if n in incoming and t != ctype
+        }
         if clashing:
-            detail = ", ".join(f"{n!r} is already a {t}" for n, t in clashing)
+            detail = ", ".join(
+                f"{n!r} is already a {t}" for n, t in sorted(clashing.items())
+            )
             msg = (
                 f"cannot add {ctype} components whose names are taken: {detail}; "
                 f"names are unique across every component type (§3.5)"
@@ -663,16 +658,7 @@ class WorkingRecord:
             raise ValueError(msg)
 
     def _types_by_name(self) -> dict[str, str]:
-        """`name -> component_type` over everything this store resolves (§3.5).
-
-        The entity mapping `set` resolves a name's type through: names are
-        unique store-wide, so this is a function, and the components frames are
-        the entity tables that define it (§3.5).
-
-        One read of every type's names, which is the read `_require_names`
-        already performed - so deriving a type costs nothing the membership
-        check was not already paying (§11.8).
-        """
+        """`name -> component_type` over everything this store resolves (§3.5)."""
         return {
             name: ctype
             for ctype in self.components
@@ -682,10 +668,8 @@ class WorkingRecord:
     def _resolve_types(self, names: Sequence[str]) -> dict[str, str]:
         """`names` mapped to their types, rejecting any the store does not resolve.
 
-        A component exists by virtue of its member row, so a value keyed to a
-        name that has none would resolve to nothing - caught here rather than
-        silently dropped at read time (§11.8). `add` is how such a name comes to
-        exist.
+        A value keyed to a name with no member row would resolve to nothing, so
+        it is caught here rather than dropped at read time (§11.8).
         """
         known = self._types_by_name()
         unknown = sorted({n for n in names if n not in known})
@@ -698,11 +682,7 @@ class WorkingRecord:
         return {n: known[n] for n in names}
 
     def _validate_dims(self, dims: Mapping[str, Any]) -> None:
-        """The dim vocabulary, checked for either `kind` (§11.8).
-
-        A result's dims are still the schema's even though its attribute name is
-        not declared at all (§11.3.1).
-        """
+        """The dim vocabulary, checked for either `kind` (§11.8, §11.3.1)."""
         unknown = sorted(set(dims) - set(self.schema.dims))
         if unknown:
             msg = f"the schema declares no dims {unknown}"
@@ -724,8 +704,8 @@ class WorkingRecord:
         consulting the schema (§9.4, §12). So an unknown attribute name is an
         error for an input and simply unknowable for a result.
 
-        `name` is reported where it is known, since with the type derived rather
-        than passed (§3.5) the name is what the caller can act on.
+        `name` is reported where known: with the type derived rather than passed
+        (§3.5), the name is what the caller can act on.
         """
         who = f" (for {name!r})" if name is not None else ""
         declared = self.schema.attributes.get(ctype)
@@ -762,14 +742,10 @@ class WorkingRecord:
         of the current value* rather than a value, so it reads before it stages
         and two such calls compose (§11.3).
 
-        There is no `component_type` parameter: a name identifies one component
-        store-wide (§3.5), so the type is looked up rather than supplied, and one
-        call may span types since the names decide. Each name is validated
-        against its own type's `AttributeSpec` (§11.8).
-
-        `names=None` means every component the schema declares `attribute` for -
-        "every component with a `p_max_pu`", the only reading left once the type
-        keyword is gone.
+        No `component_type` parameter: the type is looked up from the name (§3.5),
+        so one call may span types and each name is validated against its own
+        type's spec (§11.8). `names=None` means every component whose type
+        declares `attribute`.
 
         `kind` names the destination in the format's own terms (§11.1):
         `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a
@@ -815,8 +791,8 @@ class WorkingRecord:
                 values = values * len(keys)
         self._validate_dims(dims)
         if kind == "inputs":
-            # One lookup serves both: it rejects a name with no member row and
-            # returns the type each name's spec is checked against (§3.5).
+            # One lookup serves both: rejects a name with no member row, and
+            # returns the type whose spec is checked (§3.5).
             for name, ctype in self._resolve_types(keys).items():
                 self._validate_attribute(ctype, attribute, dims, name=name)
 
@@ -845,14 +821,10 @@ class WorkingRecord:
         self.con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", rows)
 
     def _names_declaring(self, attribute: str) -> list[str]:
-        """Every resolved name whose type declares `attribute` (§11.2).
-
-        What `names=None` targets. Ordered by component type and then by member
-        order, so an unscoped edit stages rows in a stable order.
-        """
+        """Every resolved name whose type declares `attribute` - `names=None` (§11.2)."""
         return [
             name
-            for ctype in self.schema.types_declaring(attribute)
+            for ctype in sorted(self.schema.types_declaring(attribute))
             if ctype in self.components
             for name in self._resolved_names(ctype)
         ]
@@ -881,8 +853,7 @@ class WorkingRecord:
     ) -> None:
         """Stage a long frame that supplies its own keys (§11.2).
 
-        Its keys are `name` and whatever dims it carries; no `component_type`,
-        which an attribute row does not have (§3.5).
+        Its keys are `name` and whatever dims it carries (§3.5).
         """
         _in_long = lazy.to_native()  # noqa: F841 - referenced by name below
         table = self._ensure(kind)
@@ -923,10 +894,8 @@ class WorkingRecord:
         On a layered base the read is a fold, so this is the one edit whose cost
         scales with the ancestry rather than with the rows written.
 
-        Unscoped, this derives from *every* row of the attribute, across the
-        types declaring it: with no type keyword to narrow it (§3.5), what
-        "whatever resolves" resolves to is the whole attribute, and each name's
-        type is checked when `names` names it.
+        Unscoped, this derives from every row of the attribute across the types
+        declaring it - there being no type keyword to narrow it (§3.5).
         """
         source = self.outputs if kind == "outputs" else self.attributes
         if attribute not in source:
@@ -997,9 +966,9 @@ class WorkingRecord:
         what `_validate_attribute` rejects. Adding a bus with no attributes makes
         the point - nothing to `set`, yet the bus must exist.
 
-        `ctype` stays a parameter where `set` loses it (§3.5): this is the call
-        that establishes what a name's type *is*, so there is nothing yet to look
-        it up in. It is also where store-wide uniqueness is enforced.
+        `ctype` stays a parameter where `set` loses it: this is the call that
+        establishes a name's type, so there is nothing yet to look it up in
+        (§3.5). It is also where uniqueness is enforced.
         """
         lazy = nw.from_native(frame).lazy()
         columns = lazy.collect_schema().names()
@@ -1206,9 +1175,8 @@ class WorkingRecord:
         # A deleted component has no attributes, so the tombstone wins over a
         # staged value regardless of sequence (§11.7).
         #
-        # Matched without `component_type`: the tombstone carries it and a
-        # staged input row does not (§3.5). Sound because `name` is unique - a
-        # tombstone and an attribute row sharing a name are the same component.
+        # Matched on `name` alone: the tombstone carries a type and a staged
+        # input row does not (§3.5).
         on = _null_safe_on(("name", *self.schema.component_dims), "l", "d")
         return live.set_alias("l").join(dead.set_alias("d"), on, how="anti")
 
@@ -1219,9 +1187,7 @@ class WorkingRecord:
             return None
         cols = self.schema.component_key
         # An `add` after a `remove` means the component exists again, so only
-        # the latest row per key counts (§11.7). Keyed without `component_type`
-        # (§3.5): partitioning on it too would let a tombstone and a later `add`
-        # under a different type both survive, where one name has one answer.
+        # the latest row per key counts (§11.7).
         return (
             _latest_per(rel, cols)
             .filter(col("deleted"))
@@ -1231,9 +1197,8 @@ class WorkingRecord:
     def _collapsed_entities(self, kind: str) -> DuckDBPyRelation | None:
         """Staged member or connection rows, last-write-wins per key (§11.7).
 
-        The entity key, so without `component_type` (§3.5): one name has one
-        type, and partitioning on it as well would keep two rows for a name two
-        `add`s disagreed about rather than letting the later win.
+        The entity key, so no `component_type` (§3.5) - partitioning on it too
+        would keep both a tombstone and a later `add` under a different type.
         """
         rel = self._rows(kind)
         if rel is None:
@@ -1362,8 +1327,7 @@ def _input_columns(schema: Schema) -> str:
     §3.2 gives `value` a *per-attribute* type; `_typed_value` casts to the
     declared dtype on the way into the layer.
 
-    No `component_type`: the staged rows are the format's own rows (§11.1), and
-    an attribute row is keyed by `name` alone (§3.5).
+    No `component_type`: a staged row is the format's own row (§11.1, §3.5).
     """
     dims = "".join(f', "{d}" {schema.column_type(d)}' for d in schema.dims)
     return (

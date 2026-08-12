@@ -316,17 +316,12 @@ def _exported(c) -> bool:
 
 
 def _colliding_names(n: pypsa.Network) -> frozenset[str]:
-    """Names more than one exported component type claims (§3.5).
+    """Names more than one exported component type claims (§3.5, §12).
 
-    PyPSA scopes names per type, so a `Bus` and a `Generator` may both be
-    `north`; a record scopes them store-wide. Only exported types count, since
-    only those become member rows - a standard type sharing a name with a real
-    component is not a collision in the store.
-
-    Read off the `name` level rather than the index itself: a stochastic network
-    is keyed by `(scenario, name)`, and comparing the tuples would let the same
-    component in two scenarios read as two names - while missing a real collision
-    between types.
+    Only exported types count, since only those become member rows. Read off the
+    `name` level rather than the index: a stochastic network is keyed
+    `(scenario, name)`, and comparing tuples would read one component in two
+    scenarios as two names while missing a real collision.
     """
     seen: dict[str, str] = {}
     clashing: set[str] = set()
@@ -707,8 +702,7 @@ def _long_rows(
     `_as_long` already emits the dim columns and `value`; this adds the
     columns the record's schema fixes and PyPSA has no notion of - `attribute`,
     and the NULL `bus`/`breakpoint` that mark an attribute as the component's own
-    and a scalar (§6, §7). No `component_type`: the row is keyed by `name`, which
-    is unique across types (§3.5).
+    and a scalar (§6, §7). No `component_type` (§3.5).
     """
     long = _as_long(c, attribute, drop_defaults=False)
     long = long.assign(attribute=attribute, bus=None, breakpoint=None)
@@ -915,11 +909,8 @@ class PyPSATool(Tool):
                 if not (flags.varies | flags.broadcast):
                     continue
                 # Through the schema, so a renamed or computed attribute
-                # reaches the pivot below as an ordinary long relation.
-                #
-                # Scoped to this type by a semi-join against its own members:
-                # an attribute row carries no `component_type` (§3.5), and
-                # `static` is already the entity table for `ctype`.
+                # reaches the pivot below as an ordinary long relation. Scoped
+                # by a semi-join against `static`, this type's entity table (§3.5).
                 long = (
                     self.schema.resolve(store, ctype, attr)
                     .set_alias("a")
@@ -942,9 +933,9 @@ class PyPSATool(Tool):
         Keyed by attribute, matching `outputs/<attr>.parquet`: every component
         type's rows for one attribute are concatenated into one frame, exactly as
         `attributes` presents `inputs/` (§3.2). The union needs no
-        `component_type` to tell the arms apart, since `name` is unique across
-        them (§3.5). Which attributes count as results comes from PyPSA's
-        registry, so an upgrade that adds one is picked up.
+        `component_type` to tell the arms apart (§3.5). Which attributes count as
+        results comes from PyPSA's registry, so an upgrade that adds one is
+        picked up.
 
         `_as_long` reshapes a solved `Network`'s in-memory containers eagerly;
         the frames are wrapped with `.lazy()` and concatenated as a plan, so the
@@ -989,11 +980,8 @@ class PyPSATool(Tool):
         Raises
         ------
         UnsupportedRecordError
-            If two component types share a name. PyPSA scopes names per type, a
-            record store-wide (§3.5), so a network with a `Bus` and a `Generator`
-            both called `north` has no faithful representation - reported here
-            rather than repaired by renaming, which would hand back components
-            the framework can no longer find (§12).
+            If two component types share a name: PyPSA scopes names per type, a
+            record store-wide, and this reports rather than renames (§3.5, §12).
         """
         clashing = _colliding_names(model)
         if clashing:

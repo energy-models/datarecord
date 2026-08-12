@@ -46,9 +46,8 @@ class Requirements:
         cannot represent, as opposed to a value it is missing - a
         piecewise-linear attribute where the tool takes a scalar (§7).
     names : frozenset of str
-        Names the framework scopes per component type but a record scopes
-        store-wide, so two of its components claim one name (§3.5). Reported
-        rather than renamed: a record's `name` is the framework's own name.
+        Names two of the framework's components claim, which a record scopes
+        store-wide (§3.5).
     """
 
     dims: frozenset[str] = frozenset()
@@ -256,8 +255,7 @@ class Tool(Protocol):
         Keyed by attribute, each frame in the long schema - `name`, the dim
         columns, `value` - the same shape `Record.outputs` presents, so results
         go straight to `write_record` or to `set(..., kind="outputs")`. One frame
-        spans every component type, needing no `component_type` to tell them
-        apart since `name` is unique across them (§3.5).
+        spans every component type, needing no type column (§3.5).
 
         Narwhals frames, so the seam names no one dataframe library, and lazy so
         an implementation may fetch a result attribute on demand rather than

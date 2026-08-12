@@ -235,10 +235,7 @@ def _deleted_relation(
     fixed: tuple[str, ...] = ("name",),
     dims: tuple[str, ...] | None = None,
 ) -> DuckDBPyRelation:
-    """This layer's tombstones of one kind (§8.3, §6).
-
-    No `component_type` among the key columns: a tombstone is only ever
-    anti-joined against a map's key, and `name` identifies the component (§3.5).
+    """This layer's tombstones of one kind, keyed as the map they filter (§8.3, §6).
 
     Parameters
     ----------
@@ -509,9 +506,6 @@ def _fold_ordered(
     ----------
     fixed
         Key columns that are never axis-expanded (`bus` for connections).
-        `component_type` is not among them: the map carries it as a column
-        determined by `name` rather than as part of the key (§3.5), so it is
-        projected and aggregated over below instead of grouped by.
     also_deleted, also_deleted_key
         A second tombstone relation to anti-join `parent` against, and the key
         to match it on. Connections use it for component tombstones (§6).
@@ -533,10 +527,9 @@ def _fold_ordered(
             lit(str(record_id)).cast("UUID").alias("layer_uuid"),
             sql("row_number() OVER ()").alias("_row"),
         )
-        # `component_type` is aggregated rather than grouped by: it is a column
-        # of the map determined by `name` (§3.5), and grouping on it would let
-        # one name under two types survive as two rows - the collision the write
-        # path rejects, silently resolved here instead.
+        # `component_type` is aggregated, not grouped by: it is determined by
+        # `name` (§3.5), and grouping on it would keep one name under two types
+        # as two rows.
         own = tagged.aggregate(
             [
                 *(col(c) for c in (*key, "layer_uuid")),
@@ -837,9 +830,8 @@ class NodeCache:
             `Record.flags` turns into `Flags` (§4.3).
         """
         dims = self.schema.dims
-        # Scoping to a type is a semi-join to the components map on `name`
-        # rather than a filter on the attribute rows, which no longer carry the
-        # type (§3.5). The map is the entity table that says what a name is.
+        # Scoped by a semi-join to the components map, the entity table saying
+        # what type a name is (§3.5).
         of_type = self.components.filter(col("component_type") == lit(ctype)).project(
             "name"
         )

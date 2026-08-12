@@ -92,10 +92,8 @@ class DirectoryRecord:
         Which dims to report on is the schema's, intersected with what the files
         carry - a store may declare a dim no file has a column for.
 
-        Scoping to a type is a semi-join to `dims/components/<ctype>.parquet` on
-        `name`: the attribute rows carry no type, and that file *is* the entity
-        table saying which names are of it (§3.5). A type with no member file
-        has no members, so no attribute rows either.
+        Scoped by a semi-join to the type's member file, the entity table for it
+        (§3.5) - so a type with no such file has no attribute rows either.
         """
         cache: dict[str, dict[str, Flags]] = self._flags_cache  # type: ignore[attr-defined]
         if ctype in cache:
