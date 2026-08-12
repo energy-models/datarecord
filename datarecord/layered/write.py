@@ -112,20 +112,38 @@ def write_record(
         outputs = getattr(source, "outputs", None) or {}
         if outputs:
             kinds.append(("outputs", outputs, "outputs"))
-        # Which type each name belongs to, accumulated as the component frames
-        # are written: a name may occur under only one type (§3.5), and this is
-        # the pass that already holds every one of them.
-        seen: dict[str, str] = {}
+        # Each type's names, tagged with the type, to check store-wide
+        # uniqueness once every component frame has been seen (§3.5).
+        #
+        # Brought to one backend here rather than concatenated as they are: a
+        # `Record` may hand over a DuckDB-backed frame for one type and a pandas
+        # one for another (`WorkingRecord` does, mixing base and staged frames),
+        # and `nw.concat` requires a single backend. `name` alone, so this is one
+        # narrow column per type whatever the frame's width.
+        tagged: list[nw.LazyFrame] = []
         for kind, frames, subdir in kinds:
             for key in frames:
                 frame = frames[key]  # looked up exactly once (§10)
                 _validate_frame(frame, kind, key, schema)
                 if kind == "components":
-                    _require_unique(frame, key, seen)
+                    tagged.append(
+                        frame.select("name")
+                        .collect(backend="pyarrow")
+                        .lazy()
+                        # Cast *after* collecting: DuckDB lands `name` as arrow
+                        # `large_string` and pandas as `string`, and concat
+                        # compares the arrow schemas, so casting on the way in
+                        # would leave two backends' frames still incompatible.
+                        .select(
+                            nw.col("name").cast(nw.String()),
+                            component_type=nw.lit(key).cast(nw.String()),
+                        )
+                    )
                 name = f"{key}s" if kind == "dims" else key
                 _write_frame(
                     frame, f"{staging}{subdir}/{name}.parquet", con, local, schema
                 )
+        _require_unique(tagged)
     except BaseException:
         if local:
             shutil.rmtree(staging, ignore_errors=True)
@@ -201,11 +219,9 @@ def _typed(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
     return rel.project(cols)
 
 
-def _require_unique(frame: nw.LazyFrame, ctype: str, seen: dict[str, str]) -> None:
+def _require_unique(tagged: list[nw.LazyFrame]) -> None:
     """Reject a store whose component types share a name (§3.5).
 
-    Names are unique store-wide, so `seen` accumulates `name -> component_type`
-    across the component frames and a repeat under another type is a collision.
     Enforced rather than assumed: the attribute rows record no type, so two
     components sharing a name would silently share every attribute key.
 
@@ -213,22 +229,52 @@ def _require_unique(frame: nw.LazyFrame, ctype: str, seen: dict[str, str]) -> No
     uniqueness is a property of the data rather than of the declared columns.
     A tombstone row still occupies the name, so `deleted` is not filtered out.
 
+    The comparison is one narwhals query - concat the per-type `(name,
+    component_type)` frames, then keep the names carrying more than one distinct
+    type - rather than a Python scan accumulating `name -> component_type`. The
+    group-by and the join run in the backend, and only the offending rows, which
+    are none in the ordinary case, come back to Python to be formatted.
+
+    Parameters
+    ----------
+    tagged
+        One frame per component type, each `(name, component_type)` and already
+        on a common backend so `nw.concat` accepts them.
+
     Raises
     ------
     ValueError
-        Naming the collisions, and the type each name was already taken by.
+        Naming each clashing name and the types claiming it.
     """
-    clashing = []
-    for value in frame.select("name").collect()["name"].to_list():
-        name = str(value)
-        taken = seen.setdefault(name, ctype)
-        if taken != ctype:
-            clashing.append((name, taken))
-    if clashing:
-        detail = ", ".join(f"{n!r} is also a {t}" for n, t in sorted(set(clashing)))
+    if len(tagged) < 2:  # nothing to collide with
+        return
+    pairs = nw.concat(tagged, how="vertical").unique(["name", "component_type"])
+    clashing = (
+        pairs.join(
+            pairs.group_by("name")
+            .agg(nw.col("component_type").n_unique().alias("_types"))
+            .filter(nw.col("_types") > 1)
+            .select("name"),
+            on="name",
+            how="inner",
+        )
+        .sort("name", "component_type")
+        .collect()
+    )
+    if not clashing.is_empty():
+        by_name: dict[str, list[str]] = {}
+        for name, ctype in zip(
+            clashing["name"].to_list(),
+            clashing["component_type"].to_list(),
+            strict=True,
+        ):
+            by_name.setdefault(str(name), []).append(str(ctype))
+        detail = "; ".join(
+            f"{n!r} is a {' and a '.join(t)}" for n, t in by_name.items()
+        )
         msg = (
-            f"dims/components/{ctype}.parquet reuses names another type declares: "
-            f"{detail}; a name identifies one component across every type (§3.5)"
+            f"component types reuse names: {detail}; a name identifies one "
+            f"component across every type (§3.5)"
         )
         raise ValueError(msg)
 

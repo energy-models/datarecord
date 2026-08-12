@@ -212,7 +212,7 @@ def test_write_record_rejects_a_name_two_types_share(con, base_uri):
         },
     )
 
-    with pytest.raises(ValueError, match="reuses names another type declares"):
+    with pytest.raises(ValueError, match="component types reuse names"):
         write_record(record.id, source, con)
     assert not Path(layer_dir(record.id)).exists()
 
@@ -230,6 +230,27 @@ def test_write_record_accepts_one_name_per_type(con, base_uri):
 
     write_record(record.id, source, con)
     assert Path(layer_dir(record.id)).exists()
+
+
+def test_the_uniqueness_check_spans_backends(con, base_uri):
+    """A `Record` may hand over one type as DuckDB and another as pandas (§4.2).
+
+    `WorkingRecord` does exactly this, mixing base frames with staged ones, so
+    the check must not assume the component frames share a backend - `nw.concat`
+    refuses a mixed list outright.
+    """
+    record = Revision.create(con)
+    source = _Source(
+        _SCHEMA,
+        components={
+            # DuckDB-backed, and pandas-backed, colliding on `shared`.
+            "Process": con.sql("SELECT 'shared' AS name, NULL AS scenario"),
+            "Widget": pd.DataFrame({"name": ["shared"], "scenario": [None]}),
+        },
+    )
+
+    with pytest.raises(ValueError, match="component types reuse names"):
+        write_record(record.id, source, con)
 
 
 def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
