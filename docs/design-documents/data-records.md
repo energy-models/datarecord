@@ -790,9 +790,10 @@ Consequences that follow from being a read-modify-write:
 
 The expression is evaluated by narwhals against the resolved long frame, so it names `value` rather than the attribute: the frame is long, and one attribute per call means the column is always `value`.
 
-### 11.4 Accessors
+### 11.4 Accessors — **not implemented**
 
-`set` is the protocol; an accessor over it is the ergonomic spelling:
+`set` is the whole of the edit API.
+This section is the intended spelling for an accessor over it, not something the package provides.
 
 ```python
 store["Generator"]["p_nom"] = 150.0  # every generator
@@ -803,9 +804,10 @@ store["Generator", {"scenario": "high"}]["p_nom", "wind1"] = 200.0
 ```
 
 Sugar with **no added capability**: `__setitem__` normalises its key into `(attribute, names)` and its extra arguments into `bus=`/dims, then calls `set`.
-Keeping the method as the protocol member and the accessor on top is deliberate — `set` is what an implementation provides and other code calls; the accessor's spelling can change without touching an implementation.
+Keeping the method as the protocol member and any accessor on top is deliberate — `set` is what an implementation provides and other code calls, so a spelling over it can change, or not exist, without touching an implementation.
 
-It reads as well as writes, since a `MutableStore` is a `Store`: `store["Generator"]["p_nom"]` returns the resolved frame, so getter and setter are symmetric and the accessor is a component-type view rather than a write-only handle.
+It reads as well as writes, since a `MutableStore` is a `Store`: `store["Generator"]["p_nom"]` returns that type's resolved frame, so getter and setter are symmetric and the accessor is a component-type view rather than a write-only handle.
+The read must be scoped by both the component type and the names — an accessor whose getter ignores either is not the view this describes.
 
 It deliberately does not reproduce a dataframe library's full indexing grammar — no boolean masks, no slices — because a store is not a dataframe and a partial imitation invites the assumption that the rest works.
 Omitting `names` is how "all" is spelled.

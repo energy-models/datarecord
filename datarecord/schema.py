@@ -12,6 +12,7 @@ tool that cannot build it, not rejected here.
 from __future__ import annotations
 
 import math
+from graphlib import CycleError, TopologicalSorter
 from typing import Any, Literal
 
 from pydantic import (
@@ -44,17 +45,10 @@ STRUCTURAL_TYPES = {
 }
 
 
-# The owner map's flag columns (§9.1): one field per declared dim inside each
-# of two structs, rather than a `varies_<dim>` column per dim. Which dims exist
-# is declared (§5.1), so a flat layout makes the map's *column set* depend on
-# the schema; a struct moves that dependence inside a fixed column, which keeps
-# adding a dim the compatible change §5.7 says it is - `UNION ALL BY NAME`
-# merges struct fields by name and fills a missing one with NULL, exactly as it
-# would a missing column.
-#
-# `breakpoints` stays outside both: it is not a dim (§7), so it belongs to
-# neither struct's namespace - which also means a dim may be named
-# `breakpoints` without colliding.
+# The owner map's flag columns: two structs with a field per declared dim, so
+# the map's column set does not depend on the schema and adding a dim stays the
+# compatible change §5.7 says it is. `breakpoints` is outside both, being no dim
+# (§9.1, §7).
 FLAG_COLUMNS = ("varies", "broadcast", "breakpoints")
 
 
@@ -70,33 +64,26 @@ def flag_type(dims: tuple[str, ...]) -> str:
 
 
 class Dimension(BaseModel):
-    """One axis attribute data may vary over (§5.1).
+    """One axis attribute data may vary over: its shape, not its data (§5.1).
 
-    Declares the axis's own shape: its labels' type, its nesting, and which
-    entity tables it keys. Not which dims an *attribute* varies over (that is
-    `AttributeSpec.dims`), nor the patch granularity (`Schema.partial`), nor
-    order - an axis is ordered by the row order of its `<dim>s.parquet`, and
-    nothing needs declaring for that to work (§3.4).
+    Not which dims an *attribute* varies over (`AttributeSpec.dims`), nor the
+    patch granularity (`Schema.partial`), nor order - an axis is ordered by its
+    file's row order, undeclared (§3.4).
 
     Parameters
     ----------
     dtype
         The axis labels' type, as a DuckDB type name.
     within
-        Dims this one's labels are identifying only *within* (§5.4). A set,
-        since an axis may be qualified by several that do not contain each
-        other. Transitive: naming a dim pulls in that dim's own parents.
+        Dims this one's labels identify a point only *within*; transitive (§5.4).
     keys
-        Which entity tables this dim keys (§5.3). `"component"` makes a
-        component exist, and be deleted, per value of it; `"connection"` the
-        same for a connection.
+        Which entity tables this dim keys, so an entity exists per value of it
+        (§5.3).
     unit
-        What this axis's *labels* measure, if anything (§5.8). Only sometimes
-        meaningful: a `vintage` axis labelled in years has one, `timestep` does
-        not - a timestamp is not a quantity. `None` is undeclared, `""` is
-        genuinely dimensionless.
+        What this axis's *labels* measure, if anything - `None` is undeclared,
+        `""` genuinely dimensionless (§5.8).
     description
-        What the axis is, in prose (§5.8). Never interpreted.
+        What the axis is, in prose. Never interpreted (§5.8).
     """
 
     dtype: str
@@ -115,25 +102,19 @@ class AttributeSpec(BaseModel):
         The value column's type, as a DuckDB type name.
     dims
         Dims this attribute may vary over; a subset of those declared. Varying
-        over nothing puts it in `dims/components/<Type>.parquet` rather than
-        `inputs/` (§3.1), so this decides the file split rather than a writer
-        guessing it.
+        over nothing is what puts it in `dims/components/<Type>.parquet` rather
+        than `inputs/`, so the schema decides the file split (§3.1).
     default
         The value a coordinate no row covers takes (§3.3).
     breakpoints
-        Whether it may carry a piecewise-linear curve (§7). A curve on an
-        attribute that takes one value is rejected on write rather than
-        reported unbuildable later.
+        Whether it may carry a piecewise-linear curve (§7).
     bus
-        Whether it belongs to a component or to one of its connections (§6),
-        so `efficiency` is known to be a connection attribute rather than
-        inferred from whether a `bus` value happens to be present.
+        Whether it belongs to a component or to one of its connections (§6).
     unit
-        What the values measure (§5.8) - `"MW"`, `"EUR/MWh"`. Stored and never
-        interpreted: no conversion, no dimensional analysis. `None` is
-        undeclared, `""` is genuinely dimensionless.
+        What the values measure - `"MW"`, `"EUR/MWh"`. Stored and never
+        interpreted; `None` is undeclared, `""` genuinely dimensionless (§5.8).
     description
-        What the attribute is, in prose (§5.8). Never interpreted.
+        What the attribute is, in prose. Never interpreted (§5.8).
     """
 
     dtype: str
@@ -206,13 +187,9 @@ class Schema(BaseModel):
         """Check the rules the format itself fixes (§5.1, §5.3, §5.4)."""
         declared = set(self.dimensions)
 
-        # A schema declaring attributes but no axes describes data that varies
-        # over nothing, which is a table rather than a record (§5.1). Rejected
-        # here so the owner map never has to build a struct with no fields -
-        # DuckDB has no empty struct, and the alternative is a placeholder
-        # field carried through every fold for a case that cannot arise.
-        # `Schema()` entire stays legal: that is "no manifest yet" (§5.6),
-        # not a declaration that there are no axes.
+        # Attributes but no axes is a table, not a record (§5.1). Rejected here
+        # so the owner map never needs a struct with no fields, which DuckDB has
+        # no type for. A wholly empty `Schema()` stays legal: "no manifest yet".
         if self.attributes and not declared:
             msg = (
                 "a schema declaring attributes must declare at least one dim; "
@@ -229,10 +206,16 @@ class Schema(BaseModel):
                 msg = f"dim {dim!r} is `within` itself"
                 raise ValueError(msg)
 
-        cycle = _find_cycle({d: s.within for d, s in self.dimensions.items()})
-        if cycle:
-            msg = f"`within` is cyclic: {' -> '.join(cycle)}"
-            raise ValueError(msg)
+        # `TopologicalSorter` only needs preparing to reject a cycle, and
+        # `CycleError.args[1]` is the offending path - so the acyclicity §5.4
+        # requires is stdlib rather than a graph walk kept here.
+        try:
+            TopologicalSorter(
+                {d: s.within for d, s in self.dimensions.items()}
+            ).prepare()
+        except CycleError as e:
+            msg = f"`within` is cyclic: {' -> '.join(e.args[1])}"
+            raise ValueError(msg) from e
 
         for ctype, attrs in self.attributes.items():
             for attr, attr_spec in attrs.items():
@@ -246,9 +229,7 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"`partial` names undeclared dims {unknown}"
                 raise ValueError(msg)
-            # Keying membership per value of an axis that is only ever owned
-            # whole has no meaning: there would be nothing for the tombstone
-            # to select (§5.3).
+            # Nothing for the tombstone to select (§5.3).
             for dim, spec in self.dimensions.items():
                 if spec.keys and dim not in self.partial:
                     msg = (
@@ -476,30 +457,3 @@ def _ancestors(dim: str, within: dict[str, frozenset[str]]) -> set[str]:
         seen.add(node)
         stack.extend(within.get(node, ()))
     return seen
-
-
-def _find_cycle(within: dict[str, frozenset[str]]) -> list[str] | None:
-    """One cycle in the `within` graph, or None. Depth-first, first found."""
-    WHITE, GREY, BLACK = 0, 1, 2
-    colour = dict.fromkeys(within, WHITE)
-
-    def visit(node: str, path: list[str]) -> list[str] | None:
-        colour[node] = GREY
-        for parent in sorted(within.get(node, ())):
-            if parent not in colour:
-                continue
-            if colour[parent] == GREY:
-                return [*path, node, parent]
-            if colour[parent] == WHITE:
-                found = visit(parent, [*path, node])
-                if found:
-                    return found
-        colour[node] = BLACK
-        return None
-
-    for node in sorted(within):
-        if colour[node] == WHITE:
-            found = visit(node, [])
-            if found:
-                return found
-    return None

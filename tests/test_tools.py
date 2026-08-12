@@ -33,7 +33,7 @@ def test_requirements_falsy_when_empty():
 def test_the_record_layer_imports_no_tool():
     """`datarecord` is framework-free: reading a record never imports PyPSA.
 
-    The call runs from the tool inward (`PyPSA.build(record)`), so there is no
+    The call runs from the tool inward (`PyPSA.build(record.store)`), so there is no
     registry and no name dispatch to drag a framework in (§12).
     """
     import subprocess
@@ -50,12 +50,12 @@ def test_the_record_layer_imports_no_tool():
 
 def test_verify_accepts_a_complete_record(single_record):
     """A store written by `export_to_parquet` supplies everything PyPSA needs."""
-    assert not PyPSA.verify(single_record)
+    assert not PyPSA.verify(single_record.store)
 
 
 def test_requires_reports_the_records_own_types(single_record):
     """`requires` is record-dependent: PyPSA's axes plus this record's types."""
-    req = PyPSA.requires(single_record)
+    req = PyPSA.requires(single_record.store)
     assert {"snapshot", "period", "scenario"} <= req.dims
     assert "Generator" in req.component_types
     # Required attributes come from PyPSA's registry, not a list we maintain.
@@ -71,12 +71,12 @@ def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
     export_network(ac_dc, record, con)
     _with_schema(record, dims={"snapshot": "TIMESTAMP"}, partial=set(), keys={})
 
-    missing = PyPSA.verify(record)
+    missing = PyPSA.verify(record.store)
     assert missing
     assert missing.dims == {"period", "scenario"}
     # A build refuses rather than failing deep inside PyPSA.
     with pytest.raises(UnsupportedRecordError, match="scenario"):
-        PyPSA.build(record)
+        PyPSA.build(record.store)
 
 
 def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
@@ -91,12 +91,12 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     export_network(ac_dc, record, con)
     write_components(layer_dir(record.id), "Widget", [{"name": "w1"}])
 
-    missing = PyPSA.verify(record)
+    missing = PyPSA.verify(record.store)
     assert missing.component_types == {"Widget"}
     # The types PyPSA does know are not reported.
     assert "Generator" not in missing.component_types
     with pytest.raises(UnsupportedRecordError, match="Widget"):
-        PyPSA.build(record)
+        PyPSA.build(record.store)
 
 
 _DIMS = {"snapshot": "TIMESTAMP", "period": "BIGINT", "scenario": "VARCHAR"}
@@ -139,11 +139,11 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
     export_network(ac_dc, record, con)
     _with_schema(record, partial={"scenario", "snapshot"})
 
-    missing = PyPSA.verify(record)
+    missing = PyPSA.verify(record.store)
     assert ("input_key", "snapshot") in missing.unsupported_keys
     assert "snapshot" in missing.describe()
     with pytest.raises(UnsupportedRecordError, match="snapshot"):
-        PyPSA.build(record)
+        PyPSA.build(record.store)
 
 
 @pytest.mark.parametrize(
@@ -196,7 +196,7 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     Path(layer_dir(record.id), "dims", "connections", "Generator.parquet").unlink()
     _without_default(record, "Generator", "bus")
 
-    missing = PyPSA.verify(record)
+    missing = PyPSA.verify(record.store)
     assert ("Generator", "bus") in missing.attributes
 
 
@@ -210,7 +210,7 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(
 
     # PyPSA's own registry already declares `bus` with a `""` default, which
     # is exactly the case this pins - so the store is left as written.
-    assert ("Generator", "bus") not in PyPSA.verify(record).attributes
+    assert ("Generator", "bus") not in PyPSA.verify(record.store).attributes
 
 
 def test_verify_reports_a_piecewise_linear_attribute(con, base_uri, ac_dc):
@@ -231,11 +231,11 @@ def test_verify_reports_a_piecewise_linear_attribute(con, base_uri, ac_dc):
         ],
     )
 
-    missing = PyPSA.verify(record)
+    missing = PyPSA.verify(record.store)
     assert ("Generator", "marginal_cost") in missing.unsupported_values
     assert "piecewise-linear" in missing.describe()
     with pytest.raises(UnsupportedRecordError):
-        PyPSA.build(record)
+        PyPSA.build(record.store)
 
 
 def test_verify_accepts_a_scalar_attribute(single_record):
@@ -245,7 +245,7 @@ def test_verify_accepts_a_scalar_attribute(single_record):
         "marginal_cost",
         [{"component_type": "Generator", "name": "Manchester Wind", "value": 20.0}],
     )
-    assert not PyPSA.verify(single_record).unsupported_values
+    assert not PyPSA.verify(single_record.store).unsupported_values
 
 
 def test_pypsa_schema_is_the_identity(single_record):
@@ -256,7 +256,7 @@ def test_pypsa_schema_is_the_identity(single_record):
     """
     assert PyPSA.schema.attrs == {}
     assert PyPSA.schema.sources("Generator", "p_max_pu") == ("p_max_pu",)
-    identity = PyPSA.schema.resolve(single_record, "Generator", "p_max_pu")
+    identity = PyPSA.schema.resolve(single_record.store, "Generator", "p_max_pu")
     assert identity.fetchall() == single_record.relation("p_max_pu").fetchall()
 
 
@@ -288,7 +288,7 @@ def test_schema_renames_and_computes():
 
 def test_results_extracts_long_form_outputs(single_record):
     """A solved network's results come back keyed by `(type, attribute)`, long-form."""
-    n = PyPSA.build(single_record)
+    n = PyPSA.build(single_record.store)
     n.optimize(solver_name="highs")
 
     results = PyPSA.results(n)
@@ -315,7 +315,7 @@ def test_results_extracts_long_form_outputs(single_record):
 
 def test_results_skips_outputs_still_at_their_default(single_record):
     """An unsolved network yields no `p`/`p_nom_opt` rows (§9.4 default rule)."""
-    n = PyPSA.build(single_record)
+    n = PyPSA.build(single_record.store)
     results = PyPSA.results(n)
     assert ("Generator", "p") not in results
     assert ("Generator", "p_nom_opt") not in results
@@ -334,13 +334,13 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
         name = "fake"
         schema = Schema()
 
-        def requires(self, record):
+        def requires(self, store):
             return Requirements(dims=frozenset({"snapshot"}))
 
-        def verify(self, record):
+        def verify(self, store):
             return Requirements(component_types=frozenset({"Nope"}))
 
-        def build(self, record):
+        def build(self, store):
             return "fake-model"
 
         def results(self, model):
@@ -355,14 +355,14 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
     record = DataRecord.create(con)
     export_network(ac_dc, record, con)
 
-    assert fake.requires(record).dims == {"snapshot"}
-    assert fake.verify(record).component_types == {"Nope"}
-    assert fake.build(record) == "fake-model"
+    assert fake.requires(record.store).dims == {"snapshot"}
+    assert fake.verify(record.store).component_types == {"Nope"}
+    assert fake.build(record.store) == "fake-model"
     assert fake.results("m") == {("Thing", "x"): "m"}
     assert fake.to_datarecord("m") == "layer-of-m"
     # The record itself knows nothing of either tool.
     assert not hasattr(record, "to_model")
-    assert not PyPSA.verify(record)
+    assert not PyPSA.verify(record.store)
 
 
 def test_schema_dims_stay_generic(con, base_uri, ac_dc):
@@ -382,5 +382,5 @@ def test_schema_dims_stay_generic(con, base_uri, ac_dc):
     assert "vintage" not in dims.axes
     # PyPSA's own required dims are still satisfied, and the extra dim is
     # simply not something the tool looks at.
-    assert not PyPSA.verify(record)
+    assert not PyPSA.verify(record.store)
     assert "vintage" in dims.schema.long_columns

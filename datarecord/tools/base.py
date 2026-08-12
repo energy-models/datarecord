@@ -1,15 +1,9 @@
-"""The tool interface: verify a record, build a model, read results back.
+"""The tool interface: verify a store, build a model, read results back.
 
-A `Tool` is the seam between the tool-agnostic record (dims, components,
-attributes - design doc §8/§9) and one concrete modelling framework. The
-call runs from the tool inward: `PyPSA.build(record)`. So the record layer imports
-nothing from here, and a tool reads a record through its `Store` (§4) - how the
-store resolves what it hands over is not a parameter of the interface.
-
-Tools are plain module-level objects, imported by name (`from datarecord.tools.pypsa import
-PyPSA`). There is no registry: a typo is then an `ImportError` at the call site rather
-than a `KeyError` several frames in, and the return type of `build` is the framework's
-own.
+The seam between a tool-agnostic record and one modelling framework (design doc
+§12). The call runs from the tool inward (`PyPSA.build(record.store)`), so the
+record layer imports nothing from here, and a tool reads through `Store` (§4).
+Tools are module-level objects imported by name - no registry (§12).
 """
 
 from __future__ import annotations
@@ -24,7 +18,6 @@ if TYPE_CHECKING:
 
     import narwhals as nw
 
-    from datarecord.layered.record import DataRecord
     from datarecord.store import Store
 
 
@@ -44,23 +37,14 @@ class Requirements:
         act on them: an attribute the tool renames or computes (`Schema`) is
         reported by the source attribute it is missing.
     unsupported_keys : frozenset of tuple of (str, str)
-        `(key, dim)` pairs the schema declares that this tool cannot honour
-        - either because the record's files carry no column for the dim, or
-        because the tool's own representation cannot express an overlay keyed
-        that way. `key` is `"input_key"`, `"component_key"` or
-        `"connection_key"`.
-
-        The record layer trusts every key the schema declares (§3 fixes no
-        column set for `dims/components/`, and what a key means downstream is
-        framework-specific), so this is reported by a tool against the store
-        it is actually handed rather than rejected when the schema is
-        parsed.
+        `(key, dim)` pairs the schema declares that this tool cannot honour;
+        `key` is `"input_key"`, `"component_key"` or `"connection_key"`. The
+        record layer trusts every declared key, so this is a tool's verdict on
+        the store it was handed, not a schema rejection (§12).
     unsupported_values : frozenset of tuple of (str, str)
         `(component_type, attribute)` pairs whose stored *shape* this tool
-        cannot represent, as opposed to a value it is missing. A
-        piecewise-linear attribute (§7) where the tool takes only a scalar
-        is the case that exists: the record stores it correctly and it is the
-        translation that cannot express it.
+        cannot represent, as opposed to a value it is missing - a
+        piecewise-linear attribute where the tool takes a scalar (§7).
     """
 
     dims: frozenset[str] = frozenset()
@@ -103,18 +87,14 @@ class Requirements:
 def to_relation(frame: nw.LazyFrame) -> DuckDBPyRelation:
     """A `Store` frame as the DuckDB relation this tool builds against.
 
-    `Store` hands over narwhals frames so the interface names no backend (§4),
-    but a DuckDB-backed one wraps a relation and narwhals keeps it
-    unmaterialised, so unwrapping costs nothing and the plan stays lazy. A tool
-    that needs DuckDB's own SQL - `PIVOT`, which narwhals has no expression for
-    - goes through here rather than reaching past the store to a `NodeCache`.
+    Unwrapping costs nothing and the plan stays lazy (§4.4). For a tool needing
+    DuckDB's own SQL - `PIVOT`, which narwhals has no expression for - rather
+    than reaching past the store to a `NodeCache`.
 
     Raises
     ------
     TypeError
-        If `frame` is not DuckDB-backed. A tool written against DuckDB cannot
-        build from another backing, and saying so here beats an attribute error
-        several frames in.
+        If `frame` is not DuckDB-backed.
     """
     native = frame.to_native()
     if not isinstance(native, DuckDBPyRelation):
@@ -133,11 +113,8 @@ def to_relation(frame: nw.LazyFrame) -> DuckDBPyRelation:
 class Attr:
     """One tool attribute and the record attribute(s) it is built from.
 
-    The seam for the mismatches between a record's vocabulary and a tool's.
-    A record's attribute set is a superset across every tool, and tools
-    disagree: one names an attribute differently, another wants a value
-    derived from several. Both are declared here rather than open-coded in a
-    `build`.
+    The vocabulary seam (§12): a rename, or a value computed from several,
+    declared rather than open-coded in a `build`.
 
     Parameters
     ----------
@@ -147,12 +124,9 @@ class Attr:
         Record attribute name(s) it is read from. A rename has one.
     compute : callable, optional
         Maps one resolved long relation per `source`, in order, to this
-        attribute's long relation. `None` for a plain rename, which requires
-        exactly one `source`.
-
-        A relation in, a relation out: the transformation stays an
-        unmaterialised DuckDB plan, so a computed attribute flows into the
-        same pivot as an identity one with no special case downstream.
+        attribute's long relation; `None` for a plain rename, which requires
+        exactly one `source`. A relation in, a relation out, so the plan stays
+        unmaterialised and a computed attribute needs no special case downstream.
     """
 
     name: str
@@ -167,16 +141,10 @@ class Attr:
             )
             raise ValueError(msg)
 
-    def resolve(self, record: DataRecord) -> DuckDBPyRelation:
-        """This attribute's long relation, resolved from `record`."""
-        return self.resolve_store(record.store)
-
-    def resolve_store(self, store: Store) -> DuckDBPyRelation:
+    def resolve(self, store: Store) -> DuckDBPyRelation:
         """This attribute's long relation, read through the `Store` interface.
 
-        Takes the store rather than the record so a tool can build from any
-        backing (§4), and unwraps each source's narwhals frame to the DuckDB
-        relation `compute` is written against.
+        The store rather than the record, so a tool builds from any backing (§4).
         """
         rels = [to_relation(store.attributes[s]) for s in self.source]
         if self.compute is None:
@@ -186,23 +154,16 @@ class Attr:
 
 @dataclass(frozen=True)
 class Schema:
-    """A tool's attribute mapping against the record's vocabulary.
+    """A tool's attribute mapping against the record's vocabulary (§12).
 
-    Only the attributes that differ need an entry; anything unlisted is read
-    from the record under the same name. An empty `Schema` is therefore the
-    identity, which is what a tool whose vocabulary *is* the record's uses.
+    Only differing attributes need an entry; anything unlisted is read under the
+    same name, so an empty `Schema` is the identity. `Attr.source` names
+    attributes in the *record's* vocabulary (§5.2).
 
     Parameters
     ----------
     attrs : dict of str to tuple of Attr
         Per component type, the attributes that are renamed or computed.
-
-    Notes
-    -----
-    `source` names attributes in the record's vocabulary - the names the
-    store's schema declares (§5.2). This `Schema` is what reconciles that
-    vocabulary with the tool's own, so a renamed or computed attribute is
-    resolved from its sources rather than looked for under the tool's name.
     """
 
     attrs: dict[str, tuple[Attr, ...]] = field(default_factory=dict)
@@ -222,13 +183,9 @@ class Schema:
         """
         return self.attr(ctype, name).source
 
-    def resolve(self, record: DataRecord, ctype: str, name: str) -> DuckDBPyRelation:
-        """`ctype`'s `name` as a long relation over `record`, mapping applied."""
-        return self.attr(ctype, name).resolve(record)
-
-    def resolve_store(self, store: Store, ctype: str, name: str) -> DuckDBPyRelation:
+    def resolve(self, store: Store, ctype: str, name: str) -> DuckDBPyRelation:
         """`ctype`'s `name` as a long relation over `store`, mapping applied."""
-        return self.attr(ctype, name).resolve_store(store)
+        return self.attr(ctype, name).resolve(store)
 
 
 class UnsupportedRecordError(ValueError):
@@ -246,28 +203,32 @@ class Tool(Protocol):
     """One modelling framework's view of a record.
 
     Implementations are stateless (a module-level singleton is fine): every
-    method takes the record or model it operates on. A structural type, for
+    method takes the store or model it operates on. A structural type, for
     annotating code that takes any tool - not a dispatch table; tools are
     reached by importing them.
+
+    A `Store` rather than a record throughout, so a tool builds from a
+    directory as readily as from an overlay and has no reason to know layering
+    exists (§12).
     """
 
     name: str
     schema: Schema
 
-    def requires(self, record: DataRecord) -> Requirements:
-        """What this tool needs from `record` to build a model.
+    def requires(self, store: Store) -> Requirements:
+        """What this tool needs from `store` to build a model.
 
-        Record-dependent, not a constant: which attributes are required
-        follows the record's own component types and its declared schema.
+        Store-dependent, not a constant: which attributes are required
+        follows the store's own component types and its declared schema.
         """
         ...
 
-    def verify(self, record: DataRecord) -> Requirements:
-        """What `record` fails to supply; falsy when the record is usable."""
+    def verify(self, store: Store) -> Requirements:
+        """What `store` fails to supply; falsy when the store is usable."""
         ...
 
-    def build(self, record: DataRecord) -> Any:
-        """The tool's model object, built from the resolved record."""
+    def build(self, store: Store) -> Any:
+        """The tool's model object, built from the resolved store."""
         ...
 
     def to_datarecord(self, model: Any) -> Store:
@@ -288,23 +249,3 @@ class Tool(Protocol):
         native representation only at the DuckDB boundary.
         """
         ...
-
-
-@dataclass
-class _Missing:
-    """Accumulator for a `verify` pass; internal to tool implementations."""
-
-    dims: set[str] = field(default_factory=set)
-    component_types: set[str] = field(default_factory=set)
-    attributes: set[tuple[str, str]] = field(default_factory=set)
-    unsupported_keys: set[tuple[str, str]] = field(default_factory=set)
-    unsupported_values: set[tuple[str, str]] = field(default_factory=set)
-
-    def freeze(self) -> Requirements:
-        return Requirements(
-            dims=frozenset(self.dims),
-            component_types=frozenset(self.component_types),
-            attributes=frozenset(self.attributes),
-            unsupported_keys=frozenset(self.unsupported_keys),
-            unsupported_values=frozenset(self.unsupported_values),
-        )

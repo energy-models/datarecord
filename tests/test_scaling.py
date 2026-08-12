@@ -28,7 +28,7 @@ def test_to_model_peaks_near_one_component_type(con, base_uri, carbon):
     export_network(carbon, record, con)
 
     tracemalloc.start()
-    n = PyPSA.build(record)
+    n = PyPSA.build(record.store)
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()
 

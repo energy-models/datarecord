@@ -1,21 +1,14 @@
-"""Writing a layer from long-format frames (design doc §4).
+"""Writing a whole store as a layer (design doc §10).
 
-Blocks writes layers itself rather than through `export_to_parquet`: the store
-format is experimental, and the connection rows and `breakpoint` column of
-§6/§7 are proposals for it (§2), so this is that proposal's reference
-implementation.
-
-Framework-independent, per §13's one-way dependency: a `Store` (`store.py`)
-hands over narwhals frames and this module turns them into parquet. Producing
-one from a modelling framework's own object is a tool's job
-(`datarecord.tools.pypsa.PyPSA.to_datarecord`).
+A `Store` hands over narwhals frames and this module turns them into parquet;
+producing one from a framework's own object is a tool's job (§12, §13).
 """
 
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import narwhals as nw
@@ -27,14 +20,7 @@ from datarecord.schema import Schema
 from datarecord.store import Solved, Store
 
 if TYPE_CHECKING:
-    import pypsa
     from duckdb import DuckDBPyConnection
-
-_MSG = (
-    "Writing a patch layer from two framework objects is not implemented, and "
-    "is superseded by `MutableStore` (design doc §11), which captures edits as "
-    "they happen rather than deriving them from a diff."
-)
 
 # The long schema's fixed columns (§3). `bus`/`breakpoint` are part of it, not
 # optional extensions to it: both NULL is the ordinary component-level scalar.
@@ -48,17 +34,13 @@ def write_layer(
     *,
     uri: str | None = None,
 ) -> None:
-    """Write `source` as `record_id`'s layer, which must not exist yet (§4).
+    """Write `source` as `record_id`'s layer, which must not exist yet (§10).
 
-    Creates a new layer: an existing `layer_dir(record_id)` is an error rather
-    than an overwrite or a merge, so a whole-layer write can never half-replace
-    what a record already holds.
-
-    Every frame goes through the same connection as reads, so remote writes
-    reuse one credential path (§13). Keys are looked up one at a time and
-    each file written before the next is built, so a source that reads per
-    key does one read per file written rather than one per key up front -
-    which for a remote source is one round trip each (§4).
+    An existing layer directory is an error rather than an overwrite or a merge,
+    so a whole-store write can never half-replace what a record holds. Keys are
+    looked up one at a time and each file written before the next is built, so a
+    lazily-building source does one read per file rather than one per key up
+    front (§10).
 
     Parameters
     ----------
@@ -92,7 +74,7 @@ def write_layer(
         base = uri if uri.endswith("/") else uri + "/"
     local = "://" not in base
     if local and Path(base).exists():
-        msg = f"layer {base} already exists; write_layer creates a new layer (§4)"
+        msg = f"layer {base} already exists; write_layer creates a new layer (§10)"
         raise FileExistsError(msg)
 
     schema = source.schema
@@ -102,10 +84,9 @@ def write_layer(
         # cannot quietly redefine what an attribute means.
         _reconcile_schema(schema, con)
 
-    # Staged, then moved into place: each frame is validated as it is built,
-    # since building it twice would defeat the laziness (§4), so a frame the
-    # fold could not resolve is only discovered part-way through. Writing aside
-    # and renaming means such a failure leaves no layer rather than half of one.
+    # Staged then renamed, so a frame that fails validation part-way through
+    # leaves no layer rather than half of one (§10). Validation happens as each
+    # frame is built, since building it twice would defeat the laziness.
     staging = f"{base.rstrip('/')}.staging/" if local else base
     if local:
         Path(staging).mkdir(parents=True)
@@ -122,15 +103,13 @@ def write_layer(
             ("connections", source.connections, "dims/connections"),
             ("attributes", source.attributes, "inputs"),
         ]
-        # `outputs/` only for a source that carries results (§8): a store with
-        # none produces a layer without the directory, rather than an empty one.
+        # `outputs/` only for a source carrying results, so a store with none
+        # produces a layer without the directory rather than an empty one (§10).
         if isinstance(source, Solved):
             kinds.append(("outputs", source.outputs, "outputs"))
         for kind, frames, subdir in kinds:
             for key in frames:
-                # One key at a time, looked up exactly once: a lazy source
-                # does not build `marginal_cost`'s frame to write this one.
-                frame = frames[key]
+                frame = frames[key]  # looked up exactly once (§10)
                 _validate_frame(frame, kind, key, schema)
                 name = f"{key}s" if kind == "dims" else key
                 _write_frame(
@@ -147,14 +126,9 @@ def write_layer(
 def _reconcile_schema(schema: Schema, con: DuckDBPyConnection) -> None:
     """Declare the store's schema, or check this layer agrees with it (§5.6, §5.7).
 
-    A schema is not layered data, so there is nothing to fold: the first
-    writer states it and the rest must be compatible with what is already
-    there. `compatible_with` is what "compatible" means - the changes existing
-    layers survive, since NULL already means what the new schema needs it to
-    (§5.7).
-
-    Read and written beside `con`'s own layers, so writing into one store
-    never consults or replaces another's manifest.
+    A schema is not layered data, so there is nothing to fold: the first writer
+    states it and the rest must be `compatible_with` it. Read and written beside
+    `con`'s own layers, so one store never consults another's manifest.
 
     Raises
     ------
@@ -186,17 +160,10 @@ def _write_frame(
 ) -> None:
     """Persist one narwhals frame as parquet, through `con`.
 
-    Reaches a native representation only here, which is §4's boundary: the
-    seam above stays library-agnostic. A frame already backed by DuckDB is
-    handed to `to_parquet` unmaterialised; anything else is collected to arrow
-    first, which every narwhals backend supports.
-
-    Every column the schema declares a type for is cast to it on the way
-    out (§3.2), so a layer's files carry the schema's types and
-    a reader can trust them. Without this a source is free to hand over an
-    all-NULL column that its dataframe library typed as float - which pandas
-    does for `scenario`, `period` and a `snapshot` with no series rows - and
-    every reader would have to re-cast defensively instead.
+    The one place a native representation is reached (§4.2): a DuckDB-backed
+    frame goes to `to_parquet` unmaterialised, anything else via arrow. Columns
+    are cast to their declared types on the way out, so a reader can trust them
+    rather than re-casting an all-NULL column pandas typed as float (§10).
     """
     if local:
         Path(uri).parent.mkdir(parents=True, exist_ok=True)
@@ -212,10 +179,9 @@ def _write_frame(
 def _typed(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
     """`rel` with every column the schema declares a type for cast to it (§3.2).
 
-    Columns it declares no type for pass through as-is: a `dims/components/`
-    frame is "a subset of `c.static`" (§3) and its attribute columns belong to
-    whatever vocabulary the schema declares, so their types are the writer's
-    business, not this layer's.
+    Undeclared columns pass through: a `dims/components/` frame's attribute
+    columns belong to the schema's own vocabulary, so their types are the
+    writer's business.
     """
     cols = ", ".join(
         f'"{c}"::{t} AS "{c}"' if (t := schema.column_type(c)) else f'"{c}"'
@@ -285,10 +251,3 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
             f"there (§5.5)"
         )
         raise ValueError(msg)
-
-
-def add_patch(
-    record: Any, n: pypsa.Network, n_old: pypsa.Network, con: DuckDBPyConnection
-) -> Any:
-    """Write `n.diff(n_old)` into the open record's layer as a new child (v2, §4)."""
-    raise NotImplementedError(_MSG)

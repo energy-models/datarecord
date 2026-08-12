@@ -50,7 +50,7 @@ def test_child_overwrite_reaches_model(con, parent):
         [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.42}],
     )
 
-    n = PyPSA.build(child)
+    n = PyPSA.build(child.store)
     assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
     assert "Manchester Wind" not in n.c["Generator"].dynamic["p_max_pu"].columns
     assert "Norway Wind" in n.c["Generator"].dynamic["p_max_pu"].columns
@@ -65,7 +65,7 @@ def test_tombstone_removes_component(con, parent):
     assert "Norway Gas" not in set(om["name"])
     assert "Norway Gas" in set(parent.node_cache.components.df()["name"])
 
-    n = PyPSA.build(child)
+    n = PyPSA.build(child.store)
     assert "Norway Gas" not in n.c["Generator"].static.index
     assert "Norway Wind" in n.c["Generator"].static.index
 
@@ -79,7 +79,7 @@ def test_child_adds_attribute(con, parent):
         [{"component_type": "Generator", "name": "Norway Gas", "value": 0.1}],
     )
 
-    n = PyPSA.build(child)
+    n = PyPSA.build(child.store)
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
     # Untouched generators keep the catalog default.
     assert n.c["Generator"].static.loc["Norway Wind", "p_min_pu"] == 0.0
@@ -134,7 +134,7 @@ def test_closed_child_reads_own_node_cache(con, parent):
     child.materialise()
 
     reloaded = DataRecord.get(child.id, con)
-    n = PyPSA.build(reloaded)
+    n = PyPSA.build(reloaded.store)
     assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
 
     df = reloaded.relation("p_max_pu").df()
@@ -171,7 +171,7 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
         "p_min_pu",
         [{"component_type": "Generator", "name": "Norway Gas", "value": 0.1}],
     )
-    n = PyPSA.build(child)
+    n = PyPSA.build(child.store)
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
     # And the amendment is visible from the record, not just from the layer
     # that happens to carry a row for it.
@@ -214,7 +214,7 @@ def test_member_order_survives_closed_intermediate(con, parent, ac_dc):
     middle.materialise()
     grandchild = middle.child()
 
-    n = PyPSA.build(grandchild)
+    n = PyPSA.build(grandchild.store)
     pd.testing.assert_index_equal(
         n.c["Generator"].static.index,
         ac_dc.c["Generator"].static.index,

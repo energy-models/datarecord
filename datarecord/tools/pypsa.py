@@ -1,9 +1,9 @@
-"""The PyPSA tool: record -> `pypsa.Network` -> results (design doc §12, §12).
+"""The PyPSA tool: record -> `pypsa.Network` -> results (design doc §12).
 
-The only module in the codebase that knows PyPSA's network shape: that its
-axes are `snapshot`/`period`/`scenario`, that a stochastic network is
-indexed by `(scenario, name)`, and how its static/series split maps onto the
-store's `dims/components` + `inputs/` split (§3).
+The only module that knows PyPSA's network shape - that its axes are
+`snapshot`/`period`/`scenario`, that a stochastic network is indexed by
+`(scenario, name)`, and how its static/series split maps onto the store's
+`dims/components` + `inputs/` split (§3.1).
 """
 
 from __future__ import annotations
@@ -33,14 +33,11 @@ from datarecord.tools.base import (
     Schema,
     Tool,
     UnsupportedRecordError,
-    _Missing,
     to_relation,
 )
 
 if TYPE_CHECKING:
     import pypsa
-
-    from datarecord.layered.record import DataRecord
 
 # The axes a PyPSA network is built from; all three must be declared in the
 # schema's `dimensions`, since a network shape is built from them (§12).
@@ -137,16 +134,10 @@ class NetworkShape:
 def _connection(store: Store) -> DuckDBPyConnection:
     """The DuckDB connection `store`'s frames belong to.
 
-    Off the concrete backing rather than the `Store` protocol, which stays
-    backend-agnostic (§4.4) so a non-DuckDB store can satisfy it. Both
-    backings here carry one - `LayeredStore.con` delegates to its node cache,
-    `DirectoryStore.con` is the field it reads through.
-
-    Needed because a relation holds no reachable reference to its connection:
-    DuckDB keeps one C++-side purely to own the parent, and exposes no
-    property for it. So the SQL this tool writes - `PIVOT`, which narwhals has
-    no expression for and which `relation.query` refuses as a `MULTI`
-    statement - has to be issued on a connection obtained separately.
+    Off the concrete backing, since the protocol stays backend-agnostic (§4.4).
+    Needed because a relation exposes no reachable reference to its connection,
+    and this tool's `PIVOT` - which narwhals cannot express and
+    `relation.query` refuses as a `MULTI` statement - needs one.
 
     Raises
     ------
@@ -752,18 +743,18 @@ class PyPSATool(Tool):
 
         return frozenset(c.name for c in all_components.values())
 
-    def requires(self, record: DataRecord) -> Requirements:
-        """PyPSA's axes, the record's own component types, and their required attributes.
+    def requires(self, store: Store) -> Requirements:
+        """PyPSA's axes, the store's own component types, and their required attributes.
 
-        The attribute half is record-dependent: only types the record
+        The attribute half is store-dependent: only types the store
         actually defines members for are required, and which of their
         attributes are mandatory comes from PyPSA's registry
         (`defaults["status"] == "Input (required)"`), not a list kept here.
         Reported by source attribute (`Schema.sources`), so a renamed or
-        computed one names what the record must actually supply.
+        computed one names what the store must actually supply.
         """
         known = self.component_types()
-        ctypes = {ct for ct in record.store.components if ct in known}
+        ctypes = {ct for ct in store.components if ct in known}
         return Requirements(
             dims=REQUIRED_DIMS,
             component_types=frozenset(ctypes),
@@ -775,8 +766,8 @@ class PyPSATool(Tool):
             ),
         )
 
-    def verify(self, record: DataRecord) -> Requirements:
-        """What this record fails to supply for a PyPSA build; falsy if it is usable.
+    def verify(self, store: Store) -> Requirements:
+        """What this store fails to supply for a PyPSA build; falsy if it is usable.
 
         Checks what a build needs: the schema declares PyPSA's axes
         (§12), its key dims are ones this tool can honour, every component
@@ -790,12 +781,16 @@ class PyPSATool(Tool):
         its relations by those dims, so reading the map at all could raise a
         binder error before anything below could report it.
         """
-        store = record.store
-        missing = _Missing()
-        missing.dims |= REQUIRED_DIMS - set(store.schema.dims)
-        missing.unsupported_keys |= self._unsupported_keys(store)
-        if missing.unsupported_keys:
-            return missing.freeze()
+        dims = REQUIRED_DIMS - set(store.schema.dims)
+        unsupported_keys = self._unsupported_keys(store)
+        if unsupported_keys:
+            return Requirements(
+                dims=frozenset(dims), unsupported_keys=frozenset(unsupported_keys)
+            )
+
+        component_types: set[str] = set()
+        attributes: set[tuple[str, str]] = set()
+        unsupported_values: set[tuple[str, str]] = set()
 
         known = self.component_types()
         declared = store.schema.attributes
@@ -805,7 +800,7 @@ class PyPSATool(Tool):
             # string, so an unknown type reads back fine and it is this
             # tool's business that it cannot be built.
             if ctype not in known:
-                missing.component_types.add(ctype)
+                component_types.add(ctype)
                 continue
             resolved = store.flags(ctype)
             owned = set(resolved)
@@ -813,7 +808,7 @@ class PyPSATool(Tool):
             # attribute this build assigns, so the record is storing something
             # correct that this translation cannot express - reported here
             # rather than silently pivoting one arbitrary breakpoint.
-            missing.unsupported_values |= {
+            unsupported_values |= {
                 (ctype, attr) for attr, flags in resolved.items() if flags.breakpoints
             }
             static_cols = _static_columns(store, ctype)
@@ -831,24 +826,22 @@ class PyPSATool(Tool):
                     spec = specs.get(src)
                     if spec is not None and spec.default is not None:
                         continue
-                    missing.attributes.add((ctype, src))
-        return missing.freeze()
+                    attributes.add((ctype, src))
+        return Requirements(
+            dims=frozenset(dims),
+            component_types=frozenset(component_types),
+            attributes=frozenset(attributes),
+            unsupported_values=frozenset(unsupported_values),
+        )
 
     def _unsupported_keys(self, store: Store) -> set[tuple[str, str]]:
         """`(key, dim)` pairs this tool cannot honour: `snapshot`, as any key.
 
-        The overlay would then resolve per snapshot, but PyPSA's static/series
-        split needs a component's whole series for an attribute to come from
-        one layer - a stored `snapshot = NULL` broadcast row and a
-        descendant's per-snapshot row would otherwise coexist, with no single
-        container to put the result in (§5.5). This is a limit of the
-        *representation*, not of the layer format, which is why the record
-        layer permits the declaration and it is caught here.
-
-        The only case: a key dim the store's frames carry no column for needs
-        no check here, because there is no such store. `write_layer` refuses a
-        layer whose frames lack a declared key dim (§5.5), so every key a
-        readable store declares is one its files back.
+        PyPSA's static/series split needs a component's whole series to come
+        from one layer, so a snapshot-keyed overlay could leave a broadcast row
+        and a descendant's per-snapshot row with no single container to land in
+        (§5.5). A limit of the *representation*, not the format - which is why
+        the record layer permits the declaration and this reports it (§12).
         """
         defs = store.schema
         kinds = (
@@ -858,7 +851,7 @@ class PyPSATool(Tool):
         )
         return {(key, SNAPSHOT) for key, dims in kinds if SNAPSHOT in dims}
 
-    def build(self, record: DataRecord) -> pypsa.Network:
+    def build(self, store: Store) -> pypsa.Network:
         """The resolved network, one component type at a time (§12, §12).
 
         Raises
@@ -867,11 +860,10 @@ class PyPSATool(Tool):
             If `verify` reports anything missing - a partial build would
             surface as a confusing PyPSA error several frames later.
         """
-        missing = self.verify(record)
+        missing = self.verify(store)
         if missing:
             raise UnsupportedRecordError(self.name, missing)
 
-        store = record.store
         con = _connection(store)
         schema = store.schema
         shape = NetworkShape(store.dims)
@@ -897,7 +889,7 @@ class PyPSATool(Tool):
                     continue
                 # Through the schema, so a renamed or computed attribute
                 # reaches the pivot below as an ordinary long relation.
-                long = self.schema.resolve_store(store, ctype, attr).filter(
+                long = self.schema.resolve(store, ctype, attr).filter(
                     col("component_type") == lit(ctype)
                 )
                 attributes[attr] = (long, flags)
@@ -908,22 +900,15 @@ class PyPSATool(Tool):
         return n
 
     def results(self, model: pypsa.Network) -> dict[tuple[str, str], nw.DataFrame]:
-        """A solved network's result attributes in the store's long form (§3, §9.4).
+        """A solved network's result attributes in the store's long form (§9.4).
 
-        Keyed by `(component_type, attribute)`, as narwhals frames so the
-        return type names no one dataframe library (`Tool.results`). Uses
-        PyPSA's own long representation, which already emits the long schema's
-        columns, so the shape matches what a layer's `outputs/<attr>.parquet`
-        holds; the write path (§12, v2) persists them.
+        Keyed by `(component_type, attribute)`, as narwhals frames so the return
+        type names no one dataframe library. Which attributes count as results
+        comes from PyPSA's registry, so an upgrade that adds one is picked up.
 
-        Which attributes count as results comes from PyPSA's registry
-        (`defaults["status"] == "Output"`), so an upgrade that adds one is
-        picked up. Rows still at the attribute's default are dropped: a static
-        output like `Bus.control` carries its default whether or not the
-        network was ever solved, and an absent output file means exactly
-        "take the default" to a reader (§9.4). An attribute left entirely at
-        its default is therefore omitted rather than returned as a frame of
-        defaults.
+        Rows still at the attribute's default are dropped: a static output like
+        `Bus.control` carries its default whether or not the network was solved,
+        and an absent output file means exactly "take the default" (§3.3).
         """
         out: dict[tuple[str, str], nw.DataFrame] = {}
         for c in model.components:
@@ -944,17 +929,12 @@ class PyPSATool(Tool):
         return out
 
     def to_datarecord(self, model: pypsa.Network) -> Store:
-        """Present a `Network` as the `Store` `write_layer` persists (§4).
+        """Present a `Network` as the `Store` `write_layer` persists (§10, §12).
 
         The inverse of `build`, and the only place PyPSA's shape is undone:
-        `c.static`/`c.dynamic` become long rows, and a multi-port component's
-        `bus0`/`bus1`/`efficiency2` become connection rows carrying a `role`
-        from PyPSA's sign convention (§6).
-
-        Every key set is read from the network cheaply - component types from
-        `model.components`, attribute names from each type's registry - so
-        listing a source unpivots nothing and a lookup unpivots only the
-        attribute asked for.
+        `c.static`/`c.dynamic` become long rows, and `bus0`/`bus1`/`efficiency2`
+        become connection rows carrying a `role` (§6). Key sets are read off the
+        network, so listing unpivots nothing and a lookup only what is asked for.
         """
         return _NetworkSource(model)
 
@@ -977,14 +957,10 @@ class _NetworkSource:
     def schema(self) -> RecordSchema:
         """The layer's schema, derived from PyPSA's own registry (§5).
 
-        `c.defaults` already declares everything §5.2 asks for - a type, a
-        default, and whether the attribute varies over snapshots - so the
-        derivation reads it rather than restating it.
-
-        Every stored attribute, not only the varying ones: `dims=frozenset()`
-        is what puts an attribute in `dims/components/` rather than `inputs/`
-        (§3.1), so the non-varying ones belong here too. Results are excluded,
-        since they belong to `outputs/` (§9.4).
+        `c.defaults` already declares what §5.2 asks for, so this reads it
+        rather than restating it. Every stored attribute, not only the varying
+        ones - `dims=frozenset()` is what puts one in `dims/components/` (§3.1).
+        Results are excluded, belonging to `outputs/` (§9.4).
         """
         attributes: dict[str, dict[str, AttributeSpec]] = {}
         for c in self.n.components:
@@ -1101,43 +1077,25 @@ class _NetworkSource:
         )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """The shape each of `ctype`'s attributes takes, read off the network.
+        """Never consulted: `write_layer` persists frames, not flags (§10).
 
-        `c.static`/`c.dynamic` are PyPSA's own split on the snapshot axis, so
-        this needs no scan: a value in `static` is one broadcast across
-        snapshots, a value in `dynamic` one that varies over them. Nothing PyPSA
-        holds is piecewise-linear (§2), so `breakpoints` is always false - a
-        curve reaches a record from elsewhere.
-
-        Only `snapshot` appears in either set. PyPSA has no container that
-        varies over `scenario` or `period` independently of it, so a network
-        cannot report varying over one (§12).
+        A network-backed source exists to be written, and the write path reads
+        only the frame mappings. Answering properly is easy - `c.static` and
+        `c.dynamic` are PyPSA's own split on the snapshot axis, so it needs no
+        scan - but an implementation no caller reaches is one no test pins, so
+        the honest answer is the empty one, as `mutable._Written` gives.
         """
-        c = self.n.c[ctype]
-        out = {}
-        for attr in self._record_attributes(c):
-            columns = self._port_attribute_names(c, attr)
-            broadcast = any(a in c.static.columns for a in columns)
-            varies = any(a in c.dynamic and not c.dynamic[a].empty for a in columns)
-            out[attr] = Flags(
-                varies=frozenset({SNAPSHOT} if varies else ()),
-                broadcast=frozenset({SNAPSHOT} if broadcast else ()),
-            )
-        return out
+        return {}
 
     # -- key sets -----------------------------------------------------------
 
     def _record_attributes(self, c: pypsa.Components) -> list[str]:
-        """`c`'s *varying* input attributes, in the record's vocabulary (§3, §12).
+        """`c`'s *varying* input attributes, in the record's vocabulary (§3.1).
 
-        Only varying attributes go to `inputs/` - §3 puts the non-varying ones
-        in `dims/components/<Type>.parquet` instead, and PyPSA agrees: a
-        non-varying attribute has no `_as_long` representation at all.
-
-        Per-port attributes collapse to their stem (`efficiency2` ->
-        `efficiency`), since a record keys them by bus rather than by position
-        (§6). Outputs are excluded: they belong to `outputs/`, not `inputs/`
-        (§9.4).
+        Only varying attributes go to `inputs/`, and PyPSA agrees: a non-varying
+        one has no `_as_long` representation. Per-port attributes collapse to
+        their stem (`efficiency2` -> `efficiency`), a record keying them by bus
+        rather than position (§6). Outputs belong to `outputs/` (§9.4).
         """
         defaults = c.defaults
         outputs = set(_output_attributes(c))
@@ -1150,16 +1108,6 @@ class _NetworkSource:
             if stem not in stems:
                 stems.append(stem)
         return stems
-
-    def _port_attribute_names(self, c: pypsa.Components, attr: str) -> list[str]:
-        """PyPSA's name(s) for a record attribute on this type.
-
-        One name for an ordinary attribute; one per port for a per-port stem,
-        since the record collapses `efficiency`/`efficiency2` into one (§6).
-        """
-        stems = self._port_stems(c)
-        per_port = [name for name, stem in stems.items() if stem == attr]
-        return per_port or [attr]
 
     def _port_stems(self, c: pypsa.Components) -> dict[str, str]:
         """Per-port attribute name -> its stem, for this type's actual ports."""
@@ -1398,5 +1346,5 @@ def _static_columns(store: Store, ctype: str) -> frozenset[str]:
 
 
 # The tool is a module-level singleton, imported rather than looked up by
-# name: `from datarecord.tools.pypsa import PyPSA` then `PyPSA.build(record)`.
+# name: `from datarecord.tools.pypsa import PyPSA` then `PyPSA.build(record.store)`.
 PyPSA = PyPSATool()

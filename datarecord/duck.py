@@ -191,9 +191,23 @@ def try_read_parquet(
 def union_all_by_name(
     rels: Sequence[DuckDBPyRelation], con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """Fold relations pairwise through `UNION ALL BY NAME` (§9.2)."""
+    """Fold relations pairwise through `UNION ALL BY NAME` (§9.2).
+
+    `u` and `rel` look unused: they are bound by *name* from this frame's
+    locals, by DuckDB's replacement scan, exactly as `arrow` is in
+    `layered.write._write_frame`. So the variable names are load-bearing.
+    Dropping one - `for _ in rels[1:]` - raises `CatalogException`, but a
+    refactor that keeps the name bound to the wrong relation returns a short
+    union instead, which nothing downstream would report. Both are pinned by
+    `test_union_all_by_name_folds_every_relation`, which needs three arms: two
+    survive either mistake.
+
+    Deliberately not `con.register`: measured at 2.2-2.6x slower here, widening
+    with layer count (the deep-overlay case §8.2 exists to make cheap), and it
+    leaves a named view per call on a connection that outlives the fold.
+    """
     u = rels[0]
-    for rel in rels[1:]:  # pyright: ignore[reportUnusedVariable]
+    for rel in rels[1:]:  # noqa: F841 - bound by name in the SQL below
         u = con.sql("FROM u UNION ALL BY NAME FROM rel")
     return u
 
@@ -223,25 +237,16 @@ def fold_axis(
 ) -> DuckDBPyRelation | None:
     """Fold a `<dir>/<filename>` axis table over `dims_dirs`, keyed by `key`.
 
-    `dims_dirs` is a list of `dims/`-containing directories, root first - one
-    per ancestor, already resolved by the caller to either that ancestor's
-    layer (`layer_dir`) or its node cache (`node_dir`), whichever holds the
-    relevant axis file (§8.2). Same last-writer-wins rule as `dims/components`
-    (design doc §8): a descendant layer may add a new row (e.g. a new
-    scenario or period) or replace an existing row's static data, keyed by
-    `key` rather than the full row. Row order follows the directory that
-    first introduced the key, same as `NodeCache.static`.
+    `dims_dirs` is root first, each entry already resolved by the caller to that
+    ancestor's layer or its node cache (§8.2). Last-writer-wins per `key`, which
+    is `Schema.axis_key` - so a nested dim is keyed by `(*parents, dim)` and two
+    periods' identically-labelled timesteps stay distinct (§5.4). Row order
+    follows the directory that first introduced the key (§3.4).
 
-    `key` is the axis key `Schema.axis_key` derives, so a nested dim is keyed
-    by `(*parents, dim)` (§5.4): `t1` alone names nothing when `timestep` is
-    `within` `period`, and keying by the label alone would fold two periods'
-    identically-labelled timesteps into one row.
-
-    `_row` is tagged per directory, before any union: a bare
-    `row_number() OVER ()` on the relation `union_all_by_name` returns would
-    have no defined order (`UNION ALL` gives none), so it would silently
-    scramble which row counts as "first introduced" - the same pitfall
-    `fold_components` avoids by tagging `_row` pre-union too.
+    `_row` is tagged **per directory, before any union**: `UNION ALL` defines no
+    order, so a bare `row_number() OVER ()` over the unioned relation would
+    silently scramble which row counts as first-introduced. `_fold_ordered`
+    avoids the same pitfall the same way.
     """
     layers = []
     for depth, dims_dir in enumerate(dims_dirs):

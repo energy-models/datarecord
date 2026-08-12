@@ -10,10 +10,12 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
 
+import narwhals as nw
+
 from datarecord.duck import try_read_parquet
 from datarecord.layered.resolve import read_json, read_schema
 from datarecord.schema import Schema
-from datarecord.store import EMPTY, Flags, LazyFrames, _lazy
+from datarecord.store import EMPTY, Flags, LazyFrames
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
@@ -23,13 +25,9 @@ if TYPE_CHECKING:
 class DirectoryStore:
     """A plain parquet directory, as a `Store` (§9.3).
 
-    One store, no overlay: what the files hold is what it presents. Reading a
-    single layer directly, or any standard parquet store blocks did not write.
-
-    Unlike `LayeredStore` there is no owner map, so `flags` is aggregated from the
-    files - a narrow scan, but a scan (§9.3). Cached per component type, since
-    a build asks once per type and the answer cannot change under a read-only
-    store.
+    No overlay: what the files hold is what it presents - one layer read
+    directly, or any standard parquet store. With no owner map, `flags` is a
+    scan, cached per component type (§9.3).
     """
 
     uri: str
@@ -44,16 +42,12 @@ class DirectoryStore:
 
     @cached_property
     def schema(self) -> Schema:
-        """This store's own `manifest.json`, else the one beside `con`'s layers (§5.6).
+        """This store's own `manifest.json`, else the one beside `con`'s layers.
 
-        No fold: a directory is one store, so there is nothing to merge across
-        (§8.2). A standalone store carries its own manifest and that is the
-        answer. A single *layer* of a layered store does not - its schema lives
-        beside `layers/`, one for the whole tree - and a connection is already
-        scoped to one such root, so reading one layer directly needs nothing
-        supplied. Neither present reads as an empty `Schema`: it describes no
-        dims, so it resolves no dimensioned data, which is the honest answer
-        rather than a guessed default.
+        A standalone store carries its own; a single *layer* of a layered store
+        does not, and a connection is already scoped to one root, so reading one
+        layer directly needs nothing supplied. Neither present reads as an empty
+        `Schema` (§5.6).
         """
         raw = read_json(self.base + "manifest.json")
         if raw is not None:
@@ -67,7 +61,7 @@ class DirectoryStore:
         declared = self.schema.dims
         present = tuple(d for d in declared if self._read(f"dims/{d}s.parquet"))
         return LazyFrames(
-            present, lambda dim: _lazy(self._require(f"dims/{dim}s.parquet"))
+            present, lambda dim: nw.from_native(self._require(f"dims/{dim}s.parquet"))
         )
 
     @cached_property
@@ -89,14 +83,12 @@ class DirectoryStore:
     def flags(self, ctype: str) -> dict[str, Flags]:
         """Aggregated from `inputs/*.parquet`, grouped by component type (§4.3).
 
-        Parquet's footer statistics cannot answer this: `stats_null_count` is
-        per row group, not per component type, so a file mixing one type's
-        per-timestep rows with another's single row says nothing about either.
-        Hence a real aggregate - the dim columns projected, no value pages read.
+        A real aggregate, not footer statistics: `stats_null_count` is per row
+        group, not per component type, so a file mixing two types' rows says
+        nothing about either (§9.3). Only dim columns are projected.
 
-        Which dims to report on comes from the schema (§5), intersected
-        with what the files actually carry: a store may declare a dim no file
-        has a column for, and `varies`/`broadcast` describe rows.
+        Which dims to report on is the schema's, intersected with what the files
+        carry - a store may declare a dim no file has a column for.
         """
         cache: dict[str, dict[str, Flags]] = self._flags_cache  # type: ignore[attr-defined]
         if ctype in cache:
@@ -162,7 +154,8 @@ class DirectoryStore:
         rows = rel.project("component_type").distinct().order("component_type")
         types = tuple(r[0] for r in rows.fetchall())
         return LazyFrames(
-            types, lambda ctype: _lazy(self._require(f"{subdir}/{ctype}.parquet"))
+            types,
+            lambda ctype: nw.from_native(self._require(f"{subdir}/{ctype}.parquet")),
         )
 
     def _by_attribute(self, subdir: str) -> LazyFrames:
@@ -177,5 +170,6 @@ class DirectoryStore:
         rows = rel.project("attribute").distinct().order("attribute")
         names = tuple(r[0] for r in rows.fetchall())
         return LazyFrames(
-            names, lambda attr: _lazy(self._require(f"{subdir}/{attr}.parquet"))
+            names,
+            lambda attr: nw.from_native(self._require(f"{subdir}/{attr}.parquet")),
         )

@@ -1,13 +1,9 @@
-"""The node cache and the resolved reads over it (design doc §9.1, §8.2, §9.2, §9.4).
+"""The owner map, and the resolved reads gated by it (design doc §9).
 
-The owner map answers, for a record, which layer owns each
-``(component_type, name, *layer_keys, attribute)`` key.
-Which dims are layer keys is declared by the store's schema (§5.5); see `Dims`.
-
-`NodeCache` also exposes the reads gated by that map - one long relation per
-attribute (§9.2), a type's wide member frame, this layer's own outputs
-(§9.4). They stay tool-agnostic: turning them into a modelling framework's
-object is `datarecord.tools` (§12, §12).
+The map answers which layer owns each key; `NodeCache` exposes the reads over
+it - one long relation per attribute (§9.2), a type's member frame, this
+layer's own outputs (§9.4). Tool-agnostic: turning these into a framework's
+object is `datarecord.tools` (§12).
 """
 
 from __future__ import annotations
@@ -98,26 +94,17 @@ def broadcast_match(
 class Dims:
     """A store's schema, plus each declared dim's folded axis relation.
 
-    The schema says which dims exist and what each keys; the axes are what
-    those dims resolve to over one ancestry. Both are needed together
-    everywhere the fold broadcasts a NULL against "all values of that dim"
-    (§3.3), which is why they travel as one object.
+    They travel together because the fold needs both wherever it broadcasts a
+    NULL against "all values of that dim" (§3.3).
 
     Parameters
     ----------
     schema : Schema
-        The resolved schema over the ancestry (§5).
+        The store's schema (§5).
     axes : dict of str to DuckDBPyRelation
-        Each declared dim's folded axis relation, full row (not just the key
-        column) - e.g. `scenario`'s carries `weight` too. A dim with no rows
-        anywhere in the ancestry is absent from the mapping rather than
-        present-and-empty.
-
-    Notes
-    -----
-    Which dims exist and what they mean to a tool is not decided here: a
-    tool's own shape (e.g. `datarecord.tools.pypsa.NetworkShape`) reads
-    `axes` and declares which of them it requires.
+        Each declared dim's folded axis relation, full row rather than the key
+        column alone - `scenario`'s carries `weight` too. A dim with no rows
+        anywhere is absent rather than present-and-empty.
     """
 
     schema: Schema
@@ -289,18 +276,11 @@ def _component_deleted_for_connections(
 ) -> DuckDBPyRelation:
     """Component tombstones that remove a connection, keyed as the connections map is.
 
-    A component tombstone kills every connection of that component (§8.3). The
-    connections map may be keyed by fewer dims than `component_dims` (§6), in
-    which case the excess dims are projected away and the tombstone applies
-    across every value of them.
-
-    That makes a tombstone scoped to one value of an excess dim remove the
-    connection even where the component survives for another value, which is
-    an open question rather than settled behaviour (§14): resolving it needs the
-    folded components map, which this per-layer function cannot reach. Left as
-    is because PyPSA does not let a component's connections differ between
-    scenarios, so no record built for it reaches the case; the wanted semantics
-    are pinned by an `xfail` in `tests/test_connections.py`.
+    A component tombstone kills every connection of that component (§8.3).
+    Where the connections map is keyed by fewer dims, the excess are projected
+    away and the tombstone applies across every value of them - the conservative
+    reading of §14's open question, pinned by an `xfail` in
+    `tests/test_connections.py`.
     """
     deleted = _component_deleted(record_id, keys, con)
     if not [
@@ -348,14 +328,11 @@ def _struct_of(dims: tuple[str, ...], predicate: str) -> str:
     """`bool_or(predicate)` per dim, packed into one flag struct (§9.1).
 
     `predicate` is formatted with the dim name, so `'"_raw_{}" IS NULL'` gives
-    the broadcast struct. A dim aggregating to NULL - which a map written before
-    the dim was declared does, since `UNION ALL BY NAME` fills the missing field
-    - reads as "not set", the same as false.
+    the broadcast struct. A field aggregating to NULL - what a map written before
+    the dim was declared yields - reads as "not set", the same as false.
 
-    `dims` is never empty here: a schema with attributes declares at least one
-    dim (§5.1), so the struct always has a field. DuckDB has no empty struct,
-    which is exactly why that is a schema rule rather than a placeholder field
-    carried through every fold.
+    `dims` is never empty: `Schema` rejects attributes with no dims (§5.1),
+    which is what keeps DuckDB's want of an empty struct off this path.
     """
     fields = ", ".join(f"'{d}': bool_or({predicate.format(d)})" for d in dims)
     return f"{{{fields}}}"
@@ -635,13 +612,10 @@ def _table(
 ) -> DuckDBPyRelation:
     """One owner map for `record_id` (§9.1).
 
-    Its own materialised map if it has one, otherwise the fold over
-    `ancestry` - which `ancestry_to_read` already truncated at the deepest
-    materialised ancestor, so the fold starts from that node's map rather
-    than from the root (§8.2).
-
-    The live fold is cached as a connection-scoped table. Layers are
-    write-once (§8.1), so the cache never needs invalidating.
+    Its own materialised map if it has one, else the fold over `ancestry`
+    (already truncated at the deepest materialised ancestor, §8.2). The live fold
+    is cached as a connection-scoped table, which never needs invalidating since
+    layers are write-once (§8.1).
     """
     persisted = try_read_parquet(_map_uri(record_id, kind), con)
     if persisted is not None:

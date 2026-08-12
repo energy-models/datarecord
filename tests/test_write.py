@@ -10,7 +10,7 @@ from datarecord import DataRecord
 from datarecord.directory import DirectoryStore
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema
-from datarecord.layered.write import add_patch, write_layer
+from datarecord.layered.write import write_layer
 from datarecord.store import EMPTY, LazyFrames, Store
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import schema
@@ -244,8 +244,8 @@ def test_write_then_build_round_trips(con, base_uri, ac_dc):
     record = DataRecord.create(con)
     write_layer(record.id, PyPSA.to_datarecord(ac_dc), con)
 
-    assert not PyPSA.verify(record)
-    back = PyPSA.build(record)
+    assert not PyPSA.verify(record.store)
+    back = PyPSA.build(record.store)
 
     for ctype in ("Bus", "Generator", "Link", "Line", "Load"):
         original, rebuilt = ac_dc.c[ctype].static, back.c[ctype].static
@@ -270,7 +270,7 @@ def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
     assert set(rows["role"]) == {"input", "output"}
     assert set(rows["bus"]) >= set(ac_dc.c["Link"].static["bus0"])
 
-    back = PyPSA.build(record)
+    back = PyPSA.build(record.store)
     assert list(back.c["Link"].static["bus0"]) == list(ac_dc.c["Link"].static["bus0"])
     assert list(back.c["Link"].static["bus1"]) == list(ac_dc.c["Link"].static["bus1"])
 
@@ -285,7 +285,7 @@ def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
     ).df()
     assert set(rows["role"]) == {"attached"}
 
-    back = PyPSA.build(record)
+    back = PyPSA.build(record.store)
     assert list(back.c["Generator"].static["bus"]) == list(
         ac_dc.c["Generator"].static["bus"]
     )
@@ -295,7 +295,7 @@ def test_static_series_split_survives_the_writer(con, base_uri, ac_dc):
     """Only the components with a series get a `dynamic` column (§12)."""
     record = DataRecord.create(con)
     write_layer(record.id, PyPSA.to_datarecord(ac_dc), con)
-    back = PyPSA.build(record)
+    back = PyPSA.build(record.store)
 
     assert sorted(back.c["Generator"].dynamic["p_max_pu"].columns) == sorted(
         ac_dc.c["Generator"].dynamic["p_max_pu"].columns
@@ -319,12 +319,3 @@ def test_written_layer_overlays(con, base_uri, ac_dc):
 
     resolved = child.relation("p_nom").filter("name = 'Manchester Wind'").df()
     assert list(resolved["value"]) == [999.0]
-
-
-# -- still out of scope (§4) ----------------------------------------------
-
-
-def test_add_patch_is_not_implemented(con, base_uri):
-    """Superseded by `MutableStore`, which needs no diff at all (§11)."""
-    with pytest.raises(NotImplementedError, match="MutableStore"):
-        add_patch(None, None, None, con)  # type: ignore[arg-type]

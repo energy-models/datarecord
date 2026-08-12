@@ -1,13 +1,8 @@
-"""Editing a store: staged edits, materialised on commit (§11).
+"""Editing a store: staged edits, materialised on commit (design doc §11).
 
-`Store` is read-only, and `write_layer` writes a whole store from a source that
-already knows everything it will contain. Neither covers editing - adding
-components, removing them, setting an attribute on a group - which is what this
-module adds.
-
-Two properties follow from accumulate-then-commit, and both are the point: an
-edit costs a row in a staging table rather than a rewrite, and nothing touches
-the store until `commit()`.
+What `Store` (read-only) and `write_layer` (a whole store at once) do not
+cover. Accumulate-then-commit: an edit costs a row in a staging table rather
+than a rewrite, and nothing touches the store until `commit()`.
 """
 
 from __future__ import annotations
@@ -24,7 +19,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation
 
 from datarecord.schema import Schema
-from datarecord.store import EMPTY, Flags, Frames, LazyFrames, Store, _lazy
+from datarecord.store import EMPTY, Flags, Frames, LazyFrames, Store
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
@@ -37,10 +32,7 @@ if TYPE_CHECKING:
 class NewChild:
     """Write the staged rows as a new child layer of `record` (§11.7).
 
-    The patch-layer path: read a parent, edit, commit a child. Only the edits
-    are written - that is what a patch layer is, and the fold resolves the rest
-    from the parent. Any node may be a parent (§8.1), so nothing about the one
-    being branched from needs preparing.
+    Only the edits are written; the fold resolves the rest from the parent.
     """
 
     record: Any  # a DataRecord; typed loosely to keep this module import-free
@@ -48,10 +40,8 @@ class NewChild:
 
 @dataclass(frozen=True)
 class Directory:
-    """Write a standalone store at `uri`, flattened (§11.7).
-
-    What is staged *plus what the store already reads*, since there is no
-    parent to resolve the rest from.
+    """Write a standalone store at `uri`: staged rows *plus* what the store
+    already reads, there being no parent to resolve against (§11.7).
     """
 
     uri: str
@@ -64,10 +54,8 @@ Target = NewChild | Directory
 class Pending:
     """What a `MutableStore` would write, without writing it (§11.6).
 
-    A derived summary, not a second place rows live: the counts are a `GROUP BY`
-    over the staging tables, computed on access and discarded. There is one
-    staging layer and it is in DuckDB, so a hundred-thousand-row edit yields a
-    `Pending` of a few integers.
+    A derived summary, not a second place rows live: a `GROUP BY` over the
+    staging tables, computed on access and discarded.
     """
 
     attributes: Mapping[str, int] = field(default_factory=dict)
@@ -206,58 +194,13 @@ def normalise_value(
     return list(names), list(value), {}
 
 
-# -- accessors (§11.4) --------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class TypeView:
-    """One component type of a `MutableStore`, spelled as assignment (§11.4).
-
-    Sugar over `set` with no added capability: `__setitem__` normalises its key
-    into `(attribute, names)` and calls `set`. Reads too, since a
-    `MutableStore` is a `Store` - so getter and setter are symmetric and this
-    is a component-type view rather than a write-only handle.
-
-    Does not reproduce a dataframe library's indexing grammar - no boolean
-    masks, no slices - because a store is not a dataframe and a partial
-    imitation invites the assumption that the rest works. Omitting `names` is
-    how "all" is spelled.
-    """
-
-    store: MutableStore
-    ctype: str
-    bus: str | None = None
-    dims: Mapping[str, Any] = field(default_factory=dict)
-
-    @staticmethod
-    def _split(key: Any) -> tuple[str, Sequence[str] | None]:
-        if isinstance(key, tuple):
-            attribute, names = key
-            if isinstance(names, str):
-                names = [names]
-            return attribute, names
-        return key, None
-
-    def __setitem__(self, key: Any, value: Any) -> None:
-        attribute, names = self._split(key)
-        self.store.set(
-            self.ctype, attribute, value, names=names, bus=self.bus, **dict(self.dims)
-        )
-
-    def __getitem__(self, key: Any) -> nw.LazyFrame:
-        attribute, _names = self._split(key)
-        return self.store.attributes[attribute]
-
-
 @dataclass(frozen=True)
 class _Written:
-    """One reading of a `MutableStore`, as the `Store` `write_layer` consumes (§11.7).
+    """One reading of a `MutableStore`, as the `Store` `write_layer` consumes.
 
-    Commit needs two different stores out of the same staging area: a
-    `NewChild` writes only the edits, since the fold resolves the rest from the
-    parent, while a `Directory` writes the resolved result, having no parent to
-    resolve against. Both are `Store`s over the same object, so this holds the
-    four frame mappings the caller chose and presents them under the protocol.
+    Commit needs two different stores out of one staging area - `NewChild` the
+    edits alone, `Directory` the resolved result - so this holds whichever four
+    frame mappings the caller chose (§11.7).
     """
 
     schema: Schema
@@ -279,25 +222,13 @@ _SEQ = itertools.count(1)
 class MutableStore:
     """A `Store` that accepts edits and materialises them on commit (§11).
 
-    Extends `Store`, which is the load-bearing decision: a mutable store reads
-    as a store, and what it reads is the data *with its pending edits applied*.
-    So an edit can be read back, or the store handed to something that only
-    knows `Store`, without committing.
+    Satisfies `Store`, and what it reads is the data *with its pending edits
+    applied* (§11.10) - so an edit reads back, or the store is handed to
+    something that only knows `Store`, without committing.
 
-    Staged rows live in three connection-scoped tables, which are the *only*
-    place a staged row exists: `pending` counts them and the reads fold them,
-    neither holding a copy.
-
-    DuckDB rather than in-memory objects for three reasons that all matter: the
-    reads are already a fold, so staging elsewhere would mean marshalling every
-    edit into a relation on every read; a large edit is a bulk insert rather
-    than ten thousand Python objects; and commit becomes one window-function
-    query whose result `write_layer` consumes unmaterialised.
-
-    Concrete, not a protocol over one implementation: `Store` is the seam that
-    several things satisfy (§4.1), while there is one way to edit a store and
-    naming it twice bought nothing. Where the staged rows live is this class's
-    own business (§11.9), so the name says what it is rather than how.
+    Staged rows live in three connection-scoped DuckDB tables, the *only* place
+    a staged row exists: `pending` counts them and the reads fold them, neither
+    holding a copy (§11.9).
     """
 
     def __init__(self, base: Store, con: DuckDBPyConnection) -> None:
@@ -368,7 +299,7 @@ class MutableStore:
         assert staged is not None
         mine = staged.filter(col("component_type") == lit(ctype))
         if ctype not in base:
-            return _lazy(mine.filter("NOT deleted"))
+            return nw.from_native(mine.filter("NOT deleted"))
 
         dims = (
             self.schema.component_dims
@@ -383,7 +314,9 @@ class MutableStore:
         # pending edits at what one more layer costs.
         present = set(frame.collect_schema().names())
         on = _null_safe_on([c for c in key if c in present])
-        return _lazy(self._entity_union(_as_relation(frame, self.con), mine, on, ctype))
+        return nw.from_native(
+            self._entity_union(_as_relation(frame, self.con), mine, on, ctype)
+        )
 
     def _entity_union(
         self, base: DuckDBPyRelation, staged: DuckDBPyRelation, on: str, ctype: str
@@ -527,16 +460,8 @@ class MutableStore:
         return ("component_type", "name", "bus", "attribute", *self.schema.input_dims)
 
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
-        """Dims `attribute` varies over that a layer cannot patch value by value.
-
-        `AttributeSpec.dims` minus `Schema.partial` (§5.5). Touching one value
-        along such a dim makes the layer the owner of the attribute's whole
-        extent along it, so `_restated` reads the rest from the base and writes
-        it out complete (§11.7).
-
-        Across every component type that declares it: `inputs/<attr>.parquet`
-        holds one attribute's rows for all types (§3.1), and the restate reads
-        the same file back.
+        """`AttributeSpec.dims` minus `Schema.partial`, for every type declaring
+        `attribute` - one `inputs/<attr>.parquet` serves them all (§5.5, §3.1).
         """
         partial = self.schema.partial or frozenset()
         whole: set[str] = set()
@@ -547,17 +472,12 @@ class MutableStore:
         return tuple(d for d in self.schema.dims if d in whole)
 
     def _restated(self, attribute: str, staged: DuckDBPyRelation) -> DuckDBPyRelation:
-        """`staged` plus the base rows a non-partial axis obliges it to carry (§11.7).
+        """`staged` plus the base rows a non-partial axis obliges it to carry.
 
-        Overwriting one value along an axis owned whole means the layer must
-        hold that key's entire extent along it - otherwise the coordinates the
-        edit did not name resolve to nothing rather than to the parent's value,
-        which silently destroys them. This is the one commit-time read of
-        parent data.
-
-        The key here excludes the whole-owned dims: rows are matched per
-        `(type, name, bus, attribute)` and everything else the layer owns per,
-        so one touched snapshot pulls in that key's other snapshots.
+        The one commit-time read of parent data (§5.5, §11.7). Note the two
+        keys below: `scope` excludes the whole-owned dims, so one touched
+        snapshot pulls in that key's others; `coordinate` adds them back, so a
+        base row is dropped only where the edit named that exact coordinate.
         """
         whole = self._owned_whole(attribute)
         if not whole:
@@ -565,11 +485,6 @@ class MutableStore:
         if attribute not in self.base.attributes:
             return staged
 
-        # Two different keys, which is the whole point. `scope` is what an edit
-        # is *scoped* by - the input key minus the dims owned whole - and picks
-        # out the keys this edit touched. `coordinate` adds those dims back, so
-        # a base row is dropped only where the edit actually named that exact
-        # coordinate; everything else is what has to be carried along.
         scope = [c for c in self._input_key() if c not in whole]
         coordinate = [*scope, *whole, "breakpoint"]
         base = _as_relation(self.base.attributes[attribute], self.con)
@@ -630,15 +545,6 @@ class MutableStore:
         return out
 
     # -- edits (§11.2, §11.3, §11.5) ----------------------------------------
-
-    def __getitem__(self, key: Any) -> TypeView:
-        """`store["Generator"]`, `store["Link", "north"]`, `store["Gen", {...}]` (§11.4)."""
-        if isinstance(key, tuple):
-            ctype, qualifier = key
-            if isinstance(qualifier, Mapping):
-                return TypeView(self, ctype, dims=qualifier)
-            return TypeView(self, ctype, bus=qualifier)
-        return TypeView(self, key)
 
     def _axis_labels(self) -> dict[str, list[Any]]:
         labels: dict[str, list[Any]] = {}
@@ -1207,13 +1113,9 @@ class MutableStore:
 def _input_columns(schema: Schema) -> str:
     """DDL for the staged `inputs/` rows.
 
-    `value` is `VARCHAR`, not the attribute's own dtype: one staging table
-    serves every attribute, and §3.2 gives `value` a *per-attribute* type
-    (`inputs/<attr>.parquet` holds one attribute, so its `value` column is that
-    attribute's). Staging it as text keeps one table honest about holding
-    several attributes' values; `_typed_value` casts to the declared dtype on
-    the way into the layer, where the file is per-attribute and the type
-    applies.
+    `value` is `VARCHAR` because one staging table serves every attribute, where
+    §3.2 gives `value` a *per-attribute* type; `_typed_value` casts to the
+    declared dtype on the way into the layer.
     """
     dims = "".join(f', "{d}" {schema.column_type(d)}' for d in schema.dims)
     return (

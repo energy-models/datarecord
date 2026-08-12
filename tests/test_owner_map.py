@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from datarecord import DataRecord
-from datarecord.duck import layer_dir, node_dir
+from datarecord.duck import layer_dir, node_dir, union_all_by_name
 from tests.fixtures import export_network, tombstone, write_input
 
 
@@ -16,6 +16,30 @@ def parent(con, base_uri, ac_dc):
     export_network(ac_dc, record, con)
     record.materialise()
     return record
+
+
+def test_union_all_by_name_folds_every_relation(con):
+    """Three arms, not two: the fold's union binds `u`/`rel` by name (§9.2).
+
+    Two relations pass whatever the loop body does, since the first pairing is
+    the only one. Three is what catches the failure mode the helper's variables
+    invite - a scan that re-reads `rels[0]` instead of advancing would give
+    `[1, 1]` here, with no error to point at it.
+    """
+    rels = [con.sql(f"SELECT {i} AS x") for i in (1, 2, 3)]
+    got = union_all_by_name(rels, con).fetchall()
+    assert sorted(v for (v,) in got) == [1, 2, 3]
+
+
+def test_union_all_by_name_fills_a_missing_column_with_null(con):
+    """By *name*, so an arm lacking a column reads NULL there (§3.2, §5.7).
+
+    What lets a layer written before `bus`/`breakpoint` existed still resolve,
+    and a persisted owner map survive a newly declared dim.
+    """
+    rels = [con.sql("SELECT 1 AS x, 'a' AS y"), con.sql("SELECT 2 AS x")]
+    got = union_all_by_name(rels, con).fetchall()
+    assert sorted(got, key=lambda r: r[0]) == [(1, "a"), (2, None)]
 
 
 def keys(record, con):

@@ -88,17 +88,17 @@ def test_roundtrip_matches_pypsa_reader(con, base_uri, single_record, ac_dc):
     reference = pypsa.Network()
     reference.import_from_parquet(plain)  # type: ignore[attr-defined]
 
-    assert_networks_equal(PyPSA.build(single_record), reference)
+    assert_networks_equal(PyPSA.build(single_record.store), reference)
 
 
 def test_roundtrip_matches_original(con, base_uri, single_record, ac_dc):
     """Genuine data loss surfaces here even if it is shared with upstream."""
-    assert_networks_equal(PyPSA.build(single_record), ac_dc)
+    assert_networks_equal(PyPSA.build(single_record.store), ac_dc)
 
 
 def test_static_series_split_preserved(con, base_uri, single_record):
     """A static-valued varying attribute stays out of `dynamic` (§12)."""
-    n = PyPSA.build(single_record)
+    n = PyPSA.build(single_record.store)
     # Only the three wind generators carry a p_max_pu series in ac_dc_meshed.
     assert set(n.c["Generator"].dynamic["p_max_pu"].columns) == {
         "Manchester Wind",

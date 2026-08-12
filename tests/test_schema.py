@@ -160,6 +160,29 @@ def test_an_attribute_cannot_vary_over_an_undeclared_dim():
         )
 
 
+# -- defaults through the manifest (§5.2, §5.6) ------------------------------
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("-inf"), 0.0, None, "AC"])
+def test_a_default_survives_the_manifest_round_trip(value):
+    """An `inf` default must read back as `inf`, not as "no default" (§5.2).
+
+    JSON has no literal for a non-finite float, and pydantic's own serialiser
+    emits `null` for one - which would silently turn an unbounded capacity into
+    an absent bound. PyPSA declares `inf` defaults (`p_nom_max`), so this is the
+    ordinary case rather than an edge one, and it is only the encoding in
+    `AttributeSpec` that keeps it.
+    """
+    schema = Schema(
+        dimensions={"scenario": Dimension(dtype="VARCHAR")},
+        attributes={
+            "Generator": {"p_nom_max": AttributeSpec(dtype="DOUBLE", default=value)}
+        },
+    )
+    back = Schema.model_validate_json(schema.model_dump_json())
+    assert repr(back.attributes["Generator"]["p_nom_max"].default) == repr(value)
+
+
 # -- versioning (§5.7) -------------------------------------------------------
 
 

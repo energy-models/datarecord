@@ -29,7 +29,7 @@ def parent(con, base_uri, stochastic):
 
 def test_scenario_roundtrip(con, parent, stochastic):
     """A stochastic store round-trips through our reader."""
-    n = PyPSA.build(parent)
+    n = PyPSA.build(parent.store)
     assert list(n.scenarios) == list(stochastic.scenarios)
     assert_networks_equal(n, stochastic)
 
@@ -116,7 +116,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
         ],
     )
 
-    n = PyPSA.build(child)
+    n = PyPSA.build(child.store)
     assert set(n.scenarios) == set(stochastic.scenarios) | {"extra"}
 
     rel = child.relation("p_max_pu").df()

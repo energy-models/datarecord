@@ -38,7 +38,7 @@ def _static(record, attribute, ctype=GEN):
     `p_nom` lives in `dims/components/` (§3.1), so `inputs/` alone would not
     show what the store resolves to.
     """
-    return PyPSA.build(record).c[ctype].static[attribute].to_dict()
+    return PyPSA.build(record.store).c[ctype].static[attribute].to_dict()
 
 
 # -- the protocol (§11.1) ----------------------------------------------------
@@ -224,6 +224,35 @@ def test_update_stages_the_whole_series(staged, root):
     assert got["value"].tolist() == (mine["value"] * 2).tolist()
 
 
+def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
+    """A staged row's dims join the flags, unioned with the base answer (§11.10).
+
+    `flags` is the one non-`Frames` member of `Store`, so the promise that a
+    read reflects pending edits has to hold for it too - and it decides which
+    container a consumer puts a value in (`PyPSA.build` splits static from
+    series on exactly this). `marginal_cost` starts broadcast over `snapshot`
+    and varying over nothing; a per-snapshot edit must add `snapshot` to
+    `varies` while leaving `broadcast` alone, since the base's NULL-snapshot
+    rows are still there.
+    """
+    before = staged.flags(GEN)["marginal_cost"]
+    assert "snapshot" not in before.varies
+    assert "snapshot" in before.broadcast
+
+    staged.set(
+        GEN,
+        "marginal_cost",
+        pd.DataFrame(
+            [{"name": "Manchester Wind", "snapshot": ac_dc.snapshots[0], "value": 7.5}]
+        ),
+        names=["Manchester Wind"],
+    )
+
+    after = staged.flags(GEN)["marginal_cost"]
+    assert "snapshot" in after.varies
+    assert after.broadcast == before.broadcast
+
+
 # -- value dtypes (§3.2, §5.2) -----------------------------------------------
 
 
@@ -346,7 +375,7 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
     child = staged.commit(NewChild(root))
     assert "NewSolar" in set(child.node_cache.components.df()["name"])
 
-    static = PyPSA.build(child).c[GEN].static
+    static = PyPSA.build(child.store).c[GEN].static
     assert static.loc["NewSolar", "p_nom"] == 42.0
     assert static.loc["NewSolar", "carrier"] == "solar"
 
@@ -364,7 +393,7 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     )
     child = staged.commit(NewChild(root))
 
-    buses = PyPSA.build(child).c[GEN].static["bus"]
+    buses = PyPSA.build(child.store).c[GEN].static["bus"]
     assert buses["NewSolar"] == "Manchester"
     # The point of the routing: the inherited components keep theirs.
     assert buses["Manchester Wind"] == "Manchester"
@@ -504,4 +533,6 @@ def test_a_committed_child_builds_a_network(staged, root):
     staged.set(GEN, "p_nom", 150.0, names=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    assert PyPSA.build(child).c[GEN].static.loc["Manchester Wind", "p_nom"] == 150.0
+    assert (
+        PyPSA.build(child.store).c[GEN].static.loc["Manchester Wind", "p_nom"] == 150.0
+    )

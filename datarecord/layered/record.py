@@ -1,19 +1,14 @@
-"""The `DataRecord` node and its ancestry query (design doc §8, §13).
+"""The `DataRecord` node and its ancestry query (design doc §8).
 
-`DataRecord` is a thin façade: it holds the node's identity and delegates to
-`resolve` and `write`. `ancestry` and the private helpers below it read the
-`data_records` table - owned as *data*, by `duck.py` (its `CREATE_TABLE`) -
-and know nothing about owner maps or parquet layers, so `resolve` and `write`
-can depend on them freely without importing back into this module.
-
-A node has no state beyond its place in the tree (§8.2). Whether its caches
-are materialised is a question about the filesystem, answered where that is
-visible (`resolve.materialised`), not recorded here.
+A thin façade over `resolve`: it holds the node's identity and reads the
+`data_records` table, knowing nothing about owner maps or parquet layers. A node
+has no state beyond its place in the tree - whether its caches are materialised
+is a filesystem question, answered by `resolve.materialised` (§8.1, §8.2).
 """
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Self
+from typing import Self
 from uuid import UUID
 
 import narwhals as nw
@@ -21,13 +16,10 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from pydantic import BaseModel, PrivateAttr
 
 from datarecord.duck import default_connection
-from datarecord.layered import resolve, write
+from datarecord.layered import resolve
 from datarecord.layered.resolve import NodeCache
 from datarecord.schema import Schema
-from datarecord.store import Flags, LazyFrames, _lazy
-
-if TYPE_CHECKING:
-    import pypsa
+from datarecord.store import Flags, LazyFrames
 
 _ANCESTRY = """
 WITH RECURSIVE ancestors(id, parent, depth) AS (
@@ -177,22 +169,14 @@ class DataRecord(BaseModel):
         """This layer's own result attribute; outputs do not overlay (§9.4)."""
         return self.node_cache.outputs(attribute)
 
-    # -- write ---------------------------------------------------------------
-
-    def add_patch(self, n: "pypsa.Network", n_old: "pypsa.Network") -> Self:
-        """Write `n.diff(n_old)` into a new child layer (§12) - not implemented."""
-        return write.add_patch(self, n, n_old, self.con)
-
 
 @dataclass(frozen=True)
 class LayeredStore:
     """A record's resolved overlay, as a `Store` (§9.3).
 
-    Every member delegates to `NodeCache`: the resolution is already there, and
-    this is the protocol's shape over it rather than a second implementation of
-    it. So an overlay-backed store costs exactly what the equivalent
-    `NodeCache` call costs, and `flags` in particular is free - the owner map
-    computed it at fold time (§9.1).
+    The protocol's shape over `NodeCache`, not a second implementation of it, so
+    a member costs what the equivalent `NodeCache` call costs - `flags` in
+    particular is free, the owner map having folded it in (§9.1).
     """
 
     node_cache: NodeCache
@@ -208,7 +192,7 @@ class LayeredStore:
     @cached_property
     def dims(self) -> LazyFrames:
         axes = self.node_cache.dims.axes
-        return LazyFrames(tuple(axes), lambda dim: _lazy(axes[dim]))
+        return LazyFrames(tuple(axes), lambda dim: nw.from_native(axes[dim]))
 
     @cached_property
     def components(self) -> LazyFrames:
@@ -224,12 +208,16 @@ class LayeredStore:
     @cached_property
     def attributes(self) -> LazyFrames:
         names = tuple(self.node_cache.attribute_names())
-        return LazyFrames(names, lambda attr: _lazy(self.node_cache.relation(attr)))
+        return LazyFrames(
+            names, lambda attr: nw.from_native(self.node_cache.relation(attr))
+        )
 
     @cached_property
     def outputs(self) -> LazyFrames:
         names = tuple(self.node_cache.output_names())
-        return LazyFrames(names, lambda attr: _lazy(self.node_cache.outputs(attr)))
+        return LazyFrames(
+            names, lambda attr: nw.from_native(self.node_cache.outputs(attr))
+        )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
         """Straight off the `inputs` owner map, which folded these in for free (§9.1)."""
@@ -251,11 +239,10 @@ class LayeredStore:
     def _ordered(self, rel: DuckDBPyRelation | None, ctype: str) -> nw.LazyFrame:
         """`rel` in member order, which for an overlay means sorted by `order_key`.
 
-        A `Store` promises member order (§9.3); the fold's own output has none
-        of its own (its union puts a layer's own contribution first), so the
-        order is imposed here. `order_key` stays in the frame rather than being
-        projected away - see §14 on whether it should.
+        The fold's own output has no order (its union puts a layer's own
+        contribution first), so the order a `Store` promises is imposed here.
+        `order_key` stays in the frame rather than being projected away (§9.1).
         """
         if rel is None:
             raise KeyError(ctype)
-        return _lazy(rel.order("order_key"))
+        return nw.from_native(rel.order("order_key"))
