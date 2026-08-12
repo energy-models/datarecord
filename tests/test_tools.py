@@ -12,7 +12,13 @@ from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.layered.write import write_record
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network, schema, write_components, write_input
+from tests.fixtures import (
+    export_network,
+    relation,
+    schema,
+    write_components,
+    write_input,
+)
 
 
 @pytest.fixture
@@ -257,7 +263,7 @@ def test_pypsa_schema_is_the_identity(single_record):
     assert PyPSA.schema.attrs == {}
     assert PyPSA.schema.sources("Generator", "p_max_pu") == ("p_max_pu",)
     identity = PyPSA.schema.resolve(single_record.store, "Generator", "p_max_pu")
-    assert identity.fetchall() == single_record.relation("p_max_pu").fetchall()
+    assert identity.fetchall() == relation(single_record, "p_max_pu").fetchall()
 
 
 def test_schema_renames_and_computes():

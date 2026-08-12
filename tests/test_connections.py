@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from datarecord.duck import layer_dir
 from datarecord.layered.revision import Revision
 from tests.fixtures import (
+    relation,
     schema,
     tombstone,
     tombstone_connection,
@@ -59,7 +60,7 @@ def _root(con) -> Revision:
 
 
 def _efficiencies(record) -> dict[str, float]:
-    df = record.relation("efficiency").df()
+    df = relation(record, "efficiency").df()
     return dict(zip(df["bus"], df["value"], strict=True))
 
 
@@ -156,7 +157,7 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
         [{"component_type": PROCESS, "name": "steel_dri", "value": 250.0}],
     )
 
-    df = child.relation("p_nom").df()
+    df = relation(child, "p_nom").df()
     assert list(df["value"]) == [250.0]
     assert df["bus"].isna().all()
 
@@ -206,7 +207,7 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
     assert "snapshot" in flags.varies
     assert "snapshot" in flags.broadcast
     assert not flags.breakpoints
-    assert len(record.relation("efficiency").df()) == 3
+    assert len(relation(record, "efficiency").df()) == 3
 
 
 def test_connection_tombstone_removes_one_connection(con, base_uri):

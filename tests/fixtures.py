@@ -204,3 +204,20 @@ def schema(
         attributes=attributes or {},
         partial=frozenset(partial),
     )
+
+
+def relation(revision, attribute: str):
+    """The resolved long relation for one input attribute, as a DuckDB relation.
+
+    A test helper rather than a `Revision` method: `Revision` presents its data
+    through `.store` (a `Record`), and a DuckDB-shaped accessor beside it would
+    duplicate `store.attributes[attr]` while inverting what `outputs` means -
+    a relation on the revision against a `Frames` mapping on the record. Tests
+    want relations because they assert on `.df()`, so the affordance lives here.
+    """
+    return revision.node_cache.relation(attribute)
+
+
+def outputs(revision, attribute: str):
+    """One result attribute as a DuckDB relation; outputs do not overlay (§9.4)."""
+    return revision.node_cache.outputs(attribute)

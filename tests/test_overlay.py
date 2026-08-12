@@ -10,7 +10,7 @@ from datarecord.layered.write import write_record
 from datarecord.record import EMPTY
 from datarecord.schema import AttributeSpec
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network, tombstone, write_input
+from tests.fixtures import export_network, outputs, relation, tombstone, write_input
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def test_child_overwrites_component(con, parent):
         [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.42}],
     )
 
-    df = child.relation("p_max_pu").df()
+    df = relation(child, "p_max_pu").df()
     manchester = df[df["name"] == "Manchester Wind"]
     # The parent's 10 series rows are gone, replaced by the child's single row.
     assert len(manchester) == 1
@@ -112,7 +112,7 @@ def test_grandchild_resolves_through_ancestry(con, parent):
         [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.99}],
     )
 
-    df = grandchild.relation("p_max_pu").df()
+    df = relation(grandchild, "p_max_pu").df()
     manchester = df[df["name"] == "Manchester Wind"]
     assert len(manchester) == 1
     assert manchester["value"].iloc[0] == 0.99
@@ -137,14 +137,14 @@ def test_closed_child_reads_own_node_cache(con, parent):
     n = PyPSA.build(reloaded.store)
     assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
 
-    df = reloaded.relation("p_max_pu").df()
+    df = relation(reloaded, "p_max_pu").df()
     assert df[df["name"] == "Manchester Wind"]["value"].tolist() == [0.42]
 
 
 def test_outputs_do_not_overlay(con, parent):
     """Results come from the node's own layer only (§9.4)."""
     child = parent.child()
-    assert child.outputs("p").df().empty
+    assert outputs(child, "p").df().empty
 
 
 def test_a_new_attribute_is_a_schema_amendment(con, parent):

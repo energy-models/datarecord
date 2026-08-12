@@ -8,7 +8,13 @@ import pytest
 from datarecord import Revision
 from datarecord.duck import layer_dir, resolved_dir
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network, tombstone, write_input, write_scenarios
+from tests.fixtures import (
+    export_network,
+    relation,
+    tombstone,
+    write_input,
+    write_scenarios,
+)
 from tests.test_roundtrip import assert_networks_equal
 
 
@@ -68,7 +74,7 @@ def test_partial_scenario_override(con, parent, stochastic):
         assert owners[other] == parent.id
 
     # The resolved relation carries the child's value for that scenario only.
-    rel = child.relation("p_max_pu").df()
+    rel = relation(child, "p_max_pu").df()
     solar_rows = rel[rel["name"] == "solar"]
     overridden = solar_rows[solar_rows["scenario"] == scenario]
     assert set(overridden["value"]) == {0.77}
@@ -119,7 +125,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
     n = PyPSA.build(child.store)
     assert set(n.scenarios) == set(stochastic.scenarios) | {"extra"}
 
-    rel = child.relation("p_max_pu").df()
+    rel = relation(child, "p_max_pu").df()
     extra_solar = rel[(rel["name"] == "solar") & (rel["scenario"] == "extra")]
     assert set(extra_solar["value"]) == {0.33}
 
@@ -197,5 +203,5 @@ def test_scenario_null_row_broadcasts(con, parent, stochastic):
     solar = df[(df["name"] == "solar") & (df["attribute"].astype(str) == "p_max_pu")]
     assert set(solar["layer_uuid"]) == {child.id}
 
-    rel = child.relation("p_max_pu").df()
+    rel = relation(child, "p_max_pu").df()
     assert set(rel[rel["name"] == "solar"]["value"]) == {0.55}

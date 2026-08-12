@@ -4,6 +4,7 @@ from datarecord.duck import layer_dir
 from datarecord.layered.revision import Revision
 from datarecord.record import Flags
 from tests.fixtures import (
+    relation,
     schema,
     write_components,
     write_connections,
@@ -16,7 +17,7 @@ PROCESS = "Process"
 
 def _curve(record, attribute: str) -> list[tuple[float, float]]:
     """`(breakpoint, value)` pairs, in curve order - a sort on `breakpoint`."""
-    df = record.relation(attribute).order("breakpoint").df()
+    df = relation(record, attribute).order("breakpoint").df()
     return list(zip(df["breakpoint"], df["value"], strict=True))
 
 
@@ -151,7 +152,7 @@ def test_curve_on_a_connection(con, base_uri):
         ],
     )
 
-    df = child.relation("efficiency").order("bus, breakpoint").df()
+    df = relation(child, "efficiency").order("bus, breakpoint").df()
     rows = list(zip(df["bus"], df["breakpoint"], df["value"], strict=True))
     assert rows == [
         ("dri", 0.0, 1.0),
@@ -192,7 +193,7 @@ def test_curve_varying_by_snapshot(con, base_uri):
     assert "snapshot" in flags.varies
     assert "snapshot" not in flags.broadcast
     assert flags.breakpoints
-    assert len(record.relation("marginal_cost").df()) == 4
+    assert len(relation(record, "marginal_cost").df()) == 4
 
 
 def test_scalar_replaced_by_a_curve(con, base_uri):

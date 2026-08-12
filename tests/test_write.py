@@ -13,7 +13,7 @@ from datarecord.layered.resolve import read_schema
 from datarecord.layered.write import write_record
 from datarecord.record import EMPTY, LazyFrames, Record
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import schema
+from tests.fixtures import relation, schema
 
 
 class _Source:
@@ -317,5 +317,5 @@ def test_written_layer_overlays(con, base_uri, ac_dc):
         [{"component_type": "Generator", "name": "Manchester Wind", "value": 999.0}],
     )
 
-    resolved = child.relation("p_nom").filter("name = 'Manchester Wind'").df()
+    resolved = relation(child, "p_nom").filter("name = 'Manchester Wind'").df()
     assert list(resolved["value"]) == [999.0]

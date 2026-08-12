@@ -9,6 +9,7 @@ from datarecord import Revision
 from datarecord.duck import layer_dir
 from tests.fixtures import (
     export_network,
+    relation,
     schema,
     tombstone,
     write_input,
@@ -47,7 +48,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     owners = dict(zip(wind["period"], wind["layer_uuid"], strict=False))
     assert owners.get(2030) == child.id
 
-    rel = child.relation("p_max_pu").df()
+    rel = relation(child, "p_max_pu").df()
     wind_rows = rel[rel["name"] == "Manchester Wind"]
     overridden = wind_rows[wind_rows["period"] == 2030]
     assert set(overridden["value"]) == {0.42}

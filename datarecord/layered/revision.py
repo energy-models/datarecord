@@ -161,14 +161,6 @@ class Revision(BaseModel):
         """Record ids along the root->self path, root first (§8.2)."""
         return ancestry(self.con, self.id)
 
-    def relation(self, attribute: str) -> DuckDBPyRelation:
-        """The resolved long relation for one input attribute (§9.2)."""
-        return self.node_cache.relation(attribute)
-
-    def outputs(self, attribute: str) -> DuckDBPyRelation:
-        """This layer's own result attribute; outputs do not overlay (§9.4)."""
-        return self.node_cache.outputs(attribute)
-
 
 @dataclass(frozen=True)
 class LayeredRecord:
