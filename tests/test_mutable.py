@@ -425,6 +425,30 @@ def test_add_accepts_a_name_of_its_own_type(staged, root):
     assert PyPSA.build(child.store).c[GEN].static.loc["Manchester Wind", "p_nom"] == 5.0
 
 
+def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
+    """`remove` then `add` under another type collapses to the later op (§3.5, §11.7).
+
+    The staged entity rows are keyed without `component_type`, so one name has
+    one answer. Partitioning on the type as well would keep both the Generator
+    tombstone and the Bus member row, and commit would write a store whose two
+    types share a name - the collision `write_record` rejects.
+    """
+    staged.remove(GEN, ["Manchester Wind"])
+    staged.add("Bus", pd.DataFrame([{"name": "Manchester Wind"}]))
+
+    rows = [
+        r
+        for r in staged._collapsed_entities("components").fetchall()
+        if r[1] == "Manchester Wind"
+    ]
+    assert len(rows) == 1
+    assert rows[0][0] == "Bus"
+
+    # And it commits: a store with two rows for the name would be rejected.
+    child = staged.commit(NewChild(root))
+    assert "Manchester Wind" not in PyPSA.build(child.store).c[GEN].static.index
+
+
 def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     """`bus` keys a connection rather than being a member column (§6).
 

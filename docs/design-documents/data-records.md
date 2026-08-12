@@ -483,7 +483,7 @@ Some attributes belong not to a component but to one of its connections to a bus
 A connection is identified by **the bus it attaches to**.
 Position is a framework detail: keying the overlay by position would mean a patch layer had to know a connection's current index, so an ancestor inserting a connection earlier would silently redirect that patch to a different bus.
 
-So connections are rows in `dims/connections/<Type>.parquet`, keyed by `(component_type, name, bus, *connection key dims)`, carrying their own tombstones.
+So connections are rows in `dims/connections/<Type>.parquet`, keyed by `(name, bus, *connection key dims)`, carrying their own tombstones.
 `role` — which end of the component it is — is an ordinary described column, not part of the key.
 
 `bus` is also part of the **inputs** key, `(name, bus, *owned_per dims, attribute)`, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
@@ -566,12 +566,15 @@ A reader pointed at a layer directory therefore sees exactly what that layer wro
 The owner map answers, for a node, which layer owns each key.
 Three maps, not one:
 
+Key columns first, then what each map carries over them:
+
 ```
 # inputs                            # components               # connections
-name                                component_type             component_type
-bus  -- NULL for component-level    name                       name
-<owned_per dims>                    <component key dims>       bus  -- never NULL
-attribute                           layer_uuid                 <connection key dims>
+name                                name                       name
+bus  -- NULL for component-level    <component key dims>       bus  -- never NULL
+<owned_per dims>                    --                         <connection key dims>
+attribute                           component_type             --
+--                                  layer_uuid                 component_type
 layer_uuid                          order_key                  layer_uuid
 varies      STRUCT(<dim>: BOOLEAN, ...)                        order_key
 broadcast   STRUCT(<dim>: BOOLEAN, ...)
@@ -585,7 +588,14 @@ Splitting them keeps each row shape honest — `attribute` and the flags are mea
 
 `component_type` is on the **entity** maps only, never on `inputs`: an attribute row is addressed by `name` alone (§3.5), and the components map is what says which type a name is.
 So that map is the entity mapping every type-scoped question goes through — `flags(ctype)` joins it (§4.3), as does a consumer wanting one type's frame.
-It is also why the components map is built first: the other two are resolved against it.
+
+Where it is present it is a **column, not part of the key.**
+Every one of the three maps is keyed on `name` (plus `bus` and the dims that apply); the components map carries `component_type` because it is the table that answers "what type is this name", and that answer is functionally determined by the key rather than keying alongside it.
+The fold therefore aggregates the type over the group-by instead of grouping on it.
+
+The distinction is load-bearing rather than pedantic.
+Keying on the type would mean a name could resolve to two rows — one per type — which is exactly the collision §3.5 forbids, silently admitted at read time instead of rejected at write time.
+The same holds in the staging area: `remove` under one type followed by `add` under another must collapse to the later edit (§11.7), and a type-partitioned key keeps both.
 
 `order_key` is monotonic across the fold history, giving first-introduced order across layers (§3.4).
 It is assigned pre-union, per layer, because the fold's own output has no order of its own — a bare `row_number()` over what `UNION ALL` returns would scramble which row counts as first.
@@ -752,14 +762,16 @@ Two properties follow from accumulate-then-commit, and both are the point:
 
 Each edit maps onto exactly one part of the format:
 
-| edit                        | writes                                                              | key it targets                                      |
-| --------------------------- | ------------------------------------------------------------------- | --------------------------------------------------- |
-| set an attribute on a group | `inputs/<attr>.parquet` rows                                        | `(name, bus, *owned_per dims, attribute)`           |
-| add components              | `dims/components/` rows, plus `inputs/` rows for varying attributes | `(component_type, name, *component key dims)`       |
-| remove components           | a `deleted = true` tombstone                                        | `(component_type, name, *component key dims)`       |
-| connect / disconnect        | `dims/connections/` rows and tombstones                             | `(component_type, name, bus, *connection key dims)` |
+| edit                        | writes                                                              | key it targets                            |
+| --------------------------- | ------------------------------------------------------------------- | ----------------------------------------- |
+| set an attribute on a group | `inputs/<attr>.parquet` rows                                        | `(name, bus, *owned_per dims, attribute)` |
+| add components              | `dims/components/` rows, plus `inputs/` rows for varying attributes | `(name, *component key dims)`             |
+| remove components           | a `deleted = true` tombstone                                        | `(name, *component key dims)`             |
+| connect / disconnect        | `dims/connections/` rows and tombstones                             | `(name, bus, *connection key dims)`       |
 
-The asymmetry is §3.5's: an **entity** edit names a type because it creates or destroys the thing that has one, while an **attribute** edit names only the component, whose type is already established.
+Every key is `name`-based, because `name` is what identifies a component (§3.5).
+An **entity** edit still _names_ a type — `add("Generator", frame)` — because it creates the thing that has one, and the row it writes records it; but the type is a column of that row rather than part of the key it targets.
+That is what makes `remove("Generator", ["x"])` followed by `add("Bus", frame)` collapse to the later edit: one name has one answer, where a type-partitioned key would keep both and commit a store whose two types share a name.
 
 The crucial property: **an edit is expressed in the format's own terms.** Setting `p_nom` on twenty components _is_ twenty `inputs/p_nom.parquet` rows, which is what a patch layer would hold anyway.
 So a staged edit is already the row it will be written as, and `commit()` is a concatenation rather than a translation.

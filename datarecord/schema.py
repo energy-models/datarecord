@@ -334,8 +334,18 @@ class Schema(BaseModel):
 
     @property
     def component_key(self) -> tuple[str, ...]:
-        """Components-map key columns, compared NULL-safely when folding (§9.1)."""
-        return ("component_type", "name", *self.component_dims)
+        """Components-map key columns, compared NULL-safely when folding (§9.1).
+
+        No `component_type`: `name` identifies a component across every type
+        (§3.5), so the type is a *column* of the map (`component_columns`) rather
+        than part of what keys it - carried because the map is the entity table
+        that answers "what type is this name", not because it distinguishes rows.
+
+        Keeping it in the key would be harmless in the fold and wrong as a
+        statement: it would say two types may share a name, which is the thing
+        §3.5 forbids.
+        """
+        return ("name", *self.component_dims)
 
     @property
     def connection_key(self) -> tuple[str, ...]:
@@ -343,9 +353,10 @@ class Schema(BaseModel):
 
         `bus` identifies the connection, so it is a required key column rather
         than a broadcast dim: never expanded against an axis, only compared
-        NULL-safely. `role` describes the connection and keys nothing.
+        NULL-safely. `role` describes the connection and keys nothing, and
+        `component_type` keys nothing either (`component_key`).
         """
-        return ("component_type", "name", "bus", *self.connection_dims)
+        return ("name", "bus", *self.connection_dims)
 
     @property
     def input_columns(self) -> tuple[str, ...]:
@@ -354,13 +365,18 @@ class Schema(BaseModel):
 
     @property
     def component_columns(self) -> tuple[str, ...]:
-        """The components map's full column set (§9.1)."""
-        return (*self.component_key, "layer_uuid", "order_key")
+        """The components map's full column set (§9.1).
+
+        `component_type` is here rather than in the key: the map carries it so a
+        type-scoped read can join on `name` (§3.5), and it is functionally
+        determined by `name` rather than keying alongside it.
+        """
+        return ("component_type", *self.component_key, "layer_uuid", "order_key")
 
     @property
     def connection_columns(self) -> tuple[str, ...]:
         """The connections map's full column set (§9.1)."""
-        return (*self.connection_key, "layer_uuid", "order_key")
+        return ("component_type", *self.connection_key, "layer_uuid", "order_key")
 
     # -- typing (§3.2, §10) -------------------------------------------------
 

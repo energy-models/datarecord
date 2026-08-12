@@ -1217,9 +1217,11 @@ class WorkingRecord:
         rel = self._rows("components")
         if rel is None:
             return None
-        cols = ("component_type", "name", *self.schema.component_dims)
+        cols = self.schema.component_key
         # An `add` after a `remove` means the component exists again, so only
-        # the latest row per key counts (§11.7).
+        # the latest row per key counts (§11.7). Keyed without `component_type`
+        # (§3.5): partitioning on it too would let a tombstone and a later `add`
+        # under a different type both survive, where one name has one answer.
         return (
             _latest_per(rel, cols)
             .filter(col("deleted"))
@@ -1227,22 +1229,21 @@ class WorkingRecord:
         )
 
     def _collapsed_entities(self, kind: str) -> DuckDBPyRelation | None:
-        """Staged member or connection rows, last-write-wins per key (§11.7)."""
+        """Staged member or connection rows, last-write-wins per key (§11.7).
+
+        The entity key, so without `component_type` (§3.5): one name has one
+        type, and partitioning on it as well would keep two rows for a name two
+        `add`s disagreed about rather than letting the later win.
+        """
         rel = self._rows(kind)
         if rel is None:
             return None
-        dims = (
-            self.schema.component_dims
+        return _latest_per(
+            rel,
+            self.schema.component_key
             if kind == "components"
-            else self.schema.connection_dims
+            else self.schema.connection_key,
         )
-        cols = (
-            "component_type",
-            "name",
-            *(("bus",) if kind == "connections" else ()),
-            *dims,
-        )
-        return _latest_per(rel, cols)
 
     # -- what commit writes (§11.7) -----------------------------------------
 

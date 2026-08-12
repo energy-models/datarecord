@@ -232,10 +232,13 @@ def _deleted_relation(
     con: DuckDBPyConnection,
     *,
     subdir: str = "components",
-    fixed: tuple[str, ...] = ("component_type", "name"),
+    fixed: tuple[str, ...] = ("name",),
     dims: tuple[str, ...] | None = None,
 ) -> DuckDBPyRelation:
     """This layer's tombstones of one kind (§8.3, §6).
+
+    No `component_type` among the key columns: a tombstone is only ever
+    anti-joined against a map's key, and `name` identifies the component (§3.5).
 
     Parameters
     ----------
@@ -288,7 +291,7 @@ def _component_deleted_for_connections(
         d for d in keys.schema.component_dims if d not in keys.schema.connection_dims
     ]:
         return deleted
-    shared = ("component_type", "name", *keys.schema.connection_dims)
+    shared = ("name", *keys.schema.connection_dims)
     return deleted.project(*(col(c) for c in shared)).distinct()
 
 
@@ -301,7 +304,7 @@ def _connection_deleted(
         keys,
         con,
         subdir="connections",
-        fixed=("component_type", "name", "bus"),
+        fixed=("name", "bus"),
         dims=keys.schema.connection_dims,
     )
 
@@ -412,28 +415,16 @@ def fold_inputs(
     # Deleting a component drops its attribute rows; deleting one connection
     # drops only that connection's, which the map can scope because `bus` is
     # in `input_key` (§6).
-    #
-    # The tombstones carry `component_type` and the inputs map does not (§3.5),
-    # so it is dropped from both anti-join keys rather than matched. That is
-    # sound because `name` is unique: a tombstone for `(Generator, wind1)` and
-    # an inputs row for `wind1` are necessarily the same component, so there is
-    # no type for the join to disambiguate.
-    component_scope = tuple(
-        c for c in keys.schema.component_key if c != "component_type"
-    )
-    connection_scope = tuple(
-        c for c in keys.schema.connection_key if c != "component_type"
-    )
     kept = (
         parent.set_alias("p")
         .join(
             _component_deleted(record_id, keys, con).set_alias("x"),
-            _null_safe("x", "p", component_scope),
+            _null_safe("x", "p", keys.schema.component_key),
             how="anti",
         )
         .join(
             _connection_deleted(record_id, keys, con).set_alias("c"),
-            _null_safe("c", "p", connection_scope),
+            _null_safe("c", "p", keys.schema.connection_key),
             how="anti",
         )
         .join(
@@ -484,11 +475,11 @@ def fold_connections(
         key=keys.schema.connection_key,
         columns=keys.schema.connection_columns,
         dims=keys.schema.connection_dims,
-        fixed=("component_type", "name", "bus"),
+        fixed=("name", "bus"),
         # Keyed as the connections map is: `component_dims` may declare more,
         # and `_component_deleted_for_connections` resolves that excess.
         also_deleted=_component_deleted_for_connections,
-        also_deleted_key=("component_type", "name", *keys.schema.connection_dims),
+        also_deleted_key=("name", *keys.schema.connection_dims),
     )
 
 
@@ -502,7 +493,7 @@ def _fold_ordered(
     key: tuple[str, ...],
     columns: tuple[str, ...],
     dims: tuple[str, ...],
-    fixed: tuple[str, ...] = ("component_type", "name"),
+    fixed: tuple[str, ...] = ("name",),
     also_deleted: Callable[[UUID, Dims, DuckDBPyConnection], DuckDBPyRelation]
     | None = None,
     also_deleted_key: tuple[str, ...] = (),
@@ -518,6 +509,9 @@ def _fold_ordered(
     ----------
     fixed
         Key columns that are never axis-expanded (`bus` for connections).
+        `component_type` is not among them: the map carries it as a column
+        determined by `name` rather than as part of the key (§3.5), so it is
+        projected and aggregated over below instead of grouped by.
     also_deleted, also_deleted_key
         A second tombstone relation to anti-join `parent` against, and the key
         to match it on. Connections use it for component tombstones (§6).
@@ -533,13 +527,22 @@ def _fold_ordered(
         rel = _cast(keys.schema, rel)
         rel, expanded = keys.expand_dims(rel.filter(not_deleted).set_alias("i"), dims)
         tagged = rel.project(
+            col("i", "component_type"),
             *(col("i", c) for c in fixed),
             *(expr.alias(d) for d, expr in expanded.items()),
             lit(str(record_id)).cast("UUID").alias("layer_uuid"),
             sql("row_number() OVER ()").alias("_row"),
         )
+        # `component_type` is aggregated rather than grouped by: it is a column
+        # of the map determined by `name` (§3.5), and grouping on it would let
+        # one name under two types survive as two rows - the collision the write
+        # path rejects, silently resolved here instead.
         own = tagged.aggregate(
-            [*(col(c) for c in (*key, "layer_uuid")), fn.min(col("_row")).alias("_row")]
+            [
+                *(col(c) for c in (*key, "layer_uuid")),
+                fn.any_value(col("component_type")).alias("component_type"),
+                fn.min(col("_row")).alias("_row"),
+            ]
         )
         own = con.sql(
             "SELECT * EXCLUDE (_row),"
