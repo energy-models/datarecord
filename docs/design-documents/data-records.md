@@ -674,10 +674,10 @@ class WorkingRecord:
 
     def set(
         self,
-        ctype: str,
         attribute: str,
         value: Any,  # scalar | sequence | mapping | frame | nw.Expr
         *,
+        component_type: str | None = None,  # from the frame's column if omitted
         names: Sequence[str] | None = None,
         bus: str | None = None,
         kind: Literal["inputs", "outputs"] = "inputs",
@@ -733,15 +733,20 @@ So a staged edit is already the row it will be written as, and `commit()` is a c
 ### 11.2 `set`
 
 ```python
-store.set("Generator", "p_nom", 150.0, names=["wind1", "wind2"])  # broadcast
-store.set("Generator", "p_nom", [150.0, 80.0], names=["wind1", "wind2"])  # per name
-store.set("Generator", "p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
-store.set("Generator", "p_max_pu", frame, names=["wind1"])  # long frame
-store.set("Link", "efficiency", 0.9, names=["dc"], bus="north")  # a connection
-store.set("Generator", "p_nom", 200.0, names=["wind1"], scenario="high")  # scoped
-store.set("Generator", "p_nom", nw.col("value") * 1.1)  # derived (§11.3)
-store.set("Generator", "p", solved, kind="outputs")  # a result (§9.4)
+gen = dict(component_type="Generator")
+store.set("p_nom", 150.0, names=["wind1", "wind2"], **gen)  # broadcast
+store.set("p_nom", [150.0, 80.0], names=["wind1", "wind2"], **gen)  # per name
+store.set("p_nom", {"wind1": 150.0, "wind2": 80.0}, **gen)  # per name, keyed
+store.set("p_max_pu", frame, names=["wind1"], **gen)  # long frame
+store.set("efficiency", 0.9, names=["dc"], bus="north", component_type="Link")
+store.set("p_nom", 200.0, names=["wind1"], scenario="high", **gen)  # scoped
+store.set("p_nom", nw.col("value") * 1.1, **gen)  # derived (§11.3)
+store.set("p", solved, kind="outputs")  # a result; type from the frame (§9.4)
 ```
+
+`component_type` is keyword-only and may be omitted **only** for a long frame carrying a `component_type` column, which is then authoritative — so one frame spanning several types stages each row under its own.
+Every other form needs it: a scalar is stamped onto rows the call invents, and `names=None` resolves against one type's members.
+A frame without the column has it added from the keyword; neither present is an error rather than a guess.
 
 `bus` names a connection rather than the component (§6); every other keyword is a dim, so `scenario="high"` scopes the edit and its absence means "every scenario" by the NULL broadcast rule.
 
@@ -771,8 +776,8 @@ Index dtype does not settle it, since an axis label may be a string like a name,
 ### 11.3 An `nw.Expr` value — derived from the current one
 
 ```python
-store.set("Generator", "p_nom", nw.col("value") * 1.1)  # scale up
-store.set("Generator", "p_max_pu", nw.col("value").clip(upper=0.9))
+store.set("p_nom", nw.col("value") * 1.1, component_type="Generator")  # scale up
+store.set("p_max_pu", nw.col("value").clip(upper=0.9), component_type="Generator")
 ```
 
 A fifth `value` form rather than a second method.
@@ -801,11 +806,11 @@ A tool solves against a record and hands back what it computed:
 
 ```python
 store = WorkingRecord(record, con)
-store.set("Generator", "p_max_pu", 0.8, names=["wind1"])  # edit an input
+store.set("p_max_pu", 0.8, names=["wind1"], component_type="Generator")
 model = PyPSA.build(store)  # solve the edited record
 model.optimize()
-for (ctype, attr), frame in PyPSA.results(model).items():
-    store.set(ctype, attr, frame, kind="outputs")
+for attr, frame in PyPSA.results(model).items():
+    store.set(attr, frame, kind="outputs")  # type comes from the frame
 store.commit(NewChild(record))  # one layer, inputs and results together
 ```
 
@@ -823,6 +828,8 @@ Two things differ from an input edit, both following from §9.4:
   A result may legitimately name a component the record never declared: PyPSA's `SubNetwork` exists only after a solve, so rejecting it would refuse a real result.
 - **No `_restated` completion at commit.**
   Results are complete as produced rather than a partial override of a parent's (§5.5), so there is nothing to carry forward from the base.
+- **`component_type` comes from the frame.**
+  `results` hands over one frame per attribute spanning every type (§12), so the column is authoritative and the keyword is omitted — stamping one type onto all of those rows would silently relabel the rest.
 
 Keeping results coherent with the inputs they were computed from is the caller's business.
 Editing an input after attaching results leaves results describing a record that no longer exists, and nothing here silently discards them — a store that dropped them on the next `set` would be guessing at which of the two the caller meant to keep.
@@ -980,19 +987,18 @@ class Tool(Protocol):
     def verify(self, store: Record) -> Requirements: ...  # falsy when usable
     def build(self, store: Record) -> Any: ...
     def to_datarecord(self, model: Any) -> Record: ...  # inverse of build
-    def results(self, model: Any) -> dict[tuple[str, str], nw.DataFrame]: ...
+    def results(self, model: Any) -> Frames: ...
 ```
 
-`results` is keyed by `(component_type, attribute)` rather than by attribute alone, and its values are eager frames.
+`results` returns `Frames` — the same type `Record.outputs` presents, keyed by attribute, each frame carrying `component_type` (§3.2).
+So a tool's results go straight to `write_record`, or one at a time to `set(attr, frame, kind="outputs")` with no key to unpack (§11.3.1).
 
-The **key** is the substantive difference, and it follows from `results` being pre-store.
-`Frames` keys by attribute alone because in the store one `inputs/p_max_pu.parquet` holds every type's rows and the type is recoverable from the `component_type` column.
-Nothing is written yet here: `results` hands over frames straight off the framework's per-type containers, where `Generator.p` and `Line.p` are separate objects of different shapes.
-Collapsing them onto one `"p"` key would mean concatenating first — work the only caller immediately undoes, since `set(ctype, attr, frame, kind="outputs")` needs the type back (§11.3.1).
+A framework holds its results per component type, so reaching this shape means concatenating each attribute's types into one frame.
+That is free: the frames are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller collects.
 
-The **eagerness** is a description rather than a decision.
-Reshaping a solved model's containers into long form is in-memory work on the framework's own frames, and it has already happened by the time `results` returns, so `nw.DataFrame` states the cost honestly where a `LazyFrame` would imply a deferral that is not there.
-Nothing depends on it: `.lazy()` would satisfy `Frames`' value type without changing a single computation, so if these two shapes are ever unified it is the key that has to be argued, not this.
+Lazy is what the protocol asks for rather than what any implementation must do.
+A tool reshaping a solved model's in-memory containers has nothing to defer and wraps its eager frames with `.lazy()`; one that could fetch a result attribute from a solver on demand is free to, and a caller wanting three of forty then pays for three.
+That is §4.2's argument, on the write side.
 
 A store is the input to a translation, not the owner of one, so there is no registry and no name dispatch: a tool is a module-level singleton reached by importing it, `build` returns the framework's own type, and nothing in the record layer imports a tool.
 

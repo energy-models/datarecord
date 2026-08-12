@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     import narwhals as nw
 
-    from datarecord.record import Record
+    from datarecord.record import Frames, Record
 
 
 @dataclass(frozen=True)
@@ -239,13 +239,16 @@ class Tool(Protocol):
         """
         ...
 
-    def results(self, model: Any) -> dict[tuple[str, str], nw.DataFrame]:
+    def results(self, model: Any) -> Frames:
         """This model's result attributes in the record's long form (§3).
 
-        Keyed by `(component_type, attribute)`, each frame carrying the long
-        schema's dim columns plus `value`. Narwhals frames, so the seam names
-        no one dataframe library: a tool backed by polars returns the same
-        type as one backed by pandas, and the write path (§12, v2) hits a
-        native representation only at the DuckDB boundary.
+        Keyed by attribute, each frame carrying `component_type` alongside the
+        long schema's dim columns and `value` - the same shape `Record.outputs`
+        presents, so results go straight to `write_record` or to
+        `set(..., kind="outputs")`.
+
+        Narwhals frames, so the seam names no one dataframe library, and lazy so
+        an implementation may fetch a result attribute on demand rather than
+        materialising every one.
         """
         ...

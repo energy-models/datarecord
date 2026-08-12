@@ -899,18 +899,24 @@ class PyPSATool(Tool):
         _broadcast_standard_types(n)
         return n
 
-    def results(self, model: pypsa.Network) -> dict[tuple[str, str], nw.DataFrame]:
+    def results(self, model: pypsa.Network) -> Frames:
         """A solved network's result attributes in the store's long form (§9.4).
 
-        Keyed by `(component_type, attribute)`, as narwhals frames so the return
-        type names no one dataframe library. Which attributes count as results
-        comes from PyPSA's registry, so an upgrade that adds one is picked up.
+        Keyed by attribute, matching `outputs/<attr>.parquet`: every component
+        type's rows for one attribute are concatenated into one frame carrying
+        `component_type`, exactly as `attributes` presents `inputs/` (§3.2).
+        Which attributes count as results comes from PyPSA's registry, so an
+        upgrade that adds one is picked up.
+
+        `_as_long` reshapes a solved `Network`'s in-memory containers eagerly;
+        the frames are wrapped with `.lazy()` and concatenated as a plan, so the
+        union costs nothing until collected.
 
         Rows still at the attribute's default are dropped: a static output like
         `Bus.control` carries its default whether or not the network was solved,
         and an absent output file means exactly "take the default" (§3.3).
         """
-        out: dict[tuple[str, str], nw.DataFrame] = {}
+        per_attribute: dict[str, list[nw.LazyFrame]] = {}
         for c in model.components:
             if not _exported(c):
                 continue
@@ -923,10 +929,16 @@ class PyPSATool(Tool):
                     continue
                 if long.empty:
                     continue
-                out[c.name, attr] = nw.from_native(long, eager_only=True).with_columns(
-                    component_type=nw.lit(c.name), attribute=nw.lit(attr)
+                frame = (
+                    nw.from_native(long, eager_only=True)
+                    .with_columns(component_type=nw.lit(c.name), attribute=nw.lit(attr))
+                    .lazy()
                 )
-        return out
+                per_attribute.setdefault(attr, []).append(frame)
+        return {
+            attr: frames[0] if len(frames) == 1 else nw.concat(frames)
+            for attr, frames in per_attribute.items()
+        }
 
     def to_datarecord(self, model: pypsa.Network) -> Record:
         """Present a `Network` as the `Record` `write_record` persists (§10, §12).

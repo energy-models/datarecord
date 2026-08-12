@@ -687,10 +687,10 @@ class WorkingRecord:
 
     def set(
         self,
-        ctype: str,
         attribute: str,
         value: Any,
         *,
+        component_type: str | None = None,
         names: Sequence[str] | None = None,
         bus: str | None = None,
         kind: Literal["inputs", "outputs"] = "inputs",
@@ -704,6 +704,13 @@ class WorkingRecord:
         of the current value* rather than a value, so it reads before it stages
         and two such calls compose (§11.3).
 
+        `component_type` may be omitted only for a long frame that carries a
+        `component_type` column, which is then authoritative - so one frame
+        spanning several types stages each row under its own (§11.2). Every
+        other form needs it: a scalar is stamped onto rows this call invents,
+        and `names=None` resolves against one type's members. A frame without
+        the column gets `component_type` added.
+
         `kind` names the destination in the format's own terms (§11.1):
         `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a
         tool hands results back. Results use the same long schema; what differs
@@ -716,21 +723,40 @@ class WorkingRecord:
         `SubNetwork` is one - and rejecting those would refuse a legitimate
         result. An *input* for an undeclared name stays an error (§11.8).
         """
+        is_long_frame = _is_frame(value) and _series_index(value) is None
+        if is_long_frame:
+            lazy = nw.from_native(value).lazy()
+            columns = lazy.collect_schema().names()
+            if component_type is None and "component_type" not in columns:
+                msg = (
+                    f"`set({attribute!r}, <frame>)` needs `component_type`, either "
+                    f"as a column of the frame or as the keyword"
+                )
+                raise ValueError(msg)
+            # The frame's own column wins where it has one: a results frame
+            # spans types, and §11.2's "a frame supplies its own keys" covers
+            # `component_type` no less than `name`.
+            if "component_type" not in columns:
+                lazy = lazy.with_columns(component_type=nw.lit(component_type))
+            self._validate_long(lazy, attribute, dims, kind=kind)
+            if kind == "inputs":
+                self._require_frame_names(lazy)
+            self._stage_long(attribute, lazy, bus, kind)
+            return
+
+        if component_type is None:
+            msg = (
+                f"`set({attribute!r}, ...)` needs `component_type`; only a long "
+                f"frame carrying a `component_type` column may omit it"
+            )
+            raise ValueError(msg)
+        ctype = component_type
+
         self._validate_edit(ctype, attribute, dims, kind=kind)
         if isinstance(value, nw.Expr):
             self._stage_derived(
                 ctype, attribute, value, names=names, bus=bus, kind=kind, **dims
             )
-            return
-        if _is_frame(value) and _series_index(value) is None:
-            # A frame supplies its own keys (§11.2), but the §11.8 check applies
-            # the same way: a name no layer declares resolves to nothing, and a
-            # caller should learn that here rather than at read time.
-            lazy = nw.from_native(value).lazy()
-            if kind == "inputs" and "name" in lazy.collect_schema().names():
-                named = lazy.select("name").unique("name").collect()
-                self._require_names(ctype, [str(n) for n in named["name"].to_list()])
-            self._stage_long(ctype, attribute, value, bus, kind)
             return
 
         target = list(names) if names is not None else self._resolved_names(ctype)
@@ -766,11 +792,44 @@ class WorkingRecord:
                 )
         self.con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", rows)
 
-    def _stage_long(
-        self, ctype: str, attribute: str, frame: Any, bus: str | None, kind: str
+    def _validate_long(
+        self,
+        lazy: nw.LazyFrame,
+        attribute: str,
+        dims: Mapping[str, Any],
+        *,
+        kind: str,
     ) -> None:
-        """Stage a long frame that supplies its own keys (§11.2)."""
-        lazy = nw.from_native(frame).lazy()
+        """`_validate_edit` for every component type a long frame carries (§11.8)."""
+        types = lazy.select("component_type").unique("component_type").collect()
+        for ctype in types["component_type"].to_list():
+            self._validate_edit(str(ctype), attribute, dims, kind=kind)
+
+    def _require_frame_names(self, lazy: nw.LazyFrame) -> None:
+        """`_require_names` per component type the frame carries (§11.8)."""
+        if "name" not in lazy.collect_schema().names():
+            return
+        pairs = (
+            lazy.select("component_type", "name")
+            .unique(["component_type", "name"])
+            .collect()
+        )
+        by_type: dict[str, list[str]] = {}
+        for ctype, name in zip(
+            pairs["component_type"].to_list(), pairs["name"].to_list(), strict=True
+        ):
+            by_type.setdefault(str(ctype), []).append(str(name))
+        for ctype, names in by_type.items():
+            self._require_names(ctype, names)
+
+    def _stage_long(
+        self, attribute: str, lazy: nw.LazyFrame, bus: str | None, kind: str
+    ) -> None:
+        """Stage a long frame that supplies its own keys (§11.2).
+
+        `component_type` is read from the frame, which `set` has ensured carries
+        it - so a frame spanning several types stages each row under its own.
+        """
         _in_long = lazy.to_native()  # noqa: F841 - referenced by name below
         table = self._ensure(kind)
         # A dim the frame does not carry is NULL - "every value of it" (§3.3) -
@@ -782,12 +841,12 @@ class WorkingRecord:
             for d in self.schema.dims
         )
         self.con.execute(
-            f"INSERT INTO {table} SELECT ? AS component_type, name, "
+            f"INSERT INTO {table} SELECT component_type, name, "
             f"? AS bus, ? AS attribute, "
             f"NULL::DOUBLE AS breakpoint, "
             f"value::VARCHAR AS value, {dim_cols}, ? "
             f"FROM _in_long",
-            [ctype, bus, attribute, next(_SEQ)],
+            [bus, attribute, next(_SEQ)],
         )
 
     def _stage_derived(
@@ -940,9 +999,10 @@ class WorkingRecord:
             # Always `inputs`: `add` declares components, and a component's
             # attribute values are inputs whatever a later solve produces.
             self._stage_long(
-                ctype,
                 attribute,
-                lazy.select("name", nw.col(attribute).alias("value")),
+                lazy.select("name", nw.col(attribute).alias("value")).with_columns(
+                    component_type=nw.lit(ctype)
+                ),
                 None,
                 "inputs",
             )

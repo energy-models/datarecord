@@ -293,38 +293,56 @@ def test_schema_renames_and_computes():
 
 
 def test_results_extracts_long_form_outputs(single_record):
-    """A solved network's results come back keyed by `(type, attribute)`, long-form."""
+    """A solved network's results come back keyed by attribute, long-form (§12)."""
     n = PyPSA.build(single_record.store)
     n.optimize(solver_name="highs")
 
     results = PyPSA.results(n)
-    assert ("Generator", "p") in results
-    assert ("Generator", "p_nom_opt") in results
+    assert "p" in results
+    assert "p_nom_opt" in results
 
-    p = results["Generator", "p"]
-    # Narwhals frames, so the seam names no one dataframe library (§12).
-    assert isinstance(p, nw.DataFrame)
+    # Narwhals frames, so the seam names no one dataframe library, and lazy so a
+    # tool may fetch on demand (§12).
+    assert isinstance(results["p"], nw.LazyFrame)
+    p = results["p"].collect()
     # The long schema's columns (§3), so the write path can persist it as-is.
     assert {"name", "snapshot", "scenario", "period", "value"} <= set(p.columns)
-    assert set(p["component_type"].to_list()) == {"Generator"}
+    # Keyed by attribute, so the type lives in the column - as `inputs/` does.
+    assert "Generator" in set(p["component_type"].to_list())
     assert set(p["attribute"].to_list()) == {"p"}
-    # Series output: one row per (name, snapshot).
-    assert len(p) == len(n.snapshots) * len(n.c["Generator"].static)
+    # Series output: one row per (name, snapshot), for the Generator rows.
+    gen = p.filter(nw.col("component_type") == "Generator")
+    assert len(gen) == len(n.snapshots) * len(n.c["Generator"].static)
 
     # A static output has no snapshot, and only the components whose value
     # differs from the default appear (some generators solve to p_nom_opt=0).
-    nom = results["Generator", "p_nom_opt"]
+    nom = results["p_nom_opt"].collect()
+    nom = nom.filter(nw.col("component_type") == "Generator")
     assert nom["snapshot"].is_null().all()
     nonzero = n.c["Generator"].static["p_nom_opt"] != 0.0
     assert set(nom["name"].to_list()) == set(n.c["Generator"].static.index[nonzero])
+
+
+def test_results_concatenate_every_type_under_one_attribute(single_record):
+    """One `p` frame holds every type's rows, matching `outputs/p.parquet` (§3.2)."""
+    n = PyPSA.build(single_record.store)
+    n.optimize(solver_name="highs")
+
+    p = PyPSA.results(n)["p"].collect()
+    types = set(p["component_type"].to_list())
+    # `p` is a result of several types, so the concat is what is being tested;
+    # keying by `(type, attribute)` would have split these into separate frames.
+    assert len(types) > 1
+    # Every row still says which type it belongs to, so nothing is lost.
+    assert not p["component_type"].is_null().any()
 
 
 def test_results_skips_outputs_still_at_their_default(single_record):
     """An unsolved network yields no `p`/`p_nom_opt` rows (§9.4 default rule)."""
     n = PyPSA.build(single_record.store)
     results = PyPSA.results(n)
-    assert ("Generator", "p") not in results
-    assert ("Generator", "p_nom_opt") not in results
+    assert "p" not in results
+    assert "p_nom_opt" not in results
 
 
 def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
