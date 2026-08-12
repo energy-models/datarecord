@@ -49,10 +49,10 @@ CREATE TABLE IF NOT EXISTS data_records (
 DEFAULT_BASE_URI = os.environ.get("BLOCKS_RECORD_BASE_URI", "")
 
 # The store root each connection was opened against (§5.6). A connection is
-# already scoped to one store - `connect` registers its `layer_dir`/`node_dir`
-# macros from this root - so the schema beside those layers is a property of
-# the connection too, and reading it needs no separate parameter threaded
-# through the fold. Weak, so a closed connection does not pin its entry.
+# already scoped to one store - `connect` registers its `layer_dir` macro from
+# this root - so the schema beside those layers is a property of the connection
+# too, and reading it needs no separate parameter threaded through the fold.
+# Weak, so a closed connection does not pin its entry.
 _BASE_URIS: MutableMapping[DuckDBPyConnection, str] = WeakKeyDictionary()
 
 
@@ -83,33 +83,37 @@ def layer_dir(record_id: UUID | str, base_uri: str | None = None) -> str:
     The layer location is derived from the UUID, never stored (§13), so
     changing the layout is a change in this one function and its SQL macro.
     This is a plain PyPSA parquet store (§3): only the layer's own
-    contribution lives here, so a non-blocks reader sees a normal store
-    (§13). Node-derived caches (the owner map, resolved dims) live under
-    `node_dir` instead, never inside the layer.
+    contribution lives at the top level, so a non-blocks reader sees a normal
+    store (§13). Derived caches (the owner map, resolved dims) go in the
+    `resolved/` subdirectory, which no single-level glob reaches.
     """
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
     return f"{base.rstrip('/')}/layers/{record_id}/" if base else f"layers/{record_id}/"
 
 
-def node_dir(record_id: UUID | str, base_uri: str | None = None) -> str:
-    """Return the node-scoped cache directory for `record_id`, with a trailing slash.
+def resolved_dir(record_id: UUID | str, base_uri: str | None = None) -> str:
+    """Return the resolved-cache directory for `record_id`, with a trailing slash.
 
-    Sibling to `layer_dir`, not nested inside it: caches derived from the
-    fold (the owner map, resolved dims) are node state, not layer data, so
-    they must never be mistaken for something the layer itself wrote.
+    A subdirectory of `layer_dir`, not a sibling tree: one directory per record
+    holds both what the layer wrote and what the fold derived from it. The
+    nesting is safe because every glob into a layer is single-level
+    (`inputs/*.parquet`, `dims/*.parquet`), so `resolved/` is invisible to a
+    reader that knows nothing about it - which is what keeps a layer directory a
+    plain parquet store a foreign reader can consume (§8.3).
+
+    Only the layer's *inputs* are write-once, then: `materialise` writes here
+    after the fact, which invalidates nothing because results and caches are
+    derived rather than depended on (§8.1, §8.2).
     """
-    base = DEFAULT_BASE_URI if base_uri is None else base_uri
-    return f"{base.rstrip('/')}/nodes/{record_id}/" if base else f"nodes/{record_id}/"
+    return f"{layer_dir(record_id, base_uri)}resolved/"
 
 
 def _register_macros(con: DuckDBPyConnection, base_uri: str) -> None:
-    """Register `layer_dir`/`node_dir` so SQL composes store paths inline (§13)."""
+    """Register `layer_dir` so SQL composes store paths inline (§13)."""
     base = base_uri.rstrip("/")
     prefix = f"{base}/" if base else ""
     con.execute("DROP MACRO IF EXISTS layer_dir")
     con.execute(f"CREATE MACRO layer_dir(id) AS '{prefix}layers/' || id || '/'")
-    con.execute("DROP MACRO IF EXISTS node_dir")
-    con.execute(f"CREATE MACRO node_dir(id) AS '{prefix}nodes/' || id || '/'")
 
 
 def connect(
@@ -122,7 +126,7 @@ def connect(
     database
         DuckDB database, `:memory:` by default.
     base_uri
-        Store root; `layer_dir`/`node_dir` derive every path from it (§13).
+        Store root; `layer_dir` derives every path from it (§13).
     """
     con = duckdb.connect(database)
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
@@ -152,7 +156,7 @@ _default_con: DuckDBPyConnection | None = None
 def default_connection() -> DuckDBPyConnection:
     """The process-level connection, created on first use.
 
-    `DataRecord` attaches this lazily to any record created/loaded without an
+    `Revision` attaches this lazily to any record created/loaded without an
     explicit `con` (including one deserialized in a new process, e.g. across
     a Prefect task boundary); tests always pass their own connection instead.
     """
@@ -237,12 +241,16 @@ def dims_dirs(ancestry: list[UUID]) -> list[str]:
 
     `ancestry` is root first, ending in the record being resolved and already
     truncated at the deepest materialised ancestor (`ancestry_to_read`). Every
-    entry but the last therefore has resolved dims in its node cache, while the
+    entry but the last therefore has resolved dims under `resolved/`, while the
     last is the record itself and contributes its layer's raw `dims/`.
+
+    The two live in the same record directory but stay distinct paths -
+    `layers/<id>/dims/` against `layers/<id>/resolved/dims/` - so a record read
+    as an ancestor and the same record read as itself never alias (§8.2).
     """
     last = len(ancestry) - 1
     return [
-        (layer_dir(uid) if depth == last else node_dir(uid)) + "dims/"
+        (layer_dir(uid) if depth == last else resolved_dir(uid)) + "dims/"
         for depth, uid in enumerate(ancestry)
     ]
 
@@ -253,7 +261,7 @@ def fold_axis(
     """Fold a `<dir>/<filename>` axis table over `dims_dirs`, keyed by `key`.
 
     `dims_dirs` is root first, each entry already resolved by the caller to that
-    ancestor's layer or its node cache (§8.2). Last-writer-wins per `key`, which
+    ancestor's layer or its `resolved/` cache (§8.2). Last-writer-wins per `key`, which
     is `Schema.axis_key` - so a nested dim is keyed by `(*parents, dim)` and two
     periods' identically-labelled timesteps stay distinct (§5.4). Row order
     follows the directory that first introduced the key (§3.4).

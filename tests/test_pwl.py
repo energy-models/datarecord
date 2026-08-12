@@ -1,8 +1,8 @@
 """Piecewise-linear values as breakpoint rows (design doc §7)."""
 
 from datarecord.duck import layer_dir
-from datarecord.layered.record import DataRecord
-from datarecord.store import Flags
+from datarecord.layered.revision import Revision
+from datarecord.record import Flags
 from tests.fixtures import (
     schema,
     write_components,
@@ -27,8 +27,8 @@ def _flags(record, ctype: str, attribute: str) -> Flags:
     return flags[attribute]
 
 
-def _root_with_curve(con) -> DataRecord:
-    record = DataRecord.create(con)
+def _root_with_curve(con) -> Revision:
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
@@ -102,7 +102,7 @@ def test_patch_replaces_the_whole_curve(con, base_uri):
 
 def test_curve_on_a_connection(con, base_uri):
     """`bus` and `breakpoint` compose: one keys, the other does not (§7)."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
@@ -163,7 +163,7 @@ def test_curve_on_a_connection(con, base_uri):
 
 def test_curve_varying_by_snapshot(con, base_uri):
     """A curve per snapshot: `breakpoint` multiplies by the dims like anything else."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
@@ -197,7 +197,7 @@ def test_curve_varying_by_snapshot(con, base_uri):
 
 def test_scalar_replaced_by_a_curve(con, base_uri):
     """A child may turn a scalar into a curve; it is one key either way."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])

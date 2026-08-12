@@ -1,4 +1,4 @@
-"""Tool representations of a `DataRecord`.
+"""Tool representations of a `Revision`.
 
 A record is tool-agnostic: it resolves to dims, components and attributes. A
 *tool* is one concrete modelling framework that can be built from such a

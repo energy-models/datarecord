@@ -1,7 +1,7 @@
-"""The `Store` protocol: one interface over a parquet store's contents.
+"""The `Record` protocol: one interface over a parquet store's contents.
 
-Backings: `layered.record.LayeredStore` (a resolved overlay) and
-`directory.DirectoryStore` (a plain directory). See design doc §4 for the
+Backings: `layered.record.LayeredRecord` (a resolved overlay) and
+`directory.DirectoryRecord` (a plain directory). See design doc §4 for the
 protocol, §4.1 for why it is a protocol rather than a base class, §4.4 for why
 it names no engine, and §9.3 for what differs between the two backings.
 """
@@ -17,7 +17,7 @@ import narwhals as nw
 from datarecord.schema import Schema
 
 Frames = Mapping[str, "nw.LazyFrame"]
-"""What a `Store` hands over: named frames, each an unmaterialised plan (§4.2).
+"""What a `Record` hands over: named frames, each an unmaterialised plan (§4.2).
 
 The `Mapping` ABC, so a plain `dict` satisfies it as fully as `LazyFrames`
 does. A DuckDB-backed store reaches it with `nw.from_native(rel)`, which stays
@@ -98,10 +98,10 @@ class Flags:
 
 
 @runtime_checkable
-class Store(Protocol):
+class Record(Protocol):
     """One parquet store's contents, however it is backed (§4).
 
-    Read-only: writing is `write_layer(record_id, store, con)`, a function over
+    Read-only: writing is `write_record(record_id, store, con)`, a function over
     a store rather than a method on one (§10).
     """
 
@@ -134,25 +134,26 @@ class Store(Protocol):
         """
         ...
 
+    @property
+    def outputs(self) -> Frames:
+        """Long result frames, keyed by attribute name (§9.4).
+
+        Empty for a store carrying no results, which is the same existence
+        answer every other member gives: `set(store.outputs)` is "which results
+        does this store have", exactly as `set(store.flags(ctype))` is the
+        attribute existence test (§4.3). No separate protocol, because
+        emptiness is unambiguous here - nothing half-writes results.
+
+        Unlike its neighbours, this does **not** overlay on a layered store: a
+        record's results are its own layer's, never a resolution over its
+        ancestors' (§9.4).
+        """
+        ...
+
     def flags(self, ctype: str) -> dict[str, Flags]:
         """Every attribute of `ctype`, mapped to the shape its rows take (§4.3).
 
         The key set is the existence answer: an attribute with no rows for this
         type is absent rather than mapped to empty sets.
         """
-        ...
-
-
-@runtime_checkable
-class Solved(Store, Protocol):
-    """A store that also carries results (§4, §9.4).
-
-    Separate from `Store` because results do not overlay and most stores have
-    none, so `isinstance(store, Solved)` is the test rather than a member to
-    find empty. `write_layer` writes `outputs/` only for a source satisfying it.
-    """
-
-    @property
-    def outputs(self) -> Frames:
-        """Long result frames, keyed by attribute name (§9.4)."""
         ...

@@ -1,4 +1,4 @@
-"""`DirectoryStore`, a plain parquet directory as a `Store` (design doc §4, §9.3).
+"""`DirectoryRecord`, a plain parquet directory as a `Record` (design doc §4, §9.3).
 
 Framework-independent, like the rest of `datarecord`: hands over narwhals
 frames and names no modelling framework.
@@ -17,15 +17,15 @@ from duckdb import ConstantExpression as lit
 from datarecord.duck import fn, try_read_parquet
 from datarecord.layered.resolve import read_json, read_schema
 from datarecord.schema import Schema
-from datarecord.store import EMPTY, Flags, LazyFrames
+from datarecord.record import EMPTY, Flags, LazyFrames
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 
 @dataclass(frozen=True)
-class DirectoryStore:
-    """A plain parquet directory, as a `Store` (§9.3).
+class DirectoryRecord:
+    """A plain parquet directory, as a `Record` (§9.3).
 
     No overlay: what the files hold is what it presents - one layer read
     directly, or any standard parquet store. With no owner map, `flags` is a

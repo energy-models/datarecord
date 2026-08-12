@@ -2,7 +2,7 @@
 
 The seam between a tool-agnostic record and one modelling framework (design doc
 §12). The call runs from the tool inward (`PyPSA.build(record.store)`), so the
-record layer imports nothing from here, and a tool reads through `Store` (§4).
+record layer imports nothing from here, and a tool reads through `Record` (§4).
 Tools are module-level objects imported by name - no registry (§12).
 """
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     import narwhals as nw
 
-    from datarecord.store import Store
+    from datarecord.record import Record
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,7 @@ class Requirements:
 
 
 def to_relation(frame: nw.LazyFrame) -> DuckDBPyRelation:
-    """A `Store` frame as the DuckDB relation this tool builds against.
+    """A `Record` frame as the DuckDB relation this tool builds against.
 
     Unwrapping costs nothing and the plan stays lazy (§4.4). For a tool needing
     DuckDB's own SQL - `PIVOT`, which narwhals has no expression for - rather
@@ -141,8 +141,8 @@ class Attr:
             )
             raise ValueError(msg)
 
-    def resolve(self, store: Store) -> DuckDBPyRelation:
-        """This attribute's long relation, read through the `Store` interface.
+    def resolve(self, store: Record) -> DuckDBPyRelation:
+        """This attribute's long relation, read through the `Record` interface.
 
         The store rather than the record, so a tool builds from any backing (§4).
         """
@@ -183,7 +183,7 @@ class Schema:
         """
         return self.attr(ctype, name).source
 
-    def resolve(self, store: Store, ctype: str, name: str) -> DuckDBPyRelation:
+    def resolve(self, store: Record, ctype: str, name: str) -> DuckDBPyRelation:
         """`ctype`'s `name` as a long relation over `store`, mapping applied."""
         return self.attr(ctype, name).resolve(store)
 
@@ -207,7 +207,7 @@ class Tool(Protocol):
     annotating code that takes any tool - not a dispatch table; tools are
     reached by importing them.
 
-    A `Store` rather than a record throughout, so a tool builds from a
+    A `Record` rather than a record throughout, so a tool builds from a
     directory as readily as from an overlay and has no reason to know layering
     exists (§12).
     """
@@ -215,24 +215,24 @@ class Tool(Protocol):
     name: str
     schema: Schema
 
-    def requires(self, store: Store) -> Requirements:
+    def requires(self, store: Record) -> Requirements:
         """What this tool needs from `store` to build a model.
 
-        Store-dependent, not a constant: which attributes are required
+        Record-dependent, not a constant: which attributes are required
         follows the store's own component types and its declared schema.
         """
         ...
 
-    def verify(self, store: Store) -> Requirements:
+    def verify(self, store: Record) -> Requirements:
         """What `store` fails to supply; falsy when the store is usable."""
         ...
 
-    def build(self, store: Store) -> Any:
+    def build(self, store: Record) -> Any:
         """The tool's model object, built from the resolved store."""
         ...
 
-    def to_datarecord(self, model: Any) -> Store:
-        """`model` presented as a layer `write_layer` can persist (§4).
+    def to_datarecord(self, model: Any) -> Record:
+        """`model` presented as a layer `write_record` can persist (§4).
 
         The inverse of `build`. Framework-specific: undoing a framework's own
         shape is exactly what a tool knows and the record layer does not.

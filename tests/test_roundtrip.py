@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from datarecord import DataRecord
+from datarecord import Revision
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network
 
@@ -66,7 +66,7 @@ def assert_networks_equal(got, expected):
 
 @pytest.fixture
 def single_record(con, base_uri, ac_dc):
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     return record
 

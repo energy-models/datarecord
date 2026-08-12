@@ -1,6 +1,6 @@
 """Writing a whole store as a layer (design doc §10).
 
-A `Store` hands over narwhals frames and this module turns them into parquet;
+A `Record` hands over narwhals frames and this module turns them into parquet;
 producing one from a framework's own object is a tool's job (§12, §13).
 """
 
@@ -17,7 +17,7 @@ from duckdb import DuckDBPyRelation
 from datarecord.duck import base_uri_of, layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.schema import Schema
-from datarecord.store import Solved, Store
+from datarecord.record import Record
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
@@ -27,9 +27,9 @@ if TYPE_CHECKING:
 _LONG_FIXED = ("component_type", "name", "bus", "attribute", "breakpoint", "value")
 
 
-def write_layer(
+def write_record(
     record_id: UUID | None,
-    source: Store | Solved,
+    source: Record,
     con: DuckDBPyConnection,
     *,
     uri: str | None = None,
@@ -67,14 +67,14 @@ def write_layer(
     """
     if uri is None:
         if record_id is None:
-            msg = "write_layer needs a record_id or a uri"
+            msg = "write_record needs a record_id or a uri"
             raise ValueError(msg)
         base = layer_dir(record_id)
     else:
         base = uri if uri.endswith("/") else uri + "/"
     local = "://" not in base
     if local and Path(base).exists():
-        msg = f"layer {base} already exists; write_layer creates a new layer (§10)"
+        msg = f"layer {base} already exists; write_record creates a new layer (§10)"
         raise FileExistsError(msg)
 
     schema = source.schema
@@ -105,8 +105,12 @@ def write_layer(
         ]
         # `outputs/` only for a source carrying results, so a store with none
         # produces a layer without the directory rather than an empty one (§10).
-        if isinstance(source, Solved):
-            kinds.append(("outputs", source.outputs, "outputs"))
+        # `getattr` rather than the attribute: `Record` is structural, so a
+        # duck-typed source may not define the member at all, which is the same
+        # answer as defining it empty.
+        outputs = getattr(source, "outputs", None) or {}
+        if outputs:
+            kinds.append(("outputs", outputs, "outputs"))
         for kind, frames, subdir in kinds:
             for key in frames:
                 frame = frames[key]  # looked up exactly once (§10)

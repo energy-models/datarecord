@@ -27,7 +27,7 @@ from duckdb import StarExpression as star
 from datarecord.duck import ex_all
 from datarecord.schema import AttributeSpec, Dimension
 from datarecord.schema import Schema as RecordSchema
-from datarecord.store import Flags, Frames, LazyFrames, Store
+from datarecord.record import Flags, Frames, LazyFrames, Record
 from datarecord.tools.base import (
     Requirements,
     Schema,
@@ -131,7 +131,7 @@ class NetworkShape:
         return [SCENARIO, "name"] if self.stochastic else ["name"]
 
 
-def _connection(store: Store) -> DuckDBPyConnection:
+def _connection(store: Record) -> DuckDBPyConnection:
     """The DuckDB connection `store`'s frames belong to.
 
     Off the concrete backing, since the protocol stays backend-agnostic (§4.4).
@@ -743,7 +743,7 @@ class PyPSATool(Tool):
 
         return frozenset(c.name for c in all_components.values())
 
-    def requires(self, store: Store) -> Requirements:
+    def requires(self, store: Record) -> Requirements:
         """PyPSA's axes, the store's own component types, and their required attributes.
 
         The attribute half is store-dependent: only types the store
@@ -766,7 +766,7 @@ class PyPSATool(Tool):
             ),
         )
 
-    def verify(self, store: Store) -> Requirements:
+    def verify(self, store: Record) -> Requirements:
         """What this store fails to supply for a PyPSA build; falsy if it is usable.
 
         Checks what a build needs: the schema declares PyPSA's axes
@@ -834,7 +834,7 @@ class PyPSATool(Tool):
             unsupported_values=frozenset(unsupported_values),
         )
 
-    def _unsupported_keys(self, store: Store) -> set[tuple[str, str]]:
+    def _unsupported_keys(self, store: Record) -> set[tuple[str, str]]:
         """`(key, dim)` pairs this tool cannot honour: `snapshot`, as any key.
 
         PyPSA's static/series split needs a component's whole series to come
@@ -851,7 +851,7 @@ class PyPSATool(Tool):
         )
         return {(key, SNAPSHOT) for key, dims in kinds if SNAPSHOT in dims}
 
-    def build(self, store: Store) -> pypsa.Network:
+    def build(self, store: Record) -> pypsa.Network:
         """The resolved network, one component type at a time (§12, §12).
 
         Raises
@@ -928,8 +928,8 @@ class PyPSATool(Tool):
                 )
         return out
 
-    def to_datarecord(self, model: pypsa.Network) -> Store:
-        """Present a `Network` as the `Store` `write_layer` persists (§10, §12).
+    def to_datarecord(self, model: pypsa.Network) -> Record:
+        """Present a `Network` as the `Record` `write_record` persists (§10, §12).
 
         The inverse of `build`, and the only place PyPSA's shape is undone:
         `c.static`/`c.dynamic` become long rows, and `bus0`/`bus1`/`efficiency2`
@@ -941,7 +941,7 @@ class PyPSATool(Tool):
 
 @dataclass(frozen=True)
 class _NetworkSource:
-    """A `pypsa.Network` presented as a `Store` (§4).
+    """A `pypsa.Network` presented as a `Record` (§4).
 
     Every `LazyFrames` here is built from key sets read off the network and
     its registry, so nothing is unpivoted until a key is looked up.
@@ -1063,7 +1063,7 @@ class _NetworkSource:
         Keys are named per type by the registry and merged, matching the file
         layout - one `outputs/<attr>.parquet` across types, like `inputs/`.
         A network that was never solved still names them; the frame is then
-        empty and `write_layer` writes an empty file rather than none, which
+        empty and `write_record` writes an empty file rather than none, which
         reads back as "take the default" either way (§12).
         """
         names: dict[str, list[str]] = {}
@@ -1077,7 +1077,7 @@ class _NetworkSource:
         )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Never consulted: `write_layer` persists frames, not flags (§10).
+        """Never consulted: `write_record` persists frames, not flags (§10).
 
         A network-backed source exists to be written, and the write path reads
         only the frame mappings. Answering properly is easy - `c.static` and
@@ -1195,7 +1195,7 @@ class _NetworkSource:
         ]
         if not frames:
             return nw.from_native(pd.DataFrame(columns=columns)).lazy()
-        # No dtype fixing here: `write_layer` casts every schema column to the
+        # No dtype fixing here: `write_record` casts every schema column to the
         # record layer's declared type on the way out (§5), so an all-NULL
         # column pandas typed as float lands as the right type regardless.
         return nw.from_native(pd.concat(frames, ignore_index=True)[columns]).lazy()
@@ -1252,7 +1252,7 @@ def _required_attributes(ctype: str) -> frozenset[str]:
     return frozenset(required) - {"name"}
 
 
-def _ordered_connections(store: Store, ctype: str) -> pd.DataFrame | None:
+def _ordered_connections(store: Record, ctype: str) -> pd.DataFrame | None:
     """One type's connections with a port index assigned per component (§12).
 
     The positional collapse: connections come in member order (§9.3, an
@@ -1287,7 +1287,7 @@ def _ordered_connections(store: Store, ctype: str) -> pd.DataFrame | None:
     return df
 
 
-def _connection_attributes(store: Store, ctype: str) -> frozenset[str]:
+def _connection_attributes(store: Record, ctype: str) -> frozenset[str]:
     """Port attribute names this type's connection rows can supply (§6).
 
     `bus0`/`bus1`/... for the ports that actually exist, so `verify` knows a
@@ -1300,7 +1300,7 @@ def _connection_attributes(store: Store, ctype: str) -> frozenset[str]:
 
 
 def _collapse_connections(
-    static: DuckDBPyRelation, store: Store, ctype: str, con: DuckDBPyConnection
+    static: DuckDBPyRelation, store: Record, ctype: str, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
     """Add `bus0`/`bus1`/... columns to a static frame from its connection rows.
 
@@ -1333,7 +1333,7 @@ def _collapse_connections(
     )
 
 
-def _static_columns(store: Store, ctype: str) -> frozenset[str]:
+def _static_columns(store: Record, ctype: str) -> frozenset[str]:
     """Columns `dims/components/<ctype>.parquet` supplies for this record.
 
     The non-varying half of the static frame (§3): an attribute present here

@@ -1,16 +1,16 @@
-"""`MutableStore`: staging, the edit operations, commit (design doc §11)."""
+"""`WorkingRecord`: staging, the edit operations, commit (design doc §11)."""
 
 import narwhals as nw
 import pandas as pd
 import pytest
 
-from datarecord import DataRecord
-from datarecord.directory import DirectoryStore
+from datarecord import Revision
+from datarecord.directory import DirectoryRecord
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
-from datarecord.mutable import Directory, MutableStore, NewChild, normalise_value
+from datarecord.mutable import Directory, WorkingRecord, NewChild, normalise_value
 from datarecord.schema import AttributeSpec
-from datarecord.store import Store
+from datarecord.record import Record
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network
 
@@ -20,7 +20,7 @@ GEN = "Generator"
 @pytest.fixture
 def root(con, base_uri, ac_dc):
     """A materialised record to branch edits from."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     record.materialise()
     return record
@@ -28,7 +28,7 @@ def root(con, base_uri, ac_dc):
 
 @pytest.fixture
 def staged(root, con):
-    return MutableStore(root.store, con)
+    return WorkingRecord(root.store, con)
 
 
 def _static(record, attribute, ctype=GEN):
@@ -47,11 +47,11 @@ def _static(record, attribute, ctype=GEN):
 def test_a_mutable_store_reads_as_a_store(staged):
     """Editable *and* readable: the pending edits are a layer, so reads compose.
 
-    The load-bearing half of §11: a `MutableStore` satisfies `Store`, so what
+    The load-bearing half of §11: a `WorkingRecord` satisfies `Record`, so what
     it reads is the data with its pending edits applied and it can be handed
     to anything that only knows how to read.
     """
-    assert isinstance(staged, Store)
+    assert isinstance(staged, Record)
 
 
 def test_nothing_is_pending_before_an_edit(staged):
@@ -134,7 +134,7 @@ def test_a_staged_edit_is_visible_through_the_store(staged):
 
 
 def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, con):
-    """§4: a `Store` hands over unmaterialised frames, so two must not alias.
+    """§4: a `Record` hands over unmaterialised frames, so two must not alias.
 
     The read path composes relations by replacement scan, which binds each one
     at build time. Registering them under a fixed catalog name instead would
@@ -236,12 +236,12 @@ def test_a_long_frame_naming_an_unknown_component_is_rejected(staged):
         staged.set(GEN, "p_max_pu", pd.DataFrame([{"name": "Nope", "value": 1.0}]))
 
 
-def test_update_stages_the_whole_series(staged, root):
-    """A derived edit covers every coordinate it read, not just one (§11.4)."""
+def test_an_expression_value_stages_the_whole_series(staged, root):
+    """A derived edit covers every coordinate it read, not just one (§11.3)."""
     base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
     mine = base[base["name"] == "Manchester Wind"].sort_values("snapshot")
 
-    staged.update(GEN, "p_max_pu", nw.col("value") * 2, names=["Manchester Wind"])
+    staged.set(GEN, "p_max_pu", nw.col("value") * 2, names=["Manchester Wind"])
     assert staged.pending.attributes == {"p_max_pu": len(mine)}
 
     child = staged.commit(NewChild(root))
@@ -253,7 +253,7 @@ def test_update_stages_the_whole_series(staged, root):
 def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     """A staged row's dims join the flags, unioned with the base answer (§11.10).
 
-    `flags` is the one non-`Frames` member of `Store`, so the promise that a
+    `flags` is the one non-`Frames` member of `Record`, so the promise that a
     read reflects pending edits has to hold for it too - and it decides which
     container a consumer puts a value in (`PyPSA.build` splits static from
     series on exactly this). `marginal_cost` starts broadcast over `snapshot`
@@ -358,7 +358,7 @@ def test_the_restated_series_is_in_the_layer_itself(staged, root, con):
     staged.set(GEN, "p_max_pu", one, names=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryStore(layer_dir(child.id), con)
+    layer = DirectoryRecord(layer_dir(child.id), con)
     rows = layer.attributes["p_max_pu"].collect().to_native().to_pandas()
     assert len(rows[rows["name"] == "Manchester Wind"]) == len(mine)
     # Only the touched component: an axis owned whole obliges the layer to
@@ -372,7 +372,7 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
     staged.set(GEN, "p_nom", 150.0, names=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryStore(layer_dir(child.id), con)
+    layer = DirectoryRecord(layer_dir(child.id), con)
     rows = layer.attributes["p_nom"].collect().to_native().to_pandas()
     # `p_nom` varies over nothing, so there is no extent to restate: one row.
     assert len(rows) == 1
@@ -532,7 +532,7 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
     staged.set(GEN, "p_nom", 150.0, names=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryStore(layer_dir(child.id), con)
+    layer = DirectoryRecord(layer_dir(child.id), con)
     rows = layer.attributes["p_nom"].collect().to_native().to_pandas()
     assert list(rows["name"]) == ["Manchester Wind"]
     # Yet the resolved record reads every generator's value.
@@ -545,7 +545,7 @@ def test_a_directory_target_writes_a_flattened_store(staged, root, con, tmp_path
     out = str(tmp_path / "flat")
     assert staged.commit(Directory(out)) is None
 
-    store = DirectoryStore(out, con)
+    store = DirectoryRecord(out, con)
     rows = store.attributes["p_nom"].collect().to_native().to_pandas()
     got = dict(zip(rows["name"], rows["value"], strict=True))
     assert got["Manchester Wind"] == 150.0
@@ -562,3 +562,61 @@ def test_a_committed_child_builds_a_network(staged, root):
     assert (
         PyPSA.build(child.store).c[GEN].static.loc["Manchester Wind", "p_nom"] == 150.0
     )
+
+
+# -- the `Expr` value form's raise rule (§11.3) -------------------------------
+
+
+def test_an_expression_over_a_named_target_with_no_rows_raises(staged):
+    """A named target that resolves to nothing is a failed change, not a no-op.
+
+    The caller asked for these rows to take a new value and there is nothing to
+    derive one from, so it fails loudly rather than staging zero rows (§11.3).
+    """
+    with pytest.raises(KeyError, match="no current value to derive from"):
+        staged.set(
+            GEN,
+            "p_max_pu",
+            nw.col("value") * 2,
+            names=["Manchester Wind"],
+            snapshot="1999-01-01",
+        )
+
+
+def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(staged):
+    """`names=None` and no scope means "whatever resolves", so empty is an answer."""
+    absent = next(
+        a for a in sorted(staged.schema.attributes[GEN]) if a not in staged.attributes
+    )
+    staged.set(GEN, absent, nw.col("value") * 2)
+    assert absent not in staged.pending.attributes
+
+
+# -- results through `kind="outputs"` (§11.2, §9.4) ---------------------------
+
+
+def test_results_stage_and_read_back_without_committing(staged):
+    """A tool can attach what it solved and the store reads it (§11.2)."""
+    assert list(staged.outputs) == []
+    staged.set(GEN, "p", 42.0, names=["Manchester Wind"], kind="outputs")
+
+    rows = staged.outputs["p"].collect().to_native().to_pandas()
+    assert dict(zip(rows["name"], rows["value"], strict=True)) == {
+        "Manchester Wind": 42.0
+    }
+    # Staged as a result, so it is not an input.
+    assert "p" not in staged.pending.attributes
+
+
+def test_results_survive_a_commit_into_the_new_layer(staged, root, con):
+    """Staged results land in the child's `outputs/`, alongside its inputs (§9.4)."""
+    staged.set(GEN, "p_nom", 150.0, names=["Manchester Wind"])
+    staged.set(GEN, "p", 42.0, names=["Manchester Wind"], kind="outputs")
+    child = staged.commit(NewChild(root))
+
+    layer = DirectoryRecord(layer_dir(child.id), con)
+    assert "p" in layer.outputs
+    rows = layer.outputs["p"].collect().to_native().to_pandas()
+    assert rows["value"].tolist() == [42.0]
+    # And the inputs went where inputs go.
+    assert "p_nom" in layer.attributes

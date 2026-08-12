@@ -3,19 +3,19 @@
 import pandas as pd
 import pytest
 
-from datarecord import DataRecord
+from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
-from datarecord.layered.write import write_layer
+from datarecord.layered.write import write_record
 from datarecord.schema import AttributeSpec
-from datarecord.store import EMPTY
+from datarecord.record import EMPTY
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network, tombstone, write_input
 
 
 @pytest.fixture
 def parent(con, base_uri, ac_dc):
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     record.materialise()
     return record
@@ -133,7 +133,7 @@ def test_closed_child_reads_own_node_cache(con, parent):
     )
     child.materialise()
 
-    reloaded = DataRecord.get(child.id, con)
+    reloaded = Revision.get(child.id, con)
     n = PyPSA.build(reloaded.store)
     assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
 
@@ -199,7 +199,7 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
 
     child = parent.child()
     with pytest.raises(ValueError, match="no longer varies over"):
-        write_layer(child.id, _Narrowed(), con)
+        write_record(child.id, _Narrowed(), con)
 
 
 def test_member_order_survives_closed_intermediate(con, parent, ac_dc):

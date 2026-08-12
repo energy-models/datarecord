@@ -6,18 +6,18 @@ import narwhals as nw
 import pandas as pd
 import pytest
 
-from datarecord import DataRecord
-from datarecord.directory import DirectoryStore
+from datarecord import Revision
+from datarecord.directory import DirectoryRecord
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema
-from datarecord.layered.write import write_layer
-from datarecord.store import EMPTY, LazyFrames, Store
+from datarecord.layered.write import write_record
+from datarecord.record import EMPTY, LazyFrames, Record
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import schema
 
 
 class _Source:
-    """A minimal `Store` over ready-made frames, counting each build."""
+    """A minimal `Record` over ready-made frames, counting each build."""
 
     def __init__(
         self,
@@ -113,9 +113,9 @@ def test_source_is_explorable_without_building(con, base_uri):
         source.attributes["nope"]
 
 
-def test_write_layer_builds_each_key_once(con, base_uri):
+def test_write_record_builds_each_key_once(con, base_uri):
     """The writer looks up every key exactly once, and only what it writes."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     source = _Source(
         _SCHEMA,
         attributes={"p_nom": _long(), "e_nom": _long(attribute="e_nom")},
@@ -123,7 +123,7 @@ def test_write_layer_builds_each_key_once(con, base_uri):
             "Process": pd.DataFrame({"name": ["steel_dri"], "scenario": [None]})
         },
     )
-    write_layer(record.id, source, con)
+    write_record(record.id, source, con)
 
     assert sorted(source.built) == [
         "attributes:e_nom",
@@ -135,15 +135,15 @@ def test_write_layer_builds_each_key_once(con, base_uri):
 # -- creating a layer -------------------------------------------------------
 
 
-def test_write_layer_creates_a_new_layer(con, base_uri):
+def test_write_record_creates_a_new_layer(con, base_uri):
     """Files land where `layer_dir` says - data only, no schema (§5.6).
 
     The store's one schema goes beside `layers/`, so a layer directory holds
     nothing but data. That is what keeps it a plain parquet store a reader
     knowing nothing about layering can open.
     """
-    record = DataRecord.create(con)
-    write_layer(record.id, _Source(_SCHEMA, attributes={"p_nom": _long()}), con)
+    record = Revision.create(con)
+    write_record(record.id, _Source(_SCHEMA, attributes={"p_nom": _long()}), con)
 
     base = Path(layer_dir(record.id))
     assert (base / "inputs" / "p_nom.parquet").exists()
@@ -155,56 +155,56 @@ def test_write_layer_creates_a_new_layer(con, base_uri):
 def test_a_directory_target_carries_its_own_schema(con, base_uri, tmp_path):
     """A standalone store *is* one store, so its schema goes in the directory (§5.6)."""
     out = str(tmp_path / "standalone")
-    write_layer(None, _Source(_SCHEMA, attributes={"p_nom": _long()}), con, uri=out)
+    write_record(None, _Source(_SCHEMA, attributes={"p_nom": _long()}), con, uri=out)
 
     assert (Path(out) / "manifest.json").exists()
-    assert DirectoryStore(out, con).schema == _SCHEMA
+    assert DirectoryRecord(out, con).schema == _SCHEMA
 
 
-def test_write_layer_refuses_an_existing_layer(con, base_uri):
+def test_write_record_refuses_an_existing_layer(con, base_uri):
     """A whole-layer write never half-replaces what a record already holds (§4)."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
-    write_layer(record.id, source, con)
+    write_record(record.id, source, con)
 
     with pytest.raises(FileExistsError, match="already exists"):
-        write_layer(record.id, source, con)
+        write_record(record.id, source, con)
 
 
 # -- validation -------------------------------------------------------------
 
 
-def test_write_layer_rejects_a_missing_long_column(con, base_uri):
+def test_write_record_rejects_a_missing_long_column(con, base_uri):
     """A frame the fold could not resolve is refused before anything is written."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     short = _long().drop(columns=["breakpoint"])
     source = _Source(_SCHEMA, attributes={"p_nom": short})
 
     with pytest.raises(ValueError, match="missing long-schema columns.*breakpoint"):
-        write_layer(record.id, source, con)
+        write_record(record.id, source, con)
     assert not Path(layer_dir(record.id)).exists()
 
 
-def test_write_layer_rejects_an_unbacked_key_dim(con, base_uri):
+def test_write_record_rejects_an_unbacked_key_dim(con, base_uri):
     """A schema keying by a dim the frames lack would misresolve (§5.5)."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     source = _Source(
         _SCHEMA,
         components={"Process": pd.DataFrame({"name": ["steel_dri"]})},  # no `scenario`
     )
 
     with pytest.raises(ValueError, match="missing key dims.*scenario"):
-        write_layer(record.id, source, con)
+        write_record(record.id, source, con)
 
 
-def test_write_layer_rejects_a_nested_axis_without_its_parent(con, base_uri):
+def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
     """A `within` dim's file needs a column per parent, or the fold miskeys it (§5.4).
 
     `snapshot within period` makes the axis key `(period, snapshot)`, so a
     `snapshots.parquet` carrying only timestamps would fold two periods'
     identically labelled hours into one row.
     """
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     nested = schema(within={"snapshot": {"period"}})
     source = _Source(
         nested,
@@ -212,7 +212,7 @@ def test_write_layer_rejects_a_nested_axis_without_its_parent(con, base_uri):
     )
 
     with pytest.raises(ValueError, match="axis key columns.*period"):
-        write_layer(record.id, source, con)
+        write_record(record.id, source, con)
     assert not Path(layer_dir(record.id)).exists()
 
 
@@ -223,7 +223,7 @@ def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
     """Key sets come off the network and its registry, so listing is cheap."""
     source = PyPSA.to_datarecord(ac_dc)
 
-    assert isinstance(source, Store)
+    assert isinstance(source, Record)
     assert "Generator" in source.components
     assert "Link" in source.connections
     assert "p_max_pu" in source.attributes
@@ -241,8 +241,8 @@ def test_write_then_build_round_trips(con, base_uri, ac_dc):
     store: this exercises the writer of §4 and the connection collapse of
     §12 in one pass.
     """
-    record = DataRecord.create(con)
-    write_layer(record.id, PyPSA.to_datarecord(ac_dc), con)
+    record = Revision.create(con)
+    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
 
     assert not PyPSA.verify(record.store)
     back = PyPSA.build(record.store)
@@ -262,8 +262,8 @@ def test_write_then_build_round_trips(con, base_uri, ac_dc):
 
 def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
     """`bus0`/`bus1` become connection rows and come back as columns (§6, §12)."""
-    record = DataRecord.create(con)
-    write_layer(record.id, PyPSA.to_datarecord(ac_dc), con)
+    record = Revision.create(con)
+    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
 
     # Stored bus-keyed, with a role from PyPSA's sign convention.
     rows = con.read_parquet(layer_dir(record.id) + "dims/connections/Link.parquet").df()
@@ -277,8 +277,8 @@ def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
 
 def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
     """A Generator's one `bus` is a connection too, and stays `bus` (§6)."""
-    record = DataRecord.create(con)
-    write_layer(record.id, PyPSA.to_datarecord(ac_dc), con)
+    record = Revision.create(con)
+    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
 
     rows = con.read_parquet(
         layer_dir(record.id) + "dims/connections/Generator.parquet"
@@ -293,8 +293,8 @@ def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
 
 def test_static_series_split_survives_the_writer(con, base_uri, ac_dc):
     """Only the components with a series get a `dynamic` column (§12)."""
-    record = DataRecord.create(con)
-    write_layer(record.id, PyPSA.to_datarecord(ac_dc), con)
+    record = Revision.create(con)
+    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
     back = PyPSA.build(record.store)
 
     assert sorted(back.c["Generator"].dynamic["p_max_pu"].columns) == sorted(
@@ -306,8 +306,8 @@ def test_written_layer_overlays(con, base_uri, ac_dc):
     """A written layer is an ordinary layer: a child patches it as any other."""
     from tests.fixtures import write_input
 
-    root = DataRecord.create(con)
-    write_layer(root.id, PyPSA.to_datarecord(ac_dc), con)
+    root = Revision.create(con)
+    write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
     root.materialise()
 
     child = root.child()

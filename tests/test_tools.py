@@ -6,10 +6,10 @@ from types import SimpleNamespace
 import narwhals as nw
 import pytest
 
-from datarecord import DataRecord
+from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
-from datarecord.layered.write import write_layer
+from datarecord.layered.write import write_record
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network, schema, write_components, write_input
@@ -17,7 +17,7 @@ from tests.fixtures import export_network, schema, write_components, write_input
 
 @pytest.fixture
 def single_record(con, base_uri, ac_dc):
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     return record
 
@@ -67,7 +67,7 @@ def test_requires_reports_the_records_own_types(single_record):
 
 def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
     """A schema that declares no `scenario` dim cannot build a network (§12)."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     _with_schema(record, dims={"snapshot": "TIMESTAMP"}, partial=set(), keys={})
 
@@ -87,7 +87,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     unknown type reads back fine and it is this tool's business that it cannot
     be built (§5, §12). `Requirements.component_types` is what carries it.
     """
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     write_components(layer_dir(record.id), "Widget", [{"name": "w1"}])
 
@@ -113,7 +113,7 @@ def _without_default(record, ctype: str, attribute: str) -> None:
 def _with_schema(record, **kwargs) -> None:
     """Redeclare the store's schema, keeping the attributes it already declares.
 
-    Written directly rather than through `write_layer`, which would reject an
+    Written directly rather than through `write_record`, which would reject an
     incompatible redeclaration (§5.7) - here the point is to hand the tool a
     schema it must report on rather than one the writer accepted.
     """
@@ -134,7 +134,7 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
     put the result in (§5.5). The record layer therefore permits the
     declaration - every file does carry the column - and the tool catches it.
     """
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     write_schema(PyPSA.to_datarecord(ac_dc).schema)
     export_network(ac_dc, record, con)
     _with_schema(record, partial={"scenario", "snapshot"})
@@ -159,7 +159,7 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
     ],
     ids=["period", "vintage"],
 )
-def test_write_layer_rejects_a_key_dim_no_frame_carries(con, base_uri, ac_dc, kwargs):
+def test_write_record_rejects_a_key_dim_no_frame_carries(con, base_uri, ac_dc, kwargs):
     """A declared key dim needs a column in every frame, or the layer is refused.
 
     The invariant the read path relies on (§5.5): the fold keys by these
@@ -181,14 +181,14 @@ def test_write_layer_rejects_a_key_dim_no_frame_carries(con, base_uri, ac_dc, kw
         connections=source.connections,
         attributes=source.attributes,
     )
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     with pytest.raises(ValueError, match="period|vintage"):
-        write_layer(record.id, restated, con)
+        write_record(record.id, restated, con)
 
 
 def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     """A component type with no `bus` anywhere - not in the frame, not in the catalog."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     # A Generator member carrying no `bus` column at all, no connection row
     # supplying one (§6), and a schema with no default for it either.
@@ -204,7 +204,7 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(
     con, base_uri, ac_dc
 ):
     """A declared default makes an attribute resolvable with no row anywhere (§5.2)."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     write_components(layer_dir(record.id), "Generator", [{"name": "g1"}])
 
@@ -215,7 +215,7 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(
 
 def test_verify_reports_a_piecewise_linear_attribute(con, base_uri, ac_dc):
     """A curve is stored correctly; it is the PyPSA translation that cannot express it (§7)."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     write_input(
         layer_dir(record.id),
@@ -352,7 +352,7 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
     fake = FakeTool()
     assert isinstance(fake, Tool)
 
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
 
     assert fake.requires(record.store).dims == {"snapshot"}
@@ -372,7 +372,7 @@ def test_schema_dims_stay_generic(con, base_uri, ac_dc):
     Keying it would be a different matter, reported by the tool against the
     real store - see `test_verify_reports_unsupported_keys`.
     """
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     _with_schema(record, dims={**_DIMS, "vintage": "VARCHAR"})
     dims = record.node_cache.dims

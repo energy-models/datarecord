@@ -148,13 +148,13 @@ def export_network(n, record, con) -> None:
 
     Not `n.export_to_parquet`: that emits PyPSA's upstream manifest format,
     which is a different vocabulary from the schema a store declares (§5.6).
-    Going through `write_layer` means a test store is written exactly as
+    Going through `write_record` means a test store is written exactly as
     `blocks` writes one.
     """
-    from datarecord.layered.write import write_layer
+    from datarecord.layered.write import write_record
     from datarecord.tools.pypsa import PyPSA
 
-    write_layer(record.id, PyPSA.to_datarecord(n), con)
+    write_record(record.id, PyPSA.to_datarecord(n), con)
 
 
 def write_schema(schema: Schema, base_uri: str | None = None) -> None:

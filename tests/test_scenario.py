@@ -5,8 +5,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from datarecord import DataRecord
-from datarecord.duck import layer_dir, node_dir
+from datarecord import Revision
+from datarecord.duck import layer_dir, resolved_dir
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network, tombstone, write_input, write_scenarios
 from tests.test_roundtrip import assert_networks_equal
@@ -21,7 +21,7 @@ def stochastic():
 
 @pytest.fixture
 def parent(con, base_uri, stochastic):
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(stochastic, record, con)
     record.materialise()
     return record
@@ -152,7 +152,7 @@ def test_resolved_dims_are_node_scoped(con, parent, stochastic):
     middle = parent.child()
     middle.materialise()
 
-    resolved = Path(node_dir(middle.id), "dims", "scenarios.parquet")
+    resolved = Path(resolved_dir(middle.id), "dims", "scenarios.parquet")
     assert resolved.exists()
     assert set(pd.read_parquet(resolved)["scenario"]) == set(stochastic.scenarios)
 
