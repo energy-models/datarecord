@@ -11,8 +11,10 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import narwhals as nw
+from duckdb import ColumnExpression as col
+from duckdb import ConstantExpression as lit
 
-from datarecord.duck import try_read_parquet
+from datarecord.duck import fn, try_read_parquet
 from datarecord.layered.resolve import read_json, read_schema
 from datarecord.schema import Schema
 from datarecord.store import EMPTY, Flags, LazyFrames
@@ -100,23 +102,28 @@ class DirectoryStore:
             declared = self.schema.dims
             dims = tuple(d for d in declared if d in rel.columns)
             pwl = (
-                "bool_or(breakpoint IS NOT NULL)"
+                fn.bool_or(col("breakpoint").isnotnull())
                 if "breakpoint" in rel.columns
-                else "false"
+                else lit(False)
             )
-            projections = ", ".join(
-                [
-                    *(f'bool_or("{d}" IS NOT NULL) AS "v_{d}"' for d in dims),
-                    *(f'bool_or("{d}" IS NULL) AS "b_{d}"' for d in dims),
-                    f"{pwl} AS breakpoints",
-                ]
+            rows = (
+                rel.filter(col("component_type") == lit(ctype))
+                .aggregate(
+                    [
+                        col("attribute"),
+                        *(
+                            fn.bool_or(col(d).isnotnull()).alias(f"v_{d}")
+                            for d in dims
+                        ),
+                        *(
+                            fn.bool_or(col(d).isnull()).alias(f"b_{d}")
+                            for d in dims
+                        ),
+                        pwl.alias("breakpoints"),
+                    ]
+                )
+                .fetchall()
             )
-            rows = self.con.sql(
-                f"SELECT attribute, {projections}"
-                " FROM rel WHERE component_type = $ctype"
-                " GROUP BY attribute",
-                params={"ctype": ctype},
-            ).fetchall()
             n = len(dims)
             result = {
                 r[0]: Flags(

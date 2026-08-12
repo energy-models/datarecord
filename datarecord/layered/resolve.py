@@ -30,6 +30,7 @@ from datarecord.duck import (
     base_uri_of,
     dims_dirs,
     ex_all,
+    fn,
     fold_axis,
     layer_dir,
     node_dir,
@@ -80,12 +81,12 @@ def broadcast_match(
     `IS NOT DISTINCT FROM` which only matches NULL against NULL.
     """
     match = ex_all(
-        sql(f"{alias_a}.{c} IS NOT DISTINCT FROM {alias_b}.{c}") for c in fixed
+        sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}") for c in fixed
     )
     for dim in dims:
         match = match & (
             col(alias_a, dim).isnull()
-            | sql(f"{alias_a}.{dim} IS NOT DISTINCT FROM {alias_b}.{dim}")
+            | sql(f"{col(alias_a, dim)} IS NOT DISTINCT FROM {col(alias_b, dim)}")
         )
     return match
 
@@ -405,7 +406,7 @@ def fold_inputs(
                 sql(_struct_of(keys.schema.dims, '"_raw_{}" IS NULL')).alias(
                     "broadcast"
                 ),
-                sql("bool_or(breakpoint IS NOT NULL)").alias("breakpoints"),
+                fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
             ]
         )
 
@@ -527,7 +528,7 @@ def _fold_ordered(
             sql("row_number() OVER ()").alias("_row"),
         )
         own = tagged.aggregate(
-            [*(col(c) for c in (*key, "layer_uuid")), sql("min(_row)").alias("_row")]
+            [*(col(c) for c in (*key, "layer_uuid")), fn.min(col("_row")).alias("_row")]
         )
         own = con.sql(
             "SELECT * EXCLUDE (_row),"
@@ -829,7 +830,7 @@ class NodeCache:
                     col("attribute"),
                     sql(_struct_of(dims, '"varies"."{}"')).alias("varies"),
                     sql(_struct_of(dims, '"broadcast"."{}"')).alias("broadcast"),
-                    sql('bool_or("breakpoints")').alias("breakpoints"),
+                    fn.bool_or(col("breakpoints")).alias("breakpoints"),
                 ]
             )
             .fetchall()

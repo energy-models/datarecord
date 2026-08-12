@@ -16,8 +16,11 @@ from uuid import uuid4
 import narwhals as nw
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation
+from duckdb import DuckDBPyRelation, Expression
+from duckdb import SQLExpression as sql
+from duckdb import StarExpression as star
 
+from datarecord.duck import ex_all, fn, union_all_by_name
 from datarecord.schema import Schema
 from datarecord.store import EMPTY, Flags, Frames, LazyFrames, Store
 
@@ -94,14 +97,42 @@ def _as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelati
     return con.sql("FROM arrow")
 
 
-def _null_safe_on(columns: Iterable[str]) -> str:
-    """A NULL-safe join condition over `columns`, for aliases `b` and `s`."""
-    return " AND ".join(f'b."{c}" IS NOT DISTINCT FROM s."{c}"' for c in columns)
+def _null_safe_on(
+    columns: Iterable[str], alias_a: str = "b", alias_b: str = "s"
+) -> Expression:
+    """A NULL-safe join condition over `columns`, for two aliases.
+
+    An `Expression` rather than a SQL string: `join` takes one directly, so the
+    condition composes with `&` (`_overlay`'s broadcast arms) instead of being
+    spliced into a template.
+    """
+    return ex_all(
+        sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}")
+        for c in columns
+    )
 
 
-def _without(columns: Sequence[str], drop: Sequence[str]) -> str:
-    """A projection list of `columns` minus `drop`, quoted."""
-    return ", ".join(f'"{c}"' for c in columns if c not in drop)
+def _without(columns: Sequence[str], drop: Sequence[str]) -> list[Expression]:
+    """`columns` minus `drop`, as projectable column expressions."""
+    return [col(c) for c in columns if c not in drop]
+
+
+def _latest_per(rel: DuckDBPyRelation, key: Iterable[str]) -> DuckDBPyRelation:
+    """`rel`'s newest row per `key`, by `_seq` - last write wins (§11.7).
+
+    The three staging tables collapse the same way and differ only in what keys
+    them, so the window lives here once. `_seq` and the ranking column are
+    projected away, since a collapsed relation is read as data rather than as
+    staging bookkeeping.
+    """
+    partition = ", ".join(str(col(c)) for c in key)
+    ranked = rel.project(
+        star(),
+        sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _seq DESC)").alias(
+            "_rn"
+        ),
+    )
+    return ranked.filter(col("_rn") == lit(1)).project(star(exclude=["_rn", "_seq"]))
 
 
 def _is_frame(value: Any) -> bool:
@@ -299,7 +330,7 @@ class MutableStore:
         assert staged is not None
         mine = staged.filter(col("component_type") == lit(ctype))
         if ctype not in base:
-            return nw.from_native(mine.filter("NOT deleted"))
+            return nw.from_native(mine.filter(~col("deleted")))
 
         dims = (
             self.schema.component_dims
@@ -319,7 +350,11 @@ class MutableStore:
         )
 
     def _entity_union(
-        self, base: DuckDBPyRelation, staged: DuckDBPyRelation, on: str, ctype: str
+        self,
+        base: DuckDBPyRelation,
+        staged: DuckDBPyRelation,
+        on: Expression,
+        ctype: str,
     ) -> DuckDBPyRelation:
         """`staged` over `base` on the entity key, tombstones removed.
 
@@ -328,22 +363,21 @@ class MutableStore:
         while `write_layer` needs them back, so one shape serves both.
         """
         drop = ("component_type", "deleted")
-        self.con.register(
-            "_ent_base",
-            base.project(_without(base.columns, drop))
+        b = (
+            base.project(*_without(base.columns, drop))
             if any(c in base.columns for c in drop)
-            else base,
+            else base
         )
-        self.con.register(
-            "_ent_staged", staged.project(_without(staged.columns, drop) + ", deleted")
-        )
-        return self.con.sql(
-            f"SELECT *, $ctype AS component_type, false AS deleted FROM ("
-            f"  SELECT b.* FROM _ent_base b ANTI JOIN _ent_staged s ON {on}"
-            f"  UNION ALL BY NAME"
-            f"  SELECT * EXCLUDE (deleted) FROM _ent_staged WHERE NOT deleted"
-            f")",
-            params={"ctype": ctype},
+        s = staged.project(*_without(staged.columns, drop), col("deleted"))
+        # The staged row wins on the entity key, so the base keeps only what the
+        # staging area does not restate; the two are then unioned by name, since
+        # a staged member row carries whatever columns the caller passed.
+        kept = b.set_alias("b").join(s.set_alias("s"), on, how="anti")
+        live = s.filter(~col("deleted")).project(star(exclude=["deleted"]))
+        return union_all_by_name([kept, live], self.con).project(
+            star(),
+            lit(ctype).alias("component_type"),
+            lit(False).alias("deleted"),  # noqa: FBT003
         )
 
     @property
@@ -379,7 +413,7 @@ class MutableStore:
         staged = (
             self._collapsed_inputs()
             .filter(col("attribute") == lit(attribute))
-            .project(self._typed_value(attribute))
+            .project(*self._typed_value(attribute))
         )
         if base is None:
             return nw.from_native(staged)
@@ -405,32 +439,32 @@ class MutableStore:
         # commit).
         fixed = (*self._input_key(), "breakpoint")
         broadcast = tuple(d for d in self.schema.dims if d not in self._input_key())
-        cols = ", ".join(f'"{c}"' for c in self._long_columns())
-        on = " AND ".join(
+        on = ex_all(
             [
                 _null_safe_on(dict.fromkeys(fixed)),
                 *(
-                    f'(s."{d}" IS NULL OR b."{d}" IS NOT DISTINCT FROM s."{d}")'
+                    col("s", d).isnull()
+                    | sql(f'{col("s", d)} IS NOT DISTINCT FROM {col("b", d)}')
                     for d in broadcast
                 ),
             ]
         )
-        self.con.register("_ov_base", base)
-        self.con.register("_ov_staged", staged)
-        return self.con.sql(
-            f"SELECT {cols} FROM ("
-            f"  SELECT b.* FROM _ov_base b ANTI JOIN _ov_staged s ON {on}"
-            f"  UNION ALL BY NAME SELECT * FROM _ov_staged"
-            f")"
+        kept = base.set_alias("b").join(staged.set_alias("s"), on, how="anti")
+        return union_all_by_name([kept, staged], self.con).project(
+            *(col(c) for c in self._long_columns())
         )
 
-    def _typed_value(self, attribute: str) -> str:
+    def _typed_value(self, attribute: str) -> list[Expression]:
         """A projection of `_long_columns` with `value` cast to its dtype (§3.2).
 
         `value` is staged as text because one staging table holds every
         attribute's values (`_input_columns`); here the attribute is known, so
         the declared dtype applies. Any component type that declares it answers
         - one `inputs/<attr>.parquet` serves them all, so they must agree.
+
+        `TRY_CAST`, not `cast`: a value that does not parse as the declared dtype
+        reads as NULL rather than failing the whole relation, which is what the
+        text staging column makes possible in the first place.
         """
         dtype = next(
             (
@@ -440,10 +474,12 @@ class MutableStore:
             ),
             "DOUBLE",
         )
-        return ", ".join(
-            f'TRY_CAST("value" AS {dtype}) AS "value"' if c == "value" else f'"{c}"'
+        return [
+            sql(f'TRY_CAST("value" AS {dtype})').alias("value")
+            if c == "value"
+            else col(c)
             for c in self._long_columns()
-        )
+        ]
 
     def _long_columns(self) -> tuple[str, ...]:
         return (
@@ -488,18 +524,17 @@ class MutableStore:
         scope = [c for c in self._input_key() if c not in whole]
         coordinate = [*scope, *whole, "breakpoint"]
         base = _as_relation(self.base.attributes[attribute], self.con)
-        cols = ", ".join(f'"{c}"' for c in self._long_columns())
-        self.con.register("_rs_base", base)
-        self.con.register("_rs_staged", staged)
-        return self.con.sql(
-            f"SELECT {cols} FROM ("
-            f"  SELECT * FROM _rs_staged"
-            f"  UNION ALL BY NAME"
-            f"  SELECT * FROM ("
-            f"    SELECT b.* FROM _rs_base b"
-            f"    SEMI JOIN _rs_staged s ON {_null_safe_on(scope)}"
-            f"  ) b ANTI JOIN _rs_staged s ON {_null_safe_on(coordinate)}"
-            f")"
+        # Semi-join first to the keys this edit touched, then anti-join away the
+        # exact coordinates it named: what survives is the rest of the extent the
+        # layer now owns whole and so must carry.
+        carried = (
+            base.set_alias("b")
+            .join(staged.set_alias("s"), _null_safe_on(scope), how="semi")
+            .set_alias("b")
+            .join(staged.set_alias("s"), _null_safe_on(coordinate), how="anti")
+        )
+        return union_all_by_name([staged, carried], self.con).project(
+            *(col(c) for c in self._long_columns())
         )
 
     @property
@@ -514,19 +549,18 @@ class MutableStore:
         if rel is None:
             return out
         dims = self.schema.dims
-        projections = ", ".join(
-            [
-                *(f'bool_or("{d}" IS NOT NULL) AS "v_{d}"' for d in dims),
-                *(f'bool_or("{d}" IS NULL) AS "b_{d}"' for d in dims),
-                "bool_or(breakpoint IS NOT NULL) AS breakpoints",
-            ]
+        rows = (
+            rel.filter(col("component_type") == lit(ctype))
+            .aggregate(
+                [
+                    col("attribute"),
+                    *(fn.bool_or(col(d).isnotnull()).alias(f"v_{d}") for d in dims),
+                    *(fn.bool_or(col(d).isnull()).alias(f"b_{d}") for d in dims),
+                    fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
+                ]
+            )
+            .fetchall()
         )
-        self.con.register("_fl", rel)
-        rows = self.con.sql(
-            f"SELECT attribute, {projections} FROM _fl "
-            f"WHERE component_type = $ctype GROUP BY attribute",
-            params={"ctype": ctype},
-        ).fetchall()
         n = len(dims)
         for row in rows:
             attribute = row[0]
@@ -666,7 +700,7 @@ class MutableStore:
     ) -> None:
         """Stage a long frame that supplies its own keys (§11.2)."""
         lazy = nw.from_native(frame).lazy()
-        self.con.register("_in_long", lazy.to_native())
+        _in_long = lazy.to_native()  # noqa: F841 - referenced by name below
         table = self._ensure("inputs")
         # A dim the frame does not carry is NULL - "every value of it" (§3.3) -
         # typed as the schema declares it, so the insert matches the staging
@@ -716,7 +750,7 @@ class MutableStore:
         `value` is cast to text on the way in, since the staging table holds
         every attribute's values in one column (`_input_columns`).
         """
-        self.con.register("_upd", frame.to_native())
+        _upd = frame.to_native()  # noqa: F841 - bound by replacement scan below
         table = self._ensure("inputs")
         cols = ", ".join(
             '"value"::VARCHAR AS "value"' if c == "value" else f'"{c}"'
@@ -768,7 +802,7 @@ class MutableStore:
             c for c in columns if c not in varying and c not in ports and c != "role"
         ]
 
-        self.con.register("_add", lazy.to_native())
+        _add = lazy.to_native()  # noqa: F841 - bound by replacement scan below
         table = self._ensure("components")
         dim_cols = ", ".join(
             f'"{d}"'
@@ -869,7 +903,7 @@ class MutableStore:
             if required not in columns:
                 msg = f"`connect` needs a {required!r} column"
                 raise ValueError(msg)
-        self.con.register("_conn", lazy.to_native())
+        _conn = lazy.to_native()  # noqa: F841 - bound by replacement scan below
         table = self._ensure("connections")
         extra = [c for c in columns if c not in ("name", "bus")]
         extra_sql = "".join(f', "{c}"' for c in extra)
@@ -909,8 +943,8 @@ class MutableStore:
             if rel is None:
                 return {}
             if deleted is not None:
-                rel = rel.filter("deleted" if deleted else "NOT deleted")
-            rows = rel.aggregate(f"{by}, count(*) AS n").fetchall()
+                rel = rel.filter(col("deleted") if deleted else ~col("deleted"))
+            rows = rel.aggregate([col(by), fn.count_star().alias("n")]).fetchall()
             return {r[0]: r[1] for r in rows}
 
         # `tombstones` spans both entity kinds: a `disconnect` is a deletion
@@ -940,30 +974,17 @@ class MutableStore:
         # attribute is not owned per (§5.5), so partitioning on it alone would
         # collapse a whole staged series to one row - two `set` calls at
         # different snapshots are not two writes to the same key.
-        key = ", ".join(
-            f'"{c}"'
-            for c in dict.fromkeys(
-                (*self._input_key(), *self.schema.dims, "breakpoint")
-            )
-        )
-        self.con.register("_ci", rel)
-        live = self.con.sql(
-            f"SELECT * EXCLUDE (rn) FROM ("
-            f"  SELECT *, row_number() OVER (PARTITION BY {key} ORDER BY _seq DESC) rn"
-            f"  FROM _ci) WHERE rn = 1"
-        )
+        key = dict.fromkeys((*self._input_key(), *self.schema.dims, "breakpoint"))
+        live = _latest_per(rel, key)
         dead = self._tombstoned()
         if dead is None:
             return live
         # A deleted component has no attributes, so the tombstone wins over a
         # staged value regardless of sequence (§11.7).
-        self.con.register("_live", live)
-        self.con.register("_dead", dead)
-        on = " AND ".join(
-            f'l."{c}" IS NOT DISTINCT FROM d."{c}"'
-            for c in ("component_type", "name", *self.schema.component_dims)
+        on = _null_safe_on(
+            ("component_type", "name", *self.schema.component_dims), "l", "d"
         )
-        return self.con.sql(f"SELECT l.* FROM _live l ANTI JOIN _dead d ON {on}")
+        return live.set_alias("l").join(dead.set_alias("d"), on, how="anti")
 
     def _tombstoned(self) -> DuckDBPyRelation | None:
         """Component keys whose latest staged member row is a tombstone (§11.7)."""
@@ -971,14 +992,12 @@ class MutableStore:
         if rel is None:
             return None
         cols = ("component_type", "name", *self.schema.component_dims)
-        key = ", ".join(f'"{c}"' for c in cols)
-        self.con.register("_tomb", rel)
         # An `add` after a `remove` means the component exists again, so only
         # the latest row per key counts (§11.7).
-        return self.con.sql(
-            f"SELECT {key} FROM ("
-            f"  SELECT *, row_number() OVER (PARTITION BY {key} ORDER BY _seq DESC) rn"
-            f"  FROM _tomb) WHERE rn = 1 AND deleted"
+        return (
+            _latest_per(rel, cols)
+            .filter(col("deleted"))
+            .project(*(col(c) for c in cols))
         )
 
     def _collapsed_entities(self, kind: str) -> DuckDBPyRelation | None:
@@ -997,13 +1016,7 @@ class MutableStore:
             *(("bus",) if kind == "connections" else ()),
             *dims,
         )
-        key = ", ".join(f'"{c}"' for c in cols)
-        self.con.register(f"_ce_{kind}", rel)
-        return self.con.sql(
-            f"SELECT * EXCLUDE (rn, _seq) FROM ("
-            f"  SELECT *, row_number() OVER (PARTITION BY {key} ORDER BY _seq DESC) rn"
-            f"  FROM _ce_{kind}) WHERE rn = 1"
-        )
+        return _latest_per(rel, cols)
 
     # -- what commit writes (§11.7) -----------------------------------------
 
@@ -1041,7 +1054,7 @@ class MutableStore:
 
         def frame(attr: str) -> nw.LazyFrame:
             staged = collapsed.filter(col("attribute") == lit(attr)).project(
-                self._typed_value(attr)
+                *self._typed_value(attr)
             )
             return nw.from_native(self._restated(attr, staged))
 

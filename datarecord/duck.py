@@ -11,17 +11,32 @@ still reads, and it is a tool's `verify` that reports it (§5, §12).
 """
 
 import os
-from collections.abc import Iterable, MutableMapping, Sequence
-from functools import reduce
+from collections.abc import Callable, Iterable, MutableMapping, Sequence
+from functools import partial, reduce
 from uuid import UUID
 from weakref import WeakKeyDictionary
 
 import duckdb
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
+from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, FunctionExpression
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
+
+
+class _Functions:
+    """`fn.bool_or(x)` for `FunctionExpression("bool_or", x)`.
+
+    Attribute access reads closer to the SQL it builds than a name-as-string
+    call does, and keeps aggregates out of `SQLExpression` strings, where a
+    column name would have to be quoted by hand.
+    """
+
+    def __getattr__(self, name: str) -> Callable[..., Expression]:
+        return partial(FunctionExpression, name)
+
+
+fn = _Functions()
 
 CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS data_records (
@@ -264,7 +279,7 @@ def fold_axis(
         return None
 
     union = union_all_by_name(layers, con)
-    partition = ", ".join(f'"{c}"' for c in key)
+    partition = ", ".join(str(col(c)) for c in key)
     ranked = union.project(
         star(),
         sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _depth DESC)").alias(

@@ -133,6 +133,32 @@ def test_a_staged_edit_is_visible_through_the_store(staged):
     assert set(rows["name"]) > {"Manchester Wind"}
 
 
+def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, con):
+    """§4: a `Store` hands over unmaterialised frames, so two must not alias.
+
+    The read path composes relations by replacement scan, which binds each one
+    at build time. Registering them under a fixed catalog name instead would
+    rebind on the second read and both frames would collapse onto the last
+    one - the frames are lazy, so nothing forces the first before that happens.
+    """
+    staged.set(GEN, "p_max_pu", 0.42, names=["Manchester Wind"])
+    first = staged.attributes["p_max_pu"]
+
+    staged.set(GEN, "p_min_pu", 0.11, names=["Manchester Wind"])
+    second = staged.attributes["p_min_pu"]
+
+    # Collected only now, after the second frame was built.
+    got_first = first.collect().to_native().to_pandas()
+    got_second = second.collect().to_native().to_pandas()
+    assert set(got_first["attribute"]) == {"p_max_pu"}
+    assert 0.42 in set(got_first["value"])
+    assert set(got_second["attribute"]) == {"p_min_pu"}
+
+    # And nothing was left behind in the catalog to leak into the next read.
+    views = {v for (v,) in con.sql("SELECT view_name FROM duckdb_views()").fetchall()}
+    assert not {v for v in views if v.startswith("_")}
+
+
 def test_last_write_wins_within_the_staging_area(staged, root):
     """Two edits to one key collapse to the later one, by `_seq` (§11.7)."""
     staged.set(GEN, "p_nom", 100.0, names=["Manchester Wind"])
