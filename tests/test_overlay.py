@@ -7,8 +7,8 @@ from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.layered.write import write_record
-from datarecord.schema import AttributeSpec
 from datarecord.record import EMPTY
+from datarecord.schema import AttributeSpec
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network, tombstone, write_input
 
@@ -199,7 +199,9 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
 
     child = parent.child()
     with pytest.raises(ValueError, match="no longer varies over"):
-        write_record(child.id, _Narrowed(), con)
+        # `outputs` omitted deliberately: this source exists to fail schema
+        # validation, and an absent member reads as "no results" (§4).
+        write_record(child.id, _Narrowed(), con)  # type: ignore[arg-type]
 
 
 def test_member_order_survives_closed_intermediate(con, parent, ac_dc):

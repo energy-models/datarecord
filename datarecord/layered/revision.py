@@ -18,8 +18,8 @@ from pydantic import BaseModel, PrivateAttr
 from datarecord.duck import default_connection
 from datarecord.layered import resolve
 from datarecord.layered.resolve import NodeCache
-from datarecord.schema import Schema
 from datarecord.record import Flags, LazyFrames
+from datarecord.schema import Schema
 
 _ANCESTRY = """
 WITH RECURSIVE ancestors(id, parent, depth) AS (

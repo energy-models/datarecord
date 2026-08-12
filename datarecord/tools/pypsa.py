@@ -25,9 +25,9 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all
+from datarecord.record import Flags, Frames, LazyFrames, Record
 from datarecord.schema import AttributeSpec, Dimension
 from datarecord.schema import Schema as RecordSchema
-from datarecord.record import Flags, Frames, LazyFrames, Record
 from datarecord.tools.base import (
     Requirements,
     Schema,

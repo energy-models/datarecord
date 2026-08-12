@@ -16,8 +16,8 @@ from duckdb import ConstantExpression as lit
 
 from datarecord.duck import fn, try_read_parquet
 from datarecord.layered.resolve import read_json, read_schema
-from datarecord.schema import Schema
 from datarecord.record import EMPTY, Flags, LazyFrames
+from datarecord.schema import Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
@@ -111,14 +111,8 @@ class DirectoryRecord:
                 .aggregate(
                     [
                         col("attribute"),
-                        *(
-                            fn.bool_or(col(d).isnotnull()).alias(f"v_{d}")
-                            for d in dims
-                        ),
-                        *(
-                            fn.bool_or(col(d).isnull()).alias(f"b_{d}")
-                            for d in dims
-                        ),
+                        *(fn.bool_or(col(d).isnotnull()).alias(f"v_{d}") for d in dims),
+                        *(fn.bool_or(col(d).isnull()).alias(f"b_{d}") for d in dims),
                         pwl.alias("breakpoints"),
                     ]
                 )

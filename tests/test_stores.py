@@ -10,8 +10,8 @@ from datarecord.directory import DirectoryRecord
 from datarecord.duck import layer_dir, resolved_dir
 from datarecord.layered.revision import LayeredRecord
 from datarecord.layered.write import write_record
-from datarecord.schema import Schema
 from datarecord.record import EMPTY, Flags, Frames, Record
+from datarecord.schema import Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import schema, write_components, write_input, write_schema
 
@@ -396,7 +396,9 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
     assert not hasattr(source, "outputs")
 
     record = Revision.create(con)
-    write_record(record.id, source, con)
+    # Omitting `outputs` is the point: `write_record` must read an absent
+    # member as "no results" rather than raising (§4).
+    write_record(record.id, source, con)  # type: ignore[arg-type]
     layer = layer_dir(record.id)
     assert try_read_parquet(layer + "outputs/*.parquet", con) is None
     assert "p_max_pu" in DirectoryRecord(layer, con).attributes

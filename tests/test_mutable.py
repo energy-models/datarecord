@@ -8,9 +8,9 @@ from datarecord import Revision
 from datarecord.directory import DirectoryRecord
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
-from datarecord.mutable import Directory, WorkingRecord, NewChild, normalise_value
-from datarecord.schema import AttributeSpec
+from datarecord.mutable import Directory, NewChild, WorkingRecord, normalise_value
 from datarecord.record import Record
+from datarecord.schema import AttributeSpec
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network
 

@@ -21,8 +21,8 @@ from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all, fn, union_all_by_name
-from datarecord.schema import Schema
 from datarecord.record import EMPTY, Flags, Frames, LazyFrames, Record
+from datarecord.schema import Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
@@ -447,7 +447,7 @@ class WorkingRecord:
                 _null_safe_on(dict.fromkeys(fixed)),
                 *(
                     col("s", d).isnull()
-                    | sql(f'{col("s", d)} IS NOT DISTINCT FROM {col("b", d)}')
+                    | sql(f"{col('s', d)} IS NOT DISTINCT FROM {col('b', d)}")
                     for d in broadcast
                 ),
             ]
@@ -928,11 +928,14 @@ class WorkingRecord:
             {"ctype": ctype},
         )
         for attribute in varying:
+            # Always `inputs`: `add` declares components, and a component's
+            # attribute values are inputs whatever a later solve produces.
             self._stage_long(
                 ctype,
                 attribute,
                 lazy.select("name", nw.col(attribute).alias("value")),
                 None,
+                "inputs",
             )
         # `bus` names the connection itself rather than being an attribute of
         # one, so it becomes the connection row; any other port attribute

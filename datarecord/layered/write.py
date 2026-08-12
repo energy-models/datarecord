@@ -16,8 +16,8 @@ from duckdb import DuckDBPyRelation
 
 from datarecord.duck import base_uri_of, layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
-from datarecord.schema import Schema
 from datarecord.record import Record
+from datarecord.schema import Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
