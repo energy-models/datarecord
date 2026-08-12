@@ -984,8 +984,15 @@ class Tool(Protocol):
 ```
 
 `results` is keyed by `(component_type, attribute)` rather than by attribute alone, and its values are eager frames.
-Both differ from `Frames` deliberately: which attributes count as results comes from the framework's registry rather than the schema (§11.3.1), so the component type cannot be recovered from the key the way `attributes` recovers it from a `component_type` column; and a solved model already holds its results in memory, so there is no plan to defer.
-That shape is what `set(ctype, attr, frame, kind="outputs")` consumes one entry at a time (§11.3.1).
+
+The **key** is the substantive difference, and it follows from `results` being pre-store.
+`Frames` keys by attribute alone because in the store one `inputs/p_max_pu.parquet` holds every type's rows and the type is recoverable from the `component_type` column.
+Nothing is written yet here: `results` hands over frames straight off the framework's per-type containers, where `Generator.p` and `Line.p` are separate objects of different shapes.
+Collapsing them onto one `"p"` key would mean concatenating first — work the only caller immediately undoes, since `set(ctype, attr, frame, kind="outputs")` needs the type back (§11.3.1).
+
+The **eagerness** is a description rather than a decision.
+Reshaping a solved model's containers into long form is in-memory work on the framework's own frames, and it has already happened by the time `results` returns, so `nw.DataFrame` states the cost honestly where a `LazyFrame` would imply a deferral that is not there.
+Nothing depends on it: `.lazy()` would satisfy `Frames`' value type without changing a single computation, so if these two shapes are ever unified it is the key that has to be argued, not this.
 
 A store is the input to a translation, not the owner of one, so there is no registry and no name dispatch: a tool is a module-level singleton reached by importing it, `build` returns the framework's own type, and nothing in the record layer imports a tool.
 
