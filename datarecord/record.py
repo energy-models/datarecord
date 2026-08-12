@@ -1,6 +1,6 @@
 """The `Record` protocol: one interface over a parquet store's contents.
 
-Backings: `layered.record.LayeredRecord` (a resolved overlay) and
+Backings: `layered.revision.LayeredRecord` (a resolved overlay) and
 `directory.DirectoryRecord` (a plain directory). See design doc §4 for the
 protocol, §4.1 for why it is a protocol rather than a base class, §4.4 for why
 it names no engine, and §9.3 for what differs between the two backings.

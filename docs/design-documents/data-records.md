@@ -980,8 +980,12 @@ class Tool(Protocol):
     def verify(self, store: Record) -> Requirements: ...  # falsy when usable
     def build(self, store: Record) -> Any: ...
     def to_datarecord(self, model: Any) -> Record: ...  # inverse of build
-    def results(self, model: Any) -> Frames: ...
+    def results(self, model: Any) -> dict[tuple[str, str], nw.DataFrame]: ...
 ```
+
+`results` is keyed by `(component_type, attribute)` rather than by attribute alone, and its values are eager frames.
+Both differ from `Frames` deliberately: which attributes count as results comes from the framework's registry rather than the schema (§11.3.1), so the component type cannot be recovered from the key the way `attributes` recovers it from a `component_type` column; and a solved model already holds its results in memory, so there is no plan to defer.
+That shape is what `set(ctype, attr, frame, kind="outputs")` consumes one entry at a time (§11.3.1).
 
 A store is the input to a translation, not the owner of one, so there is no registry and no name dispatch: a tool is a module-level singleton reached by importing it, `build` returns the framework's own type, and nothing in the record layer imports a tool.
 
@@ -1037,6 +1041,11 @@ The dependency runs strictly one way, so importing the record layer pulls in no 
 
 - **Whether `partial` should ever be per attribute.** §5.5 puts it on the axis because it is true of every attribute varying over that axis.
   A counter-example would be an attribute whose series a consumer _can_ accept in pieces while others cannot — none known, and permitting it would make the fold's key vary per attribute, which the fixed inputs key assumes it does not.
+
+- **Whether staged results should be invalidated by a later input edit.** Results attached through `set(..., kind="outputs")` (§11.3.1) were computed from the inputs pending at that moment, so editing an input afterwards leaves them describing a record that no longer exists.
+  Dropping them on the next input edit was considered and rejected: it silently discards work the caller may have wanted, and a store that guesses which of the two the caller meant to keep is worse than one that keeps both and says so.
+  Coherence is the caller's business, and a commit writes whatever is staged.
+  If this bites in practice, a `pending`-level warning is the cheap next step rather than a silent truncation.
 
 - **Whether a `WorkingRecord` over an open record stages against a snapshot.** Writing into an open record invalidates its owner-map cache.
   A mutable store would need the same invalidation per edit, or to stage against a snapshot taken at construction.

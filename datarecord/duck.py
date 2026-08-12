@@ -126,7 +126,7 @@ def connect(
     database
         DuckDB database, `:memory:` by default.
     base_uri
-        Store root; `layer_dir` derives every path from it (§13).
+        Root of the record tree; `layer_dir` derives every path from it (§13).
     """
     con = duckdb.connect(database)
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
