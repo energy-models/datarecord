@@ -7,8 +7,9 @@ import pandas as pd
 from datarecord.layered.resolve import write_schema as record_write_schema
 from datarecord.schema import AttributeSpec, Dimension, Schema
 
+# No `component_type`: an attribute row is keyed by `name`, unique store-wide
+# (design doc §3.5). The entity tables below keep it.
 LONG_COLUMNS = [
-    "component_type",
     "name",
     "bus",
     "snapshot",
@@ -25,8 +26,8 @@ def write_input(
 ) -> None:
     """Write `inputs/<attribute>.parquet` in the long schema.
 
-    Each row needs at least `component_type`, `name` and `value`; missing
-    dimension columns default to NULL, i.e. "applies to the whole axis".
+    Each row needs at least `name` and `value`; missing dimension columns
+    default to NULL, i.e. "applies to the whole axis".
     `bus` set marks a per-connection attribute (design doc §6), `breakpoint`
     a piecewise-linear one (§7); both NULL is the ordinary component-level
     scalar.
@@ -141,6 +142,50 @@ def write_snapshots(layer: str, rows: list[dict]) -> None:
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
     df.to_parquet(target / "snapshots.parquet", index=False)
+
+
+def rename_components(n, ctype: str, suffix: str) -> None:
+    """Suffix one type's member names, in `static` and every dynamic container.
+
+    PyPSA's example networks scope names per component type - a `Load` named
+    after its `Bus`, a `Generator` after its `Carrier` - which a record cannot
+    represent, names being unique across types (design doc §3.5).
+    `PyPSA.to_datarecord` rejects such a network rather than renaming it (§12),
+    so the suffix here is the test suite standing in for the caller that has to
+    reconcile the two vocabularies.
+
+    Both containers, because they are keyed by the same names: renaming only
+    `static` would orphan every dynamic column, and so silently drop that
+    attribute from the store. A stochastic network is keyed by
+    `(scenario, name)`, so only the `name` level moves.
+
+    The renamed level is cast back to the dtype it had: `rename` yields an
+    `object` index where PyPSA's own is `str`, and `assert_networks_equal`
+    compares index dtypes exactly - so without this the helper, not the code
+    under test, would fail the round-trip.
+    """
+    c = n.c[ctype]
+    index = c.static.index
+    nested = "name" in (index.names or []) and index.nlevels > 1
+    if nested:
+        level = index.get_level_values("name")
+        renamed = {name: f"{name}{suffix}" for name in level}
+        c.static.rename(index=renamed, level="name", inplace=True)
+        c.static.index = c.static.index.set_levels(
+            c.static.index.levels[index.names.index("name")].astype(level.dtype),
+            level="name",
+        )
+        # Per *level*, which is what `rename` does on a MultiIndex - a
+        # tuple-keyed mapping matches nothing and silently leaves the columns
+        # pointing at names `static` no longer has.
+        for frame in c.dynamic.values():
+            frame.rename(columns=renamed, level="name", inplace=True)
+        return
+    renamed = {name: f"{name}{suffix}" for name in index}
+    c.static.rename(index=renamed, inplace=True)
+    c.static.index = c.static.index.astype(index.dtype)
+    for frame in c.dynamic.values():
+        frame.rename(columns=renamed, inplace=True)
 
 
 def export_network(n, record, con) -> None:

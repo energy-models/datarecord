@@ -305,9 +305,12 @@ class Schema(BaseModel):
         `bus` and `breakpoint` are part of the schema, not optional extensions
         to it: both are NULL for the ordinary component-level scalar, so one
         column set serves every kind of attribute row (§6, §7).
+
+        No `component_type`: `name` is unique store-wide, so an attribute row
+        addresses a component and nothing more, and the type is recovered by
+        joining `dims/components/` (§3.5).
         """
         return (
-            "component_type",
             "name",
             "bus",
             *self.dims,
@@ -323,8 +326,11 @@ class Schema(BaseModel):
         `bus` is in the key so a per-connection attribute is owned per
         connection rather than per component (§6); it is NULL for a
         component-level attribute, which then keys against the map's NULL.
+
+        `component_type` is not: it keys the *entity* maps, never this one
+        (§3.5, §9.1).
         """
-        return ("component_type", "name", "bus", *self.input_dims, "attribute")
+        return ("name", "bus", *self.input_dims, "attribute")
 
     @property
     def component_key(self) -> tuple[str, ...]:
@@ -382,6 +388,18 @@ class Schema(BaseModel):
         """The `value` column's type for one attribute (§3.2)."""
         spec = self.attributes.get(ctype, {}).get(attribute)
         return None if spec is None else spec.dtype
+
+    def types_declaring(self, attribute: str) -> frozenset[str]:
+        """Which component types declare `attribute` (§11.2).
+
+        What `set(attribute, value)` with no `names` resolves against: names are
+        unique store-wide, so "every component with a `p_max_pu`" is the only
+        reading of an unscoped edit, and these are the types to look for them in
+        (§3.5).
+        """
+        return frozenset(
+            c for c, attrs in self.attributes.items() if attribute in attrs
+        )
 
     # -- versioning (§5.7) --------------------------------------------------
 

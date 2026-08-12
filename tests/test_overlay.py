@@ -27,7 +27,7 @@ def test_child_overwrites_component(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.42}],
+        [{"name": "Manchester Wind", "value": 0.42}],
     )
 
     df = relation(child, "p_max_pu").df()
@@ -47,7 +47,7 @@ def test_child_overwrite_reaches_model(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.42}],
+        [{"name": "Manchester Wind", "value": 0.42}],
     )
 
     n = PyPSA.build(child.store)
@@ -76,7 +76,7 @@ def test_child_adds_attribute(con, parent):
     write_input(
         layer_dir(child.id),
         "p_min_pu",
-        [{"component_type": "Generator", "name": "Norway Gas", "value": 0.1}],
+        [{"name": "Norway Gas", "value": 0.1}],
     )
 
     n = PyPSA.build(child.store)
@@ -101,7 +101,7 @@ def test_grandchild_resolves_through_ancestry(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.42}],
+        [{"name": "Manchester Wind", "value": 0.42}],
     )
     child.materialise()
 
@@ -109,7 +109,7 @@ def test_grandchild_resolves_through_ancestry(con, parent):
     write_input(
         layer_dir(grandchild.id),
         "p_max_pu",
-        [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.99}],
+        [{"name": "Manchester Wind", "value": 0.99}],
     )
 
     df = relation(grandchild, "p_max_pu").df()
@@ -129,7 +129,7 @@ def test_closed_child_reads_own_node_cache(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.42}],
+        [{"name": "Manchester Wind", "value": 0.42}],
     )
     child.materialise()
 
@@ -169,7 +169,7 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     write_input(
         layer_dir(child.id),
         "p_min_pu",
-        [{"component_type": "Generator", "name": "Norway Gas", "value": 0.1}],
+        [{"name": "Norway Gas", "value": 0.1}],
     )
     n = PyPSA.build(child.store)
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1

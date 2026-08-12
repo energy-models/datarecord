@@ -33,7 +33,6 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
         "p_max_pu",
         [
             {
-                "component_type": "Generator",
                 "name": "Manchester Wind",
                 "period": 2030,
                 "value": 0.42,
@@ -90,7 +89,6 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
         "p_max_pu",
         [
             {
-                "component_type": "Generator",
                 "name": "Manchester Wind",
                 "scenario": "base",
                 "period": 2020,
@@ -106,7 +104,6 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
         "p_max_pu",
         [
             {
-                "component_type": "Generator",
                 "name": "Manchester Wind",
                 "scenario": "high",
                 "period": 2030,

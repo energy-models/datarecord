@@ -388,7 +388,6 @@ def fold_inputs(
         # - whether a row set the dim or left it NULL - so they cannot be read
         # off the expanded value, which is never NULL once broadcast (§4.3).
         tagged = rel.project(
-            col("i", "component_type"),
             col("i", "name"),
             col("i", "bus"),
             *(expr.alias(d) for d, expr in dims.items()),
@@ -413,16 +412,28 @@ def fold_inputs(
     # Deleting a component drops its attribute rows; deleting one connection
     # drops only that connection's, which the map can scope because `bus` is
     # in `input_key` (§6).
+    #
+    # The tombstones carry `component_type` and the inputs map does not (§3.5),
+    # so it is dropped from both anti-join keys rather than matched. That is
+    # sound because `name` is unique: a tombstone for `(Generator, wind1)` and
+    # an inputs row for `wind1` are necessarily the same component, so there is
+    # no type for the join to disambiguate.
+    component_scope = tuple(
+        c for c in keys.schema.component_key if c != "component_type"
+    )
+    connection_scope = tuple(
+        c for c in keys.schema.connection_key if c != "component_type"
+    )
     kept = (
         parent.set_alias("p")
         .join(
             _component_deleted(record_id, keys, con).set_alias("x"),
-            _null_safe("x", "p", keys.schema.component_key),
+            _null_safe("x", "p", component_scope),
             how="anti",
         )
         .join(
             _connection_deleted(record_id, keys, con).set_alias("c"),
-            _null_safe("c", "p", keys.schema.connection_key),
+            _null_safe("c", "p", connection_scope),
             how="anti",
         )
         .join(
@@ -823,8 +834,15 @@ class NodeCache:
             `Record.flags` turns into `Flags` (§4.3).
         """
         dims = self.schema.dims
+        # Scoping to a type is a semi-join to the components map on `name`
+        # rather than a filter on the attribute rows, which no longer carry the
+        # type (§3.5). The map is the entity table that says what a name is.
+        of_type = self.components.filter(col("component_type") == lit(ctype)).project(
+            "name"
+        )
         rows = (
-            self.inputs.filter(col("component_type") == lit(ctype))
+            self.inputs.set_alias("i")
+            .join(of_type.distinct().set_alias("e"), "i.name = e.name", how="semi")
             .aggregate(
                 [
                     col("attribute"),
@@ -890,9 +908,7 @@ class NodeCache:
                 # `bus` joins the fixed columns, not the broadcast dims: NULL
                 # means "the component's own attribute", never "every bus",
                 # so it is compared NULL-safely and never expanded (§6).
-                keys.input_match(
-                    "l", "o", "component_type", "name", "bus", "layer_uuid"
-                ),
+                keys.input_match("l", "o", "name", "bus", "layer_uuid"),
             )
             .project(
                 *(

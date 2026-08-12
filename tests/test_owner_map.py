@@ -43,10 +43,9 @@ def test_union_all_by_name_fills_a_missing_column_with_null(con):
 
 
 def keys(record, con):
+    """The inputs map's keys: `(name, attribute)`, no type (§3.5)."""
     df = record.node_cache.inputs.df()
-    return {
-        (str(r.component_type), r["name"], str(r.attribute)) for _, r in df.iterrows()
-    }
+    return {(r["name"], str(r.attribute)) for _, r in df.iterrows()}
 
 
 def component_names(record):
@@ -58,7 +57,7 @@ def test_root_map_is_its_own_layer(con, parent):
     om = parent.node_cache
     assert set(om.inputs.df()["layer_uuid"]) == {parent.id}
     assert set(om.components.df()["layer_uuid"]) == {parent.id}
-    assert ("Generator", "Manchester Wind", "p_max_pu") in keys(parent, con)
+    assert ("Manchester Wind", "p_max_pu") in keys(parent, con)
 
 
 def test_materialise_writes_the_map_under_resolved(con, parent):
@@ -94,7 +93,7 @@ def test_last_writer_wins_per_key(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.42}],
+        [{"name": "Manchester Wind", "value": 0.42}],
     )
     df = child.node_cache.inputs.df()
 
@@ -109,13 +108,13 @@ def test_last_writer_wins_per_key(con, parent):
 
 def test_tombstone_removes_all_attributes(con, parent):
     """A tombstone removes every attribute and the component row of the component (§8.3)."""
-    before = {k for k in keys(parent, con) if k[1] == "Norway Gas"}
+    before = {k for k in keys(parent, con) if k[0] == "Norway Gas"}
     assert len(before) > 1
     assert "Norway Gas" in component_names(parent)
 
     child = parent.child()
     tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
-    assert not {k for k in keys(child, con) if k[1] == "Norway Gas"}
+    assert not {k for k in keys(child, con) if k[0] == "Norway Gas"}
     assert "Norway Gas" not in component_names(child)
 
 
@@ -144,7 +143,7 @@ def test_materialising_does_not_change_the_map(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.42}],
+        [{"name": "Manchester Wind", "value": 0.42}],
     )
     live = keys(child, con)
     child.materialise()
@@ -162,7 +161,7 @@ def test_a_removed_cache_falls_back_to_the_fold(con, parent):
     write_input(
         layer_dir(child.id),
         "p_min_pu",
-        [{"component_type": "Generator", "name": "Norway Gas", "value": 0.1}],
+        [{"name": "Norway Gas", "value": 0.1}],
     )
     child.materialise()
     expected = keys(child, con)
@@ -178,7 +177,7 @@ def test_any_node_may_be_a_parent(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.42}],
+        [{"name": "Manchester Wind", "value": 0.42}],
     )
     grandchild = child.child()
     # The child was never materialised, yet its layer resolves for the

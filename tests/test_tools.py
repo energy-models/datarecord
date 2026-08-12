@@ -11,7 +11,7 @@ from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.layered.write import write_record
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
-from datarecord.tools.pypsa import PyPSA
+from datarecord.tools.pypsa import PyPSA, _colliding_names
 from tests.fixtures import (
     export_network,
     relation,
@@ -228,7 +228,6 @@ def test_verify_reports_a_piecewise_linear_attribute(con, base_uri, ac_dc):
         "marginal_cost",
         [
             {
-                "component_type": "Generator",
                 "name": "Manchester Wind",
                 "breakpoint": x,
                 "value": v,
@@ -249,9 +248,54 @@ def test_verify_accepts_a_scalar_attribute(single_record):
     write_input(
         layer_dir(single_record.id),
         "marginal_cost",
-        [{"component_type": "Generator", "name": "Manchester Wind", "value": 20.0}],
+        [{"name": "Manchester Wind", "value": 20.0}],
     )
     assert not PyPSA.verify(single_record.store).unsupported_values
+
+
+def test_to_datarecord_rejects_a_cross_type_name_collision():
+    """PyPSA scopes names per type; a record scopes them store-wide (§3.5, §12).
+
+    Reported rather than repaired: renaming to `Generator:north` would hand back
+    a network whose components PyPSA can no longer find by their own names, so
+    the mismatch is the caller's to reconcile.
+    """
+    import pypsa
+
+    n = pypsa.Network()
+    n.add("Bus", "north")
+    n.add("Generator", "north", bus="north")
+
+    with pytest.raises(UnsupportedRecordError, match="more than one component type"):
+        PyPSA.to_datarecord(n)
+
+
+def test_to_datarecord_accepts_distinct_names():
+    """The negative half: the same network with distinct names is buildable."""
+    import pypsa
+
+    n = pypsa.Network()
+    n.add("Bus", "north")
+    n.add("Generator", "north gen", bus="north")
+
+    assert not _colliding_names(n)
+    assert PyPSA.to_datarecord(n) is not None
+
+
+def test_a_stochastic_network_is_not_a_false_collision():
+    """A `(scenario, name)` index is one name per component, not one per scenario.
+
+    Comparing the index tuples would report every scenario's copy as a distinct
+    name while missing a real cross-type clash.
+    """
+    import pypsa
+
+    n = pypsa.Network()
+    n.set_scenarios(["a", "b"])
+    n.add("Bus", "north")
+    n.add("Generator", "north gen", bus="north")
+
+    assert not _colliding_names(n)
 
 
 def test_pypsa_schema_is_the_identity(single_record):
@@ -305,19 +349,21 @@ def test_results_extracts_long_form_outputs(single_record):
     # tool may fetch on demand (§12).
     assert isinstance(results["p"], nw.LazyFrame)
     p = results["p"].collect()
-    # The long schema's columns (§3), so the write path can persist it as-is.
+    # The long schema's columns (§3), so the write path can persist it as-is -
+    # and no `component_type`, an attribute row being keyed by `name` (§3.5).
     assert {"name", "snapshot", "scenario", "period", "value"} <= set(p.columns)
-    # Keyed by attribute, so the type lives in the column - as `inputs/` does.
-    assert "Generator" in set(p["component_type"].to_list())
+    assert "component_type" not in p.columns
     assert set(p["attribute"].to_list()) == {"p"}
-    # Series output: one row per (name, snapshot), for the Generator rows.
-    gen = p.filter(nw.col("component_type") == "Generator")
-    assert len(gen) == len(n.snapshots) * len(n.c["Generator"].static)
+    # Series output: one row per (name, snapshot), for the Generator rows -
+    # selected by name, since the frame no longer carries the type.
+    gens = set(n.c["Generator"].static.index)
+    gen = p.filter(nw.col("name").is_in(list(gens)))
+    assert len(gen) == len(n.snapshots) * len(gens)
 
     # A static output has no snapshot, and only the components whose value
     # differs from the default appear (some generators solve to p_nom_opt=0).
     nom = results["p_nom_opt"].collect()
-    nom = nom.filter(nw.col("component_type") == "Generator")
+    nom = nom.filter(nw.col("name").is_in(list(gens)))
     assert nom["snapshot"].is_null().all()
     nonzero = n.c["Generator"].static["p_nom_opt"] != 0.0
     assert set(nom["name"].to_list()) == set(n.c["Generator"].static.index[nonzero])
@@ -329,12 +375,18 @@ def test_results_concatenate_every_type_under_one_attribute(single_record):
     n.optimize(solver_name="highs")
 
     p = PyPSA.results(n)["p"].collect()
-    types = set(p["component_type"].to_list())
+    names = set(p["name"].to_list())
     # `p` is a result of several types, so the concat is what is being tested;
     # keying by `(type, attribute)` would have split these into separate frames.
-    assert len(types) > 1
-    # Every row still says which type it belongs to, so nothing is lost.
-    assert not p["component_type"].is_null().any()
+    # The names identify which type each row came from, no tag column needed -
+    # that being what unique names buy the union (§3.5).
+    contributing = {
+        c.name
+        for c in n.components
+        if not c.static.empty and set(c.static.index) & names
+    }
+    assert len(contributing) > 1
+    assert not p["name"].is_null().any()
 
 
 def test_results_skips_outputs_still_at_their_default(single_record):

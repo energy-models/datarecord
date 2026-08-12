@@ -74,7 +74,6 @@ class _Source:
 def _long(**overrides) -> pd.DataFrame:
     """One long-schema row, with every §3 column present."""
     row = {
-        "component_type": "Process",
         "name": "steel_dri",
         "bus": None,
         "snapshot": None,
@@ -197,6 +196,42 @@ def test_write_record_rejects_an_unbacked_key_dim(con, base_uri):
         write_record(record.id, source, con)
 
 
+def test_write_record_rejects_a_name_two_types_share(con, base_uri):
+    """Names are unique store-wide, checked before anything is written (§3.5).
+
+    The attribute rows record no type, so two components sharing a name would
+    silently share every attribute key - which is why this is enforced rather
+    than assumed.
+    """
+    record = Revision.create(con)
+    source = _Source(
+        _SCHEMA,
+        components={
+            "Process": pd.DataFrame({"name": ["shared"], "scenario": [None]}),
+            "Widget": pd.DataFrame({"name": ["shared"], "scenario": [None]}),
+        },
+    )
+
+    with pytest.raises(ValueError, match="reuses names another type declares"):
+        write_record(record.id, source, con)
+    assert not Path(layer_dir(record.id)).exists()
+
+
+def test_write_record_accepts_one_name_per_type(con, base_uri):
+    """The negative half: the same two types with distinct names write fine."""
+    record = Revision.create(con)
+    source = _Source(
+        _SCHEMA,
+        components={
+            "Process": pd.DataFrame({"name": ["a"], "scenario": [None]}),
+            "Widget": pd.DataFrame({"name": ["b"], "scenario": [None]}),
+        },
+    )
+
+    write_record(record.id, source, con)
+    assert Path(layer_dir(record.id)).exists()
+
+
 def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
     """A `within` dim's file needs a column per parent, or the fold miskeys it (§5.4).
 
@@ -314,7 +349,7 @@ def test_written_layer_overlays(con, base_uri, ac_dc):
     write_input(
         layer_dir(child.id),
         "p_nom",
-        [{"component_type": "Generator", "name": "Manchester Wind", "value": 999.0}],
+        [{"name": "Manchester Wind", "value": 999.0}],
     )
 
     resolved = relation(child, "p_nom").filter("name = 'Manchester Wind'").df()

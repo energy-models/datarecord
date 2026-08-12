@@ -24,7 +24,8 @@ if TYPE_CHECKING:
 
 # The long schema's fixed columns (§3). `bus`/`breakpoint` are part of it, not
 # optional extensions to it: both NULL is the ordinary component-level scalar.
-_LONG_FIXED = ("component_type", "name", "bus", "attribute", "breakpoint", "value")
+# No `component_type`: an attribute row is keyed by `name` alone (§3.5).
+_LONG_FIXED = ("name", "bus", "attribute", "breakpoint", "value")
 
 
 def write_record(
@@ -111,10 +112,16 @@ def write_record(
         outputs = getattr(source, "outputs", None) or {}
         if outputs:
             kinds.append(("outputs", outputs, "outputs"))
+        # Which type each name belongs to, accumulated as the component frames
+        # are written: a name may occur under only one type (§3.5), and this is
+        # the pass that already holds every one of them.
+        seen: dict[str, str] = {}
         for kind, frames, subdir in kinds:
             for key in frames:
                 frame = frames[key]  # looked up exactly once (§10)
                 _validate_frame(frame, kind, key, schema)
+                if kind == "components":
+                    _require_unique(frame, key, seen)
                 name = f"{key}s" if kind == "dims" else key
                 _write_frame(
                     frame, f"{staging}{subdir}/{name}.parquet", con, local, schema
@@ -192,6 +199,38 @@ def _typed(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
         for c in rel.columns
     )
     return rel.project(cols)
+
+
+def _require_unique(frame: nw.LazyFrame, ctype: str, seen: dict[str, str]) -> None:
+    """Reject a store whose component types share a name (§3.5).
+
+    Names are unique store-wide, so `seen` accumulates `name -> component_type`
+    across the component frames and a repeat under another type is a collision.
+    Enforced rather than assumed: the attribute rows record no type, so two
+    components sharing a name would silently share every attribute key.
+
+    Unlike the rest of `_validate_frame`'s checks this reads the rows, since
+    uniqueness is a property of the data rather than of the declared columns.
+    A tombstone row still occupies the name, so `deleted` is not filtered out.
+
+    Raises
+    ------
+    ValueError
+        Naming the collisions, and the type each name was already taken by.
+    """
+    clashing = []
+    for value in frame.select("name").collect()["name"].to_list():
+        name = str(value)
+        taken = seen.setdefault(name, ctype)
+        if taken != ctype:
+            clashing.append((name, taken))
+    if clashing:
+        detail = ", ".join(f"{n!r} is also a {t}" for n, t in sorted(set(clashing)))
+        msg = (
+            f"dims/components/{ctype}.parquet reuses names another type declares: "
+            f"{detail}; a name identifies one component across every type (§3.5)"
+        )
+        raise ValueError(msg)
 
 
 def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) -> None:

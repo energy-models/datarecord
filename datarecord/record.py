@@ -130,7 +130,9 @@ class Record(Protocol):
         """Long input frames, keyed by attribute name - one per file (§3.2, §4).
 
         Not by component type: one `inputs/p_max_pu.parquet` holds every type's
-        rows, so a reader wanting one type filters on `component_type`.
+        rows, keyed by `name` alone. A row carries no `component_type` - names
+        are unique store-wide - so a reader wanting one type joins `components`
+        on `name` (§3.5).
         """
         ...
 

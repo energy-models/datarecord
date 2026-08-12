@@ -11,6 +11,7 @@ from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     export_network,
     relation,
+    rename_components,
     tombstone,
     write_input,
     write_scenarios,
@@ -20,9 +21,17 @@ from tests.test_roundtrip import assert_networks_equal
 
 @pytest.fixture(scope="session")
 def stochastic():
+    """PyPSA's `stochastic_network`, with its generators renamed off their carriers.
+
+    The example names each `Generator` after its `Carrier`, which collides in a
+    record (§3.5). The generators move rather than the carriers, since the
+    `carrier` attribute *values* reference the carrier names.
+    """
     import pypsa
 
-    return pypsa.examples.stochastic_network()
+    n = pypsa.examples.stochastic_network()
+    rename_components(n, "Generator", " Gen")
+    return n
 
 
 @pytest.fixture
@@ -45,7 +54,9 @@ def test_map_is_scenario_expanded(con, parent, stochastic):
     df = parent.node_cache.inputs.df()
     assert set(df["scenario"]) == set(stochastic.scenarios)
 
-    solar = df[(df["name"] == "solar") & (df["attribute"].astype(str) == "p_max_pu")]
+    solar = df[
+        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
+    ]
     assert set(solar["scenario"]) == set(stochastic.scenarios)
 
 
@@ -58,8 +69,7 @@ def test_partial_scenario_override(con, parent, stochastic):
         "p_max_pu",
         [
             {
-                "component_type": "Generator",
-                "name": "solar",
+                "name": "solar Gen",
                 "scenario": scenario,
                 "value": 0.77,
             }
@@ -67,7 +77,9 @@ def test_partial_scenario_override(con, parent, stochastic):
     )
 
     df = child.node_cache.inputs.df()
-    solar = df[(df["name"] == "solar") & (df["attribute"].astype(str) == "p_max_pu")]
+    solar = df[
+        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
+    ]
     owners = dict(zip(solar["scenario"], solar["layer_uuid"], strict=True))
     assert owners[scenario] == child.id
     for other in stochastic.scenarios[1:]:
@@ -75,7 +87,7 @@ def test_partial_scenario_override(con, parent, stochastic):
 
     # The resolved relation carries the child's value for that scenario only.
     rel = relation(child, "p_max_pu").df()
-    solar_rows = rel[rel["name"] == "solar"]
+    solar_rows = rel[rel["name"] == "solar Gen"]
     overridden = solar_rows[solar_rows["scenario"] == scenario]
     assert set(overridden["value"]) == {0.77}
     assert set(solar_rows[solar_rows["scenario"] != scenario]["value"]) != {0.77}
@@ -85,14 +97,13 @@ def test_per_scenario_tombstone(con, parent, stochastic):
     """A tombstone in one scenario leaves the component in the others (§8.3)."""
     scenario = stochastic.scenarios[0]
     child = parent.child()
-    tombstone(layer_dir(child.id), "Generator", ["solar"], scenario=scenario)
+    tombstone(layer_dir(child.id), "Generator", ["solar Gen"], scenario=scenario)
 
     df = child.node_cache.inputs.df()
-    # `Carrier` "solar" also exists in this fixture and is untouched by the
-    # tombstone, so scope by component_type too, not just name.
-    solar = df[
-        (df["name"] == "solar") & (df["component_type"].astype(str) == "Generator")
-    ]
+    # No type scoping needed: the generator is "solar Gen" and the carrier
+    # "solar", names being unique across types (§3.5) - which is exactly what
+    # used to require filtering on `component_type` here.
+    solar = df[df["name"] == "solar Gen"]
     assert scenario not in set(solar["scenario"])
     assert set(solar["scenario"]) == set(stochastic.scenarios[1:])
 
@@ -114,8 +125,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
         "p_max_pu",
         [
             {
-                "component_type": "Generator",
-                "name": "solar",
+                "name": "solar Gen",
                 "scenario": "extra",
                 "value": 0.33,
             }
@@ -126,7 +136,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
     assert set(n.scenarios) == set(stochastic.scenarios) | {"extra"}
 
     rel = relation(child, "p_max_pu").df()
-    extra_solar = rel[(rel["name"] == "solar") & (rel["scenario"] == "extra")]
+    extra_solar = rel[(rel["name"] == "solar Gen") & (rel["scenario"] == "extra")]
     assert set(extra_solar["value"]) == {0.33}
 
 
@@ -181,11 +191,13 @@ def test_scenario_axis_survives_closed_grandchild(con, parent, stochastic):
     write_input(
         layer_dir(grandchild.id),
         "p_max_pu",
-        [{"component_type": "Generator", "name": "solar", "value": 0.88}],
+        [{"name": "solar Gen", "value": 0.88}],
     )
 
     df = grandchild.node_cache.inputs.df()
-    solar = df[(df["name"] == "solar") & (df["attribute"].astype(str) == "p_max_pu")]
+    solar = df[
+        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
+    ]
     assert set(solar["scenario"]) == set(stochastic.scenarios)
     assert set(solar["layer_uuid"]) == {grandchild.id}
 
@@ -196,12 +208,14 @@ def test_scenario_null_row_broadcasts(con, parent, stochastic):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"component_type": "Generator", "name": "solar", "value": 0.55}],
+        [{"name": "solar Gen", "value": 0.55}],
     )
 
     df = child.node_cache.inputs.df()
-    solar = df[(df["name"] == "solar") & (df["attribute"].astype(str) == "p_max_pu")]
+    solar = df[
+        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
+    ]
     assert set(solar["layer_uuid"]) == {child.id}
 
     rel = relation(child, "p_max_pu").df()
-    assert set(rel[rel["name"] == "solar"]["value"]) == {0.55}
+    assert set(rel[rel["name"] == "solar Gen"]["value"]) == {0.55}
