@@ -708,6 +708,13 @@ class WorkingRecord:
         `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a
         tool hands results back. Results use the same long schema; what differs
         is that they do not overlay (§9.4).
+
+        Two checks are skipped for `"outputs"`, both because a result is not a
+        value the schema governs: the attribute need not be declared, and a
+        result's `name` need not resolve to a declared member. A solve may
+        produce rows for a component type it derived rather than read - PyPSA's
+        `SubNetwork` is one - and rejecting those would refuse a legitimate
+        result. An *input* for an undeclared name stays an error (§11.8).
         """
         self._validate_edit(ctype, attribute, dims, kind=kind)
         if isinstance(value, nw.Expr):
@@ -720,7 +727,7 @@ class WorkingRecord:
             # the same way: a name no layer declares resolves to nothing, and a
             # caller should learn that here rather than at read time.
             lazy = nw.from_native(value).lazy()
-            if "name" in lazy.collect_schema().names():
+            if kind == "inputs" and "name" in lazy.collect_schema().names():
                 named = lazy.select("name").unique("name").collect()
                 self._require_names(ctype, [str(n) for n in named["name"].to_list()])
             self._stage_long(ctype, attribute, value, bus, kind)
@@ -732,7 +739,8 @@ class WorkingRecord:
             keys = target
             if len(values) == 1 and len(keys) > 1:
                 values = values * len(keys)
-        self._require_names(ctype, keys)
+        if kind == "inputs":
+            self._require_names(ctype, keys)
 
         seq = next(_SEQ)
         table = self._ensure(kind)
@@ -809,7 +817,8 @@ class WorkingRecord:
         else:
             frame = source[attribute].filter(nw.col("component_type") == ctype)
             if names is not None:
-                self._require_names(ctype, list(names))
+                if kind == "inputs":
+                    self._require_names(ctype, list(names))
                 frame = frame.filter(nw.col("name").is_in(list(names)))
             if bus is not None:
                 frame = frame.filter(nw.col("bus") == bus)

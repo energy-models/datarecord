@@ -620,3 +620,19 @@ def test_results_survive_a_commit_into_the_new_layer(staged, root, con):
     assert rows["value"].tolist() == [42.0]
     # And the inputs went where inputs go.
     assert "p_nom" in layer.attributes
+
+
+def test_results_accept_a_component_type_the_record_never_declared(staged):
+    """A solve may derive a component the record has no member row for (§11.3.1).
+
+    PyPSA's `SubNetwork` is the real case: it exists only after a solve, so
+    requiring a declared member row - which an *input* value must have (§11.8) -
+    would refuse a legitimate result.
+    """
+    staged.set("SubNetwork", "carrier", "AC", names=["1"], kind="outputs")
+    rows = staged.outputs["carrier"].collect().to_native().to_pandas()
+    assert rows["name"].tolist() == ["1"]
+
+    # The same name as an input is still rejected: membership governs inputs.
+    with pytest.raises(KeyError, match="member row"):
+        staged.set(GEN, "p_nom", 1.0, names=["NoSuchGenerator"])
