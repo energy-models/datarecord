@@ -10,6 +10,7 @@ from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.layered.write import write_record
+from datarecord.record import EMPTY
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import PyPSA, _colliding_names
 from tests.fixtures import (
@@ -186,6 +187,7 @@ def test_write_record_rejects_a_key_dim_no_frame_carries(con, base_uri, ac_dc, k
         components=source.components,
         connections=source.connections,
         attributes=source.attributes,
+        outputs=EMPTY,
     )
     revision = Revision.create(con)
     with pytest.raises(ValueError, match="period|vintage"):

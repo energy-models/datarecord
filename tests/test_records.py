@@ -381,26 +381,23 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
     solved = PyPSA.to_datarecord(ac_dc)
 
     class Unsolved:
-        """The same record, with the results member removed entirely.
-
-        A structural protocol means a source may simply not define `outputs`,
-        which `write_record` must read as "no results" rather than raising.
-        """
+        """The same record, with no results: `outputs` answers empty."""
 
         schema = solved.schema
         dims = solved.dims
         components = solved.components
         connections = solved.connections
         attributes = solved.attributes
+        outputs = EMPTY
         flags = solved.flags
 
     source = Unsolved()
-    assert not hasattr(source, "outputs")
+    assert isinstance(source, Record)
 
     revision = Revision.create(con)
-    # Omitting `outputs` is the point: `write_record` must read an absent
-    # member as "no results" rather than raising (§4).
-    write_record(revision.id, source, con)  # type: ignore[arg-type]
+    # An empty `outputs` writes no `outputs/` at all, rather than an empty
+    # directory (§10).
+    write_record(revision.id, source, con)
     layer = layer_dir(revision.id)
     assert try_read_parquet(layer + "outputs/*.parquet", con) is None
     assert "p_max_pu" in DirectoryRecord(layer, con).attributes

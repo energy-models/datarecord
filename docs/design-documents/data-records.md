@@ -9,136 +9,48 @@ Dimensioned attribute data with a declared schema.
 A record holds **components** (named members of a type), **connections** between components and buses, **attribute values** over both, and the **axes** those values vary along.
 A schema declares what may exist; the data says what does.
 
-**A record is defined by what it answers, not by how it is stored.**
-That definition is the `Record` protocol (§4): a `schema`, five groups of frames, and `flags`.
-Anything answering those is a record — and the things that do are not all directories.
-`WorkingRecord` (§11) answers them over staged edits that exist only in memory, a framework object can answer them directly (§4.1), and `LayeredRecord` answers them by resolving a fold across many directories, none of which is individually the record.
+A record is **what it answers**, and this is the whole of it:
 
-The parquet layout in §3 is therefore **one serialisation** of that answer, not the thing itself.
-It earns its place first among equals — it is what `write_record` produces, what a foreign reader consumes, and the shape the protocol's members are named after — but a reader who takes it as the definition will draw wrong conclusions about every implementation that is not a directory on disk.
+```text
+record.schema        what may exist: the axes, the attributes (§5)
+record.dims          the axes themselves, keyed by dim
+record.components    members, keyed by component type
+record.connections   component↔bus rows, keyed by component type
+record.attributes    the values, keyed by attribute name
+record.outputs       results, keyed by attribute name
+record.flags(ctype)  which axes an attribute actually uses
+```
 
-A component's `name` identifies it **across every type**: names are unique record-wide, not per type (§3.5).
-So an attribute row names a component and nothing more, and a component's type is something the record knows about it rather than part of its address.
+Everything a consumer may rely on is above; §3 states it precisely.
+
+One rule underpins the shape of those answers: a component's `name` identifies it **across every type**, so names are unique record-wide rather than per type (§4.5).
+That is why the values are keyed by attribute and not by type — an attribute row names a component and nothing more, and a component's type is something the record knows about it rather than part of its address.
+
+**How a record is stored is a second question.** The usual answer is a parquet directory, laid out in §4, and it is the answer whenever a record is written down or read back.
+But a consumer codes against the seven members above, and several things answer them without being a directory:
+
+- **`DirectoryRecord`** — one parquet directory.
+  What the files hold is what it presents.
+- **`LayeredRecord`** — a tree of layers, each adding a partial record on top of its parent, resolved last-writer-wins.
+  No single directory is the record; the answer is the fold across them.
+- **`WorkingRecord`** (§11) — a record plus pending edits, held in memory and not yet written anywhere.
+- **A framework's own object** — a PyPSA `Network` presenting itself as a record, without depending on this package at all.
+
+A consumer cannot tell which it holds.
+That is what lets a framework read a hundred-layer overlay through the same call it would use for a single directory.
 
 Neither the concept nor this package names a modelling framework.
 A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
 `datarecord` depends on `duckdb`, `narwhals` and `pydantic`, and on nothing else.
 
-Two implementations ship, and a consumer cannot tell which it holds:
-
-- **`DirectoryRecord`** — one parquet directory.
-  What the files hold is what it presents.
-- **`LayeredRecord`** — a tree of layers, each adding a partial record on top of its parent, resolved last-writer-wins.
-
-That is what lets a framework read a hundred-layer overlay through the same call it would use for a single directory.
-
-### Reading order
-
-§3 comes before §4 because the protocol's vocabulary is easier to read once the file layout is concrete: `attributes` is keyed by attribute name _because_ one `inputs/<attr>.parquet` holds every type's rows.
-The dependency runs the other way round, though — the layout reflects the protocol's questions, not the reverse — so a reader who wants the definition first can start at §4 and treat §3 as its on-disk encoding.
-
 ## 2. Scope
 
-- **In scope:** the `Record` protocol (the definition, §4) and `WorkingRecord`; the parquet format that serialises it; the schema; overlay resolution and its owner map; the write path; how the two implementations differ.
-- **Out of scope:** a non-DuckDB implementation (the protocol permits one, §4.4, but only DuckDB-backed ones are provided); concurrent writers to one record; unmaterialised/meta layers.
+- **In scope:** the `Record` protocol (the definition, §3) and `WorkingRecord`; the parquet format that stores it; the schema; overlay resolution and its owner map; the write path; how the two shipped implementations differ.
+- **Out of scope:** a non-DuckDB implementation (the protocol permits one, §3.3, but only DuckDB-backed ones are provided); concurrent writers to one record; unmaterialised/meta layers.
 
-## 3. The record format
+## 3. `Record`
 
-A record's **on-disk form** is a parquet directory.
-This is the serialisation, not the definition (§1): `write_record` produces it, `DirectoryRecord` reads it, and a foreign tool can consume it knowing nothing about this package — but a record that is never written has no directory, and is a record all the same (§4).
-
-```
-record/
-├── manifest.json                   # the schema (§5)
-├── dims/
-│   ├── components/<Type>.parquet   # members + non-varying attribute columns
-│   ├── connections/<Type>.parquet  # component↔bus connections (§6)
-│   └── <dim>s.parquet              # one axis table per declared dim
-├── inputs/<attr>.parquet           # one varying input attribute per file
-└── outputs/<attr>.parquet          # one result attribute per file
-```
-
-### 3.1 Where a value lives
-
-Decided by the attribute's declared `dims` (§5.2), not by a particular value:
-
-- **`dims/components/<Type>.parquet`** — attributes that vary over nothing (`dims = {}`): one column per attribute, indexed by `name`.
-  A component's membership is its row here, and the file it is in is what gives it its type (§3.5).
-- **`inputs/<attr>.parquet`** — every attribute that may vary, even where a given component's value happens to be constant.
-  That component is then a row with the varying dim NULL.
-
-So a component type's constant frame is assembled from both: the non-varying columns, and the dim-NULL rows of the varying files.
-
-### 3.2 The long schema
-
-Every `inputs/` and `outputs/` file carries:
-
-```
-name | bus | attribute | breakpoint | value | <dim> ...
-```
-
-with one column per declared dim.
-`bus` addresses an attribute of one of the component's connections rather than of the component itself (§6); `breakpoint` carries the abscissa of a piecewise-linear value (§7).
-Both are part of the schema rather than optional extensions, and both are NULL for the ordinary case — a component-level scalar — so a file whose every row is one carries two all-NULL columns.
-
-That uniformity is the point: one column set means one `UNION ALL BY NAME` and one join shape for every kind of attribute row (§9.2).
-A conditional column set would need the absent case handled everywhere regardless.
-It also means a file written without one of these columns still reads back correctly, since `union_by_name` supplies NULL — the right reading of a record with no connections and no curves.
-
-One attribute per file, so `value` carries that attribute's dtype.
-There is **no `component_type` column**: `name` is unique across every type (§3.5), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by name alone, and a reader wanting one type's rows joins `dims/components/` (§3.5).
-
-A connection's `role` is not in the long schema: it lives on the connection row and identifies nothing in `inputs/` (§6).
-
-### 3.3 The decode rule
-
-A row's `value` applies to every combination of its NULL dimension columns, enumerated from the axis tables under `dims/`.
-A NULL dim means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep.
-
-Rows never overlap within a record.
-A coordinate no row covers, including an attribute with no file, takes the attribute's `default` from the schema.
-
-Broadcast form is preserved rather than incidental: a writer that holds a value once stores it once, and a reader sees the same shape back.
-That is what lets a consumer reconstruct a constant-versus-varying split from the stored form.
-
-### 3.4 Axis order
-
-An axis is ordered, by the row order of its `<dim>s.parquet`.
-Nothing declares this and nothing needs to: the row order _is_ the order.
-
-Under resolution the same rule extends across layers by first-introduced position — a descendant appending a new period lands after the parent's.
-Components and connections get the same semantics from the owner map's `order_key` (§9.1).
-
-### 3.5 `name` is unique, and the entity tables say what a name is
-
-A `name` identifies one component across the whole record.
-Two types may not share one: a `Bus` and a `Generator` both called `north` are a collision, not two components.
-
-That is what removes `component_type` from every attribute key.
-An `inputs/` row addresses `(name, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
-The alternative — carrying the type in the key — makes it a _component's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
-
-**The entity tables are the mapping.** `dims/components/<Type>.parquet` already partitions membership by type, one file per type, so `name -> component_type` is the file a name's row is in.
-Nothing new is stored to answer it: no separate entity table, because the component tables _are_ one.
-Where the union of those files needs the type as data — the owner map (§9.1), a glob across types — `component_type` is a column of the **entity** rows, never of the attribute rows.
-
-So a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the components map on `name`.
-That join is what the `component_type` filter used to be, and it is against a relation the read path already builds.
-
-Two things follow, and they are the reason to want this.
-An attribute row is addressed the way a component is, so `set("p_nom", 150.0, names=["wind1"])` needs no type: the name determines it (§11.2).
-And the inputs key loses a column, so the fold's key is `(name, bus, *owned_per dims, attribute)` — one less column to compare NULL-safely in every join in §9.
-
-**Enforced, not assumed.** `write_record` rejects a record whose component tables share a name, and `add` rejects a name the record already resolves under another type (§11.5).
-A collision cannot be left to be discovered: it would silently merge two components' attribute rows, since the rows themselves no longer record which type they meant.
-
-A modelling framework that scopes names per type must therefore reconcile before it writes.
-Its tool's `verify` is where that is reported (§12), rather than something the record layer mangles a name to paper over: a record's `name` is the framework's own name, and a record that renamed them would hand back components a framework cannot find.
-
-## 4. `Record`
-
-**This is the definition a record answers to** (§1).
-§3 gives one encoding of it; what follows is the thing being encoded, and the only contract a consumer may rely on.
+The definition sketched in §1, in full. This is the contract a consumer codes against; §4 is how it is stored.
 
 ```python
 @runtime_checkable
@@ -163,29 +75,35 @@ class Record(Protocol):
     def flags(self, ctype: str) -> dict[str, Flags]: ...
 ```
 
-`attributes` is keyed by attribute name, matching the file layout: one `inputs/p_max_pu.parquet` holds every component type's rows, and a reader wanting one type joins `components` on `name` (§3.5).
+**What each member hands over.** `schema` is the declaration (§5): which axes exist, which attributes each component type may carry, and over which axes each may vary. The rest is data, and comes in two shapes.
 
-`outputs` is an ordinary member, and its **emptiness is the existence answer** — the same idiom §4.3 uses for `flags`, where an attribute with no rows is absent from the mapping rather than present with empty sets.
-An unsolved record answers with an empty mapping, and nothing half-writes results, so there is no state in which empty is ambiguous.
-`write_record` writes `outputs/` only for a source whose mapping is non-empty, so a record with no results produces a layer without the directory rather than an empty one.
+`dims`, `components` and `connections` are **wide** — one row per thing, keyed by the dim or the component type:
 
-Because `Record` is structural, a source may omit the member entirely, and `write_record` reads an absent `outputs` as "no results" rather than raising — the same answer as defining it empty.
+```text
+dims["scenario"]         scenario | ...           one row per axis label, in axis order (§4.4)
+components["Generator"]  name | <non-varying attribute columns>
+connections["Link"]      name | bus | role | ...  one row per component↔bus attachment (§6)
+```
 
-One thing does set it apart: results do not overlay (§9.4), so a layered record's `outputs` reads its own layer where every other member reads the resolution.
-That is a documented property of the member rather than a reason to split the protocol.
-A separate `Solved` would not have changed those semantics, only gated access to them, and it made every consumer test for a second type to reach a member most records simply have none of.
+`attributes` and `outputs` are **long** — one row per value, keyed by the attribute's name:
 
-Read-only.
-Writing is `write_record(revision_id, record, con)` — a function over a record rather than a method on one (§10).
+```text
+attributes["p_max_pu"]   name | bus | <one column per declared dim> | attribute | breakpoint | value
+```
 
-Called `Record` rather than `Layer` because a layer is one node's own contribution and a resolved overlay is not one, but both answer the members above — which is what makes each a record.
+A row names the component it belongs to, the coordinate it sits at, and the value there.
+A dim column left NULL means "every value of that axis", which is how a constant and a varying value share one shape (§4.3).
+`bus` is NULL unless the value belongs to one of the component's connections (§6); `breakpoint` is NULL unless the value is a point on a piecewise-linear curve (§7).
 
-### 4.1 A protocol, not a base class
+Note there is **no `component_type` column** in that row, and none in the mapping's key either: `attributes["p_max_pu"]` holds every type's `p_max_pu` together.
+It can, because a `name` already identifies a component on its own (§1).
+A consumer wanting one type's rows joins `components` on `name` — the entity frames are what say which type a name is, and §4.5 works through why that is the mapping rather than a stored column.
 
-A `Record` is a _view_, and the two implementations share no state: one resolves a fold, the other reads files.
-Structural typing also lets a consumer satisfy it without depending on this package at all — which is how a framework object can present itself as a record, and how a framework could implement `n.import_from_store` against nothing but the protocol.
+`outputs` differs from the others in one way, and only in the layered case: results do not overlay (§9.4), so a layered record's `outputs` reads its own layer where every other member reads the resolution.
 
-### 4.2 `Frames`
+Read-only; writing is `write_record(revision_id, record, con)` (§10).
+
+### 3.1 `Frames`
 
 ```python
 Frames = Mapping[str, nw.LazyFrame]
@@ -200,10 +118,10 @@ A native representation is reached only where parquet is written (§10).
 `LazyFrames` is the lazily-building implementation, used where constructing a frame is itself I/O: `read_parquet` reads the parquet footer to bind the schema, so it opens the file.
 Locally that is a page-cache hit; against a remote record it is a round trip per attribute, so a consumer wanting three of forty attributes pays three rather than forty, and listing the keys pays none.
 
-It does **not** bound memory, and the interface should not be defended on that ground: an unmaterialised relation is a query plan, so holding every attribute's frame at once costs little.
+Laziness here saves I/O, not memory: an unmaterialised relation is a query plan, so holding every attribute's frame at once costs little.
 The expense is `collect`, which is the consumer's call either way.
 
-### 4.3 `Flags`
+### 3.2 `Flags`
 
 Which axes an attribute's rows actually use, for one component type.
 This is what lets a consumer plan its reads — which attributes exist, and which container each one's values belong in — before opening a single `inputs/` file.
@@ -228,7 +146,7 @@ Consumers ask about a **named** dim, never "does anything vary": a framework spl
 It is what tells a consumer whose target takes only scalars that an attribute is unbuildable, rather than discovering it mid-translation.
 
 Per component type, because one file holds every type's rows: unioning across them would report a Generator's per-timestep rows and a Link's single row as one shape, which describes neither.
-Scoping to a type is a join to the components map on `name` rather than a filter on the attribute rows (§3.5), which changes what the query does and not what it answers.
+Scoping to a type is a join to the components map on `name` rather than a filter on the attribute rows (§4.5), which changes what the query does and not what it answers.
 
 #### The two sets are independent
 
@@ -248,13 +166,106 @@ Both sets empty for a dim means no rows mention it, so neither container applies
 
 Worth naming because it reads as an odd idiom otherwise: it is not "varying or not varying" but "present on this axis", the question that comes before which container to use.
 
-### 4.4 Backend-agnostic protocol, DuckDB implementations
+### 3.3 Backend-agnostic protocol, DuckDB implementations
 
 The protocol names no engine — `nw.LazyFrame` is all a consumer sees, so a pure-Python, polars or Ibis-backed record would satisfy it without change.
 
 The implementations provided are DuckDB-backed, both of them, and the resolution engine is not abstracted behind an interface.
 The owner-map fold is relational algebra of real complexity, and an engine abstraction with one implementation behind it is a cost paid for a second that does not exist.
 Adding one later means writing a second `Record`, which the protocol already permits.
+
+## 4. The record format
+
+A record's **on-disk form** is a parquet directory.
+This is the serialisation, not the definition (§1): `write_record` produces it, `DirectoryRecord` reads it, and a foreign tool can consume it knowing nothing about this package — but a record that is never written has no directory, and is a record all the same (§3).
+
+```
+record/
+├── manifest.json                   # the schema (§5)
+├── dims/
+│   ├── components/<Type>.parquet   # members + non-varying attribute columns
+│   ├── connections/<Type>.parquet  # component↔bus connections (§6)
+│   └── <dim>s.parquet              # one axis table per declared dim
+├── inputs/<attr>.parquet           # one varying input attribute per file
+└── outputs/<attr>.parquet          # one result attribute per file
+```
+
+### 4.1 Where a value lives
+
+Decided by the attribute's declared `dims` (§5.2), not by a particular value:
+
+- **`dims/components/<Type>.parquet`** — attributes that vary over nothing (`dims = {}`): one column per attribute, indexed by `name`.
+  A component's membership is its row here, and the file it is in is what gives it its type (§4.5).
+- **`inputs/<attr>.parquet`** — every attribute that may vary, even where a given component's value happens to be constant.
+  That component is then a row with the varying dim NULL.
+
+So a component type's constant frame is assembled from both: the non-varying columns, and the dim-NULL rows of the varying files.
+
+### 4.2 The long schema
+
+Every `inputs/` and `outputs/` file carries:
+
+```
+name | bus | attribute | breakpoint | value | <dim> ...
+```
+
+with one column per declared dim.
+`bus` addresses an attribute of one of the component's connections rather than of the component itself (§6); `breakpoint` carries the abscissa of a piecewise-linear value (§7).
+Both are part of the schema rather than optional extensions, and both are NULL for the ordinary case — a component-level scalar — so a file whose every row is one carries two all-NULL columns.
+
+That uniformity is the point: one column set means one `UNION ALL BY NAME` and one join shape for every kind of attribute row (§9.2).
+A conditional column set would need the absent case handled everywhere regardless.
+It also means a file written without one of these columns still reads back correctly, since `union_by_name` supplies NULL — the right reading of a record with no connections and no curves.
+
+One attribute per file, so `value` carries that attribute's dtype.
+There is **no `component_type` column**: `name` is unique across every type (§4.5), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by name alone, and a reader wanting one type's rows joins `dims/components/` (§4.5).
+
+A connection's `role` is not in the long schema: it lives on the connection row and identifies nothing in `inputs/` (§6).
+
+### 4.3 The decode rule
+
+A row's `value` applies to every combination of its NULL dimension columns, enumerated from the axis tables under `dims/`.
+A NULL dim means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep.
+
+Rows never overlap within a record.
+A coordinate no row covers, including an attribute with no file, takes the attribute's `default` from the schema.
+
+Broadcast form is preserved rather than incidental: a writer that holds a value once stores it once, and a reader sees the same shape back.
+That is what lets a consumer reconstruct a constant-versus-varying split from the stored form.
+
+### 4.4 Axis order
+
+An axis is ordered, by the row order of its `<dim>s.parquet`.
+Nothing declares this and nothing needs to: the row order _is_ the order.
+
+Under resolution the same rule extends across layers by first-introduced position — a descendant appending a new period lands after the parent's.
+Components and connections get the same semantics from the owner map's `order_key` (§9.1).
+
+### 4.5 `name` is unique, and the entity tables say what a name is
+
+A `name` identifies one component across the whole record.
+Two types may not share one: a `Bus` and a `Generator` both called `north` are a collision, not two components.
+
+That is what removes `component_type` from every attribute key.
+An `inputs/` row addresses `(name, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
+The alternative — carrying the type in the key — makes it a _component's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
+
+**The entity tables are the mapping.** `dims/components/<Type>.parquet` already partitions membership by type, one file per type, so `name -> component_type` is the file a name's row is in.
+Nothing new is stored to answer it: no separate entity table, because the component tables _are_ one.
+Where the union of those files needs the type as data — the owner map (§9.1), a glob across types — `component_type` is a column of the **entity** rows, never of the attribute rows.
+
+So a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the components map on `name`.
+That join is what the `component_type` filter used to be, and it is against a relation the read path already builds.
+
+Two things follow, and they are the reason to want this.
+An attribute row is addressed the way a component is, so `set("p_nom", 150.0, names=["wind1"])` needs no type: the name determines it (§11.2).
+And the inputs key loses a column, so the fold's key is `(name, bus, *owned_per dims, attribute)` — one less column to compare NULL-safely in every join in §9.
+
+**Enforced, not assumed.** `write_record` rejects a record whose component tables share a name, and `add` rejects a name the record already resolves under another type (§11.5).
+A collision cannot be left to be discovered: it would silently merge two components' attribute rows, since the rows themselves no longer record which type they meant.
+
+A modelling framework that scopes names per type must therefore reconcile before it writes.
+Its tool's `verify` is where that is reported (§12), rather than something the record layer mangles a name to paper over: a record's `name` is the framework's own name, and a record that renamed them would hand back components a framework cannot find.
 
 ## 5. The schema
 
@@ -312,7 +323,7 @@ It is stored and never interpreted, since none of it describes the dimensioned d
 Every dim is declared: a record with `region`, `technology` or `vintage` needs no code change, and `dtype` is the axis's own property.
 
 A `Dimension` declares the axis's shape — its type, its nesting (§5.4), which entity tables it keys (§5.3).
-It does not declare which dims an _attribute_ varies over (that is per attribute, §5.2), nor the patch granularity (§5.5), nor order (§3.4).
+It does not declare which dims an _attribute_ varies over (that is per attribute, §5.2), nor the patch granularity (§5.5), nor order (§4.4).
 
 ### 5.2 `AttributeSpec`
 
@@ -333,7 +344,7 @@ What one attribute may do over those axes:
 
 `p_nom` and `carrier` both have `dims = {}` and are not the same kind of thing — one is a label, the other a number an optimiser decides.
 `dims` says only over which axes a value may differ.
-Varying over nothing is also what puts both in `dims/components/` rather than `inputs/` (§3.1), so the schema decides the file split rather than a writer guessing it.
+Varying over nothing is also what puts both in `dims/components/` rather than `inputs/` (§4.1), so the schema decides the file split rather than a writer guessing it.
 
 The rest answers what a bare column set cannot:
 
@@ -458,7 +469,7 @@ One schema outlives many layers (§5.6), so a change to it meets data written un
 
 - adding an attribute, or a component type
 - adding a dim no existing attribute varies over
-- widening an `AttributeSpec.dims`: rows that set fewer dims still decode, since an unset dim is NULL and NULL means "all values" (§3.3)
+- widening an `AttributeSpec.dims`: rows that set fewer dims still decode, since an unset dim is NULL and NULL means "all values" (§4.3)
 - adding to `partial`: ownership becomes finer, and an existing layer's rows are simply owned at the coarser granularity they were written with
 - changing a `unit` or `description` (§5.8), which describe the data without deciding how any row decodes
 
@@ -470,7 +481,7 @@ One schema outlives many layers (§5.6), so a change to it meets data written un
 - changing `within`, since the axis key changes shape
 - adding to a dim's `keys`, since an entity table gains a key column its existing rows do not carry
 
-The compatible changes are those where NULL already means what the new schema needs it to mean, so the decode rule (§3.3) absorbs them without touching a row.
+The compatible changes are those where NULL already means what the new schema needs it to mean, so the decode rule (§4.3) absorbs them without touching a row.
 
 An incompatible change therefore needs the layers rewritten rather than the schema edited, which for a layered record means flattening to a `Directory` (§11.7) under the new schema.
 A reader encountering a `version` it was not written for should refuse rather than guess, since every failure above is silent.
@@ -602,21 +613,21 @@ None carries `value`, a varying dim's value, or `breakpoint`, so all stay small 
 
 Splitting them keeps each row shape honest — `attribute` and the flags are meaningless for a component or connection row — and lets each persist as its own file.
 
-`component_type` is on the **entity** maps only, never on `inputs`: an attribute row is addressed by `name` alone (§3.5), and the components map is what says which type a name is.
-So that map is the entity mapping every type-scoped question goes through — `flags(ctype)` joins it (§4.3), as does a consumer wanting one type's frame.
+`component_type` is on the **entity** maps only, never on `inputs`: an attribute row is addressed by `name` alone (§4.5), and the components map is what says which type a name is.
+So that map is the entity mapping every type-scoped question goes through — `flags(ctype)` joins it (§3.2), as does a consumer wanting one type's frame.
 
 Where it is present it is a **column, not part of the key.**
 Every one of the three maps is keyed on `name` (plus `bus` and the dims that apply); the components map carries `component_type` because it is the table that answers "what type is this name", and that answer is functionally determined by the key rather than keying alongside it.
 The fold therefore aggregates the type over the group-by instead of grouping on it.
 
 The distinction is load-bearing rather than pedantic.
-Keying on the type would mean a name could resolve to two rows — one per type — which is exactly the collision §3.5 forbids, silently admitted at read time instead of rejected at write time.
+Keying on the type would mean a name could resolve to two rows — one per type — which is exactly the collision §4.5 forbids, silently admitted at read time instead of rejected at write time.
 The same holds in the staging area: `remove` under one type followed by `add` under another must collapse to the later edit (§11.7), and a type-partitioned key keeps both.
 
-`order_key` is monotonic across the fold history, giving first-introduced order across layers (§3.4).
+`order_key` is monotonic across the fold history, giving first-introduced order across layers (§4.4).
 It is assigned pre-union, per layer, because the fold's own output has no order of its own — a bare `row_number()` over what `UNION ALL` returns would scramble which row counts as first.
 
-`order_key` is on the components and connections maps only; the axes need none, since an axis row's order comes from its file (§3.4).
+`order_key` is on the components and connections maps only; the axes need none, since an axis row's order comes from its file (§4.4).
 The two carry it for different reasons, and only one is a correctness requirement.
 
 For **connections** it is load-bearing.
@@ -630,7 +641,7 @@ Each map is built by folding along the root→node path: parent map minus deleti
 A node whose maps are materialised (§8.2) persists all three, so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
 Elsewhere the fold runs live over that node's persisted maps, cached per connection; since layers are write-once (§8.1), such a cache never needs invalidating.
 
-The flags (§4.3) are folded in alongside the ownership group-by, so they cost nothing beyond it.
+The flags (§3.2) are folded in alongside the ownership group-by, so they cost nothing beyond it.
 They are computed **per key**, so per component: whether _this_ component's `p_max_pu` sets `timestep` is a different question from whether any does.
 
 Two **structs** rather than a `varies_<dim>` column per dim, because which dims exist is declared (§5.1) and a flat layout would make the map's _column set_ depend on the schema. §5.7 calls adding a dim compatible; that has to hold for a map already persisted at a materialised node (§8.2), not only for the layers.
@@ -640,7 +651,7 @@ The map's columns are then fixed, and only the fields move.
 `breakpoints` stays outside both structs, being no dim (§7).
 That also means the dim namespace lives entirely inside `varies`/`broadcast`, so a dim named `breakpoints` would collide with nothing.
 
-`Record.flags(ctype)` unions them over the names of one type, which is the granularity every consumer works at (§4.3).
+`Record.flags(ctype)` unions them over the names of one type, which is the granularity every consumer works at (§3.2).
 The union is not a loss of the per-key answer so much as the question being asked of a type: a framework assigns containers per type, so a type whose components disagree must be told so, and a dim landing in both sets is exactly that message.
 The union stops at the type boundary, since across types it would describe neither.
 
@@ -665,7 +676,7 @@ JOIN inputs o
  AND (u.scenario IS NULL OR u.scenario IS NOT DISTINCT FROM o.scenario)
 ```
 
-`name` joins on equality rather than NULL-safely: it is required and unique (§3.5), so there is no NULL to be safe about — the one column the old key needed a second equality for is simply gone.
+`name` joins on equality rather than NULL-safely: it is required and unique (§4.5), so there is no NULL to be safe about — the one column the old key needed a second equality for is simply gone.
 
 The map already names the winning layer per key, so resolution reads only the owning layers' files.
 There is no per-read `MAX`/group-by and no tombstone filter — deletions are already absent from the map.
@@ -708,8 +719,7 @@ def write_record(
 Writes `source` as a new layer.
 An existing layer directory is an error rather than an overwrite or a merge, so a whole-record write can never half-replace what a record holds.
 
-`outputs/` is written only for a source whose `outputs` mapping is non-empty (§4), so a record with no results produces a layer with no `outputs/` rather than an empty directory.
-A source may omit the member altogether, which reads the same way.
+`outputs/` is written only for a source whose `outputs` mapping is non-empty (§3), so a record with no results produces a layer with no `outputs/` rather than an empty directory.
 
 Keys are looked up one at a time and each file written before the next is built, so a lazily-building source does one read per file written rather than one per key up front.
 Frames are staged into a sibling directory and renamed on success, so a frame the fold could not resolve leaves no layer rather than half of one.
@@ -717,7 +727,7 @@ Frames are staged into a sibling directory and renamed on success, so a frame th
 Every column the schema declares a type for is cast to it on the way out, so a record's files carry the schema's types and a reader can trust them.
 Without that a source may hand over an all-NULL column its dataframe library typed as float, and every reader would re-cast defensively instead.
 
-Validation is structural: a long frame carries the §3.2 columns, and an entity frame carries every dim it is keyed by.
+Validation is structural: a long frame carries the §4.2 columns, and an entity frame carries every dim it is keyed by.
 Which component types and attribute names are valid belongs to the schema's vocabulary.
 
 Because a `Record` is the input, anything satisfying the protocol can be written — including a framework object presenting itself as one, which is what puts read and write on a single seam.
@@ -761,7 +771,7 @@ class WorkingRecord:
 Built over a base `Record` and a DuckDB connection: `WorkingRecord(revision.record, con)`.
 
 A **class, not a protocol**.
-`Record` is a protocol because several things satisfy it — two backings, a framework object presenting itself as one (§4.1), the two readings commit writes — and structural typing is what lets a consumer satisfy it without depending on this package.
+`Record` is a protocol because several things satisfy it — two backings, a framework object presenting itself as one (§3), the two readings commit writes — and structural typing is what lets a consumer satisfy it without depending on this package.
 There is one way to edit a record, so a second name for it would be an interface over its only implementation.
 Where the staged rows live is this class's own business (§11.9), which is why the name says what it is rather than how.
 
@@ -787,7 +797,7 @@ Each edit maps onto exactly one part of the format:
 | remove components           | a `deleted = true` tombstone                                        | `(name, *component key dims)`             |
 | connect / disconnect        | `dims/connections/` rows and tombstones                             | `(name, bus, *connection key dims)`       |
 
-Every key is `name`-based, because `name` is what identifies a component (§3.5).
+Every key is `name`-based, because `name` is what identifies a component (§4.5).
 An **entity** edit still _names_ a type — `add("Generator", frame)` — because it creates the thing that has one, and the row it writes records it; but the type is a column of that row rather than part of the key it targets.
 That is what makes `remove("Generator", ["x"])` followed by `add("Bus", frame)` collapse to the later edit: one name has one answer, where a type-partitioned key would keep both and commit a record whose two types share a name.
 
@@ -807,7 +817,7 @@ record.set("p_nom", nw.col("value") * 1.1, names=["wind1"])  # derived (§11.3)
 record.set("p", solved, kind="outputs")  # a result (§9.4)
 ```
 
-**There is no `component_type` keyword.** A name identifies one component across every type (§3.5), so the type is a property of the name rather than something the caller supplies: the record looks it up in the resolved components map, which is the same read `names` is already checked against (§11.8).
+**There is no `component_type` keyword.** A name identifies one component across every type (§4.5), so the type is a property of the name rather than something the caller supplies: the record looks it up in the resolved components map, which is the same read `names` is already checked against (§11.8).
 That removes the parameter that had to be either given or inferred in every earlier spelling, and with it the class of error where a name was staged under the wrong type.
 
 One call may therefore span types, since the names decide: `set("p_nom", {"wind1": 150.0, "link_dc": 80.0})` validates `wind1` against `Generator.p_nom` and `link_dc` against `Link.p_nom`, and stages both.
@@ -819,7 +829,7 @@ Each name is validated against **its own** type's `AttributeSpec` (§11.8), so a
 `bus` names a connection rather than the component (§6); every other keyword is a dim, so `scenario="high"` scopes the edit and its absence means "every scenario" by the NULL broadcast rule.
 
 `kind` names the destination in the format's own terms — §11.1's table is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
-`"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool hands results back to a record before it is committed (§11.2.1).
+`"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool hands results back to a record before it is committed (§11.3.1).
 
 `value` takes five forms, because assigning one value to a group and assigning a different value to each member are equally ordinary and neither should require building a frame:
 
@@ -831,7 +841,7 @@ Each name is validated against **its own** type's `AttributeSpec` (§11.8), so a
 | frame     | supplies its own keys           | redundant                                     |
 | `nw.Expr` | a function of the current value | selects what to derive from (§11.3)           |
 
-A frame "supplies its own keys" now means its `name` column alone: a `component_type` column is neither required nor read, since the name determines the type (§3.5).
+A frame "supplies its own keys" now means its `name` column alone: a `component_type` column is neither required nor read, since the name determines the type (§4.5).
 A frame carrying one is rejected rather than ignored — it says the writer believes the type is part of the key, and silently dropping the column would let a genuine disagreement through.
 
 The first three normalise to a long frame before staging, so there is one staging path.
@@ -917,7 +927,7 @@ record["Link", "north"]["efficiency", "dc"] = 0.9  # a connection
 record["Generator", {"scenario": "high"}]["p_nom", "wind1"] = 200.0
 ```
 
-The component type in the subscript is a **scope**, not part of the key it writes: it selects which members `names` resolves against and which `AttributeSpec` a bare attribute means, then `set` addresses the names it produced (§3.5).
+The component type in the subscript is a **scope**, not part of the key it writes: it selects which members `names` resolves against and which `AttributeSpec` a bare attribute means, then `set` addresses the names it produced (§4.5).
 So `record["Generator"]["p_nom"] = 150.0` is "every Generator", which `set("p_nom", 150.0)` alone cannot say — that being the one thing an accessor would add now that the keyword is gone, and the reason this spelling survives the change.
 
 Sugar with **no added capability** otherwise: `__setitem__` normalises its key into `(attribute, names)` and its extra arguments into `bus=`/dims, then calls `set`.
@@ -937,11 +947,11 @@ record.remove("Generator", ["old_coal"])
 record.remove("Generator", ["old_coal"], scenario="high")  # one scenario only
 ```
 
-`add` takes a wide frame and splits it: attributes varying over nothing stay in `dims/components/`, varying ones become `inputs/` rows, per §3.1.
+`add` takes a wide frame and splits it: attributes varying over nothing stay in `dims/components/`, varying ones become `inputs/` rows, per §4.1.
 Which is which comes from the schema, so `add` needs no framework registry.
 A column the schema does not name is written to `dims/components/` unchanged.
 
-`add` keeps its `ctype` argument where `set` loses it: this is the call that _establishes_ what a name's type is, so there is nothing yet to look it up in (§3.5).
+`add` keeps its `ctype` argument where `set` loses it: this is the call that _establishes_ what a name's type is, so there is nothing yet to look it up in (§4.5).
 It is also where uniqueness is enforced — a name the record already resolves, under this type or any other, is rejected here rather than at commit, so the collision is reported at the line that introduces it (§11.8).
 
 It is **not** a sequence of `set` calls, even though the varying columns it stages take the same path a `set` would.
@@ -1012,7 +1022,7 @@ That is the one commit-time read of parent data.
 ### 11.8 Validation
 
 `write_record` validates structurally, so commit inherits that.
-What editing adds is edit-level: an `add` whose frame lacks `name`, an `add` whose name collides with one the record already resolves (§3.5), a `set` naming a component the record does not resolve, a dim keyword the schema does not declare.
+What editing adds is edit-level: an `add` whose frame lacks `name`, an `add` whose name collides with one the record already resolves (§4.5), a `set` naming a component the record does not resolve, a dim keyword the schema does not declare.
 These are caught when the edit is **staged**, not at commit — a caller should learn about a typo'd attribute at the line that typed it, not fifty edits later.
 
 A `set` resolves each name to its type before checking anything else, so "no member row for `wind9`" and "`Generator` declares no `p_nom_maxx`" are both reported against the name that produced them.
@@ -1071,23 +1081,23 @@ class Tool(Protocol):
     def results(self, model: Any) -> Frames: ...
 ```
 
-`results` returns `Frames` — the same type `Record.outputs` presents, keyed by attribute, each frame in the long schema (§3.2).
+`results` returns `Frames` — the same type `Record.outputs` presents, keyed by attribute, each frame in the long schema (§4.2).
 So a tool's results go straight to `write_record`, or one at a time to `set(attr, frame, kind="outputs")` with no key to unpack (§11.3.1).
 
 A framework holds its results per component type, so reaching this shape means concatenating each attribute's types into one frame.
 That is free: the frames are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller collects.
-The concatenation needs no `component_type` column to distinguish the arms, since `name` is unique across them (§3.5) — which is what makes the union a plain one rather than a tagged one.
+The concatenation needs no `component_type` column to distinguish the arms, since `name` is unique across them (§4.5) — which is what makes the union a plain one rather than a tagged one.
 
 Lazy is what the protocol asks for rather than what any implementation must do.
 A tool reshaping a solved model's in-memory containers has nothing to defer and wraps its eager frames with `.lazy()`; one that could fetch a result attribute from a solver on demand is free to, and a caller wanting three of forty then pays for three.
-That is §4.2's argument, on the write side.
+That is §3.1's argument, on the write side.
 
 A record is the input to a translation, not the owner of one, so there is no registry and no name dispatch: a tool is a module-level singleton reached by importing it, `build` returns the framework's own type, and nothing in the record layer imports a tool.
 
 `build` takes a `Record` rather than a record, so a tool builds from a directory as readily as from an overlay and has no reason to know layering exists.
 
 A tool's `verify` catches what the record layer cannot: a component type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks the framework's constant-versus-varying split.
-It is also where a framework scoping names **per type** meets a record scoping them record-wide (§3.5).
+It is also where a framework scoping names **per type** meets a record scoping them record-wide (§4.5).
 PyPSA permits a `Bus` and a `Generator` both called `north`, so `to_datarecord` reports such a network as unbuildable rather than writing a record whose two components share one key.
 Reported rather than repaired: renaming to `Generator:north` would hand back a network whose components the framework can no longer find by their own names, and the record layer does not own a framework's vocabulary.
 PyPSA is itself moving to record-wide unique names, so this is a constraint that resolves rather than one to design around.
@@ -1132,7 +1142,7 @@ The dependency runs strictly one way, so importing the record layer pulls in no 
 - **Whether `within` should subsume `bus`.** `bus` and a nested dim express the same relation.
   A `timestep` label identifies a point only within a `period`; a `bus` label identifies a connection only within a component — `"north"` alone names nothing, since every component may attach to `north`, while `(link_dc, north)` names one connection.
   Written as a dim that would be `Dimension(dtype="str", within={"name"})`, and `bus` would stop being a hardcoded key column.
-  §3.5 strengthens the analogy rather than weakening it: `name` is now a single global axis rather than one qualified by `component_type`, so `within={"name"}` names something well-defined where `within={"component_type", "name"}` would have been the awkward spelling.
+  §4.5 strengthens the analogy rather than weakening it: `name` is now a single global axis rather than one qualified by `component_type`, so `within={"name"}` names something well-defined where `within={"component_type", "name"}` would have been the awkward spelling.
 
   What blocks it is that `bus` inverts the rule NULL follows for a dim.
   A NULL declared dim means "all values", and the fold expands it against the axis (§9.2); a NULL `bus` means "this attribute belongs to the component rather than to any connection", and is compared NULL-safely, never expanded.

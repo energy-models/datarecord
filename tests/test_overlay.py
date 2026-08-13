@@ -193,15 +193,14 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
         components = EMPTY
         connections = EMPTY
         attributes = EMPTY
+        outputs = EMPTY
 
         def flags(self, ctype):
             return {}
 
     child = parent.child()
     with pytest.raises(ValueError, match="no longer varies over"):
-        # `outputs` omitted deliberately: this source exists to fail schema
-        # validation, and an absent member reads as "no results" (§4).
-        write_record(child.id, _Narrowed(), con)  # type: ignore[arg-type]
+        write_record(child.id, _Narrowed(), con)
 
 
 def test_member_order_survives_closed_intermediate(con, parent, ac_dc):

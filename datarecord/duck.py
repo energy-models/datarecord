@@ -216,18 +216,14 @@ def union_all_by_name(
 ) -> DuckDBPyRelation:
     """Fold relations pairwise through `UNION ALL BY NAME` (§9.2).
 
-    `u` and `rel` look unused: they are bound by *name* from this frame's
-    locals, by DuckDB's replacement scan, exactly as `arrow` is in
-    `layered.write._write_frame`. So the variable names are load-bearing.
-    Dropping one - `for _ in rels[1:]` - raises `CatalogException`, but a
-    refactor that keeps the name bound to the wrong relation returns a short
-    union instead, which nothing downstream would report. Both are pinned by
-    `test_union_all_by_name_folds_every_relation`, which needs three arms: two
-    survive either mistake.
+    The local names `u` and `rel` are load-bearing: DuckDB's replacement scan
+    binds them by *name* out of this frame's locals, so the SQL below reads
+    them despite them looking unused. Renaming either silently returns a short
+    union; `test_union_all_by_name_folds_every_relation` pins it.
 
-    Deliberately not `con.register`: measured at 2.2-2.6x slower here, widening
-    with layer count (the deep-overlay case §8.2 exists to make cheap), and it
-    leaves a named view per call on a connection that outlives the fold.
+    Not `con.register`: measured at 2.2-2.6x slower here, widening with layer
+    count (the deep-overlay case §8.2 exists to make cheap), and it leaves a
+    named view per call on a connection that outlives the fold.
     """
     u = rels[0]
     for rel in rels[1:]:  # noqa: F841 - bound by name in the SQL below

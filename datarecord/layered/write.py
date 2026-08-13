@@ -106,12 +106,8 @@ def write_record(
         ]
         # `outputs/` only for a source carrying results, so a record with none
         # produces a layer without the directory rather than an empty one (§10).
-        # `getattr` rather than the attribute: `Record` is structural, so a
-        # duck-typed source may not define the member at all, which is the same
-        # answer as defining it empty.
-        outputs = getattr(source, "outputs", None) or {}
-        if outputs:
-            kinds.append(("outputs", outputs, "outputs"))
+        if source.outputs:
+            kinds.append(("outputs", source.outputs, "outputs"))
         # Each type's names, to check record-wide uniqueness once every component
         # frame has been seen (§3.5). Collected to one backend because a `Record`
         # may hand over a DuckDB frame for one type and a pandas one for another,

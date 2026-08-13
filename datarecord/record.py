@@ -1,9 +1,9 @@
-"""The `Record` protocol: one interface over a parquet record's contents.
+"""The `Record` protocol: what a record answers, however it is backed.
 
 Backings: `layered.revision.LayeredRecord` (a resolved overlay) and
 `directory.DirectoryRecord` (a plain directory). See design doc §4 for the
-protocol, §4.1 for why it is a protocol rather than a base class, §4.4 for why
-it names no engine, and §9.3 for what differs between the two backings.
+protocol itself, §4.4 for why it names no engine, and §9.3 for what differs
+between the two backings.
 """
 
 from __future__ import annotations
@@ -99,10 +99,9 @@ class Flags:
 
 @runtime_checkable
 class Record(Protocol):
-    """One parquet record's contents, however it is backed (§4).
+    """What a record answers, however it is backed (§4).
 
-    Read-only: writing is `write_record(revision_id, source, con)`, a function over
-    a record rather than a method on one (§10).
+    Read-only: writing is `write_record(revision_id, source, con)` (§10).
     """
 
     @property
@@ -140,11 +139,7 @@ class Record(Protocol):
     def outputs(self) -> Frames:
         """Long result frames, keyed by attribute name (§9.4).
 
-        Empty for a record carrying no results, which is the same existence
-        answer every other member gives: `set(record.outputs)` is "which results
-        does this record have", exactly as `set(record.flags(ctype))` is the
-        attribute existence test (§4.3). No separate protocol, because
-        emptiness is unambiguous here - nothing half-writes results.
+        Empty for a record carrying no results.
 
         Unlike its neighbours, this does **not** overlay on a layered record: a
         record's results are its own layer's, never a resolution over its
