@@ -1,7 +1,7 @@
-"""Writing a whole store as a layer (design doc §10).
+"""Writing a whole record as a layer (design doc §8).
 
 A `Record` hands over narwhals frames and this module turns them into parquet;
-producing one from a framework's own object is a tool's job (§12, §13).
+producing one from a framework's own object is a tool's job (§10, §11).
 """
 
 from __future__ import annotations
@@ -22,36 +22,36 @@ from datarecord.schema import Schema
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
 
-# The long schema's fixed columns (§3). `bus`/`breakpoint` are part of it, not
+# The long schema's fixed columns (§4.2). `bus`/`breakpoint` are part of it, not
 # optional extensions to it: both NULL is the ordinary component-level scalar.
-# No `component_type`: an attribute row is keyed by `name` alone (§3.5).
+# No `component_type`: an attribute row is keyed by `name` alone (§4.3).
 _LONG_FIXED = ("name", "bus", "attribute", "breakpoint", "value")
 
 
 def write_record(
-    record_id: UUID | None,
+    revision_id: UUID | None,
     source: Record,
     con: DuckDBPyConnection,
     *,
     uri: str | None = None,
 ) -> None:
-    """Write `source` as `record_id`'s layer, which must not exist yet (§10).
+    """Write `source` as `revision_id`'s layer, which must not exist yet (§8).
 
     An existing layer directory is an error rather than an overwrite or a merge,
-    so a whole-store write can never half-replace what a record holds. Keys are
+    so a whole-record write can never half-replace what a record holds. Keys are
     looked up one at a time and each file written before the next is built, so a
     lazily-building source does one read per file rather than one per key up
-    front (§10).
+    front (§8).
 
     Parameters
     ----------
-    record_id
-        The record whose layer this is; `layer_dir` derives the path (§13).
-        `None` only together with `uri`, for a standalone store that belongs
-        to no record (§11.7).
+    revision_id
+        The record whose layer this is; `layer_dir` derives the path (§11).
+        `None` only together with `uri`, for a standalone record that belongs
+        to no record (§9.7).
     uri
-        Write here instead of at `layer_dir(record_id)` - how a `Directory`
-        commit target produces a store outside the layer tree (§11.7).
+        Write here instead of at `layer_dir(revision_id)` - how a `Directory`
+        commit target produces a record outside the layer tree (§9.7).
     source
         The layer's contents. Validated against its own schema before
         anything is written.
@@ -63,19 +63,19 @@ def write_record(
     FileExistsError
         If the layer directory already exists.
     ValueError
-        If a long frame is missing a §3 column, or the schema declares a key
+        If a long frame is missing a §4.2 column, or the schema declares a key
         dim no frame carries - either would make the fold misresolve the layer.
     """
     if uri is None:
-        if record_id is None:
-            msg = "write_record needs a record_id or a uri"
+        if revision_id is None:
+            msg = "write_record needs a revision_id or a uri"
             raise ValueError(msg)
-        base = layer_dir(record_id)
+        base = layer_dir(revision_id)
     else:
         base = uri if uri.endswith("/") else uri + "/"
     local = "://" not in base
     if local and Path(base).exists():
-        msg = f"layer {base} already exists; write_record creates a new layer (§10)"
+        msg = f"layer {base} already exists; write_record creates a new layer (§8)"
         raise FileExistsError(msg)
 
     schema = source.schema
@@ -86,15 +86,15 @@ def write_record(
         _reconcile_schema(schema, con)
 
     # Staged then renamed, so a frame that fails validation part-way through
-    # leaves no layer rather than half of one (§10). Validation happens as each
+    # leaves no layer rather than half of one (§8). Validation happens as each
     # frame is built, since building it twice would defeat the laziness.
     staging = f"{base.rstrip('/')}.staging/" if local else base
     if local:
         Path(staging).mkdir(parents=True)
     try:
-        # A layer holds only data: a layered store's one schema lives beside
+        # A layer holds only data: a layered record's one schema lives beside
         # `layers/`, not inside any of them (§5.6). A standalone directory *is*
-        # one store, so there the schema belongs in the directory.
+        # one record, so there the schema belongs in the directory.
         if local and uri is not None:
             with open(staging + "manifest.json", "w") as fh:
                 fh.write(schema.model_dump_json())
@@ -104,22 +104,18 @@ def write_record(
             ("connections", source.connections, "dims/connections"),
             ("attributes", source.attributes, "inputs"),
         ]
-        # `outputs/` only for a source carrying results, so a store with none
-        # produces a layer without the directory rather than an empty one (§10).
-        # `getattr` rather than the attribute: `Record` is structural, so a
-        # duck-typed source may not define the member at all, which is the same
-        # answer as defining it empty.
-        outputs = getattr(source, "outputs", None) or {}
-        if outputs:
-            kinds.append(("outputs", outputs, "outputs"))
-        # Each type's names, to check store-wide uniqueness once every component
-        # frame has been seen (§3.5). Collected to one backend because a `Record`
+        # `outputs/` only for a source carrying results, so a record with none
+        # produces a layer without the directory rather than an empty one (§8).
+        if source.outputs:
+            kinds.append(("outputs", source.outputs, "outputs"))
+        # Each type's names, to check record-wide uniqueness once every component
+        # frame has been seen (§4.3). Collected to one backend because a `Record`
         # may hand over a DuckDB frame for one type and a pandas one for another,
         # and `nw.concat` takes a single backend.
         tagged: list[nw.LazyFrame] = []
         for kind, frames, subdir in kinds:
             for key in frames:
-                frame = frames[key]  # looked up exactly once (§10)
+                frame = frames[key]  # looked up exactly once (§8)
                 _validate_frame(frame, kind, key, schema)
                 if kind == "components":
                     tagged.append(
@@ -148,16 +144,16 @@ def write_record(
 
 
 def _reconcile_schema(schema: Schema, con: DuckDBPyConnection) -> None:
-    """Declare the store's schema, or check this layer agrees with it (§5.6, §5.7).
+    """Declare the record's schema, or check this layer agrees with it (§5.6, §5.7).
 
     A schema is not layered data, so there is nothing to fold: the first writer
     states it and the rest must be `compatible_with` it. Read and written beside
-    `con`'s own layers, so one store never consults another's manifest.
+    `con`'s own layers, so one record never consults another's manifest.
 
     Raises
     ------
     ValueError
-        If this layer's schema would make the store's existing layers
+        If this layer's schema would make the record's existing layers
         unreadable.
     """
     base = base_uri_of(con)
@@ -170,7 +166,7 @@ def _reconcile_schema(schema: Schema, con: DuckDBPyConnection) -> None:
     problems = schema.compatible_with(existing)
     if problems:
         msg = (
-            f"this layer's schema is incompatible with the store's: "
+            f"this layer's schema is incompatible with the record's: "
             f"{'; '.join(problems)} (§5.7)"
         )
         raise ValueError(msg)
@@ -184,10 +180,10 @@ def _write_frame(
 ) -> None:
     """Persist one narwhals frame as parquet, through `con`.
 
-    The one place a native representation is reached (§4.2): a DuckDB-backed
+    The one place a native representation is reached (§3.5): a DuckDB-backed
     frame goes to `to_parquet` unmaterialised, anything else via arrow. Columns
     are cast to their declared types on the way out, so a reader can trust them
-    rather than re-casting an all-NULL column pandas typed as float (§10).
+    rather than re-casting an all-NULL column pandas typed as float (§8).
     """
     if local:
         Path(uri).parent.mkdir(parents=True, exist_ok=True)
@@ -201,7 +197,7 @@ def _write_frame(
 
 
 def _typed(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
-    """`rel` with every column the schema declares a type for cast to it (§3.2).
+    """`rel` with every column the schema declares a type for cast to it (§4.2).
 
     Undeclared columns pass through: a `dims/components/` frame's attribute
     columns belong to the schema's own vocabulary, so their types are the
@@ -215,7 +211,7 @@ def _typed(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
 
 
 def _require_unique(tagged: list[nw.LazyFrame]) -> None:
-    """Reject a store whose component types share a name (§3.5).
+    """Reject a record whose component types share a name (§4.3).
 
     Unlike `_validate_frame`'s checks this reads the rows, uniqueness being a
     property of the data. A tombstone still occupies the name, so `deleted` is
@@ -259,7 +255,7 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
         )
         msg = (
             f"component types reuse names: {detail}; a name identifies one "
-            f"component across every type (§3.5)"
+            f"component across every type (§4.3)"
         )
         raise ValueError(msg)
 
@@ -268,7 +264,7 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
     """Check one frame is shaped for the fold to resolve it.
 
     Structural only: a long frame carries the §3 columns, and a `dims/` frame
-    carries every dim the schema declares it keyed by (§5.5, §6). Values
+    carries every dim the schema declares it keyed by (§5.5, §3.2). Values
     are not checked - which component types and attribute names are valid
     belongs to whatever vocabulary the schema declares, and the record layer
     knows none (§5).
@@ -279,7 +275,7 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
     columns = set(frame.collect_schema().names())
 
     # `outputs/` uses the same long schema as `inputs/`; it just does not
-    # overlay (§9.4), which is a read-path property rather than a shape one.
+    # overlay (§7.4), which is a read-path property rather than a shape one.
     if kind in ("attributes", "outputs"):
         subdir = "inputs" if kind == "attributes" else "outputs"
         required = {*_LONG_FIXED, *schema.dims}
@@ -287,7 +283,7 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
         if missing:
             msg = (
                 f"{subdir}/{key}.parquet is missing long-schema columns {missing}; "
-                f"the resolved relation needs {sorted(required)} (§3)"
+                f"the resolved relation needs {sorted(required)} (§4.2)"
             )
             raise ValueError(msg)
         return

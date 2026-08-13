@@ -1,4 +1,4 @@
-"""Connections as bus-keyed rows, and `bus` in the inputs key (design doc §6)."""
+"""Connections as bus-keyed rows, and `bus` in the inputs key (design doc §3.2)."""
 
 import pytest
 from pydantic import ValidationError
@@ -19,24 +19,24 @@ from tests.fixtures import (
 PROCESS = "Process"
 
 
-def _connections(record, ctype=PROCESS):
+def _connections(revision, ctype=PROCESS):
     """`connection_frame`, asserted non-`None` for tests where a row must exist."""
-    frame = record.node_cache.connection_frame(ctype)
+    frame = revision.node_cache.connection_frame(ctype)
     assert frame is not None
     return frame
 
 
-def _components(record, ctype=PROCESS):
+def _components(revision, ctype=PROCESS):
     """`component_frame`, asserted non-`None` for tests where a row must exist."""
-    frame = record.node_cache.component_frame(ctype)
+    frame = revision.node_cache.component_frame(ctype)
     assert frame is not None
     return frame
 
 
 def _root(con) -> Revision:
     """A record whose layer has one Process with three connections."""
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
     write_connections(
@@ -56,21 +56,21 @@ def _root(con) -> Revision:
             for b, v in (("h2_north", 2.1), ("iron_ore", 1.6), ("dri", 1.0))
         ],
     )
-    return record
+    return revision
 
 
-def _efficiencies(record) -> dict[str, float]:
-    df = relation(record, "efficiency").df()
+def _efficiencies(revision) -> dict[str, float]:
+    df = relation(revision, "efficiency").df()
     return dict(zip(df["bus"], df["value"], strict=True))
 
 
 def test_connections_resolve_in_order(con, base_uri):
     """A component's connections come back in first-introduced order."""
-    record = _root(con)
-    frame = _connections(record).order("order_key").df()
+    revision = _root(con)
+    frame = _connections(revision).order("order_key").df()
     assert list(frame["bus"]) == ["h2_north", "iron_ore", "dri"]
     # `role` describes the connection rather than keying it, so it rides along
-    # from the owning layer's file (§6).
+    # from the owning layer's file (§3.2).
     assert list(frame["role"]) == ["input", "input", "output"]
 
 
@@ -163,9 +163,9 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
 
 
 def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri):
-    """`bus` extends the key; it does not displace the dims (§6)."""
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    """`bus` extends the key; it does not displace the dims (§3.2)."""
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
     write_connections(
@@ -199,15 +199,15 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
         ],
     )
 
-    flags = record.store.flags(PROCESS)["efficiency"]
+    flags = revision.record.flags(PROCESS)["efficiency"]
     # Both sets hold `snapshot`: one connection's efficiency is per-snapshot,
     # another's is a single broadcast row, and the union over the type's names
     # reports both - which is what tells a consumer one container will not do
-    # (§8.1). A per-connection attribute needs no special case for this.
+    # (§3.6). A per-connection attribute needs no special case for this.
     assert "snapshot" in flags.varies
     assert "snapshot" in flags.broadcast
     assert not flags.breakpoints
-    assert len(relation(record, "efficiency").df()) == 3
+    assert len(relation(revision, "efficiency").df()) == 3
 
 
 def test_connection_tombstone_removes_one_connection(con, base_uri):
@@ -226,7 +226,7 @@ def test_connection_tombstone_removes_one_connection(con, base_uri):
 
 
 def test_component_tombstone_removes_every_connection(con, base_uri):
-    """Deleting the component takes its connections and all their rows (§8.3)."""
+    """Deleting the component takes its connections and all their rows (§6.3)."""
     root = _root(con)
     root.materialise()
 
@@ -239,8 +239,8 @@ def test_component_tombstone_removes_every_connection(con, base_uri):
 
 def test_connection_exists_per_scenario(con, base_uri):
     """`scenario` keys connections here, so a tombstone can scope to one (§5.3)."""
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(
         layer, PROCESS, [{"name": "steel_dri", "scenario": s} for s in ("low", "high")]
@@ -253,9 +253,9 @@ def test_connection_exists_per_scenario(con, base_uri):
             for s in ("low", "high")
         ],
     )
-    record.materialise()
+    revision.materialise()
 
-    child = record.child()
+    child = revision.child()
     tombstone_connection(
         layer_dir(child.id), PROCESS, [("steel_dri", "co2")], scenario="high"
     )
@@ -265,7 +265,7 @@ def test_connection_exists_per_scenario(con, base_uri):
 
 
 def test_a_connection_key_must_be_partial(con, base_uri):
-    """The one rule the format fixes, applied to the third key too (§6).
+    """The one rule the format fixes, applied to the third key too (§3.2).
 
     A connection exists per value of a keying dim, so a tombstone selects by
     it - which needs the dim to be one a layer patches value by value (§5.3).
@@ -275,7 +275,7 @@ def test_a_connection_key_must_be_partial(con, base_uri):
 
 
 @pytest.mark.xfail(
-    reason="Open question, design doc §14, deliberately unresolved: a component "
+    reason="Open question, design doc §12, deliberately unresolved: a component "
     "tombstone scoped to one scenario removes a connection that is not "
     "scenario-scoped, even though the component survives in another scenario. "
     "Deciding it needs the folded components map, which `fold_connections` cannot "
@@ -285,14 +285,14 @@ def test_a_connection_key_must_be_partial(con, base_uri):
     strict=True,
 )
 def test_narrower_connection_key_than_component_key(con, base_uri):
-    """`component_dims` may exceed `connection_dims`; that is a model, not an error (§6).
+    """`component_dims` may exceed `connection_dims`; that is a model, not an error (§3.2).
 
     Components are deleted per scenario while connection existence does not
     vary by scenario at all, so a component tombstone in one scenario should
     leave the connection to the scenarios the component still has.
     """
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema(keys={"scenario": {"component"}}))
     write_components(
         layer, PROCESS, [{"name": "steel_dri", "scenario": s} for s in ("low", "high")]
@@ -300,13 +300,13 @@ def test_narrower_connection_key_than_component_key(con, base_uri):
     write_connections(
         layer, PROCESS, [{"name": "steel_dri", "bus": "co2", "role": "output"}]
     )
-    record.materialise()
+    revision.materialise()
 
     # `scenario` does not key connections, so that map carries no such column.
-    assert record.node_cache.schema.connection_dims == ()
-    assert "scenario" not in record.node_cache.connections.columns
+    assert revision.node_cache.schema.connection_dims == ()
+    assert "scenario" not in revision.node_cache.connections.columns
 
-    child = record.child()
+    child = revision.child()
     tombstone(layer_dir(child.id), PROCESS, ["steel_dri"], scenario="high")
 
     # The component survives in `low`, and so the connection does - the

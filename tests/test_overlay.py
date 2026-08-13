@@ -1,4 +1,4 @@
-"""Overlay semantics over a parent/child pair (design doc §8, §12)."""
+"""Overlay semantics over a parent/child pair (design doc §6, §10)."""
 
 import pandas as pd
 import pytest
@@ -15,10 +15,10 @@ from tests.fixtures import export_network, outputs, relation, tombstone, write_i
 
 @pytest.fixture
 def parent(con, base_uri, ac_dc):
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
-    record.materialise()
-    return record
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    revision.materialise()
+    return revision
 
 
 def test_child_overwrites_component(con, parent):
@@ -50,14 +50,14 @@ def test_child_overwrite_reaches_model(con, parent):
         [{"name": "Manchester Wind", "value": 0.42}],
     )
 
-    n = PyPSA.build(child.store)
+    n = PyPSA.build(child.record)
     assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
     assert "Manchester Wind" not in n.c["Generator"].dynamic["p_max_pu"].columns
     assert "Norway Wind" in n.c["Generator"].dynamic["p_max_pu"].columns
 
 
 def test_tombstone_removes_component(con, parent):
-    """A tombstone removes the component from every attribute and dimension (§8.3)."""
+    """A tombstone removes the component from every attribute and dimension (§6.3)."""
     child = parent.child()
     tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
 
@@ -65,7 +65,7 @@ def test_tombstone_removes_component(con, parent):
     assert "Norway Gas" not in set(om["name"])
     assert "Norway Gas" in set(parent.node_cache.components.df()["name"])
 
-    n = PyPSA.build(child.store)
+    n = PyPSA.build(child.record)
     assert "Norway Gas" not in n.c["Generator"].static.index
     assert "Norway Wind" in n.c["Generator"].static.index
 
@@ -79,14 +79,14 @@ def test_child_adds_attribute(con, parent):
         [{"name": "Norway Gas", "value": 0.1}],
     )
 
-    n = PyPSA.build(child.store)
+    n = PyPSA.build(child.record)
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
     # Untouched generators keep the catalog default.
     assert n.c["Generator"].static.loc["Norway Wind", "p_min_pu"] == 0.0
 
 
 def test_sibling_branch_unaffected(con, parent):
-    """A tombstone only affects the branch that carries it (§8.3)."""
+    """A tombstone only affects the branch that carries it (§6.3)."""
     deleting = parent.child()
     tombstone(layer_dir(deleting.id), "Generator", ["Norway Gas"])
     sibling = parent.child()
@@ -120,7 +120,7 @@ def test_grandchild_resolves_through_ancestry(con, parent):
 
 
 def test_closed_child_reads_own_node_cache(con, parent):
-    """Reading a closed non-root record uses its own persisted dims/manifest/map (§8.2).
+    """Reading a closed non-root record uses its own persisted dims/manifest/map (§6.2).
 
     Its `ancestry_since_closed` is just itself, so the raw layer (which has
     no `dims/` or `manifest.json` of its own here) cannot be the source.
@@ -134,7 +134,7 @@ def test_closed_child_reads_own_node_cache(con, parent):
     child.materialise()
 
     reloaded = Revision.get(child.id, con)
-    n = PyPSA.build(reloaded.store)
+    n = PyPSA.build(reloaded.record)
     assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
 
     df = relation(reloaded, "p_max_pu").df()
@@ -142,13 +142,13 @@ def test_closed_child_reads_own_node_cache(con, parent):
 
 
 def test_outputs_do_not_overlay(con, parent):
-    """Results come from the node's own layer only (§9.4)."""
+    """Results come from the node's own layer only (§7.4)."""
     child = parent.child()
     assert outputs(child, "p").df().empty
 
 
 def test_a_new_attribute_is_a_schema_amendment(con, parent):
-    """Adding an attribute amends the store's one schema, not a layer's (§5.6).
+    """Adding an attribute amends the record's one schema, not a layer's (§5.6).
 
     A schema is not layered data: folding it would let a layer redefine what
     an attribute means, and make the schema unknowable without walking the
@@ -171,11 +171,11 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
         "p_min_pu",
         [{"name": "Norway Gas", "value": 0.1}],
     )
-    n = PyPSA.build(child.store)
+    n = PyPSA.build(child.record)
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
     # And the amendment is visible from the record, not just from the layer
     # that happens to carry a row for it.
-    assert "p_min_pu" in child.store.schema.attributes["Generator"]
+    assert "p_min_pu" in child.record.schema.attributes["Generator"]
 
 
 def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
@@ -186,27 +186,26 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
     )
 
     class _Narrowed:
-        """The store's own source, with one attribute's dims taken away."""
+        """The record's own source, with one attribute's dims taken away."""
 
         schema = narrowed
         dims = EMPTY
         components = EMPTY
         connections = EMPTY
         attributes = EMPTY
+        outputs = EMPTY
 
         def flags(self, ctype):
             return {}
 
     child = parent.child()
     with pytest.raises(ValueError, match="no longer varies over"):
-        # `outputs` omitted deliberately: this source exists to fail schema
-        # validation, and an absent member reads as "no results" (§4).
-        write_record(child.id, _Narrowed(), con)  # type: ignore[arg-type]
+        write_record(child.id, _Narrowed(), con)
 
 
 def test_member_order_survives_closed_intermediate(con, parent, ac_dc):
     """Component order still follows the true owning layer through a closed
-    intermediate node that changes nothing about membership (§8.2, §9.1).
+    intermediate node that changes nothing about membership (§6.2, §7.1).
 
     `members()` resolves straight from the owner map's `order_key`, not from
     a per-file depth lookup over `ancestry_since_closed` - which wouldn't
@@ -216,7 +215,7 @@ def test_member_order_survives_closed_intermediate(con, parent, ac_dc):
     middle.materialise()
     grandchild = middle.child()
 
-    n = PyPSA.build(grandchild.store)
+    n = PyPSA.build(grandchild.record)
     pd.testing.assert_index_equal(
         n.c["Generator"].static.index,
         ac_dc.c["Generator"].static.index,

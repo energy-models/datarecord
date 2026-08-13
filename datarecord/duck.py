@@ -1,13 +1,13 @@
-"""DuckDB connection setup for the record layer (design doc §13).
+"""DuckDB connection setup for the record layer (design doc §11).
 
-Owns the `data_records` metadata table and the `layer_dir` path convention
-that maps a record UUID to its store location. The connection is passed as a
+Owns the `revisions` metadata table and the `layer_dir` path convention
+that maps a record UUID to its record location. The connection is passed as a
 parameter throughout, never a module global, so each test can open its own
 `:memory:` connection.
 
 Nothing here knows about a modelling framework: `component_type` and
 `attribute` are plain `VARCHAR`, so a record whose types no tool recognises
-still reads, and it is a tool's `verify` that reports it (§5, §12).
+still reads, and it is a tool's `verify` that reports it (§5, §10).
 """
 
 import os
@@ -39,17 +39,17 @@ class _Functions:
 fn = _Functions()
 
 CREATE_TABLE = """
-CREATE TABLE IF NOT EXISTS data_records (
+CREATE TABLE IF NOT EXISTS revisions (
   id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   parent   UUID
 )
 """
 
-# Where layers live; `layer_dir(id)` derives every store path from it (§13).
+# Where layers live; `layer_dir(id)` derives every record path from it (§11).
 DEFAULT_BASE_URI = os.environ.get("BLOCKS_RECORD_BASE_URI", "")
 
-# The store root each connection was opened against (§5.6). A connection is
-# already scoped to one store - `connect` registers its `layer_dir` macro from
+# The record root each connection was opened against (§5.6). A connection is
+# already scoped to one record - `connect` registers its `layer_dir` macro from
 # this root - so the schema beside those layers is a property of the connection
 # too, and reading it needs no separate parameter threaded through the fold.
 # Weak, so a closed connection does not pin its entry.
@@ -57,7 +57,7 @@ _BASE_URIS: MutableMapping[DuckDBPyConnection, str] = WeakKeyDictionary()
 
 
 def base_uri_of(con: DuckDBPyConnection) -> str:
-    """The store root `con` was opened against, or the process default (§5.6).
+    """The record root `con` was opened against, or the process default (§5.6).
 
     A connection not opened through `connect` - one a caller made itself -
     falls back to `DEFAULT_BASE_URI`, which is what every path helper here
@@ -67,49 +67,53 @@ def base_uri_of(con: DuckDBPyConnection) -> str:
 
 
 def schema_uri(base_uri: str | None = None) -> str:
-    """Where a layered store's one schema lives: beside `layers/`, not in it (§5.6).
+    """Where a layered record's one schema lives: beside `layers/`, not in it (§5.6).
 
     One schema for the whole tree. A layer directory holds only data, which is
-    what keeps it a plain parquet store a tool knowing nothing about layering
+    what keeps it a plain parquet directory a tool knowing nothing about layering
     can read.
     """
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
     return f"{base.rstrip('/')}/manifest.json" if base else "manifest.json"
 
 
-def layer_dir(record_id: UUID | str, base_uri: str | None = None) -> str:
-    """Return the store directory for `record_id`, with a trailing slash.
+def layer_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
+    """Return the record directory for `revision_id`, with a trailing slash.
 
-    The layer location is derived from the UUID, never stored (§13), so
+    The layer location is derived from the UUID, never stored (§11), so
     changing the layout is a change in this one function and its SQL macro.
-    This is a plain PyPSA parquet store (§3): only the layer's own
+    This is a plain PyPSA parquet directory (§4): only the layer's own
     contribution lives at the top level, so a non-blocks reader sees a normal
-    store (§13). Derived caches (the owner map, resolved dims) go in the
+    record (§11). Derived caches (the owner map, resolved dims) go in the
     `resolved/` subdirectory, which no single-level glob reaches.
     """
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
-    return f"{base.rstrip('/')}/layers/{record_id}/" if base else f"layers/{record_id}/"
+    return (
+        f"{base.rstrip('/')}/layers/{revision_id}/"
+        if base
+        else f"layers/{revision_id}/"
+    )
 
 
-def resolved_dir(record_id: UUID | str, base_uri: str | None = None) -> str:
-    """Return the resolved-cache directory for `record_id`, with a trailing slash.
+def resolved_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
+    """Return the resolved-cache directory for `revision_id`, with a trailing slash.
 
     A subdirectory of `layer_dir`, not a sibling tree: one directory per record
     holds both what the layer wrote and what the fold derived from it. The
     nesting is safe because every glob into a layer is single-level
     (`inputs/*.parquet`, `dims/*.parquet`), so `resolved/` is invisible to a
     reader that knows nothing about it - which is what keeps a layer directory a
-    plain parquet store a foreign reader can consume (§8.3).
+    plain parquet directory a foreign reader can consume (§6.3).
 
     Only the layer's *inputs* are write-once, then: `materialise` writes here
     after the fact, which invalidates nothing because results and caches are
-    derived rather than depended on (§8.1, §8.2).
+    derived rather than depended on (§6.1, §6.2).
     """
-    return f"{layer_dir(record_id, base_uri)}resolved/"
+    return f"{layer_dir(revision_id, base_uri)}resolved/"
 
 
 def _register_macros(con: DuckDBPyConnection, base_uri: str) -> None:
-    """Register `layer_dir` so SQL composes store paths inline (§13)."""
+    """Register `layer_dir` so SQL composes record paths inline (§11)."""
     base = base_uri.rstrip("/")
     prefix = f"{base}/" if base else ""
     con.execute("DROP MACRO IF EXISTS layer_dir")
@@ -126,17 +130,17 @@ def connect(
     database
         DuckDB database, `:memory:` by default.
     base_uri
-        Root of the record tree; `layer_dir` derives every path from it (§13).
+        Root of the record tree; `layer_dir` derives every path from it (§11).
     """
     con = duckdb.connect(database)
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
     # `httpfs` and the S3 secret are only meaningful for remote layers, and
     # `PROVIDER credential_chain` probes instance-metadata endpoints that hang
-    # for ~2 minutes where none exist. Never pay that for a local store.
+    # for ~2 minutes where none exist. Never pay that for a local record.
     if "://" in base:
         try:
             con.execute("INSTALL httpfs; LOAD httpfs;")
-            # S3 credentials come from the environment, never hard-coded (§13).
+            # S3 credentials come from the environment, never hard-coded (§11).
             con.execute(
                 "CREATE SECRET IF NOT EXISTS (TYPE s3, PROVIDER credential_chain)"
             )
@@ -144,7 +148,7 @@ def connect(
             pass
     con.execute(CREATE_TABLE)
     _register_macros(con, base)
-    # Remembered so `read_schema` finds the manifest beside *this* store's
+    # Remembered so `read_schema` finds the manifest beside *this* record's
     # layers rather than the process default's (§5.6).
     _BASE_URIS[con] = base
     return con
@@ -210,20 +214,16 @@ def try_read_parquet(
 def union_all_by_name(
     rels: Sequence[DuckDBPyRelation], con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """Fold relations pairwise through `UNION ALL BY NAME` (§9.2).
+    """Fold relations pairwise through `UNION ALL BY NAME` (§7.2).
 
-    `u` and `rel` look unused: they are bound by *name* from this frame's
-    locals, by DuckDB's replacement scan, exactly as `arrow` is in
-    `layered.write._write_frame`. So the variable names are load-bearing.
-    Dropping one - `for _ in rels[1:]` - raises `CatalogException`, but a
-    refactor that keeps the name bound to the wrong relation returns a short
-    union instead, which nothing downstream would report. Both are pinned by
-    `test_union_all_by_name_folds_every_relation`, which needs three arms: two
-    survive either mistake.
+    The local names `u` and `rel` are load-bearing: DuckDB's replacement scan
+    binds them by *name* out of this frame's locals, so the SQL below reads
+    them despite them looking unused. Renaming either silently returns a short
+    union; `test_union_all_by_name_folds_every_relation` pins it.
 
-    Deliberately not `con.register`: measured at 2.2-2.6x slower here, widening
-    with layer count (the deep-overlay case §8.2 exists to make cheap), and it
-    leaves a named view per call on a connection that outlives the fold.
+    Not `con.register`: measured at 2.2-2.6x slower here, widening with layer
+    count (the deep-overlay case §6.2 exists to make cheap), and it leaves a
+    named view per call on a connection that outlives the fold.
     """
     u = rels[0]
     for rel in rels[1:]:  # noqa: F841 - bound by name in the SQL below
@@ -237,7 +237,7 @@ def ex_all(exprs: Iterable[Expression]) -> Expression:
 
 
 def dims_dirs(ancestry: list[UUID]) -> list[str]:
-    """`dims/`-containing directories for resolving a record's axes (§8.2).
+    """`dims/`-containing directories for resolving a record's axes (§6.2).
 
     `ancestry` is root first, ending in the record being resolved and already
     truncated at the deepest materialised ancestor (`ancestry_to_read`). Every
@@ -246,7 +246,7 @@ def dims_dirs(ancestry: list[UUID]) -> list[str]:
 
     The two live in the same record directory but stay distinct paths -
     `layers/<id>/dims/` against `layers/<id>/resolved/dims/` - so a record read
-    as an ancestor and the same record read as itself never alias (§8.2).
+    as an ancestor and the same record read as itself never alias (§6.2).
     """
     last = len(ancestry) - 1
     return [
@@ -261,7 +261,7 @@ def fold_axis(
     """Fold a `<dir>/<filename>` axis table over `dims_dirs`, keyed by `key`.
 
     `dims_dirs` is root first, each entry already resolved by the caller to that
-    ancestor's layer or its `resolved/` cache (§8.2). Last-writer-wins per `key`, which
+    ancestor's layer or its `resolved/` cache (§6.2). Last-writer-wins per `key`, which
     is `Schema.axis_key` - so a nested dim is keyed by `(*parents, dim)` and two
     periods' identically-labelled timesteps stay distinct (§5.4). Row order
     follows the directory that first introduced the key (§3.4).

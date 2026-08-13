@@ -1,4 +1,4 @@
-"""Writing a layer from long-format frames (design doc §4)."""
+"""Writing a layer from long-format frames (design doc §8)."""
 
 from pathlib import Path
 
@@ -114,7 +114,7 @@ def test_source_is_explorable_without_building(con, base_uri):
 
 def test_write_record_builds_each_key_once(con, base_uri):
     """The writer looks up every key exactly once, and only what it writes."""
-    record = Revision.create(con)
+    revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
         attributes={"p_nom": _long(), "e_nom": _long(attribute="e_nom")},
@@ -122,7 +122,7 @@ def test_write_record_builds_each_key_once(con, base_uri):
             "Process": pd.DataFrame({"name": ["steel_dri"], "scenario": [None]})
         },
     )
-    write_record(record.id, source, con)
+    write_record(revision.id, source, con)
 
     assert sorted(source.built) == [
         "attributes:e_nom",
@@ -137,14 +137,14 @@ def test_write_record_builds_each_key_once(con, base_uri):
 def test_write_record_creates_a_new_layer(con, base_uri):
     """Files land where `layer_dir` says - data only, no schema (§5.6).
 
-    The store's one schema goes beside `layers/`, so a layer directory holds
-    nothing but data. That is what keeps it a plain parquet store a reader
+    The record's one schema goes beside `layers/`, so a layer directory holds
+    nothing but data. That is what keeps it a plain parquet directory a reader
     knowing nothing about layering can open.
     """
-    record = Revision.create(con)
-    write_record(record.id, _Source(_SCHEMA, attributes={"p_nom": _long()}), con)
+    revision = Revision.create(con)
+    write_record(revision.id, _Source(_SCHEMA, attributes={"p_nom": _long()}), con)
 
-    base = Path(layer_dir(record.id))
+    base = Path(layer_dir(revision.id))
     assert (base / "inputs" / "p_nom.parquet").exists()
     assert not (base / "manifest.json").exists()
     # Written once for the whole tree, and it is what the layer is read under.
@@ -152,7 +152,7 @@ def test_write_record_creates_a_new_layer(con, base_uri):
 
 
 def test_a_directory_target_carries_its_own_schema(con, base_uri, tmp_path):
-    """A standalone store *is* one store, so its schema goes in the directory (§5.6)."""
+    """A standalone record *is* one record, so its schema goes in the directory (§5.6)."""
     out = str(tmp_path / "standalone")
     write_record(None, _Source(_SCHEMA, attributes={"p_nom": _long()}), con, uri=out)
 
@@ -162,12 +162,12 @@ def test_a_directory_target_carries_its_own_schema(con, base_uri, tmp_path):
 
 def test_write_record_refuses_an_existing_layer(con, base_uri):
     """A whole-layer write never half-replaces what a record already holds (§4)."""
-    record = Revision.create(con)
+    revision = Revision.create(con)
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
-    write_record(record.id, source, con)
+    write_record(revision.id, source, con)
 
     with pytest.raises(FileExistsError, match="already exists"):
-        write_record(record.id, source, con)
+        write_record(revision.id, source, con)
 
 
 # -- validation -------------------------------------------------------------
@@ -175,35 +175,35 @@ def test_write_record_refuses_an_existing_layer(con, base_uri):
 
 def test_write_record_rejects_a_missing_long_column(con, base_uri):
     """A frame the fold could not resolve is refused before anything is written."""
-    record = Revision.create(con)
+    revision = Revision.create(con)
     short = _long().drop(columns=["breakpoint"])
     source = _Source(_SCHEMA, attributes={"p_nom": short})
 
     with pytest.raises(ValueError, match="missing long-schema columns.*breakpoint"):
-        write_record(record.id, source, con)
-    assert not Path(layer_dir(record.id)).exists()
+        write_record(revision.id, source, con)
+    assert not Path(layer_dir(revision.id)).exists()
 
 
 def test_write_record_rejects_an_unbacked_key_dim(con, base_uri):
-    """A schema keying by a dim the frames lack would misresolve (§5.5)."""
-    record = Revision.create(con)
+    """A schema keying by a dim the frames lack would misresolve (§5.3)."""
+    revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
         components={"Process": pd.DataFrame({"name": ["steel_dri"]})},  # no `scenario`
     )
 
     with pytest.raises(ValueError, match="missing key dims.*scenario"):
-        write_record(record.id, source, con)
+        write_record(revision.id, source, con)
 
 
 def test_write_record_rejects_a_name_two_types_share(con, base_uri):
-    """Names are unique store-wide, checked before anything is written (§3.5).
+    """Names are unique across every type, checked before anything is written (§4.3).
 
     The attribute rows record no type, so two components sharing a name would
     silently share every attribute key - which is why this is enforced rather
     than assumed.
     """
-    record = Revision.create(con)
+    revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
         components={
@@ -213,13 +213,13 @@ def test_write_record_rejects_a_name_two_types_share(con, base_uri):
     )
 
     with pytest.raises(ValueError, match="component types reuse names"):
-        write_record(record.id, source, con)
-    assert not Path(layer_dir(record.id)).exists()
+        write_record(revision.id, source, con)
+    assert not Path(layer_dir(revision.id)).exists()
 
 
 def test_write_record_accepts_one_name_per_type(con, base_uri):
     """The negative half: the same two types with distinct names write fine."""
-    record = Revision.create(con)
+    revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
         components={
@@ -228,8 +228,8 @@ def test_write_record_accepts_one_name_per_type(con, base_uri):
         },
     )
 
-    write_record(record.id, source, con)
-    assert Path(layer_dir(record.id)).exists()
+    write_record(revision.id, source, con)
+    assert Path(layer_dir(revision.id)).exists()
 
 
 def test_the_uniqueness_check_spans_backends(con, base_uri):
@@ -239,7 +239,7 @@ def test_the_uniqueness_check_spans_backends(con, base_uri):
     the check must not assume the component frames share a backend - `nw.concat`
     refuses a mixed list outright.
     """
-    record = Revision.create(con)
+    revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
         components={
@@ -250,7 +250,7 @@ def test_the_uniqueness_check_spans_backends(con, base_uri):
     )
 
     with pytest.raises(ValueError, match="component types reuse names"):
-        write_record(record.id, source, con)
+        write_record(revision.id, source, con)
 
 
 def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
@@ -260,7 +260,7 @@ def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
     `snapshots.parquet` carrying only timestamps would fold two periods'
     identically labelled hours into one row.
     """
-    record = Revision.create(con)
+    revision = Revision.create(con)
     nested = schema(within={"snapshot": {"period"}})
     source = _Source(
         nested,
@@ -268,8 +268,8 @@ def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
     )
 
     with pytest.raises(ValueError, match="axis key columns.*period"):
-        write_record(record.id, source, con)
-    assert not Path(layer_dir(record.id)).exists()
+        write_record(revision.id, source, con)
+    assert not Path(layer_dir(revision.id)).exists()
 
 
 # -- the PyPSA source (§4) ------------------------------------------------
@@ -285,7 +285,7 @@ def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
     assert "p_max_pu" in source.attributes
     # Non-varying attributes belong to `dims/components/`, not `inputs/` (§3).
     assert "v_nom" not in source.attributes
-    # A port attribute is one bus-keyed attribute, not one per port (§6).
+    # A port attribute is one bus-keyed attribute, not one per port (§3.2).
     assert "efficiency" in source.attributes
     assert "efficiency2" not in source.attributes
 
@@ -294,14 +294,14 @@ def test_write_then_build_round_trips(con, base_uri, ac_dc):
     """A network written by blocks and read back through `build` is unchanged.
 
     Distinct from `test_roundtrip.py`, which reads an `export_to_parquet`
-    store: this exercises the writer of §4 and the connection collapse of
-    §12 in one pass.
+    record: this exercises the writer of §4 and the connection collapse of
+    §10 in one pass.
     """
-    record = Revision.create(con)
-    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
+    revision = Revision.create(con)
+    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
-    assert not PyPSA.verify(record.store)
-    back = PyPSA.build(record.store)
+    assert not PyPSA.verify(revision.record)
+    back = PyPSA.build(revision.record)
 
     for ctype in ("Bus", "Generator", "Link", "Line", "Load"):
         original, rebuilt = ac_dc.c[ctype].static, back.c[ctype].static
@@ -317,41 +317,43 @@ def test_write_then_build_round_trips(con, base_uri, ac_dc):
 
 
 def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
-    """`bus0`/`bus1` become connection rows and come back as columns (§6, §12)."""
-    record = Revision.create(con)
-    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
+    """`bus0`/`bus1` become connection rows and come back as columns (§3.2, §10)."""
+    revision = Revision.create(con)
+    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
     # Stored bus-keyed, with a role from PyPSA's sign convention.
-    rows = con.read_parquet(layer_dir(record.id) + "dims/connections/Link.parquet").df()
+    rows = con.read_parquet(
+        layer_dir(revision.id) + "dims/connections/Link.parquet"
+    ).df()
     assert set(rows["role"]) == {"input", "output"}
     assert set(rows["bus"]) >= set(ac_dc.c["Link"].static["bus0"])
 
-    back = PyPSA.build(record.store)
+    back = PyPSA.build(revision.record)
     assert list(back.c["Link"].static["bus0"]) == list(ac_dc.c["Link"].static["bus0"])
     assert list(back.c["Link"].static["bus1"]) == list(ac_dc.c["Link"].static["bus1"])
 
 
 def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
-    """A Generator's one `bus` is a connection too, and stays `bus` (§6)."""
-    record = Revision.create(con)
-    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
+    """A Generator's one `bus` is a connection too, and stays `bus` (§3.2)."""
+    revision = Revision.create(con)
+    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
     rows = con.read_parquet(
-        layer_dir(record.id) + "dims/connections/Generator.parquet"
+        layer_dir(revision.id) + "dims/connections/Generator.parquet"
     ).df()
     assert set(rows["role"]) == {"attached"}
 
-    back = PyPSA.build(record.store)
+    back = PyPSA.build(revision.record)
     assert list(back.c["Generator"].static["bus"]) == list(
         ac_dc.c["Generator"].static["bus"]
     )
 
 
 def test_static_series_split_survives_the_writer(con, base_uri, ac_dc):
-    """Only the components with a series get a `dynamic` column (§12)."""
-    record = Revision.create(con)
-    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
-    back = PyPSA.build(record.store)
+    """Only the components with a series get a `dynamic` column (§10)."""
+    revision = Revision.create(con)
+    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+    back = PyPSA.build(revision.record)
 
     assert sorted(back.c["Generator"].dynamic["p_max_pu"].columns) == sorted(
         ac_dc.c["Generator"].dynamic["p_max_pu"].columns

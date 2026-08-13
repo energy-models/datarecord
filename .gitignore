@@ -381,3 +381,17 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/linux,macos,direnv,python,windows,pycharm+all,visualstudiocode,vim
 
 .pixi
+
+### Agent sandbox ###
+.bash_profile
+.bashrc
+.profile
+.zprofile
+.zshrc
+.gitconfig
+.gitmodules
+.ripgreprc
+.mcp.json
+.claude/
+.idea
+.vscode

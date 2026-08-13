@@ -1,8 +1,8 @@
-"""Editing a store: staged edits, materialised on commit (design doc §11).
+"""Editing a record: staged edits, materialised on commit (design doc §9).
 
-What `Record` (read-only) and `write_record` (a whole store at once) do not
+What `Record` (read-only) and `write_record` (a whole record at once) do not
 cover. Accumulate-then-commit: an edit costs a row in a staging table rather
-than a rewrite, and nothing touches the store until `commit()`.
+than a rewrite, and nothing touches the record until `commit()`.
 """
 
 from __future__ import annotations
@@ -28,12 +28,12 @@ if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
 
 
-# -- commit targets (§11.7) ---------------------------------------------------
+# -- commit targets (§9.7) ---------------------------------------------------
 
 
 @dataclass(frozen=True)
 class NewChild:
-    """Write the staged rows as a new child layer of `record` (§11.7).
+    """Write the staged rows as a new child layer of `record` (§9.7).
 
     Only the edits are written; the fold resolves the rest from the parent.
     """
@@ -43,8 +43,8 @@ class NewChild:
 
 @dataclass(frozen=True)
 class Directory:
-    """Write a standalone store at `uri`: staged rows *plus* what the store
-    already reads, there being no parent to resolve against (§11.7).
+    """Write a standalone record at `uri`: staged rows *plus* what the record
+    already reads, there being no parent to resolve against (§9.7).
     """
 
     uri: str
@@ -55,7 +55,7 @@ Target = NewChild | Directory
 
 @dataclass(frozen=True)
 class Pending:
-    """What a `WorkingRecord` would write, without writing it (§11.6).
+    """What a `WorkingRecord` would write, without writing it (§9.6).
 
     A derived summary, not a second place rows live: a `GROUP BY` over the
     staging tables, computed on access and discarded.
@@ -80,7 +80,7 @@ class Pending:
         )
 
 
-# -- value normalisation (§11.2) ----------------------------------------------
+# -- value normalisation (§9.2) ----------------------------------------------
 
 
 def _as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelation:
@@ -118,7 +118,7 @@ def _without(columns: Sequence[str], drop: Sequence[str]) -> list[Expression]:
 
 
 def _latest_per(rel: DuckDBPyRelation, key: Iterable[str]) -> DuckDBPyRelation:
-    """`rel`'s newest row per `key`, by `_seq` - last write wins (§11.7).
+    """`rel`'s newest row per `key`, by `_seq` - last write wins (§9.7).
 
     The three staging tables collapse the same way and differ only in what keys
     them, so the window lives here once. `_seq` and the ranking column are
@@ -136,7 +136,7 @@ def _latest_per(rel: DuckDBPyRelation, key: Iterable[str]) -> DuckDBPyRelation:
 
 
 def _is_frame(value: Any) -> bool:
-    """Whether `value` supplies its own keys rather than being a value (§11.2)."""
+    """Whether `value` supplies its own keys rather than being a value (§9.2)."""
     if isinstance(value, nw.DataFrame | nw.LazyFrame):
         return True
     try:
@@ -157,7 +157,7 @@ def _series_index(value: Any) -> Sequence[Any] | None:
 def normalise_value(
     value: Any, names: Sequence[str] | None, axis_labels: Mapping[str, Sequence[Any]]
 ) -> tuple[list[str] | None, list[Any], dict[str, list[Any]]]:
-    """One of `set`'s four `value` forms as per-name values (§11.2).
+    """One of `set`'s four `value` forms as per-name values (§9.2).
 
     Parameters
     ----------
@@ -188,7 +188,7 @@ def normalise_value(
     if labels is not None:
         # A series is genuinely ambiguous: its index may hold names or axis
         # labels. Index dtype does not settle it, since an axis label may be a
-        # string like a name, so the tie is broken by membership (§11.2).
+        # string like a name, so the tie is broken by membership (§9.2).
         matches_axis = [
             dim for dim, values in axis_labels.items() if set(labels) <= set(values)
         ]
@@ -229,9 +229,9 @@ def normalise_value(
 class _Written:
     """One reading of a `WorkingRecord`, as the `Record` `write_record` consumes.
 
-    Commit needs two different stores out of one staging area - `NewChild` the
+    Commit needs two different records out of one staging area - `NewChild` the
     edits alone, `Directory` the resolved result - so this holds whichever
-    frame mappings the caller chose (§11.7).
+    frame mappings the caller chose (§9.7).
     """
 
     schema: Schema
@@ -244,25 +244,25 @@ class _Written:
     outputs: Frames = field(default_factory=lambda: EMPTY)
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Never consulted: `write_record` persists frames, not flags (§10)."""
+        """Never consulted: `write_record` persists frames, not flags (§8)."""
         return {}
 
 
-# -- the DuckDB-backed implementation (§11.9) ---------------------------------
+# -- the DuckDB-backed implementation (§9.9) ---------------------------------
 
 _SEQ = itertools.count(1)
 
 
 class WorkingRecord:
-    """A `Record` that accepts edits and materialises them on commit (§11).
+    """A `Record` that accepts edits and materialises them on commit (§9).
 
     Satisfies `Record`, and what it reads is the data *with its pending edits
-    applied* (§11.10) - so an edit reads back, or the store is handed to
+    applied* (§9.10) - so an edit reads back, or the record is handed to
     something that only knows `Record`, without committing.
 
     Staged rows live in three connection-scoped DuckDB tables, the *only* place
     a staged row exists: `pending` counts them and the reads fold them, neither
-    holding a copy (§11.9).
+    holding a copy (§9.9).
     """
 
     def __init__(self, base: Record, con: DuckDBPyConnection) -> None:
@@ -289,7 +289,7 @@ class WorkingRecord:
             return None
         return self.con.table(self._table(kind))
 
-    # -- Record, over base plus pending (§11.10) -----------------------------
+    # -- Record, over base plus pending (§9.10) -----------------------------
 
     @property
     def schema(self) -> Schema:
@@ -301,12 +301,12 @@ class WorkingRecord:
 
     @property
     def components(self) -> Frames:
-        """Base members with pending additions and tombstones applied (§11.10)."""
+        """Base members with pending additions and tombstones applied (§9.10)."""
         return self._entity_frames("components")
 
     @property
     def connections(self) -> Frames:
-        """Base connections with pending ones applied (§11.10)."""
+        """Base connections with pending ones applied (§9.10)."""
         return self._entity_frames("connections")
 
     def _entity_frames(self, kind: str) -> Frames:
@@ -344,7 +344,7 @@ class WorkingRecord:
         frame = base[ctype]
         # `collect_schema` reads names without materialising, and `_as_relation`
         # keeps a DuckDB-backed frame as the plan it already is: §4.2 promises a
-        # store hands over unmaterialised frames, and §11.10 prices a read with
+        # record hands over unmaterialised frames, and §9.10 prices a read with
         # pending edits at what one more layer costs.
         present = set(frame.collect_schema().names())
         on = _null_safe_on([c for c in key if c in present])
@@ -385,11 +385,11 @@ class WorkingRecord:
 
     @property
     def attributes(self) -> Frames:
-        """Base attributes with pending edits applied (§11.10).
+        """Base attributes with pending edits applied (§9.10).
 
         A set of pending edits *is* a layer - an unwritten one - so the reads
         compose the same way: the staged rows are the last layer, resolved over
-        whatever the store was reading before.
+        whatever the record was reading before.
         """
         staged = self._staged_attribute_names()
         keys = tuple(dict.fromkeys((*self.base.attributes, *staged)))
@@ -420,13 +420,13 @@ class WorkingRecord:
         )
         if base is None:
             return nw.from_native(staged)
-        # The staged rows are the last layer, so they win per key (§11.10).
+        # The staged rows are the last layer, so they win per key (§9.10).
         return nw.from_native(self._overlay(base.to_native(), staged))
 
     def _overlay(
         self, base: DuckDBPyRelation, staged: DuckDBPyRelation
     ) -> DuckDBPyRelation:
-        """`staged` over `base`, last-writer-wins per coordinate (§11.10).
+        """`staged` over `base`, last-writer-wins per coordinate (§9.10).
 
         Per *coordinate*, not per input key: the input key excludes the dims an
         attribute is not owned per (§5.5), so keying on it alone would let one
@@ -458,7 +458,7 @@ class WorkingRecord:
         )
 
     def _typed_value(self, attribute: str) -> list[Expression]:
-        """A projection of `_long_columns` with `value` cast to its dtype (§3.2).
+        """A projection of `_long_columns` with `value` cast to its dtype (§4.2).
 
         `value` is staged as text because one staging table holds every
         attribute's values (`_input_columns`); here the attribute is known, so
@@ -499,7 +499,7 @@ class WorkingRecord:
 
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
         """`AttributeSpec.dims` minus `Schema.partial`, for every type declaring
-        `attribute` - one `inputs/<attr>.parquet` serves them all (§5.5, §3.1).
+        `attribute` - one `inputs/<attr>.parquet` serves them all (§5.5, §4.2).
         """
         partial = self.schema.partial or frozenset()
         whole: set[str] = set()
@@ -512,7 +512,7 @@ class WorkingRecord:
     def _restated(self, attribute: str, staged: DuckDBPyRelation) -> DuckDBPyRelation:
         """`staged` plus the base rows a non-partial axis obliges it to carry.
 
-        The one commit-time read of parent data (§5.5, §11.7). Note the two
+        The one commit-time read of parent data (§5.5, §9.7). Note the two
         keys below: `scope` excludes the whole-owned dims, so one touched
         snapshot pulls in that key's others; `coordinate` adds them back, so a
         base row is dropped only where the edit named that exact coordinate.
@@ -541,13 +541,13 @@ class WorkingRecord:
 
     @property
     def outputs(self) -> Frames:
-        """Staged results, keyed by attribute - what a tool handed back (§11.2).
+        """Staged results, keyed by attribute - what a tool handed back (§9.2).
 
-        Results reach a store through `set(..., kind="outputs")`, so a tool can
-        solve against this store's pending inputs and attach what it computed
+        Results reach a record through `set(..., kind="outputs")`, so a tool can
+        solve against this record's pending inputs and attach what it computed
         without committing first. The base's results are *not* included: they
         were computed from inputs these edits may have changed, and results do
-        not overlay (§9.4), so what is staged is the whole answer.
+        not overlay (§7.4), so what is staged is the whole answer.
 
         Keeping them coherent with the inputs is the caller's business - editing
         an input after attaching results leaves results describing a record that
@@ -570,10 +570,10 @@ class WorkingRecord:
         )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Base flags unioned with what the staged rows use (§11.10).
+        """Base flags unioned with what the staged rows use (§9.10).
 
-        Scoped by the names this store resolves for the type - base members plus
-        pending additions - the staged rows carrying no type (§3.5).
+        Scoped by the names this record resolves for the type - base members plus
+        pending additions - the staged rows carrying no type (§4.3).
         """
         out = dict(self.base.flags(ctype))
         rel = self._rows("inputs")
@@ -612,7 +612,7 @@ class WorkingRecord:
             )
         return out
 
-    # -- edits (§11.2, §11.3, §11.5) ----------------------------------------
+    # -- edits (§9.2, §9.3, §9.5) ----------------------------------------
 
     def _axis_labels(self) -> dict[str, list[Any]]:
         labels: dict[str, list[Any]] = {}
@@ -623,7 +623,7 @@ class WorkingRecord:
         return labels
 
     def _resolved_names(self, ctype: str) -> list[str]:
-        """Every name `ctype` currently resolves to, base plus staged (§11.10).
+        """Every name `ctype` currently resolves to, base plus staged (§9.10).
 
         Through narwhals rather than the native frame: a backend's column
         yields its own scalar type (a `pyarrow.StringScalar`, say), which
@@ -635,7 +635,7 @@ class WorkingRecord:
         return [str(n) for n in frame["name"].to_list()]
 
     def _require_unique(self, ctype: str, lazy: nw.LazyFrame) -> None:
-        """Reject an `add` whose names another type already holds (§3.5, §11.8).
+        """Reject an `add` whose names another type already holds (§4.3, §9.8).
 
         Re-adding a name of the *same* type is an edit to that member, which
         `_entity_union` resolves last-writer-wins - so only a cross-type clash
@@ -653,12 +653,12 @@ class WorkingRecord:
             )
             msg = (
                 f"cannot add {ctype} components whose names are taken: {detail}; "
-                f"names are unique across every component type (§3.5)"
+                f"names are unique across every component type (§4.3)"
             )
             raise ValueError(msg)
 
     def _types_by_name(self) -> dict[str, str]:
-        """`name -> component_type` over everything this store resolves (§3.5)."""
+        """`name -> component_type` over everything this record resolves (§4.3)."""
         return {
             name: ctype
             for ctype in self.components
@@ -666,10 +666,10 @@ class WorkingRecord:
         }
 
     def _resolve_types(self, names: Sequence[str]) -> dict[str, str]:
-        """`names` mapped to their types, rejecting any the store does not resolve.
+        """`names` mapped to their types, rejecting any the record does not resolve.
 
         A value keyed to a name with no member row would resolve to nothing, so
-        it is caught here rather than dropped at read time (§11.8).
+        it is caught here rather than dropped at read time (§9.8).
         """
         known = self._types_by_name()
         unknown = sorted({n for n in names if n not in known})
@@ -682,7 +682,7 @@ class WorkingRecord:
         return {n: known[n] for n in names}
 
     def _validate_dims(self, dims: Mapping[str, Any]) -> None:
-        """The dim vocabulary, checked for either `kind` (§11.8, §11.3.1)."""
+        """The dim vocabulary, checked for either `kind` (§9.8, §9.3.1)."""
         unknown = sorted(set(dims) - set(self.schema.dims))
         if unknown:
             msg = f"the schema declares no dims {unknown}"
@@ -696,16 +696,16 @@ class WorkingRecord:
         *,
         name: str | None = None,
     ) -> None:
-        """One name's attribute checks, against the spec of *its* type (§11.8).
+        """One name's attribute checks, against the spec of *its* type (§9.8).
 
         Inputs only: a result attribute is not schema-declared at all -
         `Tool.results` derives which attributes count as results from the
         framework's own registry, and `write_record` persists `outputs/` without
-        consulting the schema (§9.4, §12). So an unknown attribute name is an
+        consulting the schema (§7.4, §10). So an unknown attribute name is an
         error for an input and simply unknowable for a result.
 
         `name` is reported where known: with the type derived rather than passed
-        (§3.5), the name is what the caller can act on.
+        (§4.3), the name is what the caller can act on.
         """
         who = f" (for {name!r})" if name is not None else ""
         declared = self.schema.attributes.get(ctype)
@@ -734,30 +734,30 @@ class WorkingRecord:
         kind: Literal["inputs", "outputs"] = "inputs",
         **dims: Any,
     ) -> None:
-        """Stage an attribute value for a group of components (§11.2).
+        """Stage an attribute value for a group of components (§9.2).
 
         `value` takes five forms: a scalar broadcast to every name, a sequence
         aligned positionally to `names`, a mapping keyed by name, a long frame
         supplying its own keys, and a narwhals expression - which is a *function
         of the current value* rather than a value, so it reads before it stages
-        and two such calls compose (§11.3).
+        and two such calls compose (§9.3).
 
-        No `component_type` parameter: the type is looked up from the name (§3.5),
+        No `component_type` parameter: the type is looked up from the name (§4.3),
         so one call may span types and each name is validated against its own
-        type's spec (§11.8). `names=None` means every component whose type
+        type's spec (§9.8). `names=None` means every component whose type
         declares `attribute`.
 
-        `kind` names the destination in the format's own terms (§11.1):
+        `kind` names the destination in the format's own terms (§9.1):
         `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a
         tool hands results back. Results use the same long schema; what differs
-        is that they do not overlay (§9.4).
+        is that they do not overlay (§7.4).
 
         Two checks are skipped for `"outputs"`, both because a result is not a
         value the schema governs: the attribute need not be declared, and a
         result's `name` need not resolve to a declared member. A solve may
         produce rows for a component type it derived rather than read - PyPSA's
         `SubNetwork` is one - and rejecting those would refuse a legitimate
-        result. An *input* for an undeclared name stays an error (§11.8).
+        result. An *input* for an undeclared name stays an error (§9.8).
         """
         is_long_frame = _is_frame(value) and _series_index(value) is None
         if is_long_frame:
@@ -765,8 +765,8 @@ class WorkingRecord:
             if "component_type" in lazy.collect_schema().names():
                 msg = (
                     f"`set({attribute!r}, <frame>)` was given a `component_type` "
-                    f"column; names are unique store-wide, so an attribute row "
-                    f"carries no type and the column would be ignored (§3.5)"
+                    f"column; names are unique across every type, so an attribute row "
+                    f"carries no type and the column would be ignored (§4.3)"
                 )
                 raise ValueError(msg)
             if kind == "inputs":
@@ -792,7 +792,7 @@ class WorkingRecord:
         self._validate_dims(dims)
         if kind == "inputs":
             # One lookup serves both: rejects a name with no member row, and
-            # returns the type whose spec is checked (§3.5).
+            # returns the type whose spec is checked (§4.3).
             for name, ctype in self._resolve_types(keys).items():
                 self._validate_attribute(ctype, attribute, dims, name=name)
 
@@ -821,7 +821,7 @@ class WorkingRecord:
         self.con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", rows)
 
     def _names_declaring(self, attribute: str) -> list[str]:
-        """Every resolved name whose type declares `attribute` - `names=None` (§11.2)."""
+        """Every resolved name whose type declares `attribute` - `names=None` (§9.2)."""
         return [
             name
             for ctype in sorted(self.schema.types_declaring(attribute))
@@ -832,11 +832,11 @@ class WorkingRecord:
     def _validate_frame(
         self, lazy: nw.LazyFrame, attribute: str, dims: Mapping[str, Any]
     ) -> None:
-        """A long input frame's dims, names and per-name specs (§11.8).
+        """A long input frame's dims, names and per-name specs (§9.8).
 
         The frame supplies its own names, so each is resolved to its type and
         checked against that type's spec - one frame may legitimately span
-        types, since names are unique (§3.5).
+        types, since names are unique (§4.3).
         """
         self._validate_dims(dims)
         if "name" not in lazy.collect_schema().names():
@@ -851,9 +851,9 @@ class WorkingRecord:
     def _stage_long(
         self, attribute: str, lazy: nw.LazyFrame, bus: str | None, kind: str
     ) -> None:
-        """Stage a long frame that supplies its own keys (§11.2).
+        """Stage a long frame that supplies its own keys (§9.2).
 
-        Its keys are `name` and whatever dims it carries (§3.5).
+        Its keys are `name` and whatever dims it carries (§4.2).
         """
         _in_long = lazy.to_native()  # noqa: F841 - referenced by name below
         table = self._ensure(kind)
@@ -884,18 +884,18 @@ class WorkingRecord:
         kind: str = "inputs",
         **dims: Any,
     ) -> None:
-        """Stage a value derived from the current one - the `Expr` form (§11.3).
+        """Stage a value derived from the current one - the `Expr` form (§9.3).
 
         Reads before it stages, so what it derives from is the resolved value
         *including earlier pending edits*, and two such calls compose. What is
         staged is the result, never the expression, so a committed layer holds
-        ordinary rows and nothing records that a value was derived.
+        ordinary rows and nothing stores that a value was derived.
 
         On a layered base the read is a fold, so this is the one edit whose cost
         scales with the ancestry rather than with the rows written.
 
         Unscoped, this derives from every row of the attribute across the types
-        declaring it - there being no type keyword to narrow it (§3.5).
+        declaring it - there being no type keyword to narrow it (§4.3).
         """
         source = self.outputs if kind == "outputs" else self.attributes
         if attribute not in source:
@@ -931,7 +931,7 @@ class WorkingRecord:
                 msg = (
                     f"no {attribute!r} rows resolve for {scope}, so there is "
                     f"no current value to derive from; `set` a value directly to "
-                    f"create one (§11.3)"
+                    f"create one (§9.3)"
                 )
                 raise KeyError(msg)
         if frame is None:
@@ -955,7 +955,7 @@ class WorkingRecord:
         )
 
     def add(self, ctype: str, frame: Any) -> None:
-        """Stage new components from a wide frame (§11.5).
+        """Stage new components from a wide frame (§9.5).
 
         Splits it: attributes varying over nothing stay in `dims/components/`,
         varying ones become `inputs/` rows. Which is which comes from the
@@ -968,7 +968,7 @@ class WorkingRecord:
 
         `ctype` stays a parameter where `set` loses it: this is the call that
         establishes a name's type, so there is nothing yet to look it up in
-        (§3.5). It is also where uniqueness is enforced.
+        (§4.3). It is also where uniqueness is enforced.
         """
         lazy = nw.from_native(frame).lazy()
         columns = lazy.collect_schema().names()
@@ -980,7 +980,7 @@ class WorkingRecord:
         declared = self.schema.attributes.get(ctype, {})
         varying = [c for c in columns if declared.get(c) and declared[c].varying]
         # A connection attribute belongs to `dims/connections/`, keyed by bus
-        # (§6) - putting it in the member frame would introduce a column the
+        # (§3.2) - putting it in the member frame would introduce a column the
         # ancestors' files lack, which then reads as NULL for their rows.
         ports = [
             c
@@ -1031,7 +1031,7 @@ class WorkingRecord:
             )
         # `bus` names the connection itself rather than being an attribute of
         # one, so it becomes the connection row; any other port attribute
-        # rides along on it (§6). `role` is passed through when the caller
+        # rides along on it (§3.2). `role` is passed through when the caller
         # supplies it and left NULL otherwise: what the roles of a type's ports
         # are is a framework's vocabulary, not this layer's to invent.
         if "bus" in ports:
@@ -1053,10 +1053,10 @@ class WorkingRecord:
         keys: list[list[Any]],
         dims: Mapping[str, Any],
     ) -> None:
-        """Stage one `deleted` row per key, scoped by `dim_cols` (§11.5).
+        """Stage one `deleted` row per key, scoped by `dim_cols` (§9.5).
 
         Shared by `remove` and `disconnect`, which differ only in their fixed
-        key columns - `disconnect` carries `bus` too (§6). One helper so the
+        key columns - `disconnect` carries `bus` too (§3.2). One helper so the
         placeholder count is derived from the column list rather than restated
         per caller, which is what let the two drift out of step.
         """
@@ -1071,7 +1071,7 @@ class WorkingRecord:
         )
 
     def remove(self, ctype: str, names: Sequence[str], **dims: Any) -> None:
-        """Stage a tombstone per name, scoped by the component key dims (§11.5).
+        """Stage a tombstone per name, scoped by the component key dims (§9.5).
 
         Need not enumerate what it deletes: one row per key, and the fold
         applies it to every attribute.
@@ -1089,7 +1089,7 @@ class WorkingRecord:
         )
 
     def connect(self, ctype: str, frame: Any) -> None:
-        """Stage connection rows from a frame carrying `name` and `bus` (§6)."""
+        """Stage connection rows from a frame carrying `name` and `bus` (§3.2)."""
         lazy = nw.from_native(frame).lazy()
         columns = lazy.collect_schema().names()
         for required in ("name", "bus"):
@@ -1110,7 +1110,7 @@ class WorkingRecord:
     def disconnect(
         self, ctype: str, pairs: Sequence[tuple[str, str]], **dims: Any
     ) -> None:
-        """Stage a tombstone per `(name, bus)` (§6)."""
+        """Stage a tombstone per `(name, bus)` (§3.2)."""
         unknown = sorted(set(dims) - set(self.schema.connection_dims))
         if unknown:
             msg = f"{unknown} do not key connection membership"
@@ -1123,11 +1123,11 @@ class WorkingRecord:
             dims,
         )
 
-    # -- pending / commit / rollback (§11.6, §11.7) -------------------------
+    # -- pending / commit / rollback (§9.6, §9.7) -------------------------
 
     @property
     def pending(self) -> Pending:
-        """Counts over the staging tables, computed on access (§11.6)."""
+        """Counts over the staging tables, computed on access (§9.6)."""
 
         def counts(
             kind: str, by: str, *, deleted: bool | None = None
@@ -1142,7 +1142,7 @@ class WorkingRecord:
 
         # `tombstones` spans both entity kinds: a `disconnect` is a deletion
         # like a `remove`, so counting only components would report a staged
-        # one as nothing pending (§11.6).
+        # one as nothing pending (§9.6).
         dead = counts("components", "component_type", deleted=True)
         for ctype, n in counts("connections", "component_type", deleted=True).items():
             dead[ctype] = dead.get(ctype, 0) + n
@@ -1154,13 +1154,13 @@ class WorkingRecord:
         )
 
     def rollback(self) -> None:
-        """Clear every staged row without writing (§11)."""
+        """Clear every staged row without writing (§9)."""
         for kind in list(self._staged):
             self.con.execute(f"DROP TABLE IF EXISTS {self._table(kind)}")
         self._staged.clear()
 
     def _collapsed_inputs(self) -> DuckDBPyRelation:
-        """Staged attribute rows, last-write-wins per key, tombstones applied (§11.7)."""
+        """Staged attribute rows, last-write-wins per key, tombstones applied (§9.7)."""
         rel = self._rows("inputs")
         assert rel is not None
         # Per coordinate, not per input key: the input key excludes the dims an
@@ -1173,21 +1173,21 @@ class WorkingRecord:
         if dead is None:
             return live
         # A deleted component has no attributes, so the tombstone wins over a
-        # staged value regardless of sequence (§11.7).
+        # staged value regardless of sequence (§9.7).
         #
         # Matched on `name` alone: the tombstone carries a type and a staged
-        # input row does not (§3.5).
+        # input row does not (§4.3).
         on = _null_safe_on(("name", *self.schema.component_dims), "l", "d")
         return live.set_alias("l").join(dead.set_alias("d"), on, how="anti")
 
     def _tombstoned(self) -> DuckDBPyRelation | None:
-        """Component keys whose latest staged member row is a tombstone (§11.7)."""
+        """Component keys whose latest staged member row is a tombstone (§9.7)."""
         rel = self._rows("components")
         if rel is None:
             return None
         cols = self.schema.component_key
         # An `add` after a `remove` means the component exists again, so only
-        # the latest row per key counts (§11.7).
+        # the latest row per key counts (§9.7).
         return (
             _latest_per(rel, cols)
             .filter(col("deleted"))
@@ -1195,9 +1195,9 @@ class WorkingRecord:
         )
 
     def _collapsed_entities(self, kind: str) -> DuckDBPyRelation | None:
-        """Staged member or connection rows, last-write-wins per key (§11.7).
+        """Staged member or connection rows, last-write-wins per key (§9.7).
 
-        The entity key, so no `component_type` (§3.5) - partitioning on it too
+        The entity key, so no `component_type` (§4.3) - partitioning on it too
         would keep both a tombstone and a later `add` under a different type.
         """
         rel = self._rows(kind)
@@ -1210,7 +1210,7 @@ class WorkingRecord:
             else self.schema.connection_key,
         )
 
-    # -- what commit writes (§11.7) -----------------------------------------
+    # -- what commit writes (§9.7) -----------------------------------------
 
     def _staged_entities(self, kind: str) -> Frames:
         """One kind's staged member or connection rows, keyed by component type."""
@@ -1234,7 +1234,7 @@ class WorkingRecord:
     def _staged_attributes(self) -> Frames:
         """The staged rows, plus what a non-partial axis obliges them to carry.
 
-        A patch layer holds only the edits (§11.7) - except along a dim owned
+        A patch layer holds only the edits (§9.7) - except along a dim owned
         whole, where touching one value makes this layer the owner of the
         attribute's entire extent along it, so `_restated` completes it from the
         base (§5.5).
@@ -1256,7 +1256,7 @@ class WorkingRecord:
         """The resolved entity frames, in the shape `write_record` persists.
 
         A resolved frame drops `component_type` (the type is the key it was
-        looked up by) while a layer's file carries it (§3.1), so it is added
+        looked up by) while a layer's file carries it (§7.1), so it is added
         back for any type the staging area did not already rebuild.
         """
         frames = self.components if kind == "components" else self.connections
@@ -1270,7 +1270,7 @@ class WorkingRecord:
         return LazyFrames(tuple(frames), build)
 
     def staged_only(self) -> _Written:
-        """The staged rows alone - what a patch layer holds (§11.7)."""
+        """The staged rows alone - what a patch layer holds (§9.7)."""
         return _Written(
             schema=self.schema,
             dims=EMPTY,
@@ -1279,15 +1279,15 @@ class WorkingRecord:
             attributes=self._staged_attributes(),
             # No `_restated` counterpart: results are complete as produced, never
             # a partial override of a parent's, so there is nothing to carry
-            # forward from the base (§5.5, §9.4).
+            # forward from the base (§5.5, §7.4).
             outputs=self.outputs,
         )
 
     def flattened(self) -> _Written:
-        """The staged rows over what the store already reads (§11.7).
+        """The staged rows over what the record already reads (§9.7).
 
-        `attributes` is this store's own, since a `WorkingRecord` already reads
-        the base with its pending edits applied (§11.10) - which is exactly the
+        `attributes` is this record's own, since a `WorkingRecord` already reads
+        the base with its pending edits applied (§9.10) - which is exactly the
         flattened result.
         """
         return _Written(
@@ -1300,7 +1300,7 @@ class WorkingRecord:
         )
 
     def commit(self, target: Target) -> Any:
-        """Write everything staged and clear it (§11.7).
+        """Write everything staged and clear it (§9.7).
 
         Returns
         -------
@@ -1324,10 +1324,10 @@ def _input_columns(schema: Schema) -> str:
     """DDL for the staged `inputs/` rows.
 
     `value` is `VARCHAR` because one staging table serves every attribute, where
-    §3.2 gives `value` a *per-attribute* type; `_typed_value` casts to the
+    §4.2 gives `value` a *per-attribute* type; `_typed_value` casts to the
     declared dtype on the way into the layer.
 
-    No `component_type`: a staged row is the format's own row (§11.1, §3.5).
+    No `component_type`: a staged row is the format's own row (§9.1, §4.3).
     """
     dims = "".join(f', "{d}" {schema.column_type(d)}' for d in schema.dims)
     return (
@@ -1353,7 +1353,7 @@ _COLUMNS = {
     "inputs": _input_columns,
     # `outputs/` uses the same long schema as `inputs/`; what differs is that it
     # does not overlay, which is a read-path property rather than a shape one
-    # (§9.4). So the staging DDL is shared.
+    # (§7.4). So the staging DDL is shared.
     "outputs": _input_columns,
     "components": _component_columns,
     "connections": _connection_columns,

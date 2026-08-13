@@ -1,4 +1,4 @@
-"""The tool layer: verify a record, build a model, read results back (design doc §12)."""
+"""The tool layer: verify a record, build a model, read results back (design doc §10)."""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +10,7 @@ from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.layered.write import write_record
+from datarecord.record import EMPTY
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import PyPSA, _colliding_names
 from tests.fixtures import (
@@ -22,10 +23,10 @@ from tests.fixtures import (
 
 
 @pytest.fixture
-def single_record(con, base_uri, ac_dc):
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
-    return record
+def single_revision(con, base_uri, ac_dc):
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    return revision
 
 
 def test_requirements_falsy_when_empty():
@@ -39,8 +40,8 @@ def test_requirements_falsy_when_empty():
 def test_the_record_layer_imports_no_tool():
     """`datarecord` is framework-free: reading a record never imports PyPSA.
 
-    The call runs from the tool inward (`PyPSA.build(record.store)`), so there is no
-    registry and no name dispatch to drag a framework in (§12).
+    The call runs from the tool inward (`PyPSA.build(revision.record)`), so there is no
+    registry and no name dispatch to drag a framework in (§10).
     """
     import subprocess
     import sys
@@ -54,14 +55,14 @@ def test_the_record_layer_imports_no_tool():
     assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
 
 
-def test_verify_accepts_a_complete_record(single_record):
-    """A store written by `export_to_parquet` supplies everything PyPSA needs."""
-    assert not PyPSA.verify(single_record.store)
+def test_verify_accepts_a_complete_record(single_revision):
+    """A record written by `export_to_parquet` supplies everything PyPSA needs."""
+    assert not PyPSA.verify(single_revision.record)
 
 
-def test_requires_reports_the_records_own_types(single_record):
+def test_requires_reports_the_records_own_types(single_revision):
     """`requires` is record-dependent: PyPSA's axes plus this record's types."""
-    req = PyPSA.requires(single_record.store)
+    req = PyPSA.requires(single_revision.record)
     assert {"snapshot", "period", "scenario"} <= req.dims
     assert "Generator" in req.component_types
     # Required attributes come from PyPSA's registry, not a list we maintain.
@@ -72,17 +73,17 @@ def test_requires_reports_the_records_own_types(single_record):
 
 
 def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
-    """A schema that declares no `scenario` dim cannot build a network (§12)."""
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
-    _with_schema(record, dims={"snapshot": "TIMESTAMP"}, partial=set(), keys={})
+    """A schema that declares no `scenario` dim cannot build a network (§10)."""
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    _with_schema(revision, dims={"snapshot": "TIMESTAMP"}, partial=set(), keys={})
 
-    missing = PyPSA.verify(record.store)
+    missing = PyPSA.verify(revision.record)
     assert missing
     assert missing.dims == {"period", "scenario"}
     # A build refuses rather than failing deep inside PyPSA.
     with pytest.raises(UnsupportedRecordError, match="scenario"):
-        PyPSA.build(record.store)
+        PyPSA.build(revision.record)
 
 
 def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
@@ -91,24 +92,24 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     The record layer stores `component_type` as a plain `VARCHAR` - the
     vocabulary belongs to a framework, and the record layer knows none - so an
     unknown type reads back fine and it is this tool's business that it cannot
-    be built (§5, §12). `Requirements.component_types` is what carries it.
+    be built (§5, §10). `Requirements.component_types` is what carries it.
     """
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
-    write_components(layer_dir(record.id), "Widget", [{"name": "w1"}])
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    write_components(layer_dir(revision.id), "Widget", [{"name": "w1"}])
 
-    missing = PyPSA.verify(record.store)
+    missing = PyPSA.verify(revision.record)
     assert missing.component_types == {"Widget"}
     # The types PyPSA does know are not reported.
     assert "Generator" not in missing.component_types
     with pytest.raises(UnsupportedRecordError, match="Widget"):
-        PyPSA.build(record.store)
+        PyPSA.build(revision.record)
 
 
 _DIMS = {"snapshot": "TIMESTAMP", "period": "BIGINT", "scenario": "VARCHAR"}
 
 
-def _without_default(record, ctype: str, attribute: str) -> None:
+def _without_default(revision, ctype: str, attribute: str) -> None:
     """Drop one attribute's declared default, leaving the rest of the schema."""
     was = read_schema()
     spec = was.attributes[ctype][attribute]
@@ -116,8 +117,8 @@ def _without_default(record, ctype: str, attribute: str) -> None:
     write_schema(was)
 
 
-def _with_schema(record, **kwargs) -> None:
-    """Redeclare the store's schema, keeping the attributes it already declares.
+def _with_schema(revision, **kwargs) -> None:
+    """Redeclare the record's schema, keeping the attributes it already declares.
 
     Written directly rather than through `write_record`, which would reject an
     incompatible redeclaration (§5.7) - here the point is to hand the tool a
@@ -140,16 +141,16 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
     put the result in (§5.5). The record layer therefore permits the
     declaration - every file does carry the column - and the tool catches it.
     """
-    record = Revision.create(con)
+    revision = Revision.create(con)
     write_schema(PyPSA.to_datarecord(ac_dc).schema)
-    export_network(ac_dc, record, con)
-    _with_schema(record, partial={"scenario", "snapshot"})
+    export_network(ac_dc, revision, con)
+    _with_schema(revision, partial={"scenario", "snapshot"})
 
-    missing = PyPSA.verify(record.store)
+    missing = PyPSA.verify(revision.record)
     assert ("input_key", "snapshot") in missing.unsupported_keys
     assert "snapshot" in missing.describe()
     with pytest.raises(UnsupportedRecordError, match="snapshot"):
-        PyPSA.build(record.store)
+        PyPSA.build(revision.record)
 
 
 @pytest.mark.parametrize(
@@ -168,8 +169,8 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
 def test_write_record_rejects_a_key_dim_no_frame_carries(con, base_uri, ac_dc, kwargs):
     """A declared key dim needs a column in every frame, or the layer is refused.
 
-    The invariant the read path relies on (§5.5): the fold keys by these
-    columns, so a store missing one would resolve as though the dim were
+    The invariant the read path relies on (§5.3): the fold keys by these
+    columns, so a record missing one would resolve as though the dim were
     broadcast everywhere. Caught at the boundary, which is why no tool
     re-checks it.
     """
@@ -186,23 +187,24 @@ def test_write_record_rejects_a_key_dim_no_frame_carries(con, base_uri, ac_dc, k
         components=source.components,
         connections=source.connections,
         attributes=source.attributes,
+        outputs=EMPTY,
     )
-    record = Revision.create(con)
+    revision = Revision.create(con)
     with pytest.raises(ValueError, match="period|vintage"):
-        write_record(record.id, restated, con)
+        write_record(revision.id, restated, con)
 
 
 def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     """A component type with no `bus` anywhere - not in the frame, not in the catalog."""
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
     # A Generator member carrying no `bus` column at all, no connection row
-    # supplying one (§6), and a schema with no default for it either.
-    write_components(layer_dir(record.id), "Generator", [{"name": "g1"}])
-    Path(layer_dir(record.id), "dims", "connections", "Generator.parquet").unlink()
-    _without_default(record, "Generator", "bus")
+    # supplying one (§3.2), and a schema with no default for it either.
+    write_components(layer_dir(revision.id), "Generator", [{"name": "g1"}])
+    Path(layer_dir(revision.id), "dims", "connections", "Generator.parquet").unlink()
+    _without_default(revision, "Generator", "bus")
 
-    missing = PyPSA.verify(record.store)
+    missing = PyPSA.verify(revision.record)
     assert ("Generator", "bus") in missing.attributes
 
 
@@ -210,21 +212,21 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(
     con, base_uri, ac_dc
 ):
     """A declared default makes an attribute resolvable with no row anywhere (§5.2)."""
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
-    write_components(layer_dir(record.id), "Generator", [{"name": "g1"}])
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    write_components(layer_dir(revision.id), "Generator", [{"name": "g1"}])
 
     # PyPSA's own registry already declares `bus` with a `""` default, which
-    # is exactly the case this pins - so the store is left as written.
-    assert ("Generator", "bus") not in PyPSA.verify(record.store).attributes
+    # is exactly the case this pins - so the record is left as written.
+    assert ("Generator", "bus") not in PyPSA.verify(revision.record).attributes
 
 
 def test_verify_reports_a_piecewise_linear_attribute(con, base_uri, ac_dc):
-    """A curve is stored correctly; it is the PyPSA translation that cannot express it (§7)."""
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
+    """A curve is stored correctly; it is the PyPSA translation that cannot express it (§3.1)."""
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
     write_input(
-        layer_dir(record.id),
+        layer_dir(revision.id),
         "marginal_cost",
         [
             {
@@ -236,25 +238,25 @@ def test_verify_reports_a_piecewise_linear_attribute(con, base_uri, ac_dc):
         ],
     )
 
-    missing = PyPSA.verify(record.store)
+    missing = PyPSA.verify(revision.record)
     assert ("Generator", "marginal_cost") in missing.unsupported_values
     assert "piecewise-linear" in missing.describe()
     with pytest.raises(UnsupportedRecordError):
-        PyPSA.build(record.store)
+        PyPSA.build(revision.record)
 
 
-def test_verify_accepts_a_scalar_attribute(single_record):
+def test_verify_accepts_a_scalar_attribute(single_revision):
     """The same attribute without breakpoints is not reported (the negative half)."""
     write_input(
-        layer_dir(single_record.id),
+        layer_dir(single_revision.id),
         "marginal_cost",
         [{"name": "Manchester Wind", "value": 20.0}],
     )
-    assert not PyPSA.verify(single_record.store).unsupported_values
+    assert not PyPSA.verify(single_revision.record).unsupported_values
 
 
 def test_to_datarecord_rejects_a_cross_type_name_collision():
-    """PyPSA scopes names per type; a record scopes them store-wide (§3.5, §12).
+    """PyPSA scopes names per type; a record scopes them across every type (§4.3, §10).
 
     Reported rather than repaired: renaming to `Generator:north` would hand back
     a network whose components PyPSA can no longer find by their own names, so
@@ -298,16 +300,16 @@ def test_a_stochastic_network_is_not_a_false_collision():
     assert not _colliding_names(n)
 
 
-def test_pypsa_schema_is_the_identity(single_record):
-    """PyPSA defines the record vocabulary today, so nothing is renamed (§12).
+def test_pypsa_schema_is_the_identity(single_revision):
+    """PyPSA defines the record vocabulary today, so nothing is renamed (§10).
 
     The seam still routes every attribute, so an entry added later takes
     effect with no change to `build`.
     """
     assert PyPSA.schema.attrs == {}
     assert PyPSA.schema.sources("Generator", "p_max_pu") == ("p_max_pu",)
-    identity = PyPSA.schema.resolve(single_record.store, "Generator", "p_max_pu")
-    assert identity.fetchall() == relation(single_record, "p_max_pu").fetchall()
+    identity = PyPSA.schema.resolve(single_revision.record, "Generator", "p_max_pu")
+    assert identity.fetchall() == relation(single_revision, "p_max_pu").fetchall()
 
 
 def test_schema_renames_and_computes():
@@ -336,9 +338,9 @@ def test_schema_renames_and_computes():
         Attr(name="x", source=("a", "b"))
 
 
-def test_results_extracts_long_form_outputs(single_record):
-    """A solved network's results come back keyed by attribute, long-form (§12)."""
-    n = PyPSA.build(single_record.store)
+def test_results_extracts_long_form_outputs(single_revision):
+    """A solved network's results come back keyed by attribute, long-form (§10)."""
+    n = PyPSA.build(single_revision.record)
     n.optimize(solver_name="highs")
 
     results = PyPSA.results(n)
@@ -346,11 +348,11 @@ def test_results_extracts_long_form_outputs(single_record):
     assert "p_nom_opt" in results
 
     # Narwhals frames, so the seam names no one dataframe library, and lazy so a
-    # tool may fetch on demand (§12).
+    # tool may fetch on demand (§10).
     assert isinstance(results["p"], nw.LazyFrame)
     p = results["p"].collect()
     # The long schema's columns (§3), so the write path can persist it as-is -
-    # and no `component_type`, an attribute row being keyed by `name` (§3.5).
+    # and no `component_type`, an attribute row being keyed by `name` (§4.3).
     assert {"name", "snapshot", "scenario", "period", "value"} <= set(p.columns)
     assert "component_type" not in p.columns
     assert set(p["attribute"].to_list()) == {"p"}
@@ -369,9 +371,9 @@ def test_results_extracts_long_form_outputs(single_record):
     assert set(nom["name"].to_list()) == set(n.c["Generator"].static.index[nonzero])
 
 
-def test_results_concatenate_every_type_under_one_attribute(single_record):
-    """One `p` frame holds every type's rows, matching `outputs/p.parquet` (§3.2)."""
-    n = PyPSA.build(single_record.store)
+def test_results_concatenate_every_type_under_one_attribute(single_revision):
+    """One `p` frame holds every type's rows, matching `outputs/p.parquet` (§3.6)."""
+    n = PyPSA.build(single_revision.record)
     n.optimize(solver_name="highs")
 
     p = PyPSA.results(n)["p"].collect()
@@ -379,7 +381,7 @@ def test_results_concatenate_every_type_under_one_attribute(single_record):
     # `p` is a result of several types, so the concat is what is being tested;
     # keying by `(type, attribute)` would have split these into separate frames.
     # The names identify which type each row came from, no tag column needed -
-    # that being what unique names buy the union (§3.5).
+    # that being what unique names buy the union (§4.3).
     contributing = {
         c.name
         for c in n.components
@@ -389,9 +391,9 @@ def test_results_concatenate_every_type_under_one_attribute(single_record):
     assert not p["name"].is_null().any()
 
 
-def test_results_skips_outputs_still_at_their_default(single_record):
-    """An unsolved network yields no `p`/`p_nom_opt` rows (§9.4 default rule)."""
-    n = PyPSA.build(single_record.store)
+def test_results_skips_outputs_still_at_their_default(single_revision):
+    """An unsolved network yields no `p`/`p_nom_opt` rows (§7.4 default rule)."""
+    n = PyPSA.build(single_revision.record)
     results = PyPSA.results(n)
     assert "p" not in results
     assert "p_nom_opt" not in results
@@ -402,7 +404,7 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
 
     No registration and no name dispatch: conformance to `Tool` is structural,
     so a second framework's module defines its own singleton and callers import
-    it (§12).
+    it (§10).
     """
     from datarecord.tools.base import Tool
 
@@ -410,13 +412,13 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
         name = "fake"
         schema = Schema()
 
-        def requires(self, store):
+        def requires(self, record):
             return Requirements(dims=frozenset({"snapshot"}))
 
-        def verify(self, store):
+        def verify(self, record):
             return Requirements(component_types=frozenset({"Nope"}))
 
-        def build(self, store):
+        def build(self, record):
             return "fake-model"
 
         def results(self, model):
@@ -428,35 +430,35 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
     fake = FakeTool()
     assert isinstance(fake, Tool)
 
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
 
-    assert fake.requires(record.store).dims == {"snapshot"}
-    assert fake.verify(record.store).component_types == {"Nope"}
-    assert fake.build(record.store) == "fake-model"
+    assert fake.requires(revision.record).dims == {"snapshot"}
+    assert fake.verify(revision.record).component_types == {"Nope"}
+    assert fake.build(revision.record) == "fake-model"
     assert fake.results("m") == {("Thing", "x"): "m"}
     assert fake.to_datarecord("m") == "layer-of-m"
     # The record itself knows nothing of either tool.
-    assert not hasattr(record, "to_model")
-    assert not PyPSA.verify(record.store)
+    assert not hasattr(revision, "to_model")
+    assert not PyPSA.verify(revision.record)
 
 
 def test_schema_dims_stay_generic(con, base_uri, ac_dc):
     """`Dims` carries a dim PyPSA knows nothing about; axis names live in the tool.
 
-    Declared but not `partial`, so the store's files need no column for it.
+    Declared but not `partial`, so the record's files need no column for it.
     Keying it would be a different matter, reported by the tool against the
-    real store - see `test_verify_reports_unsupported_keys`.
+    real record - see `test_verify_reports_unsupported_keys`.
     """
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
-    _with_schema(record, dims={**_DIMS, "vintage": "VARCHAR"})
-    dims = record.node_cache.dims
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    _with_schema(revision, dims={**_DIMS, "vintage": "VARCHAR"})
+    dims = revision.node_cache.dims
     assert "vintage" in dims.schema.dims
     # No axis rows anywhere, so the dim is absent from the mapping rather than
-    # present-and-empty (§4.2).
+    # present-and-empty (§3.5).
     assert "vintage" not in dims.axes
     # PyPSA's own required dims are still satisfied, and the extra dim is
     # simply not something the tool looks at.
-    assert not PyPSA.verify(record.store)
+    assert not PyPSA.verify(revision.record)
     assert "vintage" in dims.schema.long_columns

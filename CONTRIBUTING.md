@@ -24,20 +24,21 @@ Contribution rules and conventions for datarecord.
   is the authoritative design. Cite its `§N` sections from docstrings rather
   than restating the argument — a comment that re-argues the design is a defect.
   When behaviour changes, update the section, not just the code.
-- No tool import may leak into core `datarecord` (§13): everything framework-
+- No tool import may leak into core `datarecord` (§11): everything framework-
   specific lives under `datarecord/tools/` behind an optional extra.
 
 ## Architecture in one paragraph
 
 datarecord stores dimensioned attribute data with a declared schema: components
-(named members of a type, unique store-wide), connections, attribute values over
-both, and the axes those values vary along. A store is a parquet directory, and
-two implementations serve one `Record` protocol — `DirectoryRecord` over a single
-directory, and `LayeredRecord` over a tree of layers resolved last-writer-wins —
-so a consumer cannot tell which it holds. Queries are built with `narwhals` and
-executed by `duckdb`, staying lazy until collected. Beyond those and `pydantic`,
-core depends on nothing. Keep new features consistent with this schema-declared,
-backend-agnostic, lazily-evaluated design.
+(named members of a type, unique record-wide), connections, attribute values over
+both, and the axes those values vary along. A record is defined by the `Record`
+protocol — what it answers, not how it is stored — and a parquet directory is its
+on-disk form. Two implementations serve that protocol — `DirectoryRecord` over a
+single directory, and `LayeredRecord` over a tree of layers resolved
+last-writer-wins — so a consumer cannot tell which it holds. Queries are built
+with `narwhals` and executed by `duckdb`, staying lazy until collected. Beyond
+those and `pydantic`, core depends on nothing. Keep new features consistent with
+this schema-declared, backend-agnostic, lazily-evaluated design.
 
 ## AI-assisted contributions
 

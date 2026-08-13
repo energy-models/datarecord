@@ -22,9 +22,9 @@ def ac_dc():
     """PyPSA's `ac_dc_meshed`, with its loads renamed off their buses.
 
     The example names each `Load` after the `Bus` it sits on, which a record
-    cannot represent: names are unique across component types (design doc §3.5),
+    cannot represent: names are unique across component types (design doc §4.3),
     and `PyPSA.to_datarecord` rejects such a network rather than renaming it
-    (§12). Renaming here is the test suite standing in for the caller that has
+    (§10). Renaming here is the test suite standing in for the caller that has
     to reconcile the two vocabularies; `test_tools.py` pins the rejection
     itself.
     """

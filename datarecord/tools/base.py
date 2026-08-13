@@ -1,9 +1,9 @@
-"""The tool interface: verify a store, build a model, read results back.
+"""The tool interface: verify a record, build a model, read results back.
 
 The seam between a tool-agnostic record and one modelling framework (design doc
-§12). The call runs from the tool inward (`PyPSA.build(record.store)`), so the
-record layer imports nothing from here, and a tool reads through `Record` (§4).
-Tools are module-level objects imported by name - no registry (§12).
+§10). The call runs from the tool inward (`PyPSA.build(revision.record)`), so the
+record layer imports nothing from here, and a tool reads through `Record` (§3).
+Tools are module-level objects imported by name - no registry (§10).
 """
 
 from __future__ import annotations
@@ -40,14 +40,14 @@ class Requirements:
         `(key, dim)` pairs the schema declares that this tool cannot honour;
         `key` is `"input_key"`, `"component_key"` or `"connection_key"`. The
         record layer trusts every declared key, so this is a tool's verdict on
-        the store it was handed, not a schema rejection (§12).
+        the record it was handed, not a schema rejection (§10).
     unsupported_values : frozenset of tuple of (str, str)
         `(component_type, attribute)` pairs whose stored *shape* this tool
         cannot represent, as opposed to a value it is missing - a
-        piecewise-linear attribute where the tool takes a scalar (§7).
+        piecewise-linear attribute where the tool takes a scalar (§3.1).
     names : frozenset of str
         Names two of the framework's components claim, which a record scopes
-        store-wide (§3.5).
+        across every type (§4.3).
     """
 
     dims: frozenset[str] = frozenset()
@@ -89,7 +89,7 @@ class Requirements:
         if self.names:
             parts.append(
                 f"names claimed by more than one component type "
-                f"{sorted(self.names)} (§3.5)"
+                f"{sorted(self.names)} (§4.3)"
             )
         return ", ".join(parts) if parts else "nothing"
 
@@ -97,9 +97,9 @@ class Requirements:
 def to_relation(frame: nw.LazyFrame) -> DuckDBPyRelation:
     """A `Record` frame as the DuckDB relation this tool builds against.
 
-    Unwrapping costs nothing and the plan stays lazy (§4.4). For a tool needing
+    Unwrapping costs nothing and the plan stays lazy (§3.5). For a tool needing
     DuckDB's own SQL - `PIVOT`, which narwhals has no expression for - rather
-    than reaching past the store to a `NodeCache`.
+    than reaching past the record to a `NodeCache`.
 
     Raises
     ------
@@ -109,7 +109,7 @@ def to_relation(frame: nw.LazyFrame) -> DuckDBPyRelation:
     native = frame.to_native()
     if not isinstance(native, DuckDBPyRelation):
         msg = (
-            f"expected a DuckDB-backed store frame, got {type(native).__name__}; "
+            f"expected a DuckDB-backed record frame, got {type(native).__name__}; "
             "the PyPSA tool builds with DuckDB SQL"
         )
         raise TypeError(msg)
@@ -123,7 +123,7 @@ def to_relation(frame: nw.LazyFrame) -> DuckDBPyRelation:
 class Attr:
     """One tool attribute and the record attribute(s) it is built from.
 
-    The vocabulary seam (§12): a rename, or a value computed from several,
+    The vocabulary seam (§10): a rename, or a value computed from several,
     declared rather than open-coded in a `build`.
 
     Parameters
@@ -151,12 +151,12 @@ class Attr:
             )
             raise ValueError(msg)
 
-    def resolve(self, store: Record) -> DuckDBPyRelation:
+    def resolve(self, record: Record) -> DuckDBPyRelation:
         """This attribute's long relation, read through the `Record` interface.
 
-        The store rather than the record, so a tool builds from any backing (§4).
+        The record rather than the record, so a tool builds from any backing (§3).
         """
-        rels = [to_relation(store.attributes[s]) for s in self.source]
+        rels = [to_relation(record.attributes[s]) for s in self.source]
         if self.compute is None:
             return rels[0]
         return self.compute(*rels)
@@ -164,7 +164,7 @@ class Attr:
 
 @dataclass(frozen=True)
 class Schema:
-    """A tool's attribute mapping against the record's vocabulary (§12).
+    """A tool's attribute mapping against the record's vocabulary (§10).
 
     Only differing attributes need an entry; anything unlisted is read under the
     same name, so an empty `Schema` is the identity. `Attr.source` names
@@ -193,9 +193,9 @@ class Schema:
         """
         return self.attr(ctype, name).source
 
-    def resolve(self, store: Record, ctype: str, name: str) -> DuckDBPyRelation:
-        """`ctype`'s `name` as a long relation over `store`, mapping applied."""
-        return self.attr(ctype, name).resolve(store)
+    def resolve(self, record: Record, ctype: str, name: str) -> DuckDBPyRelation:
+        """`ctype`'s `name` as a long relation over `record`, mapping applied."""
+        return self.attr(ctype, name).resolve(record)
 
 
 class UnsupportedRecordError(ValueError):
@@ -213,32 +213,32 @@ class Tool(Protocol):
     """One modelling framework's view of a record.
 
     Implementations are stateless (a module-level singleton is fine): every
-    method takes the store or model it operates on. A structural type, for
+    method takes the record or model it operates on. A structural type, for
     annotating code that takes any tool - not a dispatch table; tools are
     reached by importing them.
 
     A `Record` rather than a record throughout, so a tool builds from a
     directory as readily as from an overlay and has no reason to know layering
-    exists (§12).
+    exists (§10).
     """
 
     name: str
     schema: Schema
 
-    def requires(self, store: Record) -> Requirements:
-        """What this tool needs from `store` to build a model.
+    def requires(self, record: Record) -> Requirements:
+        """What this tool needs from `record` to build a model.
 
         Record-dependent, not a constant: which attributes are required
-        follows the store's own component types and its declared schema.
+        follows the record's own component types and its declared schema.
         """
         ...
 
-    def verify(self, store: Record) -> Requirements:
-        """What `store` fails to supply; falsy when the store is usable."""
+    def verify(self, record: Record) -> Requirements:
+        """What `record` fails to supply; falsy when the record is usable."""
         ...
 
-    def build(self, store: Record) -> Any:
-        """The tool's model object, built from the resolved store."""
+    def build(self, record: Record) -> Any:
+        """The tool's model object, built from the resolved record."""
         ...
 
     def to_datarecord(self, model: Any) -> Record:
@@ -250,12 +250,12 @@ class Tool(Protocol):
         ...
 
     def results(self, model: Any) -> Frames:
-        """This model's result attributes in the record's long form (§3).
+        """This model's result attributes in the record's long form (§4.2).
 
         Keyed by attribute, each frame in the long schema - `name`, the dim
         columns, `value` - the same shape `Record.outputs` presents, so results
         go straight to `write_record` or to `set(..., kind="outputs")`. One frame
-        spans every component type, needing no type column (§3.5).
+        spans every component type, needing no type column (§4.3).
 
         Narwhals frames, so the seam names no one dataframe library, and lazy so
         an implementation may fetch a result attribute on demand rather than

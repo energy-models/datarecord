@@ -49,4 +49,8 @@ pre-commit:
             run: pixi {run} zizmor --no-progress --min-severity high --fix --offline .
           - name: reuse
             glob: "*"
-            run: pixi {run} reuse lint
+            # `--no-multiprocessing` because it is faster here (0.5s against
+            # 0.8s): a pool of workers cannot amortise its own startup over ~50
+            # files. It also sidesteps Python 3.14's `forkserver` default, whose
+            # AF_UNIX socket a sandboxed environment may refuse.
+            run: pixi {run} reuse --no-multiprocessing lint

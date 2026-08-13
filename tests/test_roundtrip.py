@@ -1,4 +1,4 @@
-"""Single-layer read path: our DuckDB reader against PyPSA's own (design doc §12)."""
+"""Single-layer read path: our DuckDB reader against PyPSA's own (design doc §10)."""
 
 from pathlib import Path
 
@@ -23,12 +23,12 @@ def _has_export_to_parquet() -> bool:
 
 needs_export_to_parquet = pytest.mark.skipif(
     not _has_export_to_parquet(),
-    reason="needs PyPSA's own parquet reader/writer, unreleased (§12)",
+    reason="needs PyPSA's own parquet reader/writer, unreleased (§10)",
 )
 
 
 def assert_networks_equal(got, expected):
-    """Compare component frames, which is what the store round-trips."""
+    """Compare component frames, which is what the record round-trips."""
     for exp_c in expected.components:
         ctype = exp_c.name
         if exp_c.static.empty:
@@ -65,19 +65,19 @@ def assert_networks_equal(got, expected):
 
 
 @pytest.fixture
-def single_record(con, base_uri, ac_dc):
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
-    return record
+def single_revision(con, base_uri, ac_dc):
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    return revision
 
 
 @needs_export_to_parquet
-def test_roundtrip_matches_pypsa_reader(con, base_uri, single_record, ac_dc):
+def test_roundtrip_matches_pypsa_reader(con, base_uri, single_revision, ac_dc):
     """Our reader agrees with `import_from_parquet` on the network each produces.
 
-    Not over the same directory: a store blocks writes declares its schema in
+    Not over the same directory: a record blocks writes declares its schema in
     `manifest.json` (§5.6), which is a different vocabulary from the one
-    PyPSA's own reader expects there. So each writer's store is read by its
+    PyPSA's own reader expects there. So each writer's record is read by its
     own reader and the two networks are compared - which is the property that
     actually matters, and the one a shared directory was only a proxy for.
     """
@@ -88,17 +88,17 @@ def test_roundtrip_matches_pypsa_reader(con, base_uri, single_record, ac_dc):
     reference = pypsa.Network()
     reference.import_from_parquet(plain)  # type: ignore[attr-defined]
 
-    assert_networks_equal(PyPSA.build(single_record.store), reference)
+    assert_networks_equal(PyPSA.build(single_revision.record), reference)
 
 
-def test_roundtrip_matches_original(con, base_uri, single_record, ac_dc):
+def test_roundtrip_matches_original(con, base_uri, single_revision, ac_dc):
     """Genuine data loss surfaces here even if it is shared with upstream."""
-    assert_networks_equal(PyPSA.build(single_record.store), ac_dc)
+    assert_networks_equal(PyPSA.build(single_revision.record), ac_dc)
 
 
-def test_static_series_split_preserved(con, base_uri, single_record):
-    """A static-valued varying attribute stays out of `dynamic` (§12)."""
-    n = PyPSA.build(single_record.store)
+def test_static_series_split_preserved(con, base_uri, single_revision):
+    """A static-valued varying attribute stays out of `dynamic` (§10)."""
+    n = PyPSA.build(single_revision.record)
     # Only the three wind generators carry a p_max_pu series in ac_dc_meshed.
     assert set(n.c["Generator"].dynamic["p_max_pu"].columns) == {
         "Manchester Wind",

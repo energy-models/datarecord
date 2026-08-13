@@ -1,4 +1,4 @@
-"""Piecewise-linear values as breakpoint rows (design doc §7)."""
+"""Piecewise-linear values as breakpoint rows (design doc §3.1)."""
 
 from datarecord.duck import layer_dir
 from datarecord.layered.revision import Revision
@@ -15,22 +15,22 @@ from tests.fixtures import (
 PROCESS = "Process"
 
 
-def _curve(record, attribute: str) -> list[tuple[float, float]]:
+def _curve(revision, attribute: str) -> list[tuple[float, float]]:
     """`(breakpoint, value)` pairs, in curve order - a sort on `breakpoint`."""
-    df = relation(record, attribute).order("breakpoint").df()
+    df = relation(revision, attribute).order("breakpoint").df()
     return list(zip(df["breakpoint"], df["value"], strict=True))
 
 
-def _flags(record, ctype: str, attribute: str) -> Flags:
-    flags = record.store.flags(ctype)
+def _flags(revision, ctype: str, attribute: str) -> Flags:
+    flags = revision.record.flags(ctype)
     if attribute not in flags:
         raise AssertionError(f"{attribute} not in the owner map")
     return flags[attribute]
 
 
 def _root_with_curve(con) -> Revision:
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
     write_input(
@@ -46,26 +46,30 @@ def _root_with_curve(con) -> Revision:
             for x, v in ((0.0, 20.0), (50.0, 35.0), (80.0, 60.0))
         ],
     )
-    return record
+    return revision
 
 
 def test_curve_resolves_as_breakpoint_rows(con, base_uri):
     """A curve is N rows of one key, ordered by sorting on `breakpoint`."""
-    record = _root_with_curve(con)
-    assert _curve(record, "marginal_cost") == [(0.0, 20.0), (50.0, 35.0), (80.0, 60.0)]
+    revision = _root_with_curve(con)
+    assert _curve(revision, "marginal_cost") == [
+        (0.0, 20.0),
+        (50.0, 35.0),
+        (80.0, 60.0),
+    ]
 
 
 def test_breakpoints_distinguishes_curve_from_scalar(con, base_uri):
-    """The owner map says which keys are curves, without opening the file (§9.1)."""
-    record = _root_with_curve(con)
+    """The owner map says which keys are curves, without opening the file (§7.1)."""
+    revision = _root_with_curve(con)
     write_input(
-        layer_dir(record.id),
+        layer_dir(revision.id),
         "p_nom",
         [{"component_type": PROCESS, "name": "steel_dri", "value": 100.0}],
     )
 
-    curve = _flags(record, PROCESS, "marginal_cost")
-    scalar = _flags(record, PROCESS, "p_nom")
+    curve = _flags(revision, PROCESS, "marginal_cost")
+    scalar = _flags(revision, PROCESS, "p_nom")
     # A curve and a scalar are shaped alike - both rows leave every dim NULL,
     # so all three are in `broadcast` - and `breakpoints` is what separates
     # them, without opening the file.
@@ -102,9 +106,9 @@ def test_patch_replaces_the_whole_curve(con, base_uri):
 
 
 def test_curve_on_a_connection(con, base_uri):
-    """`bus` and `breakpoint` compose: one keys, the other does not (§7)."""
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    """`bus` and `breakpoint` compose: one keys, the other does not (§3.1)."""
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
     write_connections(
@@ -133,10 +137,10 @@ def test_curve_on_a_connection(con, base_uri):
             )
         ],
     )
-    record.materialise()
+    revision.materialise()
 
     # Each connection owns its own curve, so a patch to one leaves the other.
-    child = record.child()
+    child = revision.child()
     write_input(
         layer_dir(child.id),
         "efficiency",
@@ -164,8 +168,8 @@ def test_curve_on_a_connection(con, base_uri):
 
 def test_curve_varying_by_snapshot(con, base_uri):
     """A curve per snapshot: `breakpoint` multiplies by the dims like anything else."""
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
     write_input(
@@ -188,18 +192,18 @@ def test_curve_varying_by_snapshot(con, base_uri):
         ],
     )
 
-    flags = _flags(record, PROCESS, "marginal_cost")
+    flags = _flags(revision, PROCESS, "marginal_cost")
     # A curve that varies over snapshots: on the snapshot axis and a curve too.
     assert "snapshot" in flags.varies
     assert "snapshot" not in flags.broadcast
     assert flags.breakpoints
-    assert len(relation(record, "marginal_cost").df()) == 4
+    assert len(relation(revision, "marginal_cost").df()) == 4
 
 
 def test_scalar_replaced_by_a_curve(con, base_uri):
     """A child may turn a scalar into a curve; it is one key either way."""
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
     write_input(
@@ -207,9 +211,9 @@ def test_scalar_replaced_by_a_curve(con, base_uri):
         "marginal_cost",
         [{"component_type": PROCESS, "name": "steel_dri", "value": 20.0}],
     )
-    record.materialise()
+    revision.materialise()
 
-    child = record.child()
+    child = revision.child()
     write_input(
         layer_dir(child.id),
         "marginal_cost",
