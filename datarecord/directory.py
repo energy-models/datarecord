@@ -1,4 +1,4 @@
-"""`DirectoryRecord`, a plain parquet directory as a `Record` (design doc §4, §9.3).
+"""`DirectoryRecord`, a plain parquet directory as a `Record` (design doc §4, §7.3).
 
 Framework-independent, like the rest of `datarecord`: hands over narwhals
 frames and names no modelling framework.
@@ -25,11 +25,11 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class DirectoryRecord:
-    """A plain parquet directory, as a `Record` (§9.3).
+    """A plain parquet directory, as a `Record` (§7.3).
 
     No overlay: what the files hold is what it presents - one layer read
     directly, or any standard parquet directory. With no owner map, `flags` is a
-    scan, cached per component type (§9.3).
+    scan, cached per component type (§7.3).
     """
 
     uri: str
@@ -83,17 +83,17 @@ class DirectoryRecord:
         return self._by_attribute("outputs")
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Aggregated from `inputs/*.parquet`, scoped to one component type (§4.3).
+        """Aggregated from `inputs/*.parquet`, scoped to one component type (§3.6).
 
         A real aggregate, not footer statistics: `stats_null_count` is per row
         group, not per component type, so a file mixing two types' rows says
-        nothing about either (§9.3). Only dim columns are projected.
+        nothing about either (§7.3). Only dim columns are projected.
 
         Which dims to report on is the schema's, intersected with what the files
         carry - a record may declare a dim no file has a column for.
 
         Scoped by a semi-join to the type's member file, the entity table for it
-        (§3.5) - so a type with no such file has no attribute rows either.
+        (§4.3) - so a type with no such file has no attribute rows either.
         """
         cache: dict[str, dict[str, Flags]] = self._flags_cache  # type: ignore[attr-defined]
         if ctype in cache:

@@ -1,9 +1,9 @@
-"""The `Revision` node and its ancestry query (design doc §8).
+"""The `Revision` node and its ancestry query (design doc §6).
 
 A thin façade over `resolve`: it holds the node's identity and reads the
 `revisions` table, knowing nothing about owner maps or parquet layers. A node
 has no state beyond its place in the tree - whether its caches are materialised
-is a filesystem question, answered by `resolve.materialised` (§8.1, §8.2).
+is a filesystem question, answered by `resolve.materialised` (§6.1, §6.2).
 """
 
 from dataclasses import dataclass
@@ -54,7 +54,7 @@ def _fetch(con: DuckDBPyConnection, revision_id: UUID) -> tuple[UUID, UUID | Non
 
 
 def ancestry(con: DuckDBPyConnection, revision_id: UUID) -> list[UUID]:
-    """Revision ids along the root->node path, root first - resolution order (§8.2).
+    """Revision ids along the root->node path, root first - resolution order (§6.2).
 
     The whole path. Truncating it at the nearest materialised node is the
     reader's business (`resolve.ancestry_to_read`), since whether a node's
@@ -67,7 +67,7 @@ class Revision(BaseModel):
     """A node in the tree of layers.
 
     Each revision adds one parquet layer on top of its parent's; the record it
-    resolves to is that layer over its ancestors' (§8). The layer location
+    resolves to is that layer over its ancestors' (§6). The layer location
     derives from `id` via `layer_dir`, it is not stored.
 
     Holds the connection it was created/loaded with (`con`), so every method
@@ -91,11 +91,11 @@ class Revision(BaseModel):
 
     @property
     def node_cache(self) -> NodeCache:
-        """This record's `NodeCache`, built once from its ancestry (§8.2).
+        """This record's `NodeCache`, built once from its ancestry (§6.2).
 
         The ancestry is truncated at the deepest materialised ancestor, so a
         deep tree resolves from few entries. Cached rather than rebuilt per
-        call: layers are write-once (§8.1), so the only thing that can change
+        call: layers are write-once (§6.1), so the only thing that can change
         the truncation point is `materialise`, which clears this itself.
         """
         if self._node_cache is None:
@@ -106,12 +106,12 @@ class Revision(BaseModel):
 
     @property
     def record(self) -> "LayeredRecord":
-        """This revision's resolved overlay as a `Record` (§9.3).
+        """This revision's resolved overlay as a `Record` (§7.3).
 
         The framework-agnostic view of a record: the same interface a plain
         parquet directory satisfies, so a consumer need not know the record is
         an overlay at all. `node_cache` remains the DuckDB-shaped view, which
-        `datarecord.tools` still builds from (§12).
+        `datarecord.tools` still builds from (§10).
         """
         return LayeredRecord(self.node_cache)
 
@@ -138,7 +138,7 @@ class Revision(BaseModel):
         return record
 
     def child(self) -> Self:
-        """Branch a new revision off this one (§8.2).
+        """Branch a new revision off this one (§6.1).
 
         Any node may be a parent: a layer is write-once, so a base cannot
         shift under its descendants.
@@ -146,7 +146,7 @@ class Revision(BaseModel):
         return type(self).create(self.con, parent=self.id)
 
     def materialise(self) -> None:
-        """Write this node's caches - owner maps and resolved dims (§8.2).
+        """Write this node's caches - owner maps and resolved dims (§6.2).
 
         A policy rather than a lifecycle step, and purely additive: it changes
         no answer, only how many layers a descendant's read touches. Once these
@@ -158,17 +158,17 @@ class Revision(BaseModel):
     # -- read ---------------------------------------------------------------
 
     def ancestry(self) -> list[UUID]:
-        """Revision ids along the root->self path, root first (§8.2)."""
+        """Revision ids along the root->self path, root first (§6.2)."""
         return ancestry(self.con, self.id)
 
 
 @dataclass(frozen=True)
 class LayeredRecord:
-    """A record's resolved overlay, as a `Record` (§9.3).
+    """A record's resolved overlay, as a `Record` (§7.3).
 
     The protocol's shape over `NodeCache`, not a second implementation of it, so
     a member costs what the equivalent `NodeCache` call costs - `flags` in
-    particular is free, the owner map having folded it in (§9.1).
+    particular is free, the owner map having folded it in (§7.1).
     """
 
     node_cache: NodeCache
@@ -212,7 +212,7 @@ class LayeredRecord:
         )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Straight off the `inputs` owner map, which folded these in for free (§9.1)."""
+        """Straight off the `inputs` owner map, which folded these in for free (§7.1)."""
         return {
             attribute: Flags(varies, broadcast, breakpoints)
             for attribute, (varies, broadcast, breakpoints) in (
@@ -220,7 +220,7 @@ class LayeredRecord:
             )
         }
 
-    # -- frames, ordered by the map's `order_key` (§9.3) ---------------------
+    # -- frames, ordered by the map's `order_key` (§7.3) ---------------------
 
     def _component_frame(self, ctype: str) -> nw.LazyFrame:
         return self._ordered(self.node_cache.component_frame(ctype), ctype)
@@ -233,7 +233,7 @@ class LayeredRecord:
 
         The fold's own output has no order (its union puts a layer's own
         contribution first), so the order a `Record` promises is imposed here.
-        `order_key` stays in the frame rather than being projected away (§9.1).
+        `order_key` stays in the frame rather than being projected away (§7.1).
         """
         if rel is None:
             raise KeyError(ctype)

@@ -64,7 +64,7 @@ class Record(Protocol):
     @property
     def components(self) -> Frames: ...  # members, keyed by component type
     @property
-    def connections(self) -> Frames: ...  # component↔bus rows, keyed by type (§6)
+    def connections(self) -> Frames: ...  # component↔bus rows, keyed by type (§3.2)
     @property
     def attributes(self) -> Frames: ...  # long input frames, keyed by attribute
 
@@ -84,7 +84,7 @@ The rest is data, and comes in two shapes.
 ```text
 dims["scenario"]         scenario | ...           one row per axis label, in axis order (§3.4)
 components["Generator"]  name | <non-varying attribute columns>
-connections["Link"]      name | bus | role | ...  one row per component↔bus attachment (§6)
+connections["Link"]      name | bus | role | ...  one row per component↔bus attachment (§3.2)
 ```
 
 `attributes` and `outputs` are **long** — one row per value, keyed by the attribute's name:
@@ -152,14 +152,14 @@ Which axes an attribute's rows actually use, for one component type — so a con
 class Flags:
     varies: frozenset[str]  # dims some row of this attribute sets
     broadcast: frozenset[str]  # dims some row leaves NULL, i.e. "all values"
-    breakpoints: bool  # any row carries a breakpoint (§6)
+    breakpoints: bool  # any row carries a breakpoint (§3.1)
 ```
 
 `flags(ctype)` answers for a whole type in one query, keyed by attribute.
 Only attributes with rows are present, so `set(record.flags(ctype))` also answers which attributes this type has at all.
 
 The sets name dims, so a consumer asks about a **named** axis: `"timestep" in flags["p_max_pu"].varies`.
-`breakpoints` is a boolean rather than a set because a breakpoint is not a dim (§6) — it is an abscissa within one row's value, not an axis the value is indexed by.
+`breakpoints` is a boolean rather than a set because a breakpoint is not a dim (§3.1) — it is an abscissa within one row's value, not an axis the value is indexed by.
 
 **The two sets are not complements.** An attribute may have per-timestep rows for one component and a single NULL-timestep row for another, so `timestep` lands in both.
 That is an instruction to use both containers: `timestep in broadcast` selects the NULL-timestep rows into a constant frame, `timestep in varies` selects the rest into a series frame.
@@ -189,7 +189,7 @@ record/
 ├── manifest.json                   # the schema (§5)
 ├── dims/
 │   ├── components/<Type>.parquet   # members + non-varying attribute columns
-│   ├── connections/<Type>.parquet  # component↔bus connections (§6)
+│   ├── connections/<Type>.parquet  # component↔bus connections (§3.2)
 │   └── <dim>s.parquet              # one axis table per declared dim
 ├── inputs/<attr>.parquet           # one varying input attribute per file
 └── outputs/<attr>.parquet          # one result attribute per file
@@ -223,7 +223,7 @@ That uniformity is what lets one `UNION ALL BY NAME` and one join shape serve ev
 One attribute per file, so `value` carries that attribute's dtype.
 There is **no `component_type` column**: `name` is unique across every type (§4.3), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by name alone, and a reader wanting one type's rows joins `dims/components/` (§4.3).
 
-A connection's `role` is not in the long schema: it lives on the connection row and identifies nothing in `inputs/` (§6).
+A connection's `role` is not in the long schema: it lives on the connection row and identifies nothing in `inputs/` (§3.2).
 
 ### 4.3 `name` is unique across types
 
@@ -272,7 +272,7 @@ class AttributeSpec(BaseModel):
     dtype: str  # value column type
     dims: frozenset[str] = frozenset()  # dims it may vary over; subset of declared
     default: Any | None = None
-    breakpoints: bool = False  # may carry a piecewise-linear curve (§6)
+    breakpoints: bool = False  # may carry a piecewise-linear curve (§3.1)
     bus: BusRelation = "component"  # "component" | "connection"
     unit: str | None = None  # what the values measure (§5.8)
     description: str | None = None  # what the attribute is, in prose (§5.8)
@@ -332,7 +332,7 @@ Varying over nothing is also what puts both in `dims/components/` rather than `i
 
 The rest answers what a bare column set cannot:
 
-- _May it carry breakpoints?_ — `breakpoints`, so a curve on an attribute that takes one value is rejected on write rather than reported unbuildable later (§6).
+- _May it carry breakpoints?_ — `breakpoints`, so a curve on an attribute that takes one value is rejected on write rather than reported unbuildable later (§3.1).
 - _Is it bus-relative?_ — `bus`, so `efficiency` is known to be a connection attribute and `p_max_pu` a component one, rather than inferred from whether a `bus` value happens to be present.
 
 ### 5.3 `keys` — which entity tables a dim keys
@@ -599,7 +599,7 @@ The two carry it for different reasons, and only one is a correctness requiremen
 
 For **connections** it is load-bearing.
 A framework wanting positional ports numbers them by this order, so a patch layer adding a third connection appends rather than renumbering.
-Without it the port index would follow whatever order the fold happened to emit, and adding a connection could silently move an existing one's attributes to a different port — the positional-keying failure §6 exists to prevent, reappearing at the point where position is reconstructed.
+Without it the port index would follow whatever order the fold happened to emit, and adding a connection could silently move an existing one's attributes to a different port — the positional-keying failure §3.2 exists to prevent, reappearing at the point where position is reconstructed.
 
 For **components** it is a stability guarantee rather than a correctness one: nothing resolves differently, since a component's rows are keyed the same way whatever order they come back in.
 What it buys is that member order is deterministic across reads and recognisable — a record round-tripped through the write path comes back in the order it was authored, with additions appended, rather than reshuffled.
@@ -615,7 +615,7 @@ Two **structs** rather than a `varies_<dim>` column per dim, because which dims 
 With a struct the difference is a missing _field_, which `UNION ALL BY NAME` fills with NULL exactly as it would a missing column, and the new dim reads as unset — which it is, since no row mentions it.
 The map's columns are then fixed, and only the fields move.
 
-`breakpoints` stays outside both structs, being no dim (§6).
+`breakpoints` stays outside both structs, being no dim (§3.1).
 That also means the dim namespace lives entirely inside `varies`/`broadcast`, so a dim named `breakpoints` would collide with nothing.
 
 `Record.flags(ctype)` unions them over the names of one type, which is the granularity every consumer works at (§3.6).
@@ -653,7 +653,7 @@ Each owned-per dim's arm is **NULL-aware**: a stored NULL means "all values", an
 `bus` is joined **NULL-safely** rather than NULL-aware: it is part of the key but a required column rather than a broadcast dim, so NULL means "this attribute is the component's, not a connection's" and never "every bus".
 It is the `connections` map that decides which connections exist at all; a row whose connection was tombstoned is gone because that tombstone removed its `inputs` keys from the map, not by a filter here.
 
-`breakpoint` is projected but not joined on, being no part of the key: a curve is owned whole (§6), so every breakpoint of a key comes from the winning layer.
+`breakpoint` is projected but not joined on, being no part of the key: a curve is owned whole (§3.1), so every breakpoint of a key comes from the winning layer.
 
 Non-key dims pass through unchanged, because within one key-dim combination the rows come from one layer.
 
@@ -686,7 +686,7 @@ def write_record(
 Writes `source` as a new layer.
 An existing layer directory is an error rather than an overwrite or a merge, so a whole-record write can never half-replace what a record holds.
 
-`outputs/` is written only for a source whose `outputs` mapping is non-empty (§3.1), so a record with no results produces a layer with no `outputs/` rather than an empty directory.
+`outputs/` is written only for a source whose `outputs` mapping is non-empty (§3), so a record with no results produces a layer with no `outputs/` rather than an empty directory.
 
 Keys are looked up one at a time and each file written before the next is built, so a lazily-building source does one read per file written rather than one per key up front.
 Frames are staged into a sibling directory and renamed on success, so a frame the fold could not resolve leaves no layer rather than half of one.
@@ -793,7 +793,7 @@ Each name is validated against **its own** type's `AttributeSpec` (§9.8), so an
 `names=None` means every component the record resolves that the schema declares this attribute for — the types declaring `attribute`, not every type.
 `set("p_max_pu", 0.9)` is "every component with a `p_max_pu`", which is the only reading left once the type keyword is gone, and the useful one.
 
-`bus` names a connection rather than the component (§6); every other keyword is a dim, so `scenario="high"` scopes the edit and its absence means "every scenario" by the NULL broadcast rule.
+`bus` names a connection rather than the component (§3.2); every other keyword is a dim, so `scenario="high"` scopes the edit and its absence means "every scenario" by the NULL broadcast rule.
 
 `kind` names the destination in the format's own terms — §9.1's table is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
 `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool hands results back to a record before it is committed (§9.3.1).
@@ -806,7 +806,7 @@ Each name is validated against **its own** type's `AttributeSpec` (§9.8), so an
 | sequence  | aligned positionally to `names` | required, same length                         |
 | mapping   | keys are names                  | ignored if given, else the keys are the names |
 | frame     | supplies its own keys           | redundant                                     |
-| `nw.Expr` | a function of the current value | selects what to derive from (§9.3)           |
+| `nw.Expr` | a function of the current value | selects what to derive from (§9.3)            |
 
 A frame "supplies its own keys" now means its `name` column alone: a `component_type` column is neither required nor read, since the name determines the type (§4.3).
 A frame carrying one is rejected rather than ignored — it says the writer believes the type is part of the key, and silently dropping the column would let a genuine disagreement through.

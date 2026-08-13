@@ -1,4 +1,4 @@
-"""Hand-built patch layers, since the v2 write path does not exist (design doc §12)."""
+"""Hand-built patch layers, since the v2 write path does not exist (design doc §10)."""
 
 from pathlib import Path
 
@@ -8,7 +8,7 @@ from datarecord.layered.resolve import write_schema as record_write_schema
 from datarecord.schema import AttributeSpec, Dimension, Schema
 
 # No `component_type`: an attribute row is keyed by `name`, unique across every type
-# (design doc §3.5). The entity tables below keep it.
+# (design doc §4.3). The entity tables below keep it.
 LONG_COLUMNS = [
     "name",
     "bus",
@@ -28,8 +28,8 @@ def write_input(
 
     Each row needs at least `name` and `value`; missing dimension columns
     default to NULL, i.e. "applies to the whole axis".
-    `bus` set marks a per-connection attribute (design doc §6), `breakpoint`
-    a piecewise-linear one (§7); both NULL is the ordinary component-level
+    `bus` set marks a per-connection attribute (design doc §3.2), `breakpoint`
+    a piecewise-linear one (§3.1); both NULL is the ordinary component-level
     scalar.
     """
     df = pd.DataFrame(rows)
@@ -50,7 +50,7 @@ def write_input(
 
 
 def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
-    """Write `dims/connections/<ctype>.parquet`, including the `deleted` tombstone (§6).
+    """Write `dims/connections/<ctype>.parquet`, including the `deleted` tombstone (§3.2).
 
     Each row needs `name` and `bus`; `role` describes the connection and keys
     nothing, so it is optional here.
@@ -75,7 +75,7 @@ def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
 def tombstone_connection(
     layer: str, ctype: str, pairs: list[tuple[str, str]], scenario=None
 ) -> None:
-    """Mark connections deleted in this layer, by `(name, bus)` (§6)."""
+    """Mark connections deleted in this layer, by `(name, bus)` (§3.2)."""
     write_connections(
         layer,
         ctype,
@@ -105,7 +105,7 @@ def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
 
 
 def tombstone(layer: str, ctype: str, names: list[str], scenario=None) -> None:
-    """Mark components deleted in this layer (§8.3)."""
+    """Mark components deleted in this layer (§6.3)."""
     write_components(
         layer,
         ctype,
@@ -149,8 +149,8 @@ def rename_components(n, ctype: str, suffix: str) -> None:
 
     PyPSA's example networks scope names per component type - a `Load` named
     after its `Bus`, a `Generator` after its `Carrier` - which a record cannot
-    represent, names being unique across types (design doc §3.5).
-    `PyPSA.to_datarecord` rejects such a network rather than renaming it (§12),
+    represent, names being unique across types (design doc §4.3).
+    `PyPSA.to_datarecord` rejects such a network rather than renaming it (§10),
     so the suffix here is the test suite standing in for the caller that has to
     reconcile the two vocabularies.
 
@@ -264,5 +264,5 @@ def relation(revision, attribute: str):
 
 
 def outputs(revision, attribute: str):
-    """One result attribute as a DuckDB relation; outputs do not overlay (§9.4)."""
+    """One result attribute as a DuckDB relation; outputs do not overlay (§7.4)."""
     return revision.node_cache.outputs(attribute)

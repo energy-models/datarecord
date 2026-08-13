@@ -1,4 +1,4 @@
-"""Piecewise-linear values as breakpoint rows (design doc §7)."""
+"""Piecewise-linear values as breakpoint rows (design doc §3.1)."""
 
 from datarecord.duck import layer_dir
 from datarecord.layered.revision import Revision
@@ -60,7 +60,7 @@ def test_curve_resolves_as_breakpoint_rows(con, base_uri):
 
 
 def test_breakpoints_distinguishes_curve_from_scalar(con, base_uri):
-    """The owner map says which keys are curves, without opening the file (§9.1)."""
+    """The owner map says which keys are curves, without opening the file (§7.1)."""
     revision = _root_with_curve(con)
     write_input(
         layer_dir(revision.id),
@@ -106,7 +106,7 @@ def test_patch_replaces_the_whole_curve(con, base_uri):
 
 
 def test_curve_on_a_connection(con, base_uri):
-    """`bus` and `breakpoint` compose: one keys, the other does not (§7)."""
+    """`bus` and `breakpoint` compose: one keys, the other does not (§3.1)."""
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())

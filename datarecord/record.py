@@ -1,8 +1,8 @@
 """The `Record` protocol: what a record answers, however it is backed.
 
 Backings: `layered.revision.LayeredRecord` (a resolved overlay) and
-`directory.DirectoryRecord` (a plain directory). See design doc §4 for the
-protocol itself, §4.4 for why it names no engine, and §9.3 for what differs
+`directory.DirectoryRecord` (a plain directory). See design doc §3 for the
+protocol itself, §3.7 for why it names no engine, and §7.3 for what differs
 between the two backings.
 """
 
@@ -17,7 +17,7 @@ import narwhals as nw
 from datarecord.schema import Schema
 
 Frames = Mapping[str, "nw.LazyFrame"]
-"""What a `Record` hands over: named frames, each an unmaterialised plan (§4.2).
+"""What a `Record` hands over: named frames, each an unmaterialised plan (§3.5).
 
 The `Mapping` ABC, so a plain `dict` satisfies it as fully as `LazyFrames`
 does. A DuckDB-backed record reaches it with `nw.from_native(rel)`, which stays
@@ -26,7 +26,7 @@ an unexecuted plan.
 
 
 class LazyFrames(Mapping[str, "nw.LazyFrame"]):
-    """A `Frames` whose values are built on `__getitem__`, not up front (§4.2).
+    """A `Frames` whose values are built on `__getitem__`, not up front (§3.5).
 
     For a backing where *building* a frame is itself I/O: `read_parquet` reads
     the footer to bind the schema, a round trip per file against a remote record.
@@ -75,11 +75,11 @@ EMPTY = LazyFrames((), _unreachable)
 
 @dataclass(frozen=True)
 class Flags:
-    """Which axes an attribute's rows actually use, for one component type (§4.3).
+    """Which axes an attribute's rows actually use, for one component type (§3.6).
 
     The two sets are **not** complements: a dim in both means this type's
     components disagree, which is the instruction to use both containers rather
-    than an ambiguity to resolve (§4.3). `varies | broadcast` is the test for
+    than an ambiguity to resolve (§3.6). `varies | broadcast` is the test for
     whether an attribute touches a dim at all.
 
     Parameters
@@ -89,7 +89,7 @@ class Flags:
     broadcast
         Dims some row leaves NULL, i.e. "all values of that dim" (§3.3).
     breakpoints
-        Whether any row carries a breakpoint. Not a dim (§7).
+        Whether any row carries a breakpoint. Not a dim (§3.1).
     """
 
     varies: frozenset[str]
@@ -99,9 +99,9 @@ class Flags:
 
 @runtime_checkable
 class Record(Protocol):
-    """What a record answers, however it is backed (§4).
+    """What a record answers, however it is backed (§3).
 
-    Read-only: writing is `write_record(revision_id, source, con)` (§10).
+    Read-only: writing is `write_record(revision_id, source, con)` (§8).
     """
 
     @property
@@ -116,41 +116,41 @@ class Record(Protocol):
 
     @property
     def components(self) -> Frames:
-        """Wide member frames, keyed by component type, in member order (§3)."""
+        """Wide member frames, keyed by component type, in member order (§3.1, §3.4)."""
         ...
 
     @property
     def connections(self) -> Frames:
-        """Connection rows, keyed by component type, in member order (§6)."""
+        """Connection rows, keyed by component type, in member order (§3.2)."""
         ...
 
     @property
     def attributes(self) -> Frames:
-        """Long input frames, keyed by attribute name - one per file (§3.2, §4).
+        """Long input frames, keyed by attribute name - one per file (§4.2).
 
         Not by component type: one `inputs/p_max_pu.parquet` holds every type's
         rows, keyed by `name` alone. A row carries no `component_type` - names
         are unique across every type - so a reader wanting one type joins `components`
-        on `name` (§3.5).
+        on `name` (§4.3).
         """
         ...
 
     @property
     def outputs(self) -> Frames:
-        """Long result frames, keyed by attribute name (§9.4).
+        """Long result frames, keyed by attribute name (§7.4).
 
         Empty for a record carrying no results.
 
         Unlike its neighbours, this does **not** overlay on a layered record: a
         record's results are its own layer's, never a resolution over its
-        ancestors' (§9.4).
+        ancestors' (§7.4).
         """
         ...
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Every attribute of `ctype`, mapped to the shape its rows take (§4.3).
+        """Every attribute of `ctype`, mapped to the shape its rows take (§3.6).
 
-        The key set is the existence answer: an attribute with no rows for this
-        type is absent rather than mapped to empty sets.
+        Only attributes with rows are present, so the key set also answers
+        which attributes this type has at all.
         """
         ...

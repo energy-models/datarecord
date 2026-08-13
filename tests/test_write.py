@@ -1,4 +1,4 @@
-"""Writing a layer from long-format frames (design doc §4)."""
+"""Writing a layer from long-format frames (design doc §8)."""
 
 from pathlib import Path
 
@@ -185,7 +185,7 @@ def test_write_record_rejects_a_missing_long_column(con, base_uri):
 
 
 def test_write_record_rejects_an_unbacked_key_dim(con, base_uri):
-    """A schema keying by a dim the frames lack would misresolve (§5.5)."""
+    """A schema keying by a dim the frames lack would misresolve (§5.3)."""
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
@@ -197,7 +197,7 @@ def test_write_record_rejects_an_unbacked_key_dim(con, base_uri):
 
 
 def test_write_record_rejects_a_name_two_types_share(con, base_uri):
-    """Names are unique across every type, checked before anything is written (§3.5).
+    """Names are unique across every type, checked before anything is written (§4.3).
 
     The attribute rows record no type, so two components sharing a name would
     silently share every attribute key - which is why this is enforced rather
@@ -285,7 +285,7 @@ def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
     assert "p_max_pu" in source.attributes
     # Non-varying attributes belong to `dims/components/`, not `inputs/` (§3).
     assert "v_nom" not in source.attributes
-    # A port attribute is one bus-keyed attribute, not one per port (§6).
+    # A port attribute is one bus-keyed attribute, not one per port (§3.2).
     assert "efficiency" in source.attributes
     assert "efficiency2" not in source.attributes
 
@@ -295,7 +295,7 @@ def test_write_then_build_round_trips(con, base_uri, ac_dc):
 
     Distinct from `test_roundtrip.py`, which reads an `export_to_parquet`
     record: this exercises the writer of §4 and the connection collapse of
-    §12 in one pass.
+    §10 in one pass.
     """
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
@@ -317,7 +317,7 @@ def test_write_then_build_round_trips(con, base_uri, ac_dc):
 
 
 def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
-    """`bus0`/`bus1` become connection rows and come back as columns (§6, §12)."""
+    """`bus0`/`bus1` become connection rows and come back as columns (§3.2, §10)."""
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
@@ -334,7 +334,7 @@ def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
 
 
 def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
-    """A Generator's one `bus` is a connection too, and stays `bus` (§6)."""
+    """A Generator's one `bus` is a connection too, and stays `bus` (§3.2)."""
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
@@ -350,7 +350,7 @@ def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
 
 
 def test_static_series_split_survives_the_writer(con, base_uri, ac_dc):
-    """Only the components with a series get a `dynamic` column (§12)."""
+    """Only the components with a series get a `dynamic` column (§10)."""
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
     back = PyPSA.build(revision.record)

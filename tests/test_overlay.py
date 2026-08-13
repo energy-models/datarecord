@@ -1,4 +1,4 @@
-"""Overlay semantics over a parent/child pair (design doc §8, §12)."""
+"""Overlay semantics over a parent/child pair (design doc §6, §10)."""
 
 import pandas as pd
 import pytest
@@ -57,7 +57,7 @@ def test_child_overwrite_reaches_model(con, parent):
 
 
 def test_tombstone_removes_component(con, parent):
-    """A tombstone removes the component from every attribute and dimension (§8.3)."""
+    """A tombstone removes the component from every attribute and dimension (§6.3)."""
     child = parent.child()
     tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
 
@@ -86,7 +86,7 @@ def test_child_adds_attribute(con, parent):
 
 
 def test_sibling_branch_unaffected(con, parent):
-    """A tombstone only affects the branch that carries it (§8.3)."""
+    """A tombstone only affects the branch that carries it (§6.3)."""
     deleting = parent.child()
     tombstone(layer_dir(deleting.id), "Generator", ["Norway Gas"])
     sibling = parent.child()
@@ -120,7 +120,7 @@ def test_grandchild_resolves_through_ancestry(con, parent):
 
 
 def test_closed_child_reads_own_node_cache(con, parent):
-    """Reading a closed non-root record uses its own persisted dims/manifest/map (§8.2).
+    """Reading a closed non-root record uses its own persisted dims/manifest/map (§6.2).
 
     Its `ancestry_since_closed` is just itself, so the raw layer (which has
     no `dims/` or `manifest.json` of its own here) cannot be the source.
@@ -142,7 +142,7 @@ def test_closed_child_reads_own_node_cache(con, parent):
 
 
 def test_outputs_do_not_overlay(con, parent):
-    """Results come from the node's own layer only (§9.4)."""
+    """Results come from the node's own layer only (§7.4)."""
     child = parent.child()
     assert outputs(child, "p").df().empty
 
@@ -205,7 +205,7 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
 
 def test_member_order_survives_closed_intermediate(con, parent, ac_dc):
     """Component order still follows the true owning layer through a closed
-    intermediate node that changes nothing about membership (§8.2, §9.1).
+    intermediate node that changes nothing about membership (§6.2, §7.1).
 
     `members()` resolves straight from the owner map's `order_key`, not from
     a per-file depth lookup over `ancestry_since_closed` - which wouldn't

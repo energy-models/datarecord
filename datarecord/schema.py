@@ -27,9 +27,9 @@ KeyKind = Literal["component", "connection"]
 """Which entity table a dim keys (§5.3)."""
 
 BusRelation = Literal["component", "connection"]
-"""Whether an attribute belongs to a component or to one of its connections (§6)."""
+"""Whether an attribute belongs to a component or to one of its connections (§3.2)."""
 
-# Columns the format fixes, whatever the schema declares (§3.2). Neither
+# Columns the format fixes, whatever the schema declares (§4.2). Neither
 # declared nor optional: `bus`/`breakpoint` are NULL for the ordinary
 # component-level scalar, so one column set serves every kind of row.
 STRUCTURAL_TYPES = {
@@ -48,12 +48,12 @@ STRUCTURAL_TYPES = {
 # The owner map's flag columns: two structs with a field per declared dim, so
 # the map's column set does not depend on the schema and adding a dim stays the
 # compatible change §5.7 says it is. `breakpoints` is outside both, being no dim
-# (§9.1, §7).
+# (§7.1, §3.6).
 FLAG_COLUMNS = ("varies", "broadcast", "breakpoints")
 
 
 def flag_type(dims: tuple[str, ...]) -> str:
-    """The DuckDB type of one flag struct: a BOOLEAN per declared dim (§9.1).
+    """The DuckDB type of one flag struct: a BOOLEAN per declared dim (§7.1).
 
     `dims` is never empty: a schema declaring no dims describes no dimensioned
     data, which `Schema` rejects (§5.1) - so the struct always has a field and
@@ -103,13 +103,13 @@ class AttributeSpec(BaseModel):
     dims
         Dims this attribute may vary over; a subset of those declared. Varying
         over nothing is what puts it in `dims/components/<Type>.parquet` rather
-        than `inputs/`, so the schema decides the file split (§3.1).
+        than `inputs/`, so the schema decides the file split (§4.1).
     default
         The value a coordinate no row covers takes (§3.3).
     breakpoints
-        Whether it may carry a piecewise-linear curve (§7).
+        Whether it may carry a piecewise-linear curve (§3.1).
     bus
-        Whether it belongs to a component or to one of its connections (§6).
+        Whether it belongs to a component or to one of its connections (§3.2).
     unit
         What the values measure - `"MW"`, `"EUR/MWh"`. Stored and never
         interpreted; `None` is undeclared, `""` genuinely dimensionless (§5.8).
@@ -150,7 +150,7 @@ class AttributeSpec(BaseModel):
 
     @property
     def varying(self) -> bool:
-        """Whether this attribute lives in `inputs/` rather than `dims/components/` (§3.1)."""
+        """Whether this attribute lives in `inputs/` rather than `dims/components/` (§4.1)."""
         return bool(self.dims)
 
 
@@ -243,7 +243,7 @@ class Schema(BaseModel):
 
     @property
     def dims(self) -> tuple[str, ...]:
-        """Every declared dim, in declaration order - the long schema's dim columns (§3.2)."""
+        """Every declared dim, in declaration order - the long schema's dim columns (§4.2)."""
         return tuple(self.dimensions)
 
     def owned_per(self, ctype: str, attribute: str) -> frozenset[str]:
@@ -262,7 +262,7 @@ class Schema(BaseModel):
 
     @property
     def input_dims(self) -> tuple[str, ...]:
-        """Dims that key `inputs/` rows, in declaration order (§9.1).
+        """Dims that key `inputs/` rows, in declaration order (§7.1).
 
         `partial` itself: the fold's key is one fixed tuple over all
         attributes, so it must carry every axis *any* layer may patch by
@@ -296,17 +296,17 @@ class Schema(BaseModel):
         seen = _ancestors(dim, {d: s.within for d, s in self.dimensions.items()})
         return (*(d for d in self.dims if d in seen), dim)
 
-    # -- key and column sets (§3.2, §9.1) -----------------------------------
+    # -- key and column sets (§4.2, §7.1) -----------------------------------
 
     @property
     def long_columns(self) -> tuple[str, ...]:
-        """The long schema's full column set (§3.2).
+        """The long schema's full column set (§4.2).
 
         `bus` and `breakpoint` are part of the schema, not optional extensions
         to it: both are NULL for the ordinary component-level scalar, so one
-        column set serves every kind of attribute row (§6, §7).
+        column set serves every kind of attribute row (§4.2).
 
-        No `component_type` (§3.5).
+        No `component_type` (§4.3).
         """
         return (
             "name",
@@ -319,56 +319,56 @@ class Schema(BaseModel):
 
     @property
     def input_key(self) -> tuple[str, ...]:
-        """Inputs-map key columns, compared NULL-safely when folding (§9.1).
+        """Inputs-map key columns, compared NULL-safely when folding (§7.1).
 
         `bus` is in the key so a per-connection attribute is owned per
-        connection rather than per component (§6); it is NULL for a
+        connection rather than per component (§3.2); it is NULL for a
         component-level attribute, which then keys against the map's NULL.
         """
         return ("name", "bus", *self.input_dims, "attribute")
 
     @property
     def component_key(self) -> tuple[str, ...]:
-        """Components-map key columns, compared NULL-safely when folding (§9.1).
+        """Components-map key columns, compared NULL-safely when folding (§7.1).
 
-        The type is carried as a column, not keyed (§3.5).
+        The type is carried as a column, not keyed (§4.3).
         """
         return ("name", *self.component_dims)
 
     @property
     def connection_key(self) -> tuple[str, ...]:
-        """Connections-map key columns (§6).
+        """Connections-map key columns (§3.2).
 
         `bus` identifies the connection, so it is a required key column rather
         than a broadcast dim: never expanded against an axis, only compared
         NULL-safely. `role` and `component_type` describe the connection and key
-        nothing (§3.5).
+        nothing (§4.3).
         """
         return ("name", "bus", *self.connection_dims)
 
     @property
     def input_columns(self) -> tuple[str, ...]:
-        """The inputs map's full column set (§9.1)."""
+        """The inputs map's full column set (§7.1)."""
         return (*self.input_key, "layer_uuid", *FLAG_COLUMNS)
 
     @property
     def component_columns(self) -> tuple[str, ...]:
-        """The components map's full column set; the type is carried, not keyed (§3.5, §9.1)."""
+        """The components map's full column set; the type is carried, not keyed (§4.3, §7.1)."""
         return ("component_type", *self.component_key, "layer_uuid", "order_key")
 
     @property
     def connection_columns(self) -> tuple[str, ...]:
-        """The connections map's full column set (§9.1)."""
+        """The connections map's full column set (§7.1)."""
         return ("component_type", *self.connection_key, "layer_uuid", "order_key")
 
-    # -- typing (§3.2, §10) -------------------------------------------------
+    # -- typing (§4.2, §8) -------------------------------------------------
 
     def column_type(self, column: str) -> str | None:
         """The declared type for one column, or None if the schema declares none.
 
         Covers the structural columns the format fixes, the declared dims, and
         the owner map's two flag structs, whose fields follow the schema's dims
-        (§9.1).
+        (§7.1).
 
         A schema declaring no dims at all is "no manifest yet" (§5.6) rather
         than a record to fold, and DuckDB has no empty struct - so the flag
@@ -384,12 +384,12 @@ class Schema(BaseModel):
         return None
 
     def value_type(self, ctype: str, attribute: str) -> str | None:
-        """The `value` column's type for one attribute (§3.2)."""
+        """The `value` column's type for one attribute (§4.2)."""
         spec = self.attributes.get(ctype, {}).get(attribute)
         return None if spec is None else spec.dtype
 
     def types_declaring(self, attribute: str) -> frozenset[str]:
-        """Which component types declare `attribute` - what `names=None` targets (§11.2)."""
+        """Which component types declare `attribute` - what `names=None` targets (§9.2)."""
         return frozenset(
             c for c, attrs in self.attributes.items() if attribute in attrs
         )
@@ -401,7 +401,7 @@ class Schema(BaseModel):
 
         Empty when the change is compatible: old layers stay readable and only
         `version` moves. The compatible changes are those where NULL already
-        means what the new schema needs it to mean, so the decode rule absorbs
+        means what the new schema needs it to mean, so the broadcast rule absorbs
         them without touching a row (§3.3).
 
         Returns

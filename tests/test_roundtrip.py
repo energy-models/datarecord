@@ -1,4 +1,4 @@
-"""Single-layer read path: our DuckDB reader against PyPSA's own (design doc §12)."""
+"""Single-layer read path: our DuckDB reader against PyPSA's own (design doc §10)."""
 
 from pathlib import Path
 
@@ -23,7 +23,7 @@ def _has_export_to_parquet() -> bool:
 
 needs_export_to_parquet = pytest.mark.skipif(
     not _has_export_to_parquet(),
-    reason="needs PyPSA's own parquet reader/writer, unreleased (§12)",
+    reason="needs PyPSA's own parquet reader/writer, unreleased (§10)",
 )
 
 
@@ -97,7 +97,7 @@ def test_roundtrip_matches_original(con, base_uri, single_revision, ac_dc):
 
 
 def test_static_series_split_preserved(con, base_uri, single_revision):
-    """A static-valued varying attribute stays out of `dynamic` (§12)."""
+    """A static-valued varying attribute stays out of `dynamic` (§10)."""
     n = PyPSA.build(single_revision.record)
     # Only the three wind generators carry a p_max_pu series in ac_dc_meshed.
     assert set(n.c["Generator"].dynamic["p_max_pu"].columns) == {

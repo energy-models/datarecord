@@ -1,4 +1,4 @@
-"""`Record` over an overlay and over a directory (design doc §9.3)."""
+"""`Record` over an overlay and over a directory (design doc §7.3)."""
 
 from dataclasses import dataclass
 
@@ -38,7 +38,7 @@ def both(written, con):
 
 
 def test_both_backings_satisfy_the_protocol(both):
-    """Structural conformance, so a consumer cannot tell which it holds (§9.3)."""
+    """Structural conformance, so a consumer cannot tell which it holds (§7.3)."""
     for record in both:
         assert isinstance(record, Record)
 
@@ -53,7 +53,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
 
     The protocol asks for named lazy frames, not for a mapping that defers
     building them - so whether an implementation is lazy like `LazyFrames` or
-    eager like this stays its own business (§4).
+    eager like this stays its own business (§3.5).
     """
     members = nw.from_native(
         con.sql(
@@ -88,7 +88,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     )
     assert isinstance(record, Record)
     # Results absent, spelled as an empty mapping rather than a protocol a
-    # consumer has to test for (§4).
+    # consumer has to test for (§3.5).
     assert list(record.outputs) == []
     assert record.attributes["p_nom"].implementation == nw.Implementation.DUCKDB
 
@@ -115,7 +115,7 @@ def test_backings_agree_on_every_key_set(both):
 
 
 def test_backings_agree_on_flags(both):
-    """Owner map and file aggregate answer the same question (§9.3)."""
+    """Owner map and file aggregate answer the same question (§7.3)."""
     node, directory = both
     for ctype in sorted(node.components):
         assert node.flags(ctype) == directory.flags(ctype), ctype
@@ -130,7 +130,7 @@ def test_backings_agree_on_rows(both):
         assert len(left) == len(right), attribute
 
 
-# -- laziness (§4, §9.3) ---------------------------------------------------
+# -- laziness (§3.5, §7.3) ---------------------------------------------------
 
 
 def test_frames_stay_unmaterialised(both):
@@ -145,14 +145,14 @@ def test_frames_stay_unmaterialised(both):
 
 
 def test_keys_list_without_building(both):
-    """Listing a record is cheap; only a lookup does work (§4)."""
+    """Listing a record is cheap; only a lookup does work (§3.5)."""
     for record in both:
         assert "p_max_pu" in record.attributes
         assert "nope" not in record.attributes
         assert len(list(record.attributes)) == len(record.attributes)
 
 
-# -- flags, the one non-frame member (§9.3) ----------------------------------
+# -- flags, the one non-frame member (§7.3) ----------------------------------
 
 
 def test_flags_are_per_component_type(con, base_uri):
@@ -185,7 +185,7 @@ def test_flags_are_per_component_type(con, base_uri):
 
 
 def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
-    """Adding a dim is compatible (§5.7), and the persisted owner map too (§9.1).
+    """Adding a dim is compatible (§5.7), and the persisted owner map too (§7.1).
 
     The flags live in two structs rather than a `varies_<dim>` column each, so
     a map written before the dim existed differs from the current schema by a
@@ -223,7 +223,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
 
 
 def test_flags_report_both_sets_where_components_disagree(con, base_uri):
-    """A mixed type puts `snapshot` in both sets, which is the split (§4.3).
+    """A mixed type puts `snapshot` in both sets, which is the split (§3.6).
 
     Two generators, one with a series and one with a single value. Both
     containers are needed, and both sets holding `snapshot` is what says so -
@@ -250,7 +250,7 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
 
 
 def test_flags_report_a_curve(con, base_uri):
-    """`breakpoints` distinguishes a curve from a scalar, from either backing (§2)."""
+    """`breakpoints` distinguishes a curve from a scalar, from either backing (§3.6)."""
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
@@ -296,7 +296,7 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
 
 
 def test_node_record_orders_members(con, base_uri, ac_dc):
-    """A `Record` promises member order; for an overlay that means `order_key` (§9.3)."""
+    """A `Record` promises member order; for an overlay that means `order_key` (§7.3)."""
     root = Revision.create(con)
     write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
     root.materialise()
@@ -333,7 +333,7 @@ def test_directory_record_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
 def test_directory_record_has_no_connections_when_none_were_written(
     con, base_uri, tmp_path
 ):
-    """A record with no `dims/connections/` reads as having none, not as an error (§6)."""
+    """A record with no `dims/connections/` reads as having none, not as an error (§3.2)."""
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
@@ -343,7 +343,7 @@ def test_directory_record_has_no_connections_when_none_were_written(
 
 
 def test_directory_record_reads_connections_blocks_wrote(written, con):
-    """A record blocks wrote has them, with the roles the collapse assigned (§6)."""
+    """A record blocks wrote has them, with the roles the collapse assigned (§3.2)."""
     record = DirectoryRecord(layer_dir(written.id), con)
     assert "Link" in record.connections
 
@@ -359,13 +359,13 @@ def test_missing_key_raises(both):
 
 
 def test_outputs_are_empty_until_solved(both):
-    """An unsolved network's results are absent rather than defaults (§9.4)."""
+    """An unsolved network's results are absent rather than defaults (§7.4)."""
     for record in both:
         assert list(record.outputs) == []
 
 
 def test_outputs_is_an_ordinary_record_member(both, con, base_uri):
-    """`outputs` is on `Record`; emptiness is the existence answer (§4, §9.4)."""
+    """`outputs` is on `Record`; emptiness is the existence answer (§3.5, §7.4)."""
     node, directory = both
     # No separate protocol to satisfy: an unsolved record answers with an empty
     # mapping, the same way every other member answers for what it lacks.
@@ -375,7 +375,7 @@ def test_outputs_is_an_ordinary_record_member(both, con, base_uri):
 
 
 def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc):
-    """A source with no results produces a layer with no `outputs/` (§13)."""
+    """A source with no results produces a layer with no `outputs/` (§8)."""
     from datarecord.duck import try_read_parquet
 
     solved = PyPSA.to_datarecord(ac_dc)
@@ -396,7 +396,7 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
 
     revision = Revision.create(con)
     # An empty `outputs` writes no `outputs/` at all, rather than an empty
-    # directory (§10).
+    # directory (§8).
     write_record(revision.id, source, con)
     layer = layer_dir(revision.id)
     assert try_read_parquet(layer + "outputs/*.parquet", con) is None

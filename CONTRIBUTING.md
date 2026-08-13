@@ -24,7 +24,7 @@ Contribution rules and conventions for datarecord.
   is the authoritative design. Cite its `§N` sections from docstrings rather
   than restating the argument — a comment that re-argues the design is a defect.
   When behaviour changes, update the section, not just the code.
-- No tool import may leak into core `datarecord` (§13): everything framework-
+- No tool import may leak into core `datarecord` (§11): everything framework-
   specific lives under `datarecord/tools/` behind an optional extra.
 
 ## Architecture in one paragraph

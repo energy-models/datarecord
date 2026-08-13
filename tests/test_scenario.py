@@ -1,4 +1,4 @@
-"""The scenario axis and per-scenario overlay (design doc §5.5, §12)."""
+"""The scenario axis and per-scenario overlay (design doc §5.5, §10)."""
 
 from pathlib import Path
 
@@ -24,7 +24,7 @@ def stochastic():
     """PyPSA's `stochastic_network`, with its generators renamed off their carriers.
 
     The example names each `Generator` after its `Carrier`, which collides in a
-    record (§3.5). The generators move rather than the carriers, since the
+    record (§4.3). The generators move rather than the carriers, since the
     `carrier` attribute *values* reference the carrier names.
     """
     import pypsa
@@ -94,14 +94,14 @@ def test_partial_scenario_override(con, parent, stochastic):
 
 
 def test_per_scenario_tombstone(con, parent, stochastic):
-    """A tombstone in one scenario leaves the component in the others (§8.3)."""
+    """A tombstone in one scenario leaves the component in the others (§6.3)."""
     scenario = stochastic.scenarios[0]
     child = parent.child()
     tombstone(layer_dir(child.id), "Generator", ["solar Gen"], scenario=scenario)
 
     df = child.node_cache.inputs.df()
     # No type scoping needed: the generator is "solar Gen" and the carrier
-    # "solar", names being unique across types (§3.5) - which is exactly what
+    # "solar", names being unique across types (§4.3) - which is exactly what
     # used to require filtering on `component_type` here.
     solar = df[df["name"] == "solar Gen"]
     assert scenario not in set(solar["scenario"])
@@ -109,7 +109,7 @@ def test_per_scenario_tombstone(con, parent, stochastic):
 
 
 def test_child_adds_new_scenario(con, parent, stochastic):
-    """A child may add a scenario the root never declared (§8, §8.2)."""
+    """A child may add a scenario the root never declared (§6, §6.2)."""
     child = parent.child()
     write_scenarios(
         layer_dir(child.id),
@@ -141,7 +141,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
 
 
 def test_scenario_order_survives_a_chain_of_closed_layers(con, parent, stochastic):
-    """Axis row order stays root-first, then each layer's own append order (§8.2, §9.1).
+    """Axis row order stays root-first, then each layer's own append order (§6.2, §7.1).
 
     `fold_axis` tags each layer's row order (`_row`) before the cross-layer
     `UNION ALL` in `union_all_by_name`, not after: a bare `row_number()` on
@@ -164,7 +164,7 @@ def test_scenario_order_survives_a_chain_of_closed_layers(con, parent, stochasti
 
 
 def test_resolved_dims_are_node_scoped(con, parent, stochastic):
-    """Closing writes the resolved scenario axis to the node cache, not the layer (§13)."""
+    """Closing writes the resolved scenario axis to the node cache, not the layer (§6.2)."""
     middle = parent.child()
     middle.materialise()
 

@@ -1,4 +1,4 @@
-"""`WorkingRecord`: staging, the edit operations, commit (design doc §11)."""
+"""`WorkingRecord`: staging, the edit operations, commit (design doc §9)."""
 
 import narwhals as nw
 import pandas as pd
@@ -35,19 +35,19 @@ def _static(revision, attribute, ctype=GEN):
     """One attribute as the built network sees it, per component name.
 
     Through the build rather than `relation()`: a non-varying attribute like
-    `p_nom` lives in `dims/components/` (§3.1), so `inputs/` alone would not
+    `p_nom` lives in `dims/components/` (§4.1), so `inputs/` alone would not
     show what the record resolves to.
     """
     return PyPSA.build(revision.record).c[ctype].static[attribute].to_dict()
 
 
-# -- the protocol (§11.1) ----------------------------------------------------
+# -- the protocol (§9.1) ----------------------------------------------------
 
 
 def test_a_mutable_record_reads_as_a_record(staged):
     """Editable *and* readable: the pending edits are a layer, so reads compose.
 
-    The load-bearing half of §11: a `WorkingRecord` satisfies `Record`, so what
+    The load-bearing half of §9: a `WorkingRecord` satisfies `Record`, so what
     it reads is the data with its pending edits applied and it can be handed
     to anything that only knows how to read.
     """
@@ -59,7 +59,7 @@ def test_nothing_is_pending_before_an_edit(staged):
     assert (p.attributes, p.components, p.connections, p.tombstones) == ({}, {}, {}, {})
 
 
-# -- value forms (§11.2) -----------------------------------------------------
+# -- value forms (§9.2) -----------------------------------------------------
 
 
 def test_scalar_applies_to_every_name():
@@ -110,7 +110,7 @@ def test_an_ambiguous_index_is_rejected():
         normalise_value(series, ["wind1"], {"scenario": ["wind1"]})
 
 
-# -- set (§11.4) -------------------------------------------------------------
+# -- set (§9.2) -------------------------------------------------------------
 
 
 def test_set_stages_without_writing(staged, root):
@@ -123,7 +123,7 @@ def test_set_stages_without_writing(staged, root):
 
 
 def test_a_staged_edit_is_visible_through_the_record(staged):
-    """§11.10: a set of pending edits is a layer, so the read resolves over it."""
+    """§9.10: a set of pending edits is a layer, so the read resolves over it."""
     staged.set("p_max_pu", 0.42, names=["Manchester Wind"])
 
     rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
@@ -134,7 +134,7 @@ def test_a_staged_edit_is_visible_through_the_record(staged):
 
 
 def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, con):
-    """§4: a `Record` hands over unmaterialised frames, so two must not alias.
+    """§3.5: a `Record` hands over unmaterialised frames, so two must not alias.
 
     The read path composes relations by replacement scan, which binds each one
     at build time. Registering them under a fixed catalog name instead would
@@ -160,12 +160,12 @@ def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, con):
 
 
 def test_last_write_wins_within_the_staging_area(staged, root):
-    """Two edits to one key collapse to the later one, by `_seq` (§11.7)."""
+    """Two edits to one key collapse to the later one, by `_seq` (§9.7)."""
     staged.set("p_nom", 100.0, names=["Manchester Wind"])
     staged.set("p_nom", 150.0, names=["Manchester Wind"])
 
     # Both are staged - `pending` counts rows, and the collapse is applied at
-    # commit rather than on every edit (§11.6).
+    # commit rather than on every edit (§9.6).
     assert staged.pending.attributes == {"p_nom": 2}
     child = staged.commit(NewChild(root))
     assert _static(child, "p_nom")["Manchester Wind"] == 150.0
@@ -180,13 +180,13 @@ def test_set_over_several_names(staged, root):
 
 
 def test_set_rejects_an_unknown_name(staged):
-    """A value for a name no layer declares would resolve to nothing (§11.5)."""
+    """A value for a name no layer declares would resolve to nothing (§9.5)."""
     with pytest.raises(KeyError, match="Nope"):
         staged.set("p_nom", 1.0, names=["Nope"])
 
 
 def test_set_accepts_a_name_staged_by_add(staged, root):
-    """`add` makes the name exist, so a value for it is no longer unknown (§11.8)."""
+    """`add` makes the name exist, so a value for it is no longer unknown (§9.8)."""
     staged.add(GEN, pd.DataFrame([{"name": "NewSolar", "carrier": "solar"}]))
     staged.set("p_nom", 7.0, names=["NewSolar"])
 
@@ -194,7 +194,7 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
     assert _static(child, "p_nom")["NewSolar"] == 7.0
 
 
-# -- the overlay does not overlap (§3.3, §11.10) -----------------------------
+# -- the overlay does not overlap (§3.3, §9.10) -----------------------------
 
 
 def test_a_broadcast_edit_displaces_the_whole_series(staged):
@@ -212,7 +212,7 @@ def test_a_broadcast_edit_displaces_the_whole_series(staged):
 
 
 def test_a_pointwise_edit_keeps_the_rest_of_the_series(staged):
-    """An edit naming a coordinate displaces that one only (§3.3, §11.10).
+    """An edit naming a coordinate displaces that one only (§3.3, §9.10).
 
     Keying the overlay on the input key alone would drop the whole series here,
     since it excludes the dims an attribute is not owned per (§5.5).
@@ -231,7 +231,7 @@ def test_a_pointwise_edit_keeps_the_rest_of_the_series(staged):
 
 
 def test_a_long_frame_naming_an_unknown_component_is_rejected(staged):
-    """§11.8 applies to the frame form too: a typo is caught where it is typed."""
+    """§9.8 applies to the frame form too: a typo is caught where it is typed."""
     with pytest.raises(KeyError, match="Nope"):
         staged.set(
             "p_max_pu",
@@ -240,7 +240,7 @@ def test_a_long_frame_naming_an_unknown_component_is_rejected(staged):
 
 
 def test_an_expression_value_stages_the_whole_series(staged, root):
-    """A derived edit covers every coordinate it read, not just one (§11.3)."""
+    """A derived edit covers every coordinate it read, not just one (§9.3)."""
     base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
     mine = base[base["name"] == "Manchester Wind"].sort_values("snapshot")
 
@@ -254,7 +254,7 @@ def test_an_expression_value_stages_the_whole_series(staged, root):
 
 
 def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
-    """A staged row's dims join the flags, unioned with the base answer (§11.10).
+    """A staged row's dims join the flags, unioned with the base answer (§9.10).
 
     `flags` is the one non-`Frames` member of `Record`, so the promise that a
     read reflects pending edits has to hold for it too - and it decides which
@@ -281,11 +281,11 @@ def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     assert after.broadcast == before.broadcast
 
 
-# -- value dtypes (§3.2, §5.2) -----------------------------------------------
+# -- value dtypes (§3.6, §5.2) -----------------------------------------------
 
 
 def test_a_non_float_attribute_stages_and_commits(staged, root):
-    """`value` carries the attribute's declared dtype, not always `DOUBLE` (§3.2).
+    """`value` carries the attribute's declared dtype, not always `DOUBLE` (§3.6).
 
     One staging table holds every attribute's values, so it stages `value` as
     text and casts to the declared dtype where the attribute is known - which
@@ -315,11 +315,11 @@ def test_a_float_attribute_stays_numeric(staged):
     assert 150.0 in set(rows["value"])
 
 
-# -- ownership granularity (§5.5, §11.7) -------------------------------------
+# -- ownership granularity (§5.5, §9.7) -------------------------------------
 
 
 def test_a_non_partial_axis_is_restated_whole(staged, root):
-    """Touching one snapshot makes the layer own the whole series (§5.5, §11.7).
+    """Touching one snapshot makes the layer own the whole series (§5.5, §9.7).
 
     `snapshot` is declared but not `partial`, so a layer cannot patch one hour
     and leave the rest to the parent: the coordinates the edit did not name
@@ -349,7 +349,7 @@ def test_a_non_partial_axis_is_restated_whole(staged, root):
 def test_the_restated_series_is_in_the_layer_itself(staged, root, con):
     """The layer carries the whole extent, not a parent lookup at read time.
 
-    A patch layer holds only edits (§11.7) - except along an axis owned whole,
+    A patch layer holds only edits (§9.7) - except along an axis owned whole,
     where the completed series must be in the layer, since that is what makes
     this layer its owner.
     """
@@ -380,7 +380,7 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
     assert len(rows) == 1
 
 
-# -- add and remove (§11.5) --------------------------------------------------
+# -- add and remove (§9.5) --------------------------------------------------
 
 
 def test_add_then_commit_makes_a_component_exist(staged, root):
@@ -409,7 +409,7 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
 
 
 def test_add_rejects_a_name_another_type_already_holds(staged):
-    """Names are unique across types, enforced at the edit (§3.5, §11.5).
+    """Names are unique across types, enforced at the edit (§4.3, §9.5).
 
     Not left to be discovered: the attribute rows record no type, so two
     components sharing a name would silently share every attribute key.
@@ -428,7 +428,7 @@ def test_add_accepts_a_name_of_its_own_type(staged, root):
 
 
 def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
-    """`remove` then `add` under another type collapses to the later op (§3.5, §11.7).
+    """`remove` then `add` under another type collapses to the later op (§4.3, §9.7).
 
     The staged entity rows are keyed without `component_type`, so one name has
     one answer. Partitioning on the type as well would keep both the Generator
@@ -452,7 +452,7 @@ def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
 
 
 def test_add_routes_a_port_attribute_to_the_connections(staged, root):
-    """`bus` keys a connection rather than being a member column (§6).
+    """`bus` keys a connection rather than being a member column (§3.2).
 
     Putting it in `dims/components/` would introduce a column the ancestors'
     files lack, which then reads as NULL for their rows - so every existing
@@ -484,7 +484,7 @@ def test_remove_rejects_a_dim_that_keys_nothing(staged):
 
 
 def test_add_after_remove_leaves_the_component_alive(staged, root):
-    """The collapse is per key by `_seq`, so the later `add` wins (§11.7)."""
+    """The collapse is per key by `_seq`, so the later `add` wins (§9.7)."""
     staged.remove(GEN, ["Norway Gas"])
     staged.add(GEN, pd.DataFrame([{"name": "Norway Gas", "carrier": "gas"}]))
 
@@ -493,7 +493,7 @@ def test_add_after_remove_leaves_the_component_alive(staged, root):
 
 
 def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
-    """Removing a component discards values staged for it, via the anti-join (§11.7)."""
+    """Removing a component discards values staged for it, via the anti-join (§9.7)."""
     staged.set("p_nom", 99.0, names=["Norway Gas"])
     staged.remove(GEN, ["Norway Gas"])
 
@@ -501,11 +501,11 @@ def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
     assert "Norway Gas" not in _static(child, "p_nom")
 
 
-# -- connect and disconnect (§11.5, §6) --------------------------------------
+# -- connect and disconnect (§9.5, §3.2) --------------------------------------
 
 
 def test_connect_stages_a_new_connection(staged, root):
-    """A connection is a row keyed by `(name, bus)`, not a positional column (§6)."""
+    """A connection is a row keyed by `(name, bus)`, not a positional column (§3.2)."""
     staged.connect(
         "Generator",
         pd.DataFrame(
@@ -521,10 +521,10 @@ def test_connect_stages_a_new_connection(staged, root):
 
 
 def test_disconnect_stages_a_tombstone(staged, root):
-    """One `deleted` row per `(name, bus)`, scoped by the connection key dims (§6)."""
+    """One `deleted` row per `(name, bus)`, scoped by the connection key dims (§3.2)."""
     staged.disconnect("Link", [("Norwich Converter", "Norwich")])
     # A disconnect is a deletion, so it counts as a tombstone rather than as a
-    # connection staged to exist (§11.6).
+    # connection staged to exist (§9.6).
     assert staged.pending.tombstones == {"Link": 1}
     assert staged.pending.connections == {}
 
@@ -533,7 +533,7 @@ def test_disconnect_stages_a_tombstone(staged, root):
     left = set(rows[rows["name"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     # The component's other port survives: deletion is per connection, not per
-    # component (§6).
+    # component (§3.2).
     assert "Norwich DC" in left
 
 
@@ -547,7 +547,7 @@ def test_connect_needs_a_bus(staged):
         staged.connect("Generator", pd.DataFrame([{"name": "Manchester Wind"}]))
 
 
-# -- rollback (§11.6) --------------------------------------------------------
+# -- rollback (§9.6) --------------------------------------------------------
 
 
 def test_rollback_discards_everything_staged(staged, root):
@@ -569,11 +569,11 @@ def test_commit_clears_the_staging_area(staged, root):
     assert staged.pending.attributes == {}
 
 
-# -- commit targets (§11.7) --------------------------------------------------
+# -- commit targets (§9.7) --------------------------------------------------
 
 
 def test_a_child_layer_holds_only_the_edits(staged, root, con):
-    """A patch layer is the edits alone; the fold resolves the rest (§11.7)."""
+    """A patch layer is the edits alone; the fold resolves the rest (§9.7)."""
     staged.set("p_nom", 150.0, names=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
@@ -585,7 +585,7 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
 
 
 def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_path):
-    """No parent to resolve against, so the whole record is written (§11.7)."""
+    """No parent to resolve against, so the whole record is written (§9.7)."""
     staged.set("p_nom", 150.0, names=["Manchester Wind"])
     out = str(tmp_path / "flat")
     assert staged.commit(Directory(out)) is None
@@ -600,7 +600,7 @@ def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_pat
 
 
 def test_a_committed_child_builds_a_network(staged, root):
-    """The whole point: an edited record is still a buildable model (§12)."""
+    """The whole point: an edited record is still a buildable model (§10)."""
     staged.set("p_nom", 150.0, names=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
@@ -609,14 +609,14 @@ def test_a_committed_child_builds_a_network(staged, root):
     )
 
 
-# -- the `Expr` value form's raise rule (§11.3) -------------------------------
+# -- the `Expr` value form's raise rule (§9.3) -------------------------------
 
 
 def test_an_expression_over_a_named_target_with_no_rows_raises(staged):
     """A named target that resolves to nothing is a failed change, not a no-op.
 
     The caller asked for these rows to take a new value and there is nothing to
-    derive one from, so it fails loudly rather than staging zero rows (§11.3).
+    derive one from, so it fails loudly rather than staging zero rows (§9.3).
     """
     with pytest.raises(KeyError, match="no current value to derive from"):
         staged.set(
@@ -636,11 +636,11 @@ def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(staged):
     assert absent not in staged.pending.attributes
 
 
-# -- results through `kind="outputs"` (§11.2, §9.4) ---------------------------
+# -- results through `kind="outputs"` (§9.2, §7.4) ---------------------------
 
 
 def test_results_stage_and_read_back_without_committing(staged):
-    """A tool can attach what it solved and the record reads it (§11.2)."""
+    """A tool can attach what it solved and the record reads it (§9.2)."""
     assert list(staged.outputs) == []
     staged.set("p", 42.0, names=["Manchester Wind"], kind="outputs")
 
@@ -653,7 +653,7 @@ def test_results_stage_and_read_back_without_committing(staged):
 
 
 def test_results_survive_a_commit_into_the_new_layer(staged, root, con):
-    """Staged results land in the child's `outputs/`, alongside its inputs (§9.4)."""
+    """Staged results land in the child's `outputs/`, alongside its inputs (§7.4)."""
     staged.set("p_nom", 150.0, names=["Manchester Wind"])
     staged.set("p", 42.0, names=["Manchester Wind"], kind="outputs")
     child = staged.commit(NewChild(root))
@@ -667,10 +667,10 @@ def test_results_survive_a_commit_into_the_new_layer(staged, root, con):
 
 
 def test_results_accept_a_component_type_the_record_never_declared(staged):
-    """A solve may derive a component the record has no member row for (§11.3.1).
+    """A solve may derive a component the record has no member row for (§9.3.1).
 
     PyPSA's `SubNetwork` is the real case: it exists only after a solve, so
-    requiring a declared member row - which an *input* value must have (§11.8) -
+    requiring a declared member row - which an *input* value must have (§9.8) -
     would refuse a legitimate result.
     """
     staged.set("carrier", "AC", names=["1"], kind="outputs")
@@ -683,10 +683,10 @@ def test_results_accept_a_component_type_the_record_never_declared(staged):
 
 
 def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
-    """One frame spanning types is one call, keyed by name alone (§3.5, §11.3.1).
+    """One frame spanning types is one call, keyed by name alone (§4.3, §9.3.1).
 
     `Tool.results` hands over one frame per attribute carrying every type's rows
-    (§12); with names unique there is no type to stamp, so the frame needs no
+    (§10); with names unique there is no type to stamp, so the frame needs no
     `component_type` and nothing can be silently relabelled.
     """
     frame = pd.DataFrame(
@@ -717,7 +717,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
 
 
 def test_a_frame_carrying_component_type_is_rejected(staged):
-    """The column says the writer thinks the type keys the row; it does not (§3.5)."""
+    """The column says the writer thinks the type keys the row; it does not (§9.2)."""
     frame = pd.DataFrame(
         [{"component_type": GEN, "name": "Manchester Wind", "value": 1.0}]
     )
@@ -726,14 +726,14 @@ def test_a_frame_carrying_component_type_is_rejected(staged):
 
 
 def test_a_scalar_derives_the_type_from_the_name(staged):
-    """No type keyword: the name determines it, so a bare `set` is enough (§3.5)."""
+    """No type keyword: the name determines it, so a bare `set` is enough (§9.2)."""
     staged.set("p_nom", 150.0, names=["Manchester Wind"])
     rows = staged.attributes["p_nom"].collect().to_native().to_pandas()
     assert set(rows[rows["name"] == "Manchester Wind"]["value"]) == {150.0}
 
 
 def test_one_call_spans_component_types(staged):
-    """Names decide the type, so one edit may cross types (§11.2).
+    """Names decide the type, so one edit may cross types (§9.2).
 
     `p_nom` is declared for both `Generator` and `Link`, and each name is
     validated against its own type's spec - one call, two types, no keyword.
@@ -750,7 +750,7 @@ def test_an_attribute_the_names_type_does_not_declare_is_rejected(staged):
 
     `p_max_pu` is a Generator attribute and `London Load` is a Load, so the
     failure is reported against the name that caused it rather than against a
-    type the caller never mentioned (§11.8).
+    type the caller never mentioned (§9.8).
     """
     with pytest.raises(KeyError, match="London Load"):
         staged.set("p_max_pu", {"Manchester Wind": 0.5, "London Load": 0.5})

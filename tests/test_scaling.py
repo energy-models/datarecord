@@ -1,4 +1,4 @@
-"""Memory-bounded per-type build on a large network (design doc §12, §12).
+"""Memory-bounded per-type build on a large network (design doc §10, §10).
 
 Marked slow: `carbon_management` is ~2164 buses / 6830 links / 168 snapshots,
 so the record write alone dominates the suite runtime.

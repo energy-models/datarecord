@@ -72,7 +72,7 @@ def test_input_dims_is_the_union_over_attributes():
 
 
 def test_file_split_follows_dims():
-    """Varying over nothing is what puts an attribute in `dims/components/` (§3.1)."""
+    """Varying over nothing is what puts an attribute in `dims/components/` (§5.2)."""
     s = _schema()
     assert not s.attributes["Generator"]["p_nom"].varying
     assert not s.attributes["Generator"]["carrier"].varying
@@ -308,7 +308,7 @@ def test_column_types_cover_structural_dims_and_flags():
     s = _schema()
     assert s.column_type("component_type") == "VARCHAR"
     assert s.column_type("timestep") == "TIMESTAMP"
-    # One struct per flag column, a BOOLEAN field per declared dim (§9.1), so
+    # One struct per flag column, a BOOLEAN field per declared dim (§7.1), so
     # the map's column set does not widen when a dim is declared.
     for column in ("varies", "broadcast"):
         column_type = s.column_type(column)

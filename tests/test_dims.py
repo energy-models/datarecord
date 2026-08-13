@@ -54,7 +54,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
 
 
 def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_dc):
-    """Deletion always acts on the whole component, never scoped to a period (§8.3).
+    """Deletion always acts on the whole component, never scoped to a period (§6.3).
 
     `period` is `partial` but keys nothing, so it never reaches the
     components map's key - which is what makes the tombstone unscoped.

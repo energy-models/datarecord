@@ -1,4 +1,4 @@
-"""The tool layer: verify a record, build a model, read results back (design doc §12)."""
+"""The tool layer: verify a record, build a model, read results back (design doc §10)."""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,7 +41,7 @@ def test_the_record_layer_imports_no_tool():
     """`datarecord` is framework-free: reading a record never imports PyPSA.
 
     The call runs from the tool inward (`PyPSA.build(revision.record)`), so there is no
-    registry and no name dispatch to drag a framework in (§12).
+    registry and no name dispatch to drag a framework in (§10).
     """
     import subprocess
     import sys
@@ -73,7 +73,7 @@ def test_requires_reports_the_records_own_types(single_revision):
 
 
 def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
-    """A schema that declares no `scenario` dim cannot build a network (§12)."""
+    """A schema that declares no `scenario` dim cannot build a network (§10)."""
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     _with_schema(revision, dims={"snapshot": "TIMESTAMP"}, partial=set(), keys={})
@@ -92,7 +92,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     The record layer stores `component_type` as a plain `VARCHAR` - the
     vocabulary belongs to a framework, and the record layer knows none - so an
     unknown type reads back fine and it is this tool's business that it cannot
-    be built (§5, §12). `Requirements.component_types` is what carries it.
+    be built (§5, §10). `Requirements.component_types` is what carries it.
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
@@ -169,7 +169,7 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
 def test_write_record_rejects_a_key_dim_no_frame_carries(con, base_uri, ac_dc, kwargs):
     """A declared key dim needs a column in every frame, or the layer is refused.
 
-    The invariant the read path relies on (§5.5): the fold keys by these
+    The invariant the read path relies on (§5.3): the fold keys by these
     columns, so a record missing one would resolve as though the dim were
     broadcast everywhere. Caught at the boundary, which is why no tool
     re-checks it.
@@ -199,7 +199,7 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     # A Generator member carrying no `bus` column at all, no connection row
-    # supplying one (§6), and a schema with no default for it either.
+    # supplying one (§3.2), and a schema with no default for it either.
     write_components(layer_dir(revision.id), "Generator", [{"name": "g1"}])
     Path(layer_dir(revision.id), "dims", "connections", "Generator.parquet").unlink()
     _without_default(revision, "Generator", "bus")
@@ -222,7 +222,7 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(
 
 
 def test_verify_reports_a_piecewise_linear_attribute(con, base_uri, ac_dc):
-    """A curve is stored correctly; it is the PyPSA translation that cannot express it (§7)."""
+    """A curve is stored correctly; it is the PyPSA translation that cannot express it (§3.1)."""
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     write_input(
@@ -256,7 +256,7 @@ def test_verify_accepts_a_scalar_attribute(single_revision):
 
 
 def test_to_datarecord_rejects_a_cross_type_name_collision():
-    """PyPSA scopes names per type; a record scopes them across every type (§3.5, §12).
+    """PyPSA scopes names per type; a record scopes them across every type (§4.3, §10).
 
     Reported rather than repaired: renaming to `Generator:north` would hand back
     a network whose components PyPSA can no longer find by their own names, so
@@ -301,7 +301,7 @@ def test_a_stochastic_network_is_not_a_false_collision():
 
 
 def test_pypsa_schema_is_the_identity(single_revision):
-    """PyPSA defines the record vocabulary today, so nothing is renamed (§12).
+    """PyPSA defines the record vocabulary today, so nothing is renamed (§10).
 
     The seam still routes every attribute, so an entry added later takes
     effect with no change to `build`.
@@ -339,7 +339,7 @@ def test_schema_renames_and_computes():
 
 
 def test_results_extracts_long_form_outputs(single_revision):
-    """A solved network's results come back keyed by attribute, long-form (§12)."""
+    """A solved network's results come back keyed by attribute, long-form (§10)."""
     n = PyPSA.build(single_revision.record)
     n.optimize(solver_name="highs")
 
@@ -348,11 +348,11 @@ def test_results_extracts_long_form_outputs(single_revision):
     assert "p_nom_opt" in results
 
     # Narwhals frames, so the seam names no one dataframe library, and lazy so a
-    # tool may fetch on demand (§12).
+    # tool may fetch on demand (§10).
     assert isinstance(results["p"], nw.LazyFrame)
     p = results["p"].collect()
     # The long schema's columns (§3), so the write path can persist it as-is -
-    # and no `component_type`, an attribute row being keyed by `name` (§3.5).
+    # and no `component_type`, an attribute row being keyed by `name` (§4.3).
     assert {"name", "snapshot", "scenario", "period", "value"} <= set(p.columns)
     assert "component_type" not in p.columns
     assert set(p["attribute"].to_list()) == {"p"}
@@ -372,7 +372,7 @@ def test_results_extracts_long_form_outputs(single_revision):
 
 
 def test_results_concatenate_every_type_under_one_attribute(single_revision):
-    """One `p` frame holds every type's rows, matching `outputs/p.parquet` (§3.2)."""
+    """One `p` frame holds every type's rows, matching `outputs/p.parquet` (§3.6)."""
     n = PyPSA.build(single_revision.record)
     n.optimize(solver_name="highs")
 
@@ -381,7 +381,7 @@ def test_results_concatenate_every_type_under_one_attribute(single_revision):
     # `p` is a result of several types, so the concat is what is being tested;
     # keying by `(type, attribute)` would have split these into separate frames.
     # The names identify which type each row came from, no tag column needed -
-    # that being what unique names buy the union (§3.5).
+    # that being what unique names buy the union (§4.3).
     contributing = {
         c.name
         for c in n.components
@@ -392,7 +392,7 @@ def test_results_concatenate_every_type_under_one_attribute(single_revision):
 
 
 def test_results_skips_outputs_still_at_their_default(single_revision):
-    """An unsolved network yields no `p`/`p_nom_opt` rows (§9.4 default rule)."""
+    """An unsolved network yields no `p`/`p_nom_opt` rows (§7.4 default rule)."""
     n = PyPSA.build(single_revision.record)
     results = PyPSA.results(n)
     assert "p" not in results
@@ -404,7 +404,7 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
 
     No registration and no name dispatch: conformance to `Tool` is structural,
     so a second framework's module defines its own singleton and callers import
-    it (§12).
+    it (§10).
     """
     from datarecord.tools.base import Tool
 
@@ -456,7 +456,7 @@ def test_schema_dims_stay_generic(con, base_uri, ac_dc):
     dims = revision.node_cache.dims
     assert "vintage" in dims.schema.dims
     # No axis rows anywhere, so the dim is absent from the mapping rather than
-    # present-and-empty (§4.2).
+    # present-and-empty (§3.5).
     assert "vintage" not in dims.axes
     # PyPSA's own required dims are still satisfied, and the extra dim is
     # simply not something the tool looks at.

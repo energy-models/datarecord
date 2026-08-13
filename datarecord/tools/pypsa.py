@@ -1,9 +1,9 @@
-"""The PyPSA tool: record -> `pypsa.Network` -> results (design doc §12).
+"""The PyPSA tool: record -> `pypsa.Network` -> results (design doc §10).
 
 The only module that knows PyPSA's network shape - that its axes are
 `snapshot`/`period`/`scenario`, that a stochastic network is indexed by
 `(scenario, name)`, and how its static/series split maps onto the record's
-`dims/components` + `inputs/` split (§3.1).
+`dims/components` + `inputs/` split (§4.1).
 """
 
 from __future__ import annotations
@@ -39,13 +39,13 @@ if TYPE_CHECKING:
     import pypsa
 
 # The axes a PyPSA network is built from; all three must be declared in the
-# schema's `dimensions`, since a network shape is built from them (§12).
+# schema's `dimensions`, since a network shape is built from them (§10).
 # A declared axis with no rows is fine - that is just a deterministic or
 # single-period network.
 SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
 
-# PyPSA's `defaults["type"]` vocabulary, mapped to the DuckDB types §3.2
+# PyPSA's `defaults["type"]` vocabulary, mapped to the DuckDB types §4.2
 # stores. `series` and `static or series` describe *where* a value lives, not
 # what it is - both are floats in a record's `value` column.
 _DTYPES = {
@@ -82,7 +82,7 @@ def _text(value: Any) -> str | None:
 
 @dataclass(frozen=True)
 class NetworkShape:
-    """PyPSA's reading of a record's axis frames (§12).
+    """PyPSA's reading of a record's axis frames (§10).
 
     The axis names and the index convention live here rather than on the
     record, which stays schema-generic: a record may declare any dims, and it is
@@ -126,14 +126,14 @@ class NetworkShape:
 
     @property
     def index_names(self) -> list[str]:
-        """The static frame's index: PyPSA carries `scenario` as a level (§12)."""
+        """The static frame's index: PyPSA carries `scenario` as a level (§10)."""
         return [SCENARIO, "name"] if self.stochastic else ["name"]
 
 
 def _connection(record: Record) -> DuckDBPyConnection:
     """The DuckDB connection `record`'s frames belong to.
 
-    Off the concrete backing, since the protocol stays backend-agnostic (§4.4).
+    Off the concrete backing, since the protocol stays backend-agnostic (§3.7).
     Needed because a relation exposes no reachable reference to its connection,
     and this tool's `PIVOT` - which narwhals cannot express and
     `relation.query` refuses as a `MULTI` statement - needs one.
@@ -156,7 +156,7 @@ def _connection(record: Record) -> DuckDBPyConnection:
 # -- long -> wide -----------------------------------------------------------
 
 # Separates pivoted index-level values in a combined PIVOT column name; chosen
-# to never collide with a component/scenario name (§3 decode rule).
+# to never collide with a component/scenario name (§3 broadcast rule).
 _KEY_SEP = "\x01"
 
 
@@ -213,7 +213,7 @@ def _assign_static(
     joined = static
     attr_exprs = {}
     for attr, (long, flags) in attributes.items():
-        # PyPSA's `static` container takes the snapshot-broadcast rows (§8.1).
+        # PyPSA's `static` container takes the snapshot-broadcast rows (§3.6).
         if SNAPSHOT not in flags.broadcast:
             continue
         rows = long.filter("snapshot IS NULL")
@@ -275,7 +275,7 @@ def _series_frame(
     ordered to match `static_index`: `_import_series_from_df` takes
     `df.columns` as-is without merging against `static`, so a column added
     just to complete `static_index` would wrongly force that component into
-    `dynamic` instead of leaving it static (§12).
+    `dynamic` instead of leaving it static (§10).
     """
     if shape.multiperiod:
         rows = periods.expand(rows, PERIOD)
@@ -301,7 +301,7 @@ def _series_frame(
     return wide
 
 
-# -- build (§12) -------------------------------------------------------------
+# -- build (§10) -------------------------------------------------------------
 
 
 def _exported(c) -> bool:
@@ -316,7 +316,7 @@ def _exported(c) -> bool:
 
 
 def _colliding_names(n: pypsa.Network) -> frozenset[str]:
-    """Names more than one exported component type claims (§3.5, §12).
+    """Names more than one exported component type claims (§4.3, §10).
 
     Only exported types count, since only those become member rows. Read off the
     `name` level rather than the index: a stochastic network is keyed
@@ -340,14 +340,14 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
 
 
 # TODO(pypsa): every function below, up to `_new_network`, ports a method that
-# only exists on PyPSA's unreleased data-records branch (§12). Delete the
+# only exists on PyPSA's unreleased data-records branch (§10). Delete the
 # ported copy and call the real method once a PyPSA release carries it.
 
 
 def _apply_snapshots_import(n: pypsa.Network, df: pd.DataFrame) -> None:
     """Set snapshots and snapshot weightings from an imported axis table.
 
-    Ported from `pypsa.Network._apply_snapshots_import` (unreleased, §12) -
+    Ported from `pypsa.Network._apply_snapshots_import` (unreleased, §10) -
     built entirely from public surface (`set_snapshots`, `snapshot_weightings`).
     """
     snapshot_levels = {"period", "timestep", "snapshot"}.intersection(df.columns)
@@ -366,7 +366,7 @@ def _apply_snapshots_import(n: pypsa.Network, df: pd.DataFrame) -> None:
 def _broadcast_standard_types(n: pypsa.Network) -> None:
     """Broadcast standard-type static tables across scenarios after import.
 
-    Ported from `pypsa.Network._broadcast_standard_types` (unreleased, §12).
+    Ported from `pypsa.Network._broadcast_standard_types` (unreleased, §10).
     """
     for component in n.standard_type_components:
         comp = n.components[component]
@@ -379,7 +379,7 @@ def _broadcast_standard_types(n: pypsa.Network) -> None:
 def _collect_network_attributes(n: pypsa.Network) -> dict[str, Any]:
     """The serializable scalar network attributes (incl. `name`, `pypsa_version`).
 
-    Ported from `pypsa.Network._collect_network_attributes` (unreleased, §12),
+    Ported from `pypsa.Network._collect_network_attributes` (unreleased, §10),
     trimmed of nothing - the reflection over `dir(n)` is exactly what decides
     which attributes are safe to round-trip, so there is no smaller version of
     this that still answers the same question.
@@ -428,7 +428,7 @@ def _collect_network_attributes(n: pypsa.Network) -> dict[str, Any]:
 def _apply_network_attributes(n: pypsa.Network, attrs: dict[str, Any]) -> None:
     """Apply scalar network attributes read back from a record.
 
-    Ported from `pypsa.Network._apply_network_attributes` (unreleased, §12),
+    Ported from `pypsa.Network._apply_network_attributes` (unreleased, §10),
     stripped of the version-compat warnings and PyPI update check the real
     method also does: those are for a human importing a file written by an
     older PyPSA, and have nothing to check here since `to_datarecord` and this
@@ -491,14 +491,14 @@ def _add_component_type(
         if SNAPSHOT not in flags.varies:
             continue
         ts_rows = long.filter("snapshot IS NOT NULL")
-        # Partial columns keep non-series components static (§12).
+        # Partial columns keep non-series components static (§10).
         wide = _series_frame(
             ts_rows, shape, periods, scenarios, snapshots, static_index, con
         )
         n._import_series_from_df(wide, ctype, attr)
 
 
-# -- results (§9.4) ---------------------------------------------------------
+# -- results (§7.4) ---------------------------------------------------------
 
 
 def _output_attributes(c: pypsa.Components) -> list[str]:
@@ -517,18 +517,18 @@ def _output_attributes(c: pypsa.Components) -> list[str]:
 # Which end of the component a port is. PyPSA encodes this only by sign
 # convention - `p0` flows in at `bus0`, `p1` out at `bus1` - so the mapping to
 # a record's `role` lives here, the one place that convention is written down
-# (§6). Ports beyond the first two are outputs: a multi-port Link's `bus2`
+# (§3.2). Ports beyond the first two are outputs: a multi-port Link's `bus2`
 # onward are additional sinks.
 _INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT = "input", "output", "attached"
 
 # Attribute stems that exist once per port. A record stores each as one
-# bus-keyed attribute (§6), so these are the names whose port suffix is
+# bus-keyed attribute (§3.2), so these are the names whose port suffix is
 # undone on write and reapplied on build.
 _PORT_STEMS = ("bus", "efficiency", "p")
 
 
 def _port_role(port: str) -> str:
-    """The `role` for a port index (§6).
+    """The `role` for a port index (§3.2).
 
     A single-port component (`c.ports == [""]`, e.g. a Generator's one `bus`)
     is neither an input nor an output end - it has only one attachment - so it
@@ -544,7 +544,7 @@ def _port_attribute(stem: str, port: str) -> str:
 
     `bus` is suffixed from `0`, every other per-port attribute from `2` - the
     quirk that makes the port vocabulary unguessable from a registry and is why
-    a record keys connections by bus instead (§6).
+    a record keys connections by bus instead (§3.2).
     """
     if stem == "bus":
         return f"bus{port}"
@@ -552,7 +552,7 @@ def _port_attribute(stem: str, port: str) -> str:
 
 
 def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
-    """One type's connections as `(name, bus, role)` rows, from its port columns (§6).
+    """One type's connections as `(name, bus, role)` rows, from its port columns (§3.2).
 
     Undoes PyPSA's positional encoding: `c.ports` is the authoritative port
     list (`["0", "1"]` plus `additional_ports`), so the port count comes from
@@ -578,7 +578,7 @@ def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
 
 
 # TODO(pypsa): every function below, up to `_as_long`, ports a function that
-# only exists on PyPSA's unreleased data-records branch (§12). Delete the
+# only exists on PyPSA's unreleased data-records branch (§10). Delete the
 # ported copy and call the real one once a PyPSA release carries it.
 
 
@@ -586,7 +586,7 @@ def _is_output(defaults: pd.DataFrame, attr: str) -> bool:
     """Whether `attr` is an output (custom attrs with no status are inputs).
 
     Ported from `pypsa.common._is_output` rather than depended on, since only
-    a released PyPSA can be relied on here (no `_as_long` yet, §12).
+    a released PyPSA can be relied on here (no `_as_long` yet, §10).
     """
     if attr not in defaults.index:
         return False
@@ -663,7 +663,7 @@ def _as_long(
 
     Ported from `pypsa.components.array.Components._as_long` (with its
     helpers above) rather than called on `c`: only an unreleased PyPSA branch
-    carries this method (§12), and a tool may not require one. The reshaping
+    carries this method (§10), and a tool may not require one. The reshaping
     is otherwise built entirely from public surface - `c.dynamic`, `c.static`,
     `c.defaults`, `c.has_scenarios`, `c.snapshots` - so porting it costs
     nothing PyPSA doesn't already expose.
@@ -702,7 +702,7 @@ def _long_rows(
     `_as_long` already emits the dim columns and `value`; this adds the
     columns the record's schema fixes and PyPSA has no notion of - `attribute`,
     and the NULL `bus`/`breakpoint` that mark an attribute as the component's own
-    and a scalar (§6, §7). No `component_type` (§3.5).
+    and a scalar (§3.2, §3.1). No `component_type` (§4.2).
     """
     long = _as_long(c, attribute, drop_defaults=False)
     long = long.assign(attribute=attribute, bus=None, breakpoint=None)
@@ -715,7 +715,7 @@ def _long_rows(
 def _per_port_long_rows(
     c: pypsa.Components, stem: str, dims: tuple[str, ...]
 ) -> pd.DataFrame:
-    """A per-connection attribute's long rows, `bus` filled from the port (§6).
+    """A per-connection attribute's long rows, `bus` filled from the port (§3.2).
 
     The inverse of the positional collapse: `efficiency`/`efficiency2` become
     one attribute whose rows carry the bus each port attaches to, so the
@@ -791,7 +791,7 @@ class PyPSATool(Tool):
         """What this record fails to supply for a PyPSA build; falsy if it is usable.
 
         Checks what a build needs: the schema declares PyPSA's axes
-        (§12), its key dims are ones this tool can honour, every component
+        (§10), its key dims are ones this tool can honour, every component
         type it names is one PyPSA knows, and each type's required attributes
         are resolvable - either owned by some layer (the owner map), supplied
         by the `dims/components` frame, or carrying a declared default
@@ -825,7 +825,7 @@ class PyPSATool(Tool):
                 continue
             resolved = record.flags(ctype)
             owned = set(resolved)
-            # A curve, not a scalar (§7). PyPSA takes a scalar for every
+            # A curve, not a scalar (§3.1). PyPSA takes a scalar for every
             # attribute this build assigns, so the record is storing something
             # correct that this translation cannot express - reported here
             # rather than silently pivoting one arbitrary breakpoint.
@@ -835,7 +835,7 @@ class PyPSATool(Tool):
             static_cols = _static_columns(record, ctype)
             # A port attribute the record supplies as connection rows rather
             # than as a column: `bus0`/`bus1` are satisfied by a connection
-            # per port, so the collapse in `build` can name them (§6).
+            # per port, so the collapse in `build` can name them (§3.2).
             from_connections = _connection_attributes(record, ctype)
             specs = declared.get(ctype) or {}
             for attr in _required_attributes(ctype):
@@ -843,7 +843,7 @@ class PyPSATool(Tool):
                     if src in owned or src in static_cols or src in from_connections:
                         continue
                     # A declared default makes the attribute resolvable even
-                    # with no row anywhere (§3.3 decode rule).
+                    # with no row anywhere (§3.3 broadcast rule).
                     spec = specs.get(src)
                     if spec is not None and spec.default is not None:
                         continue
@@ -862,7 +862,7 @@ class PyPSATool(Tool):
         from one layer, so a snapshot-keyed overlay could leave a broadcast row
         and a descendant's per-snapshot row with no single container to land in
         (§5.5). A limit of the *representation*, not the format - which is why
-        the record layer permits the declaration and this reports it (§12).
+        the record layer permits the declaration and this reports it (§10).
         """
         defs = record.schema
         kinds = (
@@ -873,7 +873,7 @@ class PyPSATool(Tool):
         return {(key, SNAPSHOT) for key, dims in kinds if SNAPSHOT in dims}
 
     def build(self, record: Record) -> pypsa.Network:
-        """The resolved network, one component type at a time (§12, §12).
+        """The resolved network, one component type at a time (§10, §10).
 
         Raises
         ------
@@ -894,11 +894,11 @@ class PyPSATool(Tool):
             static = to_relation(record.components[ctype])
             if not shape.stochastic and SCENARIO in static.columns:
                 static = static.project(star(exclude=[SCENARIO]))
-            # Connections back to the positional columns PyPSA expects (§12).
+            # Connections back to the positional columns PyPSA expects (§10).
             static = _collapse_connections(static, record, ctype, con)
 
             # Frames are built and released per type, so peak memory is one
-            # type's wide frames rather than the whole network (§12).
+            # type's wide frames rather than the whole network (§10).
             attributes = {}
             for attr, flags in record.flags(ctype).items():
                 if attr not in schema.attributes.get(ctype, {}):
@@ -910,7 +910,7 @@ class PyPSATool(Tool):
                     continue
                 # Through the schema, so a renamed or computed attribute
                 # reaches the pivot below as an ordinary long relation. Scoped
-                # by a semi-join against `static`, this type's entity table (§3.5).
+                # by a semi-join against `static`, this type's entity table (§4.3).
                 long = (
                     self.schema.resolve(record, ctype, attr)
                     .set_alias("a")
@@ -928,12 +928,12 @@ class PyPSATool(Tool):
         return n
 
     def results(self, model: pypsa.Network) -> Frames:
-        """A solved network's result attributes in the record's long form (§9.4).
+        """A solved network's result attributes in the record's long form (§7.4).
 
         Keyed by attribute, matching `outputs/<attr>.parquet`: every component
         type's rows for one attribute are concatenated into one frame, exactly as
-        `attributes` presents `inputs/` (§3.2). The union needs no
-        `component_type` to tell the arms apart (§3.5). Which attributes count as
+        `attributes` presents `inputs/` (§4.2). The union needs no
+        `component_type` to tell the arms apart (§4.3). Which attributes count as
         results comes from PyPSA's registry, so an upgrade that adds one is
         picked up.
 
@@ -970,18 +970,18 @@ class PyPSATool(Tool):
         }
 
     def to_datarecord(self, model: pypsa.Network) -> Record:
-        """Present a `Network` as the `Record` `write_record` persists (§10, §12).
+        """Present a `Network` as the `Record` `write_record` persists (§8, §10).
 
         The inverse of `build`, and the only place PyPSA's shape is undone:
         `c.static`/`c.dynamic` become long rows, and `bus0`/`bus1`/`efficiency2`
-        become connection rows carrying a `role` (§6). Key sets are read off the
+        become connection rows carrying a `role` (§3.2). Key sets are read off the
         network, so listing unpivots nothing and a lookup only what is asked for.
 
         Raises
         ------
         UnsupportedRecordError
             If two component types share a name: PyPSA scopes names per type, a
-            record record-wide, and this reports rather than renames (§3.5, §12).
+            record record-wide, and this reports rather than renames (§4.3, §10).
         """
         clashing = _colliding_names(model)
         if clashing:
@@ -1000,7 +1000,7 @@ class _NetworkSource:
     n: pypsa.Network
 
     # The dims a PyPSA network has axes for; `Dims` stays generic, this tool
-    # decides these three are what a network is shaped by (§12).
+    # decides these three are what a network is shaped by (§10).
     _DIMS = (SNAPSHOT, PERIOD, SCENARIO)
 
     @property
@@ -1009,8 +1009,8 @@ class _NetworkSource:
 
         `c.defaults` already declares what §5.2 asks for, so this reads it
         rather than restating it. Every stored attribute, not only the varying
-        ones - `dims=frozenset()` is what puts one in `dims/components/` (§3.1).
-        Results are excluded, belonging to `outputs/` (§9.4).
+        ones - `dims=frozenset()` is what puts one in `dims/components/` (§4.1).
+        Results are excluded, belonging to `outputs/` (§7.4).
         """
         attributes: dict[str, dict[str, AttributeSpec]] = {}
         for c in self.n.components:
@@ -1018,7 +1018,7 @@ class _NetworkSource:
                 continue
             defaults = c.defaults
             # Per-port columns collapse to their stem, which a record keys by
-            # bus rather than by position (§6); `efficiency2` and `efficiency`
+            # bus rather than by position (§3.2); `efficiency2` and `efficiency`
             # agree on every declaration, so either row answers.
             per_port = self._port_stems(c)
             outputs = set(_output_attributes(c))
@@ -1108,13 +1108,13 @@ class _NetworkSource:
 
     @property
     def outputs(self) -> LazyFrames:
-        """Result attributes, keyed by name, from PyPSA's own registry (§9.4).
+        """Result attributes, keyed by name, from PyPSA's own registry (§7.4).
 
         Keys are named per type by the registry and merged, matching the file
         layout - one `outputs/<attr>.parquet` across types, like `inputs/`.
         A network that was never solved still names them; the frame is then
         empty and `write_record` writes an empty file rather than none, which
-        reads back as "take the default" either way (§12).
+        reads back as "take the default" either way (§3.3).
         """
         names: dict[str, list[str]] = {}
         for c in self.n.components:
@@ -1127,7 +1127,7 @@ class _NetworkSource:
         )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Never consulted: `write_record` persists frames, not flags (§10).
+        """Never consulted: `write_record` persists frames, not flags (§8).
 
         A network-backed source exists to be written, and the write path reads
         only the frame mappings. Answering properly is easy - `c.static` and
@@ -1140,12 +1140,12 @@ class _NetworkSource:
     # -- key sets -----------------------------------------------------------
 
     def _record_attributes(self, c: pypsa.Components) -> list[str]:
-        """`c`'s *varying* input attributes, in the record's vocabulary (§3.1).
+        """`c`'s *varying* input attributes, in the record's vocabulary (§4.1).
 
         Only varying attributes go to `inputs/`, and PyPSA agrees: a non-varying
         one has no `_as_long` representation. Per-port attributes collapse to
         their stem (`efficiency2` -> `efficiency`), a record keying them by bus
-        rather than position (§6). Outputs belong to `outputs/` (§9.4).
+        rather than position (§3.2). Outputs belong to `outputs/` (§7.4).
         """
         defaults = c.defaults
         outputs = set(_output_attributes(c))
@@ -1179,7 +1179,7 @@ class _NetworkSource:
 
         def keep(column: str) -> bool:
             if column in per_port:
-                return False  # a connection supplies it (§6)
+                return False  # a connection supplies it (§3.2)
             if column not in defaults.index:
                 # A custom column the registry has no entry for (e.g.
                 # `ac_dc_meshed`'s `Bus.country`). Non-varying by construction -
@@ -1196,16 +1196,16 @@ class _NetworkSource:
         return nw.from_native(self._tagged(frame, ctype)).lazy()
 
     def _connection_frame(self, ctype: str) -> nw.LazyFrame:
-        """One type's connections, `(name, bus, role)` (§6)."""
+        """One type's connections, `(name, bus, role)` (§3.2)."""
         frame = _connection_rows(self.n.c[ctype])
         return nw.from_native(self._tagged(frame, ctype)).lazy()
 
     @staticmethod
     def _tagged(frame: pd.DataFrame, ctype: str) -> pd.DataFrame:
-        """A `dims/` frame with the columns the fold keys and scopes by (§9.1).
+        """A `dims/` frame with the columns the fold keys and scopes by (§7.1).
 
         `component_type` because one owner map covers every type; `deleted`
-        because the fold reads the tombstone column from the same file (§8.3);
+        because the fold reads the tombstone column from the same file (§6.3);
         `scenario` because it is a declared key dim, NULL meaning "every
         scenario" for a deterministic network (§5.5).
         """
@@ -1245,12 +1245,12 @@ class _NetworkSource:
         if not frames:
             return nw.from_native(pd.DataFrame(columns=columns)).lazy()
         # No dtype fixing here: `write_record` casts every schema column to the
-        # record layer's declared type on the way out (§5), so an all-NULL
+        # record layer's declared type on the way out (§8), so an all-NULL
         # column pandas typed as float lands as the right type regardless.
         return nw.from_native(pd.concat(frames, ignore_index=True)[columns]).lazy()
 
     def _output_frame(self, attribute: str, ctypes: list[str]) -> nw.LazyFrame:
-        """One result attribute's long rows, across every type that has it (§9.4).
+        """One result attribute's long rows, across every type that has it (§7.4).
 
         `drop_defaults` matters here as it does in `results`: a static output
         carries its default whether or not the network was solved, and an
@@ -1299,10 +1299,10 @@ def _required_attributes(ctype: str) -> frozenset[str]:
 
 
 def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
-    """One type's connections with a port index assigned per component (§12).
+    """One type's connections with a port index assigned per component (§10).
 
-    The positional collapse: connections come in member order (§9.3, an
-    overlay's `order_key`: first-introduced, §9.1) and are numbered within each
+    The positional collapse: connections come in member order (§7.3, an
+    overlay's `order_key`: first-introduced, §7.1) and are numbered within each
     component, so a port index follows the order connections were introduced
     and a patch that adds one appends rather than renumbering. Inputs are
     placed before outputs, so `bus0` is the input end PyPSA's sign convention
@@ -1334,7 +1334,7 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
 
 
 def _connection_attributes(record: Record, ctype: str) -> frozenset[str]:
-    """Port attribute names this type's connection rows can supply (§6).
+    """Port attribute names this type's connection rows can supply (§3.2).
 
     `bus0`/`bus1`/... for the ports that actually exist, so `verify` knows a
     required `bus0` is satisfied by a connection rather than by a column.
@@ -1351,7 +1351,7 @@ def _collapse_connections(
     """Add `bus0`/`bus1`/... columns to a static frame from its connection rows.
 
     PyPSA wants a column per port; the record stores a row per connection
-    (§6). This is the seam between them, and the only direction that needs
+    (§3.2). This is the seam between them, and the only direction that needs
     positions at all.
     """
     df = _ordered_connections(record, ctype)
