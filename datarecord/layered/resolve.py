@@ -33,7 +33,7 @@ from datarecord.duck import (
     fn,
     fold_axis,
     layer_dir,
-    node_dir,
+    resolved_dir,
     schema_uri,
     try_read_parquet,
     union_all_by_name,
@@ -152,7 +152,7 @@ class Dims:
         Notes
         -----
         `rel` must carry a column for every dim in `layer_keys`, which
-        `write_layer` enforces (§5.5): a store whose frames do not is one the
+        `write_record` enforces (§5.5): a store whose frames do not is one the
         writer rejected, and binding here would resolve it as though the dim
         were broadcast everywhere.
         """
@@ -173,8 +173,8 @@ class Dims:
 
 
 def _map_uri(record_id: UUID, kind: str) -> str:
-    """Where a record's `kind` owner map is materialised (node-scoped, not the layer)."""
-    return f"{node_dir(record_id)}owner_map/{kind}.parquet"
+    """Where a record's `kind` owner map is materialised, under `resolved/` (§8.2)."""
+    return f"{resolved_dir(record_id)}owner_map/{kind}.parquet"
 
 
 _KIND_NAMES = ("inputs", "components", "connections")
@@ -641,7 +641,7 @@ def materialise(record_id: UUID, ancestry: list[UUID], con: DuckDBPyConnection) 
     write-once (§8.1), so what is folded here cannot later become stale.
     """
     schema = read_schema(con)
-    base = node_dir(record_id) + "owner_map/"
+    base = resolved_dir(record_id) + "owner_map/"
     if "://" not in base:
         # A record that wrote nothing to its layer has no node dir yet either.
         Path(base).mkdir(parents=True, exist_ok=True)
@@ -655,7 +655,7 @@ def _materialise_dims(
 ) -> None:
     """Fold this node's resolved axes into its node cache, not its layer (§8.2)."""
     dims = resolve_dims(schema, ancestry, con)
-    base = node_dir(record_id) + "dims/"
+    base = resolved_dir(record_id) + "dims/"
     if "://" not in base:
         Path(base).mkdir(parents=True, exist_ok=True)
     for dim, rel in dims.axes.items():
@@ -786,7 +786,7 @@ class NodeCache:
 
         Across component types, matching the file layout: one
         `inputs/<attr>.parquet` holds every type's rows (§3). Ordered, so a
-        `Store` over this has a stable key order (§9.3).
+        `Record` over this has a stable key order (§9.3).
         """
         rows = self.inputs.project("attribute").distinct().order("attribute").fetchall()
         return [r[0] for r in rows]
@@ -820,7 +820,7 @@ class NodeCache:
         -------
         dict
             `attribute -> (varies, broadcast, breakpoints)`, the raw material
-            `Store.flags` turns into `Flags` (§4.3).
+            `Record.flags` turns into `Flags` (§4.3).
         """
         dims = self.schema.dims
         rows = (

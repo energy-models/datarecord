@@ -1,4 +1,4 @@
-"""The `DataRecord` node and its ancestry query (design doc §8).
+"""The `Revision` node and its ancestry query (design doc §8).
 
 A thin façade over `resolve`: it holds the node's identity and reads the
 `data_records` table, knowing nothing about owner maps or parquet layers. A node
@@ -18,8 +18,8 @@ from pydantic import BaseModel, PrivateAttr
 from datarecord.duck import default_connection
 from datarecord.layered import resolve
 from datarecord.layered.resolve import NodeCache
+from datarecord.record import Flags, LazyFrames
 from datarecord.schema import Schema
-from datarecord.store import Flags, LazyFrames
 
 _ANCESTRY = """
 WITH RECURSIVE ancestors(id, parent, depth) AS (
@@ -63,7 +63,7 @@ def ancestry(con: DuckDBPyConnection, record_id: UUID) -> list[UUID]:
     return [r[0] for r in con.execute(_ANCESTRY, [record_id]).fetchall()]
 
 
-class DataRecord(BaseModel):
+class Revision(BaseModel):
     """A node in the tree of layers.
 
     Each record adds one parquet store layer on top of its parent's; the
@@ -105,15 +105,15 @@ class DataRecord(BaseModel):
         return self._node_cache
 
     @property
-    def store(self) -> "LayeredStore":
-        """This record's resolved overlay as a `Store` (§9.3).
+    def store(self) -> "LayeredRecord":
+        """This record's resolved overlay as a `Record` (§9.3).
 
         The framework-agnostic view of a record: the same interface a plain
         parquet directory satisfies, so a consumer need not know the record is
         an overlay at all. `node_cache` remains the DuckDB-shaped view, which
         `datarecord.tools` still builds from (§12).
         """
-        return LayeredStore(self.node_cache)
+        return LayeredRecord(self.node_cache)
 
     # -- tree ---------------------------------------------------------------
 
@@ -161,18 +161,10 @@ class DataRecord(BaseModel):
         """Record ids along the root->self path, root first (§8.2)."""
         return ancestry(self.con, self.id)
 
-    def relation(self, attribute: str) -> DuckDBPyRelation:
-        """The resolved long relation for one input attribute (§9.2)."""
-        return self.node_cache.relation(attribute)
-
-    def outputs(self, attribute: str) -> DuckDBPyRelation:
-        """This layer's own result attribute; outputs do not overlay (§9.4)."""
-        return self.node_cache.outputs(attribute)
-
 
 @dataclass(frozen=True)
-class LayeredStore:
-    """A record's resolved overlay, as a `Store` (§9.3).
+class LayeredRecord:
+    """A record's resolved overlay, as a `Record` (§9.3).
 
     The protocol's shape over `NodeCache`, not a second implementation of it, so
     a member costs what the equivalent `NodeCache` call costs - `flags` in
@@ -240,7 +232,7 @@ class LayeredStore:
         """`rel` in member order, which for an overlay means sorted by `order_key`.
 
         The fold's own output has no order (its union puts a layer's own
-        contribution first), so the order a `Store` promises is imposed here.
+        contribution first), so the order a `Record` promises is imposed here.
         `order_key` stays in the frame rather than being projected away (§9.1).
         """
         if rel is None:

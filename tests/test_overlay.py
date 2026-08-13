@@ -3,19 +3,19 @@
 import pandas as pd
 import pytest
 
-from datarecord import DataRecord
+from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
-from datarecord.layered.write import write_layer
+from datarecord.layered.write import write_record
+from datarecord.record import EMPTY
 from datarecord.schema import AttributeSpec
-from datarecord.store import EMPTY
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network, tombstone, write_input
+from tests.fixtures import export_network, outputs, relation, tombstone, write_input
 
 
 @pytest.fixture
 def parent(con, base_uri, ac_dc):
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     record.materialise()
     return record
@@ -30,7 +30,7 @@ def test_child_overwrites_component(con, parent):
         [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.42}],
     )
 
-    df = child.relation("p_max_pu").df()
+    df = relation(child, "p_max_pu").df()
     manchester = df[df["name"] == "Manchester Wind"]
     # The parent's 10 series rows are gone, replaced by the child's single row.
     assert len(manchester) == 1
@@ -112,7 +112,7 @@ def test_grandchild_resolves_through_ancestry(con, parent):
         [{"component_type": "Generator", "name": "Manchester Wind", "value": 0.99}],
     )
 
-    df = grandchild.relation("p_max_pu").df()
+    df = relation(grandchild, "p_max_pu").df()
     manchester = df[df["name"] == "Manchester Wind"]
     assert len(manchester) == 1
     assert manchester["value"].iloc[0] == 0.99
@@ -133,18 +133,18 @@ def test_closed_child_reads_own_node_cache(con, parent):
     )
     child.materialise()
 
-    reloaded = DataRecord.get(child.id, con)
+    reloaded = Revision.get(child.id, con)
     n = PyPSA.build(reloaded.store)
     assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
 
-    df = reloaded.relation("p_max_pu").df()
+    df = relation(reloaded, "p_max_pu").df()
     assert df[df["name"] == "Manchester Wind"]["value"].tolist() == [0.42]
 
 
 def test_outputs_do_not_overlay(con, parent):
     """Results come from the node's own layer only (§9.4)."""
     child = parent.child()
-    assert child.outputs("p").df().empty
+    assert outputs(child, "p").df().empty
 
 
 def test_a_new_attribute_is_a_schema_amendment(con, parent):
@@ -199,7 +199,9 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
 
     child = parent.child()
     with pytest.raises(ValueError, match="no longer varies over"):
-        write_layer(child.id, _Narrowed(), con)
+        # `outputs` omitted deliberately: this source exists to fail schema
+        # validation, and an absent member reads as "no results" (§4).
+        write_record(child.id, _Narrowed(), con)  # type: ignore[arg-type]
 
 
 def test_member_order_survives_closed_intermediate(con, parent, ac_dc):

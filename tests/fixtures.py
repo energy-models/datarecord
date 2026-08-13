@@ -148,13 +148,13 @@ def export_network(n, record, con) -> None:
 
     Not `n.export_to_parquet`: that emits PyPSA's upstream manifest format,
     which is a different vocabulary from the schema a store declares (§5.6).
-    Going through `write_layer` means a test store is written exactly as
+    Going through `write_record` means a test store is written exactly as
     `blocks` writes one.
     """
-    from datarecord.layered.write import write_layer
+    from datarecord.layered.write import write_record
     from datarecord.tools.pypsa import PyPSA
 
-    write_layer(record.id, PyPSA.to_datarecord(n), con)
+    write_record(record.id, PyPSA.to_datarecord(n), con)
 
 
 def write_schema(schema: Schema, base_uri: str | None = None) -> None:
@@ -204,3 +204,20 @@ def schema(
         attributes=attributes or {},
         partial=frozenset(partial),
     )
+
+
+def relation(revision, attribute: str):
+    """The resolved long relation for one input attribute, as a DuckDB relation.
+
+    A test helper rather than a `Revision` method: `Revision` presents its data
+    through `.store` (a `Record`), and a DuckDB-shaped accessor beside it would
+    duplicate `store.attributes[attr]` while inverting what `outputs` means -
+    a relation on the revision against a `Frames` mapping on the record. Tests
+    want relations because they assert on `.df()`, so the affordance lives here.
+    """
+    return revision.node_cache.relation(attribute)
+
+
+def outputs(revision, attribute: str):
+    """One result attribute as a DuckDB relation; outputs do not overlay (§9.4)."""
+    return revision.node_cache.outputs(attribute)

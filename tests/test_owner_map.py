@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from datarecord import DataRecord
-from datarecord.duck import layer_dir, node_dir, union_all_by_name
+from datarecord import Revision
+from datarecord.duck import layer_dir, resolved_dir, union_all_by_name
 from tests.fixtures import export_network, tombstone, write_input
 
 
 @pytest.fixture
 def parent(con, base_uri, ac_dc):
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     record.materialise()
     return record
@@ -61,13 +61,31 @@ def test_root_map_is_its_own_layer(con, parent):
     assert ("Generator", "Manchester Wind", "p_max_pu") in keys(parent, con)
 
 
-def test_materialise_writes_the_map_to_the_node_cache(con, parent):
-    """`materialise` writes the maps beside the layer, never into it (§8.2)."""
-    assert Path(node_dir(parent.id), "owner_map", "inputs.parquet").exists()
-    assert Path(node_dir(parent.id), "owner_map", "components.parquet").exists()
-    # The layer directory stays exactly what was written to it, so a reader
-    # that knows nothing about layering still sees a plain parquet store.
+def test_materialise_writes_the_map_under_resolved(con, parent):
+    """`materialise` writes the maps under `resolved/`, not at the layer root (§8.2)."""
+    assert Path(resolved_dir(parent.id), "owner_map", "inputs.parquet").exists()
+    assert Path(resolved_dir(parent.id), "owner_map", "components.parquet").exists()
+    # The cache shares the record's directory but stays out of the layer's own
+    # namespace, so a reader that knows nothing about layering still sees a
+    # plain parquet store: every glob into a layer is single-level, so nothing
+    # under `resolved/` is reachable by one (§8.3).
     assert not Path(layer_dir(parent.id), "owner_map").exists()
+    # The globs the fold and `DirectoryRecord` actually use must not reach a
+    # cached file.
+    layer = Path(layer_dir(parent.id))
+    reachable = {
+        p
+        for pattern in (
+            "*.parquet",
+            "inputs/*.parquet",
+            "outputs/*.parquet",
+            "dims/*.parquet",
+            "dims/*/*.parquet",
+        )
+        for p in layer.glob(pattern)
+    }
+    assert reachable
+    assert not any("resolved" in p.parts for p in reachable)
 
 
 def test_last_writer_wins_per_key(con, parent):
@@ -149,8 +167,8 @@ def test_a_removed_cache_falls_back_to_the_fold(con, parent):
     child.materialise()
     expected = keys(child, con)
 
-    shutil.rmtree(Path(node_dir(child.id), "owner_map"))
-    fresh = DataRecord.get(child.id, con)
+    shutil.rmtree(Path(resolved_dir(child.id), "owner_map"))
+    fresh = Revision.get(child.id, con)
     assert keys(fresh, con) == expected
 
 
@@ -186,7 +204,7 @@ def test_a_record_with_no_manifest_folds(con, base_uri):
     field per declared dim (§9.1) and DuckDB has no empty struct, so this is
     the one path where there are none to declare.
     """
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     assert record.store.schema.dims == ()
 
     inputs = record.node_cache.inputs

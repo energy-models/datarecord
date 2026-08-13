@@ -8,7 +8,7 @@ import tracemalloc
 
 import pytest
 
-from datarecord import DataRecord
+from datarecord import Revision
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network
 
@@ -24,7 +24,7 @@ def carbon():
 
 def test_to_model_peaks_near_one_component_type(con, base_uri, carbon):
     """Peak memory stays near the largest single type, not the whole network."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(carbon, record, con)
 
     tracemalloc.start()

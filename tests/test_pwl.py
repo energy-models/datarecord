@@ -1,9 +1,10 @@
 """Piecewise-linear values as breakpoint rows (design doc §7)."""
 
 from datarecord.duck import layer_dir
-from datarecord.layered.record import DataRecord
-from datarecord.store import Flags
+from datarecord.layered.revision import Revision
+from datarecord.record import Flags
 from tests.fixtures import (
+    relation,
     schema,
     write_components,
     write_connections,
@@ -16,7 +17,7 @@ PROCESS = "Process"
 
 def _curve(record, attribute: str) -> list[tuple[float, float]]:
     """`(breakpoint, value)` pairs, in curve order - a sort on `breakpoint`."""
-    df = record.relation(attribute).order("breakpoint").df()
+    df = relation(record, attribute).order("breakpoint").df()
     return list(zip(df["breakpoint"], df["value"], strict=True))
 
 
@@ -27,8 +28,8 @@ def _flags(record, ctype: str, attribute: str) -> Flags:
     return flags[attribute]
 
 
-def _root_with_curve(con) -> DataRecord:
-    record = DataRecord.create(con)
+def _root_with_curve(con) -> Revision:
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
@@ -102,7 +103,7 @@ def test_patch_replaces_the_whole_curve(con, base_uri):
 
 def test_curve_on_a_connection(con, base_uri):
     """`bus` and `breakpoint` compose: one keys, the other does not (§7)."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
@@ -151,7 +152,7 @@ def test_curve_on_a_connection(con, base_uri):
         ],
     )
 
-    df = child.relation("efficiency").order("bus, breakpoint").df()
+    df = relation(child, "efficiency").order("bus, breakpoint").df()
     rows = list(zip(df["bus"], df["breakpoint"], df["value"], strict=True))
     assert rows == [
         ("dri", 0.0, 1.0),
@@ -163,7 +164,7 @@ def test_curve_on_a_connection(con, base_uri):
 
 def test_curve_varying_by_snapshot(con, base_uri):
     """A curve per snapshot: `breakpoint` multiplies by the dims like anything else."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
@@ -192,12 +193,12 @@ def test_curve_varying_by_snapshot(con, base_uri):
     assert "snapshot" in flags.varies
     assert "snapshot" not in flags.broadcast
     assert flags.breakpoints
-    assert len(record.relation("marginal_cost").df()) == 4
+    assert len(relation(record, "marginal_cost").df()) == 4
 
 
 def test_scalar_replaced_by_a_curve(con, base_uri):
     """A child may turn a scalar into a curve; it is one key either way."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])

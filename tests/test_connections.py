@@ -4,8 +4,9 @@ import pytest
 from pydantic import ValidationError
 
 from datarecord.duck import layer_dir
-from datarecord.layered.record import DataRecord
+from datarecord.layered.revision import Revision
 from tests.fixtures import (
+    relation,
     schema,
     tombstone,
     tombstone_connection,
@@ -32,9 +33,9 @@ def _components(record, ctype=PROCESS):
     return frame
 
 
-def _root(con) -> DataRecord:
+def _root(con) -> Revision:
     """A record whose layer has one Process with three connections."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
@@ -59,7 +60,7 @@ def _root(con) -> DataRecord:
 
 
 def _efficiencies(record) -> dict[str, float]:
-    df = record.relation("efficiency").df()
+    df = relation(record, "efficiency").df()
     return dict(zip(df["bus"], df["value"], strict=True))
 
 
@@ -156,14 +157,14 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
         [{"component_type": PROCESS, "name": "steel_dri", "value": 250.0}],
     )
 
-    df = child.relation("p_nom").df()
+    df = relation(child, "p_nom").df()
     assert list(df["value"]) == [250.0]
     assert df["bus"].isna().all()
 
 
 def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri):
     """`bus` extends the key; it does not displace the dims (§6)."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
@@ -206,7 +207,7 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
     assert "snapshot" in flags.varies
     assert "snapshot" in flags.broadcast
     assert not flags.breakpoints
-    assert len(record.relation("efficiency").df()) == 3
+    assert len(relation(record, "efficiency").df()) == 3
 
 
 def test_connection_tombstone_removes_one_connection(con, base_uri):
@@ -238,7 +239,7 @@ def test_component_tombstone_removes_every_connection(con, base_uri):
 
 def test_connection_exists_per_scenario(con, base_uri):
     """`scenario` keys connections here, so a tombstone can scope to one (§5.3)."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(
@@ -290,7 +291,7 @@ def test_narrower_connection_key_than_component_key(con, base_uri):
     vary by scenario at all, so a component tombstone in one scenario should
     leave the connection to the scenarios the component still has.
     """
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema(keys={"scenario": {"component"}}))
     write_components(

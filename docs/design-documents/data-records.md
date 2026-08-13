@@ -15,16 +15,16 @@ A framework consumes a record, a workflow engine produces one, and neither needs
 
 Two implementations of one interface:
 
-- **`DirectoryStore`** — one parquet directory.
+- **`DirectoryRecord`** — one parquet directory.
   What the files hold is what it presents.
-- **`LayeredStore`** — a tree of layers, each adding a partial store on top of its parent, resolved last-writer-wins.
+- **`LayeredRecord`** — a tree of layers, each adding a partial store on top of its parent, resolved last-writer-wins.
 
 A consumer cannot tell which it holds.
 That is what lets a framework read a hundred-layer overlay through the same call it would use for a single directory.
 
 ## 2. Scope
 
-- **In scope:** the store format; the schema; the `Store` protocol and `MutableStore`; overlay resolution and its owner map; the write path; how the two implementations differ.
+- **In scope:** the store format; the schema; the `Record` protocol and `WorkingRecord`; overlay resolution and its owner map; the write path; how the two implementations differ.
 - **Out of scope:** a non-DuckDB implementation (the protocol permits one, §4.4, but only DuckDB-backed ones are provided); concurrent writers to one record; unmaterialised/meta layers.
 
 ## 3. The store format
@@ -94,11 +94,11 @@ Nothing declares this and nothing needs to: the row order _is_ the order.
 Under resolution the same rule extends across layers by first-introduced position — a descendant appending a new period lands after the parent's.
 Components and connections get the same semantics from the owner map's `order_key` (§9.1).
 
-## 4. `Store`
+## 4. `Record`
 
 ```python
 @runtime_checkable
-class Store(Protocol):
+class Record(Protocol):
     """Dimensioned attribute data with a declared schema."""
 
     @property
@@ -113,33 +113,32 @@ class Store(Protocol):
     @property
     def attributes(self) -> Frames: ...  # long input frames, keyed by attribute
 
-    def flags(self, ctype: str) -> dict[str, Flags]: ...
-
-
-@runtime_checkable
-class Solved(Protocol):
-    """A store that also carries results (§9.4)."""
-
     @property
     def outputs(self) -> Frames: ...  # long result frames, keyed by attribute
+
+    def flags(self, ctype: str) -> dict[str, Flags]: ...
 ```
 
 `attributes` is keyed by attribute name, matching the file layout: one `inputs/p_max_pu.parquet` holds every component type's rows, and a reader wanting one type filters on `component_type`.
 
-`outputs` is a **separate protocol** because it does not behave like its neighbours.
-Results do not overlay (§9.4), so a layered store's `outputs` reads one layer where every other member reads the resolution — a member whose semantics silently differ from the rest of the interface.
-And most stores have none: an unsolved record's results are absent rather than empty, so `Solved` is the thing to test for (`isinstance(store, Solved)`) rather than a member to find empty.
+`outputs` is an ordinary member, and its **emptiness is the existence answer** — the same idiom §4.3 uses for `flags`, where an attribute with no rows is absent from the mapping rather than present with empty sets.
+An unsolved record answers with an empty mapping, and nothing half-writes results, so there is no state in which empty is ambiguous.
+`write_record` writes `outputs/` only for a source whose mapping is non-empty, so a record with no results produces a layer without the directory rather than an empty one.
 
-A store may satisfy both, and `write_layer` writes `outputs/` when handed one that does.
+Because `Record` is structural, a source may omit the member entirely, and `write_record` reads an absent `outputs` as "no results" rather than raising — the same answer as defining it empty.
+
+One thing does set it apart: results do not overlay (§9.4), so a layered record's `outputs` reads its own layer where every other member reads the resolution.
+That is a documented property of the member rather than a reason to split the protocol.
+A separate `Solved` would not have changed those semantics, only gated access to them, and it made every consumer test for a second type to reach a member most records simply have none of.
 
 Read-only.
-Writing is `write_layer(record_id, store, con)` — a function over a store rather than a method on one (§10).
+Writing is `write_record(record_id, store, con)` — a function over a store rather than a method on one (§10).
 
-Called `Store` rather than `Layer` because a layer is one node's own contribution and a resolved overlay is not one, but both are stores in the sense §3 uses.
+Called `Record` rather than `Layer` because a layer is one node's own contribution and a resolved overlay is not one, but both are stores in the sense §3 uses.
 
 ### 4.1 A protocol, not a base class
 
-A `Store` is a _view_, and the two implementations share no state: one resolves a fold, the other reads files.
+A `Record` is a _view_, and the two implementations share no state: one resolves a fold, the other reads files.
 Structural typing also lets a consumer satisfy it without depending on this package at all — which is how a framework object can present itself as a store, and how a framework could implement `n.import_from_store` against nothing but the protocol.
 
 ### 4.2 `Frames`
@@ -210,7 +209,7 @@ The protocol names no engine — `nw.LazyFrame` is all a consumer sees, so a pur
 
 The implementations provided are DuckDB-backed, both of them, and the resolution engine is not abstracted behind an interface.
 The owner-map fold is relational algebra of real complexity, and an engine abstraction with one implementation behind it is a cost paid for a second that does not exist.
-Adding one later means writing a second `Store`, which the protocol already permits.
+Adding one later means writing a second `Record`, which the protocol already permits.
 
 ## 5. The schema
 
@@ -392,8 +391,8 @@ A directory store's schema is `manifest.json` in the directory; a layered store'
 ```
 record-root/
 ├── manifest.json               # the schema — one, for the whole tree
-├── layers/<uuid>/              # a layer: dims/, inputs/, outputs/ — no manifest
-└── nodes/<uuid>/               # caches (owner map, resolved dims)
+└── layers/<uuid>/              # a layer: dims/, inputs/, outputs/ — no manifest
+    └── resolved/               # caches (owner map, resolved dims) — §8.2
 ```
 
 A schema is not layered data.
@@ -476,44 +475,48 @@ Convexity is never checked or recorded: that is a framework's judgement.
 
 ## 8. Layered resolution
 
-A `LayeredStore` resolves a tree of layers.
+A `LayeredRecord` resolves a tree of layers.
 Each node adds one layer; a node's data is its layer resolved over its ancestors', last-writer-wins.
 
 ```python
-class DataRecord(BaseModel):
+class Revision(BaseModel):
     id: UUID
     parent: UUID | None  # None for a root
 ```
 
 Each record has one layer at `layers/<id>/`; the path derives from the UUID rather than being stored.
-A sibling `nodes/<id>/` holds caches derived from the ancestry rather than layer data, so a layer directory stays exactly what that layer wrote.
+Caches derived from the ancestry rather than from layer data live in a `resolved/` subdirectory of it, so the layer's own top level stays exactly what that layer wrote.
 
 Nodes form a tree: branching is several children sharing a parent, and they share the parent's layer and all further ancestry by pointing at it, not by duplication.
 Resolution order along a root→node path is ancestry order; a node's own layer is last and wins.
 
 The node metadata — `(id, parent)` — is persisted in a table, so a record id resolves to its ancestry, and thus its layer set, through it.
 
-### 8.1 Layers are write-once
+### 8.1 A layer's data is write-once
 
 A node has no mutable state.
 
-A layer directory is created by one act — `write_layer` (§10), whether called directly or by a commit (§11.7) — which refuses an existing directory and stages into a sibling path, so a layer is complete when it first becomes visible and never changes afterwards.
+A layer's data is created by one act — `write_record` (§10), whether called directly or by a commit (§11.7) — which refuses an existing directory and stages into a sibling path, so a layer is complete when it first becomes visible and never changes afterwards.
 Editing needs no mutable layer: edits accumulate in the staging area (§11.9) and become a layer at commit.
+
+The one thing written into a layer directory after that act is its `resolved/` cache (§8.2), which is why the invariant is stated over the layer's _data_ rather than over the directory.
+That is not a loosening that costs anything: a cache is derived from immutable layers, so writing one cannot change an answer, and nothing downstream reads it as data.
 
 Two properties follow. **Any node may be a parent**, since an immutable base cannot shift under its descendants.
 And **a cache never needs invalidating**, since one derived from immutable layers cannot go stale.
 
 ### 8.2 Materialised node caches
 
-A node's owner map and resolved dims may be materialised under `nodes/<id>/`.
+A node's owner map and resolved dims may be materialised under `layers/<id>/resolved/`.
 Not the schema: there is one for the whole store (§5.6), so there is nothing per node to resolve.
 
 Where a materialised map exists, a read stops there: the map is already folded over everything above it, so a read walks the ancestry only back to the nearest materialised node rather than to the root.
 That truncation is what keeps a deep chain cheap.
-The same rule decides where resolved dims come from — a node's own `nodes/<id>/` where materialised, its raw layer otherwise — answered by the cache's presence rather than by any recorded state.
+The same rule decides where resolved dims come from — a node's own `resolved/dims/` where materialised, its raw `dims/` otherwise — answered by the cache's presence rather than by any recorded state.
+The two are distinct paths within one directory, so a record read as an ancestor and the same record read as itself never alias.
 
 Materialising is a policy: every N layers, at a branch point, on demand.
-It is purely additive, writing files under `nodes/<id>/` and changing no answer, only how many layers a read touches to reach it.
+It is purely additive, writing files under `resolved/` and changing no answer, only how many layers a read touches to reach it.
 
 ### 8.3 Deletion
 
@@ -524,7 +527,8 @@ When the owner map is folded, a tombstone removes that key's entries from the ma
 A tombstone only affects the branch that carries it; sibling branches keep the component.
 
 The fold treats an absent `deleted` column as "tombstones nothing", so a layer may be any standard parquet store, not only one this package wrote.
-Every derived cache lives under `nodes/<id>/` for the same reason: a reader pointed at a layer directory sees exactly what that layer wrote, and materialising a node's caches never touches it.
+Every derived cache lives under `resolved/` for the same reason: every glob the read path issues into a layer is single-level — `inputs/*.parquet`, `dims/*.parquet`, `dims/*/*.parquet` — so nothing under `resolved/` is reachable by one.
+A reader pointed at a layer directory therefore sees exactly what that layer wrote, and materialising a node's caches never changes what it sees.
 
 ## 9. The DuckDB read path
 
@@ -578,7 +582,7 @@ The map's columns are then fixed, and only the fields move.
 `breakpoints` stays outside both structs, being no dim (§7).
 That also means the dim namespace lives entirely inside `varies`/`broadcast`, so a dim named `breakpoints` would collide with nothing.
 
-`Store.flags(ctype)` unions them over the names of one type, which is the granularity every consumer works at (§4.3).
+`Record.flags(ctype)` unions them over the names of one type, which is the granularity every consumer works at (§4.3).
 The union is not a loss of the per-key answer so much as the question being asked of a type: a framework assigns containers per type, so a type whose components disagree must be told so, and a dim landing in both sets is exactly that message.
 The union stops at the type boundary, since across types it would describe neither.
 
@@ -620,7 +624,7 @@ An attribute no layer wrote is absent from the map; its relation is empty, and t
 
 ### 9.3 What differs between the implementations
 
-|                  | `DirectoryStore`               | `LayeredStore`                              |
+|                  | `DirectoryRecord`              | `LayeredRecord`                             |
 | ---------------- | ------------------------------ | ------------------------------------------- |
 | resolution       | none — one store               | owner-map fold along ancestry               |
 | `flags`          | `GROUP BY` scan over `inputs/` | free, folded with ownership                 |
@@ -637,15 +641,14 @@ An output relation reads the node's own layer only: if that layer has no `output
 ## 10. Writing a whole store
 
 ```python
-def write_layer(
-    record_id: UUID, source: Store | Solved, con: DuckDBPyConnection
-) -> None: ...
+def write_record(record_id: UUID, source: Record, con: DuckDBPyConnection) -> None: ...
 ```
 
 Writes `source` as a new layer.
 An existing layer directory is an error rather than an overwrite or a merge, so a whole-store write can never half-replace what a record holds.
 
-`outputs/` is written only for a source satisfying `Solved` (§4), so a store with no results produces a layer with no `outputs/` rather than an empty directory.
+`outputs/` is written only for a source whose `outputs` mapping is non-empty (§4), so a record with no results produces a layer with no `outputs/` rather than an empty directory.
+A source may omit the member altogether, which reads the same way.
 
 Keys are looked up one at a time and each file written before the next is built, so a lazily-building source does one read per file written rather than one per key up front.
 Frames are staged into a sibling directory and renamed on success, so a frame the fold could not resolve leaves no layer rather than half of one.
@@ -656,38 +659,28 @@ Without that a source may hand over an all-NULL column its dataframe library typ
 Validation is structural: a long frame carries the §3.2 columns, and an entity frame carries every dim it is keyed by.
 Which component types and attribute names are valid belongs to the schema's vocabulary.
 
-Because a `Store` is the input, anything satisfying the protocol can be written — including a framework object presenting itself as one, which is what puts read and write on a single seam.
+Because a `Record` is the input, anything satisfying the protocol can be written — including a framework object presenting itself as one, which is what puts read and write on a single seam.
 
-## 11. `MutableStore`
+## 11. `WorkingRecord`
 
-`Store` is read-only, and `write_layer` writes a whole store from a source that already knows everything it will contain.
+`Record` is read-only, and `write_record` writes a whole store from a source that already knows everything it will contain.
 Neither covers editing: adding components, removing them, setting an attribute on a group.
 
 ```python
-class MutableStore:
-    """A `Store` that accepts edits and materialises them on commit."""
+class WorkingRecord:
+    """A `Record` that accepts edits and materialises them on commit."""
 
-    def __init__(self, base: Store, con: DuckDBPyConnection) -> None: ...
+    def __init__(self, base: Record, con: DuckDBPyConnection) -> None: ...
 
     def set(
         self,
-        ctype: str,
         attribute: str,
-        value: Any,
+        value: Any,  # scalar | sequence | mapping | frame | nw.Expr
         *,
+        component_type: str | None = None,  # from the frame's column if omitted
         names: Sequence[str] | None = None,
         bus: str | None = None,
-        **dims: Any,
-    ) -> None: ...
-
-    def update(
-        self,
-        ctype: str,
-        attribute: str,
-        expr: nw.Expr,
-        *,
-        names: Sequence[str] | None = None,
-        bus: str | None = None,
+        kind: Literal["inputs", "outputs"] = "inputs",
         **dims: Any,
     ) -> None: ...
 
@@ -705,15 +698,15 @@ class MutableStore:
     def rollback(self) -> None: ...
 ```
 
-Built over a base `Store` and a DuckDB connection: `MutableStore(record.store, con)`.
+Built over a base `Record` and a DuckDB connection: `WorkingRecord(record.store, con)`.
 
 A **class, not a protocol**.
-`Store` is a protocol because several things satisfy it — two backings, a framework object presenting itself as one (§4.1), the two readings commit writes — and structural typing is what lets a consumer satisfy it without depending on this package.
+`Record` is a protocol because several things satisfy it — two backings, a framework object presenting itself as one (§4.1), the two readings commit writes — and structural typing is what lets a consumer satisfy it without depending on this package.
 There is one way to edit a store, so a second name for it would be an interface over its only implementation.
 Where the staged rows live is this class's own business (§11.9), which is why the name says what it is rather than how.
 
-It **satisfies** `Store`, which is the load-bearing decision: a mutable store reads as a store, and what it reads is the data _with its pending edits applied_.
-So an edit can be read back, or the store handed to something that only knows `Store`, without committing.
+It **satisfies** `Record`, which is the load-bearing decision: a mutable store reads as a store, and what it reads is the data _with its pending edits applied_.
+So an edit can be read back, or the store handed to something that only knows `Record`, without committing.
 Structurally, not by inheritance — the read members are implemented here over base-plus-staged (§11.10).
 
 Two properties follow from accumulate-then-commit, and both are the point:
@@ -740,24 +733,35 @@ So a staged edit is already the row it will be written as, and `commit()` is a c
 ### 11.2 `set`
 
 ```python
-store.set("Generator", "p_nom", 150.0, names=["wind1", "wind2"])  # broadcast
-store.set("Generator", "p_nom", [150.0, 80.0], names=["wind1", "wind2"])  # per name
-store.set("Generator", "p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
-store.set("Generator", "p_max_pu", frame, names=["wind1"])  # long frame
-store.set("Link", "efficiency", 0.9, names=["dc"], bus="north")  # a connection
-store.set("Generator", "p_nom", 200.0, names=["wind1"], scenario="high")  # scoped
+gen = dict(component_type="Generator")
+store.set("p_nom", 150.0, names=["wind1", "wind2"], **gen)  # broadcast
+store.set("p_nom", [150.0, 80.0], names=["wind1", "wind2"], **gen)  # per name
+store.set("p_nom", {"wind1": 150.0, "wind2": 80.0}, **gen)  # per name, keyed
+store.set("p_max_pu", frame, names=["wind1"], **gen)  # long frame
+store.set("efficiency", 0.9, names=["dc"], bus="north", component_type="Link")
+store.set("p_nom", 200.0, names=["wind1"], scenario="high", **gen)  # scoped
+store.set("p_nom", nw.col("value") * 1.1, **gen)  # derived (§11.3)
+store.set("p", solved, kind="outputs")  # a result; type from the frame (§9.4)
 ```
+
+`component_type` is keyword-only and may be omitted **only** for a long frame carrying a `component_type` column, which is then authoritative — so one frame spanning several types stages each row under its own.
+Every other form needs it: a scalar is stamped onto rows the call invents, and `names=None` resolves against one type's members.
+A frame without the column has it added from the keyword; neither present is an error rather than a guess.
 
 `bus` names a connection rather than the component (§6); every other keyword is a dim, so `scenario="high"` scopes the edit and its absence means "every scenario" by the NULL broadcast rule.
 
-`value` takes four forms, because assigning one value to a group and assigning a different value to each member are equally ordinary and neither should require building a frame:
+`kind` names the destination in the format's own terms — §11.1's table is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
+`"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool hands results back to a record before it is committed (§11.2.1).
 
-| `value`  | meaning                         | `names`                                       |
-| -------- | ------------------------------- | --------------------------------------------- |
-| scalar   | broadcast to every name         | required unless `None` means all              |
-| sequence | aligned positionally to `names` | required, same length                         |
-| mapping  | keys are names                  | ignored if given, else the keys are the names |
-| frame    | supplies its own keys           | redundant                                     |
+`value` takes five forms, because assigning one value to a group and assigning a different value to each member are equally ordinary and neither should require building a frame:
+
+| `value`   | meaning                         | `names`                                       |
+| --------- | ------------------------------- | --------------------------------------------- |
+| scalar    | broadcast to every name         | required unless `None` means all              |
+| sequence  | aligned positionally to `names` | required, same length                         |
+| mapping   | keys are names                  | ignored if given, else the keys are the names |
+| frame     | supplies its own keys           | redundant                                     |
+| `nw.Expr` | a function of the current value | selects what to derive from (§11.3)           |
 
 The first three normalise to a long frame before staging, so there is one staging path.
 A length mismatch between a sequence and `names` is an error at the call, not a silently truncated edit.
@@ -769,26 +773,66 @@ Index dtype does not settle it, since an axis label may be a string like a name,
 
 `names=None` means every component of that type the store currently resolves, which is a read, so it includes earlier pending edits.
 
-### 11.3 `update` — a value derived from the current one
+### 11.3 An `nw.Expr` value — derived from the current one
 
 ```python
-store.update("Generator", "p_nom", nw.col("value") * 1.1)  # scale up
-store.update("Generator", "p_max_pu", nw.col("value").clip(upper=0.9))
+store.set("p_nom", nw.col("value") * 1.1, component_type="Generator")  # scale up
+store.set("p_max_pu", nw.col("value").clip(upper=0.9), component_type="Generator")
 ```
 
-Separate from `set` rather than a fifth `value` form, because the two differ in kind: every form `set` accepts _is_ a value, whereas an expression is a **function of the current value**.
-Folding it in would make one method mean two things, and the difference is visible to a caller — `set` on a component with no existing value writes that value, while `update` on one has nothing to derive from.
+A fifth `value` form rather than a second method.
+Nothing else a caller passes is an `nw.Expr`, so the dispatch is unambiguous — unlike the series-versus-mapping tie §11.2 has to break by membership.
 
-Consequences that follow from being a read-modify-write:
+What it does differently is read before it stages:
 
-- It reads before it stages, so what it derives from is the resolved value **including earlier pending edits** (§11.10).
-  Two `update`s compose.
-- Where `set` stages without touching parent data, `update` must resolve the keys it targets first.
-  On a layered store that is a fold, so a broad `update` is the one edit whose cost scales with the ancestry rather than with the rows written.
+- What it derives from is the resolved value **including earlier pending edits** (§11.10), so two such calls compose.
+- Where the other forms stage without touching parent data, this one must resolve the keys it targets first.
+  On a layered record that is a fold, so a broad derived edit is the one edit whose cost scales with the ancestry rather than with the rows written.
 - What is staged is the _result_, not the expression.
-  So a committed layer holds ordinary rows, and nothing in the format records that a value was derived — replaying an edit sequence is not a thing the store supports.
+  So a committed layer holds ordinary rows, and nothing in the format records that a value was derived — replaying an edit sequence is not a thing the record supports.
 
 The expression is evaluated by narwhals against the resolved long frame, so it names `value` rather than the attribute: the frame is long, and one attribute per call means the column is always `value`.
+
+**A named target must resolve to a row.**
+If the caller names `names`, a `bus` or any dim scope, every one of those targets must produce a row to derive from, or the call raises.
+The caller asked for those rows to take a new value and there is nothing to compute one from, which is a failed change rather than a no-op — the same class of error as naming a component no layer declares (§11.8), and it was silently staging zero rows before.
+
+With `names=None` and no scope the instruction is "whatever resolves", so an empty result is an answer rather than a failure.
+That asymmetry is the whole of the rule: a broad derived edit over a type where only some members carry the attribute is ordinary, while a targeted one that hits nothing is a typo.
+
+### 11.3.1 Results through `kind="outputs"`
+
+A tool solves against a record and hands back what it computed:
+
+```python
+store = WorkingRecord(record, con)
+store.set("p_max_pu", 0.8, names=["wind1"], component_type="Generator")
+model = PyPSA.build(store)  # solve the edited record
+model.optimize()
+for attr, frame in PyPSA.results(model).items():
+    store.set(attr, frame, kind="outputs")  # type comes from the frame
+store.commit(NewChild(record))  # one layer, inputs and results together
+```
+
+In memory only: the results live in the staging area beside the input edits and become part of the same layer at commit, so a solve produces one new record rather than a record plus a separate results record.
+Nothing on disk is mutated, and §8.1 stands unchanged.
+
+Two things differ from an input edit, both following from §9.4:
+
+- **No schema check on the attribute name.**
+  A result attribute is not schema-declared — `Tool.results` derives which attributes count as results from the framework's own registry (§12), and `write_record` persists `outputs/` without consulting the schema.
+  So an unknown attribute name is an error for an input and simply unknowable for a result.
+  The dim vocabulary is still checked for both.
+- **No membership check on `name`.**
+  An input value for a name no layer declares is rejected, because it would resolve to nothing (§11.8).
+  A result may legitimately name a component the record never declared: PyPSA's `SubNetwork` exists only after a solve, so rejecting it would refuse a real result.
+- **No `_restated` completion at commit.**
+  Results are complete as produced rather than a partial override of a parent's (§5.5), so there is nothing to carry forward from the base.
+- **`component_type` comes from the frame.**
+  `results` hands over one frame per attribute spanning every type (§12), so the column is authoritative and the keyword is omitted — stamping one type onto all of those rows would silently relabel the rest.
+
+Keeping results coherent with the inputs they were computed from is the caller's business.
+Editing an input after attaching results leaves results describing a record that no longer exists, and nothing here silently discards them — a store that dropped them on the next `set` would be guessing at which of the two the caller meant to keep.
 
 ### 11.4 Accessors — **not implemented**
 
@@ -806,7 +850,7 @@ store["Generator", {"scenario": "high"}]["p_nom", "wind1"] = 200.0
 Sugar with **no added capability**: `__setitem__` normalises its key into `(attribute, names)` and its extra arguments into `bus=`/dims, then calls `set`.
 Keeping the method as the protocol member and any accessor on top is deliberate — `set` is what an implementation provides and other code calls, so a spelling over it can change, or not exist, without touching an implementation.
 
-It reads as well as writes, since a `MutableStore` is a `Store`: `store["Generator"]["p_nom"]` returns that type's resolved frame, so getter and setter are symmetric and the accessor is a component-type view rather than a write-only handle.
+It reads as well as writes, since a `WorkingRecord` is a `Record`: `store["Generator"]["p_nom"]` returns that type's resolved frame, so getter and setter are symmetric and the accessor is a component-type view rather than a write-only handle.
 The read must be scoped by both the component type and the names — an accessor whose getter ignores either is not the view this describes.
 
 It deliberately does not reproduce a dataframe library's full indexing grammar — no boolean masks, no slices — because a store is not a dataframe and a partial imitation invites the assumption that the rest works.
@@ -863,10 +907,13 @@ Target = NewChild | Directory
 The two write different things.
 A `NewChild` writes **only the edits** — that is what a patch layer is, and the fold resolves the rest from the parent.
 A `Directory` writes **the resolved result**, since there is no parent to resolve against.
-Both go through `write_layer`, which is possible because each reading is presented as a `Store` — the one place the protocol's several implementations earn it twice over.
+Both go through `write_record`, which is possible because each reading is presented as a `Record` — the one place the protocol's several implementations earn it twice over.
 
-Neither carries results across.
-An edit changes the inputs a result was computed from, so a committed layer has no `outputs/` even where the store edited was `Solved` (§4) — results belong to the node that was solved, and a node with different inputs is a different node.
+Neither carries the **base's** results across.
+An edit changes the inputs a result was computed from, so a parent's `outputs/` says nothing about the child — results belong to the node that was solved, and a node with different inputs is a different node.
+
+What a commit does carry is results **staged into this record** through `set(..., kind="outputs")` (§11.3.1).
+Those were computed against these pending inputs, so they describe exactly the layer being written, and both readings write them: a `NewChild` layer holds its edits and the results computed from them together.
 
 Staged rows are appended, never updated, so the same coordinate may be staged repeatedly.
 Commit collapses to last-write-wins per coordinate, which is what `ROW_NUMBER() OVER (PARTITION BY <coordinate> ORDER BY _seq DESC) = 1` gives when every staged row carries a monotonic `_seq`.
@@ -888,7 +935,7 @@ That is the one commit-time read of parent data.
 
 ### 11.8 Validation
 
-`write_layer` validates structurally, so commit inherits that.
+`write_record` validates structurally, so commit inherits that.
 What editing adds is edit-level: an `add` whose frame lacks `name`, a `set` naming a component the store does not resolve, a dim keyword the schema does not declare.
 These are caught when the edit is **staged**, not at commit — a caller should learn about a typo'd attribute at the line that typed it, not fifty edits later.
 
@@ -904,7 +951,7 @@ CREATE TABLE staged_connections_<id> (<connection columns>, deleted BOOLEAN, _se
 
 These tables are the **only** place a staged row exists: `pending` counts them and the reads of §11.10 fold them, neither holding a copy.
 
-DuckDB rather than in-memory objects, for three reasons that all matter: the reads are already a fold, so staging elsewhere would mean marshalling every edit into a relation on every read; a large edit is a bulk insert rather than ten thousand Python objects; and commit becomes one window-function query whose result `write_layer` consumes unmaterialised.
+DuckDB rather than in-memory objects, for three reasons that all matter: the reads are already a fold, so staging elsewhere would mean marshalling every edit into a relation on every read; a large edit is a bulk insert rather than ten thousand Python objects; and commit becomes one window-function query whose result `write_record` consumes unmaterialised.
 
 Connection-scoped, like the owner-map cache, so they vanish with the connection and never appear on disk.
 A store whose edits must survive a process boundary should commit.
@@ -913,7 +960,7 @@ A store whose edits must survive a process boundary should commit.
 
 ### 11.10 Reading with pending edits
 
-The inherited `Store` members must reflect the edits; otherwise `set` then read gives the old value, which no caller would expect.
+The inherited `Record` members must reflect the edits; otherwise `set` then read gives the old value, which no caller would expect.
 
 A set of pending edits **is** a layer — an unwritten one.
 So the reads compose the same way: the staged rows are the last layer, resolved over whatever the store was reading before.
@@ -936,16 +983,26 @@ class Tool(Protocol):
     name: str
     schema: Schema  # attribute mapping
 
-    def requires(self, store: Store) -> Requirements: ...
-    def verify(self, store: Store) -> Requirements: ...  # falsy when usable
-    def build(self, store: Store) -> Any: ...
-    def to_datarecord(self, model: Any) -> Store: ...  # inverse of build
+    def requires(self, store: Record) -> Requirements: ...
+    def verify(self, store: Record) -> Requirements: ...  # falsy when usable
+    def build(self, store: Record) -> Any: ...
+    def to_datarecord(self, model: Any) -> Record: ...  # inverse of build
     def results(self, model: Any) -> Frames: ...
 ```
 
+`results` returns `Frames` — the same type `Record.outputs` presents, keyed by attribute, each frame carrying `component_type` (§3.2).
+So a tool's results go straight to `write_record`, or one at a time to `set(attr, frame, kind="outputs")` with no key to unpack (§11.3.1).
+
+A framework holds its results per component type, so reaching this shape means concatenating each attribute's types into one frame.
+That is free: the frames are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller collects.
+
+Lazy is what the protocol asks for rather than what any implementation must do.
+A tool reshaping a solved model's in-memory containers has nothing to defer and wraps its eager frames with `.lazy()`; one that could fetch a result attribute from a solver on demand is free to, and a caller wanting three of forty then pays for three.
+That is §4.2's argument, on the write side.
+
 A store is the input to a translation, not the owner of one, so there is no registry and no name dispatch: a tool is a module-level singleton reached by importing it, `build` returns the framework's own type, and nothing in the record layer imports a tool.
 
-`build` takes a `Store` rather than a record, so a tool builds from a directory as readily as from an overlay and has no reason to know layering exists.
+`build` takes a `Record` rather than a record, so a tool builds from a directory as readily as from an overlay and has no reason to know layering exists.
 
 A tool's `verify` catches what the record layer cannot: a component type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks the framework's constant-versus-varying split.
 It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by `order_key`, and where a curve is either translated or reported unbuildable.
@@ -962,19 +1019,19 @@ The target, once the split below is done:
 ```
 datarecord/                     # the standalone concept
 ├── schema.py                   # Dimension, AttributeSpec, Schema
-├── store.py                    # Store, Frames, LazyFrames, Flags
-├── directory.py                # DirectoryStore
-├── mutable.py                  # MutableStore, the edit/commit path
-├── layered/                    # LayeredStore and its resolution
-│   ├── record.py               # the node tree
+├── record.py                   # Record, Frames, LazyFrames, Flags
+├── directory.py                # DirectoryRecord
+├── mutable.py                  # WorkingRecord, the edit/commit path
+├── layered/                    # LayeredRecord and its resolution
+│   ├── revision.py             # Revision, the node tree
 │   ├── resolve.py              # owner-map fold
-│   └── write.py                # write_layer
+│   └── write.py                # write_record
 └── duck.py                     # connection setup, path derivation
 ```
 
 §1's "depends on `duckdb`, `narwhals` and `pydantic`, and on nothing else" is achieved at this layer — `datarecord/tools/` is where a framework-specific tool lives instead (below), and nothing under it is imported by the package's own `__init__.py`.
 
-The protocol lives with its implementations rather than with any one consumer, because there are several: `write_layer` consumes a `Store`, a tool both implements and consumes one, and `MutableStore` satisfies it.
+The protocol lives with its implementations rather than with any one consumer, because there are several: `write_record` consumes a `Record`, a tool both implements and consumes one, and `WorkingRecord` satisfies it.
 
 A tool lives outside this core, under `datarecord/tools/<name>.py` — one module per modelling framework, imported explicitly (`from datarecord.tools.pypsa import PyPSA`) rather than through `datarecord.tools` itself, which imports none of them.
 What decides the side is one question: **does it name a modelling framework?** Nothing in `datarecord`'s core may.
@@ -998,7 +1055,12 @@ The dependency runs strictly one way, so importing the record layer pulls in no 
 - **Whether `partial` should ever be per attribute.** §5.5 puts it on the axis because it is true of every attribute varying over that axis.
   A counter-example would be an attribute whose series a consumer _can_ accept in pieces while others cannot — none known, and permitting it would make the fold's key vary per attribute, which the fixed inputs key assumes it does not.
 
-- **Whether a `MutableStore` over an open record stages against a snapshot.** Writing into an open record invalidates its owner-map cache.
+- **Whether staged results should be invalidated by a later input edit.** Results attached through `set(..., kind="outputs")` (§11.3.1) were computed from the inputs pending at that moment, so editing an input afterwards leaves them describing a record that no longer exists.
+  Dropping them on the next input edit was considered and rejected: it silently discards work the caller may have wanted, and a store that guesses which of the two the caller meant to keep is worse than one that keeps both and says so.
+  Coherence is the caller's business, and a commit writes whatever is staged.
+  If this bites in practice, a `pending`-level warning is the cheap next step rather than a silent truncation.
+
+- **Whether a `WorkingRecord` over an open record stages against a snapshot.** Writing into an open record invalidates its owner-map cache.
   A mutable store would need the same invalidation per edit, or to stage against a snapshot taken at construction.
   The second is simpler and arguably more correct — an edit sequence should not see another writer's changes mid-flight — but it means a store can go stale.
 

@@ -1,6 +1,6 @@
 """Editing a store: staged edits, materialised on commit (design doc §11).
 
-What `Store` (read-only) and `write_layer` (a whole store at once) do not
+What `Record` (read-only) and `write_record` (a whole store at once) do not
 cover. Accumulate-then-commit: an edit costs a row in a staging table rather
 than a rewrite, and nothing touches the store until `commit()`.
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 import itertools
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 import narwhals as nw
@@ -21,8 +21,8 @@ from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all, fn, union_all_by_name
+from datarecord.record import EMPTY, Flags, Frames, LazyFrames, Record
 from datarecord.schema import Schema
-from datarecord.store import EMPTY, Flags, Frames, LazyFrames, Store
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
@@ -38,7 +38,7 @@ class NewChild:
     Only the edits are written; the fold resolves the rest from the parent.
     """
 
-    record: Any  # a DataRecord; typed loosely to keep this module import-free
+    record: Any  # a Revision; typed loosely to keep this module import-free
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ Target = NewChild | Directory
 
 @dataclass(frozen=True)
 class Pending:
-    """What a `MutableStore` would write, without writing it (§11.6).
+    """What a `WorkingRecord` would write, without writing it (§11.6).
 
     A derived summary, not a second place rows live: a `GROUP BY` over the
     staging tables, computed on access and discarded.
@@ -88,7 +88,7 @@ def _as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelati
 
     A DuckDB-backed frame is already a plan, so it passes straight through; any
     other backend is collected to arrow and re-registered, which is the same
-    boundary `write_layer` crosses (§4.2).
+    boundary `write_record` crosses (§4.2).
     """
     native = frame.to_native()
     if isinstance(native, DuckDBPyRelation):
@@ -227,10 +227,10 @@ def normalise_value(
 
 @dataclass(frozen=True)
 class _Written:
-    """One reading of a `MutableStore`, as the `Store` `write_layer` consumes.
+    """One reading of a `WorkingRecord`, as the `Record` `write_record` consumes.
 
     Commit needs two different stores out of one staging area - `NewChild` the
-    edits alone, `Directory` the resolved result - so this holds whichever four
+    edits alone, `Directory` the resolved result - so this holds whichever
     frame mappings the caller chose (§11.7).
     """
 
@@ -239,9 +239,12 @@ class _Written:
     components: Frames
     connections: Frames
     attributes: Frames
+    # `default_factory` because `EMPTY` is a `LazyFrames` instance, which
+    # `dataclass` reads as a mutable default even though it never mutates.
+    outputs: Frames = field(default_factory=lambda: EMPTY)
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Never consulted: `write_layer` persists frames, not flags (§10)."""
+        """Never consulted: `write_record` persists frames, not flags (§10)."""
         return {}
 
 
@@ -250,19 +253,19 @@ class _Written:
 _SEQ = itertools.count(1)
 
 
-class MutableStore:
-    """A `Store` that accepts edits and materialises them on commit (§11).
+class WorkingRecord:
+    """A `Record` that accepts edits and materialises them on commit (§11).
 
-    Satisfies `Store`, and what it reads is the data *with its pending edits
+    Satisfies `Record`, and what it reads is the data *with its pending edits
     applied* (§11.10) - so an edit reads back, or the store is handed to
-    something that only knows `Store`, without committing.
+    something that only knows `Record`, without committing.
 
     Staged rows live in three connection-scoped DuckDB tables, the *only* place
     a staged row exists: `pending` counts them and the reads fold them, neither
     holding a copy (§11.9).
     """
 
-    def __init__(self, base: Store, con: DuckDBPyConnection) -> None:
+    def __init__(self, base: Record, con: DuckDBPyConnection) -> None:
         self.base = base
         self.con = con
         self._id = uuid4().hex
@@ -286,7 +289,7 @@ class MutableStore:
             return None
         return self.con.table(self._table(kind))
 
-    # -- Store, over base plus pending (§11.10) -----------------------------
+    # -- Record, over base plus pending (§11.10) -----------------------------
 
     @property
     def schema(self) -> Schema:
@@ -360,7 +363,7 @@ class MutableStore:
 
         `component_type` and `deleted` are supplied whatever the base carried:
         a resolved frame drops them (the type is the key it was looked up by)
-        while `write_layer` needs them back, so one shape serves both.
+        while `write_record` needs them back, so one shape serves both.
         """
         drop = ("component_type", "deleted")
         b = (
@@ -444,7 +447,7 @@ class MutableStore:
                 _null_safe_on(dict.fromkeys(fixed)),
                 *(
                     col("s", d).isnull()
-                    | sql(f'{col("s", d)} IS NOT DISTINCT FROM {col("b", d)}')
+                    | sql(f"{col('s', d)} IS NOT DISTINCT FROM {col('b', d)}")
                     for d in broadcast
                 ),
             ]
@@ -539,8 +542,33 @@ class MutableStore:
 
     @property
     def outputs(self) -> Frames:
-        """Never: an edit changes the inputs a result was computed from (§11.7)."""
-        return EMPTY
+        """Staged results, keyed by attribute - what a tool handed back (§11.2).
+
+        Results reach a store through `set(..., kind="outputs")`, so a tool can
+        solve against this store's pending inputs and attach what it computed
+        without committing first. The base's results are *not* included: they
+        were computed from inputs these edits may have changed, and results do
+        not overlay (§9.4), so what is staged is the whole answer.
+
+        Keeping them coherent with the inputs is the caller's business - editing
+        an input after attaching results leaves results describing a record that
+        no longer exists, and nothing here silently discards them.
+        """
+        rel = self._rows("outputs")
+        if rel is None:
+            return EMPTY
+        names = tuple(
+            r[0]
+            for r in rel.project("attribute").distinct().order("attribute").fetchall()
+        )
+        return LazyFrames(
+            names,
+            lambda attr: nw.from_native(
+                rel.filter(col("attribute") == lit(attr)).project(
+                    *self._typed_value(attr)
+                )
+            ),
+        )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
         """Base flags unioned with what the staged rows use (§11.10)."""
@@ -617,19 +645,36 @@ class MutableStore:
             raise KeyError(msg)
 
     def _validate_edit(
-        self, ctype: str, attribute: str, dims: Mapping[str, Any]
+        self,
+        ctype: str,
+        attribute: str,
+        dims: Mapping[str, Any],
+        *,
+        kind: str = "inputs",
     ) -> None:
-        """Edit-level checks, at stage time rather than at commit (§11.8)."""
+        """Edit-level checks, at stage time rather than at commit (§11.8).
+
+        The dim vocabulary is checked for either `kind`. The *attribute* is only
+        checked for inputs: a result attribute is not schema-declared at all -
+        `Tool.results` derives which attributes count as results from the
+        framework's own registry, and `write_record` persists `outputs/` without
+        consulting the schema (§9.4, §12). So an unknown attribute name is an
+        error for an input and simply unknowable for a result.
+        """
+        unknown = sorted(set(dims) - set(self.schema.dims))
+        if unknown:
+            msg = f"the schema declares no dims {unknown}"
+            raise KeyError(msg)
+
+        if kind == "outputs":
+            return
+
         declared = self.schema.attributes.get(ctype)
         if declared is None:
             msg = f"the schema declares no component type {ctype!r}"
             raise KeyError(msg)
         if attribute not in declared:
             msg = f"the schema declares no {ctype}.{attribute!r}"
-            raise KeyError(msg)
-        unknown = sorted(set(dims) - set(self.schema.dims))
-        if unknown:
-            msg = f"the schema declares no dims {unknown}"
             raise KeyError(msg)
         spec = declared[attribute]
         outside = sorted(set(dims) - spec.dims)
@@ -642,25 +687,76 @@ class MutableStore:
 
     def set(
         self,
-        ctype: str,
         attribute: str,
         value: Any,
         *,
+        component_type: str | None = None,
         names: Sequence[str] | None = None,
         bus: str | None = None,
+        kind: Literal["inputs", "outputs"] = "inputs",
         **dims: Any,
     ) -> None:
-        """Stage an attribute value for a group of components (§11.2)."""
-        self._validate_edit(ctype, attribute, dims)
-        if _is_frame(value) and _series_index(value) is None:
-            # A frame supplies its own keys (§11.2), but the §11.8 check applies
-            # the same way: a name no layer declares resolves to nothing, and a
-            # caller should learn that here rather than at read time.
+        """Stage an attribute value for a group of components (§11.2).
+
+        `value` takes five forms: a scalar broadcast to every name, a sequence
+        aligned positionally to `names`, a mapping keyed by name, a long frame
+        supplying its own keys, and a narwhals expression - which is a *function
+        of the current value* rather than a value, so it reads before it stages
+        and two such calls compose (§11.3).
+
+        `component_type` may be omitted only for a long frame that carries a
+        `component_type` column, which is then authoritative - so one frame
+        spanning several types stages each row under its own (§11.2). Every
+        other form needs it: a scalar is stamped onto rows this call invents,
+        and `names=None` resolves against one type's members. A frame without
+        the column gets `component_type` added.
+
+        `kind` names the destination in the format's own terms (§11.1):
+        `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a
+        tool hands results back. Results use the same long schema; what differs
+        is that they do not overlay (§9.4).
+
+        Two checks are skipped for `"outputs"`, both because a result is not a
+        value the schema governs: the attribute need not be declared, and a
+        result's `name` need not resolve to a declared member. A solve may
+        produce rows for a component type it derived rather than read - PyPSA's
+        `SubNetwork` is one - and rejecting those would refuse a legitimate
+        result. An *input* for an undeclared name stays an error (§11.8).
+        """
+        is_long_frame = _is_frame(value) and _series_index(value) is None
+        if is_long_frame:
             lazy = nw.from_native(value).lazy()
-            if "name" in lazy.collect_schema().names():
-                named = lazy.select("name").unique("name").collect()
-                self._require_names(ctype, [str(n) for n in named["name"].to_list()])
-            self._stage_long(ctype, attribute, value, bus)
+            columns = lazy.collect_schema().names()
+            if component_type is None and "component_type" not in columns:
+                msg = (
+                    f"`set({attribute!r}, <frame>)` needs `component_type`, either "
+                    f"as a column of the frame or as the keyword"
+                )
+                raise ValueError(msg)
+            # The frame's own column wins where it has one: a results frame
+            # spans types, and §11.2's "a frame supplies its own keys" covers
+            # `component_type` no less than `name`.
+            if "component_type" not in columns:
+                lazy = lazy.with_columns(component_type=nw.lit(component_type))
+            self._validate_long(lazy, attribute, dims, kind=kind)
+            if kind == "inputs":
+                self._require_frame_names(lazy)
+            self._stage_long(attribute, lazy, bus, kind)
+            return
+
+        if component_type is None:
+            msg = (
+                f"`set({attribute!r}, ...)` needs `component_type`; only a long "
+                f"frame carrying a `component_type` column may omit it"
+            )
+            raise ValueError(msg)
+        ctype = component_type
+
+        self._validate_edit(ctype, attribute, dims, kind=kind)
+        if isinstance(value, nw.Expr):
+            self._stage_derived(
+                ctype, attribute, value, names=names, bus=bus, kind=kind, **dims
+            )
             return
 
         target = list(names) if names is not None else self._resolved_names(ctype)
@@ -669,10 +765,11 @@ class MutableStore:
             keys = target
             if len(values) == 1 and len(keys) > 1:
                 values = values * len(keys)
-        self._require_names(ctype, keys)
+        if kind == "inputs":
+            self._require_names(ctype, keys)
 
         seq = next(_SEQ)
-        table = self._ensure("inputs")
+        table = self._ensure(kind)
         cols = ("component_type", "name", "bus", "attribute", "breakpoint", "value")
         dim_cols = tuple(self.schema.dims)
         placeholders = ", ".join(["?"] * (len(cols) + len(dim_cols) + 1))
@@ -695,13 +792,46 @@ class MutableStore:
                 )
         self.con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", rows)
 
-    def _stage_long(
-        self, ctype: str, attribute: str, frame: Any, bus: str | None
+    def _validate_long(
+        self,
+        lazy: nw.LazyFrame,
+        attribute: str,
+        dims: Mapping[str, Any],
+        *,
+        kind: str,
     ) -> None:
-        """Stage a long frame that supplies its own keys (§11.2)."""
-        lazy = nw.from_native(frame).lazy()
+        """`_validate_edit` for every component type a long frame carries (§11.8)."""
+        types = lazy.select("component_type").unique("component_type").collect()
+        for ctype in types["component_type"].to_list():
+            self._validate_edit(str(ctype), attribute, dims, kind=kind)
+
+    def _require_frame_names(self, lazy: nw.LazyFrame) -> None:
+        """`_require_names` per component type the frame carries (§11.8)."""
+        if "name" not in lazy.collect_schema().names():
+            return
+        pairs = (
+            lazy.select("component_type", "name")
+            .unique(["component_type", "name"])
+            .collect()
+        )
+        by_type: dict[str, list[str]] = {}
+        for ctype, name in zip(
+            pairs["component_type"].to_list(), pairs["name"].to_list(), strict=True
+        ):
+            by_type.setdefault(str(ctype), []).append(str(name))
+        for ctype, names in by_type.items():
+            self._require_names(ctype, names)
+
+    def _stage_long(
+        self, attribute: str, lazy: nw.LazyFrame, bus: str | None, kind: str
+    ) -> None:
+        """Stage a long frame that supplies its own keys (§11.2).
+
+        `component_type` is read from the frame, which `set` has ensured carries
+        it - so a frame spanning several types stages each row under its own.
+        """
         _in_long = lazy.to_native()  # noqa: F841 - referenced by name below
-        table = self._ensure("inputs")
+        table = self._ensure(kind)
         # A dim the frame does not carry is NULL - "every value of it" (§3.3) -
         # typed as the schema declares it, so the insert matches the staging
         # table's column type rather than relying on a VARCHAR coercion.
@@ -711,15 +841,15 @@ class MutableStore:
             for d in self.schema.dims
         )
         self.con.execute(
-            f"INSERT INTO {table} SELECT ? AS component_type, name, "
+            f"INSERT INTO {table} SELECT component_type, name, "
             f"? AS bus, ? AS attribute, "
             f"NULL::DOUBLE AS breakpoint, "
             f"value::VARCHAR AS value, {dim_cols}, ? "
             f"FROM _in_long",
-            [ctype, bus, attribute, next(_SEQ)],
+            [bus, attribute, next(_SEQ)],
         )
 
-    def update(
+    def _stage_derived(
         self,
         ctype: str,
         attribute: str,
@@ -727,31 +857,67 @@ class MutableStore:
         *,
         names: Sequence[str] | None = None,
         bus: str | None = None,
+        kind: str = "inputs",
         **dims: Any,
     ) -> None:
-        """Stage a value derived from the current one (§11.3).
+        """Stage a value derived from the current one - the `Expr` form (§11.3).
 
         Reads before it stages, so what it derives from is the resolved value
-        *including earlier pending edits* - two `update`s compose. What is
-        staged is the result, not the expression.
-        """
-        self._validate_edit(ctype, attribute, dims)
-        frame = self.attributes[attribute].filter(nw.col("component_type") == ctype)
-        if names is not None:
-            frame = frame.filter(nw.col("name").is_in(list(names)))
-        for dim, value in dims.items():
-            frame = frame.filter(nw.col(dim) == value)
-        derived = frame.with_columns(expr.alias("value"))
-        self._stage_resolved(derived)
+        *including earlier pending edits*, and two such calls compose. What is
+        staged is the result, never the expression, so a committed layer holds
+        ordinary rows and nothing records that a value was derived.
 
-    def _stage_resolved(self, frame: nw.LazyFrame) -> None:
+        On a layered base the read is a fold, so this is the one edit whose cost
+        scales with the ancestry rather than with the rows written.
+        """
+        source = self.outputs if kind == "outputs" else self.attributes
+        if attribute not in source:
+            frame = None
+        else:
+            frame = source[attribute].filter(nw.col("component_type") == ctype)
+            if names is not None:
+                if kind == "inputs":
+                    self._require_names(ctype, list(names))
+                frame = frame.filter(nw.col("name").is_in(list(names)))
+            if bus is not None:
+                frame = frame.filter(nw.col("bus") == bus)
+            for dim, value in dims.items():
+                frame = frame.filter(nw.col(dim) == value)
+
+        # A named target that resolves to no row is a failed change, not a
+        # no-op: the caller asked for these rows to take a new value and there
+        # is nothing to derive one from. With `names=None` and no scope the
+        # instruction is "whatever resolves", so an empty result is an answer.
+        if names is not None or dims or bus is not None:
+            if frame is None or frame.select("name").collect().is_empty():
+                scope = ", ".join(
+                    filter(
+                        None,
+                        [
+                            f"names={list(names)}" if names is not None else "",
+                            f"bus={bus!r}" if bus is not None else "",
+                            *(f"{d}={v!r}" for d, v in dims.items()),
+                        ],
+                    )
+                )
+                msg = (
+                    f"no {ctype}.{attribute} rows resolve for {scope}, so there is "
+                    f"no current value to derive from; `set` a value directly to "
+                    f"create one (§11.3)"
+                )
+                raise KeyError(msg)
+        if frame is None:
+            return
+        self._stage_resolved(frame.with_columns(expr.alias("value")), kind)
+
+    def _stage_resolved(self, frame: nw.LazyFrame, kind: str = "inputs") -> None:
         """Stage an already-long frame carrying every key column.
 
         `value` is cast to text on the way in, since the staging table holds
         every attribute's values in one column (`_input_columns`).
         """
         _upd = frame.to_native()  # noqa: F841 - bound by replacement scan below
-        table = self._ensure("inputs")
+        table = self._ensure(kind)
         cols = ", ".join(
             '"value"::VARCHAR AS "value"' if c == "value" else f'"{c}"'
             for c in (
@@ -830,11 +996,15 @@ class MutableStore:
             {"ctype": ctype},
         )
         for attribute in varying:
+            # Always `inputs`: `add` declares components, and a component's
+            # attribute values are inputs whatever a later solve produces.
             self._stage_long(
-                ctype,
                 attribute,
-                lazy.select("name", nw.col(attribute).alias("value")),
+                lazy.select("name", nw.col(attribute).alias("value")).with_columns(
+                    component_type=nw.lit(ctype)
+                ),
                 None,
+                "inputs",
             )
         # `bus` names the connection itself rather than being an attribute of
         # one, so it becomes the connection row; any other port attribute
@@ -1061,7 +1231,7 @@ class MutableStore:
         return LazyFrames(names, frame)
 
     def _writable_entities(self, kind: str) -> Frames:
-        """The resolved entity frames, in the shape `write_layer` persists.
+        """The resolved entity frames, in the shape `write_record` persists.
 
         A resolved frame drops `component_type` (the type is the key it was
         looked up by) while a layer's file carries it (§3.1), so it is added
@@ -1085,12 +1255,16 @@ class MutableStore:
             components=self._staged_entities("components"),
             connections=self._staged_entities("connections"),
             attributes=self._staged_attributes(),
+            # No `_restated` counterpart: results are complete as produced, never
+            # a partial override of a parent's, so there is nothing to carry
+            # forward from the base (§5.5, §9.4).
+            outputs=self.outputs,
         )
 
     def flattened(self) -> _Written:
         """The staged rows over what the store already reads (§11.7).
 
-        `attributes` is this store's own, since a `MutableStore` already reads
+        `attributes` is this store's own, since a `WorkingRecord` already reads
         the base with its pending edits applied (§11.10) - which is exactly the
         flattened result.
         """
@@ -1100,6 +1274,7 @@ class MutableStore:
             components=self._writable_entities("components"),
             connections=self._writable_entities("connections"),
             attributes=self.attributes,
+            outputs=self.outputs,
         )
 
     def commit(self, target: Target) -> Any:
@@ -1111,14 +1286,14 @@ class MutableStore:
         just wrote without going back to the record table; `None` for a
         `Directory`, which belongs to no record.
         """
-        from datarecord.layered.write import write_layer  # circular at module level
+        from datarecord.layered.write import write_record  # circular at module level
 
         if isinstance(target, NewChild):
             child = target.record.child()
-            write_layer(child.id, self.staged_only(), self.con)
+            write_record(child.id, self.staged_only(), self.con)
             self.rollback()
             return child
-        write_layer(None, self.flattened(), self.con, uri=target.uri)
+        write_record(None, self.flattened(), self.con, uri=target.uri)
         self.rollback()
         return None
 
@@ -1152,6 +1327,10 @@ def _connection_columns(schema: Schema) -> str:
 
 _COLUMNS = {
     "inputs": _input_columns,
+    # `outputs/` uses the same long schema as `inputs/`; what differs is that it
+    # does not overlay, which is a read-path property rather than a shape one
+    # (§9.4). So the staging DDL is shared.
+    "outputs": _input_columns,
     "components": _component_columns,
     "connections": _connection_columns,
 }

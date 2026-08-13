@@ -5,10 +5,11 @@ What `partial` and `keys` *mean* as declarations is pinned in
 whether it keyed by them.
 """
 
-from datarecord import DataRecord
+from datarecord import Revision
 from datarecord.duck import layer_dir
 from tests.fixtures import (
     export_network,
+    relation,
     schema,
     tombstone,
     write_input,
@@ -19,7 +20,7 @@ from tests.fixtures import (
 
 def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     """With `period` `partial`, a child may replace one period only."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     write_schema(
         schema(partial={"scenario", "period"}, keys={"scenario": {"component"}})
@@ -47,7 +48,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     owners = dict(zip(wind["period"], wind["layer_uuid"], strict=False))
     assert owners.get(2030) == child.id
 
-    rel = child.relation("p_max_pu").df()
+    rel = relation(child, "p_max_pu").df()
     wind_rows = rel[rel["name"] == "Manchester Wind"]
     overridden = wind_rows[wind_rows["period"] == 2030]
     assert set(overridden["value"]) == {0.42}
@@ -59,7 +60,7 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     `period` is `partial` but keys nothing, so it never reaches the
     components map's key - which is what makes the tombstone unscoped.
     """
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     write_schema(schema(partial={"period"}, keys={}))
     record.materialise()
@@ -79,7 +80,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     is its own, so the union must still be `UNION ALL BY NAME`. Positional
     would swap `scenario` and `period` here, which the values below would show.
     """
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     export_network(ac_dc, record, con)
     write_schema(
         schema(partial={"scenario", "period"}, keys={"scenario": {"component"}})
@@ -133,7 +134,7 @@ def test_a_nested_axis_keeps_a_label_per_parent(con, base_uri):
     names nothing once the axis is nested, so folding by the label would
     collapse them into one row.
     """
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN))
     write_snapshots(
         layer_dir(record.id),
@@ -156,7 +157,7 @@ def test_a_child_overrides_one_nested_point(con, base_uri):
     A child restating one period's hour leaves the other period's identically
     labelled hour to the parent.
     """
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN))
     write_snapshots(
         layer_dir(record.id),

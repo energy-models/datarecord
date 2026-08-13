@@ -1,17 +1,17 @@
-"""`Store` over an overlay and over a directory (design doc §9.3)."""
+"""`Record` over an overlay and over a directory (design doc §9.3)."""
 
 from dataclasses import dataclass
 
 import narwhals as nw
 import pytest
 
-from datarecord import DataRecord
-from datarecord.directory import DirectoryStore
-from datarecord.duck import layer_dir, node_dir
-from datarecord.layered.record import LayeredStore
-from datarecord.layered.write import write_layer
+from datarecord import Revision
+from datarecord.directory import DirectoryRecord
+from datarecord.duck import layer_dir, resolved_dir
+from datarecord.layered.revision import LayeredRecord
+from datarecord.layered.write import write_record
+from datarecord.record import EMPTY, Flags, Frames, Record
 from datarecord.schema import Schema
-from datarecord.store import Flags, Frames, Solved, Store
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import schema, write_components, write_input, write_schema
 
@@ -21,16 +21,16 @@ MEMBERS = ("dims", "components", "connections", "attributes")
 @pytest.fixture
 def written(con, base_uri, ac_dc):
     """A record whose layer blocks wrote, so both backings can read the same store."""
-    record = DataRecord.create(con)
-    write_layer(record.id, PyPSA.to_datarecord(ac_dc), con)
+    record = Revision.create(con)
+    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
     return record
 
 
 @pytest.fixture
 def both(written, con):
     return (
-        LayeredStore(written.node_cache),
-        DirectoryStore(layer_dir(written.id), con),
+        LayeredRecord(written.node_cache),
+        DirectoryRecord(layer_dir(written.id), con),
     )
 
 
@@ -40,12 +40,12 @@ def both(written, con):
 def test_both_backings_satisfy_the_protocol(both):
     """Structural conformance, so a consumer cannot tell which it holds (§9.3)."""
     for store in both:
-        assert isinstance(store, Store)
+        assert isinstance(store, Record)
 
 
 def test_a_network_source_is_a_store(ac_dc):
     """`to_datarecord` returns one too, which is what puts read and write on one seam."""
-    assert isinstance(PyPSA.to_datarecord(ac_dc), Store)
+    assert isinstance(PyPSA.to_datarecord(ac_dc), Record)
 
 
 def test_a_plain_dict_backed_store_satisfies_the_protocol(con):
@@ -78,28 +78,30 @@ def test_a_plain_dict_backed_store_satisfies_the_protocol(con):
         components: Frames
         connections: Frames
         attributes: Frames
+        outputs: Frames
 
         def flags(self, ctype: str) -> dict[str, Flags]:
             return {}
 
-    store = DictStore(schema(), {}, {"Generator": members}, {}, {"p_nom": long})
-    assert isinstance(store, Store)
-    # No results, so not `Solved` - and a `Store` need not carry them (§8).
-    assert not isinstance(store, Solved)
+    store = DictStore(schema(), {}, {"Generator": members}, {}, {"p_nom": long}, EMPTY)
+    assert isinstance(store, Record)
+    # Results absent, spelled as an empty mapping rather than a protocol a
+    # consumer has to test for (§4).
+    assert list(store.outputs) == []
     assert store.attributes["p_nom"].implementation == nw.Implementation.DUCKDB
 
-    # And `write_layer` consumes it, which is the point of widening the type:
+    # And `write_record` consumes it, which is the point of widening the type:
     # it iterates and looks up, both of which a `dict` answers.
-    record = DataRecord.create(con)
-    write_layer(record.id, store, con)
-    assert "p_nom" in DirectoryStore(layer_dir(record.id), con).attributes
+    record = Revision.create(con)
+    write_record(record.id, store, con)
+    assert "p_nom" in DirectoryRecord(layer_dir(record.id), con).attributes
 
 
 def test_record_exposes_its_store(written):
     """`record.store` is the entry point; `node_cache` stays the DuckDB view."""
     store = written.store
-    assert isinstance(store, Store)
-    assert isinstance(store, LayeredStore)
+    assert isinstance(store, Record)
+    assert isinstance(store, LayeredRecord)
     assert store.node_cache is written.node_cache
 
 
@@ -153,7 +155,7 @@ def test_keys_list_without_building(both):
 
 def test_flags_are_per_component_type(con, base_uri):
     """One file, two types, different shapes - OR-ing across them would lose both."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, "Generator", [{"name": "wind"}])
@@ -169,7 +171,7 @@ def test_flags_are_per_component_type(con, base_uri):
         + [{"component_type": "Link", "name": "dc", "value": 1.0}],
     )
 
-    for store in (LayeredStore(record.node_cache), DirectoryStore(layer, con)):
+    for store in (LayeredRecord(record.node_cache), DirectoryRecord(layer, con)):
         generator = store.flags("Generator")["p_max_pu"]
         link = store.flags("Link")["p_max_pu"]
         # The Generator's rows set `snapshot`; the Link's leaves it NULL. Naming
@@ -190,7 +192,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     what it is: no row mentions it.
     """
     narrow = {"snapshot": "TIMESTAMP", "period": "BIGINT"}
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema(dims=narrow, keys={}, partial=set()))
     write_components(layer, "Generator", [{"name": "wind"}])
@@ -205,14 +207,14 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     record.materialise()
     # The map on disk knows nothing of `scenario` - without that this test
     # would pass whatever the flags' layout.
-    uri = f"{node_dir(record.id)}owner_map/inputs.parquet"
+    uri = f"{resolved_dir(record.id)}owner_map/inputs.parquet"
     persisted = con.sql(f"SELECT varies FROM read_parquet('{uri}')")
     assert "scenario" not in str(persisted.types[0])
 
     # The dim arrives after the map is on disk.
     write_schema(schema(dims={**narrow, "scenario": "VARCHAR"}, keys={}, partial=set()))
     child = record.child()
-    flags = LayeredStore(child.node_cache).flags("Generator")["p_max_pu"]
+    flags = LayeredRecord(child.node_cache).flags("Generator")["p_max_pu"]
     assert "snapshot" in flags.varies
     assert "scenario" not in flags.varies
     assert "scenario" not in flags.broadcast
@@ -225,7 +227,7 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
     containers are needed, and both sets holding `snapshot` is what says so -
     the constant pass takes the NULL-snapshot rows, the series pass the rest.
     """
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, "Generator", [{"name": "wind"}, {"name": "gas"}])
@@ -239,7 +241,7 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
         + [{"component_type": "Generator", "name": "gas", "value": 1.0}],
     )
 
-    for store in (LayeredStore(record.node_cache), DirectoryStore(layer, con)):
+    for store in (LayeredRecord(record.node_cache), DirectoryRecord(layer, con)):
         combined = store.flags("Generator")["p_max_pu"]
         assert "snapshot" in combined.varies
         assert "snapshot" in combined.broadcast
@@ -247,7 +249,7 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
 
 def test_flags_report_a_curve(con, base_uri):
     """`breakpoints` distinguishes a curve from a scalar, from either backing (§2)."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, "Process", [{"name": "steel"}])
@@ -260,7 +262,7 @@ def test_flags_report_a_curve(con, base_uri):
         ],
     )
 
-    for store in (LayeredStore(record.node_cache), DirectoryStore(layer, con)):
+    for store in (LayeredRecord(record.node_cache), DirectoryRecord(layer, con)):
         assert store.flags("Process")["marginal_cost"].breakpoints
 
 
@@ -269,8 +271,8 @@ def test_flags_report_a_curve(con, base_uri):
 
 def test_node_store_resolves_the_overlay(con, base_uri, ac_dc):
     """The point of two backings: one reads a layer, the other the resolution."""
-    root = DataRecord.create(con)
-    write_layer(root.id, PyPSA.to_datarecord(ac_dc), con)
+    root = Revision.create(con)
+    write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
     root.materialise()
 
     child = root.child()
@@ -280,8 +282,8 @@ def test_node_store_resolves_the_overlay(con, base_uri, ac_dc):
         [{"component_type": "Generator", "name": "Manchester Gas", "value": 0.1}],
     )
 
-    overlay = LayeredStore(child.node_cache)
-    layer_only = DirectoryStore(layer_dir(child.id), con)
+    overlay = LayeredRecord(child.node_cache)
+    layer_only = DirectoryRecord(layer_dir(child.id), con)
 
     # The child's own layer holds one row; the resolution holds the root's too.
     assert len(layer_only.attributes["p_max_pu"].collect().to_native()) == 1
@@ -292,16 +294,16 @@ def test_node_store_resolves_the_overlay(con, base_uri, ac_dc):
 
 
 def test_node_store_orders_members(con, base_uri, ac_dc):
-    """A `Store` promises member order; for an overlay that means `order_key` (§9.3)."""
-    root = DataRecord.create(con)
-    write_layer(root.id, PyPSA.to_datarecord(ac_dc), con)
+    """A `Record` promises member order; for an overlay that means `order_key` (§9.3)."""
+    root = Revision.create(con)
+    write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
     root.materialise()
 
     child = root.child()
     write_components(layer_dir(child.id), "Generator", [{"name": "New Solar"}])
 
     names = list(
-        LayeredStore(child.node_cache)
+        LayeredRecord(child.node_cache)
         .components["Generator"]
         .collect()
         .to_native()
@@ -315,12 +317,12 @@ def test_node_store_orders_members(con, base_uri, ac_dc):
 
 
 def test_directory_store_reads_a_plain_store(con, base_uri, ac_dc, tmp_path):
-    """No record, no overlay: any parquet directory blocks wrote is a `Store`."""
-    record = DataRecord.create(con)
-    write_layer(record.id, PyPSA.to_datarecord(ac_dc), con)
+    """No record, no overlay: any parquet directory blocks wrote is a `Record`."""
+    record = Revision.create(con)
+    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
 
-    store = DirectoryStore(layer_dir(record.id), con)
-    assert isinstance(store, Store)
+    store = DirectoryRecord(layer_dir(record.id), con)
+    assert isinstance(store, Record)
     assert "Generator" in store.components
     assert "p_max_pu" in store.attributes
     assert store.schema.attributes
@@ -330,17 +332,17 @@ def test_directory_store_has_no_connections_when_none_were_written(
     con, base_uri, tmp_path
 ):
     """A store with no `dims/connections/` reads as having none, not as an error (§6)."""
-    record = DataRecord.create(con)
+    record = Revision.create(con)
     layer = layer_dir(record.id)
     write_schema(schema())
     write_components(layer, "Generator", [{"name": "wind"}])
 
-    assert list(DirectoryStore(layer, con).connections) == []
+    assert list(DirectoryRecord(layer, con).connections) == []
 
 
 def test_directory_store_reads_connections_blocks_wrote(written, con):
     """A store blocks wrote has them, with the roles the collapse assigned (§6)."""
-    store = DirectoryStore(layer_dir(written.id), con)
+    store = DirectoryRecord(layer_dir(written.id), con)
     assert "Link" in store.connections
 
     rows = store.connections["Link"].collect().to_native().to_pandas()
@@ -360,25 +362,28 @@ def test_outputs_are_empty_until_solved(both):
         assert list(store.outputs) == []
 
 
-def test_outputs_is_a_separate_protocol(both, con, base_uri):
-    """A `Store` need not carry results; a `Solved` one does (§8)."""
+def test_outputs_is_an_ordinary_store_member(both, con, base_uri):
+    """`outputs` is on `Record`; emptiness is the existence answer (§4, §9.4)."""
     node, directory = both
-    # Both backings happen to implement `outputs`, so both are `Solved` - what
-    # the split buys is that a consumer must ask rather than assume.
+    # No separate protocol to satisfy: an unsolved store answers with an empty
+    # mapping, the same way every other member answers for what it lacks.
     for store in (node, directory):
-        assert isinstance(store, Store)
-        assert isinstance(store, Solved)
+        assert isinstance(store, Record)
+        assert list(store.outputs) == []
 
 
-def test_write_layer_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc):
+def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc):
     """A source with no results produces a layer with no `outputs/` (§13)."""
     from datarecord.duck import try_read_parquet
 
     solved = PyPSA.to_datarecord(ac_dc)
-    assert isinstance(solved, Solved)
 
     class Unsolved:
-        """The same store, with the results member removed."""
+        """The same store, with the results member removed entirely.
+
+        A structural protocol means a source may simply not define `outputs`,
+        which `write_record` must read as "no results" rather than raising.
+        """
 
         schema = solved.schema
         dims = solved.dims
@@ -388,14 +393,15 @@ def test_write_layer_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc):
         flags = solved.flags
 
     source = Unsolved()
-    assert isinstance(source, Store)
-    assert not isinstance(source, Solved)
+    assert not hasattr(source, "outputs")
 
-    record = DataRecord.create(con)
-    write_layer(record.id, source, con)
+    record = Revision.create(con)
+    # Omitting `outputs` is the point: `write_record` must read an absent
+    # member as "no results" rather than raising (§4).
+    write_record(record.id, source, con)  # type: ignore[arg-type]
     layer = layer_dir(record.id)
     assert try_read_parquet(layer + "outputs/*.parquet", con) is None
-    assert "p_max_pu" in DirectoryStore(layer, con).attributes
+    assert "p_max_pu" in DirectoryRecord(layer, con).attributes
 
 
 # -- one schema per store root (§5.6) ----------------------------------------
@@ -405,7 +411,7 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
     """A connection's schema comes from *its* root, not the process default.
 
     `connect(base_uri=...)` already scopes a connection to one store - its
-    `layer_dir`/`node_dir` macros derive from that root - so the manifest
+    `layer_dir` macro derives from that root - so the manifest
     beside those layers is a property of the connection too. Two records on
     two roots therefore disagree about their dims without either being wrong.
     """
@@ -417,7 +423,7 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
         root = str(tmp_path / name)
         con = duck.connect(base_uri=root)
         write_manifest(schema(dims=dims, partial=set(dims), keys={}), root)
-        roots[name] = (root, con, DataRecord.create(con))
+        roots[name] = (root, con, Revision.create(con))
 
     (_, _, record_a), (root_b, con_b, record_b) = roots["a"], roots["b"]
     assert record_a.store.schema.dims == ("scenario",)
@@ -425,8 +431,8 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
 
     # A layer read directly needs no schema supplied either: its own directory
     # carries none (§5.6), so the connection's root answers - which is what
-    # `DirectoryStore` used to take a `declared` argument for.
-    layer = DirectoryStore(layer_dir(record_b.id, root_b), con_b)
+    # `DirectoryRecord` used to take a `declared` argument for.
+    layer = DirectoryRecord(layer_dir(record_b.id, root_b), con_b)
     assert layer.schema.dims == ("vintage",)
 
     for _, con, _ in roots.values():
