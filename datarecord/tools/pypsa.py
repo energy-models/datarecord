@@ -20,7 +20,6 @@ import numpy as np
 import pandas as pd
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
-from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from duckdb import StarExpression as star
 
@@ -314,6 +313,30 @@ def _exported(c) -> bool:
     writing them would import each row a second time on the way back.
     """
     return not c.static.empty and c.name not in c.n.standard_type_components
+
+
+def _colliding_names(n: pypsa.Network) -> frozenset[str]:
+    """Names more than one exported component type claims (§3.5, §12).
+
+    Only exported types count, since only those become member rows. Read off the
+    `name` level rather than the index: a stochastic network is keyed
+    `(scenario, name)`, and comparing tuples would read one component in two
+    scenarios as two names while missing a real collision.
+    """
+    seen: dict[str, str] = {}
+    clashing: set[str] = set()
+    for c in n.components:
+        if not _exported(c):
+            continue
+        index = c.static.index
+        names = (
+            index.get_level_values("name") if "name" in (index.names or []) else index
+        )
+        for value in names:
+            name = str(value)
+            if seen.setdefault(name, c.name) != c.name:
+                clashing.add(name)
+    return frozenset(clashing)
 
 
 # TODO(pypsa): every function below, up to `_new_network`, ports a method that
@@ -677,14 +700,12 @@ def _long_rows(
     """One attribute's long rows for one component type, in the §3 schema.
 
     `_as_long` already emits the dim columns and `value`; this adds the
-    columns the record's schema fixes and PyPSA has no notion of -
-    `component_type`, `attribute`, and the NULL `bus`/`breakpoint` that mark
-    an attribute as the component's own and a scalar (§6, §7).
+    columns the record's schema fixes and PyPSA has no notion of - `attribute`,
+    and the NULL `bus`/`breakpoint` that mark an attribute as the component's own
+    and a scalar (§6, §7). No `component_type` (§3.5).
     """
     long = _as_long(c, attribute, drop_defaults=False)
-    long = long.assign(
-        component_type=c.name, attribute=attribute, bus=None, breakpoint=None
-    )
+    long = long.assign(attribute=attribute, bus=None, breakpoint=None)
     for dim in dims:
         if dim not in long.columns:
             long[dim] = None
@@ -888,9 +909,16 @@ class PyPSATool(Tool):
                 if not (flags.varies | flags.broadcast):
                     continue
                 # Through the schema, so a renamed or computed attribute
-                # reaches the pivot below as an ordinary long relation.
-                long = self.schema.resolve(store, ctype, attr).filter(
-                    col("component_type") == lit(ctype)
+                # reaches the pivot below as an ordinary long relation. Scoped
+                # by a semi-join against `static`, this type's entity table (§3.5).
+                long = (
+                    self.schema.resolve(store, ctype, attr)
+                    .set_alias("a")
+                    .join(
+                        static.project("name").distinct().set_alias("m"),
+                        "a.name = m.name",
+                        how="semi",
+                    )
                 )
                 attributes[attr] = (long, flags)
 
@@ -903,10 +931,11 @@ class PyPSATool(Tool):
         """A solved network's result attributes in the store's long form (§9.4).
 
         Keyed by attribute, matching `outputs/<attr>.parquet`: every component
-        type's rows for one attribute are concatenated into one frame carrying
-        `component_type`, exactly as `attributes` presents `inputs/` (§3.2).
-        Which attributes count as results comes from PyPSA's registry, so an
-        upgrade that adds one is picked up.
+        type's rows for one attribute are concatenated into one frame, exactly as
+        `attributes` presents `inputs/` (§3.2). The union needs no
+        `component_type` to tell the arms apart (§3.5). Which attributes count as
+        results comes from PyPSA's registry, so an upgrade that adds one is
+        picked up.
 
         `_as_long` reshapes a solved `Network`'s in-memory containers eagerly;
         the frames are wrapped with `.lazy()` and concatenated as a plan, so the
@@ -931,7 +960,7 @@ class PyPSATool(Tool):
                     continue
                 frame = (
                     nw.from_native(long, eager_only=True)
-                    .with_columns(component_type=nw.lit(c.name), attribute=nw.lit(attr))
+                    .with_columns(attribute=nw.lit(attr))
                     .lazy()
                 )
                 per_attribute.setdefault(attr, []).append(frame)
@@ -947,7 +976,16 @@ class PyPSATool(Tool):
         `c.static`/`c.dynamic` become long rows, and `bus0`/`bus1`/`efficiency2`
         become connection rows carrying a `role` (§6). Key sets are read off the
         network, so listing unpivots nothing and a lookup only what is asked for.
+
+        Raises
+        ------
+        UnsupportedRecordError
+            If two component types share a name: PyPSA scopes names per type, a
+            record store-wide, and this reports rather than renames (§3.5, §12).
         """
+        clashing = _colliding_names(model)
+        if clashing:
+            raise UnsupportedRecordError(self.name, Requirements(names=clashing))
         return _NetworkSource(model)
 
 
@@ -1197,7 +1235,6 @@ class _NetworkSource:
             if not rows.empty:
                 frames.append(rows)
         columns = [
-            "component_type",
             "name",
             "bus",
             *dims,
@@ -1230,15 +1267,12 @@ class _NetworkSource:
                 continue
             if long.empty:
                 continue
-            long = long.assign(
-                component_type=ctype, attribute=attribute, bus=None, breakpoint=None
-            )
+            long = long.assign(attribute=attribute, bus=None, breakpoint=None)
             for dim in dims:
                 if dim not in long.columns:
                     long[dim] = None
             frames.append(long)
         columns = [
-            "component_type",
             "name",
             "bus",
             *dims,

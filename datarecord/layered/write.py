@@ -24,7 +24,8 @@ if TYPE_CHECKING:
 
 # The long schema's fixed columns (§3). `bus`/`breakpoint` are part of it, not
 # optional extensions to it: both NULL is the ordinary component-level scalar.
-_LONG_FIXED = ("component_type", "name", "bus", "attribute", "breakpoint", "value")
+# No `component_type`: an attribute row is keyed by `name` alone (§3.5).
+_LONG_FIXED = ("name", "bus", "attribute", "breakpoint", "value")
 
 
 def write_record(
@@ -111,14 +112,33 @@ def write_record(
         outputs = getattr(source, "outputs", None) or {}
         if outputs:
             kinds.append(("outputs", outputs, "outputs"))
+        # Each type's names, to check store-wide uniqueness once every component
+        # frame has been seen (§3.5). Collected to one backend because a `Record`
+        # may hand over a DuckDB frame for one type and a pandas one for another,
+        # and `nw.concat` takes a single backend.
+        tagged: list[nw.LazyFrame] = []
         for kind, frames, subdir in kinds:
             for key in frames:
                 frame = frames[key]  # looked up exactly once (§10)
                 _validate_frame(frame, kind, key, schema)
+                if kind == "components":
+                    tagged.append(
+                        frame.select("name")
+                        .collect(backend="pyarrow")
+                        .lazy()
+                        # Cast after collecting: DuckDB lands `name` as arrow
+                        # `large_string` where pandas gives `string`, and concat
+                        # compares arrow schemas.
+                        .select(
+                            nw.col("name").cast(nw.String()),
+                            component_type=nw.lit(key).cast(nw.String()),
+                        )
+                    )
                 name = f"{key}s" if kind == "dims" else key
                 _write_frame(
                     frame, f"{staging}{subdir}/{name}.parquet", con, local, schema
                 )
+        _require_unique(tagged)
     except BaseException:
         if local:
             shutil.rmtree(staging, ignore_errors=True)
@@ -192,6 +212,56 @@ def _typed(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
         for c in rel.columns
     )
     return rel.project(cols)
+
+
+def _require_unique(tagged: list[nw.LazyFrame]) -> None:
+    """Reject a store whose component types share a name (§3.5).
+
+    Unlike `_validate_frame`'s checks this reads the rows, uniqueness being a
+    property of the data. A tombstone still occupies the name, so `deleted` is
+    not filtered out.
+
+    Parameters
+    ----------
+    tagged
+        One frame per component type, each `(name, component_type)`, on a common
+        backend so `nw.concat` accepts them.
+
+    Raises
+    ------
+    ValueError
+        Naming each clashing name and the types claiming it.
+    """
+    if len(tagged) < 2:  # nothing to collide with
+        return
+    pairs = nw.concat(tagged, how="vertical").unique(["name", "component_type"])
+    clashing = pairs.join(
+        pairs.group_by("name")
+        .agg(nw.col("component_type").n_unique().alias("_types"))
+        .filter(nw.col("_types") > 1)
+        .select("name"),
+        on="name",
+        how="inner",
+    ).collect()
+    if not clashing.is_empty():
+        by_name: dict[str, list[str]] = {}
+        for name, ctype in zip(
+            clashing["name"].to_list(),
+            clashing["component_type"].to_list(),
+            strict=True,
+        ):
+            by_name.setdefault(str(name), []).append(str(ctype))
+        # Sorted here rather than in the query: the message must be
+        # deterministic, and this is a handful of rows.
+        detail = "; ".join(
+            f"{n!r} is a {' and a '.join(sorted(t))}"
+            for n, t in sorted(by_name.items())
+        )
+        msg = (
+            f"component types reuse names: {detail}; a name identifies one "
+            f"component across every type (§3.5)"
+        )
+        raise ValueError(msg)
 
 
 def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) -> None:

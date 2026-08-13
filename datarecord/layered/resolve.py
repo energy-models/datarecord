@@ -232,10 +232,10 @@ def _deleted_relation(
     con: DuckDBPyConnection,
     *,
     subdir: str = "components",
-    fixed: tuple[str, ...] = ("component_type", "name"),
+    fixed: tuple[str, ...] = ("name",),
     dims: tuple[str, ...] | None = None,
 ) -> DuckDBPyRelation:
-    """This layer's tombstones of one kind (§8.3, §6).
+    """This layer's tombstones of one kind, keyed as the map they filter (§8.3, §6).
 
     Parameters
     ----------
@@ -288,7 +288,7 @@ def _component_deleted_for_connections(
         d for d in keys.schema.component_dims if d not in keys.schema.connection_dims
     ]:
         return deleted
-    shared = ("component_type", "name", *keys.schema.connection_dims)
+    shared = ("name", *keys.schema.connection_dims)
     return deleted.project(*(col(c) for c in shared)).distinct()
 
 
@@ -301,7 +301,7 @@ def _connection_deleted(
         keys,
         con,
         subdir="connections",
-        fixed=("component_type", "name", "bus"),
+        fixed=("name", "bus"),
         dims=keys.schema.connection_dims,
     )
 
@@ -388,7 +388,6 @@ def fold_inputs(
         # - whether a row set the dim or left it NULL - so they cannot be read
         # off the expanded value, which is never NULL once broadcast (§4.3).
         tagged = rel.project(
-            col("i", "component_type"),
             col("i", "name"),
             col("i", "bus"),
             *(expr.alias(d) for d, expr in dims.items()),
@@ -473,11 +472,11 @@ def fold_connections(
         key=keys.schema.connection_key,
         columns=keys.schema.connection_columns,
         dims=keys.schema.connection_dims,
-        fixed=("component_type", "name", "bus"),
+        fixed=("name", "bus"),
         # Keyed as the connections map is: `component_dims` may declare more,
         # and `_component_deleted_for_connections` resolves that excess.
         also_deleted=_component_deleted_for_connections,
-        also_deleted_key=("component_type", "name", *keys.schema.connection_dims),
+        also_deleted_key=("name", *keys.schema.connection_dims),
     )
 
 
@@ -491,7 +490,7 @@ def _fold_ordered(
     key: tuple[str, ...],
     columns: tuple[str, ...],
     dims: tuple[str, ...],
-    fixed: tuple[str, ...] = ("component_type", "name"),
+    fixed: tuple[str, ...] = ("name",),
     also_deleted: Callable[[UUID, Dims, DuckDBPyConnection], DuckDBPyRelation]
     | None = None,
     also_deleted_key: tuple[str, ...] = (),
@@ -522,13 +521,21 @@ def _fold_ordered(
         rel = _cast(keys.schema, rel)
         rel, expanded = keys.expand_dims(rel.filter(not_deleted).set_alias("i"), dims)
         tagged = rel.project(
+            col("i", "component_type"),
             *(col("i", c) for c in fixed),
             *(expr.alias(d) for d, expr in expanded.items()),
             lit(str(record_id)).cast("UUID").alias("layer_uuid"),
             sql("row_number() OVER ()").alias("_row"),
         )
+        # `component_type` is aggregated, not grouped by: it is determined by
+        # `name` (§3.5), and grouping on it would keep one name under two types
+        # as two rows.
         own = tagged.aggregate(
-            [*(col(c) for c in (*key, "layer_uuid")), fn.min(col("_row")).alias("_row")]
+            [
+                *(col(c) for c in (*key, "layer_uuid")),
+                fn.any_value(col("component_type")).alias("component_type"),
+                fn.min(col("_row")).alias("_row"),
+            ]
         )
         own = con.sql(
             "SELECT * EXCLUDE (_row),"
@@ -823,8 +830,14 @@ class NodeCache:
             `Record.flags` turns into `Flags` (§4.3).
         """
         dims = self.schema.dims
+        # Scoped by a semi-join to the components map, the entity table saying
+        # what type a name is (§3.5).
+        of_type = self.components.filter(col("component_type") == lit(ctype)).project(
+            "name"
+        )
         rows = (
-            self.inputs.filter(col("component_type") == lit(ctype))
+            self.inputs.set_alias("i")
+            .join(of_type.distinct().set_alias("e"), "i.name = e.name", how="semi")
             .aggregate(
                 [
                     col("attribute"),
@@ -890,9 +903,7 @@ class NodeCache:
                 # `bus` joins the fixed columns, not the broadcast dims: NULL
                 # means "the component's own attribute", never "every bus",
                 # so it is compared NULL-safely and never expanded (§6).
-                keys.input_match(
-                    "l", "o", "component_type", "name", "bus", "layer_uuid"
-                ),
+                keys.input_match("l", "o", "name", "bus", "layer_uuid"),
             )
             .project(
                 *(

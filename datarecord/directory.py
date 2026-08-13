@@ -83,7 +83,7 @@ class DirectoryRecord:
         return self._by_attribute("outputs")
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Aggregated from `inputs/*.parquet`, grouped by component type (§4.3).
+        """Aggregated from `inputs/*.parquet`, scoped to one component type (§4.3).
 
         A real aggregate, not footer statistics: `stats_null_count` is per row
         group, not per component type, so a file mixing two types' rows says
@@ -91,14 +91,18 @@ class DirectoryRecord:
 
         Which dims to report on is the schema's, intersected with what the files
         carry - a store may declare a dim no file has a column for.
+
+        Scoped by a semi-join to the type's member file, the entity table for it
+        (§3.5) - so a type with no such file has no attribute rows either.
         """
         cache: dict[str, dict[str, Flags]] = self._flags_cache  # type: ignore[attr-defined]
         if ctype in cache:
             return cache[ctype]
 
         rel = self._read("inputs/*.parquet", union_by_name=True)
+        members = self._read(f"dims/components/{ctype}.parquet")
         result: dict[str, Flags] = {}
-        if rel is not None:
+        if rel is not None and members is not None:
             declared = self.schema.dims
             dims = tuple(d for d in declared if d in rel.columns)
             pwl = (
@@ -107,7 +111,12 @@ class DirectoryRecord:
                 else lit(False)
             )
             rows = (
-                rel.filter(col("component_type") == lit(ctype))
+                rel.set_alias("i")
+                .join(
+                    members.project("name").distinct().set_alias("e"),
+                    "i.name = e.name",
+                    how="semi",
+                )
                 .aggregate(
                     [
                         col("attribute"),

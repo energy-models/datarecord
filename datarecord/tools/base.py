@@ -45,6 +45,9 @@ class Requirements:
         `(component_type, attribute)` pairs whose stored *shape* this tool
         cannot represent, as opposed to a value it is missing - a
         piecewise-linear attribute where the tool takes a scalar (§7).
+    names : frozenset of str
+        Names two of the framework's components claim, which a record scopes
+        store-wide (§3.5).
     """
 
     dims: frozenset[str] = frozenset()
@@ -52,6 +55,7 @@ class Requirements:
     attributes: frozenset[tuple[str, str]] = frozenset()
     unsupported_keys: frozenset[tuple[str, str]] = frozenset()
     unsupported_values: frozenset[tuple[str, str]] = frozenset()
+    names: frozenset[str] = frozenset()
 
     def __bool__(self) -> bool:
         """Whether anything is required (or, for a `verify` result, missing)."""
@@ -61,6 +65,7 @@ class Requirements:
             or self.attributes
             or self.unsupported_keys
             or self.unsupported_values
+            or self.names
         )
 
     def describe(self) -> str:
@@ -80,6 +85,11 @@ class Requirements:
         if self.unsupported_values:
             parts.append(
                 f"piecewise-linear attributes {sorted(self.unsupported_values)}"
+            )
+        if self.names:
+            parts.append(
+                f"names claimed by more than one component type "
+                f"{sorted(self.names)} (§3.5)"
             )
         return ", ".join(parts) if parts else "nothing"
 
@@ -242,10 +252,10 @@ class Tool(Protocol):
     def results(self, model: Any) -> Frames:
         """This model's result attributes in the record's long form (§3).
 
-        Keyed by attribute, each frame carrying `component_type` alongside the
-        long schema's dim columns and `value` - the same shape `Record.outputs`
-        presents, so results go straight to `write_record` or to
-        `set(..., kind="outputs")`.
+        Keyed by attribute, each frame in the long schema - `name`, the dim
+        columns, `value` - the same shape `Record.outputs` presents, so results
+        go straight to `write_record` or to `set(..., kind="outputs")`. One frame
+        spans every component type, needing no type column (§3.5).
 
         Narwhals frames, so the seam names no one dataframe library, and lazy so
         an implementation may fetch a result attribute on demand rather than

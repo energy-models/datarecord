@@ -9,6 +9,9 @@ Dimensioned attribute data with a declared schema.
 A record holds **components** (named members of a type), **connections** between components and buses, **attribute values** over both, and the **axes** those values vary along.
 A schema declares what may exist; the data says what does.
 
+A component's `name` identifies it **across every type**: names are unique store-wide, not per type (§3.5).
+So an attribute row names a component and nothing more, and a component's type is something the record knows about it rather than part of its address.
+
 Neither the concept nor this package names a modelling framework.
 A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
 `datarecord` depends on `duckdb`, `narwhals` and `pydantic`, and on nothing else.
@@ -47,7 +50,7 @@ store/
 Decided by the attribute's declared `dims` (§5.2), not by a particular value:
 
 - **`dims/components/<Type>.parquet`** — attributes that vary over nothing (`dims = {}`): one column per attribute, indexed by `name`.
-  A component's membership is its row here.
+  A component's membership is its row here, and the file it is in is what gives it its type (§3.5).
 - **`inputs/<attr>.parquet`** — every attribute that may vary, even where a given component's value happens to be constant.
   That component is then a row with the varying dim NULL.
 
@@ -55,11 +58,10 @@ So a component type's constant frame is assembled from both: the non-varying col
 
 ### 3.2 The long schema
 
-Frames
 Every `inputs/` and `outputs/` file carries:
 
 ```
-component_type | name | bus | attribute | breakpoint | value | <dim> ...
+name | bus | attribute | breakpoint | value | <dim> ...
 ```
 
 with one column per declared dim.
@@ -71,7 +73,7 @@ A conditional column set would need the absent case handled everywhere regardles
 It also means a file written without one of these columns still reads back correctly, since `union_by_name` supplies NULL — the right reading of a store with no connections and no curves.
 
 One attribute per file, so `value` carries that attribute's dtype.
-`component_type` is a column, so `inputs/p_max_pu.parquet` holds every component type's `p_max_pu`.
+There is **no `component_type` column**: `name` is unique store-wide (§3.5), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by name alone, and a reader wanting one type's rows joins `dims/components/` (§3.5).
 
 A connection's `role` is not in the long schema: it lives on the connection row and identifies nothing in `inputs/` (§6).
 
@@ -93,6 +95,32 @@ Nothing declares this and nothing needs to: the row order _is_ the order.
 
 Under resolution the same rule extends across layers by first-introduced position — a descendant appending a new period lands after the parent's.
 Components and connections get the same semantics from the owner map's `order_key` (§9.1).
+
+### 3.5 `name` is unique, and the entity tables say what a name is
+
+A `name` identifies one component across the whole store.
+Two types may not share one: a `Bus` and a `Generator` both called `north` are a collision, not two components.
+
+That is what removes `component_type` from every attribute key.
+An `inputs/` row addresses `(name, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
+The alternative — carrying the type in the key — makes it a _component's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
+
+**The entity tables are the mapping.** `dims/components/<Type>.parquet` already partitions membership by type, one file per type, so `name -> component_type` is the file a name's row is in.
+Nothing new is stored to answer it: no separate entity table, because the component tables _are_ one.
+Where the union of those files needs the type as data — the owner map (§9.1), a glob across types — `component_type` is a column of the **entity** rows, never of the attribute rows.
+
+So a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the components map on `name`.
+That join is what the `component_type` filter used to be, and it is against a relation the read path already builds.
+
+Two things follow, and they are the reason to want this.
+An attribute row is addressed the way a component is, so `set("p_nom", 150.0, names=["wind1"])` needs no type: the name determines it (§11.2).
+And the inputs key loses a column, so the fold's key is `(name, bus, *owned_per dims, attribute)` — one less column to compare NULL-safely in every join in §9.
+
+**Enforced, not assumed.** `write_record` rejects a store whose component tables share a name, and `add` rejects a name the store already resolves under another type (§11.5).
+A collision cannot be left to be discovered: it would silently merge two components' attribute rows, since the rows themselves no longer record which type they meant.
+
+A modelling framework that scopes names per type must therefore reconcile before it writes.
+Its tool's `verify` is where that is reported (§12), rather than something the record layer mangles a name to paper over: a record's `name` is the framework's own name, and a store that renamed them would hand back components a framework cannot find.
 
 ## 4. `Record`
 
@@ -119,7 +147,7 @@ class Record(Protocol):
     def flags(self, ctype: str) -> dict[str, Flags]: ...
 ```
 
-`attributes` is keyed by attribute name, matching the file layout: one `inputs/p_max_pu.parquet` holds every component type's rows, and a reader wanting one type filters on `component_type`.
+`attributes` is keyed by attribute name, matching the file layout: one `inputs/p_max_pu.parquet` holds every component type's rows, and a reader wanting one type joins `components` on `name` (§3.5).
 
 `outputs` is an ordinary member, and its **emptiness is the existence answer** — the same idiom §4.3 uses for `flags`, where an attribute with no rows is absent from the mapping rather than present with empty sets.
 An unsolved record answers with an empty mapping, and nothing half-writes results, so there is no state in which empty is ambiguous.
@@ -184,6 +212,7 @@ Consumers ask about a **named** dim, never "does anything vary": a framework spl
 It is what tells a consumer whose target takes only scalars that an attribute is unbuildable, rather than discovering it mid-translation.
 
 Per component type, because one file holds every type's rows: unioning across them would report a Generator's per-timestep rows and a Link's single row as one shape, which describes neither.
+Scoping to a type is a join to the components map on `name` rather than a filter on the attribute rows (§3.5), which changes what the query does and not what it answers.
 
 #### The two sets are independent
 
@@ -454,10 +483,10 @@ Some attributes belong not to a component but to one of its connections to a bus
 A connection is identified by **the bus it attaches to**.
 Position is a framework detail: keying the overlay by position would mean a patch layer had to know a connection's current index, so an ancestor inserting a connection earlier would silently redirect that patch to a different bus.
 
-So connections are rows in `dims/connections/<Type>.parquet`, keyed by `(component_type, name, bus, *connection key dims)`, carrying their own tombstones.
+So connections are rows in `dims/connections/<Type>.parquet`, keyed by `(name, bus, *connection key dims)`, carrying their own tombstones.
 `role` — which end of the component it is — is an ordinary described column, not part of the key.
 
-`bus` is also part of the **inputs** key, `(component_type, name, bus, *owned_per dims, attribute)`, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
+`bus` is also part of the **inputs** key, `(name, bus, *owned_per dims, attribute)`, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
 That is what makes a per-connection attribute owned _per connection_: without it, a patch changing one connection's `efficiency` would own — and so have to restate — every connection's.
 
 A per-connection attribute is otherwise an ordinary long-schema row: `efficiency` on one connection may vary by timestep and scenario like any other attribute, and resolves by the same rules with no special case.
@@ -537,15 +566,17 @@ A reader pointed at a layer directory therefore sees exactly what that layer wro
 The owner map answers, for a node, which layer owns each key.
 Three maps, not one:
 
+Key columns first, then what each map carries over them:
+
 ```
 # inputs                            # components               # connections
-component_type                      component_type             component_type
 name                                name                       name
 bus  -- NULL for component-level    <component key dims>       bus  -- never NULL
-<owned_per dims>                    layer_uuid                 <connection key dims>
-attribute                           order_key                  layer_uuid
-layer_uuid                                                     order_key
-varies      STRUCT(<dim>: BOOLEAN, ...)
+<owned_per dims>                    --                         <connection key dims>
+attribute                           component_type             --
+--                                  layer_uuid                 component_type
+layer_uuid                          order_key                  layer_uuid
+varies      STRUCT(<dim>: BOOLEAN, ...)                        order_key
 broadcast   STRUCT(<dim>: BOOLEAN, ...)
 breakpoints BOOLEAN
 ```
@@ -554,6 +585,17 @@ All three map to the owning `layer_uuid`, with deletions already applied.
 None carries `value`, a varying dim's value, or `breakpoint`, so all stay small regardless of the series data or the size of a curve.
 
 Splitting them keeps each row shape honest — `attribute` and the flags are meaningless for a component or connection row — and lets each persist as its own file.
+
+`component_type` is on the **entity** maps only, never on `inputs`: an attribute row is addressed by `name` alone (§3.5), and the components map is what says which type a name is.
+So that map is the entity mapping every type-scoped question goes through — `flags(ctype)` joins it (§4.3), as does a consumer wanting one type's frame.
+
+Where it is present it is a **column, not part of the key.**
+Every one of the three maps is keyed on `name` (plus `bus` and the dims that apply); the components map carries `component_type` because it is the table that answers "what type is this name", and that answer is functionally determined by the key rather than keying alongside it.
+The fold therefore aggregates the type over the group-by instead of grouping on it.
+
+The distinction is load-bearing rather than pedantic.
+Keying on the type would mean a name could resolve to two rows — one per type — which is exactly the collision §3.5 forbids, silently admitted at read time instead of rejected at write time.
+The same holds in the staging area: `remove` under one type followed by `add` under another must collapse to the later edit (§11.7), and a type-partitioned key keeps both.
 
 `order_key` is monotonic across the fold history, giving first-introduced order across layers (§3.4).
 It is assigned pre-union, per layer, because the fold's own output has no order of its own — a bare `row_number()` over what `UNION ALL` returns would scramble which row counts as first.
@@ -591,7 +633,7 @@ The union stops at the type boundary, since across types it would describe neith
 A resolved relation semi-joins the owning layers' files to the `inputs` map, keeping only owned rows:
 
 ```sql
-SELECT u.component_type, u.name, u.bus, u.timestep,
+SELECT u.name, u.bus, u.timestep,
        COALESCE(u.scenario, o.scenario) AS scenario,   -- one per owned_per dim
        u.attribute, u.breakpoint, u.value
 FROM ( -- one arm per distinct layer the map names for this attribute
@@ -600,13 +642,14 @@ FROM ( -- one arm per distinct layer the map names for this attribute
   ...
 ) u
 JOIN inputs o
-  ON o.component_type = u.component_type
- AND o.name           = u.name
- AND o.bus            IS NOT DISTINCT FROM u.bus   -- NULL-safe: component-level keys NULL against NULL
- AND o.attribute      = u.attribute
- AND o.layer_uuid     = u.layer_uuid
+  ON o.name        = u.name
+ AND o.bus         IS NOT DISTINCT FROM u.bus   -- NULL-safe: component-level keys NULL against NULL
+ AND o.attribute   = u.attribute
+ AND o.layer_uuid  = u.layer_uuid
  AND (u.scenario IS NULL OR u.scenario IS NOT DISTINCT FROM o.scenario)
 ```
+
+`name` joins on equality rather than NULL-safely: it is required and unique (§3.5), so there is no NULL to be safe about — the one column the old key needed a second equality for is simply gone.
 
 The map already names the winning layer per key, so resolution reads only the owning layers' files.
 There is no per-read `MAX`/group-by and no tombstone filter — deletions are already absent from the map.
@@ -677,7 +720,6 @@ class WorkingRecord:
         attribute: str,
         value: Any,  # scalar | sequence | mapping | frame | nw.Expr
         *,
-        component_type: str | None = None,  # from the frame's column if omitted
         names: Sequence[str] | None = None,
         bus: str | None = None,
         kind: Literal["inputs", "outputs"] = "inputs",
@@ -720,12 +762,16 @@ Two properties follow from accumulate-then-commit, and both are the point:
 
 Each edit maps onto exactly one part of the format:
 
-| edit                        | writes                                                              | key it targets                                            |
-| --------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------- |
-| set an attribute on a group | `inputs/<attr>.parquet` rows                                        | `(component_type, name, bus, *owned_per dims, attribute)` |
-| add components              | `dims/components/` rows, plus `inputs/` rows for varying attributes | `(component_type, name, *component key dims)`             |
-| remove components           | a `deleted = true` tombstone                                        | `(component_type, name, *component key dims)`             |
-| connect / disconnect        | `dims/connections/` rows and tombstones                             | `(component_type, name, bus, *connection key dims)`       |
+| edit                        | writes                                                              | key it targets                            |
+| --------------------------- | ------------------------------------------------------------------- | ----------------------------------------- |
+| set an attribute on a group | `inputs/<attr>.parquet` rows                                        | `(name, bus, *owned_per dims, attribute)` |
+| add components              | `dims/components/` rows, plus `inputs/` rows for varying attributes | `(name, *component key dims)`             |
+| remove components           | a `deleted = true` tombstone                                        | `(name, *component key dims)`             |
+| connect / disconnect        | `dims/connections/` rows and tombstones                             | `(name, bus, *connection key dims)`       |
+
+Every key is `name`-based, because `name` is what identifies a component (§3.5).
+An **entity** edit still _names_ a type — `add("Generator", frame)` — because it creates the thing that has one, and the row it writes records it; but the type is a column of that row rather than part of the key it targets.
+That is what makes `remove("Generator", ["x"])` followed by `add("Bus", frame)` collapse to the later edit: one name has one answer, where a type-partitioned key would keep both and commit a store whose two types share a name.
 
 The crucial property: **an edit is expressed in the format's own terms.** Setting `p_nom` on twenty components _is_ twenty `inputs/p_nom.parquet` rows, which is what a patch layer would hold anyway.
 So a staged edit is already the row it will be written as, and `commit()` is a concatenation rather than a translation.
@@ -733,20 +779,24 @@ So a staged edit is already the row it will be written as, and `commit()` is a c
 ### 11.2 `set`
 
 ```python
-gen = dict(component_type="Generator")
-store.set("p_nom", 150.0, names=["wind1", "wind2"], **gen)  # broadcast
-store.set("p_nom", [150.0, 80.0], names=["wind1", "wind2"], **gen)  # per name
-store.set("p_nom", {"wind1": 150.0, "wind2": 80.0}, **gen)  # per name, keyed
-store.set("p_max_pu", frame, names=["wind1"], **gen)  # long frame
-store.set("efficiency", 0.9, names=["dc"], bus="north", component_type="Link")
-store.set("p_nom", 200.0, names=["wind1"], scenario="high", **gen)  # scoped
-store.set("p_nom", nw.col("value") * 1.1, **gen)  # derived (§11.3)
-store.set("p", solved, kind="outputs")  # a result; type from the frame (§9.4)
+store.set("p_nom", 150.0, names=["wind1", "wind2"])  # broadcast
+store.set("p_nom", [150.0, 80.0], names=["wind1", "wind2"])  # per name
+store.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
+store.set("p_max_pu", frame, names=["wind1"])  # long frame
+store.set("efficiency", 0.9, names=["dc"], bus="north")  # a connection
+store.set("p_nom", 200.0, names=["wind1"], scenario="high")  # scoped
+store.set("p_nom", nw.col("value") * 1.1, names=["wind1"])  # derived (§11.3)
+store.set("p", solved, kind="outputs")  # a result (§9.4)
 ```
 
-`component_type` is keyword-only and may be omitted **only** for a long frame carrying a `component_type` column, which is then authoritative — so one frame spanning several types stages each row under its own.
-Every other form needs it: a scalar is stamped onto rows the call invents, and `names=None` resolves against one type's members.
-A frame without the column has it added from the keyword; neither present is an error rather than a guess.
+**There is no `component_type` keyword.** A name identifies one component store-wide (§3.5), so the type is a property of the name rather than something the caller supplies: the store looks it up in the resolved components map, which is the same read `names` is already checked against (§11.8).
+That removes the parameter that had to be either given or inferred in every earlier spelling, and with it the class of error where a name was staged under the wrong type.
+
+One call may therefore span types, since the names decide: `set("p_nom", {"wind1": 150.0, "link_dc": 80.0})` validates `wind1` against `Generator.p_nom` and `link_dc` against `Link.p_nom`, and stages both.
+Each name is validated against **its own** type's `AttributeSpec` (§11.8), so an attribute one type declares and another does not is an error naming the name that caused it.
+
+`names=None` means every component the store resolves that the schema declares this attribute for — the types declaring `attribute`, not every type.
+`set("p_max_pu", 0.9)` is "every component with a `p_max_pu`", which is the only reading left once the type keyword is gone, and the useful one.
 
 `bus` names a connection rather than the component (§6); every other keyword is a dim, so `scenario="high"` scopes the edit and its absence means "every scenario" by the NULL broadcast rule.
 
@@ -763,6 +813,9 @@ A frame without the column has it added from the keyword; neither present is an 
 | frame     | supplies its own keys           | redundant                                     |
 | `nw.Expr` | a function of the current value | selects what to derive from (§11.3)           |
 
+A frame "supplies its own keys" now means its `name` column alone: a `component_type` column is neither required nor read, since the name determines the type (§3.5).
+A frame carrying one is rejected rather than ignored — it says the writer believes the type is part of the key, and silently dropping the column would let a genuine disagreement through.
+
 The first three normalise to a long frame before staging, so there is one staging path.
 A length mismatch between a sequence and `names` is an error at the call, not a silently truncated edit.
 
@@ -776,8 +829,8 @@ Index dtype does not settle it, since an axis label may be a string like a name,
 ### 11.3 An `nw.Expr` value — derived from the current one
 
 ```python
-store.set("p_nom", nw.col("value") * 1.1, component_type="Generator")  # scale up
-store.set("p_max_pu", nw.col("value").clip(upper=0.9), component_type="Generator")
+store.set("p_nom", nw.col("value") * 1.1)  # scale up every p_nom
+store.set("p_max_pu", nw.col("value").clip(upper=0.9), names=["wind1"])
 ```
 
 A fifth `value` form rather than a second method.
@@ -806,11 +859,11 @@ A tool solves against a record and hands back what it computed:
 
 ```python
 store = WorkingRecord(record, con)
-store.set("p_max_pu", 0.8, names=["wind1"], component_type="Generator")
+store.set("p_max_pu", 0.8, names=["wind1"])
 model = PyPSA.build(store)  # solve the edited record
 model.optimize()
 for attr, frame in PyPSA.results(model).items():
-    store.set(attr, frame, kind="outputs")  # type comes from the frame
+    store.set(attr, frame, kind="outputs")
 store.commit(NewChild(record))  # one layer, inputs and results together
 ```
 
@@ -826,10 +879,9 @@ Two things differ from an input edit, both following from §9.4:
 - **No membership check on `name`.**
   An input value for a name no layer declares is rejected, because it would resolve to nothing (§11.8).
   A result may legitimately name a component the record never declared: PyPSA's `SubNetwork` exists only after a solve, so rejecting it would refuse a real result.
+  This is also what makes a result's name need no resolvable type: an input's type comes from looking the name up (§11.2), and a result that declares no member has nothing to look up.
 - **No `_restated` completion at commit.**
   Results are complete as produced rather than a partial override of a parent's (§5.5), so there is nothing to carry forward from the base.
-- **`component_type` comes from the frame.**
-  `results` hands over one frame per attribute spanning every type (§12), so the column is authoritative and the keyword is omitted — stamping one type onto all of those rows would silently relabel the rest.
 
 Keeping results coherent with the inputs they were computed from is the caller's business.
 Editing an input after attaching results leaves results describing a record that no longer exists, and nothing here silently discards them — a store that dropped them on the next `set` would be guessing at which of the two the caller meant to keep.
@@ -847,7 +899,10 @@ store["Link", "north"]["efficiency", "dc"] = 0.9  # a connection
 store["Generator", {"scenario": "high"}]["p_nom", "wind1"] = 200.0
 ```
 
-Sugar with **no added capability**: `__setitem__` normalises its key into `(attribute, names)` and its extra arguments into `bus=`/dims, then calls `set`.
+The component type in the subscript is a **scope**, not part of the key it writes: it selects which members `names` resolves against and which `AttributeSpec` a bare attribute means, then `set` addresses the names it produced (§3.5).
+So `store["Generator"]["p_nom"] = 150.0` is "every Generator", which `set("p_nom", 150.0)` alone cannot say — that being the one thing an accessor would add now that the keyword is gone, and the reason this spelling survives the change.
+
+Sugar with **no added capability** otherwise: `__setitem__` normalises its key into `(attribute, names)` and its extra arguments into `bus=`/dims, then calls `set`.
 Keeping the method as the protocol member and any accessor on top is deliberate — `set` is what an implementation provides and other code calls, so a spelling over it can change, or not exist, without touching an implementation.
 
 It reads as well as writes, since a `WorkingRecord` is a `Record`: `store["Generator"]["p_nom"]` returns that type's resolved frame, so getter and setter are symmetric and the accessor is a component-type view rather than a write-only handle.
@@ -867,6 +922,9 @@ store.remove("Generator", ["old_coal"], scenario="high")  # one scenario only
 `add` takes a wide frame and splits it: attributes varying over nothing stay in `dims/components/`, varying ones become `inputs/` rows, per §3.1.
 Which is which comes from the schema, so `add` needs no framework registry.
 A column the schema does not name is written to `dims/components/` unchanged.
+
+`add` keeps its `ctype` argument where `set` loses it: this is the call that _establishes_ what a name's type is, so there is nothing yet to look it up in (§3.5).
+It is also where uniqueness is enforced — a name the store already resolves, under this type or any other, is rejected here rather than at commit, so the collision is reported at the line that introduces it (§11.8).
 
 It is **not** a sequence of `set` calls, even though the varying columns it stages take the same path a `set` would.
 `set` writes `inputs/` rows only, and a component exists by virtue of its `dims/components/` row: staging attribute values for a name no layer declares is precisely what §11.8 rejects.
@@ -936,18 +994,23 @@ That is the one commit-time read of parent data.
 ### 11.8 Validation
 
 `write_record` validates structurally, so commit inherits that.
-What editing adds is edit-level: an `add` whose frame lacks `name`, a `set` naming a component the store does not resolve, a dim keyword the schema does not declare.
+What editing adds is edit-level: an `add` whose frame lacks `name`, an `add` whose name collides with one the store already resolves (§3.5), a `set` naming a component the store does not resolve, a dim keyword the schema does not declare.
 These are caught when the edit is **staged**, not at commit — a caller should learn about a typo'd attribute at the line that typed it, not fifty edits later.
+
+A `set` resolves each name to its type before checking anything else, so "no member row for `wind9`" and "`Generator` declares no `p_nom_maxx`" are both reported against the name that produced them.
+The membership read this needs is the one §11.2 already performs, so deriving the type costs nothing beyond it.
 
 ### 11.9 Staging
 
 Staged rows live in DuckDB tables on the store's own connection:
 
 ```sql
-CREATE TABLE staged_inputs_<id>      (<long schema>, _seq BIGINT);
+CREATE TABLE staged_inputs_<id>      (<long schema>, _seq BIGINT);          -- no component_type
 CREATE TABLE staged_components_<id>  (<component columns>, deleted BOOLEAN, _seq BIGINT);
 CREATE TABLE staged_connections_<id> (<connection columns>, deleted BOOLEAN, _seq BIGINT);
 ```
+
+The staged rows are the format's own rows (§11.1), so `staged_inputs` loses `component_type` exactly as `inputs/` does, and the entity tables keep it.
 
 These tables are the **only** place a staged row exists: `pending` counts them and the reads of §11.10 fold them, neither holding a copy.
 
@@ -990,11 +1053,12 @@ class Tool(Protocol):
     def results(self, model: Any) -> Frames: ...
 ```
 
-`results` returns `Frames` — the same type `Record.outputs` presents, keyed by attribute, each frame carrying `component_type` (§3.2).
+`results` returns `Frames` — the same type `Record.outputs` presents, keyed by attribute, each frame in the long schema (§3.2).
 So a tool's results go straight to `write_record`, or one at a time to `set(attr, frame, kind="outputs")` with no key to unpack (§11.3.1).
 
 A framework holds its results per component type, so reaching this shape means concatenating each attribute's types into one frame.
 That is free: the frames are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller collects.
+The concatenation needs no `component_type` column to distinguish the arms, since `name` is unique across them (§3.5) — which is what makes the union a plain one rather than a tagged one.
 
 Lazy is what the protocol asks for rather than what any implementation must do.
 A tool reshaping a solved model's in-memory containers has nothing to defer and wraps its eager frames with `.lazy()`; one that could fetch a result attribute from a solver on demand is free to, and a caller wanting three of forty then pays for three.
@@ -1005,6 +1069,10 @@ A store is the input to a translation, not the owner of one, so there is no regi
 `build` takes a `Record` rather than a record, so a tool builds from a directory as readily as from an overlay and has no reason to know layering exists.
 
 A tool's `verify` catches what the record layer cannot: a component type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks the framework's constant-versus-varying split.
+It is also where a framework scoping names **per type** meets a record scoping them store-wide (§3.5).
+PyPSA permits a `Bus` and a `Generator` both called `north`, so `to_datarecord` reports such a network as unbuildable rather than writing a store whose two components share one key.
+Reported rather than repaired: renaming to `Generator:north` would hand back a network whose components the framework can no longer find by their own names, and the record layer does not own a framework's vocabulary.
+PyPSA is itself moving to store-wide unique names, so this is a constraint that resolves rather than one to design around.
 It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by `order_key`, and where a curve is either translated or reported unbuildable.
 
 The tool's own `Schema` reconciles vocabularies: per component type, which record attribute a tool's attribute is renamed from, or which several it is computed from.
@@ -1046,6 +1114,7 @@ The dependency runs strictly one way, so importing the record layer pulls in no 
 - **Whether `within` should subsume `bus`.** `bus` and a nested dim express the same relation.
   A `timestep` label identifies a point only within a `period`; a `bus` label identifies a connection only within a component — `"north"` alone names nothing, since every component may attach to `north`, while `(link_dc, north)` names one connection.
   Written as a dim that would be `Dimension(dtype="str", within={"name"})`, and `bus` would stop being a hardcoded key column.
+  §3.5 strengthens the analogy rather than weakening it: `name` is now a single global axis rather than one qualified by `component_type`, so `within={"name"}` names something well-defined where `within={"component_type", "name"}` would have been the awkward spelling.
 
   What blocks it is that `bus` inverts the rule NULL follows for a dim.
   A NULL declared dim means "all values", and the fold expands it against the axis (§9.2); a NULL `bus` means "this attribute belongs to the component rather than to any connection", and is compared NULL-safely, never expanded.

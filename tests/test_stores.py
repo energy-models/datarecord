@@ -165,10 +165,10 @@ def test_flags_are_per_component_type(con, base_uri):
         "p_max_pu",
         [
             # Generator: series only. Link: static only.
-            {"component_type": "Generator", "name": "wind", "snapshot": s, "value": v}
+            {"name": "wind", "snapshot": s, "value": v}
             for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
         ]
-        + [{"component_type": "Link", "name": "dc", "value": 1.0}],
+        + [{"name": "dc", "value": 1.0}],
     )
 
     for store in (LayeredRecord(record.node_cache), DirectoryRecord(layer, con)):
@@ -200,7 +200,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
         layer,
         "p_max_pu",
         [
-            {"component_type": "Generator", "name": "wind", "snapshot": s, "value": v}
+            {"name": "wind", "snapshot": s, "value": v}
             for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
         ],
     )
@@ -235,10 +235,10 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
         layer,
         "p_max_pu",
         [
-            {"component_type": "Generator", "name": "wind", "snapshot": s, "value": v}
+            {"name": "wind", "snapshot": s, "value": v}
             for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
         ]
-        + [{"component_type": "Generator", "name": "gas", "value": 1.0}],
+        + [{"name": "gas", "value": 1.0}],
     )
 
     for store in (LayeredRecord(record.node_cache), DirectoryRecord(layer, con)):
@@ -257,7 +257,7 @@ def test_flags_report_a_curve(con, base_uri):
         layer,
         "marginal_cost",
         [
-            {"component_type": "Process", "name": "steel", "breakpoint": x, "value": v}
+            {"name": "steel", "breakpoint": x, "value": v}
             for x, v in ((0.0, 20.0), (50.0, 35.0))
         ],
     )
@@ -279,7 +279,7 @@ def test_node_store_resolves_the_overlay(con, base_uri, ac_dc):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"component_type": "Generator", "name": "Manchester Gas", "value": 0.1}],
+        [{"name": "Manchester Gas", "value": 0.1}],
     )
 
     overlay = LayeredRecord(child.node_cache)

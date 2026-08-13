@@ -305,9 +305,10 @@ class Schema(BaseModel):
         `bus` and `breakpoint` are part of the schema, not optional extensions
         to it: both are NULL for the ordinary component-level scalar, so one
         column set serves every kind of attribute row (§6, §7).
+
+        No `component_type` (§3.5).
         """
         return (
-            "component_type",
             "name",
             "bus",
             *self.dims,
@@ -324,12 +325,15 @@ class Schema(BaseModel):
         connection rather than per component (§6); it is NULL for a
         component-level attribute, which then keys against the map's NULL.
         """
-        return ("component_type", "name", "bus", *self.input_dims, "attribute")
+        return ("name", "bus", *self.input_dims, "attribute")
 
     @property
     def component_key(self) -> tuple[str, ...]:
-        """Components-map key columns, compared NULL-safely when folding (§9.1)."""
-        return ("component_type", "name", *self.component_dims)
+        """Components-map key columns, compared NULL-safely when folding (§9.1).
+
+        The type is carried as a column, not keyed (§3.5).
+        """
+        return ("name", *self.component_dims)
 
     @property
     def connection_key(self) -> tuple[str, ...]:
@@ -337,9 +341,10 @@ class Schema(BaseModel):
 
         `bus` identifies the connection, so it is a required key column rather
         than a broadcast dim: never expanded against an axis, only compared
-        NULL-safely. `role` describes the connection and keys nothing.
+        NULL-safely. `role` and `component_type` describe the connection and key
+        nothing (§3.5).
         """
-        return ("component_type", "name", "bus", *self.connection_dims)
+        return ("name", "bus", *self.connection_dims)
 
     @property
     def input_columns(self) -> tuple[str, ...]:
@@ -348,13 +353,13 @@ class Schema(BaseModel):
 
     @property
     def component_columns(self) -> tuple[str, ...]:
-        """The components map's full column set (§9.1)."""
-        return (*self.component_key, "layer_uuid", "order_key")
+        """The components map's full column set; the type is carried, not keyed (§3.5, §9.1)."""
+        return ("component_type", *self.component_key, "layer_uuid", "order_key")
 
     @property
     def connection_columns(self) -> tuple[str, ...]:
         """The connections map's full column set (§9.1)."""
-        return (*self.connection_key, "layer_uuid", "order_key")
+        return ("component_type", *self.connection_key, "layer_uuid", "order_key")
 
     # -- typing (§3.2, §10) -------------------------------------------------
 
@@ -382,6 +387,12 @@ class Schema(BaseModel):
         """The `value` column's type for one attribute (§3.2)."""
         spec = self.attributes.get(ctype, {}).get(attribute)
         return None if spec is None else spec.dtype
+
+    def types_declaring(self, attribute: str) -> frozenset[str]:
+        """Which component types declare `attribute` - what `names=None` targets (§11.2)."""
+        return frozenset(
+            c for c, attrs in self.attributes.items() if attribute in attrs
+        )
 
     # -- versioning (§5.7) --------------------------------------------------
 
