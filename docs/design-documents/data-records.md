@@ -9,6 +9,14 @@ Dimensioned attribute data with a declared schema.
 A record holds **components** (named members of a type), **connections** between components and buses, **attribute values** over both, and the **axes** those values vary along.
 A schema declares what may exist; the data says what does.
 
+**A record is defined by what it answers, not by how it is stored.**
+That definition is the `Record` protocol (§4): a `schema`, five groups of frames, and `flags`.
+Anything answering those is a record — and the things that do are not all directories.
+`WorkingRecord` (§11) answers them over staged edits that exist only in memory, a framework object can answer them directly (§4.1), and `LayeredRecord` answers them by resolving a fold across many directories, none of which is individually the record.
+
+The parquet layout in §3 is therefore **one serialisation** of that answer, not the thing itself.
+It earns its place first among equals — it is what `write_record` produces, what a foreign reader consumes, and the shape the protocol's members are named after — but a reader who takes it as the definition will draw wrong conclusions about every implementation that is not a directory on disk.
+
 A component's `name` identifies it **across every type**: names are unique record-wide, not per type (§3.5).
 So an attribute row names a component and nothing more, and a component's type is something the record knows about it rather than part of its address.
 
@@ -16,23 +24,28 @@ Neither the concept nor this package names a modelling framework.
 A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
 `datarecord` depends on `duckdb`, `narwhals` and `pydantic`, and on nothing else.
 
-Two implementations of one interface:
+Two implementations ship, and a consumer cannot tell which it holds:
 
 - **`DirectoryRecord`** — one parquet directory.
   What the files hold is what it presents.
 - **`LayeredRecord`** — a tree of layers, each adding a partial record on top of its parent, resolved last-writer-wins.
 
-A consumer cannot tell which it holds.
 That is what lets a framework read a hundred-layer overlay through the same call it would use for a single directory.
+
+### Reading order
+
+§3 comes before §4 because the protocol's vocabulary is easier to read once the file layout is concrete: `attributes` is keyed by attribute name _because_ one `inputs/<attr>.parquet` holds every type's rows.
+The dependency runs the other way round, though — the layout reflects the protocol's questions, not the reverse — so a reader who wants the definition first can start at §4 and treat §3 as its on-disk encoding.
 
 ## 2. Scope
 
-- **In scope:** the record format; the schema; the `Record` protocol and `WorkingRecord`; overlay resolution and its owner map; the write path; how the two implementations differ.
+- **In scope:** the `Record` protocol (the definition, §4) and `WorkingRecord`; the parquet format that serialises it; the schema; overlay resolution and its owner map; the write path; how the two implementations differ.
 - **Out of scope:** a non-DuckDB implementation (the protocol permits one, §4.4, but only DuckDB-backed ones are provided); concurrent writers to one record; unmaterialised/meta layers.
 
 ## 3. The record format
 
-A record is a parquet directory:
+A record's **on-disk form** is a parquet directory.
+This is the serialisation, not the definition (§1): `write_record` produces it, `DirectoryRecord` reads it, and a foreign tool can consume it knowing nothing about this package — but a record that is never written has no directory, and is a record all the same (§4).
 
 ```
 record/
@@ -124,6 +137,9 @@ Its tool's `verify` is where that is reported (§12), rather than something the 
 
 ## 4. `Record`
 
+**This is the definition a record answers to** (§1).
+§3 gives one encoding of it; what follows is the thing being encoded, and the only contract a consumer may rely on.
+
 ```python
 @runtime_checkable
 class Record(Protocol):
@@ -162,7 +178,7 @@ A separate `Solved` would not have changed those semantics, only gated access to
 Read-only.
 Writing is `write_record(revision_id, record, con)` — a function over a record rather than a method on one (§10).
 
-Called `Record` rather than `Layer` because a layer is one node's own contribution and a resolved overlay is not one, but both are records in the sense §3 uses.
+Called `Record` rather than `Layer` because a layer is one node's own contribution and a resolved overlay is not one, but both answer the members above — which is what makes each a record.
 
 ### 4.1 A protocol, not a base class
 

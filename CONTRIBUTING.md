@@ -31,13 +31,14 @@ Contribution rules and conventions for datarecord.
 
 datarecord stores dimensioned attribute data with a declared schema: components
 (named members of a type, unique record-wide), connections, attribute values over
-both, and the axes those values vary along. A record is a parquet directory, and
-two implementations serve one `Record` protocol — `DirectoryRecord` over a single
-directory, and `LayeredRecord` over a tree of layers resolved last-writer-wins —
-so a consumer cannot tell which it holds. Queries are built with `narwhals` and
-executed by `duckdb`, staying lazy until collected. Beyond those and `pydantic`,
-core depends on nothing. Keep new features consistent with this schema-declared,
-backend-agnostic, lazily-evaluated design.
+both, and the axes those values vary along. A record is defined by the `Record`
+protocol — what it answers, not how it is stored — and a parquet directory is its
+on-disk form. Two implementations serve that protocol — `DirectoryRecord` over a
+single directory, and `LayeredRecord` over a tree of layers resolved
+last-writer-wins — so a consumer cannot tell which it holds. Queries are built
+with `narwhals` and executed by `duckdb`, staying lazy until collected. Beyond
+those and `pydantic`, core depends on nothing. Keep new features consistent with
+this schema-declared, backend-agnostic, lazily-evaluated design.
 
 ## AI-assisted contributions
 
