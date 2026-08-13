@@ -2,7 +2,7 @@
 
 The only module that knows PyPSA's network shape - that its axes are
 `snapshot`/`period`/`scenario`, that a stochastic network is indexed by
-`(scenario, name)`, and how its static/series split maps onto the store's
+`(scenario, name)`, and how its static/series split maps onto the record's
 `dims/components` + `inputs/` split (§3.1).
 """
 
@@ -82,10 +82,10 @@ def _text(value: Any) -> str | None:
 
 @dataclass(frozen=True)
 class NetworkShape:
-    """PyPSA's reading of a store's axis frames (§12).
+    """PyPSA's reading of a record's axis frames (§12).
 
     The axis names and the index convention live here rather than on the
-    store, which stays schema-generic: a store may declare any dims, and it is
+    record, which stays schema-generic: a record may declare any dims, and it is
     this tool that decides `snapshot` is the time axis and that a non-empty
     `scenario` axis means a stochastic network.
     """
@@ -93,7 +93,7 @@ class NetworkShape:
     dims: Frames
 
     def _axis(self, dim: str) -> pd.DataFrame:
-        """`dim`'s axis as a DataFrame, empty if the store declares none.
+        """`dim`'s axis as a DataFrame, empty if the record declares none.
 
         A dim with no rows anywhere is absent from the mapping rather than
         present-and-empty (§4.2), and both read the same way here: an empty
@@ -130,8 +130,8 @@ class NetworkShape:
         return [SCENARIO, "name"] if self.stochastic else ["name"]
 
 
-def _connection(store: Record) -> DuckDBPyConnection:
-    """The DuckDB connection `store`'s frames belong to.
+def _connection(record: Record) -> DuckDBPyConnection:
+    """The DuckDB connection `record`'s frames belong to.
 
     Off the concrete backing, since the protocol stays backend-agnostic (§4.4).
     Needed because a relation exposes no reachable reference to its connection,
@@ -141,12 +141,12 @@ def _connection(store: Record) -> DuckDBPyConnection:
     Raises
     ------
     TypeError
-        If `store` exposes no connection, i.e. is not DuckDB-backed.
+        If `record` exposes no connection, i.e. is not DuckDB-backed.
     """
-    con = getattr(store, "con", None)
+    con = getattr(record, "con", None)
     if not isinstance(con, DuckDBPyConnection):
         msg = (
-            f"{type(store).__name__} exposes no DuckDB connection; "
+            f"{type(record).__name__} exposes no DuckDB connection; "
             "the PyPSA tool builds with DuckDB SQL"
         )
         raise TypeError(msg)
@@ -220,7 +220,7 @@ def _assign_static(
         if shape.stochastic:
             rows = scenarios.expand(rows, SCENARIO)
         # First-wins on a duplicate key, same as `values[~values.index.duplicated()]`;
-        # any deterministic order is fine since a valid store never actually collides.
+        # any deterministic order is fine since a valid record never actually collides.
         rows = rows.project(
             f"*, row_number() OVER (PARTITION BY {', '.join(keys)}) AS _rn"
         ).filter("_rn = 1")
@@ -305,7 +305,7 @@ def _series_frame(
 
 
 def _exported(c) -> bool:
-    """Whether `c`'s members belong in a store at all.
+    """Whether `c`'s members belong in a record at all.
 
     Empty types have nothing to write. Standard types (`LineType`,
     `TransformerType`) are excluded because PyPSA prepopulates them on every
@@ -426,7 +426,7 @@ def _collect_network_attributes(n: pypsa.Network) -> dict[str, Any]:
 
 
 def _apply_network_attributes(n: pypsa.Network, attrs: dict[str, Any]) -> None:
-    """Apply scalar network attributes read back from a store.
+    """Apply scalar network attributes read back from a record.
 
     Ported from `pypsa.Network._apply_network_attributes` (unreleased, §12),
     stripped of the version-compat warnings and PyPI update check the real
@@ -447,7 +447,7 @@ def _apply_network_attributes(n: pypsa.Network, attrs: dict[str, Any]) -> None:
 
 
 def _new_network(schema: RecordSchema, shape: NetworkShape) -> pypsa.Network:
-    """An empty network with the store's axes already established."""
+    """An empty network with the record's axes already established."""
     import pypsa
 
     n = pypsa.Network()
@@ -764,18 +764,18 @@ class PyPSATool(Tool):
 
         return frozenset(c.name for c in all_components.values())
 
-    def requires(self, store: Record) -> Requirements:
-        """PyPSA's axes, the store's own component types, and their required attributes.
+    def requires(self, record: Record) -> Requirements:
+        """PyPSA's axes, the record's own component types, and their required attributes.
 
-        The attribute half is store-dependent: only types the store
+        The attribute half is record-dependent: only types the record
         actually defines members for are required, and which of their
         attributes are mandatory comes from PyPSA's registry
         (`defaults["status"] == "Input (required)"`), not a list kept here.
         Reported by source attribute (`Schema.sources`), so a renamed or
-        computed one names what the store must actually supply.
+        computed one names what the record must actually supply.
         """
         known = self.component_types()
-        ctypes = {ct for ct in store.components if ct in known}
+        ctypes = {ct for ct in record.components if ct in known}
         return Requirements(
             dims=REQUIRED_DIMS,
             component_types=frozenset(ctypes),
@@ -787,8 +787,8 @@ class PyPSATool(Tool):
             ),
         )
 
-    def verify(self, store: Record) -> Requirements:
-        """What this store fails to supply for a PyPSA build; falsy if it is usable.
+    def verify(self, record: Record) -> Requirements:
+        """What this record fails to supply for a PyPSA build; falsy if it is usable.
 
         Checks what a build needs: the schema declares PyPSA's axes
         (§12), its key dims are ones this tool can honour, every component
@@ -802,8 +802,8 @@ class PyPSATool(Tool):
         its relations by those dims, so reading the map at all could raise a
         binder error before anything below could report it.
         """
-        dims = REQUIRED_DIMS - set(store.schema.dims)
-        unsupported_keys = self._unsupported_keys(store)
+        dims = REQUIRED_DIMS - set(record.schema.dims)
+        unsupported_keys = self._unsupported_keys(record)
         if unsupported_keys:
             return Requirements(
                 dims=frozenset(dims), unsupported_keys=frozenset(unsupported_keys)
@@ -814,8 +814,8 @@ class PyPSATool(Tool):
         unsupported_values: set[tuple[str, str]] = set()
 
         known = self.component_types()
-        declared = store.schema.attributes
-        for ctype in sorted(store.components):
+        declared = record.schema.attributes
+        for ctype in sorted(record.components):
             # A type PyPSA has no registry entry for. Reported rather than
             # raised: the record layer stores `component_type` as a plain
             # string, so an unknown type reads back fine and it is this
@@ -823,7 +823,7 @@ class PyPSATool(Tool):
             if ctype not in known:
                 component_types.add(ctype)
                 continue
-            resolved = store.flags(ctype)
+            resolved = record.flags(ctype)
             owned = set(resolved)
             # A curve, not a scalar (§7). PyPSA takes a scalar for every
             # attribute this build assigns, so the record is storing something
@@ -832,11 +832,11 @@ class PyPSATool(Tool):
             unsupported_values |= {
                 (ctype, attr) for attr, flags in resolved.items() if flags.breakpoints
             }
-            static_cols = _static_columns(store, ctype)
+            static_cols = _static_columns(record, ctype)
             # A port attribute the record supplies as connection rows rather
             # than as a column: `bus0`/`bus1` are satisfied by a connection
             # per port, so the collapse in `build` can name them (§6).
-            from_connections = _connection_attributes(store, ctype)
+            from_connections = _connection_attributes(record, ctype)
             specs = declared.get(ctype) or {}
             for attr in _required_attributes(ctype):
                 for src in self.schema.sources(ctype, attr):
@@ -855,7 +855,7 @@ class PyPSATool(Tool):
             unsupported_values=frozenset(unsupported_values),
         )
 
-    def _unsupported_keys(self, store: Record) -> set[tuple[str, str]]:
+    def _unsupported_keys(self, record: Record) -> set[tuple[str, str]]:
         """`(key, dim)` pairs this tool cannot honour: `snapshot`, as any key.
 
         PyPSA's static/series split needs a component's whole series to come
@@ -864,7 +864,7 @@ class PyPSATool(Tool):
         (§5.5). A limit of the *representation*, not the format - which is why
         the record layer permits the declaration and this reports it (§12).
         """
-        defs = store.schema
+        defs = record.schema
         kinds = (
             ("input_key", defs.input_dims),
             ("component_key", defs.component_dims),
@@ -872,7 +872,7 @@ class PyPSATool(Tool):
         )
         return {(key, SNAPSHOT) for key, dims in kinds if SNAPSHOT in dims}
 
-    def build(self, store: Record) -> pypsa.Network:
+    def build(self, record: Record) -> pypsa.Network:
         """The resolved network, one component type at a time (§12, §12).
 
         Raises
@@ -881,26 +881,26 @@ class PyPSATool(Tool):
             If `verify` reports anything missing - a partial build would
             surface as a confusing PyPSA error several frames later.
         """
-        missing = self.verify(store)
+        missing = self.verify(record)
         if missing:
             raise UnsupportedRecordError(self.name, missing)
 
-        con = _connection(store)
-        schema = store.schema
-        shape = NetworkShape(store.dims)
+        con = _connection(record)
+        schema = record.schema
+        shape = NetworkShape(record.dims)
         n = _new_network(schema, shape)
 
-        for ctype in sorted(store.components):
-            static = to_relation(store.components[ctype])
+        for ctype in sorted(record.components):
+            static = to_relation(record.components[ctype])
             if not shape.stochastic and SCENARIO in static.columns:
                 static = static.project(star(exclude=[SCENARIO]))
             # Connections back to the positional columns PyPSA expects (§12).
-            static = _collapse_connections(static, store, ctype, con)
+            static = _collapse_connections(static, record, ctype, con)
 
             # Frames are built and released per type, so peak memory is one
             # type's wide frames rather than the whole network (§12).
             attributes = {}
-            for attr, flags in store.flags(ctype).items():
+            for attr, flags in record.flags(ctype).items():
                 if attr not in schema.attributes.get(ctype, {}):
                     continue
                 # Neither container would take it: no rows on the snapshot axis
@@ -912,7 +912,7 @@ class PyPSATool(Tool):
                 # reaches the pivot below as an ordinary long relation. Scoped
                 # by a semi-join against `static`, this type's entity table (§3.5).
                 long = (
-                    self.schema.resolve(store, ctype, attr)
+                    self.schema.resolve(record, ctype, attr)
                     .set_alias("a")
                     .join(
                         static.project("name").distinct().set_alias("m"),
@@ -928,7 +928,7 @@ class PyPSATool(Tool):
         return n
 
     def results(self, model: pypsa.Network) -> Frames:
-        """A solved network's result attributes in the store's long form (§9.4).
+        """A solved network's result attributes in the record's long form (§9.4).
 
         Keyed by attribute, matching `outputs/<attr>.parquet`: every component
         type's rows for one attribute are concatenated into one frame, exactly as
@@ -981,7 +981,7 @@ class PyPSATool(Tool):
         ------
         UnsupportedRecordError
             If two component types share a name: PyPSA scopes names per type, a
-            record store-wide, and this reports rather than renames (§3.5, §12).
+            record record-wide, and this reports rather than renames (§3.5, §12).
         """
         clashing = _colliding_names(model)
         if clashing:
@@ -1288,7 +1288,7 @@ class _NetworkSource:
 def _required_attributes(ctype: str) -> frozenset[str]:
     """`ctype`'s mandatory input attributes, from PyPSA's registry.
 
-    `name` is the component's identity, always supplied by the store's member
+    `name` is the component's identity, always supplied by the record's member
     list rather than an attribute row, so it never counts as missing.
     """
     from pypsa.components.types import get as get_component_type
@@ -1298,7 +1298,7 @@ def _required_attributes(ctype: str) -> frozenset[str]:
     return frozenset(required) - {"name"}
 
 
-def _ordered_connections(store: Record, ctype: str) -> pd.DataFrame | None:
+def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
     """One type's connections with a port index assigned per component (§12).
 
     The positional collapse: connections come in member order (§9.3, an
@@ -1308,17 +1308,17 @@ def _ordered_connections(store: Record, ctype: str) -> pd.DataFrame | None:
     placed before outputs, so `bus0` is the input end PyPSA's sign convention
     expects.
     """
-    frame = store.connections.get(ctype)
+    frame = record.connections.get(ctype)
     if frame is None:
         return None
     df = frame.to_native().df()
     if df.empty:
         return None
     # Per component *and* per value of every dim the connections map is keyed
-    # by (§5.3): a scenario-keyed store holds one row per scenario per port,
+    # by (§5.3): a scenario-keyed record holds one row per scenario per port,
     # and numbering across them would give one port as many indices as there
     # are scenarios.
-    within = ["name", *(d for d in store.schema.connection_dims if d in df)]
+    within = ["name", *(d for d in record.schema.connection_dims if d in df)]
     if "role" in df.columns:
         df = df.assign(_role_rank=(df["role"] != _INPUT_PORT).astype(int)).sort_values(
             [*within, "_role_rank"], kind="stable"
@@ -1333,20 +1333,20 @@ def _ordered_connections(store: Record, ctype: str) -> pd.DataFrame | None:
     return df
 
 
-def _connection_attributes(store: Record, ctype: str) -> frozenset[str]:
+def _connection_attributes(record: Record, ctype: str) -> frozenset[str]:
     """Port attribute names this type's connection rows can supply (§6).
 
     `bus0`/`bus1`/... for the ports that actually exist, so `verify` knows a
     required `bus0` is satisfied by a connection rather than by a column.
     """
-    df = _ordered_connections(store, ctype)
+    df = _ordered_connections(record, ctype)
     if df is None:
         return frozenset()
     return frozenset(_port_attribute("bus", port) for port in df["port"].unique())
 
 
 def _collapse_connections(
-    static: DuckDBPyRelation, store: Record, ctype: str, con: DuckDBPyConnection
+    static: DuckDBPyRelation, record: Record, ctype: str, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
     """Add `bus0`/`bus1`/... columns to a static frame from its connection rows.
 
@@ -1354,12 +1354,12 @@ def _collapse_connections(
     (§6). This is the seam between them, and the only direction that needs
     positions at all.
     """
-    df = _ordered_connections(store, ctype)
+    df = _ordered_connections(record, ctype)
     if df is None:
         return static
     # Pivoted on the same key the ports were numbered within, so each
     # (component, scenario, ...) keeps its own port columns.
-    index = ["name", *(d for d in store.schema.connection_dims if d in df)]
+    index = ["name", *(d for d in record.schema.connection_dims if d in df)]
     # A dim left NULL means "every value of it" (§3.3), so it is a real key
     # here - but `pivot` drops NaN index levels, so such a dim is folded away
     # instead: every row shares its value, and the join below matches on the
@@ -1379,18 +1379,18 @@ def _collapse_connections(
     )
 
 
-def _static_columns(store: Record, ctype: str) -> frozenset[str]:
+def _static_columns(record: Record, ctype: str) -> frozenset[str]:
     """Columns `dims/components/<ctype>.parquet` supplies for this record.
 
     The non-varying half of the static frame (§3): an attribute present here
     needs no `inputs/` row to be resolvable.
     """
-    frame = store.components.get(ctype)
+    frame = record.components.get(ctype)
     return (
         frozenset(frame.collect_schema().names()) if frame is not None else frozenset()
     )
 
 
 # The tool is a module-level singleton, imported rather than looked up by
-# name: `from datarecord.tools.pypsa import PyPSA` then `PyPSA.build(record.store)`.
+# name: `from datarecord.tools.pypsa import PyPSA` then `PyPSA.build(revision.record)`.
 PyPSA = PyPSATool()

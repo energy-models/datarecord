@@ -1,8 +1,8 @@
-"""Editing a store: staged edits, materialised on commit (design doc §11).
+"""Editing a record: staged edits, materialised on commit (design doc §11).
 
-What `Record` (read-only) and `write_record` (a whole store at once) do not
+What `Record` (read-only) and `write_record` (a whole record at once) do not
 cover. Accumulate-then-commit: an edit costs a row in a staging table rather
-than a rewrite, and nothing touches the store until `commit()`.
+than a rewrite, and nothing touches the record until `commit()`.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ class NewChild:
 
 @dataclass(frozen=True)
 class Directory:
-    """Write a standalone store at `uri`: staged rows *plus* what the store
+    """Write a standalone record at `uri`: staged rows *plus* what the record
     already reads, there being no parent to resolve against (§11.7).
     """
 
@@ -229,7 +229,7 @@ def normalise_value(
 class _Written:
     """One reading of a `WorkingRecord`, as the `Record` `write_record` consumes.
 
-    Commit needs two different stores out of one staging area - `NewChild` the
+    Commit needs two different records out of one staging area - `NewChild` the
     edits alone, `Directory` the resolved result - so this holds whichever
     frame mappings the caller chose (§11.7).
     """
@@ -257,7 +257,7 @@ class WorkingRecord:
     """A `Record` that accepts edits and materialises them on commit (§11).
 
     Satisfies `Record`, and what it reads is the data *with its pending edits
-    applied* (§11.10) - so an edit reads back, or the store is handed to
+    applied* (§11.10) - so an edit reads back, or the record is handed to
     something that only knows `Record`, without committing.
 
     Staged rows live in three connection-scoped DuckDB tables, the *only* place
@@ -344,7 +344,7 @@ class WorkingRecord:
         frame = base[ctype]
         # `collect_schema` reads names without materialising, and `_as_relation`
         # keeps a DuckDB-backed frame as the plan it already is: §4.2 promises a
-        # store hands over unmaterialised frames, and §11.10 prices a read with
+        # record hands over unmaterialised frames, and §11.10 prices a read with
         # pending edits at what one more layer costs.
         present = set(frame.collect_schema().names())
         on = _null_safe_on([c for c in key if c in present])
@@ -389,7 +389,7 @@ class WorkingRecord:
 
         A set of pending edits *is* a layer - an unwritten one - so the reads
         compose the same way: the staged rows are the last layer, resolved over
-        whatever the store was reading before.
+        whatever the record was reading before.
         """
         staged = self._staged_attribute_names()
         keys = tuple(dict.fromkeys((*self.base.attributes, *staged)))
@@ -543,8 +543,8 @@ class WorkingRecord:
     def outputs(self) -> Frames:
         """Staged results, keyed by attribute - what a tool handed back (§11.2).
 
-        Results reach a store through `set(..., kind="outputs")`, so a tool can
-        solve against this store's pending inputs and attach what it computed
+        Results reach a record through `set(..., kind="outputs")`, so a tool can
+        solve against this record's pending inputs and attach what it computed
         without committing first. The base's results are *not* included: they
         were computed from inputs these edits may have changed, and results do
         not overlay (§9.4), so what is staged is the whole answer.
@@ -572,7 +572,7 @@ class WorkingRecord:
     def flags(self, ctype: str) -> dict[str, Flags]:
         """Base flags unioned with what the staged rows use (§11.10).
 
-        Scoped by the names this store resolves for the type - base members plus
+        Scoped by the names this record resolves for the type - base members plus
         pending additions - the staged rows carrying no type (§3.5).
         """
         out = dict(self.base.flags(ctype))
@@ -658,7 +658,7 @@ class WorkingRecord:
             raise ValueError(msg)
 
     def _types_by_name(self) -> dict[str, str]:
-        """`name -> component_type` over everything this store resolves (§3.5)."""
+        """`name -> component_type` over everything this record resolves (§3.5)."""
         return {
             name: ctype
             for ctype in self.components
@@ -666,7 +666,7 @@ class WorkingRecord:
         }
 
     def _resolve_types(self, names: Sequence[str]) -> dict[str, str]:
-        """`names` mapped to their types, rejecting any the store does not resolve.
+        """`names` mapped to their types, rejecting any the record does not resolve.
 
         A value keyed to a name with no member row would resolve to nothing, so
         it is caught here rather than dropped at read time (§11.8).
@@ -765,7 +765,7 @@ class WorkingRecord:
             if "component_type" in lazy.collect_schema().names():
                 msg = (
                     f"`set({attribute!r}, <frame>)` was given a `component_type` "
-                    f"column; names are unique store-wide, so an attribute row "
+                    f"column; names are unique across every type, so an attribute row "
                     f"carries no type and the column would be ignored (§3.5)"
                 )
                 raise ValueError(msg)
@@ -889,7 +889,7 @@ class WorkingRecord:
         Reads before it stages, so what it derives from is the resolved value
         *including earlier pending edits*, and two such calls compose. What is
         staged is the result, never the expression, so a committed layer holds
-        ordinary rows and nothing records that a value was derived.
+        ordinary rows and nothing stores that a value was derived.
 
         On a layered base the read is a fold, so this is the one edit whose cost
         scales with the ancestry rather than with the rows written.
@@ -1284,9 +1284,9 @@ class WorkingRecord:
         )
 
     def flattened(self) -> _Written:
-        """The staged rows over what the store already reads (§11.7).
+        """The staged rows over what the record already reads (§11.7).
 
-        `attributes` is this store's own, since a `WorkingRecord` already reads
+        `attributes` is this record's own, since a `WorkingRecord` already reads
         the base with its pending edits applied (§11.10) - which is exactly the
         flattened result.
         """

@@ -20,31 +20,31 @@ GEN = "Generator"
 @pytest.fixture
 def root(con, base_uri, ac_dc):
     """A materialised record to branch edits from."""
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
-    record.materialise()
-    return record
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    revision.materialise()
+    return revision
 
 
 @pytest.fixture
 def staged(root, con):
-    return WorkingRecord(root.store, con)
+    return WorkingRecord(root.record, con)
 
 
-def _static(record, attribute, ctype=GEN):
+def _static(revision, attribute, ctype=GEN):
     """One attribute as the built network sees it, per component name.
 
     Through the build rather than `relation()`: a non-varying attribute like
     `p_nom` lives in `dims/components/` (§3.1), so `inputs/` alone would not
-    show what the store resolves to.
+    show what the record resolves to.
     """
-    return PyPSA.build(record.store).c[ctype].static[attribute].to_dict()
+    return PyPSA.build(revision.record).c[ctype].static[attribute].to_dict()
 
 
 # -- the protocol (§11.1) ----------------------------------------------------
 
 
-def test_a_mutable_store_reads_as_a_store(staged):
+def test_a_mutable_record_reads_as_a_record(staged):
     """Editable *and* readable: the pending edits are a layer, so reads compose.
 
     The load-bearing half of §11: a `WorkingRecord` satisfies `Record`, so what
@@ -114,7 +114,7 @@ def test_an_ambiguous_index_is_rejected():
 
 
 def test_set_stages_without_writing(staged, root):
-    """Staging is not a layer: the store reads the edit, the record does not."""
+    """Staging is not a layer: the record reads the edit, the record does not."""
     staged.set("p_nom", 150.0, names=["Manchester Wind"])
 
     assert staged.pending.attributes == {"p_nom": 1}
@@ -122,14 +122,14 @@ def test_set_stages_without_writing(staged, root):
     assert _static(root, "p_nom")["Manchester Wind"] != 150.0
 
 
-def test_a_staged_edit_is_visible_through_the_store(staged):
+def test_a_staged_edit_is_visible_through_the_record(staged):
     """§11.10: a set of pending edits is a layer, so the read resolves over it."""
     staged.set("p_max_pu", 0.42, names=["Manchester Wind"])
 
     rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
     got = set(rows[rows["name"] == "Manchester Wind"]["value"])
     assert got == {0.42}
-    # Every other name still reads the base store's rows.
+    # Every other name still reads the base record's rows.
     assert set(rows["name"]) > {"Manchester Wind"}
 
 
@@ -200,7 +200,7 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
 def test_a_broadcast_edit_displaces_the_whole_series(staged):
     """A staged NULL dim means "all values of that dim", so it replaces them (§3.3).
 
-    Rows never overlap within a store, so a broadcast edit and the base's
+    Rows never overlap within a record, so a broadcast edit and the base's
     per-snapshot rows cannot both survive - the edit covers every snapshot.
     """
     staged.set("p_max_pu", 0.42, names=["Manchester Wind"])
@@ -248,7 +248,7 @@ def test_an_expression_value_stages_the_whole_series(staged, root):
     assert staged.pending.attributes == {"p_max_pu": len(mine)}
 
     child = staged.commit(NewChild(root))
-    got = child.store.attributes["p_max_pu"].collect().to_native().to_pandas()
+    got = child.record.attributes["p_max_pu"].collect().to_native().to_pandas()
     got = got[got["name"] == "Manchester Wind"].sort_values("snapshot")
     assert got["value"].tolist() == (mine["value"] * 2).tolist()
 
@@ -302,7 +302,7 @@ def test_a_non_float_attribute_stages_and_commits(staged, root):
     assert rows[rows["name"] == "Manchester Wind"]["value"].tolist() == ["solar"]
 
     child = staged.commit(NewChild(root))
-    got = child.store.attributes["carrier"].collect().to_native().to_pandas()
+    got = child.record.attributes["carrier"].collect().to_native().to_pandas()
     assert got[got["name"] == "Manchester Wind"]["value"].tolist() == ["solar"]
 
 
@@ -338,7 +338,7 @@ def test_a_non_partial_axis_is_restated_whole(staged, root):
     staged.set("p_max_pu", one, names=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    got = child.store.attributes["p_max_pu"].collect().to_native().to_pandas()
+    got = child.record.attributes["p_max_pu"].collect().to_native().to_pandas()
     got = got[got["name"] == "Manchester Wind"].sort_values("snapshot")
     assert len(got) == len(mine)
     # The edit applied, and every other hour kept the parent's value.
@@ -403,7 +403,7 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
     child = staged.commit(NewChild(root))
     assert "NewSolar" in set(child.node_cache.components.df()["name"])
 
-    static = PyPSA.build(child.store).c[GEN].static
+    static = PyPSA.build(child.record).c[GEN].static
     assert static.loc["NewSolar", "p_nom"] == 42.0
     assert static.loc["NewSolar", "carrier"] == "solar"
 
@@ -422,7 +422,9 @@ def test_add_accepts_a_name_of_its_own_type(staged, root):
     """Re-adding a name of the same type is an edit to that member, not a clash."""
     staged.add(GEN, pd.DataFrame([{"name": "Manchester Wind", "p_nom": 5.0}]))
     child = staged.commit(NewChild(root))
-    assert PyPSA.build(child.store).c[GEN].static.loc["Manchester Wind", "p_nom"] == 5.0
+    assert (
+        PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 5.0
+    )
 
 
 def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
@@ -430,7 +432,7 @@ def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
 
     The staged entity rows are keyed without `component_type`, so one name has
     one answer. Partitioning on the type as well would keep both the Generator
-    tombstone and the Bus member row, and commit would write a store whose two
+    tombstone and the Bus member row, and commit would write a record whose two
     types share a name - the collision `write_record` rejects.
     """
     staged.remove(GEN, ["Manchester Wind"])
@@ -444,9 +446,9 @@ def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
     assert len(rows) == 1
     assert rows[0][0] == "Bus"
 
-    # And it commits: a store with two rows for the name would be rejected.
+    # And it commits: a record with two rows for the name would be rejected.
     child = staged.commit(NewChild(root))
-    assert "Manchester Wind" not in PyPSA.build(child.store).c[GEN].static.index
+    assert "Manchester Wind" not in PyPSA.build(child.record).c[GEN].static.index
 
 
 def test_add_routes_a_port_attribute_to_the_connections(staged, root):
@@ -462,7 +464,7 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     )
     child = staged.commit(NewChild(root))
 
-    buses = PyPSA.build(child.store).c[GEN].static["bus"]
+    buses = PyPSA.build(child.record).c[GEN].static["bus"]
     assert buses["NewSolar"] == "Manchester"
     # The point of the routing: the inherited components keep theirs.
     assert buses["Manchester Wind"] == "Manchester"
@@ -555,7 +557,7 @@ def test_rollback_discards_everything_staged(staged, root):
 
     assert staged.pending.attributes == {}
     assert staged.pending.tombstones == {}
-    # And the store reads the base rows again.
+    # And the record reads the base rows again.
     rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
     assert 0.42 not in set(rows["value"])
 
@@ -582,18 +584,18 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
     assert len(_static(child, "p_nom")) > 1
 
 
-def test_a_directory_target_writes_a_flattened_store(staged, root, con, tmp_path):
-    """No parent to resolve against, so the whole store is written (§11.7)."""
+def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_path):
+    """No parent to resolve against, so the whole record is written (§11.7)."""
     staged.set("p_nom", 150.0, names=["Manchester Wind"])
     out = str(tmp_path / "flat")
     assert staged.commit(Directory(out)) is None
 
-    store = DirectoryRecord(out, con)
-    rows = store.attributes["p_nom"].collect().to_native().to_pandas()
+    record = DirectoryRecord(out, con)
+    rows = record.attributes["p_nom"].collect().to_native().to_pandas()
     got = dict(zip(rows["name"], rows["value"], strict=True))
     assert got["Manchester Wind"] == 150.0
     # Flattened: every component is present, not left to a parent to supply.
-    members = store.components[GEN].collect().to_native().to_pandas()
+    members = record.components[GEN].collect().to_native().to_pandas()
     assert len(members) == 6
 
 
@@ -603,7 +605,7 @@ def test_a_committed_child_builds_a_network(staged, root):
     child = staged.commit(NewChild(root))
 
     assert (
-        PyPSA.build(child.store).c[GEN].static.loc["Manchester Wind", "p_nom"] == 150.0
+        PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 150.0
     )
 
 
@@ -638,7 +640,7 @@ def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(staged):
 
 
 def test_results_stage_and_read_back_without_committing(staged):
-    """A tool can attach what it solved and the store reads it (§11.2)."""
+    """A tool can attach what it solved and the record reads it (§11.2)."""
     assert list(staged.outputs) == []
     staged.set("p", 42.0, names=["Manchester Wind"], kind="outputs")
 

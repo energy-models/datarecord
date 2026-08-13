@@ -49,7 +49,7 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
     Parameters
     ----------
     schema
-        The store's schema, which declares the dims and their keys (§5).
+        The record's schema, which declares the dims and their keys (§5).
     ancestry : list of UUID
         Root first, ending in the record being resolved, truncated at the
         deepest materialised ancestor (`ancestry_to_read`).
@@ -93,7 +93,7 @@ def broadcast_match(
 
 @dataclass(frozen=True)
 class Dims:
-    """A store's schema, plus each declared dim's folded axis relation.
+    """A record's schema, plus each declared dim's folded axis relation.
 
     They travel together because the fold needs both wherever it broadcasts a
     NULL against "all values of that dim" (§3.3).
@@ -101,7 +101,7 @@ class Dims:
     Parameters
     ----------
     schema : Schema
-        The store's schema (§5).
+        The record's schema (§5).
     axes : dict of str to DuckDBPyRelation
         Each declared dim's folded axis relation, full row rather than the key
         column alone - `scenario`'s carries `weight` too. A dim with no rows
@@ -152,7 +152,7 @@ class Dims:
         Notes
         -----
         `rel` must carry a column for every dim in `layer_keys`, which
-        `write_record` enforces (§5.5): a store whose frames do not is one the
+        `write_record` enforces (§5.5): a record whose frames do not is one the
         writer rejected, and binding here would resolve it as though the dim
         were broadcast everywhere.
         """
@@ -172,16 +172,16 @@ class Dims:
 # -- paths and probes -------------------------------------------------------
 
 
-def _map_uri(record_id: UUID, kind: str) -> str:
+def _map_uri(revision_id: UUID, kind: str) -> str:
     """Where a record's `kind` owner map is materialised, under `resolved/` (§8.2)."""
-    return f"{resolved_dir(record_id)}owner_map/{kind}.parquet"
+    return f"{resolved_dir(revision_id)}owner_map/{kind}.parquet"
 
 
 _KIND_NAMES = ("inputs", "components", "connections")
 
 
-def materialised(record_id: UUID, con: DuckDBPyConnection) -> bool:
-    """Whether `record_id`'s node caches are materialised (§8.2).
+def materialised(revision_id: UUID, con: DuckDBPyConnection) -> bool:
+    """Whether `revision_id`'s node caches are materialised (§8.2).
 
     A node's caches are written together (`materialise`), so one map answers
     for all three, and for the resolved dims and schema beside them.
@@ -190,7 +190,7 @@ def materialised(record_id: UUID, con: DuckDBPyConnection) -> bool:
     write-once (§8.1), so a materialised cache is valid forever and its
     presence is the whole answer.
     """
-    return try_read_parquet(_map_uri(record_id, _KIND_NAMES[0]), con) is not None
+    return try_read_parquet(_map_uri(revision_id, _KIND_NAMES[0]), con) is not None
 
 
 def ancestry_to_read(ancestry: list[UUID], con: DuckDBPyConnection) -> list[UUID]:
@@ -219,15 +219,15 @@ def ancestry_to_read(ancestry: list[UUID], con: DuckDBPyConnection) -> list[UUID
     return ancestry
 
 
-def _table_name(record_id: UUID, kind: str) -> str:
-    return f"owner_map_{kind}_{record_id.hex}"
+def _table_name(revision_id: UUID, kind: str) -> str:
+    return f"owner_map_{kind}_{revision_id.hex}"
 
 
 # -- fold relations -----------------------------------------------------
 
 
 def _deleted_relation(
-    record_id: UUID,
+    revision_id: UUID,
     keys: Dims,
     con: DuckDBPyConnection,
     *,
@@ -254,7 +254,7 @@ def _deleted_relation(
     if dims is None:
         dims = keys.schema.component_dims
     rel = try_read_parquet(
-        layer_dir(record_id) + f"dims/{subdir}/*.parquet", con, union_by_name=True
+        layer_dir(revision_id) + f"dims/{subdir}/*.parquet", con, union_by_name=True
     )
     if rel is None or "deleted" not in rel.columns:
         return _empty_relation(keys.schema, con, *fixed, *dims)
@@ -266,14 +266,14 @@ def _deleted_relation(
 
 
 def _component_deleted(
-    record_id: UUID, keys: Dims, con: DuckDBPyConnection
+    revision_id: UUID, keys: Dims, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
     """This layer's tombstoned components, scoped by `component_dims` (§8.3)."""
-    return _deleted_relation(record_id, keys, con)
+    return _deleted_relation(revision_id, keys, con)
 
 
 def _component_deleted_for_connections(
-    record_id: UUID, keys: Dims, con: DuckDBPyConnection
+    revision_id: UUID, keys: Dims, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
     """Component tombstones that remove a connection, keyed as the connections map is.
 
@@ -283,7 +283,7 @@ def _component_deleted_for_connections(
     reading of §14's open question, pinned by an `xfail` in
     `tests/test_connections.py`.
     """
-    deleted = _component_deleted(record_id, keys, con)
+    deleted = _component_deleted(revision_id, keys, con)
     if not [
         d for d in keys.schema.component_dims if d not in keys.schema.connection_dims
     ]:
@@ -293,11 +293,11 @@ def _component_deleted_for_connections(
 
 
 def _connection_deleted(
-    record_id: UUID, keys: Dims, con: DuckDBPyConnection
+    revision_id: UUID, keys: Dims, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
     """This layer's tombstoned connections, scoped by `connection_dims` (§6)."""
     return _deleted_relation(
-        record_id,
+        revision_id,
         keys,
         con,
         subdir="connections",
@@ -366,11 +366,11 @@ def _with_columns(
 
 
 def fold_inputs(
-    record_id: UUID, keys: Dims, con: DuckDBPyConnection, parent: DuckDBPyRelation
+    revision_id: UUID, keys: Dims, con: DuckDBPyConnection, parent: DuckDBPyRelation
 ) -> DuckDBPyRelation:
     """This node's inputs map: `inputs/` keys, folded over `parent` (§9.1)."""
     rel = try_read_parquet(
-        layer_dir(record_id) + "inputs/*.parquet", con, union_by_name=True
+        layer_dir(revision_id) + "inputs/*.parquet", con, union_by_name=True
     )
     if rel is None:
         own = _empty_relation(keys.schema, con, *keys.schema.input_columns)
@@ -393,7 +393,7 @@ def fold_inputs(
             *(expr.alias(d) for d, expr in dims.items()),
             *(col("i", d).alias(f"_raw_{d}") for d in keys.schema.dims),
             col("i", "attribute"),
-            lit(str(record_id)).cast("UUID").alias("layer_uuid"),
+            lit(str(revision_id)).cast("UUID").alias("layer_uuid"),
             col("i", "breakpoint"),
         )
         own = tagged.aggregate(
@@ -415,12 +415,12 @@ def fold_inputs(
     kept = (
         parent.set_alias("p")
         .join(
-            _component_deleted(record_id, keys, con).set_alias("x"),
+            _component_deleted(revision_id, keys, con).set_alias("x"),
             _null_safe("x", "p", keys.schema.component_key),
             how="anti",
         )
         .join(
-            _connection_deleted(record_id, keys, con).set_alias("c"),
+            _connection_deleted(revision_id, keys, con).set_alias("c"),
             _null_safe("c", "p", keys.schema.connection_key),
             how="anti",
         )
@@ -432,11 +432,11 @@ def fold_inputs(
 
 
 def fold_components(
-    record_id: UUID, keys: Dims, con: DuckDBPyConnection, parent: DuckDBPyRelation
+    revision_id: UUID, keys: Dims, con: DuckDBPyConnection, parent: DuckDBPyRelation
 ) -> DuckDBPyRelation:
     """This node's components map: `dims/components/` keys, folded over `parent` (§9.1)."""
     return _fold_ordered(
-        record_id,
+        revision_id,
         keys,
         con,
         parent,
@@ -448,7 +448,7 @@ def fold_components(
 
 
 def fold_connections(
-    record_id: UUID, keys: Dims, con: DuckDBPyConnection, parent: DuckDBPyRelation
+    revision_id: UUID, keys: Dims, con: DuckDBPyConnection, parent: DuckDBPyRelation
 ) -> DuckDBPyRelation:
     """This node's connections map: `dims/connections/` keys, folded over `parent` (§6, §9.1).
 
@@ -464,7 +464,7 @@ def fold_connections(
     scenario-scoped, leaves them to the scenarios the component still has.
     """
     return _fold_ordered(
-        record_id,
+        revision_id,
         keys,
         con,
         parent,
@@ -481,7 +481,7 @@ def fold_connections(
 
 
 def _fold_ordered(
-    record_id: UUID,
+    revision_id: UUID,
     keys: Dims,
     con: DuckDBPyConnection,
     parent: DuckDBPyRelation,
@@ -511,7 +511,7 @@ def _fold_ordered(
         to match it on. Connections use it for component tombstones (§6).
     """
     rel = try_read_parquet(
-        layer_dir(record_id) + f"dims/{subdir}/*.parquet", con, union_by_name=True
+        layer_dir(revision_id) + f"dims/{subdir}/*.parquet", con, union_by_name=True
     )
     if rel is None:
         # No rows, so `order_key` needs no values either - just the column.
@@ -524,7 +524,7 @@ def _fold_ordered(
             col("i", "component_type"),
             *(col("i", c) for c in fixed),
             *(expr.alias(d) for d, expr in expanded.items()),
-            lit(str(record_id)).cast("UUID").alias("layer_uuid"),
+            lit(str(revision_id)).cast("UUID").alias("layer_uuid"),
             sql("row_number() OVER ()").alias("_row"),
         )
         # `component_type` is aggregated, not grouped by: it is determined by
@@ -546,12 +546,12 @@ def _fold_ordered(
     kept = parent.set_alias("p")
     if also_deleted is not None:
         kept = kept.join(
-            also_deleted(record_id, keys, con).set_alias("a"),
+            also_deleted(revision_id, keys, con).set_alias("a"),
             _null_safe("p", "a", also_deleted_key),
             how="anti",
         )
     deleted = _deleted_relation(
-        record_id, keys, con, subdir=subdir, fixed=fixed, dims=dims
+        revision_id, keys, con, subdir=subdir, fixed=fixed, dims=dims
     )
     kept = kept.join(
         deleted.set_alias("x"), _null_safe("p", "x", key), how="anti"
@@ -573,7 +573,7 @@ def _fold_map(
     """A record's owner map of one kind, folded down over `ancestry` (§9.1).
 
     `schema` is passed in rather than read here: one manifest serves the whole
-    store (§5.6), so the three kinds fold under one read of it.
+    record (§5.6), so the three kinds fold under one read of it.
     """
     keys = resolve_dims(schema, ancestry, con)
 
@@ -611,25 +611,25 @@ def _fold_kind(
 
 
 def _table(
-    record_id: UUID,
+    revision_id: UUID,
     ancestry: list[UUID],
     con: DuckDBPyConnection,
     schema: Schema,
     *,
     kind: str,
 ) -> DuckDBPyRelation:
-    """One owner map for `record_id` (§9.1).
+    """One owner map for `revision_id` (§9.1).
 
     Its own materialised map if it has one, else the fold over `ancestry`
     (already truncated at the deepest materialised ancestor, §8.2). The live fold
     is cached as a connection-scoped table, which never needs invalidating since
     layers are write-once (§8.1).
     """
-    persisted = try_read_parquet(_map_uri(record_id, kind), con)
+    persisted = try_read_parquet(_map_uri(revision_id, kind), con)
     if persisted is not None:
         return _cast(schema, persisted)
 
-    name = _table_name(record_id, kind)
+    name = _table_name(revision_id, kind)
     try:
         return con.table(name)
     except duckdb.CatalogException:
@@ -637,8 +637,10 @@ def _table(
         return con.table(name)
 
 
-def materialise(record_id: UUID, ancestry: list[UUID], con: DuckDBPyConnection) -> None:
-    """Write `record_id`'s node caches: owner maps and resolved dims (§8.2).
+def materialise(
+    revision_id: UUID, ancestry: list[UUID], con: DuckDBPyConnection
+) -> None:
+    """Write `revision_id`'s node caches: owner maps and resolved dims (§8.2).
 
     Purely additive. It changes no answer a read would give, only how many
     layers a read touches to reach it: once these files exist, a descendant's
@@ -648,21 +650,21 @@ def materialise(record_id: UUID, ancestry: list[UUID], con: DuckDBPyConnection) 
     write-once (§8.1), so what is folded here cannot later become stale.
     """
     schema = read_schema(con)
-    base = resolved_dir(record_id) + "owner_map/"
+    base = resolved_dir(revision_id) + "owner_map/"
     if "://" not in base:
         # A record that wrote nothing to its layer has no node dir yet either.
         Path(base).mkdir(parents=True, exist_ok=True)
     for kind in _KINDS:
-        _fold_kind(kind, ancestry, con, schema).to_parquet(_map_uri(record_id, kind))
-    _materialise_dims(record_id, ancestry, con, schema)
+        _fold_kind(kind, ancestry, con, schema).to_parquet(_map_uri(revision_id, kind))
+    _materialise_dims(revision_id, ancestry, con, schema)
 
 
 def _materialise_dims(
-    record_id: UUID, ancestry: list[UUID], con: DuckDBPyConnection, schema: Schema
+    revision_id: UUID, ancestry: list[UUID], con: DuckDBPyConnection, schema: Schema
 ) -> None:
     """Fold this node's resolved axes into its node cache, not its layer (§8.2)."""
     dims = resolve_dims(schema, ancestry, con)
-    base = resolved_dir(record_id) + "dims/"
+    base = resolved_dir(revision_id) + "dims/"
     if "://" not in base:
         Path(base).mkdir(parents=True, exist_ok=True)
     for dim, rel in dims.axes.items():
@@ -680,7 +682,7 @@ def read_json(uri: str) -> dict[str, Any] | None:
     """
     try:
         if "://" in uri:
-            with urlopen(uri) as fh:  # noqa: S310 - store URIs are derived, not user input
+            with urlopen(uri) as fh:  # noqa: S310 - record URIs are derived, not user input
                 return json.load(fh)
         with open(uri) as fh:
             return json.load(fh)
@@ -693,18 +695,18 @@ def read_json(uri: str) -> dict[str, Any] | None:
 
 
 def read_schema(con: DuckDBPyConnection | None = None) -> Schema:
-    """The store's one schema, read from beside the layers (§5.6).
+    """The record's one schema, read from beside the layers (§5.6).
 
     No fold and no ancestry: a schema is not layered data. One file makes it a
-    property of the store, knowable before any layer is read and stated once
-    for a hundred-layer tree. A store that declares none reads as an empty
+    property of the record, knowable before any layer is read and stated once
+    for a hundred-layer tree. A record that declares none reads as an empty
     `Schema`, which declares no dims and no attributes.
 
     Parameters
     ----------
     con
         Read the manifest beside *this* connection's layers. A connection is
-        already scoped to one store root (`connect(base_uri=...)`), so the
+        already scoped to one record root (`connect(base_uri=...)`), so the
         schema follows from it rather than from a separate parameter. `None`
         reads the process default, which is what a caller holding no
         connection gets.
@@ -715,7 +717,7 @@ def read_schema(con: DuckDBPyConnection | None = None) -> Schema:
 
 
 def write_schema(schema: Schema, base_uri: str | None = None) -> None:
-    """Write the store's one schema, beside the layers (§5.6).
+    """Write the record's one schema, beside the layers (§5.6).
 
     Amending it is a schema change rather than a patch, so this replaces the
     file: `Schema.compatible_with` is what says whether existing layers
@@ -743,7 +745,7 @@ class NodeCache:
 
     Notes
     -----
-    `ancestry` is root first, ending in `record_id`, and already truncated at
+    `ancestry` is root first, ending in `revision_id`, and already truncated at
     the deepest materialised ancestor (`ancestry_to_read`) - so a hundred-layer
     tree with a materialised parent resolves from two entries (§8.2).
 
@@ -751,12 +753,12 @@ class NodeCache:
     layers are write-once (§8.1), so nothing an instance caches can go stale.
     """
 
-    record_id: UUID
+    revision_id: UUID
     ancestry: list[UUID]
     con: DuckDBPyConnection
 
     def _map(self, kind: str) -> DuckDBPyRelation:
-        return _table(self.record_id, self.ancestry, self.con, self.schema, kind=kind)
+        return _table(self.revision_id, self.ancestry, self.con, self.schema, kind=kind)
 
     @property
     def inputs(self) -> DuckDBPyRelation:
@@ -776,7 +778,7 @@ class NodeCache:
 
     @cached_property
     def schema(self) -> Schema:
-        """This store's one manifest, read once per node (§5.6).
+        """This record's one manifest, read once per node (§5.6).
 
         From beside *this* connection's layers, so two records on different
         roots in one process each read their own.
@@ -804,7 +806,7 @@ class NodeCache:
         Its own layer only: outputs do not overlay, so there is no map to
         consult and nothing inherited from an ancestor.
         """
-        uri = f"{layer_dir(self.record_id)}outputs/*.parquet"
+        uri = f"{layer_dir(self.revision_id)}outputs/*.parquet"
         rel = try_read_parquet(uri, self.con, union_by_name=True)
         if rel is None:
             return []
@@ -921,7 +923,7 @@ class NodeCache:
         No fold and no owner map: if this layer has no `outputs/`, the record
         has no results - an ancestor's are not inherited.
         """
-        uri = f"{layer_dir(self.record_id)}outputs/{attribute}.parquet"
+        uri = f"{layer_dir(self.revision_id)}outputs/{attribute}.parquet"
         rel = try_read_parquet(uri, self.con)
         if rel is not None:
             return rel

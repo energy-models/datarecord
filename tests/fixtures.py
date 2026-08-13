@@ -7,7 +7,7 @@ import pandas as pd
 from datarecord.layered.resolve import write_schema as record_write_schema
 from datarecord.schema import AttributeSpec, Dimension, Schema
 
-# No `component_type`: an attribute row is keyed by `name`, unique store-wide
+# No `component_type`: an attribute row is keyed by `name`, unique across every type
 # (design doc §3.5). The entity tables below keep it.
 LONG_COLUMNS = [
     "name",
@@ -156,7 +156,7 @@ def rename_components(n, ctype: str, suffix: str) -> None:
 
     Both containers, because they are keyed by the same names: renaming only
     `static` would orphan every dynamic column, and so silently drop that
-    attribute from the store. A stochastic network is keyed by
+    attribute from the record. A stochastic network is keyed by
     `(scenario, name)`, so only the `name` level moves.
 
     The renamed level is cast back to the dtype it had: `rename` yields an
@@ -188,31 +188,31 @@ def rename_components(n, ctype: str, suffix: str) -> None:
         frame.rename(columns=renamed, inplace=True)
 
 
-def export_network(n, record, con) -> None:
-    """Write `n` as `record`'s layer, through the record layer's own writer.
+def export_network(n, revision, con) -> None:
+    """Write `n` as `revision`'s layer, through the record layer's own writer.
 
     Not `n.export_to_parquet`: that emits PyPSA's upstream manifest format,
-    which is a different vocabulary from the schema a store declares (§5.6).
-    Going through `write_record` means a test store is written exactly as
+    which is a different vocabulary from the schema a record declares (§5.6).
+    Going through `write_record` means a test record is written exactly as
     `blocks` writes one.
     """
     from datarecord.layered.write import write_record
     from datarecord.tools.pypsa import PyPSA
 
-    write_record(record.id, PyPSA.to_datarecord(n), con)
+    write_record(revision.id, PyPSA.to_datarecord(n), con)
 
 
 def write_schema(schema: Schema, base_uri: str | None = None) -> None:
-    """Declare the store's one schema, beside the layers (§5.6).
+    """Declare the record's one schema, beside the layers (§5.6).
 
-    Not per layer: a layer holds only data, so this writes the store-level
+    Not per layer: a layer holds only data, so this writes the record-level
     `manifest.json` that every layer in the tree is read under.
     """
     record_write_schema(schema, base_uri)
 
 
 def write_directory_schema(directory: str, schema: Schema) -> None:
-    """Write `manifest.json` *inside* `directory`, for a standalone store (§5.6)."""
+    """Write `manifest.json` *inside* `directory`, for a standalone record (§5.6)."""
     Path(directory).mkdir(parents=True, exist_ok=True)
     Path(directory, "manifest.json").write_text(schema.model_dump_json())
 
@@ -229,7 +229,7 @@ def schema(
     },
     within: dict[str, set[str]] | None = None,
 ) -> Schema:
-    """A schema shaped like the PyPSA stores most tests build on (§5).
+    """A schema shaped like the PyPSA records most tests build on (§5).
 
     Defaults match `PyPSA.to_datarecord`: three declared dims, `scenario`
     alone `partial` and keying both entity tables. Override `partial`/`keys`
@@ -255,8 +255,8 @@ def relation(revision, attribute: str):
     """The resolved long relation for one input attribute, as a DuckDB relation.
 
     A test helper rather than a `Revision` method: `Revision` presents its data
-    through `.store` (a `Record`), and a DuckDB-shaped accessor beside it would
-    duplicate `store.attributes[attr]` while inverting what `outputs` means -
+    through `.record` (a `Record`), and a DuckDB-shaped accessor beside it would
+    duplicate `record.attributes[attr]` while inverting what `outputs` means -
     a relation on the revision against a `Frames` mapping on the record. Tests
     want relations because they assert on `.df()`, so the affordance lives here.
     """

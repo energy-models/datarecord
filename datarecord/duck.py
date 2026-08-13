@@ -1,7 +1,7 @@
 """DuckDB connection setup for the record layer (design doc §13).
 
-Owns the `data_records` metadata table and the `layer_dir` path convention
-that maps a record UUID to its store location. The connection is passed as a
+Owns the `revisions` metadata table and the `layer_dir` path convention
+that maps a record UUID to its record location. The connection is passed as a
 parameter throughout, never a module global, so each test can open its own
 `:memory:` connection.
 
@@ -39,17 +39,17 @@ class _Functions:
 fn = _Functions()
 
 CREATE_TABLE = """
-CREATE TABLE IF NOT EXISTS data_records (
+CREATE TABLE IF NOT EXISTS revisions (
   id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   parent   UUID
 )
 """
 
-# Where layers live; `layer_dir(id)` derives every store path from it (§13).
+# Where layers live; `layer_dir(id)` derives every record path from it (§13).
 DEFAULT_BASE_URI = os.environ.get("BLOCKS_RECORD_BASE_URI", "")
 
-# The store root each connection was opened against (§5.6). A connection is
-# already scoped to one store - `connect` registers its `layer_dir` macro from
+# The record root each connection was opened against (§5.6). A connection is
+# already scoped to one record - `connect` registers its `layer_dir` macro from
 # this root - so the schema beside those layers is a property of the connection
 # too, and reading it needs no separate parameter threaded through the fold.
 # Weak, so a closed connection does not pin its entry.
@@ -57,7 +57,7 @@ _BASE_URIS: MutableMapping[DuckDBPyConnection, str] = WeakKeyDictionary()
 
 
 def base_uri_of(con: DuckDBPyConnection) -> str:
-    """The store root `con` was opened against, or the process default (§5.6).
+    """The record root `con` was opened against, or the process default (§5.6).
 
     A connection not opened through `connect` - one a caller made itself -
     falls back to `DEFAULT_BASE_URI`, which is what every path helper here
@@ -67,49 +67,53 @@ def base_uri_of(con: DuckDBPyConnection) -> str:
 
 
 def schema_uri(base_uri: str | None = None) -> str:
-    """Where a layered store's one schema lives: beside `layers/`, not in it (§5.6).
+    """Where a layered record's one schema lives: beside `layers/`, not in it (§5.6).
 
     One schema for the whole tree. A layer directory holds only data, which is
-    what keeps it a plain parquet store a tool knowing nothing about layering
+    what keeps it a plain parquet directory a tool knowing nothing about layering
     can read.
     """
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
     return f"{base.rstrip('/')}/manifest.json" if base else "manifest.json"
 
 
-def layer_dir(record_id: UUID | str, base_uri: str | None = None) -> str:
-    """Return the store directory for `record_id`, with a trailing slash.
+def layer_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
+    """Return the record directory for `revision_id`, with a trailing slash.
 
     The layer location is derived from the UUID, never stored (§13), so
     changing the layout is a change in this one function and its SQL macro.
-    This is a plain PyPSA parquet store (§3): only the layer's own
+    This is a plain PyPSA parquet directory (§3): only the layer's own
     contribution lives at the top level, so a non-blocks reader sees a normal
-    store (§13). Derived caches (the owner map, resolved dims) go in the
+    record (§13). Derived caches (the owner map, resolved dims) go in the
     `resolved/` subdirectory, which no single-level glob reaches.
     """
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
-    return f"{base.rstrip('/')}/layers/{record_id}/" if base else f"layers/{record_id}/"
+    return (
+        f"{base.rstrip('/')}/layers/{revision_id}/"
+        if base
+        else f"layers/{revision_id}/"
+    )
 
 
-def resolved_dir(record_id: UUID | str, base_uri: str | None = None) -> str:
-    """Return the resolved-cache directory for `record_id`, with a trailing slash.
+def resolved_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
+    """Return the resolved-cache directory for `revision_id`, with a trailing slash.
 
     A subdirectory of `layer_dir`, not a sibling tree: one directory per record
     holds both what the layer wrote and what the fold derived from it. The
     nesting is safe because every glob into a layer is single-level
     (`inputs/*.parquet`, `dims/*.parquet`), so `resolved/` is invisible to a
     reader that knows nothing about it - which is what keeps a layer directory a
-    plain parquet store a foreign reader can consume (§8.3).
+    plain parquet directory a foreign reader can consume (§8.3).
 
     Only the layer's *inputs* are write-once, then: `materialise` writes here
     after the fact, which invalidates nothing because results and caches are
     derived rather than depended on (§8.1, §8.2).
     """
-    return f"{layer_dir(record_id, base_uri)}resolved/"
+    return f"{layer_dir(revision_id, base_uri)}resolved/"
 
 
 def _register_macros(con: DuckDBPyConnection, base_uri: str) -> None:
-    """Register `layer_dir` so SQL composes store paths inline (§13)."""
+    """Register `layer_dir` so SQL composes record paths inline (§13)."""
     base = base_uri.rstrip("/")
     prefix = f"{base}/" if base else ""
     con.execute("DROP MACRO IF EXISTS layer_dir")
@@ -132,7 +136,7 @@ def connect(
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
     # `httpfs` and the S3 secret are only meaningful for remote layers, and
     # `PROVIDER credential_chain` probes instance-metadata endpoints that hang
-    # for ~2 minutes where none exist. Never pay that for a local store.
+    # for ~2 minutes where none exist. Never pay that for a local record.
     if "://" in base:
         try:
             con.execute("INSTALL httpfs; LOAD httpfs;")
@@ -144,7 +148,7 @@ def connect(
             pass
     con.execute(CREATE_TABLE)
     _register_macros(con, base)
-    # Remembered so `read_schema` finds the manifest beside *this* store's
+    # Remembered so `read_schema` finds the manifest beside *this* record's
     # layers rather than the process default's (§5.6).
     _BASE_URIS[con] = base
     return con

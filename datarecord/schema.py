@@ -1,6 +1,6 @@
-"""The schema: what a store's data is, and how a patch to it behaves (§5).
+"""The schema: what a record's data is, and how a patch to it behaves (§5).
 
-One schema per store, and `manifest.json` is how it is written down - the two
+One schema per record, and `manifest.json` is how it is written down - the two
 words name the same thing, the file and the object (§5.6).
 
 Framework-independent. `component_type`, `name` and `attribute` are strings
@@ -155,7 +155,7 @@ class AttributeSpec(BaseModel):
 
 
 class Schema(BaseModel):
-    """One store's schema (§5).
+    """One record's schema (§5).
 
     Parameters
     ----------
@@ -167,7 +167,7 @@ class Schema(BaseModel):
     attributes
         Component type -> attribute -> spec.
     partial
-        Which dims a layer may patch value by value (§5.5). `None` for a store
+        Which dims a layer may patch value by value (§5.5). `None` for a record
         with no layers, since nothing overrides anything. A dim outside it is
         one a layer owns entirely once it touches it.
     meta
@@ -371,7 +371,7 @@ class Schema(BaseModel):
         (§9.1).
 
         A schema declaring no dims at all is "no manifest yet" (§5.6) rather
-        than a store to fold, and DuckDB has no empty struct - so the flag
+        than a record to fold, and DuckDB has no empty struct - so the flag
         columns are undeclared there, and a caller building an empty relation
         falls back to `VARCHAR` for a map that will never hold a row.
         """

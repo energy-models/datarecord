@@ -20,10 +20,10 @@ MEMBERS = ("dims", "components", "connections", "attributes")
 
 @pytest.fixture
 def written(con, base_uri, ac_dc):
-    """A record whose layer blocks wrote, so both backings can read the same store."""
-    record = Revision.create(con)
-    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
-    return record
+    """A record whose layer blocks wrote, so both backings can read the same record."""
+    revision = Revision.create(con)
+    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+    return revision
 
 
 @pytest.fixture
@@ -39,16 +39,16 @@ def both(written, con):
 
 def test_both_backings_satisfy_the_protocol(both):
     """Structural conformance, so a consumer cannot tell which it holds (§9.3)."""
-    for store in both:
-        assert isinstance(store, Record)
+    for record in both:
+        assert isinstance(record, Record)
 
 
-def test_a_network_source_is_a_store(ac_dc):
+def test_a_network_source_is_a_record(ac_dc):
     """`to_datarecord` returns one too, which is what puts read and write on one seam."""
     assert isinstance(PyPSA.to_datarecord(ac_dc), Record)
 
 
-def test_a_plain_dict_backed_store_satisfies_the_protocol(con):
+def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     """`Frames` is the `Mapping` ABC, so eager `dict` values are a valid backing.
 
     The protocol asks for named lazy frames, not for a mapping that defers
@@ -72,7 +72,7 @@ def test_a_plain_dict_backed_store_satisfies_the_protocol(con):
     )
 
     @dataclass(frozen=True)
-    class DictStore:
+    class DictRecord:
         schema: Schema
         dims: Frames
         components: Frames
@@ -83,30 +83,32 @@ def test_a_plain_dict_backed_store_satisfies_the_protocol(con):
         def flags(self, ctype: str) -> dict[str, Flags]:
             return {}
 
-    store = DictStore(schema(), {}, {"Generator": members}, {}, {"p_nom": long}, EMPTY)
-    assert isinstance(store, Record)
+    record = DictRecord(
+        schema(), {}, {"Generator": members}, {}, {"p_nom": long}, EMPTY
+    )
+    assert isinstance(record, Record)
     # Results absent, spelled as an empty mapping rather than a protocol a
     # consumer has to test for (§4).
-    assert list(store.outputs) == []
-    assert store.attributes["p_nom"].implementation == nw.Implementation.DUCKDB
+    assert list(record.outputs) == []
+    assert record.attributes["p_nom"].implementation == nw.Implementation.DUCKDB
 
     # And `write_record` consumes it, which is the point of widening the type:
     # it iterates and looks up, both of which a `dict` answers.
-    record = Revision.create(con)
-    write_record(record.id, store, con)
-    assert "p_nom" in DirectoryRecord(layer_dir(record.id), con).attributes
+    revision = Revision.create(con)
+    write_record(revision.id, record, con)
+    assert "p_nom" in DirectoryRecord(layer_dir(revision.id), con).attributes
 
 
-def test_record_exposes_its_store(written):
-    """`record.store` is the entry point; `node_cache` stays the DuckDB view."""
-    store = written.store
-    assert isinstance(store, Record)
-    assert isinstance(store, LayeredRecord)
-    assert store.node_cache is written.node_cache
+def test_revision_exposes_its_record(written):
+    """`revision.record` is the entry point; `node_cache` stays the DuckDB view."""
+    record = written.record
+    assert isinstance(record, Record)
+    assert isinstance(record, LayeredRecord)
+    assert record.node_cache is written.node_cache
 
 
 def test_backings_agree_on_every_key_set(both):
-    """One store, two ways of reading it: the keys must not depend on which."""
+    """One record, two ways of reading it: the keys must not depend on which."""
     node, directory = both
     for member in MEMBERS:
         assert list(getattr(node, member)) == list(getattr(directory, member)), member
@@ -120,7 +122,7 @@ def test_backings_agree_on_flags(both):
 
 
 def test_backings_agree_on_rows(both):
-    """A single-layer store resolves to the same rows either way."""
+    """A single-layer record resolves to the same rows either way."""
     node, directory = both
     for attribute in node.attributes:
         left = node.attributes[attribute].collect().to_native()
@@ -143,11 +145,11 @@ def test_frames_stay_unmaterialised(both):
 
 
 def test_keys_list_without_building(both):
-    """Listing a store is cheap; only a lookup does work (§4)."""
-    for store in both:
-        assert "p_max_pu" in store.attributes
-        assert "nope" not in store.attributes
-        assert len(list(store.attributes)) == len(store.attributes)
+    """Listing a record is cheap; only a lookup does work (§4)."""
+    for record in both:
+        assert "p_max_pu" in record.attributes
+        assert "nope" not in record.attributes
+        assert len(list(record.attributes)) == len(record.attributes)
 
 
 # -- flags, the one non-frame member (§9.3) ----------------------------------
@@ -155,8 +157,8 @@ def test_keys_list_without_building(both):
 
 def test_flags_are_per_component_type(con, base_uri):
     """One file, two types, different shapes - OR-ing across them would lose both."""
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(layer, "Generator", [{"name": "wind"}])
     write_components(layer, "Link", [{"name": "dc"}])
@@ -171,9 +173,9 @@ def test_flags_are_per_component_type(con, base_uri):
         + [{"name": "dc", "value": 1.0}],
     )
 
-    for store in (LayeredRecord(record.node_cache), DirectoryRecord(layer, con)):
-        generator = store.flags("Generator")["p_max_pu"]
-        link = store.flags("Link")["p_max_pu"]
+    for record in (LayeredRecord(revision.node_cache), DirectoryRecord(layer, con)):
+        generator = record.flags("Generator")["p_max_pu"]
+        link = record.flags("Link")["p_max_pu"]
         # The Generator's rows set `snapshot`; the Link's leaves it NULL. Naming
         # the dim is what makes these two answers distinguishable at all.
         assert "snapshot" in generator.varies
@@ -192,8 +194,8 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     what it is: no row mentions it.
     """
     narrow = {"snapshot": "TIMESTAMP", "period": "BIGINT"}
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema(dims=narrow, keys={}, partial=set()))
     write_components(layer, "Generator", [{"name": "wind"}])
     write_input(
@@ -204,16 +206,16 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
             for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
         ],
     )
-    record.materialise()
+    revision.materialise()
     # The map on disk knows nothing of `scenario` - without that this test
     # would pass whatever the flags' layout.
-    uri = f"{resolved_dir(record.id)}owner_map/inputs.parquet"
+    uri = f"{resolved_dir(revision.id)}owner_map/inputs.parquet"
     persisted = con.sql(f"SELECT varies FROM read_parquet('{uri}')")
     assert "scenario" not in str(persisted.types[0])
 
     # The dim arrives after the map is on disk.
     write_schema(schema(dims={**narrow, "scenario": "VARCHAR"}, keys={}, partial=set()))
-    child = record.child()
+    child = revision.child()
     flags = LayeredRecord(child.node_cache).flags("Generator")["p_max_pu"]
     assert "snapshot" in flags.varies
     assert "scenario" not in flags.varies
@@ -227,8 +229,8 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
     containers are needed, and both sets holding `snapshot` is what says so -
     the constant pass takes the NULL-snapshot rows, the series pass the rest.
     """
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(layer, "Generator", [{"name": "wind"}, {"name": "gas"}])
     write_input(
@@ -241,16 +243,16 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
         + [{"name": "gas", "value": 1.0}],
     )
 
-    for store in (LayeredRecord(record.node_cache), DirectoryRecord(layer, con)):
-        combined = store.flags("Generator")["p_max_pu"]
+    for record in (LayeredRecord(revision.node_cache), DirectoryRecord(layer, con)):
+        combined = record.flags("Generator")["p_max_pu"]
         assert "snapshot" in combined.varies
         assert "snapshot" in combined.broadcast
 
 
 def test_flags_report_a_curve(con, base_uri):
     """`breakpoints` distinguishes a curve from a scalar, from either backing (§2)."""
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(layer, "Process", [{"name": "steel"}])
     write_input(
@@ -262,14 +264,14 @@ def test_flags_report_a_curve(con, base_uri):
         ],
     )
 
-    for store in (LayeredRecord(record.node_cache), DirectoryRecord(layer, con)):
-        assert store.flags("Process")["marginal_cost"].breakpoints
+    for record in (LayeredRecord(revision.node_cache), DirectoryRecord(layer, con)):
+        assert record.flags("Process")["marginal_cost"].breakpoints
 
 
 # -- what only the overlay can do -------------------------------------------
 
 
-def test_node_store_resolves_the_overlay(con, base_uri, ac_dc):
+def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
     """The point of two backings: one reads a layer, the other the resolution."""
     root = Revision.create(con)
     write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
@@ -293,7 +295,7 @@ def test_node_store_resolves_the_overlay(con, base_uri, ac_dc):
     assert patched == [0.1]
 
 
-def test_node_store_orders_members(con, base_uri, ac_dc):
+def test_node_record_orders_members(con, base_uri, ac_dc):
     """A `Record` promises member order; for an overlay that means `order_key` (§9.3)."""
     root = Revision.create(con)
     write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
@@ -316,60 +318,60 @@ def test_node_store_orders_members(con, base_uri, ac_dc):
 # -- the directory backing on its own ----------------------------------------
 
 
-def test_directory_store_reads_a_plain_store(con, base_uri, ac_dc, tmp_path):
+def test_directory_record_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
     """No record, no overlay: any parquet directory blocks wrote is a `Record`."""
-    record = Revision.create(con)
-    write_record(record.id, PyPSA.to_datarecord(ac_dc), con)
+    revision = Revision.create(con)
+    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
-    store = DirectoryRecord(layer_dir(record.id), con)
-    assert isinstance(store, Record)
-    assert "Generator" in store.components
-    assert "p_max_pu" in store.attributes
-    assert store.schema.attributes
+    record = DirectoryRecord(layer_dir(revision.id), con)
+    assert isinstance(record, Record)
+    assert "Generator" in record.components
+    assert "p_max_pu" in record.attributes
+    assert record.schema.attributes
 
 
-def test_directory_store_has_no_connections_when_none_were_written(
+def test_directory_record_has_no_connections_when_none_were_written(
     con, base_uri, tmp_path
 ):
-    """A store with no `dims/connections/` reads as having none, not as an error (§6)."""
-    record = Revision.create(con)
-    layer = layer_dir(record.id)
+    """A record with no `dims/connections/` reads as having none, not as an error (§6)."""
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(layer, "Generator", [{"name": "wind"}])
 
     assert list(DirectoryRecord(layer, con).connections) == []
 
 
-def test_directory_store_reads_connections_blocks_wrote(written, con):
-    """A store blocks wrote has them, with the roles the collapse assigned (§6)."""
-    store = DirectoryRecord(layer_dir(written.id), con)
-    assert "Link" in store.connections
+def test_directory_record_reads_connections_blocks_wrote(written, con):
+    """A record blocks wrote has them, with the roles the collapse assigned (§6)."""
+    record = DirectoryRecord(layer_dir(written.id), con)
+    assert "Link" in record.connections
 
-    rows = store.connections["Link"].collect().to_native().to_pandas()
+    rows = record.connections["Link"].collect().to_native().to_pandas()
     assert set(rows["role"]) == {"input", "output"}
 
 
 def test_missing_key_raises(both):
-    """A key the store does not hold is a `KeyError`, not an empty frame."""
-    for store in both:
+    """A key the record does not hold is a `KeyError`, not an empty frame."""
+    for record in both:
         with pytest.raises(KeyError):
-            store.attributes["not_an_attribute"]
+            record.attributes["not_an_attribute"]
 
 
 def test_outputs_are_empty_until_solved(both):
     """An unsolved network's results are absent rather than defaults (§9.4)."""
-    for store in both:
-        assert list(store.outputs) == []
+    for record in both:
+        assert list(record.outputs) == []
 
 
-def test_outputs_is_an_ordinary_store_member(both, con, base_uri):
+def test_outputs_is_an_ordinary_record_member(both, con, base_uri):
     """`outputs` is on `Record`; emptiness is the existence answer (§4, §9.4)."""
     node, directory = both
-    # No separate protocol to satisfy: an unsolved store answers with an empty
+    # No separate protocol to satisfy: an unsolved record answers with an empty
     # mapping, the same way every other member answers for what it lacks.
-    for store in (node, directory):
-        assert isinstance(store, Record)
-        assert list(store.outputs) == []
+    for record in (node, directory):
+        assert isinstance(record, Record)
+        assert list(record.outputs) == []
 
 
 def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc):
@@ -379,7 +381,7 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
     solved = PyPSA.to_datarecord(ac_dc)
 
     class Unsolved:
-        """The same store, with the results member removed entirely.
+        """The same record, with the results member removed entirely.
 
         A structural protocol means a source may simply not define `outputs`,
         which `write_record` must read as "no results" rather than raising.
@@ -395,22 +397,22 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
     source = Unsolved()
     assert not hasattr(source, "outputs")
 
-    record = Revision.create(con)
+    revision = Revision.create(con)
     # Omitting `outputs` is the point: `write_record` must read an absent
     # member as "no results" rather than raising (§4).
-    write_record(record.id, source, con)  # type: ignore[arg-type]
-    layer = layer_dir(record.id)
+    write_record(revision.id, source, con)  # type: ignore[arg-type]
+    layer = layer_dir(revision.id)
     assert try_read_parquet(layer + "outputs/*.parquet", con) is None
     assert "p_max_pu" in DirectoryRecord(layer, con).attributes
 
 
-# -- one schema per store root (§5.6) ----------------------------------------
+# -- one schema per record root (§5.6) ----------------------------------------
 
 
 def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
     """A connection's schema comes from *its* root, not the process default.
 
-    `connect(base_uri=...)` already scopes a connection to one store - its
+    `connect(base_uri=...)` already scopes a connection to one record - its
     `layer_dir` macro derives from that root - so the manifest
     beside those layers is a property of the connection too. Two records on
     two roots therefore disagree about their dims without either being wrong.
@@ -425,14 +427,14 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
         write_manifest(schema(dims=dims, partial=set(dims), keys={}), root)
         roots[name] = (root, con, Revision.create(con))
 
-    (_, _, record_a), (root_b, con_b, record_b) = roots["a"], roots["b"]
-    assert record_a.store.schema.dims == ("scenario",)
-    assert record_b.store.schema.dims == ("vintage",)
+    (_, _, revision_a), (root_b, con_b, revision_b) = roots["a"], roots["b"]
+    assert revision_a.record.schema.dims == ("scenario",)
+    assert revision_b.record.schema.dims == ("vintage",)
 
     # A layer read directly needs no schema supplied either: its own directory
     # carries none (§5.6), so the connection's root answers - which is what
     # `DirectoryRecord` used to take a `declared` argument for.
-    layer = DirectoryRecord(layer_dir(record_b.id, root_b), con_b)
+    layer = DirectoryRecord(layer_dir(revision_b.id, root_b), con_b)
     assert layer.schema.dims == ("vintage",)
 
     for _, con, _ in roots.values():

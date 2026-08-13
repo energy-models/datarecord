@@ -30,8 +30,8 @@ Contribution rules and conventions for datarecord.
 ## Architecture in one paragraph
 
 datarecord stores dimensioned attribute data with a declared schema: components
-(named members of a type, unique store-wide), connections, attribute values over
-both, and the axes those values vary along. A store is a parquet directory, and
+(named members of a type, unique record-wide), connections, attribute values over
+both, and the axes those values vary along. A record is a parquet directory, and
 two implementations serve one `Record` protocol — `DirectoryRecord` over a single
 directory, and `LayeredRecord` over a tree of layers resolved last-writer-wins —
 so a consumer cannot tell which it holds. Queries are built with `narwhals` and

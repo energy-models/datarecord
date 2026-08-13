@@ -36,15 +36,15 @@ def stochastic():
 
 @pytest.fixture
 def parent(con, base_uri, stochastic):
-    record = Revision.create(con)
-    export_network(stochastic, record, con)
-    record.materialise()
-    return record
+    revision = Revision.create(con)
+    export_network(stochastic, revision, con)
+    revision.materialise()
+    return revision
 
 
 def test_scenario_roundtrip(con, parent, stochastic):
-    """A stochastic store round-trips through our reader."""
-    n = PyPSA.build(parent.store)
+    """A stochastic record round-trips through our reader."""
+    n = PyPSA.build(parent.record)
     assert list(n.scenarios) == list(stochastic.scenarios)
     assert_networks_equal(n, stochastic)
 
@@ -132,7 +132,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
         ],
     )
 
-    n = PyPSA.build(child.store)
+    n = PyPSA.build(child.record)
     assert set(n.scenarios) == set(stochastic.scenarios) | {"extra"}
 
     rel = relation(child, "p_max_pu").df()

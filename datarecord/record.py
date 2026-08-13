@@ -1,4 +1,4 @@
-"""The `Record` protocol: one interface over a parquet store's contents.
+"""The `Record` protocol: one interface over a parquet record's contents.
 
 Backings: `layered.revision.LayeredRecord` (a resolved overlay) and
 `directory.DirectoryRecord` (a plain directory). See design doc §4 for the
@@ -20,7 +20,7 @@ Frames = Mapping[str, "nw.LazyFrame"]
 """What a `Record` hands over: named frames, each an unmaterialised plan (§4.2).
 
 The `Mapping` ABC, so a plain `dict` satisfies it as fully as `LazyFrames`
-does. A DuckDB-backed store reaches it with `nw.from_native(rel)`, which stays
+does. A DuckDB-backed record reaches it with `nw.from_native(rel)`, which stays
 an unexecuted plan.
 """
 
@@ -29,7 +29,7 @@ class LazyFrames(Mapping[str, "nw.LazyFrame"]):
     """A `Frames` whose values are built on `__getitem__`, not up front (§4.2).
 
     For a backing where *building* a frame is itself I/O: `read_parquet` reads
-    the footer to bind the schema, a round trip per file against a remote store.
+    the footer to bind the schema, a round trip per file against a remote record.
 
     Parameters
     ----------
@@ -70,7 +70,7 @@ def _unreachable(key: str) -> nw.LazyFrame:
 
 
 EMPTY = LazyFrames((), _unreachable)
-"""A `LazyFrames` with no keys, for a store that has none of some kind."""
+"""A `LazyFrames` with no keys, for a record that has none of some kind."""
 
 
 @dataclass(frozen=True)
@@ -99,15 +99,15 @@ class Flags:
 
 @runtime_checkable
 class Record(Protocol):
-    """One parquet store's contents, however it is backed (§4).
+    """One parquet record's contents, however it is backed (§4).
 
-    Read-only: writing is `write_record(record_id, store, con)`, a function over
-    a store rather than a method on one (§10).
+    Read-only: writing is `write_record(revision_id, source, con)`, a function over
+    a record rather than a method on one (§10).
     """
 
     @property
     def schema(self) -> Schema:
-        """The store's schema: its dims, its attributes, its patch granularity (§5)."""
+        """The record's schema: its dims, its attributes, its patch granularity (§5)."""
         ...
 
     @property
@@ -131,7 +131,7 @@ class Record(Protocol):
 
         Not by component type: one `inputs/p_max_pu.parquet` holds every type's
         rows, keyed by `name` alone. A row carries no `component_type` - names
-        are unique store-wide - so a reader wanting one type joins `components`
+        are unique across every type - so a reader wanting one type joins `components`
         on `name` (§3.5).
         """
         ...
@@ -140,13 +140,13 @@ class Record(Protocol):
     def outputs(self) -> Frames:
         """Long result frames, keyed by attribute name (§9.4).
 
-        Empty for a store carrying no results, which is the same existence
-        answer every other member gives: `set(store.outputs)` is "which results
-        does this store have", exactly as `set(store.flags(ctype))` is the
+        Empty for a record carrying no results, which is the same existence
+        answer every other member gives: `set(record.outputs)` is "which results
+        does this record have", exactly as `set(record.flags(ctype))` is the
         attribute existence test (§4.3). No separate protocol, because
         emptiness is unambiguous here - nothing half-writes results.
 
-        Unlike its neighbours, this does **not** overlay on a layered store: a
+        Unlike its neighbours, this does **not** overlay on a layered record: a
         record's results are its own layer's, never a resolution over its
         ancestors' (§9.4).
         """

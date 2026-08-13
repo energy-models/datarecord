@@ -1,4 +1,4 @@
-"""Writing a whole store as a layer (design doc §10).
+"""Writing a whole record as a layer (design doc §10).
 
 A `Record` hands over narwhals frames and this module turns them into parquet;
 producing one from a framework's own object is a tool's job (§12, §13).
@@ -29,29 +29,29 @@ _LONG_FIXED = ("name", "bus", "attribute", "breakpoint", "value")
 
 
 def write_record(
-    record_id: UUID | None,
+    revision_id: UUID | None,
     source: Record,
     con: DuckDBPyConnection,
     *,
     uri: str | None = None,
 ) -> None:
-    """Write `source` as `record_id`'s layer, which must not exist yet (§10).
+    """Write `source` as `revision_id`'s layer, which must not exist yet (§10).
 
     An existing layer directory is an error rather than an overwrite or a merge,
-    so a whole-store write can never half-replace what a record holds. Keys are
+    so a whole-record write can never half-replace what a record holds. Keys are
     looked up one at a time and each file written before the next is built, so a
     lazily-building source does one read per file rather than one per key up
     front (§10).
 
     Parameters
     ----------
-    record_id
+    revision_id
         The record whose layer this is; `layer_dir` derives the path (§13).
-        `None` only together with `uri`, for a standalone store that belongs
+        `None` only together with `uri`, for a standalone record that belongs
         to no record (§11.7).
     uri
-        Write here instead of at `layer_dir(record_id)` - how a `Directory`
-        commit target produces a store outside the layer tree (§11.7).
+        Write here instead of at `layer_dir(revision_id)` - how a `Directory`
+        commit target produces a record outside the layer tree (§11.7).
     source
         The layer's contents. Validated against its own schema before
         anything is written.
@@ -67,10 +67,10 @@ def write_record(
         dim no frame carries - either would make the fold misresolve the layer.
     """
     if uri is None:
-        if record_id is None:
-            msg = "write_record needs a record_id or a uri"
+        if revision_id is None:
+            msg = "write_record needs a revision_id or a uri"
             raise ValueError(msg)
-        base = layer_dir(record_id)
+        base = layer_dir(revision_id)
     else:
         base = uri if uri.endswith("/") else uri + "/"
     local = "://" not in base
@@ -92,9 +92,9 @@ def write_record(
     if local:
         Path(staging).mkdir(parents=True)
     try:
-        # A layer holds only data: a layered store's one schema lives beside
+        # A layer holds only data: a layered record's one schema lives beside
         # `layers/`, not inside any of them (§5.6). A standalone directory *is*
-        # one store, so there the schema belongs in the directory.
+        # one record, so there the schema belongs in the directory.
         if local and uri is not None:
             with open(staging + "manifest.json", "w") as fh:
                 fh.write(schema.model_dump_json())
@@ -104,7 +104,7 @@ def write_record(
             ("connections", source.connections, "dims/connections"),
             ("attributes", source.attributes, "inputs"),
         ]
-        # `outputs/` only for a source carrying results, so a store with none
+        # `outputs/` only for a source carrying results, so a record with none
         # produces a layer without the directory rather than an empty one (§10).
         # `getattr` rather than the attribute: `Record` is structural, so a
         # duck-typed source may not define the member at all, which is the same
@@ -112,7 +112,7 @@ def write_record(
         outputs = getattr(source, "outputs", None) or {}
         if outputs:
             kinds.append(("outputs", outputs, "outputs"))
-        # Each type's names, to check store-wide uniqueness once every component
+        # Each type's names, to check record-wide uniqueness once every component
         # frame has been seen (§3.5). Collected to one backend because a `Record`
         # may hand over a DuckDB frame for one type and a pandas one for another,
         # and `nw.concat` takes a single backend.
@@ -148,16 +148,16 @@ def write_record(
 
 
 def _reconcile_schema(schema: Schema, con: DuckDBPyConnection) -> None:
-    """Declare the store's schema, or check this layer agrees with it (§5.6, §5.7).
+    """Declare the record's schema, or check this layer agrees with it (§5.6, §5.7).
 
     A schema is not layered data, so there is nothing to fold: the first writer
     states it and the rest must be `compatible_with` it. Read and written beside
-    `con`'s own layers, so one store never consults another's manifest.
+    `con`'s own layers, so one record never consults another's manifest.
 
     Raises
     ------
     ValueError
-        If this layer's schema would make the store's existing layers
+        If this layer's schema would make the record's existing layers
         unreadable.
     """
     base = base_uri_of(con)
@@ -170,7 +170,7 @@ def _reconcile_schema(schema: Schema, con: DuckDBPyConnection) -> None:
     problems = schema.compatible_with(existing)
     if problems:
         msg = (
-            f"this layer's schema is incompatible with the store's: "
+            f"this layer's schema is incompatible with the record's: "
             f"{'; '.join(problems)} (§5.7)"
         )
         raise ValueError(msg)
@@ -215,7 +215,7 @@ def _typed(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
 
 
 def _require_unique(tagged: list[nw.LazyFrame]) -> None:
-    """Reject a store whose component types share a name (§3.5).
+    """Reject a record whose component types share a name (§3.5).
 
     Unlike `_validate_frame`'s checks this reads the rows, uniqueness being a
     property of the data. A tombstone still occupies the name, so `deleted` is

@@ -7,7 +7,7 @@ from datarecord.schema import AttributeSpec, Dimension, Schema, flag_type
 
 
 def _schema(**overrides) -> Schema:
-    """A schema shaped like a stochastic multi-period store."""
+    """A schema shaped like a stochastic multi-period record."""
     kwargs = {
         "dimensions": {
             "period": Dimension(dtype="BIGINT"),

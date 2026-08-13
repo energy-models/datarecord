@@ -12,10 +12,10 @@ from tests.fixtures import export_network, tombstone, write_input
 
 @pytest.fixture
 def parent(con, base_uri, ac_dc):
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
-    record.materialise()
-    return record
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    revision.materialise()
+    return revision
 
 
 def test_union_all_by_name_folds_every_relation(con):
@@ -42,14 +42,14 @@ def test_union_all_by_name_fills_a_missing_column_with_null(con):
     assert sorted(got, key=lambda r: r[0]) == [(1, "a"), (2, None)]
 
 
-def keys(record, con):
+def keys(revision, con):
     """The inputs map's keys: `(name, attribute)`, no type (§3.5)."""
-    df = record.node_cache.inputs.df()
+    df = revision.node_cache.inputs.df()
     return {(r["name"], str(r.attribute)) for _, r in df.iterrows()}
 
 
-def component_names(record):
-    return set(record.node_cache.components.df()["name"])
+def component_names(revision):
+    return set(revision.node_cache.components.df()["name"])
 
 
 def test_root_map_is_its_own_layer(con, parent):
@@ -66,7 +66,7 @@ def test_materialise_writes_the_map_under_resolved(con, parent):
     assert Path(resolved_dir(parent.id), "owner_map", "components.parquet").exists()
     # The cache shares the record's directory but stays out of the layer's own
     # namespace, so a reader that knows nothing about layering still sees a
-    # plain parquet store: every glob into a layer is single-level, so nothing
+    # plain parquet directory: every glob into a layer is single-level, so nothing
     # under `resolved/` is reachable by one (§8.3).
     assert not Path(layer_dir(parent.id), "owner_map").exists()
     # The globs the fold and `DirectoryRecord` actually use must not reach a
@@ -196,16 +196,16 @@ def test_ancestry_is_root_first(con, parent):
 
 
 def test_a_record_with_no_manifest_folds(con, base_uri):
-    """A store that declares no schema resolves to an empty map, not a crash (§5.6).
+    """A record that declares no schema resolves to an empty map, not a crash (§5.6).
 
     `Schema()` is "no manifest yet", which is what a record reads before
     anything has been written to it. The map's flag columns are structs with a
     field per declared dim (§9.1) and DuckDB has no empty struct, so this is
     the one path where there are none to declare.
     """
-    record = Revision.create(con)
-    assert record.store.schema.dims == ()
+    revision = Revision.create(con)
+    assert revision.record.schema.dims == ()
 
-    inputs = record.node_cache.inputs
+    inputs = revision.node_cache.inputs
     assert "varies" in inputs.columns
     assert inputs.fetchall() == []

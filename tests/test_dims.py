@@ -1,4 +1,4 @@
-"""Layer keys beyond `scenario`, resolved through a real store (design doc §5.5).
+"""Layer keys beyond `scenario`, resolved through a real record (design doc §5.5).
 
 What `partial` and `keys` *mean* as declarations is pinned in
 `test_schema.py`; here they are written into a layer and the fold is asked
@@ -20,14 +20,14 @@ from tests.fixtures import (
 
 def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     """With `period` `partial`, a child may replace one period only."""
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
     write_schema(
         schema(partial={"scenario", "period"}, keys={"scenario": {"component"}})
     )
-    record.materialise()
+    revision.materialise()
 
-    child = record.child()
+    child = revision.child()
     write_input(
         layer_dir(child.id),
         "p_max_pu",
@@ -59,12 +59,12 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     `period` is `partial` but keys nothing, so it never reaches the
     components map's key - which is what makes the tombstone unscoped.
     """
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
     write_schema(schema(partial={"period"}, keys={}))
-    record.materialise()
+    revision.materialise()
 
-    child = record.child()
+    child = revision.child()
     tombstone(layer_dir(child.id), "Generator", ["Manchester Wind"])
 
     components = child.node_cache.components.df()
@@ -79,13 +79,13 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     is its own, so the union must still be `UNION ALL BY NAME`. Positional
     would swap `scenario` and `period` here, which the values below would show.
     """
-    record = Revision.create(con)
-    export_network(ac_dc, record, con)
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
     write_schema(
         schema(partial={"scenario", "period"}, keys={"scenario": {"component"}})
     )
     write_input(
-        layer_dir(record.id),
+        layer_dir(revision.id),
         "p_max_pu",
         [
             {
@@ -96,9 +96,9 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
             }
         ],
     )
-    record.materialise()
+    revision.materialise()
 
-    child = record.child()
+    child = revision.child()
     write_input(
         layer_dir(child.id),
         "p_max_pu",
@@ -131,10 +131,10 @@ def test_a_nested_axis_keeps_a_label_per_parent(con, base_uri):
     names nothing once the axis is nested, so folding by the label would
     collapse them into one row.
     """
-    record = Revision.create(con)
+    revision = Revision.create(con)
     write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN))
     write_snapshots(
-        layer_dir(record.id),
+        layer_dir(revision.id),
         [
             {"snapshot": "2020-01-01 00:00", "period": 2020},
             {"snapshot": "2020-01-01 01:00", "period": 2020},
@@ -143,7 +143,7 @@ def test_a_nested_axis_keeps_a_label_per_parent(con, base_uri):
         ],
     )
 
-    axis = record.node_cache.dims.axes["snapshot"].df()
+    axis = revision.node_cache.dims.axes["snapshot"].df()
     assert len(axis) == 4
     assert sorted(axis["period"].tolist()) == [2020, 2020, 2030, 2030]
 
@@ -154,18 +154,18 @@ def test_a_child_overrides_one_nested_point(con, base_uri):
     A child restating one period's hour leaves the other period's identically
     labelled hour to the parent.
     """
-    record = Revision.create(con)
+    revision = Revision.create(con)
     write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN))
     write_snapshots(
-        layer_dir(record.id),
+        layer_dir(revision.id),
         [
             {"snapshot": "2020-01-01 00:00", "period": 2020, "weight": 1.0},
             {"snapshot": "2020-01-01 00:00", "period": 2030, "weight": 1.0},
         ],
     )
-    record.materialise()
+    revision.materialise()
 
-    child = record.child()
+    child = revision.child()
     write_snapshots(
         layer_dir(child.id),
         [{"snapshot": "2020-01-01 00:00", "period": 2030, "weight": 7.0}],
