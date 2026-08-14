@@ -97,6 +97,15 @@ def _as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelati
     return con.sql("FROM arrow")
 
 
+def _incoming(frame: Any, con: DuckDBPyConnection) -> nw.LazyFrame:
+    """A caller's frame as a lazy frame on `con`, whatever backend it arrived on.
+
+    Every edit converts at this one point, so the steps behind it join and union
+    in narwhals without minding where the frame came from (§4.2).
+    """
+    return nw.from_native(_as_relation(nw.from_native(frame).lazy(), con)).lazy()
+
+
 def _null_safe_on(
     columns: Iterable[str], alias_a: str = "b", alias_b: str = "s"
 ) -> Expression:
@@ -634,6 +643,18 @@ class WorkingRecord:
         frame = self.components[ctype].select("name").collect()
         return [str(n) for n in frame["name"].to_list()]
 
+    def _name_types(self) -> nw.LazyFrame | None:
+        """`(name, component_type)` over everything this record resolves (§4.3)."""
+        parts = [
+            self.components[ctype]
+            .select("name")
+            .with_columns(component_type=nw.lit(ctype))
+            for ctype in self.components
+        ]
+        if not parts:
+            return None
+        return nw.concat(parts, how="vertical")
+
     def _require_unique(self, ctype: str, lazy: nw.LazyFrame) -> None:
         """Reject an `add` whose names another type already holds (§4.3, §9.8).
 
@@ -641,15 +662,26 @@ class WorkingRecord:
         `_entity_union` resolves last-writer-wins - so only a cross-type clash
         raises.
         """
-        incoming = {str(n) for n in lazy.select("name").collect()["name"].to_list()}
-        clashing = {
-            n: t
-            for n, t in self._types_by_name().items()
-            if n in incoming and t != ctype
-        }
-        if clashing:
+        known = self._name_types()
+        if known is None:
+            return
+        clashing = (
+            lazy.select("name")
+            .unique("name")
+            .join(
+                known.filter(nw.col("component_type") != ctype),
+                on="name",
+                how="inner",
+            )
+            .unique(["name", "component_type"])
+            .select("name", "component_type")  # the order `iter_rows` unpacks
+            .collect()
+        )
+        if not clashing.is_empty():
+            # Sorted here rather than in the query: the message must be
+            # deterministic, and this is a handful of rows.
             detail = ", ".join(
-                f"{n!r} is already a {t}" for n, t in sorted(clashing.items())
+                f"{n!r} is already a {t}" for n, t in sorted(clashing.iter_rows())
             )
             msg = (
                 f"cannot add {ctype} components whose names are taken: {detail}; "
@@ -657,29 +689,31 @@ class WorkingRecord:
             )
             raise ValueError(msg)
 
-    def _types_by_name(self) -> dict[str, str]:
-        """`name -> component_type` over everything this record resolves (§4.3)."""
-        return {
-            name: ctype
-            for ctype in self.components
-            for name in self._resolved_names(ctype)
-        }
-
     def _resolve_types(self, names: Sequence[str]) -> dict[str, str]:
         """`names` mapped to their types, rejecting any the record does not resolve.
 
         A value keyed to a name with no member row would resolve to nothing, so
         it is caught here rather than dropped at read time (§9.8).
         """
-        known = self._types_by_name()
-        unknown = sorted({n for n in names if n not in known})
+        wanted = list(dict.fromkeys(names))
+        known = self._name_types()
+        if known is None or not wanted:
+            found: dict[str, str] = {}
+        else:
+            matched = (
+                known.filter(nw.col("name").is_in(wanted))
+                .select("name", "component_type")
+                .collect()
+            )
+            found = {str(n): str(t) for n, t in matched.iter_rows()}
+        unknown = sorted({n for n in wanted if n not in found})
         if unknown:
             msg = (
                 f"no member row for {unknown}; `add` them first - a value for a "
                 f"name no layer declares would resolve to nothing"
             )
             raise KeyError(msg)
-        return {n: known[n] for n in names}
+        return {n: found[n] for n in names}
 
     def _validate_dims(self, dims: Mapping[str, Any]) -> None:
         """The dim vocabulary, checked for either `kind` (§9.8, §9.3.1)."""
@@ -761,7 +795,7 @@ class WorkingRecord:
         """
         is_long_frame = _is_frame(value) and _series_index(value) is None
         if is_long_frame:
-            lazy = nw.from_native(value).lazy()
+            lazy = _incoming(value, self.con)
             if "component_type" in lazy.collect_schema().names():
                 msg = (
                     f"`set({attribute!r}, <frame>)` was given a `component_type` "
@@ -970,7 +1004,7 @@ class WorkingRecord:
         establishes a name's type, so there is nothing yet to look it up in
         (§4.3). It is also where uniqueness is enforced.
         """
-        lazy = nw.from_native(frame).lazy()
+        lazy = _incoming(frame, self.con)
         columns = lazy.collect_schema().names()
         if "name" not in columns:
             msg = "`add` needs a `name` column"
@@ -1090,7 +1124,7 @@ class WorkingRecord:
 
     def connect(self, ctype: str, frame: Any) -> None:
         """Stage connection rows from a frame carrying `name` and `bus` (§3.2)."""
-        lazy = nw.from_native(frame).lazy()
+        lazy = _incoming(frame, self.con)
         columns = lazy.collect_schema().names()
         for required in ("name", "bus"):
             if required not in columns:

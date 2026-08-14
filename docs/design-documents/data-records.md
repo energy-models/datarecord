@@ -1130,3 +1130,9 @@ The dependency runs strictly one way, so importing the record layer pulls in no 
 
 - **Registering a record's relations as named views.** A frontend issuing ad-hoc SQL needs names in a catalog rather than Python objects, which `CREATE VIEW` against a file-backed catalog provides — each view's definition being the resolved overlay, materialising nothing.
   Creating a view binds its schema, so registering N attributes costs N footer reads; and catalog reopen cost is linear in view count, which argues for one catalog per record rather than one shared.
+
+- **What else a `Record` should answer about its entities without handing over a frame.** `flags` (§3.6) sets the shape — cheap derived metadata a consumer plans against without opening a file — but answers only per attribute, per type.
+  The entity-level case is `name -> component_type`: a question a record can answer, names being unique record-wide (§4.3), and one the layered `components` owner map is keyed by before it opens a file.
+  Asking it through the protocol costs a frame per type instead, which `WorkingRecord` pays on every `set` (§9.8).
+  What is open is the granularity: "which types have live rows" and "how many members a type has" are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
+  Whatever is chosen, a `DirectoryRecord` must answer it without a fold, or it is fast for one implementation and a rename of the slow path for the other.

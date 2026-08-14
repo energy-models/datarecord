@@ -212,7 +212,9 @@ def test_write_record_rejects_a_name_two_types_share(con, base_uri):
         },
     )
 
-    with pytest.raises(ValueError, match="component types reuse names"):
+    # The detail names the name and the types claiming it, in that order - the
+    # message is what a caller acts on, so a transposed pair is a defect.
+    with pytest.raises(ValueError, match=r"'shared' is a Process and a Widget"):
         write_record(revision.id, source, con)
     assert not Path(layer_dir(revision.id)).exists()
 
