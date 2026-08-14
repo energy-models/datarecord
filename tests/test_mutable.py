@@ -607,6 +607,35 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
     assert len(_static(child, "p_nom")) > 1
 
 
+def test_new_child_defaults_to_the_node_the_record_was_built_over(staged, root):
+    """`NewChild()` branches from the base, which is what a caller means (§9.7)."""
+    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    child = staged.commit(NewChild())
+
+    assert child.parent == root.id
+    assert _static(child, "p_nom")["Manchester Wind"] == 150.0
+
+
+def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root, con):
+    """Layers are write-once, so the parent still reads its own values (§6.1, §9.7)."""
+    before = _static(root, "p_nom")["Manchester Wind"]
+    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    child = staged.commit(NewChild())
+
+    assert _static(child, "p_nom")["Manchester Wind"] == 150.0
+    assert _static(root, "p_nom")["Manchester Wind"] == before
+
+
+def test_new_child_without_a_layered_base_says_what_to_pass(con, base_uri, tmp_path):
+    """A directory is no node in a tree, so there is nothing to branch from (§9.7)."""
+    revision = Revision.create(con)
+    write_schema(read_schema(con), base_uri)
+    over_a_directory = WorkingRecord(DirectoryRecord(layer_dir(revision.id), con), con)
+
+    with pytest.raises(ValueError, match="needs a revision to branch from"):
+        over_a_directory.commit(NewChild())
+
+
 def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_path):
     """No parent to resolve against, so the whole record is written (§9.7)."""
     staged.set("p_nom", 150.0, names=["Manchester Wind"])

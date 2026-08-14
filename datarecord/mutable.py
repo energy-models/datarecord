@@ -36,9 +36,15 @@ class NewChild:
     """Write the staged rows as a new child layer of `record` (§9.7).
 
     Only the edits are written; the fold resolves the rest from the parent.
+
+    `record` defaults to the node the `WorkingRecord` was built over, which is
+    what a caller branching from a revision means every time. Passing one
+    explicitly is for the rarer case of re-parenting the edits elsewhere; a
+    `WorkingRecord` over a base that is not a layered node (a directory, a
+    framework object) has nothing to default to and must supply it.
     """
 
-    record: Any  # a Revision; typed loosely to keep this module import-free
+    record: Any = None  # a Revision; typed loosely to keep this module import-free
 
 
 @dataclass(frozen=True)
@@ -1333,6 +1339,25 @@ class WorkingRecord:
             outputs=self.outputs,
         )
 
+    def _base_revision(self) -> Any:
+        """The `Revision` this record's base resolves, for `NewChild()`'s default.
+
+        Only a layered base has one: a `DirectoryRecord` or a framework object
+        is not a node in the tree, so there is no parent to branch from and the
+        caller must name one.
+        """
+        from datarecord.layered.revision import LayeredRecord, Revision
+
+        if not isinstance(self.base, LayeredRecord):
+            msg = (
+                f"`NewChild()` needs a revision to branch from, and this "
+                f"`WorkingRecord`'s base is a {type(self.base).__name__} rather than a "
+                f"node in a layer tree; pass one as `NewChild(revision)`, or commit to "
+                f"a standalone record with `Directory(uri)` (§9.7)"
+            )
+            raise ValueError(msg)
+        return Revision.get(self.base.node_cache.revision_id, self.con)
+
     def commit(self, target: Target) -> Any:
         """Write everything staged and clear it (§9.7).
 
@@ -1341,11 +1366,18 @@ class WorkingRecord:
         The new child for a `NewChild` target, so the caller can read what it
         just wrote without going back to the record table; `None` for a
         `Directory`, which belongs to no record.
+
+        The layer lands in the *child*, never in the node that was branched
+        from - layers are write-once (§6.1) - so it is the returned node that
+        reads back the edits.
         """
         from datarecord.layered.write import write_record  # circular at module level
 
         if isinstance(target, NewChild):
-            child = target.record.child()
+            parent = (
+                target.record if target.record is not None else self._base_revision()
+            )
+            child = parent.child()
             write_record(child.id, self.staged_only(), self.con)
             self.rollback()
             return child

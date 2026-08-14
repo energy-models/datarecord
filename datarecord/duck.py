@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS revisions (
 """
 
 # Where layers live; `layer_dir(id)` derives every record path from it (§11).
-DEFAULT_BASE_URI = os.environ.get("BLOCKS_RECORD_BASE_URI", "")
+DEFAULT_BASE_URI = os.environ.get("DATARECORD_BASE_URI", "")
 
 # The record root each connection was opened against (§5.6). A connection is
 # already scoped to one record - `connect` registers its `layer_dir` macro from

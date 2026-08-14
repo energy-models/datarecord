@@ -859,7 +859,7 @@ model = PyPSA.build(record)  # solve the edited record
 model.optimize()
 for attr, frame in PyPSA.results(model).items():
     record.set(attr, frame, kind="outputs")
-record.commit(NewChild(record))  # one layer, inputs and results together
+record.commit(NewChild())  # one layer, inputs and results together
 ```
 
 In memory only: the results live in the staging area beside the input edits and become part of the same layer at commit, so a solve produces one new record rather than a record plus a separate results record.
@@ -951,9 +951,14 @@ There is one staging layer and it is in DuckDB, so a hundred-thousand-row edit y
 Target = NewChild | Directory
 ```
 
-- **`NewChild(record)`** — create a child of `record` and write the staged rows as its layer.
+- **`NewChild(record=None)`** — create a child of `record` and write the staged rows as its layer.
   The patch-layer path: read a parent, edit, commit a child.
   Any node may be a parent (§6.1), so this needs no preparation of the one being branched from.
+
+  `record` defaults to the node the `WorkingRecord` was built over, since branching from the thing you read is what a caller means every time; naming one is for re-parenting the edits elsewhere.
+  A base that is no node in the tree — a directory, a framework object — has nothing to default to and must supply one.
+  The layer lands in the **child**, never in the node branched from, so it is `commit`'s return value that reads the edits back.
+
 - **`Directory(uri)`** — write a standalone record.
   What is staged _plus what the record already reads_, flattened into one layer.
 
