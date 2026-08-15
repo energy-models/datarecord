@@ -30,8 +30,8 @@ if TYPE_CHECKING:
 
 # The long schema's fixed columns (https://energy-models.github.io/datarecord/design/format/#the-long-schema). `bus`/`breakpoint` are part of it, not
 # optional extensions to it: both NULL is the ordinary component-level scalar.
-# No `component_type`: an attribute row is keyed by `name` alone (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
-_LONG_FIXED = ("name", "bus", "attribute", "breakpoint", "value")
+# No `component_type`: an attribute row is keyed by `entity` alone (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+_LONG_FIXED = ("entity", "bus", "attribute", "breakpoint", "value")
 
 
 def write_record(
@@ -122,7 +122,7 @@ def write_record(
         if source.outputs:
             kinds.append(("outputs", source.outputs, "outputs"))
         # Each type's names, to check record-wide uniqueness once every component
-        # frame has been seen (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types). Collected to one backend because a `Record`
+        # frame has been seen (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). Collected to one backend because a `Record`
         # may hand over a DuckDB frame for one type and a pandas one for another,
         # and `nw.concat` takes a single backend.
         tagged: list[nw.LazyFrame] = []
@@ -134,14 +134,14 @@ def write_record(
                 _validate_frame(frame, kind, key, schema)
                 if kind == "components":
                     tagged.append(
-                        frame.select("name")
+                        frame.select("entity")
                         .collect(backend="pyarrow")
                         .lazy()
                         # Cast after collecting: DuckDB lands `name` as arrow
                         # `large_string` where pandas gives `string`, and concat
                         # compares arrow schemas.
                         .select(
-                            nw.col("name").cast(nw.String()),
+                            nw.col("entity").cast(nw.String()),
                             component_type=nw.lit(key).cast(nw.String()),
                         )
                     )
@@ -258,21 +258,21 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
     if len(tagged) < 2:  # nothing to collide with
         return
-    pairs = nw.concat(tagged, how="vertical").unique(["name", "component_type"])
+    pairs = nw.concat(tagged, how="vertical").unique(["entity", "component_type"])
     clashing = (
         pairs.join(
-            pairs.group_by("name")
+            pairs.group_by("entity")
             .agg(nw.col("component_type").n_unique().alias("_types"))
             .filter(nw.col("_types") > 1)
-            .select("name"),
-            on="name",
+            .select("entity"),
+            on="entity",
             how="inner",
         )
-        .select("name", "component_type")  # the order `iter_rows` unpacks
+        .select("entity", "component_type")  # the order `iter_rows` unpacks
         .collect()
     )
     if not clashing.is_empty():
@@ -287,7 +287,7 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
         )
         msg = (
             f"component types reuse names: {detail}; a name identifies one "
-            f"component across every type (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)"
+            f"component across every type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
         )
         raise ValueError(msg)
 

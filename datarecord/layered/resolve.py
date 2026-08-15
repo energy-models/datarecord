@@ -276,7 +276,7 @@ def _deleted_relation(
     con: DuckDBPyConnection,
     *,
     subdir: str = "components",
-    fixed: tuple[str, ...] = ("name",),
+    fixed: tuple[str, ...] = ("entity",),
     dims: tuple[str, ...] | None = None,
 ) -> DuckDBPyRelation:
     """This layer's tombstones of one kind, keyed as the map they filter.
@@ -347,7 +347,7 @@ def _component_deleted_for_connections(
         d for d in keys.schema.component_dims if d not in keys.schema.connection_dims
     ]:
         return deleted
-    shared = ("name", *keys.schema.connection_dims)
+    shared = ("entity", *keys.schema.connection_dims)
     return deleted.project(*(col(c) for c in shared)).distinct()
 
 
@@ -365,7 +365,7 @@ def _connection_deleted(
         keys,
         con,
         subdir="connections",
-        fixed=("name", "bus"),
+        fixed=("entity", "bus"),
         dims=keys.schema.connection_dims,
     )
 
@@ -476,7 +476,7 @@ def fold_inputs(
         # - whether a row set the dim or left it NULL - so they cannot be read
         # off the expanded value, which is never NULL once broadcast (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         tagged = rel.project(
-            col("i", "name"),
+            col("i", "entity"),
             col("i", "bus"),
             *(expr.alias(d) for d, expr in dims.items()),
             *(col("i", d).alias(f"_raw_{d}") for d in keys.schema.dims),
@@ -570,11 +570,11 @@ def fold_connections(
         key=keys.schema.connection_key,
         columns=keys.schema.connection_columns,
         dims=keys.schema.connection_dims,
-        fixed=("name", "bus"),
+        fixed=("entity", "bus"),
         # Keyed as the connections map is: `component_dims` may declare more,
         # and `_component_deleted_for_connections` resolves that excess.
         also_deleted=_component_deleted_for_connections,
-        also_deleted_key=("name", *keys.schema.connection_dims),
+        also_deleted_key=("entity", *keys.schema.connection_dims),
     )
 
 
@@ -588,7 +588,7 @@ def _fold_ordered(
     key: tuple[str, ...],
     columns: tuple[str, ...],
     dims: tuple[str, ...],
-    fixed: tuple[str, ...] = ("name",),
+    fixed: tuple[str, ...] = ("entity",),
     also_deleted: Callable[[UUID, Dims, DuckDBPyConnection], DuckDBPyRelation]
     | None = None,
     also_deleted_key: tuple[str, ...] = (),
@@ -631,7 +631,7 @@ def _fold_ordered(
             sql("row_number() OVER ()").alias("_row"),
         )
         # `component_type` is aggregated, not grouped by: it is determined by
-        # `name` (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types), and grouping on it would keep one name under two types
+        # `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types), and grouping on it would keep one name under two types
         # as two rows.
         own = tagged.aggregate(
             [
@@ -996,13 +996,13 @@ class NodeCache:
         """
         dims = self.schema.dims
         # Scoped by a semi-join to the components map, the entity table saying
-        # what type a name is (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
+        # what type a name is (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
         of_type = self.components.filter(col("component_type") == lit(ctype)).project(
-            "name"
+            "entity"
         )
         rows = (
             self.inputs.set_alias("i")
-            .join(of_type.distinct().set_alias("e"), "i.name = e.name", how="semi")
+            .join(of_type.distinct().set_alias("e"), "i.entity = e.entity", how="semi")
             .aggregate(
                 [
                     col("attribute"),
@@ -1074,7 +1074,7 @@ class NodeCache:
                 # `bus` joins the fixed columns, not the broadcast dims: NULL
                 # means "the component's own attribute", never "every bus",
                 # so it is compared NULL-safely and never expanded (https://energy-models.github.io/datarecord/design/record/#connections).
-                keys.input_match("l", "o", "name", "bus", "layer_uuid"),
+                keys.input_match("l", "o", "entity", "bus", "layer_uuid"),
             )
             .project(
                 *(
@@ -1113,7 +1113,7 @@ class NodeCache:
             ctype,
             subdir="components",
             owner_map=self.components,
-            match=("name",),
+            match=("entity",),
             dims=self.schema.component_dims,
         )
 
@@ -1132,7 +1132,7 @@ class NodeCache:
             ctype,
             subdir="connections",
             owner_map=self.connections,
-            match=("name", "bus"),
+            match=("entity", "bus"),
             dims=self.schema.connection_dims,
         )
 

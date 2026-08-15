@@ -56,14 +56,14 @@ Two properties follow from accumulate-then-commit, and both are the point:
 
 Each edit maps onto exactly one part of the format:
 
-| edit                        | writes                                                              | key it targets                            |
-| --------------------------- | ------------------------------------------------------------------- | ----------------------------------------- |
-| set an attribute on a group | `inputs/<attr>.parquet` rows                                        | `(name, bus, *owned_per dims, attribute)` |
-| add components              | `dims/components/` rows, plus `inputs/` rows for varying attributes | `(name, *component key dims)`             |
-| remove components           | a `deleted = true` tombstone                                        | `(name, *component key dims)`             |
-| connect / disconnect        | `dims/connections/` rows and tombstones                             | `(name, bus, *connection key dims)`       |
+| edit                        | writes                                                              | key it targets                              |
+| --------------------------- | ------------------------------------------------------------------- | ------------------------------------------- |
+| set an attribute on a group | `inputs/<attr>.parquet` rows                                        | `(entity, bus, *owned_per dims, attribute)` |
+| add components              | `dims/components/` rows, plus `inputs/` rows for varying attributes | `(name, *component key dims)`               |
+| remove components           | a `deleted = true` tombstone                                        | `(name, *component key dims)`               |
+| connect / disconnect        | `dims/connections/` rows and tombstones                             | `(entity, bus, *connection key dims)`       |
 
-Every key is `name`-based, because `name` is [what identifies a component](format.md#name-is-unique-across-types).
+Every key is `entity`-based, because `entity` is [what identifies a component](format.md#entity-is-unique-across-types).
 An **entity** edit still _names_ a type — `add("Generator", frame)` — because it creates the thing that has one, and the row it writes records it; but the type is a column of that row rather than part of the key it targets.
 That is what makes `remove("Generator", ["x"])` followed by `add("Bus", frame)` collapse to the later edit: one name has one answer, where a type-partitioned key would keep both and commit a record whose two types share a name.
 
@@ -83,7 +83,7 @@ record.set("p_nom", nw.col("value") * 1.1, names=["wind1"])  # derived
 record.set("p", solved, kind="outputs")  # a result
 ```
 
-**There is no `component_type` keyword.** A name identifies one component across every type ([name is unique across types](format.md#name-is-unique-across-types)), so the type is a property of the name rather than something the caller supplies: the record looks it up in the resolved components map, which is the same read `names` is already [checked against](#validation).
+**There is no `component_type` keyword.** A name identifies one component across every type ([entity is unique across types](format.md#entity-is-unique-across-types)), so the type is a property of the name rather than something the caller supplies: the record looks it up in the resolved components map, which is the same read `names` is already [checked against](#validation).
 That removes the parameter that had to be either given or inferred in every earlier spelling, and with it the class of error where a name was staged under the wrong type.
 
 One call may therefore span types, since the names decide: `set("p_nom", {"wind1": 150.0, "link_dc": 80.0})` validates `wind1` against `Generator.p_nom` and `link_dc` against `Link.p_nom`, and stages both.
@@ -107,7 +107,7 @@ Each name is [validated](#validation) against **its own** type's `AttributeSpec`
 | frame     | supplies its own keys           | redundant                                                                    |
 | `nw.Expr` | a function of the current value | selects what to [derive from](#an-nwexpr-value-derived-from-the-current-one) |
 
-A frame "supplies its own keys" now means its `name` column alone: a `component_type` column is neither required nor read, since [the name determines the type](format.md#name-is-unique-across-types).
+A frame "supplies its own keys" now means its `entity` column alone: a `component_type` column is neither required nor read, since [the name determines the type](format.md#entity-is-unique-across-types).
 A frame carrying one is rejected rather than ignored — it says the writer believes the type is part of the key, and silently dropping the column would let a genuine disagreement through.
 
 The first three normalise to a long frame before staging, so there is one staging path.
@@ -170,7 +170,7 @@ Two things differ from an input edit, both following from [outputs](read-path.md
   A result attribute is not schema-declared — [`Tool.results`](tools.md) derives which attributes count as results from the framework's own registry, and [`write_record`](writing.md) persists `outputs/` without consulting the schema.
   So an unknown attribute name is an error for an input and simply unknowable for a result.
   The dim vocabulary is still checked for both.
-- **No membership check on `name`.**
+- **No membership check on `entity`.**
   An input value for a name no layer declares is [rejected](#validation), because it would resolve to nothing.
   A result may legitimately name a component the record never declared: PyPSA's `SubNetwork` exists only after a solve, so rejecting it would refuse a real result.
   This is also what makes a result's name need no resolvable type: an input's type comes from [looking the name up](#set), and a result that declares no member has nothing to look up.
@@ -193,7 +193,7 @@ record["Link", "north"]["efficiency", "dc"] = 0.9  # a connection
 record["Generator", {"scenario": "high"}]["p_nom", "wind1"] = 200.0
 ```
 
-The component type in the subscript is a **scope**, not part of the key it writes: it selects which members `names` resolves against and which `AttributeSpec` a bare attribute means, then `set` [addresses the names it produced](format.md#name-is-unique-across-types).
+The component type in the subscript is a **scope**, not part of the key it writes: it selects which members `names` resolves against and which `AttributeSpec` a bare attribute means, then `set` [addresses the names it produced](format.md#entity-is-unique-across-types).
 So `record["Generator"]["p_nom"] = 150.0` is "every Generator", which `set("p_nom", 150.0)` alone cannot say — that being the one thing an accessor would add now that the keyword is gone, and the reason this spelling survives the change.
 
 Sugar with **no added capability** otherwise: `__setitem__` normalises its key into `(attribute, names)` and its extra arguments into `bus=`/dims, then calls `set`.
@@ -217,7 +217,7 @@ record.remove("Generator", ["old_coal"], scenario="high")  # one scenario only
 Which is which comes from the schema, so `add` needs no framework registry.
 A column the schema does not name is written to `dims/components/` unchanged.
 
-`add` keeps its `ctype` argument where `set` loses it: this is the call that _establishes_ what a name's type is, so there is nothing yet to [look it up in](format.md#name-is-unique-across-types).
+`add` keeps its `ctype` argument where `set` loses it: this is the call that _establishes_ what a name's type is, so there is nothing yet to [look it up in](format.md#entity-is-unique-across-types).
 It is also where uniqueness is enforced — a name the record already resolves, under this type or any other, is rejected here rather than at commit, so the collision is [reported at the line that introduces it](#validation).
 
 It is **not** a sequence of `set` calls, even though the varying columns it stages take the same path a `set` would.
@@ -293,7 +293,7 @@ That is the one commit-time read of parent data.
 ## Validation
 
 [`write_record`](writing.md) validates structurally, so commit inherits that.
-What editing adds is edit-level: an `add` whose frame lacks `name`, an `add` whose name [collides](format.md#name-is-unique-across-types) with one the record already resolves, a `set` naming a component the record does not resolve, a dim keyword the schema does not declare.
+What editing adds is edit-level: an `add` whose frame lacks `entity`, an `add` whose name [collides](format.md#entity-is-unique-across-types) with one the record already resolves, a `set` naming a component the record does not resolve, a dim keyword the schema does not declare.
 These are caught when the edit is **staged**, not at commit — a caller should learn about a typo'd attribute at the line that typed it, not fifty edits later.
 
 A `set` resolves each name to its type before checking anything else, so "no member row for `wind9`" and "`Generator` declares no `p_nom_maxx`" are both reported against the name that produced them.

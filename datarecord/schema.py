@@ -44,12 +44,25 @@ Notes
 - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
 """
 
+ENTITY = "entity"
+"""The dim that identifies a component - the one axis the format knows by name.
+
+Not merely an axis: it is the axis the component types partition.
+`dims/entity.parquet` carries `component_type`, which decides an attribute
+vocabulary, and `dims/components/<Type>.parquet` is keyed by it. No other dim
+does that, which is why this one is spelled where the others are derived.
+
+Notes
+-----
+- [entity](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#entity-the-component-axis)
+"""
+
 # Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Neither
 # declared nor optional: `bus`/`breakpoint` are NULL for the ordinary
 # component-level scalar, so one column set serves every kind of row.
 STRUCTURAL_TYPES = {
     "component_type": "VARCHAR",
-    "name": "VARCHAR",
+    "entity": "VARCHAR",
     "bus": "VARCHAR",
     "attribute": "VARCHAR",
     "breakpoint": "DOUBLE",
@@ -522,10 +535,10 @@ class Schema(BaseModel):
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         return (
-            "name",
+            "entity",
             "bus",
             *self.dims,
             "attribute",
@@ -546,7 +559,7 @@ class Schema(BaseModel):
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return ("name", "bus", *self.input_dims, "attribute")
+        return ("entity", "bus", *self.input_dims, "attribute")
 
     @property
     def component_key(self) -> tuple[str, ...]:
@@ -556,10 +569,10 @@ class Schema(BaseModel):
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return ("name", *self.component_dims)
+        return ("entity", *self.component_dims)
 
     @property
     def connection_key(self) -> tuple[str, ...]:
@@ -573,9 +586,9 @@ class Schema(BaseModel):
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
-        return ("name", "bus", *self.connection_dims)
+        return ("entity", "bus", *self.connection_dims)
 
     @property
     def input_columns(self) -> tuple[str, ...]:
@@ -593,7 +606,7 @@ class Schema(BaseModel):
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         return ("component_type", *self.component_key, "layer_uuid", "order_key")

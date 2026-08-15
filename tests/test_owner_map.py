@@ -66,11 +66,11 @@ def keys(revision, con):
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     df = revision.node_cache.inputs.df()
-    return {(r["name"], str(r.attribute)) for _, r in df.iterrows()}
+    return {(r["entity"], str(r.attribute)) for _, r in df.iterrows()}
 
 
 def component_names(revision):
-    return set(revision.node_cache.components.df()["name"])
+    return set(revision.node_cache.components.df()["entity"])
 
 
 def test_root_map_is_its_own_layer(con, parent):
@@ -119,12 +119,12 @@ def test_last_writer_wins_per_key(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"name": "Manchester Wind", "value": 0.42}],
+        [{"entity": "Manchester Wind", "value": 0.42}],
     )
     df = child.node_cache.inputs.df()
 
     def owner_of(name, attr):
-        sel = df[(df["name"] == name) & (df["attribute"].astype(str) == attr)]
+        sel = df[(df["entity"] == name) & (df["attribute"].astype(str) == attr)]
         return sel["layer_uuid"].iloc[0]
 
     assert owner_of("Manchester Wind", "p_max_pu") == child.id
@@ -184,7 +184,7 @@ def test_materialising_does_not_change_the_map(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"name": "Manchester Wind", "value": 0.42}],
+        [{"entity": "Manchester Wind", "value": 0.42}],
     )
     live = keys(child, con)
     child.materialise()
@@ -206,7 +206,7 @@ def test_a_removed_cache_falls_back_to_the_fold(con, parent):
     write_input(
         layer_dir(child.id),
         "p_min_pu",
-        [{"name": "Norway Gas", "value": 0.1}],
+        [{"entity": "Norway Gas", "value": 0.1}],
     )
     child.materialise()
     expected = keys(child, con)
@@ -227,13 +227,13 @@ def test_any_node_may_be_a_parent(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"name": "Manchester Wind", "value": 0.42}],
+        [{"entity": "Manchester Wind", "value": 0.42}],
     )
     grandchild = child.child()
     # The child was never materialised, yet its layer resolves for the
     # grandchild all the same.
     df = grandchild.node_cache.inputs.df()
-    row = df[(df["name"] == "Manchester Wind") & (df["attribute"] == "p_max_pu")]
+    row = df[(df["entity"] == "Manchester Wind") & (df["attribute"] == "p_max_pu")]
     assert set(row["layer_uuid"]) == {child.id}
 
 

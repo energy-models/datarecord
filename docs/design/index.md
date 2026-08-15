@@ -28,7 +28,7 @@ record.flags(ctype)  which axes an attribute actually uses
 
 That is the [`Record` protocol](record.md), and [The Record protocol](record.md) gives it precisely.
 
-A component's `name` identifies it **across every type**: names are unique record-wide, not per type ([name is unique across types](format.md#name-is-unique-across-types)).
+A component's `entity` identifies it **across every type**: names are unique record-wide, not per type ([entity is unique across types](format.md#entity-is-unique-across-types)).
 That is why the values are keyed by attribute and not by type — an attribute row names a component and nothing more, and a component's type is something the record knows about it rather than part of its address.
 
 There are several implementations for storing a record:

@@ -19,7 +19,7 @@ The node metadata — `(id, parent)` — is persisted in the `revisions` table, 
 
 Two of [the protocol's](record.md) columns take their meaning from the overlay key.
 
-`bus` ([connections](record.md#connections)) is part of the **inputs** key, `(name, bus, *owned_per dims, attribute)`, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
+`bus` ([connections](record.md#connections)) is part of the **inputs** key, `(entity, bus, *owned_per dims, attribute)`, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
 That is what makes a per-connection attribute owned _per connection_: without it, a patch changing one connection's `efficiency` would own — and so have to restate — every connection's.
 It is also why a connection is keyed by its bus rather than by position: a patch layer would otherwise have to know a connection's current index, so an ancestor inserting one earlier would silently redirect that patch to a different bus.
 

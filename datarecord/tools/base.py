@@ -56,7 +56,7 @@ class Requirements:
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
 
@@ -99,7 +99,7 @@ class Requirements:
         if self.names:
             parts.append(
                 f"names claimed by more than one component type "
-                f"{sorted(self.names)} (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)"
+                f"{sorted(self.names)} (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
             )
         return ", ".join(parts) if parts else "nothing"
 
@@ -299,6 +299,6 @@ class Tool(Protocol):
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         ...

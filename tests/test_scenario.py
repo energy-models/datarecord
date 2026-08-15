@@ -35,7 +35,7 @@ def stochastic():
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
     import pypsa
 
@@ -70,7 +70,7 @@ def test_map_is_scenario_expanded(con, parent, stochastic):
     assert set(df["scenario"]) == set(stochastic.scenarios)
 
     solar = df[
-        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
+        (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
     ]
     assert set(solar["scenario"]) == set(stochastic.scenarios)
 
@@ -84,7 +84,7 @@ def test_partial_scenario_override(con, parent, stochastic):
         "p_max_pu",
         [
             {
-                "name": "solar Gen",
+                "entity": "solar Gen",
                 "scenario": scenario,
                 "value": 0.77,
             }
@@ -93,7 +93,7 @@ def test_partial_scenario_override(con, parent, stochastic):
 
     df = child.node_cache.inputs.df()
     solar = df[
-        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
+        (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
     ]
     owners = dict(zip(solar["scenario"], solar["layer_uuid"], strict=True))
     assert owners[scenario] == child.id
@@ -102,7 +102,7 @@ def test_partial_scenario_override(con, parent, stochastic):
 
     # The resolved relation carries the child's value for that scenario only.
     rel = relation(child, "p_max_pu").df()
-    solar_rows = rel[rel["name"] == "solar Gen"]
+    solar_rows = rel[rel["entity"] == "solar Gen"]
     overridden = solar_rows[solar_rows["scenario"] == scenario]
     assert set(overridden["value"]) == {0.77}
     assert set(solar_rows[solar_rows["scenario"] != scenario]["value"]) != {0.77}
@@ -121,9 +121,9 @@ def test_per_scenario_tombstone(con, parent, stochastic):
 
     df = child.node_cache.inputs.df()
     # No type scoping needed: the generator is "solar Gen" and the carrier
-    # "solar", names being unique across types (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types) - which is exactly what
+    # "solar", names being unique across types (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types) - which is exactly what
     # used to require filtering on `component_type` here.
-    solar = df[df["name"] == "solar Gen"]
+    solar = df[df["entity"] == "solar Gen"]
     assert scenario not in set(solar["scenario"])
     assert set(solar["scenario"]) == set(stochastic.scenarios[1:])
 
@@ -151,7 +151,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
         "p_max_pu",
         [
             {
-                "name": "solar Gen",
+                "entity": "solar Gen",
                 "scenario": "extra",
                 "value": 0.33,
             }
@@ -162,7 +162,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
     assert set(n.scenarios) == set(stochastic.scenarios) | {"extra"}
 
     rel = relation(child, "p_max_pu").df()
-    extra_solar = rel[(rel["name"] == "solar Gen") & (rel["scenario"] == "extra")]
+    extra_solar = rel[(rel["entity"] == "solar Gen") & (rel["scenario"] == "extra")]
     assert set(extra_solar["value"]) == {0.33}
 
 
@@ -227,12 +227,12 @@ def test_scenario_axis_survives_closed_grandchild(con, parent, stochastic):
     write_input(
         layer_dir(grandchild.id),
         "p_max_pu",
-        [{"name": "solar Gen", "value": 0.88}],
+        [{"entity": "solar Gen", "value": 0.88}],
     )
 
     df = grandchild.node_cache.inputs.df()
     solar = df[
-        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
+        (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
     ]
     assert set(solar["scenario"]) == set(stochastic.scenarios)
     assert set(solar["layer_uuid"]) == {grandchild.id}
@@ -244,14 +244,14 @@ def test_scenario_null_row_broadcasts(con, parent, stochastic):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"name": "solar Gen", "value": 0.55}],
+        [{"entity": "solar Gen", "value": 0.55}],
     )
 
     df = child.node_cache.inputs.df()
     solar = df[
-        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
+        (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
     ]
     assert set(solar["layer_uuid"]) == {child.id}
 
     rel = relation(child, "p_max_pu").df()
-    assert set(rel[rel["name"] == "solar Gen"]["value"]) == {0.55}
+    assert set(rel[rel["entity"] == "solar Gen"]["value"]) == {0.55}

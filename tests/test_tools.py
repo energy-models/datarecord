@@ -78,7 +78,7 @@ def test_requires_reports_the_records_own_types(single_revision):
     assert ("Generator", "bus") in req.attributes
     assert ("Line", "x") in req.attributes
     # `name` is the member identity, never an attribute row.
-    assert not [a for a in req.attributes if a[1] == "name"]
+    assert not [a for a in req.attributes if a[1] == "entity"]
 
 
 def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
@@ -115,7 +115,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_components(layer_dir(revision.id), "Widget", [{"name": "w1"}])
+    write_components(layer_dir(revision.id), "Widget", [{"entity": "w1"}])
 
     missing = PyPSA.verify(revision.record)
     assert missing.component_types == {"Widget"}
@@ -236,7 +236,7 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     export_network(ac_dc, revision, con)
     # A Generator member carrying no `bus` column at all, no connection row
     # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
-    write_components(layer_dir(revision.id), "Generator", [{"name": "g1"}])
+    write_components(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
     Path(layer_dir(revision.id), "dims", "connections", "Generator.parquet").unlink()
     _without_default(revision, "Generator", "bus")
 
@@ -255,7 +255,7 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_components(layer_dir(revision.id), "Generator", [{"name": "g1"}])
+    write_components(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
 
     # PyPSA's own registry already declares `bus` with a `""` default, which
     # is exactly the case this pins - so the record is left as written.
@@ -276,7 +276,7 @@ def test_verify_reports_a_piecewise_linear_attribute(con, base_uri, ac_dc):
         "marginal_cost",
         [
             {
-                "name": "Manchester Wind",
+                "entity": "Manchester Wind",
                 "breakpoint": x,
                 "value": v,
             }
@@ -296,7 +296,7 @@ def test_verify_accepts_a_scalar_attribute(single_revision):
     write_input(
         layer_dir(single_revision.id),
         "marginal_cost",
-        [{"name": "Manchester Wind", "value": 20.0}],
+        [{"entity": "Manchester Wind", "value": 20.0}],
     )
     assert not PyPSA.verify(single_revision.record).unsupported_values
 
@@ -310,7 +310,7 @@ def test_to_datarecord_rejects_a_cross_type_name_collision():
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     import pypsa
@@ -412,23 +412,23 @@ def test_results_extracts_long_form_outputs(single_revision):
     assert isinstance(results["p"], nw.LazyFrame)
     p = results["p"].collect()
     # The long schema's columns (https://energy-models.github.io/datarecord/design/record/), so the write path can persist it as-is -
-    # and no `component_type`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
-    assert {"name", "snapshot", "scenario", "period", "value"} <= set(p.columns)
+    # and no `component_type`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+    assert {"entity", "snapshot", "scenario", "period", "value"} <= set(p.columns)
     assert "component_type" not in p.columns
     assert set(p["attribute"].to_list()) == {"p"}
     # Series output: one row per (name, snapshot), for the Generator rows -
     # selected by name, since the frame no longer carries the type.
     gens = set(n.c["Generator"].static.index)
-    gen = p.filter(nw.col("name").is_in(list(gens)))
+    gen = p.filter(nw.col("entity").is_in(list(gens)))
     assert len(gen) == len(n.snapshots) * len(gens)
 
     # A static output has no snapshot, and only the components whose value
     # differs from the default appear (some generators solve to p_nom_opt=0).
     nom = results["p_nom_opt"].collect()
-    nom = nom.filter(nw.col("name").is_in(list(gens)))
+    nom = nom.filter(nw.col("entity").is_in(list(gens)))
     assert nom["snapshot"].is_null().all()
     nonzero = n.c["Generator"].static["p_nom_opt"] != 0.0
-    assert set(nom["name"].to_list()) == set(n.c["Generator"].static.index[nonzero])
+    assert set(nom["entity"].to_list()) == set(n.c["Generator"].static.index[nonzero])
 
 
 def test_results_concatenate_every_type_under_one_attribute(single_revision):
@@ -442,18 +442,18 @@ def test_results_concatenate_every_type_under_one_attribute(single_revision):
     n.optimize(solver_name="highs")
 
     p = PyPSA.results(n)["p"].collect()
-    names = set(p["name"].to_list())
+    names = set(p["entity"].to_list())
     # `p` is a result of several types, so the concat is what is being tested;
     # keying by `(type, attribute)` would have split these into separate frames.
     # The names identify which type each row came from, no tag column needed -
-    # that being what unique names buy the union (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
+    # that being what unique names buy the union (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
     contributing = {
         c.name
         for c in n.components
         if not c.static.empty and set(c.static.index) & names
     }
     assert len(contributing) > 1
-    assert not p["name"].is_null().any()
+    assert not p["entity"].is_null().any()
 
 
 def test_results_skips_outputs_still_at_their_default(single_revision):

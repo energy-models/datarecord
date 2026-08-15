@@ -110,7 +110,7 @@ class DirectoryRecord:
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
         """
         cache: dict[str, dict[str, Flags]] = self._flags_cache  # type: ignore[attr-defined]
@@ -131,8 +131,8 @@ class DirectoryRecord:
             rows = (
                 rel.set_alias("i")
                 .join(
-                    members.project("name").distinct().set_alias("e"),
-                    "i.name = e.name",
+                    members.project("entity").distinct().set_alias("e"),
+                    "i.entity = e.entity",
                     how="semi",
                 )
                 .aggregate(

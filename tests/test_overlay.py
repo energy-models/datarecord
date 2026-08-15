@@ -38,18 +38,18 @@ def test_child_overwrites_component(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"name": "Manchester Wind", "value": 0.42}],
+        [{"entity": "Manchester Wind", "value": 0.42}],
     )
 
     df = relation(child, "p_max_pu").df()
-    manchester = df[df["name"] == "Manchester Wind"]
+    manchester = df[df["entity"] == "Manchester Wind"]
     # The parent's 10 series rows are gone, replaced by the child's single row.
     assert len(manchester) == 1
     assert manchester["value"].iloc[0] == 0.42
     assert pd.isna(manchester["snapshot"].iloc[0])
 
     # Siblings on the same layer are untouched.
-    assert len(df[df["name"] == "Norway Wind"]) == 10
+    assert len(df[df["entity"] == "Norway Wind"]) == 10
 
 
 def test_child_overwrite_reaches_model(con, parent):
@@ -58,7 +58,7 @@ def test_child_overwrite_reaches_model(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"name": "Manchester Wind", "value": 0.42}],
+        [{"entity": "Manchester Wind", "value": 0.42}],
     )
 
     n = PyPSA.build(child.record)
@@ -78,8 +78,8 @@ def test_tombstone_removes_component(con, parent):
     tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
 
     om = child.node_cache.components.df()
-    assert "Norway Gas" not in set(om["name"])
-    assert "Norway Gas" in set(parent.node_cache.components.df()["name"])
+    assert "Norway Gas" not in set(om["entity"])
+    assert "Norway Gas" in set(parent.node_cache.components.df()["entity"])
 
     n = PyPSA.build(child.record)
     assert "Norway Gas" not in n.c["Generator"].static.index
@@ -92,7 +92,7 @@ def test_child_adds_attribute(con, parent):
     write_input(
         layer_dir(child.id),
         "p_min_pu",
-        [{"name": "Norway Gas", "value": 0.1}],
+        [{"entity": "Norway Gas", "value": 0.1}],
     )
 
     n = PyPSA.build(child.record)
@@ -112,8 +112,8 @@ def test_sibling_branch_unaffected(con, parent):
     tombstone(layer_dir(deleting.id), "Generator", ["Norway Gas"])
     sibling = parent.child()
 
-    assert "Norway Gas" not in set(deleting.node_cache.components.df()["name"])
-    assert "Norway Gas" in set(sibling.node_cache.components.df()["name"])
+    assert "Norway Gas" not in set(deleting.node_cache.components.df()["entity"])
+    assert "Norway Gas" in set(sibling.node_cache.components.df()["entity"])
 
 
 def test_grandchild_resolves_through_ancestry(con, parent):
@@ -122,7 +122,7 @@ def test_grandchild_resolves_through_ancestry(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"name": "Manchester Wind", "value": 0.42}],
+        [{"entity": "Manchester Wind", "value": 0.42}],
     )
     child.materialise()
 
@@ -130,14 +130,14 @@ def test_grandchild_resolves_through_ancestry(con, parent):
     write_input(
         layer_dir(grandchild.id),
         "p_max_pu",
-        [{"name": "Manchester Wind", "value": 0.99}],
+        [{"entity": "Manchester Wind", "value": 0.99}],
     )
 
     df = relation(grandchild, "p_max_pu").df()
-    manchester = df[df["name"] == "Manchester Wind"]
+    manchester = df[df["entity"] == "Manchester Wind"]
     assert len(manchester) == 1
     assert manchester["value"].iloc[0] == 0.99
-    assert len(df[df["name"] == "Norway Wind"]) == 10
+    assert len(df[df["entity"] == "Norway Wind"]) == 10
 
 
 def test_closed_child_reads_own_node_cache(con, parent):
@@ -154,7 +154,7 @@ def test_closed_child_reads_own_node_cache(con, parent):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"name": "Manchester Wind", "value": 0.42}],
+        [{"entity": "Manchester Wind", "value": 0.42}],
     )
     child.materialise()
 
@@ -163,7 +163,7 @@ def test_closed_child_reads_own_node_cache(con, parent):
     assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
 
     df = relation(reloaded, "p_max_pu").df()
-    assert df[df["name"] == "Manchester Wind"]["value"].tolist() == [0.42]
+    assert df[df["entity"] == "Manchester Wind"]["value"].tolist() == [0.42]
 
 
 def test_outputs_do_not_overlay(con, parent):
@@ -209,7 +209,7 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     write_input(
         layer_dir(child.id),
         "p_min_pu",
-        [{"name": "Norway Gas", "value": 0.1}],
+        [{"entity": "Norway Gas", "value": 0.1}],
     )
     n = PyPSA.build(child.record)
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1

@@ -25,12 +25,12 @@ gens = record.components["Generator"].collect().to_pandas()
 `components`, `connections` and `dims` are **wide** — one row per thing. `attributes` and `outputs` are **long** — one row per value:
 
 ```text
-name | bus | <one column per declared dim> | attribute | breakpoint | value
+entity | bus | <one column per declared dim> | attribute | breakpoint | value
 ```
 
 A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). `bus` is non-NULL only for a value belonging to one connection rather than to the component ([design](../design/record.md#connections)); `breakpoint` carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's `default` from the schema.
 
-There is no `component_type` column, and none in the mapping's key either — `attributes["p_max_pu"]` holds every type's rows together. A `name` identifies one component **across every type**, so the type is something the record knows about a name rather than part of its address ([design](../design/format.md#name-is-unique-across-types)). To scope to one type, join `components` on `name`.
+There is no `component_type` column, and none in the mapping's key either — `attributes["p_max_pu"]` holds every type's rows together. An `entity` identifies one component **across every type**, so the type is something the record knows about a name rather than part of its address ([design](../design/format.md#entity-is-unique-across-types)). To scope to one type, join `components` on `entity`.
 
 ## `flags`
 

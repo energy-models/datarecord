@@ -13,9 +13,9 @@ from datarecord.layered.resolve import write_schema as record_write_schema
 from datarecord.schema import AttributeSpec, ComponentType, Dimension, Schema
 
 # No `component_type`: an attribute row is keyed by `name`, unique across every type
-# (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types). The entity tables below keep it.
+# (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
 LONG_COLUMNS = [
-    "name",
+    "entity",
     "bus",
     "snapshot",
     "scenario",
@@ -79,7 +79,7 @@ def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["component_type", "name", "bus", "role", "scenario", "deleted"]
+    lead = ["component_type", "entity", "bus", "role", "scenario", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
     target = Path(layer, "dims", "connections")
     target.mkdir(parents=True, exist_ok=True)
@@ -99,7 +99,7 @@ def tombstone_connection(
         layer,
         ctype,
         [
-            {"name": name, "bus": bus, "scenario": scenario, "deleted": True}
+            {"entity": name, "bus": bus, "scenario": scenario, "deleted": True}
             for name, bus in pairs
         ],
     )
@@ -116,7 +116,7 @@ def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["component_type", "name", "scenario", "deleted"]
+    lead = ["component_type", "entity", "scenario", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
     target = Path(layer, "dims", "components")
     target.mkdir(parents=True, exist_ok=True)
@@ -133,7 +133,7 @@ def tombstone(layer: str, ctype: str, names: list[str], scenario=None) -> None:
     write_components(
         layer,
         ctype,
-        [{"name": n, "scenario": scenario, "deleted": True} for n in names],
+        [{"entity": n, "scenario": scenario, "deleted": True} for n in names],
     )
 
 
@@ -210,7 +210,7 @@ def rename_components(n, ctype: str, suffix: str) -> None:
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     c = n.c[ctype]

@@ -154,7 +154,7 @@ class NetworkShape:
         -----
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
-        return [SCENARIO, "name"] if self.stochastic else ["name"]
+        return [SCENARIO, "entity"] if self.stochastic else ["entity"]
 
 
 def _connection(record: Record) -> DuckDBPyConnection:
@@ -360,7 +360,7 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     seen: dict[str, str] = {}
@@ -637,11 +637,12 @@ def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
         if attached.empty:
             continue
         rows = attached.rename("bus").reset_index()
+        rows = rows.rename(columns={"name": "entity"})
         rows["role"] = _port_role(port)
         rows["deleted"] = False
         frames.append(rows)
     if not frames:
-        return pd.DataFrame(columns=["name", "bus", "role", "deleted"])
+        return pd.DataFrame(columns=["entity", "bus", "role", "deleted"])
     return pd.concat(frames, ignore_index=True)
 
 
@@ -699,7 +700,7 @@ def _stack_dynamic(c: pypsa.Components, wide: pd.DataFrame) -> pd.DataFrame:
     Ported from `pypsa.components.array.Components._stack_dynamic`.
     """
     stochastic = isinstance(wide.columns, pd.MultiIndex)
-    wide = wide.rename_axis(columns=["scenario", "name"] if stochastic else "name")
+    wide = wide.rename_axis(columns=["scenario", "entity"] if stochastic else "entity")
 
     stacked = wide.stack(level=list(range(wide.columns.nlevels)), future_stack=True)
     long = stacked.rename("value").reset_index()
@@ -720,7 +721,7 @@ def _scalar_rows(c: pypsa.Components, attr: str, exclude: pd.Index) -> pd.DataFr
     static = c.static[attr]
     if len(exclude):
         static = static[~static.index.isin(exclude)]
-    out = static.rename("value").reset_index()
+    out = static.rename("value").reset_index().rename(columns={"name": "entity"})
     if "scenario" not in out.columns:
         out["scenario"] = np.nan
     out["snapshot"] = np.nan
@@ -751,7 +752,7 @@ def _as_long(
         msg = f"'{attr}' of '{c.name}' components has no long representation."
         raise AttributeError(msg)
 
-    columns = ["name", "snapshot", "scenario", "period", "value"]
+    columns = ["entity", "snapshot", "scenario", "period", "value"]
     if not varying:
         out = _scalar_rows(c, attr, pd.Index([]))[columns]
         if drop_defaults:
@@ -818,7 +819,7 @@ def _per_port_long_rows(
         long = _long_rows(c, column, dims)
         if long.empty:
             continue
-        long["bus"] = long["name"].map(static[bus_column])
+        long["bus"] = long["entity"].map(static[bus_column])
         long["attribute"] = stem
         frames.append(long[long["bus"].astype(str) != ""])
     if not frames:
@@ -1009,13 +1010,13 @@ class PyPSATool(Tool):
                     continue
                 # Through the schema, so a renamed or computed attribute
                 # reaches the pivot below as an ordinary long relation. Scoped
-                # by a semi-join against `static`, this type's entity table (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
+                # by a semi-join against `static`, this type's entity table (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
                 long = (
                     self.schema.resolve(record, ctype, attr)
                     .set_alias("a")
                     .join(
-                        static.project("name").distinct().set_alias("m"),
-                        "a.name = m.name",
+                        static.project("entity").distinct().set_alias("m"),
+                        "a.entity = m.entity",
                         how="semi",
                     )
                 )
@@ -1048,7 +1049,7 @@ class PyPSATool(Tool):
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
         per_attribute: dict[str, list[nw.LazyFrame]] = {}
@@ -1092,7 +1093,7 @@ class PyPSATool(Tool):
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
@@ -1346,7 +1347,11 @@ class _NetworkSource:
                 and defaults.loc[column, "status"] != "Output"
             )
 
-        frame = c.static[[x for x in c.static.columns if keep(x)]].reset_index()
+        frame = (
+            c.static[[x for x in c.static.columns if keep(x)]]
+            .reset_index()
+            .rename(columns={"name": "entity"})
+        )
         return nw.from_native(self._tagged(frame, ctype)).lazy()
 
     def _connection_frame(self, ctype: str) -> nw.LazyFrame:
@@ -1404,7 +1409,7 @@ class _NetworkSource:
             if not rows.empty:
                 frames.append(rows)
         columns = [
-            "name",
+            "entity",
             "bus",
             *dims,
             "attribute",
@@ -1446,7 +1451,7 @@ class _NetworkSource:
                     long[dim] = None
             frames.append(long)
         columns = [
-            "name",
+            "entity",
             "bus",
             *dims,
             "attribute",
@@ -1497,7 +1502,7 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
     # by (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys): a scenario-keyed record holds one row per scenario per port,
     # and numbering across them would give one port as many indices as there
     # are scenarios.
-    within = ["name", *(d for d in record.schema.connection_dims if d in df)]
+    within = ["entity", *(d for d in record.schema.connection_dims if d in df)]
     if "role" in df.columns:
         df = df.assign(_role_rank=(df["role"] != _INPUT_PORT).astype(int)).sort_values(
             [*within, "_role_rank"], kind="stable"
@@ -1545,23 +1550,23 @@ def _collapse_connections(
         return static
     # Pivoted on the same key the ports were numbered within, so each
     # (component, scenario, ...) keeps its own port columns.
-    index = ["name", *(d for d in record.schema.connection_dims if d in df)]
+    index = ["entity", *(d for d in record.schema.connection_dims if d in df)]
     # A dim left NULL means "every value of it" (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule), so it is a real key
     # here - but `pivot` drops NaN index levels, so such a dim is folded away
     # instead: every row shares its value, and the join below matches on the
     # dims that actually distinguish rows.
     varying = [d for d in index[1:] if df[d].notna().any()]
-    wide = df.pivot(index=["name", *varying], columns="port", values="bus")
+    wide = df.pivot(index=["entity", *varying], columns="port", values="bus")
     wide.columns = [_port_attribute("bus", port) for port in wide.columns]
     wide = wide.reset_index()  # noqa: F841 - queried by name below
     ports = con.sql("FROM wide").set_alias("ports")
-    on = ["name", *(d for d in varying if d in static.columns)]
+    on = ["entity", *(d for d in varying if d in static.columns)]
     joined = static.set_alias("s").join(
         ports, ex_all(col("s", c) == col("ports", c) for c in on), how="left"
     )
     return joined.project(
         *(col("s", c) for c in static.columns),
-        *(col("ports", c) for c in ports.columns if c not in ("name", *varying)),
+        *(col("ports", c) for c in ports.columns if c not in ("entity", *varying)),
     )
 
 

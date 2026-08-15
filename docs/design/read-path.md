@@ -25,15 +25,15 @@ None carries `value`, a varying dim's value, or `breakpoint`, so all stay small 
 
 Splitting them keeps each row shape honest — `attribute` and the flags are meaningless for a component or connection row — and lets each persist as its own file.
 
-`component_type` is on the **entity** maps only, never on `inputs`: an attribute row is addressed by `name` alone ([name is unique across types](format.md#name-is-unique-across-types)), and the components map is what says which type a name is.
+`component_type` is on the **entity** maps only, never on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the components map is what says which type an entity is.
 So that map is the entity mapping every type-scoped question goes through — [`flags(ctype)`](record.md#flags) joins it, as does a consumer wanting one type's frame.
 
 Where it is present it is a **column, not part of the key.**
-Every one of the three maps is keyed on `name` (plus `bus` and the dims that apply); the components map carries `component_type` because it is the table that answers "what type is this name", and that answer is functionally determined by the key rather than keying alongside it.
+Every one of the three maps is keyed on `entity` (plus `bus` and the dims that apply); the components map carries `component_type` because it is the table that answers "what type is this entity", and that answer is functionally determined by the key rather than keying alongside it.
 The fold therefore aggregates the type over the group-by instead of grouping on it.
 
 The distinction is load-bearing rather than pedantic.
-Keying on the type would mean a name could resolve to two rows — one per type — which is exactly the collision [name uniqueness](format.md#name-is-unique-across-types) forbids, silently admitted at read time instead of rejected at write time.
+Keying on the type would mean an entity could resolve to two rows — one per type — which is exactly the collision [name uniqueness](format.md#entity-is-unique-across-types) forbids, silently admitted at read time instead of rejected at write time.
 The same holds in the staging area: `remove` under one type followed by `add` under another must collapse to the later edit ([committing](working-record.md#committing)), and a type-partitioned key keeps both.
 
 `order_key` is monotonic across the fold history, giving first-introduced order across layers ([axis order](record.md#axis-order)).
@@ -68,7 +68,7 @@ The map's columns are then fixed, and only the fields move.
 `breakpoints` stays outside both structs, being no dim ([wide and long rows](record.md#wide-and-long-rows)).
 That also means the dim namespace lives entirely inside `varies`/`broadcast`, so a dim named `breakpoints` would collide with nothing.
 
-`Record.flags(ctype)` unions them over the names of one type, which is [the granularity every consumer works at](record.md#flags).
+`Record.flags(ctype)` unions them over the entities of one type, which is [the granularity every consumer works at](record.md#flags).
 The union is not a loss of the per-key answer so much as the question being asked of a type: a framework assigns containers per type, so a type whose components disagree must be told so, and a dim landing in both sets is exactly that message.
 The union stops at the type boundary, since across types it would describe neither.
 
@@ -77,7 +77,7 @@ The union stops at the type boundary, since across types it would describe neith
 A resolved relation semi-joins the owning layers' files to the `inputs` map, keeping only owned rows:
 
 ```sql
-SELECT u.name, u.bus, u.timestep,
+SELECT u.entity, u.bus, u.timestep,
        COALESCE(u.scenario, o.scenario) AS scenario,   -- one per owned_per dim
        u.attribute, u.breakpoint, u.value
 FROM ( -- one arm per distinct layer the map names for this attribute
@@ -86,14 +86,14 @@ FROM ( -- one arm per distinct layer the map names for this attribute
   ...
 ) u
 JOIN inputs o
-  ON o.name        = u.name
+  ON o.entity      = u.entity
  AND o.bus         IS NOT DISTINCT FROM u.bus   -- NULL-safe: component-level keys NULL against NULL
  AND o.attribute   = u.attribute
  AND o.layer_uuid  = u.layer_uuid
  AND (u.scenario IS NULL OR u.scenario IS NOT DISTINCT FROM o.scenario)
 ```
 
-`name` joins on equality rather than NULL-safely: it is required and unique ([name is unique across types](format.md#name-is-unique-across-types)), so there is no NULL to be safe about — the one column the old key needed a second equality for is simply gone.
+`entity` joins on equality rather than NULL-safely: it is required and unique ([entity is unique across types](format.md#entity-is-unique-across-types)), so there is no NULL to be safe about — the one column the old key needed a second equality for is simply gone.
 
 The map already names the winning layer per key, so resolution reads only the owning layers' files.
 There is no per-read `MAX`/group-by and no tombstone filter — deletions are already absent from the map.

@@ -7,7 +7,7 @@
 - **Whether `within` should subsume `bus`.** `bus` and a nested dim express the same relation.
   A `timestep` label identifies a point only within a `period`; a `bus` label identifies a connection only within a component — `"north"` alone names nothing, since every component may attach to `north`, while `(link_dc, north)` names one connection.
   Written as a dim that would be `Dimension(dtype="str", within={"name"})`, and `bus` would stop being a hardcoded key column.
-  [Name uniqueness](format.md#name-is-unique-across-types) strengthens the analogy rather than weakening it: `name` is now a single global axis rather than one qualified by `component_type`, so `within={"name"}` names something well-defined where `within={"component_type", "name"}` would have been the awkward spelling.
+  [Name uniqueness](format.md#entity-is-unique-across-types) strengthens the analogy rather than weakening it: `entity` is now a single global axis rather than one qualified by `component_type`, so `within={"name"}` names something well-defined where `within={"component_type", "name"}` would have been the awkward spelling.
 
   What blocks it is that `bus` inverts the rule NULL follows for a dim.
   A NULL declared dim means "all values", and [the fold](read-path.md#resolving-a-relation) expands it against the axis; a NULL `bus` means "this attribute belongs to the component rather than to any connection", and is compared NULL-safely, never expanded.
@@ -30,7 +30,7 @@
   Creating a view binds its schema, so registering N attributes costs N footer reads; and catalog reopen cost is linear in view count, which argues for one catalog per record rather than one shared.
 
 - **What else a `Record` should answer about its entities without handing over a frame.** [`flags`](record.md#flags) sets the shape — cheap derived metadata a consumer plans against without opening a file — but answers only per attribute, per type.
-  The entity-level case is `name -> component_type`: a question a record can answer, [names being unique record-wide](format.md#name-is-unique-across-types), and one the layered `components` owner map is keyed by before it opens a file.
+  The entity-level case is `entity -> component_type`: a question a record can answer, [names being unique record-wide](format.md#entity-is-unique-across-types), and one the layered `components` owner map is keyed by before it opens a file.
   Asking it through the protocol costs a frame per type instead, which `WorkingRecord` pays on every [`set`](working-record.md#validation).
   What is open is the granularity: "which types have live rows" and "how many members a type has" are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
   Whatever is chosen, a `DirectoryRecord` must answer it without a fold, or it is fast for one implementation and a rename of the slow path for the other.

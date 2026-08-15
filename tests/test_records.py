@@ -71,13 +71,13 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     """
     members = nw.from_native(
         con.sql(
-            "SELECT 'Generator' AS component_type, 'wind' AS name,"
+            "SELECT 'Generator' AS component_type, 'wind' AS entity,"
             " NULL::VARCHAR AS scenario"
         )
     )
     long = nw.from_native(
         con.sql(
-            "SELECT 'Generator' AS component_type, 'wind' AS name,"
+            "SELECT 'Generator' AS component_type, 'wind' AS entity,"
             " NULL::VARCHAR AS bus, 'p_nom' AS attribute,"
             " NULL::DOUBLE AS breakpoint, 100.0 AS value,"
             " NULL::VARCHAR AS snapshot, NULL::VARCHAR AS scenario,"
@@ -184,17 +184,17 @@ def test_flags_are_per_component_type(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Generator", [{"name": "wind"}])
-    write_components(layer, "Link", [{"name": "dc"}])
+    write_components(layer, "Generator", [{"entity": "wind"}])
+    write_components(layer, "Link", [{"entity": "dc"}])
     write_input(
         layer,
         "p_max_pu",
         [
             # Generator: series only. Link: static only.
-            {"name": "wind", "snapshot": s, "value": v}
+            {"entity": "wind", "snapshot": s, "value": v}
             for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
         ]
-        + [{"name": "dc", "value": 1.0}],
+        + [{"entity": "dc", "value": 1.0}],
     )
 
     for record in (LayeredRecord(revision.node_cache), DirectoryRecord(layer, con)):
@@ -226,12 +226,12 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema(dims=narrow, keys={}, partial=set()))
-    write_components(layer, "Generator", [{"name": "wind"}])
+    write_components(layer, "Generator", [{"entity": "wind"}])
     write_input(
         layer,
         "p_max_pu",
         [
-            {"name": "wind", "snapshot": s, "value": v}
+            {"entity": "wind", "snapshot": s, "value": v}
             for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
         ],
     )
@@ -265,15 +265,15 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Generator", [{"name": "wind"}, {"name": "gas"}])
+    write_components(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
     write_input(
         layer,
         "p_max_pu",
         [
-            {"name": "wind", "snapshot": s, "value": v}
+            {"entity": "wind", "snapshot": s, "value": v}
             for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
         ]
-        + [{"name": "gas", "value": 1.0}],
+        + [{"entity": "gas", "value": 1.0}],
     )
 
     for record in (LayeredRecord(revision.node_cache), DirectoryRecord(layer, con)):
@@ -292,12 +292,12 @@ def test_flags_report_a_curve(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Process", [{"name": "steel"}])
+    write_components(layer, "Process", [{"entity": "steel"}])
     write_input(
         layer,
         "marginal_cost",
         [
-            {"name": "steel", "breakpoint": x, "value": v}
+            {"entity": "steel", "breakpoint": x, "value": v}
             for x, v in ((0.0, 20.0), (50.0, 35.0))
         ],
     )
@@ -319,7 +319,7 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"name": "Manchester Gas", "value": 0.1}],
+        [{"entity": "Manchester Gas", "value": 0.1}],
     )
 
     overlay = LayeredRecord(child.node_cache)
@@ -329,7 +329,7 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
     assert len(layer_only.attributes["p_max_pu"].collect().to_native()) == 1
     resolved = overlay.attributes["p_max_pu"].collect().to_native().to_pandas()
     assert len(resolved) > 1
-    patched = resolved[resolved["name"] == "Manchester Gas"]["value"].tolist()
+    patched = resolved[resolved["entity"] == "Manchester Gas"]["value"].tolist()
     assert patched == [0.1]
 
 
@@ -345,14 +345,14 @@ def test_node_record_orders_members(con, base_uri, ac_dc):
     root.materialise()
 
     child = root.child()
-    write_components(layer_dir(child.id), "Generator", [{"name": "New Solar"}])
+    write_components(layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
     names = list(
         LayeredRecord(child.node_cache)
         .components["Generator"]
         .collect()
         .to_native()
-        .to_pandas()["name"]
+        .to_pandas()["entity"]
     )
     # First-introduced order: the root's members, then the child's addition.
     assert names == [*ac_dc.c["Generator"].static.index, "New Solar"]
@@ -385,7 +385,7 @@ def test_directory_record_has_no_connections_when_none_were_written(
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Generator", [{"name": "wind"}])
+    write_components(layer, "Generator", [{"entity": "wind"}])
 
     assert list(DirectoryRecord(layer, con).connections) == []
 

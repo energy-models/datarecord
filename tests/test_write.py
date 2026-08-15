@@ -84,7 +84,7 @@ def _long(**overrides) -> pd.DataFrame:
     - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
     """
     row = {
-        "name": "steel_dri",
+        "entity": "steel_dri",
         "bus": None,
         "snapshot": None,
         "scenario": None,
@@ -129,7 +129,7 @@ def test_write_record_builds_each_key_once(con, base_uri):
         _SCHEMA,
         attributes={"p_nom": _long(), "e_nom": _long(attribute="e_nom")},
         components={
-            "Process": pd.DataFrame({"name": ["steel_dri"], "scenario": [None]})
+            "Process": pd.DataFrame({"entity": ["steel_dri"], "scenario": [None]})
         },
     )
     write_record(revision.id, source, con)
@@ -218,7 +218,9 @@ def test_write_record_rejects_an_unbacked_key_dim(con, base_uri):
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
-        components={"Process": pd.DataFrame({"name": ["steel_dri"]})},  # no `scenario`
+        components={
+            "Process": pd.DataFrame({"entity": ["steel_dri"]})
+        },  # no `scenario`
     )
 
     with pytest.raises(ValueError, match="missing key dims.*scenario"):
@@ -234,14 +236,14 @@ def test_write_record_rejects_a_name_two_types_share(con, base_uri):
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
         components={
-            "Process": pd.DataFrame({"name": ["shared"], "scenario": [None]}),
-            "Widget": pd.DataFrame({"name": ["shared"], "scenario": [None]}),
+            "Process": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
+            "Widget": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
         },
     )
 
@@ -258,8 +260,8 @@ def test_write_record_accepts_one_name_per_type(con, base_uri):
     source = _Source(
         _SCHEMA,
         components={
-            "Process": pd.DataFrame({"name": ["a"], "scenario": [None]}),
-            "Widget": pd.DataFrame({"name": ["b"], "scenario": [None]}),
+            "Process": pd.DataFrame({"entity": ["a"], "scenario": [None]}),
+            "Widget": pd.DataFrame({"entity": ["b"], "scenario": [None]}),
         },
     )
 
@@ -283,8 +285,8 @@ def test_the_uniqueness_check_spans_backends(con, base_uri):
         _SCHEMA,
         components={
             # DuckDB-backed, and pandas-backed, colliding on `shared`.
-            "Process": con.sql("SELECT 'shared' AS name, NULL AS scenario"),
-            "Widget": pd.DataFrame({"name": ["shared"], "scenario": [None]}),
+            "Process": con.sql("SELECT 'shared' AS entity, NULL AS scenario"),
+            "Widget": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
         },
     )
 
@@ -435,8 +437,8 @@ def test_written_layer_overlays(con, base_uri, ac_dc):
     write_input(
         layer_dir(child.id),
         "p_nom",
-        [{"name": "Manchester Wind", "value": 999.0}],
+        [{"entity": "Manchester Wind", "value": 999.0}],
     )
 
-    resolved = relation(child, "p_nom").filter("name = 'Manchester Wind'").df()
+    resolved = relation(child, "p_nom").filter("entity = 'Manchester Wind'").df()
     assert list(resolved["value"]) == [999.0]

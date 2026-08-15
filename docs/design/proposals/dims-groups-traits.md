@@ -45,7 +45,7 @@ dims/entity.parquet     entity | component_type | deleted
 
 Four things move there, each of which is currently derived or enforced elsewhere:
 
-**Uniqueness becomes structural.** One row per `entity` in one file, so the collision [name uniqueness](../format.md#name-is-unique-across-types) rejects at two call sites cannot be represented.
+**Uniqueness becomes structural.** One row per `entity` in one file, so the collision [name uniqueness](../format.md#entity-is-unique-across-types) rejects at two call sites cannot be represented.
 
 **`entity -> component_type` is a column read.** Today it is "the file a name's row is in", so building the components map means globbing every type's file and injecting the type per arm.
 The [owner map](../read-path.md#owner-map) already treats `component_type` as carried-not-keyed, functionally determined by the key — which is the shape of a payload column. This puts it where that shape says it belongs.
@@ -508,7 +508,7 @@ Flattening cannot represent the disagreement, which is why the collision surface
 **The record does not resolve them.** One attribute name means one thing record-wide; two concepts wanting the same name is a limitation the record states rather than a problem it solves.
 A tool reconciles on its own side — prefixing (`line_x`), renaming to something meaningful (`reactance`), or refusing the network in `verify` — which is [the same seam](../tools.md) that renames `p_nom` to `capacity` above, and the same one that already reports a framework scoping names per type against a record scoping them record-wide.
 
-No qualified names, no per-type namespaces: both would put the component type back into an attribute's address, which is exactly what [name uniqueness](../format.md#name-is-unique-across-types) removed and what makes one file per attribute possible.
+No qualified names, no per-type namespaces: both would put the component type back into an attribute's address, which is exactly what [name uniqueness](../format.md#entity-is-unique-across-types) removed and what makes one file per attribute possible.
 The example accordingly removes `type` from every type and `x`/`y` from `Bus` rather than inventing a mechanism.
 
 **Per-port attributes.** `Link.efficiency2`, `bus0`/`bus1` collapse to a stem addressed by the `connection` group, which the example shows for `efficiency` but not for the `bus0`/`bus1` columns themselves — those become group _rows_, not attributes, and the example does not show the group table.

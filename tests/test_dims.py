@@ -41,7 +41,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
         "p_max_pu",
         [
             {
-                "name": "Manchester Wind",
+                "entity": "Manchester Wind",
                 "period": 2030,
                 "value": 0.42,
             }
@@ -50,13 +50,14 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
 
     df = child.node_cache.inputs.df()
     wind = df[
-        (df["name"] == "Manchester Wind") & (df["attribute"].astype(str) == "p_max_pu")
+        (df["entity"] == "Manchester Wind")
+        & (df["attribute"].astype(str) == "p_max_pu")
     ]
     owners = dict(zip(wind["period"], wind["layer_uuid"], strict=False))
     assert owners.get(2030) == child.id
 
     rel = relation(child, "p_max_pu").df()
-    wind_rows = rel[rel["name"] == "Manchester Wind"]
+    wind_rows = rel[rel["entity"] == "Manchester Wind"]
     overridden = wind_rows[wind_rows["period"] == 2030]
     assert set(overridden["value"]) == {0.42}
 
@@ -80,7 +81,7 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     tombstone(layer_dir(child.id), "Generator", ["Manchester Wind"])
 
     components = child.node_cache.components.df()
-    assert "Manchester Wind" not in set(components["name"])
+    assert "Manchester Wind" not in set(components["entity"])
 
 
 def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
@@ -105,7 +106,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
         "p_max_pu",
         [
             {
-                "name": "Manchester Wind",
+                "entity": "Manchester Wind",
                 "scenario": "base",
                 "period": 2020,
                 "value": 0.1,
@@ -120,7 +121,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
         "p_max_pu",
         [
             {
-                "name": "Manchester Wind",
+                "entity": "Manchester Wind",
                 "scenario": "high",
                 "period": 2030,
                 "value": 0.5,
@@ -129,7 +130,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     )
 
     df = child.node_cache.inputs.df()
-    wind = df[(df["name"] == "Manchester Wind") & (df["layer_uuid"] == child.id)]
+    wind = df[(df["entity"] == "Manchester Wind") & (df["layer_uuid"] == child.id)]
     assert wind["scenario"].tolist() == ["high"]
     assert wind["period"].tolist() == [2030]
 
@@ -217,3 +218,24 @@ def test_a_dim_names_its_own_file(con, base_uri):
 
     axis = revision.node_cache.dims.axes["bus"].df()
     assert sorted(axis["bus"].tolist()) == ["north", "south"]
+
+
+def test_the_entity_column_is_entity(con, base_uri, ac_dc):
+    """`entity` names the component in every frame the protocol hands back.
+
+    The one axis the format knows by name, because it is the axis the component
+    types partition: `component_type` hangs off it and `dims/components/` is
+    keyed by it. Every other dim is declared.
+
+    Notes
+    -----
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    """
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+
+    record = revision.record
+    assert "entity" in record.components["Generator"].collect_schema().names()
+    assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
+    # And in the owner map the fold builds over them.
+    assert "entity" in revision.node_cache.components.df().columns

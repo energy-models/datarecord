@@ -35,20 +35,20 @@ The rest is data, and comes in two shapes.
 
 ```text
 dims["scenario"]         scenario | ...           one row per axis label, in axis order
-components["Generator"]  name | <non-varying attribute columns>
-connections["Link"]      name | bus | role | ...  one row per component↔bus attachment
+components["Generator"]  entity | <non-varying attribute columns>
+connections["Link"]      entity | bus | role | ...  one row per component↔bus attachment
 ```
 
 `attributes` and `outputs` are **long** — one row per value, keyed by the attribute's name:
 
 ```text
-attributes["p_max_pu"]   name | bus | <one column per declared dim> | attribute | breakpoint | value
+attributes["p_max_pu"]   entity | bus | <one column per declared dim> | attribute | breakpoint | value
 ```
 
 A row names the component it belongs to, the coordinate it sits at, and the value there.
 
-There is **no `component_type` column** in that row, and none in the mapping's key either: `attributes["p_max_pu"]` holds every type's `p_max_pu` together, since a `name` already identifies a component on its own ([what a data record is](index.md#what-a-data-record-is)).
-A consumer wanting one type's rows joins `components` on `name` — the entity frames are what say which type a name is.
+There is **no `component_type` column** in that row, and none in the mapping's key either: `attributes["p_max_pu"]` holds every type's `p_max_pu` together, since an `entity` already identifies a component on its own ([what a data record is](index.md#what-a-data-record-is)).
+A consumer wanting one type's rows joins `components` on `entity` — the entity frames are what say which type an entity is.
 
 Two of the long columns are NULL for the ordinary case, a component-level scalar:
 
@@ -60,7 +60,7 @@ Two of the long columns are NULL for the ordinary case, a component-level scalar
 Some attributes belong not to a component but to one of its connections to a bus.
 
 A connection is identified by **the bus it attaches to**, never by position.
-`connections[ctype]` lists the attachments themselves, one row per `(name, bus)`; `role` — which end of the component it is — describes the connection and identifies nothing.
+`connections[ctype]` lists the attachments themselves, one row per `(entity, bus)`; `role` — which end of the component it is — describes the connection and identifies nothing.
 
 A per-connection value is otherwise an ordinary long row: `efficiency` on one connection may vary by timestep and scenario like any other attribute, and decodes by the same rules with no special case.
 A record whose components have no connections answers `connections` empty.
@@ -122,7 +122,7 @@ Per component they would be complements; the aggregation over a type is what mak
 Both sets empty for a dim means no row mentions it, so the consumer skips the attribute.
 
 Per component type, because one file holds every type's rows: unioning across types would report a Generator's per-timestep rows and a Link's single row as one shape, which describes neither.
-Scoping is a join to the components map on `name`, not a filter on the attribute rows ([name is unique across types](format.md#name-is-unique-across-types)).
+Scoping is a join to the components map on `entity`, not a filter on the attribute rows ([entity is unique across types](format.md#entity-is-unique-across-types)).
 
 ## The protocol names no engine
 

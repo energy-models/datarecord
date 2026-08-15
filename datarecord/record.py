@@ -168,14 +168,14 @@ class Record(Protocol):
         """Long input frames, keyed by attribute name - one per file.
 
         Not by component type: one `inputs/p_max_pu.parquet` holds every type's
-        rows, keyed by `name` alone. A row carries no `component_type` - names
+        rows, keyed by `entity` alone. A row carries no `component_type` - entities
         are unique across every type - so a reader wanting one type joins `components`
         on `name`.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         ...
 

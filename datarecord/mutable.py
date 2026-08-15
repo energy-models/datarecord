@@ -417,7 +417,7 @@ class WorkingRecord:
             if kind == "components"
             else self.schema.connection_dims
         )
-        key = ("name", *(("bus",) if kind == "connections" else ()), *dims)
+        key = ("entity", *(("bus",) if kind == "connections" else ()), *dims)
         frame = base[ctype]
         # `collect_schema` reads names without materialising, and `_as_relation`
         # keeps a DuckDB-backed frame as the plan it already is: the long schema
@@ -570,7 +570,7 @@ class WorkingRecord:
 
     def _long_columns(self) -> tuple[str, ...]:
         return (
-            "name",
+            "entity",
             "bus",
             "attribute",
             "breakpoint",
@@ -579,7 +579,7 @@ class WorkingRecord:
         )
 
     def _input_key(self) -> tuple[str, ...]:
-        return ("name", "bus", "attribute", *self.schema.input_dims)
+        return ("entity", "bus", "attribute", *self.schema.input_dims)
 
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
         """`AttributeSpec.dims` minus `Schema.partial`, for every type declaring
@@ -673,7 +673,7 @@ class WorkingRecord:
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
         out = dict(self.base.flags(ctype))
@@ -685,7 +685,7 @@ class WorkingRecord:
             return out
         dims = self.schema.dims
         rows = (
-            rel.filter(col("name").isin(*(lit(n) for n in names)))
+            rel.filter(col("entity").isin(*(lit(n) for n in names)))
             .aggregate(
                 [
                     col("attribute"),
@@ -736,19 +736,19 @@ class WorkingRecord:
         """
         if ctype not in self.components:
             return []
-        frame = self.components[ctype].select("name").collect()
-        return [str(n) for n in frame["name"].to_list()]
+        frame = self.components[ctype].select("entity").collect()
+        return [str(n) for n in frame["entity"].to_list()]
 
     def _name_types(self) -> nw.LazyFrame | None:
         """`(name, component_type)` over everything this record resolves.
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         parts = [
             self.components[ctype]
-            .select("name")
+            .select("entity")
             .with_columns(component_type=nw.lit(ctype))
             for ctype in self.components
         ]
@@ -765,22 +765,22 @@ class WorkingRecord:
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         known = self._name_types()
         if known is None:
             return
         clashing = (
-            lazy.select("name")
-            .unique("name")
+            lazy.select("entity")
+            .unique("entity")
             .join(
                 known.filter(nw.col("component_type") != ctype),
-                on="name",
+                on="entity",
                 how="inner",
             )
-            .unique(["name", "component_type"])
-            .select("name", "component_type")  # the order `iter_rows` unpacks
+            .unique(["entity", "component_type"])
+            .select("entity", "component_type")  # the order `iter_rows` unpacks
             .collect()
         )
         if not clashing.is_empty():
@@ -791,7 +791,7 @@ class WorkingRecord:
             )
             msg = (
                 f"cannot add {ctype} components whose names are taken: {detail}; "
-                f"names are unique across every component type (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)"
+                f"names are unique across every component type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
             )
             raise ValueError(msg)
 
@@ -811,8 +811,8 @@ class WorkingRecord:
             found: dict[str, str] = {}
         else:
             matched = (
-                known.filter(nw.col("name").is_in(wanted))
-                .select("name", "component_type")
+                known.filter(nw.col("entity").is_in(wanted))
+                .select("entity", "component_type")
                 .collect()
             )
             found = {str(n): str(t) for n, t in matched.iter_rows()}
@@ -858,7 +858,7 @@ class WorkingRecord:
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
@@ -921,7 +921,7 @@ class WorkingRecord:
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
@@ -935,7 +935,7 @@ class WorkingRecord:
                 msg = (
                     f"`set({attribute!r}, <frame>)` was given a `component_type` "
                     f"column; names are unique across every type, so an attribute row "
-                    f"carries no type and the column would be ignored (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)"
+                    f"carries no type and the column would be ignored (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
                 )
                 raise ValueError(msg)
             if kind == "inputs":
@@ -961,13 +961,13 @@ class WorkingRecord:
         self._validate_dims(dims)
         if kind == "inputs":
             # One lookup serves both: rejects a name with no member row, and
-            # returns the type whose spec is checked (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
+            # returns the type whose spec is checked (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
             for name, ctype in self._resolve_types(keys).items():
                 self._validate_attribute(ctype, attribute, dims, name=name)
 
         seq = next(_SEQ)
         table = self._ensure(kind)
-        cols = ("name", "bus", "attribute", "breakpoint", "value")
+        cols = ("entity", "bus", "attribute", "breakpoint", "value")
         dim_cols = tuple(self.schema.dims)
         placeholders = ", ".join(["?"] * (len(cols) + len(dim_cols) + 1))
         rows = []
@@ -1014,15 +1014,18 @@ class WorkingRecord:
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         self._validate_dims(dims)
-        if "name" not in lazy.collect_schema().names():
+        if "entity" not in lazy.collect_schema().names():
             return
         names = [
             str(n)
-            for n in lazy.select("name").unique("name").collect()["name"].to_list()
+            for n in lazy.select("entity")
+            .unique("entity")
+            .collect()["entity"]
+            .to_list()
         ]
         for name, ctype in self._resolve_types(names).items():
             self._validate_attribute(ctype, attribute, dims, name=name)
@@ -1050,7 +1053,7 @@ class WorkingRecord:
             for d in self.schema.dims
         )
         self.con.execute(
-            f"INSERT INTO {table} SELECT name, "
+            f"INSERT INTO {table} SELECT entity, "
             f"? AS bus, ? AS attribute, "
             f"NULL::DOUBLE AS breakpoint, "
             f"value::VARCHAR AS value, {dim_cols}, ? "
@@ -1083,7 +1086,7 @@ class WorkingRecord:
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
         """
         source = self.outputs if kind == "outputs" else self.attributes
@@ -1095,7 +1098,7 @@ class WorkingRecord:
                 if kind == "inputs":
                     for name, ctype in self._resolve_types(list(names)).items():
                         self._validate_attribute(ctype, attribute, dims, name=name)
-                frame = frame.filter(nw.col("name").is_in(list(names)))
+                frame = frame.filter(nw.col("entity").is_in(list(names)))
             if bus is not None:
                 frame = frame.filter(nw.col("bus") == bus)
             for dim, value in dims.items():
@@ -1106,7 +1109,7 @@ class WorkingRecord:
         # is nothing to derive one from. With `names=None` and no scope the
         # instruction is "whatever resolves", so an empty result is an answer.
         if names is not None or dims or bus is not None:
-            if frame is None or frame.select("name").collect().is_empty():
+            if frame is None or frame.select("entity").collect().is_empty():
                 scope = ", ".join(
                     filter(
                         None,
@@ -1160,13 +1163,13 @@ class WorkingRecord:
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
         lazy = _incoming(frame, self.con)
         columns = lazy.collect_schema().names()
-        if "name" not in columns:
-            msg = "`add` needs a `name` column"
+        if "entity" not in columns:
+            msg = "`add` needs an `entity` column"
             raise ValueError(msg)
         self._require_unique(ctype, lazy)
 
@@ -1194,7 +1197,7 @@ class WorkingRecord:
             else f'CAST(NULL AS {self.schema.column_type(d)}) AS "{d}"'
             for d in self.schema.component_dims
         )
-        extra = [c for c in member_cols if c != "name" and c not in self.schema.dims]
+        extra = [c for c in member_cols if c != "entity" and c not in self.schema.dims]
         # The staging table starts with the key columns only (`_COLUMNS`); a
         # wide frame's attribute columns are whatever the caller passed, so
         # they are added as they are first seen rather than declared up front.
@@ -1208,7 +1211,7 @@ class WorkingRecord:
         extra_sql = "".join(f', "{c}"' for c in extra)
         self.con.execute(
             f"INSERT INTO {table} BY NAME "
-            f"SELECT $ctype AS component_type, name"
+            f"SELECT $ctype AS component_type, entity"
             f"{', ' + dim_cols if dim_cols else ''}"
             f"{extra_sql}, false AS deleted, {next(_SEQ)} AS _seq FROM _add",
             {"ctype": ctype},
@@ -1218,7 +1221,7 @@ class WorkingRecord:
             # attribute values are inputs whatever a later solve produces.
             self._stage_long(
                 attribute,
-                lazy.select("name", nw.col(attribute).alias("value")),
+                lazy.select("entity", nw.col(attribute).alias("value")),
                 None,
                 "inputs",
             )
@@ -1231,7 +1234,7 @@ class WorkingRecord:
             self.connect(
                 ctype,
                 lazy.select(
-                    "name",
+                    "entity",
                     nw.col("bus"),
                     *(nw.col(c) for c in ports if c != "bus"),
                     *([nw.col("role")] if "role" in columns else []),
@@ -1284,7 +1287,7 @@ class WorkingRecord:
             raise KeyError(msg)
         self._stage_tombstones(
             "components",
-            ("component_type", "name"),
+            ("component_type", "entity"),
             self.schema.component_dims,
             [[ctype, name] for name in names],
             dims,
@@ -1299,17 +1302,17 @@ class WorkingRecord:
         """
         lazy = _incoming(frame, self.con)
         columns = lazy.collect_schema().names()
-        for required in ("name", "bus"):
+        for required in ("entity", "bus"):
             if required not in columns:
                 msg = f"`connect` needs a {required!r} column"
                 raise ValueError(msg)
         _conn = lazy.to_native()  # noqa: F841 - bound by replacement scan below
         table = self._ensure("connections")
-        extra = [c for c in columns if c not in ("name", "bus")]
+        extra = [c for c in columns if c not in ("entity", "bus")]
         extra_sql = "".join(f', "{c}"' for c in extra)
         self.con.execute(
             f"INSERT INTO {table} BY NAME "
-            f"SELECT $ctype AS component_type, name, bus{extra_sql}, "
+            f"SELECT $ctype AS component_type, entity, bus{extra_sql}, "
             f"false AS deleted, {next(_SEQ)} AS _seq FROM _conn",
             {"ctype": ctype},
         )
@@ -1329,7 +1332,7 @@ class WorkingRecord:
             raise KeyError(msg)
         self._stage_tombstones(
             "connections",
-            ("component_type", "name", "bus"),
+            ("component_type", "entity", "bus"),
             self.schema.connection_dims,
             [[ctype, name, bus] for name, bus in pairs],
             dims,
@@ -1403,8 +1406,8 @@ class WorkingRecord:
         # staged value regardless of sequence (https://energy-models.github.io/datarecord/design/working-record/#committing).
         #
         # Matched on `name` alone: the tombstone carries a type and a staged
-        # input row does not (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
-        on = _null_safe_on(("name", *self.schema.component_dims), "l", "d")
+        # input row does not (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+        on = _null_safe_on(("entity", *self.schema.component_dims), "l", "d")
         return live.set_alias("l").join(dead.set_alias("d"), on, how="anti")
 
     def _tombstoned(self) -> DuckDBPyRelation | None:
@@ -1434,7 +1437,7 @@ class WorkingRecord:
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
         rel = self._rows(kind)
@@ -1619,25 +1622,25 @@ def _input_columns(schema: Schema) -> str:
     Notes
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
     """
     dims = "".join(f', "{d}" {schema.column_type(d)}' for d in schema.dims)
     return (
-        "name VARCHAR, bus VARCHAR, attribute VARCHAR, "
+        "entity VARCHAR, bus VARCHAR, attribute VARCHAR, "
         f"breakpoint DOUBLE, value VARCHAR{dims}, _seq BIGINT"
     )
 
 
 def _component_columns(schema: Schema) -> str:
     dims = "".join(f', "{d}" {schema.column_type(d)}' for d in schema.component_dims)
-    return f"component_type VARCHAR, name VARCHAR{dims}, deleted BOOLEAN, _seq BIGINT"
+    return f"component_type VARCHAR, entity VARCHAR{dims}, deleted BOOLEAN, _seq BIGINT"
 
 
 def _connection_columns(schema: Schema) -> str:
     dims = "".join(f', "{d}" {schema.column_type(d)}' for d in schema.connection_dims)
     return (
-        f"component_type VARCHAR, name VARCHAR, bus VARCHAR, role VARCHAR{dims}, "
+        f"component_type VARCHAR, entity VARCHAR, bus VARCHAR, role VARCHAR{dims}, "
         "deleted BOOLEAN, _seq BIGINT"
     )
 

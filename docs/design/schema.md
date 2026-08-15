@@ -44,7 +44,7 @@ class Schema(BaseModel):
 `partial` is the only layering-specific part, and so the only optional one.
 Everything else describes the data and is always present.
 
-`component_type`, `name` and `attribute` are `VARCHAR`: those vocabularies belong to a modelling framework, and this package knows none.
+`component_type`, `entity` and `attribute` are `VARCHAR`: those vocabularies belong to a modelling framework, and this package knows none.
 A type no tool recognises reads back fine and is reported by the tool that cannot build it, not rejected inside the fold.
 
 `meta` is where a framework's own top-level data goes — network attributes, coordinate reference system, free-form metadata.
@@ -102,7 +102,7 @@ dimensions = {
 On `Dimension` rather than `AttributeSpec` because existence is not an attribute's property: a component exists in scenario `high` or it does not, and `p_max_pu` gets no vote.
 
 Also not layering-specific, which is why it sits beside `dtype` rather than with `partial`.
-It puts the dim in the entity table's own key, so it decides that table's shape — one row per `(name, scenario)` rather than per `name`.
+It puts the dim in the entity table's own key, so it decides that table's shape — one row per `(name, scenario)` rather than per `entity`.
 A single directory with no ancestry can therefore hold a generator present in `high` and absent from `low`, and answer which scenarios it exists in.
 [Tombstone scoping](layers.md#deletion) is a consequence of that key rather than its purpose.
 
