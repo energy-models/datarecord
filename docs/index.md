@@ -30,17 +30,17 @@ record.flags("Generator")  # which axes each attribute uses
 
 - :material-book-open-variant: **[Usage](usage/index.md)**
 
-    How to read, edit, layer and write a record, and how a modelling framework
-    consumes one.
+  How to read, edit, layer and write a record, and how a modelling framework
+  consumes one.
 
 - :material-drawing: **[Design](design/index.md)**
 
-    What a record is and why it is that way — the authoritative design. The
-    docstrings cite these pages rather than restating the argument.
+  What a record is and why it is that way — the authoritative design. The
+  docstrings cite these pages rather than restating the argument.
 
 - :material-api: **[API Reference](api/index.md)**
 
-    Generated signatures and docstrings for every public symbol.
+  Generated signatures and docstrings for every public symbol.
 
 </div>
 

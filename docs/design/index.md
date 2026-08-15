@@ -53,15 +53,15 @@ A framework consumes a record, a workflow engine produces one, and neither needs
 
 ## The pages
 
-| page | what it settles |
-| --- | --- |
-| [The Record protocol](record.md) | what a consumer codes against, and what it may assume |
-| [The record format](format.md) | the parquet directory a record is stored as |
-| [The schema](schema.md) | what may exist: dims, attributes, patch granularity |
-| [Layered resolution](layers.md) | a tree of layers, folded last-writer-wins |
-| [The DuckDB read path](read-path.md) | the owner map and how a relation resolves |
-| [Writing a record](writing.md) | `write_record`, and what it validates |
-| [`WorkingRecord`](working-record.md) | editing: staging, committing, reading back |
-| [Consuming a record](tools.md) | tools, and the seam a framework meets |
-| [Module layout](module-layout.md) | where the code lives, and the one-way dependency |
-| [Open questions](open-questions.md) | what is deliberately unsettled |
+| page                                 | what it settles                                       |
+| ------------------------------------ | ----------------------------------------------------- |
+| [The Record protocol](record.md)     | what a consumer codes against, and what it may assume |
+| [The record format](format.md)       | the parquet directory a record is stored as           |
+| [The schema](schema.md)              | what may exist: dims, attributes, patch granularity   |
+| [Layered resolution](layers.md)      | a tree of layers, folded last-writer-wins             |
+| [The DuckDB read path](read-path.md) | the owner map and how a relation resolves             |
+| [Writing a record](writing.md)       | `write_record`, and what it validates                 |
+| [`WorkingRecord`](working-record.md) | editing: staging, committing, reading back            |
+| [Consuming a record](tools.md)       | tools, and the seam a framework meets                 |
+| [Module layout](module-layout.md)    | where the code lives, and the one-way dependency      |
+| [Open questions](open-questions.md)  | what is deliberately unsettled                        |

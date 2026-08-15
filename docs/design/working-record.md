@@ -99,12 +99,12 @@ Each name is [validated](#validation) against **its own** type's `AttributeSpec`
 
 `value` takes five forms, because assigning one value to a group and assigning a different value to each member are equally ordinary and neither should require building a frame:
 
-| `value`   | meaning                         | `names`                                       |
-| --------- | ------------------------------- | --------------------------------------------- |
-| scalar    | broadcast to every name         | required unless `None` means all              |
-| sequence  | aligned positionally to `names` | required, same length                         |
-| mapping   | keys are names                  | ignored if given, else the keys are the names |
-| frame     | supplies its own keys           | redundant                                     |
+| `value`   | meaning                         | `names`                                                                      |
+| --------- | ------------------------------- | ---------------------------------------------------------------------------- |
+| scalar    | broadcast to every name         | required unless `None` means all                                             |
+| sequence  | aligned positionally to `names` | required, same length                                                        |
+| mapping   | keys are names                  | ignored if given, else the keys are the names                                |
+| frame     | supplies its own keys           | redundant                                                                    |
 | `nw.Expr` | a function of the current value | selects what to [derive from](#an-nwexpr-value-derived-from-the-current-one) |
 
 A frame "supplies its own keys" now means its `name` column alone: a `component_type` column is neither required nor read, since [the name determines the type](format.md#name-is-unique-across-types).

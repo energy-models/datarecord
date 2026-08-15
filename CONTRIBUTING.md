@@ -29,7 +29,11 @@ Contribution rules and conventions for datarecord.
   rather than be required to understand it, which these are.)
 - Documentation is mkdocs: `pixi run -e docs docs` serves it locally, and
   `pixi run -e docs docs-build` is the strict build CI runs, which fails on a
-  broken cross-reference.
+  broken cross-reference. Every pull request publishes a rendered preview to
+  `https://energy-models.github.io/datarecord/pr-<N>/`, linked from a comment on
+  the pull request itself; it is removed when the pull request closes, and a
+  weekly job sweeps any that outlive it. Both live in
+  [`.github/workflows/docs.yml`](.github/workflows/docs.yml).
 - No tool import may leak into core `datarecord`
   ([module layout](https://energy-models.github.io/datarecord/design/module-layout/)):
   everything framework-specific lives under `datarecord/tools/` behind an

@@ -35,11 +35,11 @@ defaults to the `DATARECORD_BASE_URI` environment variable.
 
 ## The pages
 
-| page | what it covers |
-| --- | --- |
-| [Reading a record](reading.md) | the `Record` protocol, frames, `flags` |
-| [The schema](schema.md) | declaring dims and attributes |
-| [Layers](layers.md) | revisions, branching, materialising |
-| [Editing](editing.md) | `WorkingRecord`: `set`, `add`, `commit` |
-| [Writing](writing.md) | `write_record` |
-| [Tools](tools.md) | consuming a record from a modelling framework |
+| page                           | what it covers                                |
+| ------------------------------ | --------------------------------------------- |
+| [Reading a record](reading.md) | the `Record` protocol, frames, `flags`        |
+| [The schema](schema.md)        | declaring dims and attributes                 |
+| [Layers](layers.md)            | revisions, branching, materialising           |
+| [Editing](editing.md)          | `WorkingRecord`: `set`, `add`, `commit`       |
+| [Writing](writing.md)          | `write_record`                                |
+| [Tools](tools.md)              | consuming a record from a modelling framework |
