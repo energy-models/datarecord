@@ -119,7 +119,7 @@ dimensions = {
 }
 ```
 
-`within` makes `timesteps.parquet` carry a `period` column, and the axis key `(period, timestep)` rather than `timestep`.
+`within` makes `timestep.parquet` carry a `period` column, and the axis key `(period, timestep)` rather than `timestep`.
 It is on `Dimension` because nesting is structural — true of the data however stored, so a directory record needs it exactly as much as a layered one.
 
 A **set**, because two different things could each be one parent:

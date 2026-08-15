@@ -204,13 +204,13 @@ def test_resolved_dims_are_node_scoped(con, parent, stochastic):
     middle = parent.child()
     middle.materialise()
 
-    resolved = Path(resolved_dir(middle.id), "dims", "scenarios.parquet")
+    resolved = Path(resolved_dir(middle.id), "dims", "scenario.parquet")
     assert resolved.exists()
     assert set(pd.read_parquet(resolved)["scenario"]) == set(stochastic.scenarios)
 
     # `middle` wrote nothing itself, so its layer directory has no dims at
     # all - the resolved axis must not have been written there.
-    assert not Path(layer_dir(middle.id), "dims", "scenarios.parquet").exists()
+    assert not Path(layer_dir(middle.id), "dims", "scenario.parquet").exists()
 
 
 def test_scenario_axis_survives_closed_grandchild(con, parent, stochastic):

@@ -9,6 +9,10 @@ Notes
 - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
 """
 
+from pathlib import Path
+
+import pandas as pd
+
 from datarecord import Revision
 from datarecord.duck import layer_dir
 from tests.fixtures import (
@@ -190,3 +194,26 @@ def test_a_child_overrides_one_nested_point(con, base_uri):
     axis = child.node_cache.dims.axes["snapshot"].df()
     weights = dict(zip(axis["period"], axis["weight"], strict=True))
     assert weights == {2020: 1.0, 2030: 7.0}
+
+
+def test_a_dim_names_its_own_file(con, base_uri):
+    """`dims/<dim>.parquet`, whatever the dim is called.
+
+    A dim named `bus` is the case that matters: pluralising by concatenation
+    would look for `buss.parquet` and find nothing, so the axis would read as
+    absent rather than wrong.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    """
+    revision = Revision.create(con)
+    write_schema(schema(dims={"bus": "VARCHAR"}, partial=set(), keys={}))
+    target = Path(layer_dir(revision.id), "dims")
+    target.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([{"bus": "north"}, {"bus": "south"}]).to_parquet(
+        target / "bus.parquet", index=False
+    )
+
+    axis = revision.node_cache.dims.axes["bus"].df()
+    assert sorted(axis["bus"].tolist()) == ["north", "south"]

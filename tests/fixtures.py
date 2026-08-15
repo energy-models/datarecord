@@ -138,23 +138,23 @@ def tombstone(layer: str, ctype: str, names: list[str], scenario=None) -> None:
 
 
 def write_scenarios(layer: str, rows: list[dict]) -> None:
-    """Write `dims/scenarios.parquet`; each row needs `scenario` and `weight`."""
+    """Write `dims/scenario.parquet`; each row needs `scenario` and `weight`."""
     df = pd.DataFrame(rows)
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / "scenarios.parquet", index=False)
+    df.to_parquet(target / "scenario.parquet", index=False)
 
 
 def write_periods(layer: str, rows: list[dict]) -> None:
-    """Write `dims/periods.parquet`; each row needs `period`."""
+    """Write `dims/period.parquet`; each row needs `period`."""
     df = pd.DataFrame(rows)
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / "periods.parquet", index=False)
+    df.to_parquet(target / "period.parquet", index=False)
 
 
 def write_snapshots(layer: str, rows: list[dict]) -> None:
-    """Write `dims/snapshots.parquet`; each row needs `snapshot`.
+    """Write `dims/snapshot.parquet`; each row needs `snapshot`.
 
     A `period` column makes it a nested axis, keyed by `(period,
     snapshot)` rather than by the timestamp alone.
@@ -169,7 +169,7 @@ def write_snapshots(layer: str, rows: list[dict]) -> None:
         df["period"] = df["period"].astype("Int64")
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / "snapshots.parquet", index=False)
+    df.to_parquet(target / "snapshot.parquet", index=False)
 
 
 def rename_components(n, ctype: str, suffix: str) -> None:

@@ -71,12 +71,12 @@ class DirectoryRecord:
 
     @cached_property
     def dims(self) -> LazyFrames:
-        # A dim's axis file is `{dim}s.parquet`, so the declared dims name the
+        # A dim's axis file is `{dim}.parquet`, so the declared dims name the
         # files to look for; only those that exist become keys.
         declared = self.schema.dims
-        present = tuple(d for d in declared if self._read(f"dims/{d}s.parquet"))
+        present = tuple(d for d in declared if self._read(f"dims/{d}.parquet"))
         return LazyFrames(
-            present, lambda dim: nw.from_native(self._require(f"dims/{dim}s.parquet"))
+            present, lambda dim: nw.from_native(self._require(f"dims/{dim}.parquet"))
         )
 
     @cached_property

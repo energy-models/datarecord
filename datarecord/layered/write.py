@@ -145,9 +145,8 @@ def write_record(
                             component_type=nw.lit(key).cast(nw.String()),
                         )
                     )
-                name = f"{key}s" if kind == "dims" else key
                 _write_frame(
-                    frame, f"{staging}{subdir}/{name}.parquet", con, local, schema
+                    frame, f"{staging}{subdir}/{key}.parquet", con, local, schema
                 )
         _require_unique(tagged)
     except BaseException:
@@ -340,7 +339,7 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
         missing = sorted(set(schema.axis_key(key)) - columns)
         if missing:
             msg = (
-                f"dims/{key}s.parquet is missing axis key columns {missing}; "
+                f"dims/{key}.parquet is missing axis key columns {missing}; "
                 f"{key!r} is `within` {sorted(schema.dimensions[key].within)} so "
                 f"its labels identify a point only within them (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)"
             )

@@ -296,7 +296,7 @@ def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
     """A `within` dim's file needs a column per parent, or the fold miskeys it.
 
     `snapshot within period` makes the axis key `(period, snapshot)`, so a
-    `snapshots.parquet` carrying only timestamps would fold two periods'
+    `snapshot.parquet` carrying only timestamps would fold two periods'
     identically labelled hours into one row.
 
     Notes

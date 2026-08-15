@@ -9,10 +9,13 @@ record/
 ├── dims/
 │   ├── components/<Type>.parquet   # members + non-varying attribute columns
 │   ├── connections/<Type>.parquet  # component↔bus connections
-│   └── <dim>s.parquet              # one axis table per declared dim
+│   └── <dim>.parquet               # one axis table per declared dim
 ├── inputs/<attr>.parquet           # one varying input attribute per file
 └── outputs/<attr>.parquet          # one result attribute per file
 ```
+
+Every file under `dims/` is named for what it holds, singular: `dims/scenario.parquet` for the `scenario` axis, as `inputs/p_nom.parquet` is for `p_nom`.
+A dim's file is its name and nothing else — no pluralisation, which would be English grammar applied to a declared identifier and would spell a dim named `bus` as `buss.parquet`.
 
 ## Where a value lives
 

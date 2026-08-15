@@ -51,7 +51,7 @@ from datarecord.schema import Schema
 def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) -> Dims:
     """Fold every dim `schema` declares to its axis relation.
 
-    A dim's axis file is `{dim}s.parquet`.
+    A dim's axis file is `{dim}.parquet`.
 
     Parameters
     ----------
@@ -76,7 +76,7 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
         # Keyed by the axis key, not the dim alone: a nested dim's labels
         # identify a point only within its parents (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis), so `(period,
         # timestep)` is what last-writer-wins applies to.
-        rel = fold_axis(dirs, f"{dim}s.parquet", schema.axis_key(dim), con)
+        rel = fold_axis(dirs, f"{dim}.parquet", schema.axis_key(dim), con)
         if rel is not None:
             axes[dim] = rel
     return Dims(schema=schema, axes=axes)
@@ -792,7 +792,7 @@ def _materialise_dims(
     if "://" not in base:
         Path(base).mkdir(parents=True, exist_ok=True)
     for dim, rel in dims.axes.items():
-        rel.to_parquet(f"{base}{dim}s.parquet")
+        rel.to_parquet(f"{base}{dim}.parquet")
 
 
 # -- the schema (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ---------------------------------------------
