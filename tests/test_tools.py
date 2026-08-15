@@ -129,10 +129,15 @@ _DIMS = {"snapshot": "TIMESTAMP", "period": "BIGINT", "scenario": "VARCHAR"}
 
 
 def _without_default(revision, ctype: str, attribute: str) -> None:
-    """Drop one attribute's declared default, leaving the rest of the schema."""
+    """Drop one attribute's declared default, leaving the rest of the schema.
+
+    `ctype` says which type the caller means it for; the spec itself is
+    declared once record-wide, so dropping the default drops it everywhere.
+    """
     was = read_schema()
-    spec = was.attributes[ctype][attribute]
-    was.attributes[ctype][attribute] = spec.model_copy(update={"default": None})
+    assert attribute in was.attributes_for(ctype)
+    spec = was.attributes[attribute]
+    was.attributes[attribute] = spec.model_copy(update={"default": None})
     write_schema(was)
 
 

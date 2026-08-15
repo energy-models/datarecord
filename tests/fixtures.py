@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from datarecord.layered.resolve import write_schema as record_write_schema
-from datarecord.schema import AttributeSpec, Dimension, Schema
+from datarecord.schema import AttributeSpec, ComponentType, Dimension, Schema
 
 # No `component_type`: an attribute row is keyed by `name`, unique across every type
 # (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types). The entity tables below keep it.
@@ -288,6 +288,15 @@ def schema(
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
     nesting = within or {}
+    # Callers declare per type, which is how a modelling framework thinks; the
+    # schema stores one spec per attribute, record-wide. Flattening here keeps
+    # the tests readable and is exactly what a tool does on the way in.
+    flat: dict[str, AttributeSpec] = {}
+    subscriptions: dict[str, ComponentType] = {}
+    for ctype, attrs in (attributes or {}).items():
+        for attr, spec in attrs.items():
+            flat.setdefault(attr, spec)
+        subscriptions[ctype] = ComponentType(attributes=frozenset(attrs))
     return Schema(
         dimensions={
             d: Dimension(
@@ -297,7 +306,8 @@ def schema(
             )
             for d, t in dims.items()
         },
-        attributes=attributes or {},
+        attributes=flat,
+        component_types=subscriptions,
         partial=frozenset(partial),
     )
 

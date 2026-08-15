@@ -195,6 +195,31 @@ class AttributeSpec(BaseModel):
         return bool(self.dims)
 
 
+class ComponentType(BaseModel):
+    """What one component type carries: the traits it subscribes to, plus its own.
+
+    A type does not *own* an attribute - `Schema.attributes` declares each once,
+    record-wide, and a type subscribes. This is the subscription.
+
+    Attributes
+    ----------
+    traits
+        Traits this type subscribes to; every attribute they bundle applies.
+    attributes
+        Attributes this type carries that no trait bundles.
+    description
+        What the type is, in prose. Never interpreted.
+
+    Notes
+    -----
+    - [traits](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#traits)
+    """
+
+    traits: frozenset[str] = frozenset()
+    attributes: frozenset[str] = frozenset()
+    description: str | None = None
+
+
 class Schema(BaseModel):
     """One record's schema.
 
@@ -206,7 +231,13 @@ class Schema(BaseModel):
     dimensions
         Every declared axis, keyed by dim name.
     attributes
-        Component type -> attribute -> spec.
+        Attribute -> spec, flat and record-wide. One attribute is one spec and
+        one `inputs/<attr>.parquet`, so a dtype cannot differ per type.
+    traits
+        Trait -> the attributes it bundles. A vocabulary a consumer dispatches
+        on, declared rather than derived.
+    component_types
+        Component type -> what it carries. `attributes_for` resolves the two.
     partial
         Which dims a layer may patch value by value. `None` for a record
         with no layers, since nothing overrides anything. A dim outside it is
@@ -225,7 +256,9 @@ class Schema(BaseModel):
 
     version: int = 1
     dimensions: dict[str, Dimension] = Field(default_factory=dict)
-    attributes: dict[str, dict[str, AttributeSpec]] = Field(default_factory=dict)
+    attributes: dict[str, AttributeSpec] = Field(default_factory=dict)
+    traits: dict[str, frozenset[str]] = Field(default_factory=dict)
+    component_types: dict[str, ComponentType] = Field(default_factory=dict)
     partial: frozenset[str] | None = None
     meta: dict[str, Any] = Field(default_factory=dict)
 
@@ -271,12 +304,32 @@ class Schema(BaseModel):
             msg = f"`within` is cyclic: {' -> '.join(e.args[1])}"
             raise ValueError(msg) from e
 
-        for ctype, attrs in self.attributes.items():
-            for attr, attr_spec in attrs.items():
-                unknown = sorted(attr_spec.dims - declared)
-                if unknown:
-                    msg = f"{ctype}.{attr} varies over undeclared dims {unknown}"
-                    raise ValueError(msg)
+        for attr, attr_spec in self.attributes.items():
+            unknown = sorted(attr_spec.dims - declared)
+            if unknown:
+                msg = f"attribute {attr!r} varies over undeclared dims {unknown}"
+                raise ValueError(msg)
+
+        # A trait or a type may only name an attribute that is declared: the
+        # subscription says which attributes apply, never what they are, so a
+        # name with no spec is a typo rather than a shorthand declaration.
+        for trait, bundled in self.traits.items():
+            unknown = sorted(bundled - set(self.attributes))
+            if unknown:
+                msg = f"trait {trait!r} bundles undeclared attributes {unknown}"
+                raise ValueError(msg)
+
+        for ctype, subscription in self.component_types.items():
+            unknown = sorted(subscription.traits - set(self.traits))
+            if unknown:
+                msg = f"component type {ctype!r} subscribes to undeclared traits {unknown}"
+                raise ValueError(msg)
+            unknown = sorted(subscription.attributes - set(self.attributes))
+            if unknown:
+                msg = (
+                    f"component type {ctype!r} carries undeclared attributes {unknown}"
+                )
+                raise ValueError(msg)
 
         if self.partial is not None:
             unknown = sorted(self.partial - declared)
@@ -305,7 +358,27 @@ class Schema(BaseModel):
         """
         return tuple(self.dimensions)
 
-    def owned_per(self, ctype: str, attribute: str) -> frozenset[str]:
+    def attributes_for(self, ctype: str) -> dict[str, AttributeSpec]:
+        """Which attributes `ctype` carries: its traits' bundles, plus its own.
+
+        The resolved view of the two declarations, and what every per-type
+        question reads. Empty for a type the schema does not declare, which is
+        why callers wanting to reject an unknown type test `component_types`
+        rather than this.
+
+        Notes
+        -----
+        - [traits](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#traits)
+        """
+        spec = self.component_types.get(ctype)
+        if spec is None:
+            return {}
+        names = set(spec.attributes)
+        for trait in spec.traits:
+            names |= self.traits.get(trait, frozenset())
+        return {a: self.attributes[a] for a in sorted(names) if a in self.attributes}
+
+    def owned_per(self, attribute: str) -> frozenset[str]:
         """Which dims a layer owns `attribute` per.
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
@@ -318,7 +391,7 @@ class Schema(BaseModel):
         -----
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         """
-        spec = self.attributes.get(ctype, {}).get(attribute)
+        spec = self.attributes.get(attribute)
         if spec is None:
             return frozenset()
         return spec.dims & (self.partial or frozenset())
@@ -505,25 +578,31 @@ class Schema(BaseModel):
             return flag_type(self.dims) if self.dims else None
         return None
 
-    def value_type(self, ctype: str, attribute: str) -> str | None:
+    def value_type(self, attribute: str) -> str | None:
         """The `value` column's type for one attribute.
+
+        No `ctype`: one attribute is one `inputs/<attr>.parquet` with one
+        `value` column, so the dtype is the attribute's alone.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
-        spec = self.attributes.get(ctype, {}).get(attribute)
+        spec = self.attributes.get(attribute)
         return None if spec is None else spec.dtype
 
     def types_declaring(self, attribute: str) -> frozenset[str]:
-        """Which component types declare `attribute` - what `names=None` targets.
+        """Which component types carry `attribute` - what `names=None` targets.
+
+        Empty for a record-level attribute, which no type carries and which
+        therefore targets no names at all.
 
         Notes
         -----
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         return frozenset(
-            c for c, attrs in self.attributes.items() if attribute in attrs
+            c for c in self.component_types if attribute in self.attributes_for(c)
         )
 
     # -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) --------------------------------------------------
@@ -566,22 +645,33 @@ class Schema(BaseModel):
                     f"carry no such column"
                 )
 
-        for ctype, attrs in other.attributes.items():
-            for attr, was_spec in attrs.items():
-                now_spec = self.attributes.get(ctype, {}).get(attr)
-                if now_spec is None:
-                    problems.append(f"{ctype}.{attr} removed")
-                    continue
-                if now_spec.dtype != was_spec.dtype:
-                    problems.append(
-                        f"{ctype}.{attr} dtype {was_spec.dtype} -> {now_spec.dtype}"
-                    )
-                narrowed = was_spec.dims - now_spec.dims
-                if narrowed:
-                    problems.append(
-                        f"{ctype}.{attr} no longer varies over {sorted(narrowed)}; "
-                        f"rows setting those dims have no valid reading"
-                    )
+        for attr, was_spec in other.attributes.items():
+            now_spec = self.attributes.get(attr)
+            if now_spec is None:
+                problems.append(f"attribute {attr!r} removed")
+                continue
+            if now_spec.dtype != was_spec.dtype:
+                problems.append(
+                    f"attribute {attr!r} dtype {was_spec.dtype} -> {now_spec.dtype}"
+                )
+            narrowed = was_spec.dims - now_spec.dims
+            if narrowed:
+                problems.append(
+                    f"attribute {attr!r} no longer varies over {sorted(narrowed)}; "
+                    f"rows setting those dims have no valid reading"
+                )
+
+        # A type losing an attribute is incompatible for the same reason a
+        # narrowed `dims` is: its rows are still in the file, now unreadable
+        # for that type. Losing a whole type says the same of all of them.
+        for ctype in other.component_types:
+            was_attrs = set(other.attributes_for(ctype))
+            dropped = sorted(was_attrs - set(self.attributes_for(ctype)))
+            if dropped:
+                problems.append(
+                    f"component type {ctype!r} no longer carries {dropped}; "
+                    f"rows written for it have no valid reading"
+                )
 
         if other.partial is not None and self.partial is not None:
             lost = other.partial - self.partial

@@ -549,8 +549,8 @@ class WorkingRecord:
 
         `value` is staged as text because one staging table holds every
         attribute's values (`_input_columns`); here the attribute is known, so
-        the declared dtype applies. Any component type that declares it answers
-        - one `inputs/<attr>.parquet` serves them all, so they must agree.
+        the declared dtype applies. One attribute is one spec, so there is one
+        answer rather than a per-type agreement to hope for.
 
         `TRY_CAST`, not `cast`: a value that does not parse as the declared dtype
         reads as NULL rather than failing the whole relation, which is what the
@@ -560,14 +560,7 @@ class WorkingRecord:
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
-        dtype = next(
-            (
-                attrs[attribute].dtype
-                for attrs in self.schema.attributes.values()
-                if attribute in attrs
-            ),
-            "DOUBLE",
-        )
+        dtype = self.schema.value_type(attribute) or "DOUBLE"
         return [
             sql(f'TRY_CAST("value" AS {dtype})').alias("value")
             if c == "value"
@@ -598,11 +591,8 @@ class WorkingRecord:
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         """
         partial = self.schema.partial or frozenset()
-        whole: set[str] = set()
-        for attrs in self.schema.attributes.values():
-            spec = attrs.get(attribute)
-            if spec is not None:
-                whole |= spec.dims - partial
+        spec = self.schema.attributes.get(attribute)
+        whole = frozenset() if spec is None else spec.dims - partial
         return tuple(d for d in self.schema.dims if d in whole)
 
     def _restated(self, attribute: str, staged: DuckDBPyRelation) -> DuckDBPyRelation:
@@ -874,12 +864,16 @@ class WorkingRecord:
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
         who = f" (for {name!r})" if name is not None else ""
-        declared = self.schema.attributes.get(ctype)
-        if declared is None:
+        # The type's existence and its vocabulary are separate questions once
+        # attributes are declared record-wide: `component_types` answers the
+        # first, `attributes_for` the second, and a type carrying nothing is
+        # not the same as a type the schema never declared.
+        if ctype not in self.schema.component_types:
             msg = f"the schema declares no component type {ctype!r}{who}"
             raise KeyError(msg)
+        declared = self.schema.attributes_for(ctype)
         if attribute not in declared:
-            msg = f"the schema declares no {ctype}.{attribute!r}{who}"
+            msg = f"{ctype} does not carry {attribute!r}{who}"
             raise KeyError(msg)
         spec = declared[attribute]
         outside = sorted(set(dims) - spec.dims)
@@ -1176,7 +1170,7 @@ class WorkingRecord:
             raise ValueError(msg)
         self._require_unique(ctype, lazy)
 
-        declared = self.schema.attributes.get(ctype, {})
+        declared = self.schema.attributes_for(ctype)
         varying = [c for c in columns if declared.get(c) and declared[c].varying]
         # A connection attribute belongs to `dims/connections/`, keyed by bus
         # (https://energy-models.github.io/datarecord/design/record/#connections) - putting it in the member frame would introduce a column the
@@ -1208,7 +1202,7 @@ class WorkingRecord:
         for c in extra:
             if c.lower() in existing:
                 continue
-            dtype = self.schema.value_type(ctype, c) or "VARCHAR"
+            dtype = self.schema.value_type(c) or "VARCHAR"
             self.con.execute(f'ALTER TABLE {table} ADD COLUMN "{c}" {dtype}')
             existing.add(c.lower())
         extra_sql = "".join(f', "{c}"' for c in extra)

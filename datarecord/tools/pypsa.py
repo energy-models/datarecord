@@ -30,7 +30,7 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all
 from datarecord.record import Flags, Frames, LazyFrames, Record
-from datarecord.schema import AttributeSpec, Dimension
+from datarecord.schema import AttributeSpec, ComponentType, Dimension
 from datarecord.schema import Schema as RecordSchema
 from datarecord.tools.base import (
     Requirements,
@@ -904,7 +904,7 @@ class PyPSATool(Tool):
         unsupported_values: set[tuple[str, str]] = set()
 
         known = self.component_types()
-        declared = record.schema.attributes
+        declared = record.schema
         for ctype in sorted(record.components):
             # A type PyPSA has no registry entry for. Reported rather than
             # raised: the record layer stores `component_type` as a plain
@@ -927,7 +927,7 @@ class PyPSATool(Tool):
             # than as a column: `bus0`/`bus1` are satisfied by a connection
             # per port, so the collapse in `build` can name them (https://energy-models.github.io/datarecord/design/record/#connections).
             from_connections = _connection_attributes(record, ctype)
-            specs = declared.get(ctype) or {}
+            specs = declared.attributes_for(ctype)
             for attr in _required_attributes(ctype):
                 for src in self.schema.sources(ctype, attr):
                     if src in owned or src in static_cols or src in from_connections:
@@ -998,8 +998,9 @@ class PyPSATool(Tool):
             # Frames are built and released per type, so peak memory is one
             # type's wide frames rather than the whole network (https://energy-models.github.io/datarecord/design/tools/).
             attributes = {}
+            carried = schema.attributes_for(ctype)
             for attr, flags in record.flags(ctype).items():
-                if attr not in schema.attributes.get(ctype, {}):
+                if attr not in carried:
                     continue
                 # Neither container would take it: no rows on the snapshot axis
                 # either way (an attribute with no rows at all is absent from
@@ -1135,7 +1136,8 @@ class _NetworkSource:
         - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
-        attributes: dict[str, dict[str, AttributeSpec]] = {}
+        attributes: dict[str, AttributeSpec] = {}
+        component_types: dict[str, ComponentType] = {}
         for c in self.n.components:
             if not _exported(c):
                 continue
@@ -1145,15 +1147,16 @@ class _NetworkSource:
             # agree on every declaration, so either row answers.
             per_port = self._port_stems(c)
             outputs = set(_output_attributes(c))
-            entries = {}
+            carried: set[str] = set()
             for attr in defaults.index:
                 if attr in outputs or attr == "name":
                     continue
                 stem = per_port.get(attr, attr)
-                if stem in entries:
+                if stem in carried:
                     continue
+                carried.add(stem)
                 row = defaults.loc[attr]
-                entries[stem] = AttributeSpec(
+                spec = AttributeSpec(
                     dtype=_DTYPES.get(row["type"], "VARCHAR"),
                     dims=frozenset({SNAPSHOT}) if row["varying"] else frozenset(),
                     default=_default(row["default"]),
@@ -1161,8 +1164,15 @@ class _NetworkSource:
                     unit=_text(row.get("unit")),
                     description=_text(row.get("description")),
                 )
-            if entries:
-                attributes[c.name] = entries
+                # One attribute, one spec, record-wide: two types declaring the
+                # same name must agree, since one `inputs/<attr>.parquet` with
+                # one `value` column serves both. PyPSA's registry does agree
+                # everywhere today, so the first type to declare one wins and
+                # a later disagreement is a schema error rather than a silent
+                # per-type divergence the storage could not have honoured.
+                attributes.setdefault(stem, spec)
+            if carried:
+                component_types[c.name] = ComponentType(attributes=frozenset(carried))
         return RecordSchema(
             dimensions={
                 SNAPSHOT: Dimension(
@@ -1184,6 +1194,7 @@ class _NetworkSource:
                 ),
             },
             attributes=attributes,
+            component_types=component_types,
             partial=frozenset({SCENARIO}),
             meta={
                 "format": "pypsa-parquet",

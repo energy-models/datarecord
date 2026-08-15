@@ -357,9 +357,7 @@ def test_a_non_float_attribute_stages_and_commits(staged, root):
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
     amended = read_schema()
-    amended.attributes[GEN]["carrier"] = AttributeSpec(
-        dtype="VARCHAR", dims={"scenario"}
-    )
+    amended.attributes["carrier"] = AttributeSpec(dtype="VARCHAR", dims={"scenario"})
     write_schema(amended)
 
     staged.set("carrier", "solar", names=["Manchester Wind"])
@@ -398,7 +396,7 @@ def test_a_non_partial_axis_is_restated_whole(staged, root):
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     assert "snapshot" not in (staged.schema.partial or frozenset())
-    assert staged.schema.owned_per(GEN, "p_max_pu") == frozenset()
+    assert staged.schema.owned_per("p_max_pu") == frozenset()
 
     base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
     mine = base[base["name"] == "Manchester Wind"].sort_values("snapshot")
@@ -449,7 +447,7 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    assert staged.schema.owned_per(GEN, "p_nom") == frozenset()
+    assert staged.schema.owned_per("p_nom") == frozenset()
     staged.set("p_nom", 150.0, names=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
@@ -839,7 +837,9 @@ def test_an_expression_over_a_named_target_with_no_rows_raises(staged):
 def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(staged):
     """`names=None` and no scope means "whatever resolves", so empty is an answer."""
     absent = next(
-        a for a in sorted(staged.schema.attributes[GEN]) if a not in staged.attributes
+        a
+        for a in sorted(staged.schema.attributes_for(GEN))
+        if a not in staged.attributes
     )
     staged.set(absent, nw.col("value") * 2)
     assert absent not in staged.pending.attributes

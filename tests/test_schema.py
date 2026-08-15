@@ -8,7 +8,7 @@ Notes
 import pytest
 from pydantic import ValidationError
 
-from datarecord.schema import AttributeSpec, Dimension, Schema, flag_type
+from datarecord.schema import AttributeSpec, ComponentType, Dimension, Schema, flag_type
 
 
 def _schema(**overrides) -> Schema:
@@ -19,22 +19,23 @@ def _schema(**overrides) -> Schema:
             "timestep": Dimension(dtype="TIMESTAMP", within={"period"}),
             "scenario": Dimension(dtype="VARCHAR", keys={"component", "connection"}),
         },
+        # Declared once, record-wide; a type subscribes to what it carries.
         "attributes": {
-            "Generator": {
-                "p_nom": AttributeSpec(dtype="DOUBLE"),
-                "p_max_pu": AttributeSpec(
-                    dtype="DOUBLE", dims={"scenario", "timestep"}
-                ),
-                "marginal_cost": AttributeSpec(
-                    dtype="DOUBLE", dims={"scenario"}, breakpoints=True
-                ),
-                "carrier": AttributeSpec(dtype="VARCHAR"),
-            },
-            "Link": {
-                "efficiency": AttributeSpec(
-                    dtype="DOUBLE", dims={"scenario", "timestep"}, bus="connection"
-                )
-            },
+            "p_nom": AttributeSpec(dtype="DOUBLE"),
+            "p_max_pu": AttributeSpec(dtype="DOUBLE", dims={"scenario", "timestep"}),
+            "marginal_cost": AttributeSpec(
+                dtype="DOUBLE", dims={"scenario"}, breakpoints=True
+            ),
+            "carrier": AttributeSpec(dtype="VARCHAR"),
+            "efficiency": AttributeSpec(
+                dtype="DOUBLE", dims={"scenario", "timestep"}, bus="connection"
+            ),
+        },
+        "component_types": {
+            "Generator": ComponentType(
+                attributes={"p_nom", "p_max_pu", "marginal_cost", "carrier"}
+            ),
+            "Link": ComponentType(attributes={"efficiency"}),
         },
         "partial": frozenset({"scenario"}),
     }
@@ -50,20 +51,20 @@ def test_ownership_is_derived_not_declared():
     s = _schema()
     # Varies over both axes, but only `scenario` is partial - so a patch to one
     # timestep restates that scenario's whole series.
-    assert s.owned_per("Generator", "p_max_pu") == frozenset({"scenario"})
-    assert s.owned_per("Generator", "marginal_cost") == frozenset({"scenario"})
+    assert s.owned_per("p_max_pu") == frozenset({"scenario"})
+    assert s.owned_per("marginal_cost") == frozenset({"scenario"})
     # A first-stage decision: one value, owned once across everything.
-    assert s.owned_per("Generator", "p_nom") == frozenset()
-    assert s.owned_per("Generator", "carrier") == frozenset()
+    assert s.owned_per("p_nom") == frozenset()
+    assert s.owned_per("carrier") == frozenset()
 
 
 def test_a_scenario_varying_capacity_is_a_schema_violation():
     """`dims` is what forbids it: a capacity is decided before the scenario is known."""
     s = _schema()
-    assert "scenario" not in s.attributes["Generator"]["p_nom"].dims
+    assert "scenario" not in s.attributes["p_nom"].dims
     # Nothing owns it per scenario, so the fold writes NULL there and one value
     # applies to every scenario.
-    assert s.owned_per("Generator", "p_nom") == frozenset()
+    assert s.owned_per("p_nom") == frozenset()
 
 
 def test_input_dims_is_the_union_over_attributes():
@@ -84,9 +85,9 @@ def test_file_split_follows_dims():
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
     """
     s = _schema()
-    assert not s.attributes["Generator"]["p_nom"].varying
-    assert not s.attributes["Generator"]["carrier"].varying
-    assert s.attributes["Generator"]["p_max_pu"].varying
+    assert not s.attributes["p_nom"].varying
+    assert not s.attributes["carrier"].varying
+    assert s.attributes["p_max_pu"].varying
 
 
 # -- membership keys (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys) --------------------------------------------------
@@ -169,9 +170,7 @@ def test_an_attribute_cannot_vary_over_an_undeclared_dim():
     with pytest.raises(ValidationError, match="undeclared"):
         Schema(
             dimensions={"scenario": Dimension(dtype="VARCHAR")},
-            attributes={
-                "Generator": {"p": AttributeSpec(dtype="DOUBLE", dims={"nope"})}
-            },
+            attributes={"p": AttributeSpec(dtype="DOUBLE", dims={"nope"})},
         )
 
 
@@ -194,12 +193,10 @@ def test_a_default_survives_the_manifest_round_trip(value):
     """
     schema = Schema(
         dimensions={"scenario": Dimension(dtype="VARCHAR")},
-        attributes={
-            "Generator": {"p_nom_max": AttributeSpec(dtype="DOUBLE", default=value)}
-        },
+        attributes={"p_nom_max": AttributeSpec(dtype="DOUBLE", default=value)},
     )
     back = Schema.model_validate_json(schema.model_dump_json())
-    assert repr(back.attributes["Generator"]["p_nom_max"].default) == repr(value)
+    assert repr(back.attributes["p_nom_max"].default) == repr(value)
 
 
 # -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) -------------------------------------------------------
@@ -208,9 +205,7 @@ def test_a_default_survives_the_manifest_round_trip(value):
 def test_adding_an_attribute_is_compatible():
     old = _schema()
     new = _schema()
-    new.attributes["Generator"]["p_min_pu"] = AttributeSpec(
-        dtype="DOUBLE", dims={"scenario"}
-    )
+    new.attributes["p_min_pu"] = AttributeSpec(dtype="DOUBLE", dims={"scenario"})
     assert new.compatible_with(old) == []
 
 
@@ -218,7 +213,7 @@ def test_widening_dims_is_compatible():
     """Rows that set fewer dims still decode: an unset dim is NULL, and NULL means all."""
     old = _schema()
     new = _schema()
-    new.attributes["Generator"]["marginal_cost"] = AttributeSpec(
+    new.attributes["marginal_cost"] = AttributeSpec(
         dtype="DOUBLE", dims={"scenario", "timestep"}, breakpoints=True
     )
     assert new.compatible_with(old) == []
@@ -234,9 +229,7 @@ def test_widening_partial_is_compatible():
 def test_narrowing_dims_is_incompatible():
     old = _schema()
     new = _schema()
-    new.attributes["Generator"]["p_max_pu"] = AttributeSpec(
-        dtype="DOUBLE", dims={"scenario"}
-    )
+    new.attributes["p_max_pu"] = AttributeSpec(dtype="DOUBLE", dims={"scenario"})
     (reason,) = new.compatible_with(old)
     assert "no longer varies over ['timestep']" in reason
 
@@ -244,7 +237,7 @@ def test_narrowing_dims_is_incompatible():
 def test_changing_a_dtype_is_incompatible():
     old = _schema()
     new = _schema()
-    new.attributes["Generator"]["p_nom"] = AttributeSpec(dtype="BIGINT")
+    new.attributes["p_nom"] = AttributeSpec(dtype="BIGINT")
     (reason,) = new.compatible_with(old)
     assert "DOUBLE -> BIGINT" in reason
 
@@ -288,15 +281,13 @@ def test_unit_and_description_are_declared_on_both():
             "scenario": Dimension(dtype="VARCHAR", description="One realisation."),
         },
         attributes={
-            "Generator": {
-                "p_nom": AttributeSpec(
-                    dtype="DOUBLE", unit="MW", description="Nominal power."
-                )
-            }
+            "p_nom": AttributeSpec(
+                dtype="DOUBLE", unit="MW", description="Nominal power."
+            )
         },
     )
     assert s.dimensions["vintage"].unit == "year"
-    assert s.attributes["Generator"]["p_nom"].unit == "MW"
+    assert s.attributes["p_nom"].unit == "MW"
     # An axis whose labels are not a quantity declares none.
     assert s.dimensions["scenario"].unit is None
 
@@ -321,8 +312,8 @@ def test_changing_a_unit_is_compatible():
     """
     old = _schema()
     new = _schema()
-    spec = new.attributes["Generator"]["p_nom"]
-    new.attributes["Generator"]["p_nom"] = spec.model_copy(
+    spec = new.attributes["p_nom"]
+    new.attributes["p_nom"] = spec.model_copy(
         update={"unit": "kW", "description": "Rated power."}
     )
     assert new.compatible_with(old) == []
@@ -350,7 +341,7 @@ def test_column_types_cover_structural_dims_and_flags():
         assert column_type is not None
         assert '"scenario" BOOLEAN' in column_type
     assert s.column_type("value") is None
-    assert s.value_type("Generator", "p_nom") == "DOUBLE"
+    assert s.value_type("p_nom") == "DOUBLE"
 
 
 def test_attributes_need_at_least_one_dim():
@@ -366,7 +357,7 @@ def test_attributes_need_at_least_one_dim():
     - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
     """
     with pytest.raises(ValidationError, match="at least one dim"):
-        Schema(attributes={"Generator": {"p_nom": AttributeSpec(dtype="DOUBLE")}})
+        Schema(attributes={"p_nom": AttributeSpec(dtype="DOUBLE")})
 
 
 def test_a_schema_declaring_nothing_stays_legal():
