@@ -494,14 +494,15 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
         roots[name] = (root, con, Revision.create(con))
 
     (_, _, revision_a), (root_b, con_b, revision_b) = roots["a"], roots["b"]
-    assert revision_a.record.schema.dims == ("scenario",)
-    assert revision_b.record.schema.dims == ("vintage",)
+    # Beyond `entity` and the group's coordinates, which every schema declares.
+    assert revision_a.record.schema.broadcast_dims == ("scenario",)
+    assert revision_b.record.schema.broadcast_dims == ("vintage",)
 
     # A layer read directly needs no schema supplied either: its own directory
     # carries none (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record), so the connection's root answers - which is what
     # `DirectoryRecord` used to take a `declared` argument for.
     layer = DirectoryRecord(layer_dir(revision_b.id, root_b), con_b)
-    assert layer.schema.dims == ("vintage",)
+    assert layer.schema.broadcast_dims == ("vintage",)
 
     for _, con, _ in roots.values():
         con.close()

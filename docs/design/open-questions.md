@@ -1,8 +1,12 @@
 # Open questions
 
-- **What a component tombstone means for a connection keyed by fewer dims.** When `component` keys `scenario` and `connection` does not, deleting a component in one scenario removes a connection that is not scenario-scoped, even though the component survives elsewhere.
-  The conservative reading — project the tombstone down to the shared dims — is implemented; deciding it properly needs the folded components map, which the connections fold cannot reach.
-  Low priority while no framework allows scenario-varying connections.
+- **May an entity's existence depend on a dim?** `Dimension.keys` said yes — a generator present in scenario `high` and absent from `low` — and is [now deleted](schema.md#existence-does-not-vary-along-a-dim), with nothing in its place. A component exists or it does not.
+
+  What it cost to keep was a second question with no good answer: what a component tombstone means for a connection keyed by fewer dims. Deleting a component in one scenario removed a connection that was not scenario-scoped, even though the component survived elsewhere, and no projection recovers the difference — the connection row has no scenario column to write it into. The conservative reading was implemented and pinned by an `xfail`.
+
+  What it cost to drop is narrower than it looks. A **value** may still vary along any axis; it is the **thing** that may not. A stochastic network with a different `capital_cost` per scenario is an attribute over `{entity, scenario}`, which [the file split](format.md#where-a-value-lives) already places in `inputs/`. Only membership itself is unrepresentable.
+
+  Reopening it means deciding all three: whether it is needed at all, whether an entity table and a group may disagree about which dims scope them, and what the coarser one's rows mean if they may.
 
 - **Whether `within` should subsume `bus`.** `bus` and a nested dim express the same relation.
   A `timestep` label identifies a point only within a `period`; a `bus` label identifies a connection only within a component — `"north"` alone names nothing, since every component may attach to `north`, while `(link_dc, north)` names one connection.

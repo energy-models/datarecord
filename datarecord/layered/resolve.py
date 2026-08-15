@@ -132,25 +132,18 @@ class Dims:
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
 
-    def component_match(self, alias_a: str, alias_b: str, *fixed: str) -> Expression:
-        """Match a raw `dims/components/` row against an already-resolved key."""
-        return broadcast_match(alias_a, alias_b, fixed, self.schema.component_dims)
+    def entity_match(self, alias_a: str, alias_b: str, *fixed: str) -> Expression:
+        """Match a raw entity or group row against an already-resolved key.
 
-    def connection_match(self, alias_a: str, alias_b: str, *fixed: str) -> Expression:
-        """Match a raw `dims/connections/` row against a resolved key.
-
-        Pass `bus` in `fixed`, never as a broadcast dim: it identifies the
-        connection rather than broadcasting over an axis.
-
-        Notes
-        -----
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        No broadcast arm: an entity table's key columns address a row rather
+        than expanding against an axis, so NULL-safe equality is the whole of
+        it. `input_match` differs precisely there.
         """
-        return broadcast_match(alias_a, alias_b, fixed, self.schema.connection_dims)
+        return broadcast_match(alias_a, alias_b, fixed, ())
 
     def input_match(self, alias_a: str, alias_b: str, *fixed: str) -> Expression:
         """Match a raw `inputs/` row against an already-resolved key."""
-        return broadcast_match(alias_a, alias_b, fixed, self.schema.input_dims)
+        return broadcast_match(alias_a, alias_b, fixed, self.schema.partial_dims)
 
     def expand_dims(
         self, rel: DuckDBPyRelation, layer_keys: tuple[str, ...]
@@ -161,9 +154,8 @@ class Dims:
         ----------
         rel : DuckDBPyRelation
         layer_keys : tuple of str
-            `schema.input_dims`, `schema.component_dims` or
-            `schema.connection_dims`. Never `bus`, which is a required key
-            column rather than a broadcast dim.
+            `schema.partial_dims`. Never `entity` or a group's coordinate,
+            which address a row rather than broadcasting over an axis.
 
         Returns
         -------
@@ -277,9 +269,12 @@ def _deleted_relation(
     *,
     uri: str,
     fixed: tuple[str, ...] = ("entity",),
-    dims: tuple[str, ...] | None = None,
 ) -> DuckDBPyRelation:
     """This layer's tombstones of one kind, keyed as the map they filter.
+
+    A deletion removes the thing whole - across every attribute, and across
+    every dim, since a row exists or it does not. So the tombstone is its key
+    columns and nothing else: no axis to scope it along, and none to expand.
 
     Parameters
     ----------
@@ -288,35 +283,27 @@ def _deleted_relation(
         they filter is built from, since reading membership from one source
         and deletions from another would resolve a deletion the map never saw.
     fixed
-        Key columns compared NULL-safely and never axis-expanded. `bus` joins
-        these for a connection tombstone, since it identifies the connection
-        rather than broadcasting over an axis.
-    dims
-        The dims the tombstone is scoped by, defaulting to
-        `keys.schema.component_dims`. Never `keys.schema.input_dims`: deletion removes a
-        component or connection whole, across every attribute.
+        The key columns, compared NULL-safely: the entity for a component, a
+        group's coordinates for one of its rows.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    if dims is None:
-        dims = keys.schema.component_dims
     rel = try_read_parquet(uri, con, union_by_name=True)
     if rel is None or "deleted" not in rel.columns:
-        return _empty_relation(keys.schema, con, *fixed, *dims)
-    rel = rel.filter(col("deleted")).set_alias("i")
-    rel, expanded = keys.expand_dims(rel, dims)
-    return rel.project(
-        *(col("i", c) for c in fixed), *(expr.alias(d) for d, expr in expanded.items())
-    ).distinct()
+        return _empty_relation(keys.schema, con, *fixed)
+    return rel.filter(col("deleted")).project(*(col(c) for c in fixed)).distinct()
 
 
 def _component_deleted(
     revision_id: UUID, keys: Dims, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """This layer's tombstoned components, scoped by `component_dims`.
+    """This layer's tombstoned components: one entity per row.
+
+    Also what removes a connection, a component tombstone killing every
+    connection of it - matched on the entity the two share.
 
     Notes
     -----
@@ -327,35 +314,10 @@ def _component_deleted(
     )
 
 
-def _component_deleted_for_connections(
-    revision_id: UUID, keys: Dims, con: DuckDBPyConnection
-) -> DuckDBPyRelation:
-    """Component tombstones that remove a connection, keyed as the connections map is.
-
-    A component tombstone kills every connection of that component.
-    Where the connections map is keyed by fewer dims, the excess are projected
-    away and the tombstone applies across every value of them - the conservative
-    reading of the open question, pinned by an `xfail` in
-    `tests/test_connections.py`.
-
-    Notes
-    -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-    - [open questions](https://energy-models.github.io/datarecord/design/open-questions/)
-    """
-    deleted = _component_deleted(revision_id, keys, con)
-    if not [
-        d for d in keys.schema.component_dims if d not in keys.schema.connection_dims
-    ]:
-        return deleted
-    shared = ("entity", *keys.schema.connection_dims)
-    return deleted.project(*(col(c) for c in shared)).distinct()
-
-
 def _connection_deleted(
     revision_id: UUID, keys: Dims, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """This layer's tombstoned connections, scoped by `connection_dims`.
+    """This layer's tombstoned connections, keyed by the group's coordinates.
 
     Notes
     -----
@@ -366,8 +328,7 @@ def _connection_deleted(
         keys,
         con,
         uri=layer_dir(revision_id) + "dims/connections/*.parquet",
-        fixed=("entity", "bus"),
-        dims=keys.schema.connection_dims,
+        fixed=keys.schema.group_coordinates("connection"),
     )
 
 
@@ -464,23 +425,27 @@ def fold_inputs(
     if rel is None:
         own = _empty_relation(keys.schema, con, *keys.schema.input_columns)
     else:
-        # Every declared dim too, not just `bus`/`breakpoint`: a schema may
-        # declare a dim no file carries a column for (https://energy-models.github.io/datarecord/design/schema/), and the flags
-        # project every dim's raw column below.
+        # Every declared dim too, not just `breakpoint`: one file carries only
+        # its own attribute's columns, so a coordinate another attribute uses
+        # is absent here and must read as NULL rather than fail to bind.
+        broadcast = keys.schema.broadcast_dims
         rel = _cast(
             keys.schema,
-            _with_columns(keys.schema, rel, "bus", "breakpoint", *keys.schema.dims),
+            _with_columns(keys.schema, rel, "breakpoint", *keys.schema.dims),
         )
-        rel, dims = keys.expand_dims(rel.set_alias("i"), keys.schema.input_dims)
-        # Each dim is carried twice: the (possibly broadcast) key value, and
-        # `_raw_<dim>` as the row stored it. The flags describe the stored form
-        # - whether a row set the dim or left it NULL - so they cannot be read
-        # off the expanded value, which is never NULL once broadcast (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
+        rel, dims = keys.expand_dims(rel.set_alias("i"), keys.schema.partial_dims)
+        # Each broadcast dim is carried twice: the (possibly broadcast) key
+        # value, and `_raw_<dim>` as the row stored it. The flags describe the
+        # stored form - whether a row set the dim or left it NULL - so they
+        # cannot be read off the expanded value, which is never NULL once
+        # broadcast (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
+        # `dims` covers the partial ones, expanded; the rest pass through as
+        # stored. Together they are every declared dim, exactly once.
+        expanded = set(dims)
         tagged = rel.project(
-            col("i", "entity"),
-            col("i", "bus"),
+            *(col("i", d) for d in keys.schema.dims if d not in expanded),
             *(expr.alias(d) for d, expr in dims.items()),
-            *(col("i", d).alias(f"_raw_{d}") for d in keys.schema.dims),
+            *(col("i", d).alias(f"_raw_{d}") for d in broadcast),
             col("i", "attribute"),
             lit(str(revision_id)).cast("UUID").alias("layer_uuid"),
             col("i", "breakpoint"),
@@ -488,34 +453,33 @@ def fold_inputs(
         own = tagged.aggregate(
             [
                 *(col(c) for c in (*keys.schema.input_key, "layer_uuid")),
-                sql(_struct_of(keys.schema.dims, '"_raw_{}" IS NOT NULL')).alias(
-                    "varies"
-                ),
-                sql(_struct_of(keys.schema.dims, '"_raw_{}" IS NULL')).alias(
-                    "broadcast"
-                ),
+                sql(_struct_of(broadcast, '"_raw_{}" IS NOT NULL')).alias("varies"),
+                sql(_struct_of(broadcast, '"_raw_{}" IS NULL')).alias("broadcast"),
                 fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
             ]
         )
 
     # Deleting a component drops its attribute rows; deleting one connection
-    # drops only that connection's, which the map can scope because `bus` is
-    # in `input_key` (https://energy-models.github.io/datarecord/design/record/#connections).
-    kept = (
-        parent.set_alias("p")
-        .join(
-            _component_deleted(revision_id, keys, con).set_alias("x"),
-            _null_safe("x", "p", keys.schema.component_key),
-            how="anti",
-        )
-        .join(
-            _connection_deleted(revision_id, keys, con).set_alias("c"),
-            _null_safe("c", "p", keys.schema.connection_key),
-            how="anti",
-        )
-        .join(
-            own.set_alias("o"), _null_safe("p", "o", keys.schema.input_key), how="anti"
-        )
+    # drops only that connection's, which the map can scope because the group's
+    # coordinates are in `input_key` (https://energy-models.github.io/datarecord/design/record/#connections).
+    #
+    # Each anti-join is skipped where its key is not in the inputs key at all:
+    # a schema declaring no dims is "no manifest yet", so there is no entity
+    # column to match a tombstone against, and no rows either.
+    kept = parent.set_alias("p")
+    keyed = set(keys.schema.input_key)
+    for deleted, key in (
+        (_component_deleted, ("entity",)),
+        (_connection_deleted, keys.schema.group_coordinates("connection")),
+    ):
+        if key and keyed.issuperset(key):
+            kept = kept.join(
+                deleted(revision_id, keys, con).set_alias("x"),
+                _null_safe("x", "p", key),
+                how="anti",
+            ).set_alias("p")
+    kept = kept.join(
+        own.set_alias("o"), _null_safe("p", "o", keys.schema.input_key), how="anti"
     )
     return union_all_by_name([kept, own], con)
 
@@ -535,9 +499,8 @@ def fold_components(
         con,
         parent,
         uri=layer_dir(revision_id) + "dims/entity.parquet",
-        key=keys.schema.component_key,
+        key=("entity",),
         columns=keys.schema.component_columns,
-        dims=keys.schema.component_dims,
     )
 
 
@@ -546,36 +509,29 @@ def fold_connections(
 ) -> DuckDBPyRelation:
     """This node's connections map: `dims/connections/` keys, folded over `parent`.
 
-    `fold_components` with one more key column (`bus`) and one more tombstone:
-    a component tombstone removes every connection of it, so `parent` is
-    anti-joined against that as well as against this layer's own connection
-    tombstones.
-
-    Where `component_dims` exceeds `connection_dims` the component
-    tombstone is scoped more finely than a connection can be, so it only
-    removes the connection when it covers the whole of the excess dim - a
-    component deleted in one scenario, whose connections are not
-    scenario-scoped, leaves them to the scenarios the component still has.
+    `fold_components` keyed by the group's coordinates rather than the entity
+    alone, and with one more tombstone: a component tombstone removes every
+    connection of it, so `parent` is anti-joined against that as well as
+    against this layer's own connection tombstones.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
+    coordinates = keys.schema.group_coordinates("connection")
     return _fold_ordered(
         revision_id,
         keys,
         con,
         parent,
         uri=layer_dir(revision_id) + "dims/connections/*.parquet",
-        key=keys.schema.connection_key,
+        key=coordinates,
         columns=keys.schema.connection_columns,
-        dims=keys.schema.connection_dims,
-        fixed=("entity", "bus"),
-        # Keyed as the connections map is: `component_dims` may declare more,
-        # and `_component_deleted_for_connections` resolves that excess.
-        also_deleted=_component_deleted_for_connections,
-        also_deleted_key=("entity", *keys.schema.connection_dims),
+        # A component tombstone kills every connection of it, matched on the
+        # entity the two share.
+        also_deleted=_component_deleted,
+        also_deleted_key=("entity",),
     )
 
 
@@ -588,8 +544,6 @@ def _fold_ordered(
     uri: str,
     key: tuple[str, ...],
     columns: tuple[str, ...],
-    dims: tuple[str, ...],
-    fixed: tuple[str, ...] = ("entity",),
     also_deleted: Callable[[UUID, Dims, DuckDBPyConnection], DuckDBPyRelation]
     | None = None,
     also_deleted_key: tuple[str, ...] = (),
@@ -603,8 +557,10 @@ def _fold_ordered(
 
     Parameters
     ----------
-    fixed
-        Key columns that are never axis-expanded (`bus` for connections).
+    key
+        The columns one row is keyed by, compared NULL-safely and never
+        expanded against an axis: the entity for a component, the group's
+        coordinates for one of its rows.
     also_deleted, also_deleted_key
         A second tombstone relation to anti-join `parent` against, and the key
         to match it on. Connections use it for component tombstones.
@@ -621,13 +577,15 @@ def _fold_ordered(
     else:
         not_deleted = ~col("deleted") if "deleted" in rel.columns else lit(True)
         rel = _cast(keys.schema, rel)
-        rel, expanded = keys.expand_dims(rel.filter(not_deleted).set_alias("i"), dims)
-        tagged = rel.project(
-            col("i", "component_type"),
-            *(col("i", c) for c in fixed),
-            *(expr.alias(d) for d, expr in expanded.items()),
-            lit(str(revision_id)).cast("UUID").alias("layer_uuid"),
-            sql("row_number() OVER ()").alias("_row"),
+        tagged = (
+            rel.filter(not_deleted)
+            .set_alias("i")
+            .project(
+                col("i", "component_type"),
+                *(col("i", c) for c in key),
+                lit(str(revision_id)).cast("UUID").alias("layer_uuid"),
+                sql("row_number() OVER ()").alias("_row"),
+            )
         )
         # `component_type` is aggregated, not grouped by: it is determined by
         # `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types), and grouping on it would keep one name under two types
@@ -652,7 +610,7 @@ def _fold_ordered(
             _null_safe("p", "a", also_deleted_key),
             how="anti",
         )
-    deleted = _deleted_relation(revision_id, keys, con, uri=uri, fixed=fixed, dims=dims)
+    deleted = _deleted_relation(revision_id, keys, con, uri=uri, fixed=key)
     kept = kept.join(
         deleted.set_alias("x"), _null_safe("p", "x", key), how="anti"
     ).join(own.set_alias("o"), _null_safe("p", "o", key), how="anti")
@@ -991,7 +949,9 @@ class NodeCache:
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
         """
-        dims = self.schema.dims
+        # The flags have a field per *broadcast* dim: an address coordinate
+        # never broadcasts, so "did a row set it" is not a question about it.
+        dims = self.schema.broadcast_dims
         # Scoped by a semi-join to the components map, the entity table saying
         # what type a name is (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
         of_type = self.components.filter(col("component_type") == lit(ctype)).project(
@@ -1050,7 +1010,7 @@ class NodeCache:
         con = self.con
         om = self.inputs.filter(col("attribute") == lit(attribute))
         keys = self.dims
-        input_dims = keys.schema.input_dims
+        partial_dims = keys.schema.partial_dims
         layers = [
             _with_columns(
                 keys.schema,
@@ -1076,7 +1036,7 @@ class NodeCache:
             .project(
                 *(
                     coalesce(col("l", dim), col("o", dim)).alias(dim)
-                    if dim in input_dims
+                    if dim in partial_dims
                     else col("l", dim)
                     for dim in keys.schema.long_columns
                 )
@@ -1111,7 +1071,6 @@ class NodeCache:
             subdir="components",
             owner_map=self.components,
             match=("entity",),
-            dims=self.schema.component_dims,
         )
 
     def connection_frame(self, ctype: str) -> DuckDBPyRelation | None:
@@ -1129,8 +1088,7 @@ class NodeCache:
             ctype,
             subdir="connections",
             owner_map=self.connections,
-            match=("entity", "bus"),
-            dims=self.schema.connection_dims,
+            match=self.schema.group_coordinates("connection"),
         )
 
     def _dim_frame(
@@ -1140,13 +1098,12 @@ class NodeCache:
         subdir: str,
         owner_map: DuckDBPyRelation,
         match: tuple[str, ...],
-        dims: tuple[str, ...],
     ) -> DuckDBPyRelation | None:
         """One type's rows from a `dims/` subdirectory, gated by its owner map.
 
         Shared by `component_frame` and `connection_frame`: both semi-join the
         owning layers' files to a map keyed the same way, differing only in
-        which columns match and which dims scope them.
+        which columns match.
         """
         con = self.con
         owned = owner_map.filter(col("component_type") == lit(ctype))
@@ -1172,24 +1129,15 @@ class NodeCache:
         union = union_all_by_name(layers, con)
         joined = union.set_alias("u").join(
             owned.set_alias("o"),
-            # `match` columns are compared NULL-safely; `dims` broadcast.
-            broadcast_match("u", "o", (*match, "layer_uuid"), dims),
+            # Key columns only, compared NULL-safely: a row exists or it does
+            # not, so there is no axis to broadcast one over.
+            broadcast_match("u", "o", (*match, "layer_uuid"), ()),
         )
-        # Project the file's attribute columns plus the map's key dims and
-        # `order_key` explicitly: a bare star over the join would leak the
-        # map's duplicate `name`/dim columns and the layer's `deleted` into
-        # the frame. A NULL key dim in the file broadcasts (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override), so it takes
-        # the value the row is owned for.
-        skip = {"component_type", "layer_uuid", "deleted", *dims}
+        # Project the file's attribute columns and `order_key` explicitly: a
+        # bare star over the join would leak the map's duplicate key columns
+        # and the layer's `deleted` into the frame.
+        skip = {"component_type", "layer_uuid", "deleted"}
         return joined.project(
             *(col("u", c) for c in union.columns if c not in skip),
-            *(
-                (
-                    coalesce(col("u", d), col("o", d))
-                    if d in union.columns
-                    else col("o", d)
-                ).alias(d)
-                for d in dims
-            ),
             col("o", "order_key"),
         )

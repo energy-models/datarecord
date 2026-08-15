@@ -110,22 +110,6 @@ def test_a_mapping_cycle_is_refused():
         )
 
 
-def test_a_mapping_cannot_key_membership():
-    """Existence cannot vary along a classification of another axis.
-
-    Whether a component exists in Germany is already settled by its bus and
-    that bus's country, so there is no freedom for it to vary independently.
-    """
-    with pytest.raises(ValidationError, match="cannot vary along a classification"):
-        _schema(
-            dimensions={
-                "bus": Dimension(dtype="VARCHAR"),
-                "country": Dimension(dtype="VARCHAR", on={"bus"}, keys={"component"}),
-            },
-            partial=frozenset({"country"}),
-        )
-
-
 # -- through a real record --------------------------------------------------
 
 

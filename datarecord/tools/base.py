@@ -42,9 +42,9 @@ class Requirements:
         reported by the source attribute it is missing.
     unsupported_keys : frozenset of tuple of (str, str)
         `(key, dim)` pairs the schema declares that this tool cannot honour;
-        `key` is `"input_key"`, `"component_key"` or `"connection_key"`. The
-        record layer trusts every declared key, so this is a tool's verdict on
-        the record it was handed, not a schema rejection.
+        `key` is `"input_key"`, the fold's unit of ownership. The record layer
+        trusts every declared key, so this is a tool's verdict on the record it
+        was handed, not a schema rejection.
     unsupported_values : frozenset of tuple of (str, str)
         `(component_type, attribute)` pairs whose stored *shape* this tool
         cannot represent, as opposed to a value it is missing - a

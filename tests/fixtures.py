@@ -10,7 +10,13 @@ from pathlib import Path
 import pandas as pd
 
 from datarecord.layered.resolve import write_schema as record_write_schema
-from datarecord.schema import AttributeSpec, ComponentType, Dimension, Schema
+from datarecord.schema import (
+    AttributeSpec,
+    ComponentType,
+    Dimension,
+    Group,
+    Schema,
+)
 
 # No `component_type`: an attribute row is keyed by `name`, unique across every type
 # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
@@ -86,10 +92,8 @@ def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
     df[ordered].to_parquet(target / f"{ctype}.parquet", index=False)
 
 
-def tombstone_connection(
-    layer: str, ctype: str, pairs: list[tuple[str, str]], scenario=None
-) -> None:
-    """Mark connections deleted in this layer, by `(name, bus)`.
+def tombstone_connection(layer: str, ctype: str, pairs: list[tuple[str, str]]) -> None:
+    """Mark connections deleted in this layer, by `(entity, bus)`.
 
     Notes
     -----
@@ -98,10 +102,7 @@ def tombstone_connection(
     write_connections(
         layer,
         ctype,
-        [
-            {"entity": name, "bus": bus, "scenario": scenario, "deleted": True}
-            for name, bus in pairs
-        ],
+        [{"entity": name, "bus": bus, "deleted": True} for name, bus in pairs],
     )
 
 
@@ -118,14 +119,11 @@ def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
     """
     df = pd.DataFrame(rows)
     df["component_type"] = ctype
-    if "scenario" not in df:
-        df["scenario"] = None
-    df["scenario"] = df["scenario"].astype("string")
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["component_type", "entity", "scenario", "deleted"]
+    lead = ["component_type", "entity", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
     target = Path(layer, "dims", "components")
     target.mkdir(parents=True, exist_ok=True)
@@ -134,13 +132,13 @@ def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
     # Appended rather than replaced: several types land in one entity axis, and
     # a layer may write them one call at a time.
     axis = Path(layer, "dims", "entity.parquet")
-    entities = df[["entity", "component_type", "scenario", "deleted"]]
+    entities = df[["entity", "component_type", "deleted"]]
     if axis.exists():
         entities = pd.concat([pd.read_parquet(axis), entities], ignore_index=True)
     entities.to_parquet(axis, index=False)
 
 
-def tombstone(layer: str, ctype: str, names: list[str], scenario=None) -> None:
+def tombstone(layer: str, ctype: str, names: list[str]) -> None:
     """Mark components deleted in this layer.
 
     Notes
@@ -150,7 +148,7 @@ def tombstone(layer: str, ctype: str, names: list[str], scenario=None) -> None:
     write_components(
         layer,
         ctype,
-        [{"entity": n, "scenario": scenario, "deleted": True} for n in names],
+        [{"entity": n, "deleted": True} for n in names],
     )
 
 
@@ -306,18 +304,28 @@ def schema(
         "period": "BIGINT",
         "scenario": "VARCHAR",
     },
+    groups: dict[str, dict[str, str]] = {
+        "connection": {"entity": "entity", "bus": "bus"}
+    },
     within: dict[str, set[str]] | None = None,
 ) -> Schema:
     """A schema shaped like the PyPSA records most tests build on.
 
-    Defaults match `PyPSA.to_datarecord`: three declared dims, `scenario`
-    alone `partial` and keying both entity tables. Override `partial`/`keys`
-    to pin a different layering granularity, `dims` to declare another axis,
-    `within` to nest one axis inside another.
+    Defaults match `PyPSA.to_datarecord`: the `entity` axis and a `connection`
+    group over `(entity, bus)`, three declared dims, and `scenario` keying both
+    entity tables. Override `partial`/`keys` to pin a different layering
+    granularity, `dims` to declare another axis, `groups` to declare a
+    different sparse relation, `within` to nest one axis inside another.
+
+    `entity` and every group coordinate are declared dims and are `partial`:
+    a layer patches one component's value, or one connection's, without
+    restating the rest, which is what `partial` means. The schema requires it,
+    so this supplies it rather than leaving each caller to.
 
     Notes
     -----
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
     nesting = within or {}
@@ -330,18 +338,28 @@ def schema(
         for attr, spec in attrs.items():
             flat.setdefault(attr, spec)
         subscriptions[ctype] = ComponentType(attributes=frozenset(attrs))
+    # A group's coordinates are dims like any other, so they are declared here
+    # rather than assumed - which is what lets a caller pass a group over
+    # coordinates that are not called `bus`.
+    coordinates = {c for over in groups.values() for c in over}
+    declared = {
+        "entity": "VARCHAR",
+        **{c: "VARCHAR" for c in coordinates},
+        **dims,
+    }
     return Schema(
+        groups={g: Group(over=over) for g, over in groups.items()},
         dimensions={
             d: Dimension(
                 dtype=t,
                 keys=frozenset(keys.get(d, set())),
                 within=frozenset(nesting.get(d, set())),
             )
-            for d, t in dims.items()
+            for d, t in declared.items()
         },
         attributes=flat,
         component_types=subscriptions,
-        partial=frozenset(partial),
+        partial=frozenset(partial) | {"entity", *coordinates},
     )
 
 

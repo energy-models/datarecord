@@ -28,33 +28,12 @@ from pydantic import (
     model_validator,
 )
 
-KeyKind = Literal["component", "connection"]
-"""Which entity table a dim keys.
-
-Notes
------
-- [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
-"""
-
 BusRelation = Literal["component", "connection"]
 """Whether an attribute belongs to a component or to one of its connections.
 
 Notes
 -----
 - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-"""
-
-ENTITY = "entity"
-"""The dim that identifies a component - the one axis the format knows by name.
-
-Not merely an axis: it is the axis the component types partition.
-`dims/entity.parquet` carries `component_type`, which decides an attribute
-vocabulary, and `dims/components/<Type>.parquet` is keyed by it. No other dim
-does that, which is why this one is spelled where the others are derived.
-
-Notes
------
-- [entity](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#entity-the-component-axis)
 """
 
 # Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Neither
@@ -118,8 +97,6 @@ class Dimension(BaseModel):
         The opposite direction from `within`, which names my *parents*: a
         mapping is one flat label set partitioning another axis, where `within`
         scopes my labels per parent so `t1` in two periods is two points.
-    keys
-        Which entity tables this dim keys, so an entity exists per value of it.
     unit
         What this axis's *labels* measure, if anything - `None` is undeclared,
         `""` genuinely dimensionless.
@@ -130,7 +107,6 @@ class Dimension(BaseModel):
     -----
     - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
     - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
-    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
@@ -138,7 +114,6 @@ class Dimension(BaseModel):
     dtype: str
     within: frozenset[str] = frozenset()
     on: frozenset[str] = frozenset()
-    keys: frozenset[KeyKind] = frozenset()
     unit: str | None = None
     description: str | None = None
 
@@ -223,6 +198,40 @@ class AttributeSpec(BaseModel):
         return bool(self.dims)
 
 
+class Group(BaseModel):
+    """Which tuples over several dims exist: a sparse subset of a dim product.
+
+    Not a dim. A dim declares an axis of labels and NULL in its column means
+    "every value of it"; a group declares *which combinations are there*, which
+    no axis can say because the product is sparse - a component attaches to two
+    buses out of a thousand.
+
+    An attribute names the group in its `dims` and its rows carry the group's
+    *coordinate* names as columns, never the group's own name. Coordinates
+    rather than dims because two of them may draw on the same axis: a corridor
+    between two entities is `(from, to)`, which a set of dims could not spell.
+
+    Attributes
+    ----------
+    over
+        Coordinate name -> the dim it draws its labels from.
+    description
+        What the group is, in prose. Never interpreted.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+    """
+
+    over: dict[str, str]
+    description: str | None = None
+
+    @property
+    def coordinates(self) -> tuple[str, ...]:
+        """The columns a row of this group is keyed by, in declaration order."""
+        return tuple(self.over)
+
+
 class ComponentType(BaseModel):
     """What one component type carries: the traits it subscribes to, plus its own.
 
@@ -261,6 +270,9 @@ class Schema(BaseModel):
     attributes
         Attribute -> spec, flat and record-wide. One attribute is one spec and
         one `inputs/<attr>.parquet`, so a dtype cannot differ per type.
+    groups
+        Group name -> which tuples over several dims exist. `connection` is
+        the one every record with connections declares.
     traits
         Trait -> the attributes it bundles. A vocabulary a consumer dispatches
         on, declared rather than derived.
@@ -285,6 +297,7 @@ class Schema(BaseModel):
     version: int = 1
     dimensions: dict[str, Dimension] = Field(default_factory=dict)
     attributes: dict[str, AttributeSpec] = Field(default_factory=dict)
+    groups: dict[str, Group] = Field(default_factory=dict)
     traits: dict[str, frozenset[str]] = Field(default_factory=dict)
     component_types: dict[str, ComponentType] = Field(default_factory=dict)
     partial: frozenset[str] | None = None
@@ -327,17 +340,6 @@ class Schema(BaseModel):
             if dim in spec.on:
                 msg = f"dim {dim!r} is `on` itself"
                 raise ValueError(msg)
-            # Membership cannot vary along a classification of another axis:
-            # whether a component exists in Germany is already settled by its
-            # bus and that bus's country, so there is no freedom for it to
-            # vary independently.
-            if spec.on and spec.keys:
-                msg = (
-                    f"mapping {dim!r} declares `keys`; existence cannot vary "
-                    f"along a classification of another axis"
-                )
-                raise ValueError(msg)
-
         # `TopologicalSorter` only needs preparing to reject a cycle, and
         # `CycleError.args[1]` is the offending path - so the acyclicity `within`
         # requires is stdlib rather than a graph walk kept here.
@@ -358,10 +360,26 @@ class Schema(BaseModel):
             msg = f"`on` is cyclic: {' -> '.join(e.args[1])}"
             raise ValueError(msg) from e
 
-        for attr, attr_spec in self.attributes.items():
-            unknown = sorted(attr_spec.dims - declared)
+        # A group's coordinates draw their labels from declared dims, and its
+        # name may not collide with one: an attribute's `dims` names either,
+        # so one namespace has to answer.
+        for group, group_spec in self.groups.items():
+            if group in declared:
+                msg = f"group {group!r} collides with a declared dim"
+                raise ValueError(msg)
+            unknown = sorted(set(group_spec.over.values()) - declared)
             if unknown:
-                msg = f"attribute {attr!r} varies over undeclared dims {unknown}"
+                msg = f"group {group!r} is over undeclared dims {unknown}"
+                raise ValueError(msg)
+
+        addressable = declared | set(self.groups)
+        for attr, attr_spec in self.attributes.items():
+            unknown = sorted(attr_spec.dims - addressable)
+            if unknown:
+                msg = (
+                    f"attribute {attr!r} is addressed by undeclared "
+                    f"dims or groups {unknown}"
+                )
                 raise ValueError(msg)
 
         # A trait or a type may only name an attribute that is declared: the
@@ -390,14 +408,20 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"`partial` names undeclared dims {unknown}"
                 raise ValueError(msg)
-            # Nothing for the tombstone to select (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys).
-            for dim, spec in self.dimensions.items():
-                if spec.keys and dim not in self.partial:
-                    msg = (
-                        f"dim {dim!r} keys {sorted(spec.keys)} but is not `partial`; "
-                        f"membership cannot be scoped per value of an axis owned whole"
-                    )
-                    raise ValueError(msg)
+            # A dim that does not broadcast is one whose values are addressed
+            # individually, so a layer necessarily patches it value by value -
+            # non-broadcast and `partial` are the same fact from two sides.
+            # Declared rather than assumed: a schema omitting one would key
+            # ownership without it, and resolve one layer's edit as owning
+            # every value of it at once.
+            missing = sorted(set(self.dims) - set(self.broadcast_dims) - self.partial)
+            if missing:
+                msg = (
+                    f"{missing} do not broadcast, so a layer patches them value "
+                    f"by value; declare them `partial` or the fold owns every "
+                    f"value of them at once"
+                )
+                raise ValueError(msg)
         return self
 
     # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys, https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
@@ -411,6 +435,78 @@ class Schema(BaseModel):
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
         return tuple(self.dimensions)
+
+    @property
+    def broadcast_dims(self) -> tuple[str, ...]:
+        """The dims a NULL broadcasts over: every dim but `entity` and a group's.
+
+        A NULL here means "every value of this dim", which the fold expands
+        against the axis. The two exclusions cannot mean that:
+
+        - `entity`, because a NULL there is a value belonging to no component
+          rather than to all of them. The one dim named literally, being the
+          one the component types partition: `dims/entity.parquet` carries
+          `component_type`, which decides an attribute vocabulary, and no
+          other dim does anything of the sort.
+        - A group's coordinate, because there is no axis to expand against.
+          "Every bus of this component" is the group's rows, not the bus axis -
+          a sparse subset only the group's table knows.
+
+        The complement of this is what `Schema` requires to be `partial`: a dim
+        whose values are addressed individually is one a layer patches value by
+        value.
+
+        What the `varies`/`broadcast` structs have a field per, and what
+        `expand_dims` joins.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        """
+        sparse = {c for g in self.groups.values() for c in g.coordinates}
+        return tuple(d for d in self.dims if d != "entity" and d not in sparse)
+
+    def coordinates_of(self, attribute: str) -> tuple[str, ...]:
+        """The dim columns one attribute's rows carry, groups expanded.
+
+        An attribute is addressed by what its `dims` declare, and a group there
+        expands to its coordinates - so `dims={"connection", "snapshot"}` gives
+        `("entity", "bus", "snapshot")` and `dims={"snapshot"}` gives
+        `("snapshot",)` with no entity column at all.
+
+        Per attribute rather than schema-wide: one file per attribute means one
+        column set per attribute, and an all-NULL `entity` on a record-level
+        weighting would be a column claiming a component the value has none of.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        """
+        spec = self.attributes.get(attribute)
+        if spec is None:
+            return ()
+        named: set[str] = set()
+        for d in spec.dims:
+            group = self.groups.get(d)
+            named.update(group.coordinates if group is not None else (d,))
+        # Declaration order, so every consumer sees one column order.
+        return tuple(d for d in self.dims if d in named)
+
+    def long_columns_for(self, attribute: str) -> tuple[str, ...]:
+        """One attribute's full `inputs/` column set, in order.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        """
+        return (
+            *self.coordinates_of(attribute),
+            "attribute",
+            "breakpoint",
+            "value",
+        )
 
     def attributes_for(self, ctype: str) -> dict[str, AttributeSpec]:
         """Which attributes `ctype` carries: its traits' bundles, plus its own.
@@ -451,10 +547,11 @@ class Schema(BaseModel):
         return spec.dims & (self.partial or frozenset())
 
     @property
-    def input_dims(self) -> tuple[str, ...]:
-        """Dims that key `inputs/` rows, in declaration order.
+    def partial_dims(self) -> tuple[str, ...]:
+        """The dims a layer may patch value by value, in declaration order.
 
-        `partial` itself: the fold's key is one fixed tuple over all
+        `partial` itself, ordered - not the dims of an `inputs/` row, which are
+        every declared one. The fold's key is one fixed tuple over all
         attributes, so it must carry every axis *any* layer may patch by
         value, not only those some currently declared attribute varies over.
         An attribute not owned per one of them writes NULL there, which is the
@@ -463,34 +560,12 @@ class Schema(BaseModel):
 
         Notes
         -----
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         partial = self.partial or frozenset()
         return tuple(d for d in self.dims if d in partial)
-
-    def _keyed(self, kind: KeyKind) -> tuple[str, ...]:
-        return tuple(d for d, s in self.dimensions.items() if kind in s.keys)
-
-    @property
-    def component_dims(self) -> tuple[str, ...]:
-        """Dims keying `dims/components/<Type>.parquet` and its tombstones.
-
-        Notes
-        -----
-        - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
-        """
-        return self._keyed("component")
-
-    @property
-    def connection_dims(self) -> tuple[str, ...]:
-        """Dims keying `dims/connections/<Type>.parquet` and its tombstones.
-
-        Notes
-        -----
-        - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
-        """
-        return self._keyed("connection")
 
     def axis_key(self, dim: str) -> tuple[str, ...]:
         """A dim's axis-table key: `(*parents, dim)`, parents first.
@@ -526,9 +601,10 @@ class Schema(BaseModel):
     def long_columns(self) -> tuple[str, ...]:
         """The long schema's full column set.
 
-        `bus` and `breakpoint` are part of the schema, not optional extensions
-        to it: both are NULL for the ordinary component-level scalar, so one
-        column set serves every kind of attribute row.
+        The *map's* column set, which is uniform across attributes because the
+        map is one relation over all of them. An individual file carries only
+        its own attribute's columns (`long_columns_for`), and `union_by_name`
+        supplies NULL for the rest when the fold unions them here.
 
         No `component_type`.
 
@@ -538,8 +614,6 @@ class Schema(BaseModel):
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         return (
-            "entity",
-            "bus",
             *self.dims,
             "attribute",
             "breakpoint",
@@ -550,45 +624,52 @@ class Schema(BaseModel):
     def input_key(self) -> tuple[str, ...]:
         """Inputs-map key columns, compared NULL-safely when folding.
 
-        `bus` is in the key so a per-connection attribute is owned per
-        connection rather than per component; it is NULL for a
-        component-level attribute, which then keys against the map's NULL.
+        `partial` itself, plus `attribute`. `entity` and a group's coordinates
+        are in it because a layer may patch one component's value, or one
+        connection's, without restating every other's - which is what `partial`
+        says, and why they are declared `partial` rather than added here.
+
+        A coordinate an attribute's own file does not carry reads as NULL,
+        which is what makes the key one fixed tuple over attributes whose
+        columns differ.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return ("entity", "bus", *self.input_dims, "attribute")
+        return (*self.partial_dims, "attribute")
 
-    @property
-    def component_key(self) -> tuple[str, ...]:
-        """Components-map key columns, compared NULL-safely when folding.
+    def groups_of(self, attribute: str) -> tuple[str, ...]:
+        """Which declared groups address `attribute`, in declaration order.
 
-        The type is carried as a column, not keyed.
+        An attribute is a connection attribute because its `dims` name the
+        `connection` group - not because a separate field says so. That is
+        what lets a second group exist without a second field.
 
         Notes
         -----
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
         """
-        return ("entity", *self.component_dims)
+        spec = self.attributes.get(attribute)
+        if spec is None:
+            return ()
+        return tuple(g for g in self.groups if g in spec.dims)
 
-    @property
-    def connection_key(self) -> tuple[str, ...]:
-        """Connections-map key columns.
+    def group_coordinates(self, group: str) -> tuple[str, ...]:
+        """One group's coordinate columns, or `()` if it is not declared.
 
-        `bus` identifies the connection, so it is a required key column rather
-        than a broadcast dim: never expanded against an axis, only compared
-        NULL-safely. `role` and `component_type` describe the connection and key
-        nothing.
+        What a row of the group is keyed by, before the dims its membership is
+        scoped along. Coordinate names rather than dim names, so two drawing on
+        one axis stay two columns.
 
         Notes
         -----
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
         """
-        return ("entity", "bus", *self.connection_dims)
+        spec = self.groups.get(group)
+        return () if spec is None else spec.coordinates
 
     @property
     def input_columns(self) -> tuple[str, ...]:
@@ -609,7 +690,7 @@ class Schema(BaseModel):
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return ("component_type", *self.component_key, "layer_uuid", "order_key")
+        return ("component_type", "entity", "layer_uuid", "order_key")
 
     @property
     def connection_columns(self) -> tuple[str, ...]:
@@ -619,7 +700,12 @@ class Schema(BaseModel):
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return ("component_type", *self.connection_key, "layer_uuid", "order_key")
+        return (
+            "component_type",
+            *self.group_coordinates("connection"),
+            "layer_uuid",
+            "order_key",
+        )
 
     # -- typing (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/writing/) -------------------------------------------------
 
@@ -644,7 +730,7 @@ class Schema(BaseModel):
         if column in self.dimensions:
             return self.dimensions[column].dtype
         if column in ("varies", "broadcast"):
-            return flag_type(self.dims) if self.dims else None
+            return flag_type(self.broadcast_dims) if self.broadcast_dims else None
         return None
 
     def value_type(self, attribute: str) -> str | None:
@@ -706,12 +792,6 @@ class Schema(BaseModel):
             if now.within != was.within:
                 problems.append(
                     f"dim {dim!r} nesting changed; the axis key changes shape"
-                )
-            gained = now.keys - was.keys
-            if gained:
-                problems.append(
-                    f"dim {dim!r} gained keys {sorted(gained)}; existing entity rows "
-                    f"carry no such column"
                 )
 
         for attr, was_spec in other.attributes.items():

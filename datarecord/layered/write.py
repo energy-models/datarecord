@@ -272,19 +272,14 @@ def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) ->
     # The type is the file a row is in, so it comes from the filename rather
     # than a column - which is exactly the glob-and-derive this axis exists to
     # replace for every later reader.
-    ctype = fn.regexp_extract(col("filename"), lit(r"([^/]+)\.parquet$"), lit(1)).alias(
-        "component_type"
-    )
+    ctype = fn.regexp_extract(col("filename"), lit(r"([^/]+)\.parquet$"), lit(1))
     deleted = (
         coalesce(col("deleted"), lit(False))  # noqa: FBT003
         if "deleted" in rel.columns
         else lit(False)  # noqa: FBT003
-    ).alias("deleted")
+    )
     rel.project(
-        col("entity"),
-        ctype,
-        *(col(d) for d in schema.component_dims),
-        deleted,
+        col("entity"), ctype.alias("component_type"), deleted.alias("deleted")
     ).to_parquet(f"{staging}dims/entity.parquet")
 
 
@@ -400,17 +395,15 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
         # before any bus is assigned one, and a NULL is "unclassified".
         return
 
-    keyed = {
-        "components": schema.component_dims,
-        "connections": schema.connection_dims,
-    }.get(kind)
-    if keyed is None:
+    if kind != "connections":
         return
-    missing = sorted(set(keyed) - columns)
+    # A group's row is keyed by its coordinates, so a frame lacking one would
+    # be keyed by a column that is not there.
+    missing = sorted(set(schema.group_coordinates("connection")) - columns)
     if missing:
         msg = (
-            f"dims/{kind}/{key}.parquet is missing key dims {missing} that the "
-            f"schema declares; the fold would key by a column that is not "
-            f"there (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)"
+            f"dims/{kind}/{key}.parquet is missing the `connection` group's "
+            f"coordinates {missing}; the fold would key by a column that is "
+            f"not there (https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)"
         )
         raise ValueError(msg)

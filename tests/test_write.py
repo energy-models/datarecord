@@ -208,22 +208,20 @@ def test_write_record_rejects_a_missing_long_column(con, base_uri):
     assert not Path(layer_dir(revision.id)).exists()
 
 
-def test_write_record_rejects_an_unbacked_key_dim(con, base_uri):
-    """A schema keying by a dim the frames lack would misresolve.
+def test_write_record_rejects_a_group_frame_missing_a_coordinate(con, base_uri):
+    """A group's row is keyed by its coordinates, so one lacking them misresolves.
 
     Notes
     -----
-    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
+    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
     """
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
-        components={
-            "Process": pd.DataFrame({"entity": ["steel_dri"]})
-        },  # no `scenario`
+        connections={"Process": pd.DataFrame({"entity": ["steel_dri"]})},  # no `bus`
     )
 
-    with pytest.raises(ValueError, match="missing key dims.*scenario"):
+    with pytest.raises(ValueError, match="coordinates.*bus"):
         write_record(revision.id, source, con)
 
 

@@ -412,12 +412,11 @@ class WorkingRecord:
         if ctype not in base:
             return nw.from_native(mine.filter(~col("deleted")))
 
-        dims = (
-            self.schema.component_dims
+        key = (
+            ("entity",)
             if kind == "components"
-            else self.schema.connection_dims
+            else self.schema.group_coordinates("connection")
         )
-        key = ("entity", *(("bus",) if kind == "connections" else ()), *dims)
         frame = base[ctype]
         # `collect_schema` reads names without materialising, and `_as_relation`
         # keeps a DuckDB-backed frame as the plan it already is: the long schema
@@ -527,8 +526,13 @@ class WorkingRecord:
         # row that *does* name a coordinate displaces only that one, which is
         # what keeps the rest of the series (`_restated` writes it out at
         # commit).
-        fixed = (*self._input_key(), "breakpoint")
-        broadcast = tuple(d for d in self.schema.dims if d not in self._input_key())
+        fixed = (*self.schema.input_key, "breakpoint")
+        # The dims a NULL broadcasts over, minus those the key already fixes.
+        # Read off `broadcast_dims` rather than subtracted from `schema.dims`:
+        # an address coordinate is in neither, and a subtraction would put one
+        # here the moment it left the key.
+        key = set(self.schema.input_key)
+        broadcast = tuple(d for d in self.schema.broadcast_dims if d not in key)
         on = ex_all(
             [
                 _null_safe_on(dict.fromkeys(fixed)),
@@ -569,17 +573,10 @@ class WorkingRecord:
         ]
 
     def _long_columns(self) -> tuple[str, ...]:
-        return (
-            "entity",
-            "bus",
-            "attribute",
-            "breakpoint",
-            "value",
-            *self.schema.dims,
-        )
-
-    def _input_key(self) -> tuple[str, ...]:
-        return ("entity", "bus", "attribute", *self.schema.input_dims)
+        # Derived, never spelled: `entity` and a group's coordinates are
+        # declared dims, so naming them beside `schema.dims` would emit each
+        # twice. The staging table's own order (`_input_columns`).
+        return (*self.schema.dims, "attribute", "breakpoint", "value")
 
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
         """`AttributeSpec.dims` minus `Schema.partial`, for every type declaring
@@ -614,7 +611,7 @@ class WorkingRecord:
         if attribute not in self.base.attributes:
             return staged
 
-        scope = [c for c in self._input_key() if c not in whole]
+        scope = [c for c in self.schema.input_key if c not in whole]
         coordinate = [*scope, *whole, "breakpoint"]
         base = _as_relation(self.base.attributes[attribute], self.con)
         # Semi-join first to the keys this edit touched, then anti-join away the
@@ -683,7 +680,10 @@ class WorkingRecord:
         names = self._resolved_names(ctype)
         if not names:
             return out
-        dims = self.schema.dims
+        # Only the dims a NULL broadcasts over: "did a row set this" is not a
+        # question about `entity` or a group's coordinate, which address the
+        # row rather than expanding against an axis.
+        dims = self.schema.broadcast_dims
         rows = (
             rel.filter(col("entity").isin(*(lit(n) for n in names)))
             .aggregate(
@@ -889,8 +889,7 @@ class WorkingRecord:
         attribute: str,
         value: Any,
         *,
-        names: Sequence[str] | None = None,
-        bus: str | None = None,
+        entity: Sequence[str] | None = None,
         kind: Literal["inputs", "outputs"] = "inputs",
         **dims: Any,
     ) -> None:
@@ -902,10 +901,15 @@ class WorkingRecord:
         of the current value* rather than a value, so it reads before it stages
         and two such calls compose.
 
-        No `component_type` parameter: the type is looked up from the name,
-        so one call may span types and each name is validated against its own
-        type's spec. `names=None` means every component whose type
+        No `component_type` parameter: the type is looked up from the entity,
+        so one call may span types and each is validated against its own
+        type's spec. `entity=None` means every component whose type
         declares `attribute`.
+
+        Every other coordinate goes through `**dims`, including a group's -
+        `bus="north"` for a connection attribute, `from=`/`to=` for a corridor.
+        None has a parameter of its own, since which coordinates exist is
+        declared rather than fixed.
 
         `kind` names the destination in the format's own terms:
         `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a
@@ -942,17 +946,17 @@ class WorkingRecord:
                 self._validate_frame(lazy, attribute, dims)
             else:
                 self._validate_dims(dims)
-            self._stage_long(attribute, lazy, bus, kind)
+            self._stage_long(attribute, lazy, kind, dims)
             return
 
         if isinstance(value, nw.Expr):
             self._validate_dims(dims)
-            self._stage_derived(
-                attribute, value, names=names, bus=bus, kind=kind, **dims
-            )
+            self._stage_derived(attribute, value, entity=entity, kind=kind, **dims)
             return
 
-        target = list(names) if names is not None else self._names_declaring(attribute)
+        target = (
+            list(entity) if entity is not None else self._names_declaring(attribute)
+        )
         keys, values, per_dim = normalise_value(value, target, self._axis_labels())
         if keys is None:
             keys = target
@@ -967,26 +971,28 @@ class WorkingRecord:
 
         seq = next(_SEQ)
         table = self._ensure(kind)
-        cols = ("entity", "bus", "attribute", "breakpoint", "value")
-        dim_cols = tuple(self.schema.dims)
-        placeholders = ", ".join(["?"] * (len(cols) + len(dim_cols) + 1))
-        rows = []
+        # Positional, so the order must be the staging table's own
+        # (`_input_columns`): every declared dim, then the fixed three.
+        dim_cols = self.schema.dims
+        placeholders = ", ".join(["?"] * (len(dim_cols) + 4))
+
+        def row(name: str, val: Any, label_of: dict[str, Any]) -> list[Any]:
+            # The entity comes from `entity=`, every other coordinate from
+            # `dims` - which is why no coordinate is spelled here.
+            return [
+                name if d == "entity" else label_of.get(d, dims.get(d))
+                for d in dim_cols
+            ] + [attribute, None, val, seq]
+
+        rows: list[list[Any]] = []
         if per_dim:
             (dim, labels) = next(iter(per_dim.items()))
             for label, val in zip(labels, values, strict=True):
-                for name in keys:
-                    rows.append(
-                        [name, bus, attribute, None, val]
-                        + [label if d == dim else dims.get(d) for d in dim_cols]
-                        + [seq]
-                    )
+                rows.extend(row(name, val, {dim: label}) for name in keys)
         else:
-            for name, val in zip(keys, values, strict=True):
-                rows.append(
-                    [name, bus, attribute, None, val]
-                    + [dims.get(d) for d in dim_cols]
-                    + [seq]
-                )
+            rows.extend(
+                row(name, val, {}) for name, val in zip(keys, values, strict=True)
+            )
         self.con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", rows)
 
     def _names_declaring(self, attribute: str) -> list[str]:
@@ -1031,11 +1037,13 @@ class WorkingRecord:
             self._validate_attribute(ctype, attribute, dims, name=name)
 
     def _stage_long(
-        self, attribute: str, lazy: nw.LazyFrame, bus: str | None, kind: str
+        self, attribute: str, lazy: nw.LazyFrame, kind: str, dims: dict[str, Any]
     ) -> None:
         """Stage a long frame that supplies its own keys.
 
-        Its keys are `name` and whatever dims it carries.
+        Its keys are the entity and whatever coordinates it carries; `dims`
+        supplies any the frame leaves out, so a caller may scope a whole frame
+        to one connection without repeating it per row.
 
         Notes
         -----
@@ -1044,21 +1052,28 @@ class WorkingRecord:
         """
         _in_long = lazy.to_native()  # noqa: F841 - referenced by name below
         table = self._ensure(kind)
-        # A dim the frame does not carry is NULL - "every value of it" (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule) -
-        # typed as the schema declares it, so the insert matches the staging
-        # table's column type rather than relying on a VARCHAR coercion.
+        # A coordinate the frame does not carry comes from `dims` if the caller
+        # scoped it there, and is otherwise NULL - "every value of it" (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
+        # Typed as the schema declares it either way, so the insert matches the
+        # staging table's column type rather than relying on a VARCHAR coercion.
         present = set(lazy.collect_schema().names())
-        dim_cols = ", ".join(
-            f'"{d}"' if d in present else f'NULL::{self.schema.column_type(d)} AS "{d}"'
-            for d in self.schema.dims
-        )
+        params: list[Any] = []
+
+        def column(d: str) -> str:
+            if d in present:
+                return f'"{d}"'
+            if d in dims:
+                params.append(dims[d])
+                return f'?::{self.schema.column_type(d)} AS "{d}"'
+            return f'NULL::{self.schema.column_type(d)} AS "{d}"'
+
+        cols = ", ".join(column(d) for d in self.schema.dims)
         self.con.execute(
-            f"INSERT INTO {table} SELECT entity, "
-            f"? AS bus, ? AS attribute, "
-            f"NULL::DOUBLE AS breakpoint, "
-            f"value::VARCHAR AS value, {dim_cols}, ? "
+            f"INSERT INTO {table} SELECT {cols}, "
+            f"? AS attribute, NULL::DOUBLE AS breakpoint, "
+            f"value::VARCHAR AS value, ? "
             f"FROM _in_long",
-            [bus, attribute, next(_SEQ)],
+            [*params, attribute, next(_SEQ)],
         )
 
     def _stage_derived(
@@ -1066,8 +1081,7 @@ class WorkingRecord:
         attribute: str,
         expr: nw.Expr,
         *,
-        names: Sequence[str] | None = None,
-        bus: str | None = None,
+        entity: Sequence[str] | None = None,
         kind: str = "inputs",
         **dims: Any,
     ) -> None:
@@ -1094,28 +1108,25 @@ class WorkingRecord:
             frame = None
         else:
             frame = source[attribute]
-            if names is not None:
+            if entity is not None:
                 if kind == "inputs":
-                    for name, ctype in self._resolve_types(list(names)).items():
+                    for name, ctype in self._resolve_types(list(entity)).items():
                         self._validate_attribute(ctype, attribute, dims, name=name)
-                frame = frame.filter(nw.col("entity").is_in(list(names)))
-            if bus is not None:
-                frame = frame.filter(nw.col("bus") == bus)
+                frame = frame.filter(nw.col("entity").is_in(list(entity)))
             for dim, value in dims.items():
                 frame = frame.filter(nw.col(dim) == value)
 
         # A named target that resolves to no row is a failed change, not a
         # no-op: the caller asked for these rows to take a new value and there
-        # is nothing to derive one from. With `names=None` and no scope the
+        # is nothing to derive one from. With `entity=None` and no scope the
         # instruction is "whatever resolves", so an empty result is an answer.
-        if names is not None or dims or bus is not None:
+        if entity is not None or dims:
             if frame is None or frame.select("entity").collect().is_empty():
                 scope = ", ".join(
                     filter(
                         None,
                         [
-                            f"names={list(names)}" if names is not None else "",
-                            f"bus={bus!r}" if bus is not None else "",
+                            f"entity={list(entity)}" if entity is not None else "",
                             *(f"{d}={v!r}" for d, v in dims.items()),
                         ],
                     )
@@ -1191,12 +1202,7 @@ class WorkingRecord:
 
         _add = lazy.to_native()  # noqa: F841 - bound by replacement scan below
         table = self._ensure("components")
-        dim_cols = ", ".join(
-            f'"{d}"'
-            if d in member_cols
-            else f'CAST(NULL AS {self.schema.column_type(d)}) AS "{d}"'
-            for d in self.schema.component_dims
-        )
+        dim_cols = ""
         extra = [c for c in member_cols if c != "entity" and c not in self.schema.dims]
         # The staging table starts with the key columns only (`_COLUMNS`); a
         # wide frame's attribute columns are whatever the caller passed, so
@@ -1222,8 +1228,8 @@ class WorkingRecord:
             self._stage_long(
                 attribute,
                 lazy.select("entity", nw.col(attribute).alias("value")),
-                None,
                 "inputs",
+                {},
             )
         # `bus` names the connection itself rather than being an attribute of
         # one, so it becomes the connection row; any other port attribute
@@ -1245,52 +1251,46 @@ class WorkingRecord:
         self,
         kind: str,
         fixed: tuple[str, ...],
-        dim_cols: tuple[str, ...],
         keys: list[list[Any]],
-        dims: Mapping[str, Any],
     ) -> None:
-        """Stage one `deleted` row per key, scoped by `dim_cols`.
+        """Stage one `deleted` row per key.
 
-        Shared by `remove` and `disconnect`, which differ only in their fixed
-        key columns - `disconnect` carries `bus` too. One helper so the
-        placeholder count is derived from the column list rather than restated
-        per caller, which is what let the two drift out of step.
+        Shared by `remove` and `disconnect`, which differ only in their key
+        columns - `disconnect` carries the group's coordinates where `remove`
+        carries the entity. One helper so the placeholder count is derived
+        from the column list rather than restated per caller, which is what
+        let the two drift out of step.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
-        columns = (*fixed, *dim_cols, "deleted", "_seq")
+        columns = (*fixed, "deleted", "_seq")
         quoted = ", ".join(f'"{c}"' for c in columns)
         table = self._ensure(kind)
         seq = next(_SEQ)
         self.con.executemany(
             f"INSERT INTO {table} ({quoted}) "
             f"VALUES ({', '.join(['?'] * len(columns))})",
-            [[*key, *(dims.get(d) for d in dim_cols), True, seq] for key in keys],
+            [[*key, True, seq] for key in keys],
         )
 
-    def remove(self, ctype: str, names: Sequence[str], **dims: Any) -> None:
-        """Stage a tombstone per name, scoped by the component key dims.
+    def remove(self, ctype: str, names: Sequence[str]) -> None:
+        """Stage a tombstone per entity.
 
         Need not enumerate what it deletes: one row per key, and the fold
-        applies it to every attribute.
+        applies it to every attribute. Nor scope it - a component exists or it
+        does not, so a deletion removes it whole.
 
         Notes
         -----
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
-        unknown = sorted(set(dims) - set(self.schema.component_dims))
-        if unknown:
-            msg = f"{unknown} do not key component membership"
-            raise KeyError(msg)
         self._stage_tombstones(
             "components",
             ("component_type", "entity"),
-            self.schema.component_dims,
             [[ctype, name] for name in names],
-            dims,
         )
 
     def connect(self, ctype: str, frame: Any) -> None:
@@ -1317,25 +1317,17 @@ class WorkingRecord:
             {"ctype": ctype},
         )
 
-    def disconnect(
-        self, ctype: str, pairs: Sequence[tuple[str, str]], **dims: Any
-    ) -> None:
-        """Stage a tombstone per `(name, bus)`.
+    def disconnect(self, ctype: str, pairs: Sequence[tuple[str, str]]) -> None:
+        """Stage a tombstone per `(entity, bus)`.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         """
-        unknown = sorted(set(dims) - set(self.schema.connection_dims))
-        if unknown:
-            msg = f"{unknown} do not key connection membership"
-            raise KeyError(msg)
         self._stage_tombstones(
             "connections",
-            ("component_type", "entity", "bus"),
-            self.schema.connection_dims,
+            ("component_type", *self.schema.group_coordinates("connection")),
             [[ctype, name, bus] for name, bus in pairs],
-            dims,
         )
 
     # -- pending / commit / rollback (https://energy-models.github.io/datarecord/design/working-record/#pending, https://energy-models.github.io/datarecord/design/working-record/#committing) -------------------------
@@ -1397,7 +1389,7 @@ class WorkingRecord:
         # attribute is not owned per (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override), so partitioning on it alone would
         # collapse a whole staged series to one row - two `set` calls at
         # different snapshots are not two writes to the same key.
-        key = dict.fromkeys((*self._input_key(), *self.schema.dims, "breakpoint"))
+        key = dict.fromkeys((*self.schema.input_key, *self.schema.dims, "breakpoint"))
         live = _latest_per(rel, key)
         dead = self._tombstoned()
         if dead is None:
@@ -1407,7 +1399,7 @@ class WorkingRecord:
         #
         # Matched on `name` alone: the tombstone carries a type and a staged
         # input row does not (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-        on = _null_safe_on(("entity", *self.schema.component_dims), "l", "d")
+        on = _null_safe_on(("entity",), "l", "d")
         return live.set_alias("l").join(dead.set_alias("d"), on, how="anti")
 
     def _tombstoned(self) -> DuckDBPyRelation | None:
@@ -1420,7 +1412,7 @@ class WorkingRecord:
         rel = self._rows("components")
         if rel is None:
             return None
-        cols = self.schema.component_key
+        cols = ("entity",)
         # An `add` after a `remove` means the component exists again, so only
         # the latest row per key counts (https://energy-models.github.io/datarecord/design/working-record/#committing).
         return (
@@ -1445,9 +1437,9 @@ class WorkingRecord:
             return None
         return _latest_per(
             rel,
-            self.schema.component_key
+            ("entity",)
             if kind == "components"
-            else self.schema.connection_key,
+            else self.schema.group_coordinates("connection"),
         )
 
     # -- what commit writes (https://energy-models.github.io/datarecord/design/working-record/#committing) -----------------------------------------
@@ -1625,24 +1617,26 @@ def _input_columns(schema: Schema) -> str:
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
     """
-    dims = "".join(f', "{d}" {schema.column_type(d)}' for d in schema.dims)
-    return (
-        "entity VARCHAR, bus VARCHAR, attribute VARCHAR, "
-        f"breakpoint DOUBLE, value VARCHAR{dims}, _seq BIGINT"
-    )
+    # One staging table serves every attribute, so its columns are every
+    # declared dim rather than any one attribute's, with a row leaving NULL
+    # where its attribute has no such coordinate. Derived, never spelled:
+    # `entity` and a group's coordinates are declared dims, so naming them
+    # here would emit each twice.
+    columns = "".join(f'"{d}" {schema.column_type(d)}, ' for d in schema.dims)
+    return f"{columns}attribute VARCHAR, breakpoint DOUBLE, value VARCHAR, _seq BIGINT"
 
 
-def _component_columns(schema: Schema) -> str:
-    dims = "".join(f', "{d}" {schema.column_type(d)}' for d in schema.component_dims)
-    return f"component_type VARCHAR, entity VARCHAR{dims}, deleted BOOLEAN, _seq BIGINT"
+def _component_columns(schema: Schema) -> str:  # noqa: ARG001 - shape is fixed
+    return "component_type VARCHAR, entity VARCHAR, deleted BOOLEAN, _seq BIGINT"
 
 
 def _connection_columns(schema: Schema) -> str:
-    dims = "".join(f', "{d}" {schema.column_type(d)}' for d in schema.connection_dims)
-    return (
-        f"component_type VARCHAR, entity VARCHAR, bus VARCHAR, role VARCHAR{dims}, "
-        "deleted BOOLEAN, _seq BIGINT"
+    # The `connection` group's own coordinates, which are what identifies one.
+    coords = "".join(
+        f'"{c}" {schema.column_type(c)}, '
+        for c in schema.group_coordinates("connection")
     )
+    return f"component_type VARCHAR, {coords}role VARCHAR, deleted BOOLEAN, _seq BIGINT"
 
 
 _COLUMNS = {

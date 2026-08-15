@@ -73,13 +73,13 @@ So a staged edit is already the row it will be written as, and `commit()` is a c
 ## `set`
 
 ```python
-record.set("p_nom", 150.0, names=["wind1", "wind2"])  # broadcast
-record.set("p_nom", [150.0, 80.0], names=["wind1", "wind2"])  # per name
+record.set("p_nom", 150.0, entity=["wind1", "wind2"])  # broadcast
+record.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per name
 record.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
-record.set("p_max_pu", frame, names=["wind1"])  # long frame
-record.set("efficiency", 0.9, names=["dc"], bus="north")  # a connection
-record.set("p_nom", 200.0, names=["wind1"], scenario="high")  # scoped
-record.set("p_nom", nw.col("value") * 1.1, names=["wind1"])  # derived
+record.set("p_max_pu", frame, entity=["wind1"])  # long frame
+record.set("efficiency", 0.9, entity=["dc"], bus="north")  # a connection
+record.set("p_nom", 200.0, entity=["wind1"], scenario="high")  # scoped
+record.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
 record.set("p", solved, kind="outputs")  # a result
 ```
 
@@ -89,7 +89,7 @@ That removes the parameter that had to be either given or inferred in every earl
 One call may therefore span types, since the names decide: `set("p_nom", {"wind1": 150.0, "link_dc": 80.0})` validates `wind1` against `Generator.p_nom` and `link_dc` against `Link.p_nom`, and stages both.
 Each name is [validated](#validation) against **its own** type's `AttributeSpec`, so an attribute one type declares and another does not is an error naming the name that caused it.
 
-`names=None` means every component the record resolves that the schema declares this attribute for — the types declaring `attribute`, not every type.
+`entity=None` means every component the record resolves that the schema declares this attribute for — the types declaring `attribute`, not every type.
 `set("p_max_pu", 0.9)` is "every component with a `p_max_pu`", which is the only reading left once the type keyword is gone, and the useful one.
 
 `bus` names a [connection](record.md#connections) rather than the component; every other keyword is a dim, so `scenario="high"` scopes the edit and its absence means "every scenario" by the NULL broadcast rule.
@@ -118,13 +118,13 @@ Every form is checked against [the components the record resolves](#validation),
 A one-dimensional labelled series is genuinely ambiguous: its index may hold names or axis labels.
 Index dtype does not settle it, since an axis label may be a string like a name, so the tie is broken by membership — an index whose labels are all resolved axis values is a series, otherwise a mapping over names — and an index matching both is rejected rather than guessed.
 
-`names=None` means every component of that type the record currently resolves, which is a read, so it includes earlier pending edits.
+`entity=None` means every component of that type the record currently resolves, which is a read, so it includes earlier pending edits.
 
 ## An `nw.Expr` value — derived from the current one
 
 ```python
 record.set("p_nom", nw.col("value") * 1.1)  # scale up every p_nom
-record.set("p_max_pu", nw.col("value").clip(upper=0.9), names=["wind1"])
+record.set("p_max_pu", nw.col("value").clip(upper=0.9), entity=["wind1"])
 ```
 
 A fifth `value` form rather than a second method.
@@ -144,7 +144,7 @@ The expression is evaluated by narwhals against the resolved long frame, so it n
 If the caller names `names`, a `bus` or any dim scope, every one of those targets must produce a row to derive from, or the call raises.
 The caller asked for those rows to take a new value and there is nothing to compute one from, which is a failed change rather than a no-op — the same class of error as [naming a component no layer declares](#validation), and it was silently staging zero rows before.
 
-With `names=None` and no scope the instruction is "whatever resolves", so an empty result is an answer rather than a failure.
+With `entity=None` and no scope the instruction is "whatever resolves", so an empty result is an answer rather than a failure.
 That asymmetry is the whole of the rule: a broad derived edit over a type where only some members carry the attribute is ordinary, while a targeted one that hits nothing is a typo.
 
 ## Results through `kind="outputs"`
@@ -153,7 +153,7 @@ A tool solves against a record and hands back what it computed:
 
 ```python
 record = WorkingRecord(record, con)
-record.set("p_max_pu", 0.8, names=["wind1"])
+record.set("p_max_pu", 0.8, entity=["wind1"])
 model = PyPSA.build(record)  # solve the edited record
 model.optimize()
 for attr, frame in PyPSA.results(model).items():

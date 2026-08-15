@@ -18,7 +18,6 @@ from tests.fixtures import (
     export_network,
     relation,
     rename_components,
-    tombstone,
     write_input,
     write_scenarios,
 )
@@ -106,26 +105,6 @@ def test_partial_scenario_override(con, parent, stochastic):
     overridden = solar_rows[solar_rows["scenario"] == scenario]
     assert set(overridden["value"]) == {0.77}
     assert set(solar_rows[solar_rows["scenario"] != scenario]["value"]) != {0.77}
-
-
-def test_per_scenario_tombstone(con, parent, stochastic):
-    """A tombstone in one scenario leaves the component in the others.
-
-    Notes
-    -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-    """
-    scenario = stochastic.scenarios[0]
-    child = parent.child()
-    tombstone(layer_dir(child.id), "Generator", ["solar Gen"], scenario=scenario)
-
-    df = child.node_cache.inputs.df()
-    # No type scoping needed: the generator is "solar Gen" and the carrier
-    # "solar", names being unique across types (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types) - which is exactly what
-    # used to require filtering on `component_type` here.
-    solar = df[df["entity"] == "solar Gen"]
-    assert scenario not in set(solar["scenario"])
-    assert set(solar["scenario"]) == set(stochastic.scenarios[1:])
 
 
 def test_child_adds_new_scenario(con, parent, stochastic):

@@ -67,14 +67,14 @@ def test_a_scenario_varying_capacity_is_a_schema_violation():
     assert s.owned_per("p_nom") == frozenset()
 
 
-def test_input_dims_is_the_union_over_attributes():
+def test_partial_dims_is_the_union_over_attributes():
     """The fold's key is one fixed tuple, so an unowned dim is NULL rather than absent."""
     s = _schema()
-    assert s.input_dims == ("scenario",)
+    assert s.partial_dims == ("scenario",)
 
     # Make `timestep` partial too and it joins the key.
     wider = _schema(partial=frozenset({"scenario", "timestep"}))
-    assert wider.input_dims == ("period", "timestep", "scenario")[1:]
+    assert wider.partial_dims == ("period", "timestep", "scenario")[1:]
 
 
 def test_file_split_follows_dims():
@@ -93,17 +93,23 @@ def test_file_split_follows_dims():
 # -- membership keys (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys) --------------------------------------------------
 
 
-def test_keys_are_per_dim_not_per_attribute():
-    """Existence is not an attribute's property, so it is declared on the axis."""
-    s = _schema()
-    assert s.component_dims == ("scenario",)
-    assert s.connection_dims == ("scenario",)
+def test_a_non_broadcast_dim_must_be_partial():
+    """Addressed individually and patchable value by value are the same fact.
 
-
-def test_a_membership_key_must_be_partial():
-    """Scoping membership per value of an axis owned whole has no meaning."""
-    with pytest.raises(ValidationError, match="not `partial`"):
-        _schema(partial=frozenset())
+    A NULL `entity` is a value belonging to no component, not to all of them,
+    so a layer setting one component's value patches that entity alone - which
+    is what `partial` declares, and what keys the fold's ownership.
+    """
+    # Built directly rather than through `_schema`, which supplies the
+    # requirement - the point here is a schema that does not.
+    with pytest.raises(ValidationError, match="do not broadcast"):
+        Schema(
+            dimensions={
+                "entity": Dimension(dtype="VARCHAR"),
+                "scenario": Dimension(dtype="VARCHAR"),
+            },
+            partial=frozenset({"scenario"}),
+        )
 
 
 # -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------

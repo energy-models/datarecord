@@ -24,7 +24,7 @@ results = PyPSA.results(n)  # Frames, in the long schema
 
 ```python
 w = WorkingRecord(record, con)
-w.set("p_max_pu", 0.8, names=["wind1"])
+w.set("p_max_pu", 0.8, entity=["wind1"])
 n = PyPSA.build(w)  # a WorkingRecord is a Record
 n.optimize()
 for attr, frame in PyPSA.results(n).items():

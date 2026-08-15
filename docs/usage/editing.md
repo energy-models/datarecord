@@ -11,19 +11,19 @@ w = WorkingRecord(root.record, con)
 ## `set`
 
 ```python
-w.set("p_nom", 150.0, names=["wind1", "wind2"])  # broadcast
-w.set("p_nom", [150.0, 80.0], names=["wind1", "wind2"])  # per name, positional
+w.set("p_nom", 150.0, entity=["wind1", "wind2"])  # broadcast
+w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per name, positional
 w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
-w.set("p_max_pu", frame, names=["wind1"])  # a long frame
-w.set("efficiency", 0.9, names=["dc"], bus="north")  # a connection
-w.set("p_nom", 200.0, names=["wind1"], scenario="high")  # scoped to one scenario
-w.set("p_nom", nw.col("value") * 1.1, names=["wind1"])  # derived
+w.set("p_max_pu", frame, entity=["wind1"])  # a long frame
+w.set("efficiency", 0.9, entity=["dc"], bus="north")  # a connection
+w.set("p_nom", 200.0, entity=["wind1"], scenario="high")  # scoped to one scenario
+w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
 w.set("p", solved_frame, kind="outputs")  # a result
 ```
 
 **There is no `component_type` keyword.** A name identifies one component across every type, so the record looks the type up and validates each name against _its own_ type's `AttributeSpec` — one call may legitimately span types ([design](../design/working-record.md#set)).
 
-`names=None` means every component whose type declares this attribute. `bus` names a connection; every other keyword is a dim, and its absence means "every value of that dim" by the NULL broadcast rule.
+`entity=None` means every component whose type declares this attribute. `bus` names a connection; every other keyword is a dim, and its absence means "every value of that dim" by the NULL broadcast rule.
 
 An `nw.Expr` value is a **function of the current value**: it reads the resolved value including earlier pending edits, so two such calls compose, and what gets staged is the result rather than the expression ([design](../design/working-record.md#an-nwexpr-value-derived-from-the-current-one)). A named target that resolves to no row raises — the caller asked for those rows to take a new value and there is nothing to compute one from.
 

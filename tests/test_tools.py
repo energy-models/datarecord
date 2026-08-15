@@ -6,7 +6,6 @@ Notes
 """
 
 from pathlib import Path
-from types import SimpleNamespace
 
 import narwhals as nw
 import pytest
@@ -14,8 +13,6 @@ import pytest
 from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
-from datarecord.layered.write import write_record
-from datarecord.record import EMPTY
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import PyPSA, _colliding_names
 from tests.fixtures import (
@@ -154,7 +151,12 @@ def _with_schema(revision, **kwargs) -> None:
     """
     was = read_schema()
     now = schema(**kwargs).model_copy(
-        update={"attributes": was.attributes, "meta": was.meta}
+        update={
+            "attributes": was.attributes,
+            "groups": was.groups,
+            "component_types": was.component_types,
+            "meta": was.meta,
+        }
     )
     write_schema(now)
 
@@ -183,51 +185,6 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
     assert "snapshot" in missing.describe()
     with pytest.raises(UnsupportedRecordError, match="snapshot"):
         PyPSA.build(revision.record)
-
-
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        # `period` keying components, which PyPSA's writer emits no column for.
-        {
-            "partial": {"scenario", "period"},
-            "keys": {"scenario": {"component"}, "period": {"component"}},
-        },
-        # A dim no file has a column for at all.
-        {"partial": {"scenario", "vintage"}, "dims": {**_DIMS, "vintage": "VARCHAR"}},
-    ],
-    ids=["period", "vintage"],
-)
-def test_write_record_rejects_a_key_dim_no_frame_carries(con, base_uri, ac_dc, kwargs):
-    """A declared key dim needs a column in every frame, or the layer is refused.
-
-    The invariant the read path relies on: the fold keys by these
-    columns, so a record missing one would resolve as though the dim were
-    broadcast everywhere. Caught at the boundary, which is why no tool
-    re-checks it.
-
-    Notes
-    -----
-    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
-    """
-    source = PyPSA.to_datarecord(ac_dc)
-    declared = schema(**kwargs).model_copy(
-        update={"attributes": source.schema.attributes, "meta": source.schema.meta}
-    )
-    write_schema(declared)
-
-    # The same frames, restated under a schema declaring the extra key.
-    restated = SimpleNamespace(
-        schema=declared,
-        dims=source.dims,
-        components=source.components,
-        connections=source.connections,
-        attributes=source.attributes,
-        outputs=EMPTY,
-    )
-    revision = Revision.create(con)
-    with pytest.raises(ValueError, match="period|vintage"):
-        write_record(revision.id, restated, con)
 
 
 def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):

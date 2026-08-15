@@ -54,7 +54,7 @@ It is purely additive, writing files under `resolved/` and changing no answer, o
 
 ## Deletion
 
-A `deleted = true` row in `dims/components/<Type>.parquet` tombstones a component from every attribute, scoped by whichever dims [key `component`](schema.md#keys-which-entity-tables-a-dim-keys).
+A `deleted = true` row on [the entity axis](format.md#the-entity-axis) tombstones a component from every attribute, and from every value of every dim — [existence does not vary along one](schema.md#existence-does-not-vary-along-a-dim), so there is nothing to scope a deletion by.
 A `deleted = true` row in `dims/connections/<Type>.parquet` tombstones one bus's connection — its connection row and its `inputs/` rows — leaving the component and its other connections intact.
 
 When [the owner map](read-path.md#owner-map) is folded, a tombstone removes that key's entries from the map, so a deleted component is absent from the resolved map rather than filtered at read time.

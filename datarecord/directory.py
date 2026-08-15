@@ -121,7 +121,10 @@ class DirectoryRecord:
         members = self._read(f"dims/components/{ctype}.parquet")
         result: dict[str, Flags] = {}
         if rel is not None and members is not None:
-            declared = self.schema.dims
+            # Only the dims a NULL broadcasts over, as the fold's flags are:
+            # "did a row set this" is not a question about `entity` or a
+            # group's coordinate, which address the row rather than expanding.
+            declared = self.schema.broadcast_dims
             dims = tuple(d for d in declared if d in rel.columns)
             pwl = (
                 fn.bool_or(col("breakpoint").isnotnull())

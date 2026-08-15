@@ -9,7 +9,6 @@ class Dimension(BaseModel):
     dtype: str  # the axis labels' type
     within: frozenset[str] = frozenset()  # labels unique only within these dims
     on: frozenset[str] = frozenset()  # dims I classify; a mapping over them
-    keys: frozenset[KeyKind] = ...  # entity tables this dim keys
     unit: str | None = None  # what the labels measure, if anything
     description: str | None = None  # what the axis is, in prose
 
@@ -54,7 +53,7 @@ It is stored and never interpreted, since none of it describes the dimensioned d
 
 Every dim is declared: a record with `region`, `technology` or `vintage` needs no code change, and `dtype` is the axis's own property.
 
-A `Dimension` declares the axis's shape — its type, its [nesting](#within-an-axis-inside-an-axis), [what it classifies](#on-a-mapping-over-another-axis), [which entity tables it keys](#keys-which-entity-tables-a-dim-keys).
+A `Dimension` declares the axis's shape — its type, its [nesting](#within-an-axis-inside-an-axis), [what it classifies](#on-a-mapping-over-another-axis).
 It does not declare which dims an _attribute_ varies over (that is [per attribute](#attributespec)), nor [the patch granularity](#partial-the-granularity-of-an-override), nor [order](record.md#axis-order).
 
 ## `AttributeSpec`
@@ -83,30 +82,13 @@ The rest answers what a bare column set cannot:
 - _May it carry breakpoints?_ — `breakpoints`, so a curve on an attribute that takes one value is rejected on write rather than reported unbuildable later ([wide and long rows](record.md#wide-and-long-rows)).
 - _Is it bus-relative?_ — `bus`, so `efficiency` is known to be a [connection](record.md#connections) attribute and `p_max_pu` a component one, rather than inferred from whether a `bus` value happens to be present.
 
-## `keys` — which entity tables a dim keys
+## Existence does not vary along a dim
 
-Whether a component or a connection exists _per value_ of a dim:
+A component exists or it does not. There is no declaration making membership vary per value of an axis — no generator present in scenario `high` and absent from `low` — so `dims/entity.parquet` holds one row per entity and a tombstone removes it whole.
 
-```python
-dimensions = {
-    "scenario": Dimension(dtype="str", keys={"component", "connection"}),
-    "timestep": Dimension(dtype="datetime64[us]"),
-}
-```
+That is a deliberate narrowing. An earlier `Dimension.keys` declared exactly this, putting the dim in an entity table's key so a component existed per scenario; it is gone, with nothing in its place, because [what it should mean is unsettled](open-questions.md) once connections are one group among several rather than a fixed second entity table.
 
-| `KeyKind`    | keys                              | consequence                                            |
-| ------------ | --------------------------------- | ------------------------------------------------------ |
-| `component`  | `dims/components/<Type>.parquet`  | a component exists per value, and is deleted per value |
-| `connection` | `dims/connections/<Type>.parquet` | a connection exists per value                          |
-
-On `Dimension` rather than `AttributeSpec` because existence is not an attribute's property: a component exists in scenario `high` or it does not, and `p_max_pu` gets no vote.
-
-Also not layering-specific, which is why it sits beside `dtype` rather than with `partial`.
-It puts the dim in the entity table's own key, so it decides that table's shape — one row per `(name, scenario)` rather than per `entity`.
-A single directory with no ancestry can therefore hold a generator present in `high` and absent from `low`, and answer which scenarios it exists in.
-[Tombstone scoping](layers.md#deletion) is a consequence of that key rather than its purpose.
-
-A dim in `keys` must be in `partial` where that section exists, since keying membership per value of an axis that is only ever owned whole has no meaning.
+What remains is the distinction that was doing the useful work: a **value** may vary along an axis where the **thing** may not. A stochastic network holding a different `capital_cost` per scenario is expressing exactly that, and it is an attribute with `dims = {"entity", "scenario"}` — long rows in `inputs/`, not a component that exists twice. [Where a value lives](format.md#where-a-value-lives) already places it.
 
 ## `within` — an axis inside an axis
 
@@ -172,7 +154,7 @@ Nesting versus classification. `within` cannot express `country`, and a mapping 
 
 A mapping is **single-valued by construction** — it is a column, so a row has one value. A many-to-many classification is a different thing, and not a mapping.
 
-It also never carries [`keys`](#keys-which-entity-tables-a-dim-keys): membership cannot vary along a classification of another axis, since whether a component exists in Germany is already settled by its bus and that bus's country.
+Membership could not vary along one either, if it varied along anything: whether a component exists in Germany is already settled by its bus and that bus's country, so there would be no freedom for it to vary independently ([existence does not vary](#existence-does-not-vary-along-a-dim)).
 
 ## `partial` — the granularity of an override
 
@@ -251,7 +233,7 @@ One schema outlives many layers ([above](#one-schema-per-record)), so a change t
 
 Adding a mapping is compatible in the same sense adding a dim is: the classified axis's file gains a column, and until it is rewritten every label reads as unclassified — a NULL, which is what "no country assigned" means anyway.
 
-- adding to a dim's `keys`, since an entity table gains a key column its existing rows do not carry
+- removing a dim from `partial`, or adding one that does not broadcast, since the fold's ownership key changes shape
 
 The compatible changes are those where NULL already means what the new schema needs it to mean, so [the broadcast rule](record.md#the-broadcast-rule) absorbs them without touching a row.
 

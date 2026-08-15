@@ -86,7 +86,7 @@ So a consumer wanting one type's `p_max_pu` joins the resolved attribute frame t
 That join is what the `component_type` filter used to be, and it is against a relation the read path already builds.
 
 Two things follow, and they are the reason to want this.
-An attribute row is addressed the way a component is, so `set("p_nom", 150.0, names=["wind1"])` needs no type: the entity determines it ([set](working-record.md#set)).
+An attribute row is addressed the way a component is, so `set("p_nom", 150.0, entity=["wind1"])` needs no type: the entity determines it ([set](working-record.md#set)).
 And the inputs key loses a column, so the fold's key is `(entity, bus, *owned_per dims, attribute)` — one less column to compare NULL-safely in every join in [the read path](read-path.md).
 
 **Enforced, not assumed.** [`write_record`](writing.md) rejects a record whose component tables share an entity, and `add` rejects an entity the record already resolves under another type ([add / remove](working-record.md#add-remove)).

@@ -332,7 +332,7 @@ Nesting versus classification. `within` cannot express `country`, and a mapping 
 
 ## `keys` goes
 
-[`keys`](../schema.md#keys-which-entity-tables-a-dim-keys) declares that an entity exists _per value_ of a dim — a generator present in scenario `high` and absent from `low` — which puts the dim in the entity table's key and scopes its tombstones.
+`Dimension.keys` declared that an entity exists _per value_ of a dim — a generator present in scenario `high` and absent from `low` — which put the dim in the entity table's key and scoped its tombstones. It is [now deleted](../schema.md#existence-does-not-vary-along-a-dim); what follows is why.
 
 It cannot survive this proposal, and not merely because it is hard to grasp.
 `KeyKind` is the closed set `{"component", "connection"}`, and `Schema._keyed(kind)` derives `component_dims` and `connection_dims` by asking every dim which of those two tables it keys.
