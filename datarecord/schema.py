@@ -96,6 +96,15 @@ class Dimension(BaseModel):
         The axis labels' type, as a DuckDB type name.
     within
         Dims this one's labels identify a point only *within*; transitive.
+    on
+        Dims this one *classifies*: each of their labels carries exactly one of
+        mine, as a column on their axis file named after me. A dim declaring
+        `on` is a mapping - `country` on `bus` means every bus is in one
+        country, and `dims/bus.parquet` gains a `country` column.
+
+        The opposite direction from `within`, which names my *parents*: a
+        mapping is one flat label set partitioning another axis, where `within`
+        scopes my labels per parent so `t1` in two periods is two points.
     keys
         Which entity tables this dim keys, so an entity exists per value of it.
     unit
@@ -115,9 +124,15 @@ class Dimension(BaseModel):
 
     dtype: str
     within: frozenset[str] = frozenset()
+    on: frozenset[str] = frozenset()
     keys: frozenset[KeyKind] = frozenset()
     unit: str | None = None
     description: str | None = None
+
+    @property
+    def mapping(self) -> bool:
+        """Whether this dim classifies another rather than standing alone."""
+        return bool(self.on)
 
 
 class AttributeSpec(BaseModel):
@@ -292,6 +307,23 @@ class Schema(BaseModel):
             if dim in spec.within:
                 msg = f"dim {dim!r} is `within` itself"
                 raise ValueError(msg)
+            unknown = sorted(spec.on - declared)
+            if unknown:
+                msg = f"dim {dim!r} is `on` undeclared dims {unknown}"
+                raise ValueError(msg)
+            if dim in spec.on:
+                msg = f"dim {dim!r} is `on` itself"
+                raise ValueError(msg)
+            # Membership cannot vary along a classification of another axis:
+            # whether a component exists in Germany is already settled by its
+            # bus and that bus's country, so there is no freedom for it to
+            # vary independently.
+            if spec.on and spec.keys:
+                msg = (
+                    f"mapping {dim!r} declares `keys`; existence cannot vary "
+                    f"along a classification of another axis"
+                )
+                raise ValueError(msg)
 
         # `TopologicalSorter` only needs preparing to reject a cycle, and
         # `CycleError.args[1]` is the offending path - so the acyclicity `within`
@@ -302,6 +334,15 @@ class Schema(BaseModel):
             ).prepare()
         except CycleError as e:
             msg = f"`within` is cyclic: {' -> '.join(e.args[1])}"
+            raise ValueError(msg) from e
+
+        # A separate graph from `within`, and pointing the other way: `on`
+        # names the dims I classify, so a cycle here is `country on state on
+        # country` rather than a label scoped by its own descendant.
+        try:
+            TopologicalSorter({d: s.on for d, s in self.dimensions.items()}).prepare()
+        except CycleError as e:
+            msg = f"`on` is cyclic: {' -> '.join(e.args[1])}"
             raise ValueError(msg) from e
 
         for attr, attr_spec in self.attributes.items():
@@ -450,6 +491,21 @@ class Schema(BaseModel):
         """
         seen = _ancestors(dim, {d: s.within for d, s in self.dimensions.items()})
         return (*(d for d in self.dims if d in seen), dim)
+
+    def mappings_on(self, dim: str) -> tuple[str, ...]:
+        """Mappings classifying `dim` - the extra columns its axis file carries.
+
+        One column per mapping, named for the mapping rather than for `dim`:
+        `country` declared `on={"bus"}` puts a `country` column on
+        `dims/bus.parquet`. Immediate only, never transitive - a chain is not
+        denormalised, so a bus carries `state` and the country is reached
+        through `dims/state.parquet`.
+
+        Notes
+        -----
+        - [mappings](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#mappings)
+        """
+        return tuple(d for d, s in self.dimensions.items() if dim in s.on)
 
     # -- key and column sets (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/read-path/#owner-map) -----------------------------------
 

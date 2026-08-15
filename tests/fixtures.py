@@ -172,6 +172,22 @@ def write_snapshots(layer: str, rows: list[dict]) -> None:
     df.to_parquet(target / "snapshot.parquet", index=False)
 
 
+def write_axis(layer: str, dim: str, rows: list[dict]) -> None:
+    """Write `dims/<dim>.parquet` from plain rows, whatever columns they carry.
+
+    The generic form of `write_scenarios`/`write_periods`: an axis file is its
+    key column plus whatever else it holds - a mapping's column, an attribute
+    addressed by the axis alone.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    """
+    target = Path(layer, "dims")
+    target.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_parquet(target / f"{dim}.parquet", index=False)
+
+
 def rename_components(n, ctype: str, suffix: str) -> None:
     """Suffix one type's member names, in `static` and every dynamic container.
 

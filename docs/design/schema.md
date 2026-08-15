@@ -8,6 +8,7 @@ class Dimension(BaseModel):
 
     dtype: str  # the axis labels' type
     within: frozenset[str] = frozenset()  # labels unique only within these dims
+    on: frozenset[str] = frozenset()  # dims I classify; a mapping over them
     keys: frozenset[KeyKind] = ...  # entity tables this dim keys
     unit: str | None = None  # what the labels measure, if anything
     description: str | None = None  # what the axis is, in prose
@@ -53,7 +54,7 @@ It is stored and never interpreted, since none of it describes the dimensioned d
 
 Every dim is declared: a record with `region`, `technology` or `vintage` needs no code change, and `dtype` is the axis's own property.
 
-A `Dimension` declares the axis's shape — its type, its [nesting](#within-an-axis-inside-an-axis), [which entity tables it keys](#keys-which-entity-tables-a-dim-keys).
+A `Dimension` declares the axis's shape — its type, its [nesting](#within-an-axis-inside-an-axis), [what it classifies](#on-a-mapping-over-another-axis), [which entity tables it keys](#keys-which-entity-tables-a-dim-keys).
 It does not declare which dims an _attribute_ varies over (that is [per attribute](#attributespec)), nor [the patch granularity](#partial-the-granularity-of-an-override), nor [order](record.md#axis-order).
 
 ## `AttributeSpec`
@@ -136,6 +137,43 @@ Distinct from `AttributeSpec.dims` despite the similar shape: `dims` names _inde
 
 The inner dim is named for the thing it indexes (`timestep`) rather than for the pair (`snapshot`), because once nesting exists the pair needs its own name: a framework consuming the record calls `(period, timestep)` a snapshot.
 
+## `on` — a mapping over another axis
+
+A dim that **classifies** another: each of the classified dim's labels carries exactly one of this one's.
+
+```python
+dimensions = {
+    "bus": Dimension(dtype="str"),
+    "state": Dimension(dtype="str", on={"bus"}),  # each bus is in one state
+    "country": Dimension(dtype="str", on={"state"}),  # each state, one country
+}
+```
+
+The **column lives on the classified axis** — `dims/bus.parquet` gains a `state` column — because that is the side where it is single-valued: one bus has one state, while a state has many buses and could not hold them in a column.
+
+A mapping still has an **axis file of its own**, `dims/state.parquet`. That is what gives it [order](record.md#axis-order) and a place for the attributes addressed by it alone: a per-country CO2 budget is a property of the country, and with no file it would have nowhere to go.
+
+Being a `Dimension`, a mapping **is a dim** — one namespace, addressable by `AttributeSpec.dims` like any axis, and an attribute over `country` carries a literal `country` column.
+
+**A chain is not denormalised.** `dims/bus.parquet` carries `state`, not `state` and `country`. Two files asserting bus→country would let a layer restating `dims/state.parquet` leave every bus's `country` stale with nothing to detect it, so the chain is walked rather than stored — one hop per file, generated on read if a consumer wants it flat.
+
+**The record does not resolve across levels.** An attribute over `country` is handed back keyed by country; projecting it down to buses is a join through the mapping column, and that is the consumer's work. The fold learns no new operation.
+
+Every name in `on` must be a declared dim, and the `on` graph must be acyclic — a separate graph from `within`, pointing the other way.
+
+### Not `within`
+
+Both are dim→dim, both acyclic, both put a column on another dim's file. They mean opposite things:
+
+- **`within`** names my _parents_: my label set is **scoped per parent**, so `t1` in 2015 and `t1` in 2020 are different points and the axis key is `(period, timestep)`.
+- **`on`** names the dims I _classify_: one flat label set, each of their labels picking one of mine. `country` is not scoped by `bus`; it is a partition of buses, and its axis key is `country` alone.
+
+Nesting versus classification. `within` cannot express `country`, and a mapping cannot express `timestep`.
+
+A mapping is **single-valued by construction** — it is a column, so a row has one value. A many-to-many classification is a different thing, and not a mapping.
+
+It also never carries [`keys`](#keys-which-entity-tables-a-dim-keys): membership cannot vary along a classification of another axis, since whether a component exists in Germany is already settled by its bus and that bus's country.
+
 ## `partial` — the granularity of an override
 
 Everything is overridable; a layer exists in order to override.
@@ -210,6 +248,9 @@ One schema outlives many layers ([above](#one-schema-per-record)), so a change t
 - changing a `dtype`
 - removing from `partial`: a layer that patched one value along that axis is now a partial override of an axis owned whole, which is exactly the hole [`partial`](#partial-the-granularity-of-an-override) forbids
 - changing `within`, since the axis key changes shape
+
+Adding a mapping is compatible in the same sense adding a dim is: the classified axis's file gains a column, and until it is rewritten every label reads as unclassified — a NULL, which is what "no country assigned" means anyway.
+
 - adding to a dim's `keys`, since an entity table gains a key column its existing rows do not carry
 
 The compatible changes are those where NULL already means what the new schema needs it to mean, so [the broadcast rule](record.md#the-broadcast-rule) absorbs them without touching a row.

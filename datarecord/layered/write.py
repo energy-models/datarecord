@@ -344,6 +344,10 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
                 f"its labels identify a point only within them (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)"
             )
             raise ValueError(msg)
+        # A mapping's column lives on the axis it classifies, so that file is
+        # where the classification is stored and where its absence shows.
+        # Not required, only checked for type: a record may declare `country`
+        # before any bus is assigned one, and a NULL is "unclassified".
         return
 
     keyed = {
