@@ -231,21 +231,21 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
     if len(tagged) < 2:  # nothing to collide with
         return
     pairs = nw.concat(tagged, how="vertical").unique(["name", "component_type"])
-    clashing = pairs.join(
-        pairs.group_by("name")
-        .agg(nw.col("component_type").n_unique().alias("_types"))
-        .filter(nw.col("_types") > 1)
-        .select("name"),
-        on="name",
-        how="inner",
-    ).collect()
+    clashing = (
+        pairs.join(
+            pairs.group_by("name")
+            .agg(nw.col("component_type").n_unique().alias("_types"))
+            .filter(nw.col("_types") > 1)
+            .select("name"),
+            on="name",
+            how="inner",
+        )
+        .select("name", "component_type")  # the order `iter_rows` unpacks
+        .collect()
+    )
     if not clashing.is_empty():
         by_name: dict[str, list[str]] = {}
-        for name, ctype in zip(
-            clashing["name"].to_list(),
-            clashing["component_type"].to_list(),
-            strict=True,
-        ):
+        for name, ctype in clashing.iter_rows():
             by_name.setdefault(str(name), []).append(str(ctype))
         # Sorted here rather than in the query: the message must be
         # deterministic, and this is a handful of rows.

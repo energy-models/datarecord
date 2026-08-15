@@ -414,7 +414,7 @@ def test_add_rejects_a_name_another_type_already_holds(staged):
     Not left to be discovered: the attribute rows record no type, so two
     components sharing a name would silently share every attribute key.
     """
-    with pytest.raises(ValueError, match="already a Bus"):
+    with pytest.raises(ValueError, match=r"'Manchester' is already a Bus"):
         staged.add(GEN, pd.DataFrame([{"name": "Manchester", "carrier": "solar"}]))
 
 
@@ -425,6 +425,29 @@ def test_add_accepts_a_name_of_its_own_type(staged, root):
     assert (
         PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 5.0
     )
+
+
+def test_a_name_lookup_stays_a_query_until_it_is_filtered(staged):
+    """The type lookup stays lazy, so an edit collects only the names it asks for.
+
+    `set` resolves each named key to its type (§4.3), so a lookup that pulled
+    every name into Python would price one edit at a full resolution.
+    """
+    names = ["Manchester Wind", "Norway Wind"]
+    total = sum(len(staged._resolved_names(ct)) for ct in staged.components)
+    assert total > len(names), "fixture too small for the assertion to mean anything"
+
+    assert isinstance(staged._name_types(), nw.LazyFrame)
+    assert staged._resolve_types(names) == {
+        "Manchester Wind": GEN,
+        "Norway Wind": GEN,
+    }
+
+
+def test_resolve_types_rejects_a_name_no_layer_declares(staged):
+    """A value keyed to a name with no member row is caught, not dropped (§9.8)."""
+    with pytest.raises(KeyError, match="no member row"):
+        staged._resolve_types(["Manchester Wind", "Nowhere"])
 
 
 def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
