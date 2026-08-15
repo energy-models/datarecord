@@ -39,6 +39,10 @@ The same holds in the staging area: `remove` under one type followed by `add` un
 `order_key` is monotonic across the fold history, giving first-introduced order across layers ([axis order](record.md#axis-order)).
 It is assigned pre-union, per layer, because the fold's own output has no order of its own — a bare `row_number()` over what `UNION ALL` returns would scramble which row counts as first.
 
+It is **derived, never stored**: no layer's parquet carries it, and [`write_record`](writing.md) writes no such column.
+The fold computes it from each layer file's own row order, so file order is the input and `order_key` the answer, persisted only where a node's maps are [materialised](layers.md#materialised-node-caches).
+Nothing sorts eagerly either — the maps carry it as a column, and a consumer wanting order applies `ORDER BY order_key`.
+
 `order_key` is on the components and connections maps only; the axes need none, since an axis row's order comes from its file ([axis order](record.md#axis-order)).
 The two carry it for different reasons, and only one is a correctness requirement.
 

@@ -80,6 +80,7 @@ Broadcast form is preserved: a value held once is answered once, so a consumer c
 An axis's order is the row order of its frame in `dims`.
 
 Components and connections are ordered too, in the order they were introduced ([the owner map](read-path.md#owner-map)).
+Order is never a stored column, there as here: a file's row order is the input, and `order_key` is what the fold derives from it to answer "first introduced" across layers.
 
 ## `Frames`
 
