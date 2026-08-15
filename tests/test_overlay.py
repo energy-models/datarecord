@@ -1,4 +1,10 @@
-"""Overlay semantics over a parent/child pair (design doc §6, §10)."""
+"""Overlay semantics over a parent/child pair.
+
+Notes
+-----
+- [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
+- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+"""
 
 import pandas as pd
 import pytest
@@ -22,7 +28,12 @@ def parent(con, base_uri, ac_dc):
 
 
 def test_child_overwrites_component(con, parent):
-    """A child's rows replace all of that component's rows for the attribute (§5.5)."""
+    """A child's rows replace all of that component's rows for the attribute.
+
+    Notes
+    -----
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    """
     child = parent.child()
     write_input(
         layer_dir(child.id),
@@ -57,7 +68,12 @@ def test_child_overwrite_reaches_model(con, parent):
 
 
 def test_tombstone_removes_component(con, parent):
-    """A tombstone removes the component from every attribute and dimension (§6.3)."""
+    """A tombstone removes the component from every attribute and dimension.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
     child = parent.child()
     tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
 
@@ -86,7 +102,12 @@ def test_child_adds_attribute(con, parent):
 
 
 def test_sibling_branch_unaffected(con, parent):
-    """A tombstone only affects the branch that carries it (§6.3)."""
+    """A tombstone only affects the branch that carries it.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
     deleting = parent.child()
     tombstone(layer_dir(deleting.id), "Generator", ["Norway Gas"])
     sibling = parent.child()
@@ -120,10 +141,14 @@ def test_grandchild_resolves_through_ancestry(con, parent):
 
 
 def test_closed_child_reads_own_node_cache(con, parent):
-    """Reading a closed non-root record uses its own persisted dims/manifest/map (§6.2).
+    """Reading a closed non-root record uses its own persisted dims/manifest/map.
 
     Its `ancestry_since_closed` is just itself, so the raw layer (which has
     no `dims/` or `manifest.json` of its own here) cannot be the source.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     child = parent.child()
     write_input(
@@ -142,18 +167,27 @@ def test_closed_child_reads_own_node_cache(con, parent):
 
 
 def test_outputs_do_not_overlay(con, parent):
-    """Results come from the node's own layer only (§7.4)."""
+    """Results come from the node's own layer only.
+
+    Notes
+    -----
+    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+    """
     child = parent.child()
     assert outputs(child, "p").df().empty
 
 
 def test_a_new_attribute_is_a_schema_amendment(con, parent):
-    """Adding an attribute amends the record's one schema, not a layer's (§5.6).
+    """Adding an attribute amends the record's one schema, not a layer's.
 
     A schema is not layered data: folding it would let a layer redefine what
     an attribute means, and make the schema unknowable without walking the
     ancestry. So the amendment lands beside the layers, and every layer in the
     tree - including ones already written - is read under it.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     amended = read_schema()
     amended.attributes["Generator"]["p_min_pu"] = AttributeSpec(
@@ -162,7 +196,7 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     write_schema(amended)
 
     # Adding an attribute is compatible, so the layers written before the
-    # amendment stay readable (§5.7).
+    # amendment stay readable (https://energy-models.github.io/datarecord/design/schema/#versioning).
     assert amended.compatible_with(read_schema()) == []
 
     child = parent.child()
@@ -179,7 +213,13 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
 
 
 def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
-    """A layer cannot redefine what an attribute means (§5.6, §5.7)."""
+    """A layer cannot redefine what an attribute means.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    """
     narrowed = read_schema()
     narrowed.attributes["Generator"]["p_max_pu"] = AttributeSpec(
         dtype="DOUBLE", dims=frozenset()
@@ -205,11 +245,16 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
 
 def test_member_order_survives_closed_intermediate(con, parent, ac_dc):
     """Component order still follows the true owning layer through a closed
-    intermediate node that changes nothing about membership (§6.2, §7.1).
+    intermediate node that changes nothing about membership.
 
     `members()` resolves straight from the owner map's `order_key`, not from
     a per-file depth lookup over `ancestry_since_closed` - which wouldn't
     even find `parent` here, since `middle` sits between it and `grandchild`.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     middle = parent.child()
     middle.materialise()

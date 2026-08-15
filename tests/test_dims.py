@@ -1,8 +1,12 @@
-"""Layer keys beyond `scenario`, resolved through a real record (design doc §5.5).
+"""Layer keys beyond `scenario`, resolved through a real record.
 
 What `partial` and `keys` *mean* as declarations is pinned in
 `test_schema.py`; here they are written into a layer and the fold is asked
 whether it keyed by them.
+
+Notes
+-----
+- [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
 """
 
 from datarecord import Revision
@@ -54,10 +58,14 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
 
 
 def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_dc):
-    """Deletion always acts on the whole component, never scoped to a period (§6.3).
+    """Deletion always acts on the whole component, never scoped to a period.
 
     `period` is `partial` but keys nothing, so it never reaches the
     components map's key - which is what makes the tombstone unscoped.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
@@ -74,10 +82,14 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
 def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     """A child's own map is unioned with the parent's by name, not by position.
 
-    One schema serves the whole tree (§5.6), so the dim *order* is fixed - but
+    One schema serves the whole tree, so the dim *order* is fixed - but
     the parent's map is read from a persisted parquet file whose column order
     is its own, so the union must still be `UNION ALL BY NAME`. Positional
     would swap `scenario` and `period` here, which the values below would show.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
@@ -118,7 +130,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     assert wind["period"].tolist() == [2030]
 
 
-# -- nesting (§5.4) ----------------------------------------------------------
+# -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------
 
 _NESTED_DIMS = {"snapshot": "TIMESTAMP", "period": "BIGINT", "scenario": "VARCHAR"}
 _NESTED_WITHIN = {"snapshot": {"period"}}
@@ -127,9 +139,13 @@ _NESTED_WITHIN = {"snapshot": {"period"}}
 def test_a_nested_axis_keeps_a_label_per_parent(con, base_uri):
     """`snapshot within period` keys the axis by the pair, not the timestamp.
 
-    Two periods holding the same timestamp are two points (§5.4): `t1` alone
+    Two periods holding the same timestamp are two points: `t1` alone
     names nothing once the axis is nested, so folding by the label would
     collapse them into one row.
+
+    Notes
+    -----
+    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
     revision = Revision.create(con)
     write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN))

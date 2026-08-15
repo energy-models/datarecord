@@ -1,4 +1,10 @@
-"""The scenario axis and per-scenario overlay (design doc §5.5, §10)."""
+"""The scenario axis and per-scenario overlay.
+
+Notes
+-----
+- [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+"""
 
 from pathlib import Path
 
@@ -24,8 +30,12 @@ def stochastic():
     """PyPSA's `stochastic_network`, with its generators renamed off their carriers.
 
     The example names each `Generator` after its `Carrier`, which collides in a
-    record (§4.3). The generators move rather than the carriers, since the
+    record. The generators move rather than the carriers, since the
     `carrier` attribute *values* reference the carrier names.
+
+    Notes
+    -----
+    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
     """
     import pypsa
 
@@ -50,7 +60,12 @@ def test_scenario_roundtrip(con, parent, stochastic):
 
 
 def test_map_is_scenario_expanded(con, parent, stochastic):
-    """A NULL-scenario row becomes one map entry per scenario (§5.5)."""
+    """A NULL-scenario row becomes one map entry per scenario.
+
+    Notes
+    -----
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    """
     df = parent.node_cache.inputs.df()
     assert set(df["scenario"]) == set(stochastic.scenarios)
 
@@ -94,14 +109,19 @@ def test_partial_scenario_override(con, parent, stochastic):
 
 
 def test_per_scenario_tombstone(con, parent, stochastic):
-    """A tombstone in one scenario leaves the component in the others (§6.3)."""
+    """A tombstone in one scenario leaves the component in the others.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
     scenario = stochastic.scenarios[0]
     child = parent.child()
     tombstone(layer_dir(child.id), "Generator", ["solar Gen"], scenario=scenario)
 
     df = child.node_cache.inputs.df()
     # No type scoping needed: the generator is "solar Gen" and the carrier
-    # "solar", names being unique across types (§4.3) - which is exactly what
+    # "solar", names being unique across types (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types) - which is exactly what
     # used to require filtering on `component_type` here.
     solar = df[df["name"] == "solar Gen"]
     assert scenario not in set(solar["scenario"])
@@ -109,7 +129,13 @@ def test_per_scenario_tombstone(con, parent, stochastic):
 
 
 def test_child_adds_new_scenario(con, parent, stochastic):
-    """A child may add a scenario the root never declared (§6, §6.2)."""
+    """A child may add a scenario the root never declared.
+
+    Notes
+    -----
+    - [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    """
     child = parent.child()
     write_scenarios(
         layer_dir(child.id),
@@ -141,7 +167,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
 
 
 def test_scenario_order_survives_a_chain_of_closed_layers(con, parent, stochastic):
-    """Axis row order stays root-first, then each layer's own append order (§6.2, §7.1).
+    """Axis row order stays root-first, then each layer's own append order.
 
     `fold_axis` tags each layer's row order (`_row`) before the cross-layer
     `UNION ALL` in `union_all_by_name`, not after: a bare `row_number()` on
@@ -149,6 +175,11 @@ def test_scenario_order_survives_a_chain_of_closed_layers(con, parent, stochasti
     silently permute which scenario counts as "first introduced". A single
     child is too small a union to expose this: chain several closed layers,
     each adding one new scenario, to stress the fold across many arms.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     rec = parent
     added = []
@@ -164,7 +195,12 @@ def test_scenario_order_survives_a_chain_of_closed_layers(con, parent, stochasti
 
 
 def test_resolved_dims_are_node_scoped(con, parent, stochastic):
-    """Closing writes the resolved scenario axis to the node cache, not the layer (§6.2)."""
+    """Closing writes the resolved scenario axis to the node cache, not the layer.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    """
     middle = parent.child()
     middle.materialise()
 

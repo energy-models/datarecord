@@ -20,12 +20,20 @@ Contribution rules and conventions for datarecord.
 - Write tests for new features and bug fixes under `tests/` as `test_*.py`,
   reusing the shared fixtures in `tests/fixtures.py` and `tests/conftest.py`
   where useful. Run the tests after making changes and make sure they pass.
-- [`docs/design-documents/data-records.md`](docs/design-documents/data-records.md)
-  is the authoritative design. Cite its `§N` sections from docstrings rather
-  than restating the argument — a comment that re-argues the design is a defect.
-  When behaviour changes, update the section, not just the code.
-- No tool import may leak into core `datarecord` (§11): everything framework-
-  specific lives under `datarecord/tools/` behind an optional extra.
+- [`docs/design/`](docs/design/) is the authoritative design, published at
+  <https://energy-models.github.io/datarecord/design/>. Cite its pages from a
+  docstring's numpydoc `Notes` section rather than restating the argument — a
+  comment that re-argues the design is a defect. When behaviour changes, update
+  the page, not just the code. (`Notes`, not `References`: numpydoc discourages
+  web links under `References` and expects entries there to augment a docstring
+  rather than be required to understand it, which these are.)
+- Documentation is mkdocs: `pixi run -e docs docs` serves it locally, and
+  `pixi run -e docs docs-build` is the strict build CI runs, which fails on a
+  broken cross-reference.
+- No tool import may leak into core `datarecord`
+  ([module layout](https://energy-models.github.io/datarecord/design/module-layout/)):
+  everything framework-specific lives under `datarecord/tools/` behind an
+  optional extra.
 
 ## Architecture in one paragraph
 

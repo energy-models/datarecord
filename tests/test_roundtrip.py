@@ -1,4 +1,9 @@
-"""Single-layer read path: our DuckDB reader against PyPSA's own (design doc §10)."""
+"""Single-layer read path: our DuckDB reader against PyPSA's own.
+
+Notes
+-----
+- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+"""
 
 from pathlib import Path
 
@@ -23,7 +28,7 @@ def _has_export_to_parquet() -> bool:
 
 needs_export_to_parquet = pytest.mark.skipif(
     not _has_export_to_parquet(),
-    reason="needs PyPSA's own parquet reader/writer, unreleased (§10)",
+    reason="needs PyPSA's own parquet reader/writer, unreleased (https://energy-models.github.io/datarecord/design/tools/)",
 )
 
 
@@ -76,10 +81,14 @@ def test_roundtrip_matches_pypsa_reader(con, base_uri, single_revision, ac_dc):
     """Our reader agrees with `import_from_parquet` on the network each produces.
 
     Not over the same directory: a record blocks writes declares its schema in
-    `manifest.json` (§5.6), which is a different vocabulary from the one
+    `manifest.json`, which is a different vocabulary from the one
     PyPSA's own reader expects there. So each writer's record is read by its
     own reader and the two networks are compared - which is the property that
     actually matters, and the one a shared directory was only a proxy for.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     import pypsa
 
@@ -97,7 +106,12 @@ def test_roundtrip_matches_original(con, base_uri, single_revision, ac_dc):
 
 
 def test_static_series_split_preserved(con, base_uri, single_revision):
-    """A static-valued varying attribute stays out of `dynamic` (§10)."""
+    """A static-valued varying attribute stays out of `dynamic`.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    """
     n = PyPSA.build(single_revision.record)
     # Only the three wind generators carry a p_max_pu series in ac_dc_meshed.
     assert set(n.c["Generator"].dynamic["p_max_pu"].columns) == {

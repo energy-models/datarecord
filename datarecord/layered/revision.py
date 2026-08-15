@@ -1,9 +1,15 @@
-"""The `Revision` node and its ancestry query (design doc §6).
+"""The `Revision` node and its ancestry query.
 
 A thin façade over `resolve`: it holds the node's identity and reads the
 `revisions` table, knowing nothing about owner maps or parquet layers. A node
 has no state beyond its place in the tree - whether its caches are materialised
-is a filesystem question, answered by `resolve.materialised` (§6.1, §6.2).
+is a filesystem question, answered by `resolve.materialised`.
+
+Notes
+-----
+- [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
+- [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+- [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
 """
 
 from dataclasses import dataclass
@@ -54,11 +60,15 @@ def _fetch(con: DuckDBPyConnection, revision_id: UUID) -> tuple[UUID, UUID | Non
 
 
 def ancestry(con: DuckDBPyConnection, revision_id: UUID) -> list[UUID]:
-    """Revision ids along the root->node path, root first - resolution order (§6.2).
+    """Revision ids along the root->node path, root first - resolution order.
 
     The whole path. Truncating it at the nearest materialised node is the
     reader's business (`resolve.ancestry_to_read`), since whether a node's
     caches exist is a fact about the filesystem rather than about the tree.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     return [r[0] for r in con.execute(_ANCESTRY, [revision_id]).fetchall()]
 
@@ -67,7 +77,7 @@ class Revision(BaseModel):
     """A node in the tree of layers.
 
     Each revision adds one parquet layer on top of its parent's; the record it
-    resolves to is that layer over its ancestors' (§6). The layer location
+    resolves to is that layer over its ancestors'. The layer location
     derives from `id` via `layer_dir`, it is not stored.
 
     Holds the connection it was created/loaded with (`con`), so every method
@@ -75,6 +85,10 @@ class Revision(BaseModel):
     attribute, not a field: it never round-trips through (de)serialization
     (e.g. across a Prefect process boundary) - a revision that comes back
     without one lazily reattaches the process-level default on next access.
+
+    Notes
+    -----
+    - [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
     """
 
     id: UUID
@@ -91,12 +105,17 @@ class Revision(BaseModel):
 
     @property
     def node_cache(self) -> NodeCache:
-        """This record's `NodeCache`, built once from its ancestry (§6.2).
+        """This record's `NodeCache`, built once from its ancestry.
 
         The ancestry is truncated at the deepest materialised ancestor, so a
         deep tree resolves from few entries. Cached rather than rebuilt per
-        call: layers are write-once (§6.1), so the only thing that can change
+        call: layers are write-once, so the only thing that can change
         the truncation point is `materialise`, which clears this itself.
+
+        Notes
+        -----
+        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
         if self._node_cache is None:
             full = ancestry(self.con, self.id)
@@ -106,12 +125,17 @@ class Revision(BaseModel):
 
     @property
     def record(self) -> "LayeredRecord":
-        """This revision's resolved overlay as a `Record` (§7.3).
+        """This revision's resolved overlay as a `Record`.
 
         The framework-agnostic view of a record: the same interface a plain
         parquet directory satisfies, so a consumer need not know the record is
         an overlay at all. `node_cache` remains the DuckDB-shaped view, which
-        `datarecord.tools` still builds from (§10).
+        `datarecord.tools` still builds from.
+
+        Notes
+        -----
+        - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
         return LayeredRecord(self.node_cache)
 
@@ -138,19 +162,27 @@ class Revision(BaseModel):
         return record
 
     def child(self) -> Self:
-        """Branch a new revision off this one (§6.1).
+        """Branch a new revision off this one.
 
         Any node may be a parent: a layer is write-once, so a base cannot
         shift under its descendants.
+
+        Notes
+        -----
+        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
         """
         return type(self).create(self.con, parent=self.id)
 
     def materialise(self) -> None:
-        """Write this node's caches - owner maps and resolved dims (§6.2).
+        """Write this node's caches - owner maps and resolved dims.
 
         A policy rather than a lifecycle step, and purely additive: it changes
         no answer, only how many layers a descendant's read touches. Once these
         exist, a read stops here instead of walking further up.
+
+        Notes
+        -----
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
         resolve.materialise(self.id, self.node_cache.ancestry, self.con)
         self._node_cache = None
@@ -158,17 +190,27 @@ class Revision(BaseModel):
     # -- read ---------------------------------------------------------------
 
     def ancestry(self) -> list[UUID]:
-        """Revision ids along the root->self path, root first (§6.2)."""
+        """Revision ids along the root->self path, root first.
+
+        Notes
+        -----
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+        """
         return ancestry(self.con, self.id)
 
 
 @dataclass(frozen=True)
 class LayeredRecord:
-    """A record's resolved overlay, as a `Record` (§7.3).
+    """A record's resolved overlay, as a `Record`.
 
     The protocol's shape over `NodeCache`, not a second implementation of it, so
     a member costs what the equivalent `NodeCache` call costs - `flags` in
-    particular is free, the owner map having folded it in (§7.1).
+    particular is free, the owner map having folded it in.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
     """
 
     node_cache: NodeCache
@@ -212,7 +254,12 @@ class LayeredRecord:
         )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Straight off the `inputs` owner map, which folded these in for free (§7.1)."""
+        """Straight off the `inputs` owner map, which folded these in for free.
+
+        Notes
+        -----
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        """
         return {
             attribute: Flags(varies, broadcast, breakpoints)
             for attribute, (varies, broadcast, breakpoints) in (
@@ -220,7 +267,7 @@ class LayeredRecord:
             )
         }
 
-    # -- frames, ordered by the map's `order_key` (§7.3) ---------------------
+    # -- frames, ordered by the map's `order_key` (https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations) ---------------------
 
     def _component_frame(self, ctype: str) -> nw.LazyFrame:
         return self._ordered(self.node_cache.component_frame(ctype), ctype)
@@ -233,7 +280,11 @@ class LayeredRecord:
 
         The fold's own output has no order (its union puts a layer's own
         contribution first), so the order a `Record` promises is imposed here.
-        `order_key` stays in the frame rather than being projected away (§7.1).
+        `order_key` stays in the frame rather than being projected away.
+
+        Notes
+        -----
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         if rel is None:
             raise KeyError(ctype)

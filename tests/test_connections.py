@@ -1,4 +1,9 @@
-"""Connections as bus-keyed rows, and `bus` in the inputs key (design doc §3.2)."""
+"""Connections as bus-keyed rows, and `bus` in the inputs key.
+
+Notes
+-----
+- [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+"""
 
 import pytest
 from pydantic import ValidationError
@@ -70,7 +75,7 @@ def test_connections_resolve_in_order(con, base_uri):
     frame = _connections(revision).order("order_key").df()
     assert list(frame["bus"]) == ["h2_north", "iron_ore", "dri"]
     # `role` describes the connection rather than keying it, so it rides along
-    # from the owning layer's file (§3.2).
+    # from the owning layer's file (https://energy-models.github.io/datarecord/design/record/#connections).
     assert list(frame["role"]) == ["input", "input", "output"]
 
 
@@ -163,7 +168,12 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
 
 
 def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri):
-    """`bus` extends the key; it does not displace the dims (§3.2)."""
+    """`bus` extends the key; it does not displace the dims.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
@@ -203,7 +213,7 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
     # Both sets hold `snapshot`: one connection's efficiency is per-snapshot,
     # another's is a single broadcast row, and the union over the type's names
     # reports both - which is what tells a consumer one container will not do
-    # (§3.6). A per-connection attribute needs no special case for this.
+    # (https://energy-models.github.io/datarecord/design/record/#flags). A per-connection attribute needs no special case for this.
     assert "snapshot" in flags.varies
     assert "snapshot" in flags.broadcast
     assert not flags.breakpoints
@@ -226,7 +236,12 @@ def test_connection_tombstone_removes_one_connection(con, base_uri):
 
 
 def test_component_tombstone_removes_every_connection(con, base_uri):
-    """Deleting the component takes its connections and all their rows (§6.3)."""
+    """Deleting the component takes its connections and all their rows.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
     root = _root(con)
     root.materialise()
 
@@ -238,7 +253,12 @@ def test_component_tombstone_removes_every_connection(con, base_uri):
 
 
 def test_connection_exists_per_scenario(con, base_uri):
-    """`scenario` keys connections here, so a tombstone can scope to one (§5.3)."""
+    """`scenario` keys connections here, so a tombstone can scope to one.
+
+    Notes
+    -----
+    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
+    """
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
@@ -265,17 +285,22 @@ def test_connection_exists_per_scenario(con, base_uri):
 
 
 def test_a_connection_key_must_be_partial(con, base_uri):
-    """The one rule the format fixes, applied to the third key too (§3.2).
+    """The one rule the format fixes, applied to the third key too.
 
     A connection exists per value of a keying dim, so a tombstone selects by
-    it - which needs the dim to be one a layer patches value by value (§5.3).
+    it - which needs the dim to be one a layer patches value by value.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
     """
     with pytest.raises(ValidationError, match="not `partial`"):
         schema(partial=set(), keys={"scenario": {"connection"}})
 
 
 @pytest.mark.xfail(
-    reason="Open question, design doc §12, deliberately unresolved: a component "
+    reason="Open question, deliberately unresolved: a component "
     "tombstone scoped to one scenario removes a connection that is not "
     "scenario-scoped, even though the component survives in another scenario. "
     "Deciding it needs the folded components map, which `fold_connections` cannot "
@@ -285,11 +310,15 @@ def test_a_connection_key_must_be_partial(con, base_uri):
     strict=True,
 )
 def test_narrower_connection_key_than_component_key(con, base_uri):
-    """`component_dims` may exceed `connection_dims`; that is a model, not an error (§3.2).
+    """`component_dims` may exceed `connection_dims`; that is a model, not an error.
 
     Components are deleted per scenario while connection existence does not
     vary by scenario at all, so a component tombstone in one scenario should
     leave the connection to the scenarios the component still has.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     revision = Revision.create(con)
     layer = layer_dir(revision.id)

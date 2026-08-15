@@ -1,4 +1,9 @@
-"""The typed schema: declarations, derived keys, validation, versioning (§5)."""
+"""The typed schema: declarations, derived keys, validation, versioning.
+
+Notes
+-----
+- [the schema](https://energy-models.github.io/datarecord/design/schema/)
+"""
 
 import pytest
 from pydantic import ValidationError
@@ -37,7 +42,7 @@ def _schema(**overrides) -> Schema:
     return Schema(**kwargs)
 
 
-# -- derived keys (§5.5) -----------------------------------------------------
+# -- derived keys (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) -----------------------------------------------------
 
 
 def test_ownership_is_derived_not_declared():
@@ -72,14 +77,19 @@ def test_input_dims_is_the_union_over_attributes():
 
 
 def test_file_split_follows_dims():
-    """Varying over nothing is what puts an attribute in `dims/components/` (§5.2)."""
+    """Varying over nothing is what puts an attribute in `dims/components/`.
+
+    Notes
+    -----
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    """
     s = _schema()
     assert not s.attributes["Generator"]["p_nom"].varying
     assert not s.attributes["Generator"]["carrier"].varying
     assert s.attributes["Generator"]["p_max_pu"].varying
 
 
-# -- membership keys (§5.3) --------------------------------------------------
+# -- membership keys (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys) --------------------------------------------------
 
 
 def test_keys_are_per_dim_not_per_attribute():
@@ -95,7 +105,7 @@ def test_a_membership_key_must_be_partial():
         _schema(partial=frozenset())
 
 
-# -- nesting (§5.4) ----------------------------------------------------------
+# -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------
 
 
 def test_axis_key_is_parents_then_dim():
@@ -107,7 +117,12 @@ def test_axis_key_is_parents_then_dim():
 
 
 def test_nesting_is_transitive():
-    """Naming a parent pulls in that parent's own parents (§5.4)."""
+    """Naming a parent pulls in that parent's own parents.
+
+    Notes
+    -----
+    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
+    """
     s = Schema(
         dimensions={
             "horizon": Dimension(dtype="BIGINT"),
@@ -160,18 +175,22 @@ def test_an_attribute_cannot_vary_over_an_undeclared_dim():
         )
 
 
-# -- defaults through the manifest (§5.2, §5.6) ------------------------------
+# -- defaults through the manifest (https://energy-models.github.io/datarecord/design/schema/#attributespec, https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ------------------------------
 
 
 @pytest.mark.parametrize("value", [float("inf"), float("-inf"), 0.0, None, "AC"])
 def test_a_default_survives_the_manifest_round_trip(value):
-    """An `inf` default must read back as `inf`, not as "no default" (§5.2).
+    """An `inf` default must read back as `inf`, not as "no default".
 
     JSON has no literal for a non-finite float, and pydantic's own serialiser
     emits `null` for one - which would silently turn an unbounded capacity into
     an absent bound. PyPSA declares `inf` defaults (`p_nom_max`), so this is the
     ordinary case rather than an edge one, and it is only the encoding in
     `AttributeSpec` that keeps it.
+
+    Notes
+    -----
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
     """
     schema = Schema(
         dimensions={"scenario": Dimension(dtype="VARCHAR")},
@@ -183,7 +202,7 @@ def test_a_default_survives_the_manifest_round_trip(value):
     assert repr(back.attributes["Generator"]["p_nom_max"].default) == repr(value)
 
 
-# -- versioning (§5.7) -------------------------------------------------------
+# -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) -------------------------------------------------------
 
 
 def test_adding_an_attribute_is_compatible():
@@ -251,11 +270,16 @@ def test_changing_nesting_is_incompatible():
     assert any("nesting changed" in r for r in reasons)
 
 
-# -- unit and description (§5.8) ---------------------------------------------
+# -- unit and description (https://energy-models.github.io/datarecord/design/schema/#unit-and-description) ---------------------------------------------
 
 
 def test_unit_and_description_are_declared_on_both():
-    """An axis may carry them too, not just an attribute (§5.8)."""
+    """An axis may carry them too, not just an attribute.
+
+    Notes
+    -----
+    - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
+    """
     s = Schema(
         dimensions={
             "vintage": Dimension(
@@ -278,13 +302,23 @@ def test_unit_and_description_are_declared_on_both():
 
 
 def test_undeclared_is_none_not_empty():
-    """`None` is "undeclared", `""` is "genuinely dimensionless" (§5.8)."""
+    """`None` is "undeclared", `""` is "genuinely dimensionless".
+
+    Notes
+    -----
+    - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
+    """
     assert AttributeSpec(dtype="DOUBLE").unit is None
     assert AttributeSpec(dtype="DOUBLE", unit="").unit == ""
 
 
 def test_changing_a_unit_is_compatible():
-    """Neither field decides how a row decodes, so editing one is compatible (§5.7)."""
+    """Neither field decides how a row decodes, so editing one is compatible.
+
+    Notes
+    -----
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    """
     old = _schema()
     new = _schema()
     spec = new.attributes["Generator"]["p_nom"]
@@ -294,7 +328,7 @@ def test_changing_a_unit_is_compatible():
     assert new.compatible_with(old) == []
 
 
-# -- serialisation (§5.6) ----------------------------------------------------
+# -- serialisation (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ----------------------------------------------------
 
 
 def test_round_trips_through_json():
@@ -308,7 +342,7 @@ def test_column_types_cover_structural_dims_and_flags():
     s = _schema()
     assert s.column_type("component_type") == "VARCHAR"
     assert s.column_type("timestep") == "TIMESTAMP"
-    # One struct per flag column, a BOOLEAN field per declared dim (§7.1), so
+    # One struct per flag column, a BOOLEAN field per declared dim (https://energy-models.github.io/datarecord/design/read-path/#owner-map), so
     # the map's column set does not widen when a dim is declared.
     for column in ("varies", "broadcast"):
         column_type = s.column_type(column)
@@ -320,18 +354,27 @@ def test_column_types_cover_structural_dims_and_flags():
 
 
 def test_attributes_need_at_least_one_dim():
-    """Attribute data varying over no axis is a table, not a record (§5.1).
+    """Attribute data varying over no axis is a table, not a record.
 
     Rejected at the schema rather than handled in the fold: the owner map's
     flag columns are structs with a field per dim, and DuckDB has no empty
     struct - so forbidding the case is what keeps a placeholder field out of
     every fold.
+
+    Notes
+    -----
+    - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
     """
     with pytest.raises(ValidationError, match="at least one dim"):
         Schema(attributes={"Generator": {"p_nom": AttributeSpec(dtype="DOUBLE")}})
 
 
 def test_a_schema_declaring_nothing_stays_legal():
-    """`Schema()` is "no manifest yet" (§5.6), not a claim that there are no axes."""
+    """`Schema()` is "no manifest yet", not a claim that there are no axes.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    """
     assert Schema().dims == ()
     assert Schema().attributes == {}

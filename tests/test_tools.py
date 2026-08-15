@@ -1,4 +1,9 @@
-"""The tool layer: verify a record, build a model, read results back (design doc §10)."""
+"""The tool layer: verify a record, build a model, read results back.
+
+Notes
+-----
+- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,7 +46,11 @@ def test_the_record_layer_imports_no_tool():
     """`datarecord` is framework-free: reading a record never imports PyPSA.
 
     The call runs from the tool inward (`PyPSA.build(revision.record)`), so there is no
-    registry and no name dispatch to drag a framework in (§10).
+    registry and no name dispatch to drag a framework in.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     import subprocess
     import sys
@@ -73,7 +82,12 @@ def test_requires_reports_the_records_own_types(single_revision):
 
 
 def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
-    """A schema that declares no `scenario` dim cannot build a network (§10)."""
+    """A schema that declares no `scenario` dim cannot build a network.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     _with_schema(revision, dims={"snapshot": "TIMESTAMP"}, partial=set(), keys={})
@@ -92,7 +106,12 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     The record layer stores `component_type` as a plain `VARCHAR` - the
     vocabulary belongs to a framework, and the record layer knows none - so an
     unknown type reads back fine and it is this tool's business that it cannot
-    be built (§5, §10). `Requirements.component_types` is what carries it.
+    be built. `Requirements.component_types` is what carries it.
+
+    Notes
+    -----
+    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
@@ -121,8 +140,12 @@ def _with_schema(revision, **kwargs) -> None:
     """Redeclare the record's schema, keeping the attributes it already declares.
 
     Written directly rather than through `write_record`, which would reject an
-    incompatible redeclaration (§5.7) - here the point is to hand the tool a
+    incompatible redeclaration - here the point is to hand the tool a
     schema it must report on rather than one the writer accepted.
+
+    Notes
+    -----
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     was = read_schema()
     now = schema(**kwargs).model_copy(
@@ -138,8 +161,12 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
     static/series split needs a component's whole series for an attribute to
     come from one layer, so a stored `snapshot = NULL` broadcast row and a
     descendant's per-snapshot row would coexist with no single container to
-    put the result in (§5.5). The record layer therefore permits the
+    put the result in. The record layer therefore permits the
     declaration - every file does carry the column - and the tool catches it.
+
+    Notes
+    -----
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
     revision = Revision.create(con)
     write_schema(PyPSA.to_datarecord(ac_dc).schema)
@@ -169,10 +196,14 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
 def test_write_record_rejects_a_key_dim_no_frame_carries(con, base_uri, ac_dc, kwargs):
     """A declared key dim needs a column in every frame, or the layer is refused.
 
-    The invariant the read path relies on (§5.3): the fold keys by these
+    The invariant the read path relies on: the fold keys by these
     columns, so a record missing one would resolve as though the dim were
     broadcast everywhere. Caught at the boundary, which is why no tool
     re-checks it.
+
+    Notes
+    -----
+    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
     """
     source = PyPSA.to_datarecord(ac_dc)
     declared = schema(**kwargs).model_copy(
@@ -199,7 +230,7 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     # A Generator member carrying no `bus` column at all, no connection row
-    # supplying one (§3.2), and a schema with no default for it either.
+    # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
     write_components(layer_dir(revision.id), "Generator", [{"name": "g1"}])
     Path(layer_dir(revision.id), "dims", "connections", "Generator.parquet").unlink()
     _without_default(revision, "Generator", "bus")
@@ -211,7 +242,12 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
 def test_verify_accepts_a_declared_default_for_a_required_attribute(
     con, base_uri, ac_dc
 ):
-    """A declared default makes an attribute resolvable with no row anywhere (§5.2)."""
+    """A declared default makes an attribute resolvable with no row anywhere.
+
+    Notes
+    -----
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     write_components(layer_dir(revision.id), "Generator", [{"name": "g1"}])
@@ -222,7 +258,12 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(
 
 
 def test_verify_reports_a_piecewise_linear_attribute(con, base_uri, ac_dc):
-    """A curve is stored correctly; it is the PyPSA translation that cannot express it (§3.1)."""
+    """A curve is stored correctly; it is the PyPSA translation that cannot express it.
+
+    Notes
+    -----
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+    """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     write_input(
@@ -256,11 +297,16 @@ def test_verify_accepts_a_scalar_attribute(single_revision):
 
 
 def test_to_datarecord_rejects_a_cross_type_name_collision():
-    """PyPSA scopes names per type; a record scopes them across every type (§4.3, §10).
+    """PyPSA scopes names per type; a record scopes them across every type.
 
     Reported rather than repaired: renaming to `Generator:north` would hand back
     a network whose components PyPSA can no longer find by their own names, so
     the mismatch is the caller's to reconcile.
+
+    Notes
+    -----
+    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     import pypsa
 
@@ -301,10 +347,14 @@ def test_a_stochastic_network_is_not_a_false_collision():
 
 
 def test_pypsa_schema_is_the_identity(single_revision):
-    """PyPSA defines the record vocabulary today, so nothing is renamed (§10).
+    """PyPSA defines the record vocabulary today, so nothing is renamed.
 
     The seam still routes every attribute, so an entry added later takes
     effect with no change to `build`.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     assert PyPSA.schema.attrs == {}
     assert PyPSA.schema.sources("Generator", "p_max_pu") == ("p_max_pu",)
@@ -339,7 +389,12 @@ def test_schema_renames_and_computes():
 
 
 def test_results_extracts_long_form_outputs(single_revision):
-    """A solved network's results come back keyed by attribute, long-form (§10)."""
+    """A solved network's results come back keyed by attribute, long-form.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    """
     n = PyPSA.build(single_revision.record)
     n.optimize(solver_name="highs")
 
@@ -348,11 +403,11 @@ def test_results_extracts_long_form_outputs(single_revision):
     assert "p_nom_opt" in results
 
     # Narwhals frames, so the seam names no one dataframe library, and lazy so a
-    # tool may fetch on demand (§10).
+    # tool may fetch on demand (https://energy-models.github.io/datarecord/design/tools/).
     assert isinstance(results["p"], nw.LazyFrame)
     p = results["p"].collect()
-    # The long schema's columns (§3), so the write path can persist it as-is -
-    # and no `component_type`, an attribute row being keyed by `name` (§4.3).
+    # The long schema's columns (https://energy-models.github.io/datarecord/design/record/), so the write path can persist it as-is -
+    # and no `component_type`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
     assert {"name", "snapshot", "scenario", "period", "value"} <= set(p.columns)
     assert "component_type" not in p.columns
     assert set(p["attribute"].to_list()) == {"p"}
@@ -372,7 +427,12 @@ def test_results_extracts_long_form_outputs(single_revision):
 
 
 def test_results_concatenate_every_type_under_one_attribute(single_revision):
-    """One `p` frame holds every type's rows, matching `outputs/p.parquet` (§3.6)."""
+    """One `p` frame holds every type's rows, matching `outputs/p.parquet`.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    """
     n = PyPSA.build(single_revision.record)
     n.optimize(solver_name="highs")
 
@@ -381,7 +441,7 @@ def test_results_concatenate_every_type_under_one_attribute(single_revision):
     # `p` is a result of several types, so the concat is what is being tested;
     # keying by `(type, attribute)` would have split these into separate frames.
     # The names identify which type each row came from, no tag column needed -
-    # that being what unique names buy the union (§4.3).
+    # that being what unique names buy the union (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
     contributing = {
         c.name
         for c in n.components
@@ -392,7 +452,12 @@ def test_results_concatenate_every_type_under_one_attribute(single_revision):
 
 
 def test_results_skips_outputs_still_at_their_default(single_revision):
-    """An unsolved network yields no `p`/`p_nom_opt` rows (§7.4 default rule)."""
+    """An unsolved network yields no `p`/`p_nom_opt` rows (the outputs default rule).
+
+    Notes
+    -----
+    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+    """
     n = PyPSA.build(single_revision.record)
     results = PyPSA.results(n)
     assert "p" not in results
@@ -404,7 +469,11 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
 
     No registration and no name dispatch: conformance to `Tool` is structural,
     so a second framework's module defines its own singleton and callers import
-    it (§10).
+    it.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     from datarecord.tools.base import Tool
 
@@ -456,7 +525,7 @@ def test_schema_dims_stay_generic(con, base_uri, ac_dc):
     dims = revision.node_cache.dims
     assert "vintage" in dims.schema.dims
     # No axis rows anywhere, so the dim is absent from the mapping rather than
-    # present-and-empty (§3.5).
+    # present-and-empty (https://energy-models.github.io/datarecord/design/record/#frames).
     assert "vintage" not in dims.axes
     # PyPSA's own required dims are still satisfied, and the extra dim is
     # simply not something the tool looks at.

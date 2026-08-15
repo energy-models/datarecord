@@ -1,4 +1,4 @@
-"""DuckDB connection setup for the record layer (design doc §11).
+"""DuckDB connection setup for the record layer.
 
 Owns the `revisions` metadata table and the `layer_dir` path convention
 that maps a record UUID to its record location. The connection is passed as a
@@ -7,7 +7,13 @@ parameter throughout, never a module global, so each test can open its own
 
 Nothing here knows about a modelling framework: `component_type` and
 `attribute` are plain `VARCHAR`, so a record whose types no tool recognises
-still reads, and it is a tool's `verify` that reports it (§5, §10).
+still reads, and it is a tool's `verify` that reports it.
+
+Notes
+-----
+- [the schema](https://energy-models.github.io/datarecord/design/schema/)
+- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
 """
 
 import os
@@ -45,10 +51,10 @@ CREATE TABLE IF NOT EXISTS revisions (
 )
 """
 
-# Where layers live; `layer_dir(id)` derives every record path from it (§11).
+# Where layers live; `layer_dir(id)` derives every record path from it (https://energy-models.github.io/datarecord/design/module-layout/).
 DEFAULT_BASE_URI = os.environ.get("DATARECORD_BASE_URI", "")
 
-# The record root each connection was opened against (§5.6). A connection is
+# The record root each connection was opened against (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record). A connection is
 # already scoped to one record - `connect` registers its `layer_dir` macro from
 # this root - so the schema beside those layers is a property of the connection
 # too, and reading it needs no separate parameter threaded through the fold.
@@ -57,21 +63,29 @@ _BASE_URIS: MutableMapping[DuckDBPyConnection, str] = WeakKeyDictionary()
 
 
 def base_uri_of(con: DuckDBPyConnection) -> str:
-    """The record root `con` was opened against, or the process default (§5.6).
+    """The record root `con` was opened against, or the process default.
 
     A connection not opened through `connect` - one a caller made itself -
     falls back to `DEFAULT_BASE_URI`, which is what every path helper here
     already does when passed no explicit root.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     return _BASE_URIS.get(con, DEFAULT_BASE_URI)
 
 
 def schema_uri(base_uri: str | None = None) -> str:
-    """Where a layered record's one schema lives: beside `layers/`, not in it (§5.6).
+    """Where a layered record's one schema lives: beside `layers/`, not in it.
 
     One schema for the whole tree. A layer directory holds only data, which is
     what keeps it a plain parquet directory a tool knowing nothing about layering
     can read.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
     return f"{base.rstrip('/')}/manifest.json" if base else "manifest.json"
@@ -80,12 +94,17 @@ def schema_uri(base_uri: str | None = None) -> str:
 def layer_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
     """Return the record directory for `revision_id`, with a trailing slash.
 
-    The layer location is derived from the UUID, never stored (§11), so
+    The layer location is derived from the UUID, never stored, so
     changing the layout is a change in this one function and its SQL macro.
-    This is a plain PyPSA parquet directory (§4): only the layer's own
+    This is a plain PyPSA parquet directory: only the layer's own
     contribution lives at the top level, so a non-blocks reader sees a normal
-    record (§11). Derived caches (the owner map, resolved dims) go in the
+    record. Derived caches (the owner map, resolved dims) go in the
     `resolved/` subdirectory, which no single-level glob reaches.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
     """
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
     return (
@@ -103,17 +122,28 @@ def resolved_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
     nesting is safe because every glob into a layer is single-level
     (`inputs/*.parquet`, `dims/*.parquet`), so `resolved/` is invisible to a
     reader that knows nothing about it - which is what keeps a layer directory a
-    plain parquet directory a foreign reader can consume (§6.3).
+    plain parquet directory a foreign reader can consume.
 
     Only the layer's *inputs* are write-once, then: `materialise` writes here
     after the fact, which invalidates nothing because results and caches are
-    derived rather than depended on (§6.1, §6.2).
+    derived rather than depended on.
+
+    Notes
+    -----
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     return f"{layer_dir(revision_id, base_uri)}resolved/"
 
 
 def _register_macros(con: DuckDBPyConnection, base_uri: str) -> None:
-    """Register `layer_dir` so SQL composes record paths inline (§11)."""
+    """Register `layer_dir` so SQL composes record paths inline.
+
+    Notes
+    -----
+    - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
+    """
     base = base_uri.rstrip("/")
     prefix = f"{base}/" if base else ""
     con.execute("DROP MACRO IF EXISTS layer_dir")
@@ -130,7 +160,11 @@ def connect(
     database
         DuckDB database, `:memory:` by default.
     base_uri
-        Root of the record tree; `layer_dir` derives every path from it (§11).
+        Root of the record tree; `layer_dir` derives every path from it.
+
+    Notes
+    -----
+    - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
     """
     con = duckdb.connect(database)
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
@@ -140,7 +174,7 @@ def connect(
     if "://" in base:
         try:
             con.execute("INSTALL httpfs; LOAD httpfs;")
-            # S3 credentials come from the environment, never hard-coded (§11).
+            # S3 credentials come from the environment, never hard-coded (https://energy-models.github.io/datarecord/design/module-layout/).
             con.execute(
                 "CREATE SECRET IF NOT EXISTS (TYPE s3, PROVIDER credential_chain)"
             )
@@ -149,7 +183,7 @@ def connect(
     con.execute(CREATE_TABLE)
     _register_macros(con, base)
     # Remembered so `read_schema` finds the manifest beside *this* record's
-    # layers rather than the process default's (§5.6).
+    # layers rather than the process default's (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record).
     _BASE_URIS[con] = base
     return con
 
@@ -214,7 +248,7 @@ def try_read_parquet(
 def union_all_by_name(
     rels: Sequence[DuckDBPyRelation], con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """Fold relations pairwise through `UNION ALL BY NAME` (§7.2).
+    """Fold relations pairwise through `UNION ALL BY NAME`.
 
     The local names `u` and `rel` are load-bearing: DuckDB's replacement scan
     binds them by *name* out of this frame's locals, so the SQL below reads
@@ -222,8 +256,13 @@ def union_all_by_name(
     union; `test_union_all_by_name_folds_every_relation` pins it.
 
     Not `con.register`: measured at 2.2-2.6x slower here, widening with layer
-    count (the deep-overlay case §6.2 exists to make cheap), and it leaves a
+    count (the deep-overlay case materialised caches exist to make cheap), and it leaves a
     named view per call on a connection that outlives the fold.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
     """
     u = rels[0]
     for rel in rels[1:]:  # noqa: F841 - bound by name in the SQL below
@@ -237,7 +276,7 @@ def ex_all(exprs: Iterable[Expression]) -> Expression:
 
 
 def dims_dirs(ancestry: list[UUID]) -> list[str]:
-    """`dims/`-containing directories for resolving a record's axes (§6.2).
+    """`dims/`-containing directories for resolving a record's axes.
 
     `ancestry` is root first, ending in the record being resolved and already
     truncated at the deepest materialised ancestor (`ancestry_to_read`). Every
@@ -246,7 +285,11 @@ def dims_dirs(ancestry: list[UUID]) -> list[str]:
 
     The two live in the same record directory but stay distinct paths -
     `layers/<id>/dims/` against `layers/<id>/resolved/dims/` - so a record read
-    as an ancestor and the same record read as itself never alias (§6.2).
+    as an ancestor and the same record read as itself never alias.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     last = len(ancestry) - 1
     return [
@@ -261,15 +304,21 @@ def fold_axis(
     """Fold a `<dir>/<filename>` axis table over `dims_dirs`, keyed by `key`.
 
     `dims_dirs` is root first, each entry already resolved by the caller to that
-    ancestor's layer or its `resolved/` cache (§6.2). Last-writer-wins per `key`, which
+    ancestor's layer or its `resolved/` cache. Last-writer-wins per `key`, which
     is `Schema.axis_key` - so a nested dim is keyed by `(*parents, dim)` and two
-    periods' identically-labelled timesteps stay distinct (§5.4). Row order
-    follows the directory that first introduced the key (§3.4).
+    periods' identically-labelled timesteps stay distinct. Row order
+    follows the directory that first introduced the key.
 
     `_row` is tagged **per directory, before any union**: `UNION ALL` defines no
     order, so a bare `row_number() OVER ()` over the unioned relation would
     silently scramble which row counts as first-introduced. `_fold_ordered`
     avoids the same pitfall the same way.
+
+    Notes
+    -----
+    - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     layers = []
     for depth, dims_dir in enumerate(dims_dirs):
