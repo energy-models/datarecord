@@ -66,9 +66,10 @@ something, change it: rename, move, delete. No alias, no deprecation cycle, no
 used instead. **A test asserting the old behaviour is not a blocker**; say in the
 PR what coverage moved where.
 
-Where the change is to a construct the design doc defines, the rename lands in
-[`data-records.md`](docs/design-documents/data-records.md) too — the `§N` a
-docstring cites has to still mean what the docstring says it does.
+Where the change is to a construct the design pages define, the rename lands in
+[`docs/design/`](docs/design/) too — a docstring's `Notes` links to a section by
+anchor, so a heading that moves has to be followed there. `pixi run -e docs
+docs-build` fails on a link that stopped resolving.
 
 # Part 2 — Good defaults
 
@@ -108,7 +109,7 @@ a message by whoever hit it:
 assert names == ["Manchester Wind", "Norway Gas"]  # member order, not sorted
 
 # yes
-assert names == ["Manchester Wind", "Norway Gas"], "members keep record order (§3.1)"
+assert names == ["Manchester Wind", "Norway Gas"], "members keep record order"
 ```
 
 ## Docstrings
@@ -126,10 +127,11 @@ name is the _caller_, not the implementer.
 - **Cut** restatement of the signature, argument for a settled decision,
   narration of how the answer was found, and any tour of internals a caller
   cannot see.
-- **Cite the design doc, don't restate it.** `(§3.2)` after the sentence it
-  governs; the argument stays in
-  [`data-records.md`](docs/design-documents/data-records.md). A docstring that
-  re-argues the design is a defect.
+- **Cite the design pages, don't restate them.** A `Notes` section at the end of
+  the docstring, listing the [`docs/design/`](docs/design/) pages it depends on
+  by link; the argument stays there. A docstring that re-argues the design is a
+  defect. `Notes` rather than `References`, which numpydoc reserves for sources
+  that augment a docstring rather than ones it needs to be understood.
 - **The form is
   [numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html)**: a summary
   line, a blank line, then the body; `Parameters`, `Returns`, `Yields`, `Raises`,
@@ -156,10 +158,14 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
     Parameters
     ----------
     schema
-        The record's schema, which declares the dims and their keys (§5).
+        The record's schema, which declares the dims and their keys.
     ancestry : list of UUID
         Root first, ending in the record being resolved, truncated at the
         deepest materialised ancestor (`ancestry_to_read`).
+
+    Notes
+    -----
+    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
     """
 ```
 

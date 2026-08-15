@@ -1,4 +1,9 @@
-"""Writing a layer from long-format frames (design doc §8)."""
+"""Writing a layer from long-format frames.
+
+Notes
+-----
+- [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+"""
 
 from pathlib import Path
 
@@ -72,7 +77,12 @@ class _Source:
 
 
 def _long(**overrides) -> pd.DataFrame:
-    """One long-schema row, with every §3 column present."""
+    """One long-schema row, with every long-schema column present.
+
+    Notes
+    -----
+    - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+    """
     row = {
         "name": "steel_dri",
         "bus": None,
@@ -90,7 +100,7 @@ def _long(**overrides) -> pd.DataFrame:
 _SCHEMA = schema()
 
 
-# -- the lazy mapping (§4) -------------------------------------------------
+# -- the lazy mapping (https://energy-models.github.io/datarecord/design/format/) -------------------------------------------------
 
 
 def test_source_is_explorable_without_building(con, base_uri):
@@ -135,11 +145,15 @@ def test_write_record_builds_each_key_once(con, base_uri):
 
 
 def test_write_record_creates_a_new_layer(con, base_uri):
-    """Files land where `layer_dir` says - data only, no schema (§5.6).
+    """Files land where `layer_dir` says - data only, no schema.
 
     The record's one schema goes beside `layers/`, so a layer directory holds
     nothing but data. That is what keeps it a plain parquet directory a reader
     knowing nothing about layering can open.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     revision = Revision.create(con)
     write_record(revision.id, _Source(_SCHEMA, attributes={"p_nom": _long()}), con)
@@ -152,7 +166,12 @@ def test_write_record_creates_a_new_layer(con, base_uri):
 
 
 def test_a_directory_target_carries_its_own_schema(con, base_uri, tmp_path):
-    """A standalone record *is* one record, so its schema goes in the directory (§5.6)."""
+    """A standalone record *is* one record, so its schema goes in the directory.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    """
     out = str(tmp_path / "standalone")
     write_record(None, _Source(_SCHEMA, attributes={"p_nom": _long()}), con, uri=out)
 
@@ -161,7 +180,12 @@ def test_a_directory_target_carries_its_own_schema(con, base_uri, tmp_path):
 
 
 def test_write_record_refuses_an_existing_layer(con, base_uri):
-    """A whole-layer write never half-replaces what a record already holds (§4)."""
+    """A whole-layer write never half-replaces what a record already holds.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    """
     revision = Revision.create(con)
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
     write_record(revision.id, source, con)
@@ -185,7 +209,12 @@ def test_write_record_rejects_a_missing_long_column(con, base_uri):
 
 
 def test_write_record_rejects_an_unbacked_key_dim(con, base_uri):
-    """A schema keying by a dim the frames lack would misresolve (§5.3)."""
+    """A schema keying by a dim the frames lack would misresolve.
+
+    Notes
+    -----
+    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
+    """
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
@@ -197,11 +226,15 @@ def test_write_record_rejects_an_unbacked_key_dim(con, base_uri):
 
 
 def test_write_record_rejects_a_name_two_types_share(con, base_uri):
-    """Names are unique across every type, checked before anything is written (§4.3).
+    """Names are unique across every type, checked before anything is written.
 
     The attribute rows record no type, so two components sharing a name would
     silently share every attribute key - which is why this is enforced rather
     than assumed.
+
+    Notes
+    -----
+    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
     """
     revision = Revision.create(con)
     source = _Source(
@@ -235,11 +268,15 @@ def test_write_record_accepts_one_name_per_type(con, base_uri):
 
 
 def test_the_uniqueness_check_spans_backends(con, base_uri):
-    """A `Record` may hand over one type as DuckDB and another as pandas (§4.2).
+    """A `Record` may hand over one type as DuckDB and another as pandas.
 
     `WorkingRecord` does exactly this, mixing base frames with staged ones, so
     the check must not assume the component frames share a backend - `nw.concat`
     refuses a mixed list outright.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     revision = Revision.create(con)
     source = _Source(
@@ -256,11 +293,15 @@ def test_the_uniqueness_check_spans_backends(con, base_uri):
 
 
 def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
-    """A `within` dim's file needs a column per parent, or the fold miskeys it (§5.4).
+    """A `within` dim's file needs a column per parent, or the fold miskeys it.
 
     `snapshot within period` makes the axis key `(period, snapshot)`, so a
     `snapshots.parquet` carrying only timestamps would fold two periods'
     identically labelled hours into one row.
+
+    Notes
+    -----
+    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
     revision = Revision.create(con)
     nested = schema(within={"snapshot": {"period"}})
@@ -274,7 +315,7 @@ def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
     assert not Path(layer_dir(revision.id)).exists()
 
 
-# -- the PyPSA source (§4) ------------------------------------------------
+# -- the PyPSA source (https://energy-models.github.io/datarecord/design/format/) ------------------------------------------------
 
 
 def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
@@ -285,9 +326,9 @@ def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
     assert "Generator" in source.components
     assert "Link" in source.connections
     assert "p_max_pu" in source.attributes
-    # Non-varying attributes belong to `dims/components/`, not `inputs/` (§3).
+    # Non-varying attributes belong to `dims/components/`, not `inputs/` (https://energy-models.github.io/datarecord/design/record/).
     assert "v_nom" not in source.attributes
-    # A port attribute is one bus-keyed attribute, not one per port (§3.2).
+    # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/design/record/#connections).
     assert "efficiency" in source.attributes
     assert "efficiency2" not in source.attributes
 
@@ -296,8 +337,12 @@ def test_write_then_build_round_trips(con, base_uri, ac_dc):
     """A network written by blocks and read back through `build` is unchanged.
 
     Distinct from `test_roundtrip.py`, which reads an `export_to_parquet`
-    record: this exercises the writer of §4 and the connection collapse of
-    §10 in one pass.
+    record: this exercises the writer and the connection collapse in one pass.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
@@ -319,7 +364,13 @@ def test_write_then_build_round_trips(con, base_uri, ac_dc):
 
 
 def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
-    """`bus0`/`bus1` become connection rows and come back as columns (§3.2, §10)."""
+    """`bus0`/`bus1` become connection rows and come back as columns.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    """
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
@@ -336,7 +387,12 @@ def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
 
 
 def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
-    """A Generator's one `bus` is a connection too, and stays `bus` (§3.2)."""
+    """A Generator's one `bus` is a connection too, and stays `bus`.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
@@ -352,7 +408,12 @@ def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
 
 
 def test_static_series_split_survives_the_writer(con, base_uri, ac_dc):
-    """Only the components with a series get a `dynamic` column (§10)."""
+    """Only the components with a series get a `dynamic` column.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    """
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
     back = PyPSA.build(revision.record)

@@ -1,4 +1,9 @@
-"""`Record` over an overlay and over a directory (design doc §7.3)."""
+"""`Record` over an overlay and over a directory.
+
+Notes
+-----
+- [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+"""
 
 from dataclasses import dataclass
 
@@ -38,7 +43,12 @@ def both(written, con):
 
 
 def test_both_backings_satisfy_the_protocol(both):
-    """Structural conformance, so a consumer cannot tell which it holds (§7.3)."""
+    """Structural conformance, so a consumer cannot tell which it holds.
+
+    Notes
+    -----
+    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+    """
     for record in both:
         assert isinstance(record, Record)
 
@@ -53,7 +63,11 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
 
     The protocol asks for named lazy frames, not for a mapping that defers
     building them - so whether an implementation is lazy like `LazyFrames` or
-    eager like this stays its own business (§3.5).
+    eager like this stays its own business.
+
+    Notes
+    -----
+    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
     """
     members = nw.from_native(
         con.sql(
@@ -88,7 +102,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     )
     assert isinstance(record, Record)
     # Results absent, spelled as an empty mapping rather than a protocol a
-    # consumer has to test for (§3.5).
+    # consumer has to test for (https://energy-models.github.io/datarecord/design/record/#frames).
     assert list(record.outputs) == []
     assert record.attributes["p_nom"].implementation == nw.Implementation.DUCKDB
 
@@ -115,7 +129,12 @@ def test_backings_agree_on_every_key_set(both):
 
 
 def test_backings_agree_on_flags(both):
-    """Owner map and file aggregate answer the same question (§7.3)."""
+    """Owner map and file aggregate answer the same question.
+
+    Notes
+    -----
+    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+    """
     node, directory = both
     for ctype in sorted(node.components):
         assert node.flags(ctype) == directory.flags(ctype), ctype
@@ -130,7 +149,7 @@ def test_backings_agree_on_rows(both):
         assert len(left) == len(right), attribute
 
 
-# -- laziness (§3.5, §7.3) ---------------------------------------------------
+# -- laziness (https://energy-models.github.io/datarecord/design/record/#frames, https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations) ---------------------------------------------------
 
 
 def test_frames_stay_unmaterialised(both):
@@ -145,14 +164,19 @@ def test_frames_stay_unmaterialised(both):
 
 
 def test_keys_list_without_building(both):
-    """Listing a record is cheap; only a lookup does work (§3.5)."""
+    """Listing a record is cheap; only a lookup does work.
+
+    Notes
+    -----
+    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
+    """
     for record in both:
         assert "p_max_pu" in record.attributes
         assert "nope" not in record.attributes
         assert len(list(record.attributes)) == len(record.attributes)
 
 
-# -- flags, the one non-frame member (§7.3) ----------------------------------
+# -- flags, the one non-frame member (https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations) ----------------------------------
 
 
 def test_flags_are_per_component_type(con, base_uri):
@@ -185,13 +209,18 @@ def test_flags_are_per_component_type(con, base_uri):
 
 
 def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
-    """Adding a dim is compatible (§5.7), and the persisted owner map too (§7.1).
+    """Adding a dim is compatible, and the persisted owner map too.
 
     The flags live in two structs rather than a `varies_<dim>` column each, so
     a map written before the dim existed differs from the current schema by a
     struct *field*, which `UNION ALL BY NAME` fills with NULL - where a missing
     *column* would have to be reconciled. The new dim reads as unset, which is
     what it is: no row mentions it.
+
+    Notes
+    -----
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     narrow = {"snapshot": "TIMESTAMP", "period": "BIGINT"}
     revision = Revision.create(con)
@@ -223,11 +252,15 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
 
 
 def test_flags_report_both_sets_where_components_disagree(con, base_uri):
-    """A mixed type puts `snapshot` in both sets, which is the split (§3.6).
+    """A mixed type puts `snapshot` in both sets, which is the split.
 
     Two generators, one with a series and one with a single value. Both
     containers are needed, and both sets holding `snapshot` is what says so -
     the constant pass takes the NULL-snapshot rows, the series pass the rest.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
@@ -250,7 +283,12 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
 
 
 def test_flags_report_a_curve(con, base_uri):
-    """`breakpoints` distinguishes a curve from a scalar, from either backing (§3.6)."""
+    """`breakpoints` distinguishes a curve from a scalar, from either backing.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    """
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
@@ -296,7 +334,12 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
 
 
 def test_node_record_orders_members(con, base_uri, ac_dc):
-    """A `Record` promises member order; for an overlay that means `order_key` (§7.3)."""
+    """A `Record` promises member order; for an overlay that means `order_key`.
+
+    Notes
+    -----
+    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+    """
     root = Revision.create(con)
     write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
     root.materialise()
@@ -333,7 +376,12 @@ def test_directory_record_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
 def test_directory_record_has_no_connections_when_none_were_written(
     con, base_uri, tmp_path
 ):
-    """A record with no `dims/connections/` reads as having none, not as an error (§3.2)."""
+    """A record with no `dims/connections/` reads as having none, not as an error.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
@@ -343,7 +391,12 @@ def test_directory_record_has_no_connections_when_none_were_written(
 
 
 def test_directory_record_reads_connections_blocks_wrote(written, con):
-    """A record blocks wrote has them, with the roles the collapse assigned (§3.2)."""
+    """A record blocks wrote has them, with the roles the collapse assigned.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
     record = DirectoryRecord(layer_dir(written.id), con)
     assert "Link" in record.connections
 
@@ -359,13 +412,24 @@ def test_missing_key_raises(both):
 
 
 def test_outputs_are_empty_until_solved(both):
-    """An unsolved network's results are absent rather than defaults (§7.4)."""
+    """An unsolved network's results are absent rather than defaults.
+
+    Notes
+    -----
+    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+    """
     for record in both:
         assert list(record.outputs) == []
 
 
 def test_outputs_is_an_ordinary_record_member(both, con, base_uri):
-    """`outputs` is on `Record`; emptiness is the existence answer (§3.5, §7.4)."""
+    """`outputs` is on `Record`; emptiness is the existence answer.
+
+    Notes
+    -----
+    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
+    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+    """
     node, directory = both
     # No separate protocol to satisfy: an unsolved record answers with an empty
     # mapping, the same way every other member answers for what it lacks.
@@ -375,7 +439,12 @@ def test_outputs_is_an_ordinary_record_member(both, con, base_uri):
 
 
 def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc):
-    """A source with no results produces a layer with no `outputs/` (§8)."""
+    """A source with no results produces a layer with no `outputs/`.
+
+    Notes
+    -----
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+    """
     from datarecord.duck import try_read_parquet
 
     solved = PyPSA.to_datarecord(ac_dc)
@@ -396,14 +465,14 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
 
     revision = Revision.create(con)
     # An empty `outputs` writes no `outputs/` at all, rather than an empty
-    # directory (§8).
+    # directory (https://energy-models.github.io/datarecord/design/writing/).
     write_record(revision.id, source, con)
     layer = layer_dir(revision.id)
     assert try_read_parquet(layer + "outputs/*.parquet", con) is None
     assert "p_max_pu" in DirectoryRecord(layer, con).attributes
 
 
-# -- one schema per record root (§5.6) ----------------------------------------
+# -- one schema per record root (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ----------------------------------------
 
 
 def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
@@ -429,7 +498,7 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
     assert revision_b.record.schema.dims == ("vintage",)
 
     # A layer read directly needs no schema supplied either: its own directory
-    # carries none (§5.6), so the connection's root answers - which is what
+    # carries none (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record), so the connection's root answers - which is what
     # `DirectoryRecord` used to take a `declared` argument for.
     layer = DirectoryRecord(layer_dir(revision_b.id, root_b), con_b)
     assert layer.schema.dims == ("vintage",)

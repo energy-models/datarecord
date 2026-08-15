@@ -1,4 +1,11 @@
-"""The fold, the cache and persistence (design doc §7.1, §6.2, §10)."""
+"""The fold, the cache and persistence.
+
+Notes
+-----
+- [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+"""
 
 import shutil
 from pathlib import Path
@@ -19,12 +26,16 @@ def parent(con, base_uri, ac_dc):
 
 
 def test_union_all_by_name_folds_every_relation(con):
-    """Three arms, not two: the fold's union binds `u`/`rel` by name (§7.2).
+    """Three arms, not two: the fold's union binds `u`/`rel` by name.
 
     Two relations pass whatever the loop body does, since the first pairing is
     the only one. Three is what catches the failure mode the helper's variables
     invite - a scan that re-reads `rels[0]` instead of advancing would give
     `[1, 1]` here, with no error to point at it.
+
+    Notes
+    -----
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
     """
     rels = [con.sql(f"SELECT {i} AS x") for i in (1, 2, 3)]
     got = union_all_by_name(rels, con).fetchall()
@@ -32,10 +43,15 @@ def test_union_all_by_name_folds_every_relation(con):
 
 
 def test_union_all_by_name_fills_a_missing_column_with_null(con):
-    """By *name*, so an arm lacking a column reads NULL there (§3.6, §5.7).
+    """By *name*, so an arm lacking a column reads NULL there.
 
     What lets a layer written before `bus`/`breakpoint` existed still resolve,
     and a persisted owner map survive a newly declared dim.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     rels = [con.sql("SELECT 1 AS x, 'a' AS y"), con.sql("SELECT 2 AS x")]
     got = union_all_by_name(rels, con).fetchall()
@@ -43,7 +59,12 @@ def test_union_all_by_name_fills_a_missing_column_with_null(con):
 
 
 def keys(revision, con):
-    """The inputs map's keys: `(name, attribute)`, no type (§7.1)."""
+    """The inputs map's keys: `(name, attribute)`, no type.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
     df = revision.node_cache.inputs.df()
     return {(r["name"], str(r.attribute)) for _, r in df.iterrows()}
 
@@ -61,13 +82,18 @@ def test_root_map_is_its_own_layer(con, parent):
 
 
 def test_materialise_writes_the_map_under_resolved(con, parent):
-    """`materialise` writes the maps under `resolved/`, not at the layer root (§6.2)."""
+    """`materialise` writes the maps under `resolved/`, not at the layer root.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    """
     assert Path(resolved_dir(parent.id), "owner_map", "inputs.parquet").exists()
     assert Path(resolved_dir(parent.id), "owner_map", "components.parquet").exists()
     # The cache shares the record's directory but stays out of the layer's own
     # namespace, so a reader that knows nothing about layering still sees a
     # plain parquet directory: every glob into a layer is single-level, so nothing
-    # under `resolved/` is reachable by one (§6.3).
+    # under `resolved/` is reachable by one (https://energy-models.github.io/datarecord/design/layers/#deletion).
     assert not Path(layer_dir(parent.id), "owner_map").exists()
     # The globs the fold and `DirectoryRecord` actually use must not reach a
     # cached file.
@@ -107,7 +133,12 @@ def test_last_writer_wins_per_key(con, parent):
 
 
 def test_tombstone_removes_all_attributes(con, parent):
-    """A tombstone removes every attribute and the component row of the component (§6.3)."""
+    """A tombstone removes every attribute and the component row of the component.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
     before = {k for k in keys(parent, con) if k[0] == "Norway Gas"}
     assert len(before) > 1
     assert "Norway Gas" in component_names(parent)
@@ -119,10 +150,15 @@ def test_tombstone_removes_all_attributes(con, parent):
 
 
 def test_live_fold_is_cached_per_connection(con, parent):
-    """A node with no materialised cache folds once and caches the table (§12).
+    """A node with no materialised cache folds once and caches the table.
 
-    Nothing invalidates it: layers are write-once (§6.2), so a fold's inputs
+    Nothing invalidates it: layers are write-once, so a fold's inputs
     cannot change under it.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [open questions](https://energy-models.github.io/datarecord/design/open-questions/)
     """
     child = parent.child()
     om = child.node_cache
@@ -138,7 +174,12 @@ def test_live_fold_is_cached_per_connection(con, parent):
 
 
 def test_materialising_does_not_change_the_map(con, parent):
-    """`materialise` is purely additive: same answer, fewer layers read (§6.2)."""
+    """`materialise` is purely additive: same answer, fewer layers read.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    """
     child = parent.child()
     write_input(
         layer_dir(child.id),
@@ -151,11 +192,15 @@ def test_materialising_does_not_change_the_map(con, parent):
 
 
 def test_a_removed_cache_falls_back_to_the_fold(con, parent):
-    """A cache is an optimisation, so losing it costs work rather than answers (§6.2).
+    """A cache is an optimisation, so losing it costs work rather than answers.
 
     The old model had to raise here: a closed node's ancestry was truncated to
     itself, so re-folding would have silently dropped every ancestor. Gating on
     the cache's presence instead means the untruncated path is still available.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     child = parent.child()
     write_input(
@@ -172,7 +217,12 @@ def test_a_removed_cache_falls_back_to_the_fold(con, parent):
 
 
 def test_any_node_may_be_a_parent(con, parent):
-    """A layer is write-once, so no node needs preparing to branch from (§6.1)."""
+    """A layer is write-once, so no node needs preparing to branch from.
+
+    Notes
+    -----
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+    """
     child = parent.child()
     write_input(
         layer_dir(child.id),
@@ -188,7 +238,12 @@ def test_any_node_may_be_a_parent(con, parent):
 
 
 def test_ancestry_is_root_first(con, parent):
-    """`ancestry` returns the root->node path in resolution order (§6)."""
+    """`ancestry` returns the root->node path in resolution order.
+
+    Notes
+    -----
+    - [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
+    """
     child = parent.child()
     child.materialise()
     grandchild = child.child()
@@ -196,12 +251,17 @@ def test_ancestry_is_root_first(con, parent):
 
 
 def test_a_record_with_no_manifest_folds(con, base_uri):
-    """A record that declares no schema resolves to an empty map, not a crash (§5.6).
+    """A record that declares no schema resolves to an empty map, not a crash.
 
     `Schema()` is "no manifest yet", which is what a record reads before
     anything has been written to it. The map's flag columns are structs with a
-    field per declared dim (§7.1) and DuckDB has no empty struct, so this is
+    field per declared dim and DuckDB has no empty struct, so this is
     the one path where there are none to declare.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     revision = Revision.create(con)
     assert revision.record.schema.dims == ()

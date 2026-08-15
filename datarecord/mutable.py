@@ -1,8 +1,12 @@
-"""Editing a record: staged edits, materialised on commit (design doc §9).
+"""Editing a record: staged edits, materialised on commit.
 
 What `Record` (read-only) and `write_record` (a whole record at once) do not
 cover. Accumulate-then-commit: an edit costs a row in a staging table rather
 than a rewrite, and nothing touches the record until `commit()`.
+
+Notes
+-----
+- [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)
 """
 
 from __future__ import annotations
@@ -28,23 +32,37 @@ if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
 
 
-# -- commit targets (§9.7) ---------------------------------------------------
+# -- commit targets (https://energy-models.github.io/datarecord/design/working-record/#committing) ---------------------------------------------------
 
 
 @dataclass(frozen=True)
 class NewChild:
-    """Write the staged rows as a new child layer of `record` (§9.7).
+    """Write the staged rows as a new child layer of `record`.
 
     Only the edits are written; the fold resolves the rest from the parent.
+
+    `record` defaults to the node the `WorkingRecord` was built over, which is
+    what a caller branching from a revision means every time. Passing one
+    explicitly is for the rarer case of re-parenting the edits elsewhere; a
+    `WorkingRecord` over a base that is not a layered node (a directory, a
+    framework object) has nothing to default to and must supply it.
+
+    Notes
+    -----
+    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
 
-    record: Any  # a Revision; typed loosely to keep this module import-free
+    record: Any = None  # a Revision; typed loosely to keep this module import-free
 
 
 @dataclass(frozen=True)
 class Directory:
     """Write a standalone record at `uri`: staged rows *plus* what the record
-    already reads, there being no parent to resolve against (§9.7).
+    already reads, there being no parent to resolve against.
+
+    Notes
+    -----
+    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
 
     uri: str
@@ -55,10 +73,14 @@ Target = NewChild | Directory
 
 @dataclass(frozen=True)
 class Pending:
-    """What a `WorkingRecord` would write, without writing it (§9.6).
+    """What a `WorkingRecord` would write, without writing it.
 
     A derived summary, not a second place rows live: a `GROUP BY` over the
     staging tables, computed on access and discarded.
+
+    Notes
+    -----
+    - [pending](https://energy-models.github.io/datarecord/design/working-record/#pending)
     """
 
     attributes: Mapping[str, int] = field(default_factory=dict)
@@ -80,7 +102,7 @@ class Pending:
         )
 
 
-# -- value normalisation (§9.2) ----------------------------------------------
+# -- value normalisation (https://energy-models.github.io/datarecord/design/working-record/#set) ----------------------------------------------
 
 
 def _as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelation:
@@ -88,7 +110,11 @@ def _as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelati
 
     A DuckDB-backed frame is already a plan, so it passes straight through; any
     other backend is collected to arrow and re-registered, which is the same
-    boundary `write_record` crosses (§4.2).
+    boundary `write_record` crosses.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     native = frame.to_native()
     if isinstance(native, DuckDBPyRelation):
@@ -101,7 +127,11 @@ def _incoming(frame: Any, con: DuckDBPyConnection) -> nw.LazyFrame:
     """A caller's frame as a lazy frame on `con`, whatever backend it arrived on.
 
     Every edit converts at this one point, so the steps behind it join and union
-    in narwhals without minding where the frame came from (§4.2).
+    in narwhals without minding where the frame came from.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     return nw.from_native(_as_relation(nw.from_native(frame).lazy(), con)).lazy()
 
@@ -127,12 +157,16 @@ def _without(columns: Sequence[str], drop: Sequence[str]) -> list[Expression]:
 
 
 def _latest_per(rel: DuckDBPyRelation, key: Iterable[str]) -> DuckDBPyRelation:
-    """`rel`'s newest row per `key`, by `_seq` - last write wins (§9.7).
+    """`rel`'s newest row per `key`, by `_seq` - last write wins.
 
     The three staging tables collapse the same way and differ only in what keys
     them, so the window lives here once. `_seq` and the ranking column are
     projected away, since a collapsed relation is read as data rather than as
     staging bookkeeping.
+
+    Notes
+    -----
+    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     partition = ", ".join(str(col(c)) for c in key)
     ranked = rel.project(
@@ -145,7 +179,12 @@ def _latest_per(rel: DuckDBPyRelation, key: Iterable[str]) -> DuckDBPyRelation:
 
 
 def _is_frame(value: Any) -> bool:
-    """Whether `value` supplies its own keys rather than being a value (§9.2)."""
+    """Whether `value` supplies its own keys rather than being a value.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
     if isinstance(value, nw.DataFrame | nw.LazyFrame):
         return True
     try:
@@ -166,7 +205,7 @@ def _series_index(value: Any) -> Sequence[Any] | None:
 def normalise_value(
     value: Any, names: Sequence[str] | None, axis_labels: Mapping[str, Sequence[Any]]
 ) -> tuple[list[str] | None, list[Any], dict[str, list[Any]]]:
-    """One of `set`'s four `value` forms as per-name values (§9.2).
+    """One of `set`'s four `value` forms as per-name values.
 
     Parameters
     ----------
@@ -192,12 +231,16 @@ def normalise_value(
     ValueError
         If a sequence's length does not match `names`, or a labelled series'
         index matches both a name set and an axis.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
     labels = _series_index(value)
     if labels is not None:
         # A series is genuinely ambiguous: its index may hold names or axis
         # labels. Index dtype does not settle it, since an axis label may be a
-        # string like a name, so the tie is broken by membership (§9.2).
+        # string like a name, so the tie is broken by membership (https://energy-models.github.io/datarecord/design/working-record/#set).
         matches_axis = [
             dim for dim, values in axis_labels.items() if set(labels) <= set(values)
         ]
@@ -240,7 +283,11 @@ class _Written:
 
     Commit needs two different records out of one staging area - `NewChild` the
     edits alone, `Directory` the resolved result - so this holds whichever
-    frame mappings the caller chose (§9.7).
+    frame mappings the caller chose.
+
+    Notes
+    -----
+    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
 
     schema: Schema
@@ -253,25 +300,36 @@ class _Written:
     outputs: Frames = field(default_factory=lambda: EMPTY)
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Never consulted: `write_record` persists frames, not flags (§8)."""
+        """Never consulted: `write_record` persists frames, not flags.
+
+        Notes
+        -----
+        - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+        """
         return {}
 
 
-# -- the DuckDB-backed implementation (§9.9) ---------------------------------
+# -- the DuckDB-backed implementation (https://energy-models.github.io/datarecord/design/working-record/#staging) ---------------------------------
 
 _SEQ = itertools.count(1)
 
 
 class WorkingRecord:
-    """A `Record` that accepts edits and materialises them on commit (§9).
+    """A `Record` that accepts edits and materialises them on commit.
 
     Satisfies `Record`, and what it reads is the data *with its pending edits
-    applied* (§9.10) - so an edit reads back, or the record is handed to
+    applied* - so an edit reads back, or the record is handed to
     something that only knows `Record`, without committing.
 
     Staged rows live in three connection-scoped DuckDB tables, the *only* place
     a staged row exists: `pending` counts them and the reads fold them, neither
-    holding a copy (§9.9).
+    holding a copy.
+
+    Notes
+    -----
+    - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)
+    - [staging](https://energy-models.github.io/datarecord/design/working-record/#staging)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
     """
 
     def __init__(self, base: Record, con: DuckDBPyConnection) -> None:
@@ -298,7 +356,7 @@ class WorkingRecord:
             return None
         return self.con.table(self._table(kind))
 
-    # -- Record, over base plus pending (§9.10) -----------------------------
+    # -- Record, over base plus pending (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits) -----------------------------
 
     @property
     def schema(self) -> Schema:
@@ -310,12 +368,22 @@ class WorkingRecord:
 
     @property
     def components(self) -> Frames:
-        """Base members with pending additions and tombstones applied (§9.10)."""
+        """Base members with pending additions and tombstones applied.
+
+        Notes
+        -----
+        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+        """
         return self._entity_frames("components")
 
     @property
     def connections(self) -> Frames:
-        """Base connections with pending ones applied (§9.10)."""
+        """Base connections with pending ones applied.
+
+        Notes
+        -----
+        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+        """
         return self._entity_frames("connections")
 
     def _entity_frames(self, kind: str) -> Frames:
@@ -352,8 +420,9 @@ class WorkingRecord:
         key = ("name", *(("bus",) if kind == "connections" else ()), *dims)
         frame = base[ctype]
         # `collect_schema` reads names without materialising, and `_as_relation`
-        # keeps a DuckDB-backed frame as the plan it already is: §4.2 promises a
-        # record hands over unmaterialised frames, and §9.10 prices a read with
+        # keeps a DuckDB-backed frame as the plan it already is: the long schema
+        # promises a record hands over unmaterialised frames, and the pending-edit
+        # overlay prices a read with
         # pending edits at what one more layer costs.
         present = set(frame.collect_schema().names())
         on = _null_safe_on([c for c in key if c in present])
@@ -394,11 +463,15 @@ class WorkingRecord:
 
     @property
     def attributes(self) -> Frames:
-        """Base attributes with pending edits applied (§9.10).
+        """Base attributes with pending edits applied.
 
         A set of pending edits *is* a layer - an unwritten one - so the reads
         compose the same way: the staged rows are the last layer, resolved over
         whatever the record was reading before.
+
+        Notes
+        -----
+        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
         staged = self._staged_attribute_names()
         keys = tuple(dict.fromkeys((*self.base.attributes, *staged)))
@@ -429,23 +502,28 @@ class WorkingRecord:
         )
         if base is None:
             return nw.from_native(staged)
-        # The staged rows are the last layer, so they win per key (§9.10).
+        # The staged rows are the last layer, so they win per key (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits).
         return nw.from_native(self._overlay(base.to_native(), staged))
 
     def _overlay(
         self, base: DuckDBPyRelation, staged: DuckDBPyRelation
     ) -> DuckDBPyRelation:
-        """`staged` over `base`, last-writer-wins per coordinate (§9.10).
+        """`staged` over `base`, last-writer-wins per coordinate.
 
         Per *coordinate*, not per input key: the input key excludes the dims an
-        attribute is not owned per (§5.5), so keying on it alone would let one
+        attribute is not owned per, so keying on it alone would let one
         staged snapshot displace the base's whole series on read - reporting a
         loss the commit path is careful not to make (`_restated`).
+
+        Notes
+        -----
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
         # NULL-safe on the input key and `breakpoint`; *broadcast* on the dims
-        # an attribute is not owned per. §3.3 says a staged NULL dim means "all
+        # an attribute is not owned per. The broadcast rule says a staged NULL dim means "all
         # values of that dim", so it must displace the base's rows at every
-        # value of it - otherwise the two overlap, which §3.3 forbids. A staged
+        # value of it - otherwise the two overlap, which the broadcast rule forbids. A staged
         # row that *does* name a coordinate displaces only that one, which is
         # what keeps the rest of the series (`_restated` writes it out at
         # commit).
@@ -467,7 +545,7 @@ class WorkingRecord:
         )
 
     def _typed_value(self, attribute: str) -> list[Expression]:
-        """A projection of `_long_columns` with `value` cast to its dtype (§4.2).
+        """A projection of `_long_columns` with `value` cast to its dtype.
 
         `value` is staged as text because one staging table holds every
         attribute's values (`_input_columns`); here the attribute is known, so
@@ -477,6 +555,10 @@ class WorkingRecord:
         `TRY_CAST`, not `cast`: a value that does not parse as the declared dtype
         reads as NULL rather than failing the whole relation, which is what the
         text staging column makes possible in the first place.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
         dtype = next(
             (
@@ -508,7 +590,12 @@ class WorkingRecord:
 
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
         """`AttributeSpec.dims` minus `Schema.partial`, for every type declaring
-        `attribute` - one `inputs/<attr>.parquet` serves them all (§5.5, §4.2).
+        `attribute` - one `inputs/<attr>.parquet` serves them all.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         """
         partial = self.schema.partial or frozenset()
         whole: set[str] = set()
@@ -521,10 +608,15 @@ class WorkingRecord:
     def _restated(self, attribute: str, staged: DuckDBPyRelation) -> DuckDBPyRelation:
         """`staged` plus the base rows a non-partial axis obliges it to carry.
 
-        The one commit-time read of parent data (§5.5, §9.7). Note the two
+        The one commit-time read of parent data. Note the two
         keys below: `scope` excludes the whole-owned dims, so one touched
         snapshot pulls in that key's others; `coordinate` adds them back, so a
         base row is dropped only where the edit named that exact coordinate.
+
+        Notes
+        -----
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
         whole = self._owned_whole(attribute)
         if not whole:
@@ -550,17 +642,22 @@ class WorkingRecord:
 
     @property
     def outputs(self) -> Frames:
-        """Staged results, keyed by attribute - what a tool handed back (§9.2).
+        """Staged results, keyed by attribute - what a tool handed back.
 
         Results reach a record through `set(..., kind="outputs")`, so a tool can
         solve against this record's pending inputs and attach what it computed
         without committing first. The base's results are *not* included: they
         were computed from inputs these edits may have changed, and results do
-        not overlay (§7.4), so what is staged is the whole answer.
+        not overlay, so what is staged is the whole answer.
 
         Keeping them coherent with the inputs is the caller's business - editing
         an input after attaching results leaves results describing a record that
         no longer exists, and nothing here silently discards them.
+
+        Notes
+        -----
+        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         rel = self._rows("outputs")
         if rel is None:
@@ -579,10 +676,15 @@ class WorkingRecord:
         )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Base flags unioned with what the staged rows use (§9.10).
+        """Base flags unioned with what the staged rows use.
 
         Scoped by the names this record resolves for the type - base members plus
-        pending additions - the staged rows carrying no type (§4.3).
+        pending additions - the staged rows carrying no type.
+
+        Notes
+        -----
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
         out = dict(self.base.flags(ctype))
         rel = self._rows("inputs")
@@ -621,7 +723,7 @@ class WorkingRecord:
             )
         return out
 
-    # -- edits (§9.2, §9.3, §9.5) ----------------------------------------
+    # -- edits (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one, https://energy-models.github.io/datarecord/design/working-record/#add-remove) ----------------------------------------
 
     def _axis_labels(self) -> dict[str, list[Any]]:
         labels: dict[str, list[Any]] = {}
@@ -632,11 +734,15 @@ class WorkingRecord:
         return labels
 
     def _resolved_names(self, ctype: str) -> list[str]:
-        """Every name `ctype` currently resolves to, base plus staged (§9.10).
+        """Every name `ctype` currently resolves to, base plus staged.
 
         Through narwhals rather than the native frame: a backend's column
         yields its own scalar type (a `pyarrow.StringScalar`, say), which
         would compare unequal to the plain strings an edit names.
+
+        Notes
+        -----
+        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
         if ctype not in self.components:
             return []
@@ -644,7 +750,12 @@ class WorkingRecord:
         return [str(n) for n in frame["name"].to_list()]
 
     def _name_types(self) -> nw.LazyFrame | None:
-        """`(name, component_type)` over everything this record resolves (§4.3)."""
+        """`(name, component_type)` over everything this record resolves.
+
+        Notes
+        -----
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        """
         parts = [
             self.components[ctype]
             .select("name")
@@ -656,11 +767,16 @@ class WorkingRecord:
         return nw.concat(parts, how="vertical")
 
     def _require_unique(self, ctype: str, lazy: nw.LazyFrame) -> None:
-        """Reject an `add` whose names another type already holds (§4.3, §9.8).
+        """Reject an `add` whose names another type already holds.
 
         Re-adding a name of the *same* type is an edit to that member, which
         `_entity_union` resolves last-writer-wins - so only a cross-type clash
         raises.
+
+        Notes
+        -----
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         known = self._name_types()
         if known is None:
@@ -685,7 +801,7 @@ class WorkingRecord:
             )
             msg = (
                 f"cannot add {ctype} components whose names are taken: {detail}; "
-                f"names are unique across every component type (§4.3)"
+                f"names are unique across every component type (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)"
             )
             raise ValueError(msg)
 
@@ -693,7 +809,11 @@ class WorkingRecord:
         """`names` mapped to their types, rejecting any the record does not resolve.
 
         A value keyed to a name with no member row would resolve to nothing, so
-        it is caught here rather than dropped at read time (§9.8).
+        it is caught here rather than dropped at read time.
+
+        Notes
+        -----
+        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         wanted = list(dict.fromkeys(names))
         known = self._name_types()
@@ -716,7 +836,13 @@ class WorkingRecord:
         return {n: found[n] for n in names}
 
     def _validate_dims(self, dims: Mapping[str, Any]) -> None:
-        """The dim vocabulary, checked for either `kind` (§9.8, §9.3.1)."""
+        """The dim vocabulary, checked for either `kind`.
+
+        Notes
+        -----
+        - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
+        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+        """
         unknown = sorted(set(dims) - set(self.schema.dims))
         if unknown:
             msg = f"the schema declares no dims {unknown}"
@@ -730,16 +856,22 @@ class WorkingRecord:
         *,
         name: str | None = None,
     ) -> None:
-        """One name's attribute checks, against the spec of *its* type (§9.8).
+        """One name's attribute checks, against the spec of *its* type.
 
         Inputs only: a result attribute is not schema-declared at all -
         `Tool.results` derives which attributes count as results from the
         framework's own registry, and `write_record` persists `outputs/` without
-        consulting the schema (§7.4, §10). So an unknown attribute name is an
+        consulting the schema. So an unknown attribute name is an
         error for an input and simply unknowable for a result.
 
-        `name` is reported where known: with the type derived rather than passed
-        (§4.3), the name is what the caller can act on.
+        `name` is reported where known: with the type derived rather than passed, the name is what the caller can act on.
+
+        Notes
+        -----
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
         who = f" (for {name!r})" if name is not None else ""
         declared = self.schema.attributes.get(ctype)
@@ -768,30 +900,39 @@ class WorkingRecord:
         kind: Literal["inputs", "outputs"] = "inputs",
         **dims: Any,
     ) -> None:
-        """Stage an attribute value for a group of components (§9.2).
+        """Stage an attribute value for a group of components.
 
         `value` takes five forms: a scalar broadcast to every name, a sequence
         aligned positionally to `names`, a mapping keyed by name, a long frame
         supplying its own keys, and a narwhals expression - which is a *function
         of the current value* rather than a value, so it reads before it stages
-        and two such calls compose (§9.3).
+        and two such calls compose.
 
-        No `component_type` parameter: the type is looked up from the name (§4.3),
+        No `component_type` parameter: the type is looked up from the name,
         so one call may span types and each name is validated against its own
-        type's spec (§9.8). `names=None` means every component whose type
+        type's spec. `names=None` means every component whose type
         declares `attribute`.
 
-        `kind` names the destination in the format's own terms (§9.1):
+        `kind` names the destination in the format's own terms:
         `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a
         tool hands results back. Results use the same long schema; what differs
-        is that they do not overlay (§7.4).
+        is that they do not overlay.
 
         Two checks are skipped for `"outputs"`, both because a result is not a
         value the schema governs: the attribute need not be declared, and a
         result's `name` need not resolve to a declared member. A solve may
         produce rows for a component type it derived rather than read - PyPSA's
         `SubNetwork` is one - and rejecting those would refuse a legitimate
-        result. An *input* for an undeclared name stays an error (§9.8).
+        result. An *input* for an undeclared name stays an error.
+
+        Notes
+        -----
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+        - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         is_long_frame = _is_frame(value) and _series_index(value) is None
         if is_long_frame:
@@ -800,7 +941,7 @@ class WorkingRecord:
                 msg = (
                     f"`set({attribute!r}, <frame>)` was given a `component_type` "
                     f"column; names are unique across every type, so an attribute row "
-                    f"carries no type and the column would be ignored (§4.3)"
+                    f"carries no type and the column would be ignored (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)"
                 )
                 raise ValueError(msg)
             if kind == "inputs":
@@ -826,7 +967,7 @@ class WorkingRecord:
         self._validate_dims(dims)
         if kind == "inputs":
             # One lookup serves both: rejects a name with no member row, and
-            # returns the type whose spec is checked (§4.3).
+            # returns the type whose spec is checked (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
             for name, ctype in self._resolve_types(keys).items():
                 self._validate_attribute(ctype, attribute, dims, name=name)
 
@@ -855,7 +996,12 @@ class WorkingRecord:
         self.con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", rows)
 
     def _names_declaring(self, attribute: str) -> list[str]:
-        """Every resolved name whose type declares `attribute` - `names=None` (§9.2)."""
+        """Every resolved name whose type declares `attribute` - `names=None`.
+
+        Notes
+        -----
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        """
         return [
             name
             for ctype in sorted(self.schema.types_declaring(attribute))
@@ -866,11 +1012,16 @@ class WorkingRecord:
     def _validate_frame(
         self, lazy: nw.LazyFrame, attribute: str, dims: Mapping[str, Any]
     ) -> None:
-        """A long input frame's dims, names and per-name specs (§9.8).
+        """A long input frame's dims, names and per-name specs.
 
         The frame supplies its own names, so each is resolved to its type and
         checked against that type's spec - one frame may legitimately span
-        types, since names are unique (§4.3).
+        types, since names are unique.
+
+        Notes
+        -----
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         self._validate_dims(dims)
         if "name" not in lazy.collect_schema().names():
@@ -885,13 +1036,18 @@ class WorkingRecord:
     def _stage_long(
         self, attribute: str, lazy: nw.LazyFrame, bus: str | None, kind: str
     ) -> None:
-        """Stage a long frame that supplies its own keys (§9.2).
+        """Stage a long frame that supplies its own keys.
 
-        Its keys are `name` and whatever dims it carries (§4.2).
+        Its keys are `name` and whatever dims it carries.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         _in_long = lazy.to_native()  # noqa: F841 - referenced by name below
         table = self._ensure(kind)
-        # A dim the frame does not carry is NULL - "every value of it" (§3.3) -
+        # A dim the frame does not carry is NULL - "every value of it" (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule) -
         # typed as the schema declares it, so the insert matches the staging
         # table's column type rather than relying on a VARCHAR coercion.
         present = set(lazy.collect_schema().names())
@@ -918,7 +1074,7 @@ class WorkingRecord:
         kind: str = "inputs",
         **dims: Any,
     ) -> None:
-        """Stage a value derived from the current one - the `Expr` form (§9.3).
+        """Stage a value derived from the current one - the `Expr` form.
 
         Reads before it stages, so what it derives from is the resolved value
         *including earlier pending edits*, and two such calls compose. What is
@@ -929,7 +1085,12 @@ class WorkingRecord:
         scales with the ancestry rather than with the rows written.
 
         Unscoped, this derives from every row of the attribute across the types
-        declaring it - there being no type keyword to narrow it (§4.3).
+        declaring it - there being no type keyword to narrow it.
+
+        Notes
+        -----
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
         """
         source = self.outputs if kind == "outputs" else self.attributes
         if attribute not in source:
@@ -965,7 +1126,7 @@ class WorkingRecord:
                 msg = (
                     f"no {attribute!r} rows resolve for {scope}, so there is "
                     f"no current value to derive from; `set` a value directly to "
-                    f"create one (§9.3)"
+                    f"create one (https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)"
                 )
                 raise KeyError(msg)
         if frame is None:
@@ -989,7 +1150,7 @@ class WorkingRecord:
         )
 
     def add(self, ctype: str, frame: Any) -> None:
-        """Stage new components from a wide frame (§9.5).
+        """Stage new components from a wide frame.
 
         Splits it: attributes varying over nothing stay in `dims/components/`,
         varying ones become `inputs/` rows. Which is which comes from the
@@ -1001,8 +1162,12 @@ class WorkingRecord:
         the point - nothing to `set`, yet the bus must exist.
 
         `ctype` stays a parameter where `set` loses it: this is the call that
-        establishes a name's type, so there is nothing yet to look it up in
-        (§4.3). It is also where uniqueness is enforced.
+        establishes a name's type, so there is nothing yet to look it up in. It is also where uniqueness is enforced.
+
+        Notes
+        -----
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
         lazy = _incoming(frame, self.con)
         columns = lazy.collect_schema().names()
@@ -1014,7 +1179,7 @@ class WorkingRecord:
         declared = self.schema.attributes.get(ctype, {})
         varying = [c for c in columns if declared.get(c) and declared[c].varying]
         # A connection attribute belongs to `dims/connections/`, keyed by bus
-        # (§3.2) - putting it in the member frame would introduce a column the
+        # (https://energy-models.github.io/datarecord/design/record/#connections) - putting it in the member frame would introduce a column the
         # ancestors' files lack, which then reads as NULL for their rows.
         ports = [
             c
@@ -1065,7 +1230,7 @@ class WorkingRecord:
             )
         # `bus` names the connection itself rather than being an attribute of
         # one, so it becomes the connection row; any other port attribute
-        # rides along on it (§3.2). `role` is passed through when the caller
+        # rides along on it (https://energy-models.github.io/datarecord/design/record/#connections). `role` is passed through when the caller
         # supplies it and left NULL otherwise: what the roles of a type's ports
         # are is a framework's vocabulary, not this layer's to invent.
         if "bus" in ports:
@@ -1087,12 +1252,17 @@ class WorkingRecord:
         keys: list[list[Any]],
         dims: Mapping[str, Any],
     ) -> None:
-        """Stage one `deleted` row per key, scoped by `dim_cols` (§9.5).
+        """Stage one `deleted` row per key, scoped by `dim_cols`.
 
         Shared by `remove` and `disconnect`, which differ only in their fixed
-        key columns - `disconnect` carries `bus` too (§3.2). One helper so the
+        key columns - `disconnect` carries `bus` too. One helper so the
         placeholder count is derived from the column list rather than restated
         per caller, which is what let the two drift out of step.
+
+        Notes
+        -----
+        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
         columns = (*fixed, *dim_cols, "deleted", "_seq")
         quoted = ", ".join(f'"{c}"' for c in columns)
@@ -1105,10 +1275,14 @@ class WorkingRecord:
         )
 
     def remove(self, ctype: str, names: Sequence[str], **dims: Any) -> None:
-        """Stage a tombstone per name, scoped by the component key dims (§9.5).
+        """Stage a tombstone per name, scoped by the component key dims.
 
         Need not enumerate what it deletes: one row per key, and the fold
         applies it to every attribute.
+
+        Notes
+        -----
+        - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
         unknown = sorted(set(dims) - set(self.schema.component_dims))
         if unknown:
@@ -1123,7 +1297,12 @@ class WorkingRecord:
         )
 
     def connect(self, ctype: str, frame: Any) -> None:
-        """Stage connection rows from a frame carrying `name` and `bus` (§3.2)."""
+        """Stage connection rows from a frame carrying `name` and `bus`.
+
+        Notes
+        -----
+        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        """
         lazy = _incoming(frame, self.con)
         columns = lazy.collect_schema().names()
         for required in ("name", "bus"):
@@ -1144,7 +1323,12 @@ class WorkingRecord:
     def disconnect(
         self, ctype: str, pairs: Sequence[tuple[str, str]], **dims: Any
     ) -> None:
-        """Stage a tombstone per `(name, bus)` (§3.2)."""
+        """Stage a tombstone per `(name, bus)`.
+
+        Notes
+        -----
+        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        """
         unknown = sorted(set(dims) - set(self.schema.connection_dims))
         if unknown:
             msg = f"{unknown} do not key connection membership"
@@ -1157,11 +1341,16 @@ class WorkingRecord:
             dims,
         )
 
-    # -- pending / commit / rollback (§9.6, §9.7) -------------------------
+    # -- pending / commit / rollback (https://energy-models.github.io/datarecord/design/working-record/#pending, https://energy-models.github.io/datarecord/design/working-record/#committing) -------------------------
 
     @property
     def pending(self) -> Pending:
-        """Counts over the staging tables, computed on access (§9.6)."""
+        """Counts over the staging tables, computed on access.
+
+        Notes
+        -----
+        - [pending](https://energy-models.github.io/datarecord/design/working-record/#pending)
+        """
 
         def counts(
             kind: str, by: str, *, deleted: bool | None = None
@@ -1176,7 +1365,7 @@ class WorkingRecord:
 
         # `tombstones` spans both entity kinds: a `disconnect` is a deletion
         # like a `remove`, so counting only components would report a staged
-        # one as nothing pending (§9.6).
+        # one as nothing pending (https://energy-models.github.io/datarecord/design/working-record/#pending).
         dead = counts("components", "component_type", deleted=True)
         for ctype, n in counts("connections", "component_type", deleted=True).items():
             dead[ctype] = dead.get(ctype, 0) + n
@@ -1188,17 +1377,27 @@ class WorkingRecord:
         )
 
     def rollback(self) -> None:
-        """Clear every staged row without writing (§9)."""
+        """Clear every staged row without writing.
+
+        Notes
+        -----
+        - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)
+        """
         for kind in list(self._staged):
             self.con.execute(f"DROP TABLE IF EXISTS {self._table(kind)}")
         self._staged.clear()
 
     def _collapsed_inputs(self) -> DuckDBPyRelation:
-        """Staged attribute rows, last-write-wins per key, tombstones applied (§9.7)."""
+        """Staged attribute rows, last-write-wins per key, tombstones applied.
+
+        Notes
+        -----
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        """
         rel = self._rows("inputs")
         assert rel is not None
         # Per coordinate, not per input key: the input key excludes the dims an
-        # attribute is not owned per (§5.5), so partitioning on it alone would
+        # attribute is not owned per (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override), so partitioning on it alone would
         # collapse a whole staged series to one row - two `set` calls at
         # different snapshots are not two writes to the same key.
         key = dict.fromkeys((*self._input_key(), *self.schema.dims, "breakpoint"))
@@ -1207,21 +1406,26 @@ class WorkingRecord:
         if dead is None:
             return live
         # A deleted component has no attributes, so the tombstone wins over a
-        # staged value regardless of sequence (§9.7).
+        # staged value regardless of sequence (https://energy-models.github.io/datarecord/design/working-record/#committing).
         #
         # Matched on `name` alone: the tombstone carries a type and a staged
-        # input row does not (§4.3).
+        # input row does not (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
         on = _null_safe_on(("name", *self.schema.component_dims), "l", "d")
         return live.set_alias("l").join(dead.set_alias("d"), on, how="anti")
 
     def _tombstoned(self) -> DuckDBPyRelation | None:
-        """Component keys whose latest staged member row is a tombstone (§9.7)."""
+        """Component keys whose latest staged member row is a tombstone.
+
+        Notes
+        -----
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        """
         rel = self._rows("components")
         if rel is None:
             return None
         cols = self.schema.component_key
         # An `add` after a `remove` means the component exists again, so only
-        # the latest row per key counts (§9.7).
+        # the latest row per key counts (https://energy-models.github.io/datarecord/design/working-record/#committing).
         return (
             _latest_per(rel, cols)
             .filter(col("deleted"))
@@ -1229,10 +1433,15 @@ class WorkingRecord:
         )
 
     def _collapsed_entities(self, kind: str) -> DuckDBPyRelation | None:
-        """Staged member or connection rows, last-write-wins per key (§9.7).
+        """Staged member or connection rows, last-write-wins per key.
 
-        The entity key, so no `component_type` (§4.3) - partitioning on it too
+        The entity key, so no `component_type` - partitioning on it too
         would keep both a tombstone and a later `add` under a different type.
+
+        Notes
+        -----
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
         rel = self._rows(kind)
         if rel is None:
@@ -1244,7 +1453,7 @@ class WorkingRecord:
             else self.schema.connection_key,
         )
 
-    # -- what commit writes (§9.7) -----------------------------------------
+    # -- what commit writes (https://energy-models.github.io/datarecord/design/working-record/#committing) -----------------------------------------
 
     def _staged_entities(self, kind: str) -> Frames:
         """One kind's staged member or connection rows, keyed by component type."""
@@ -1268,10 +1477,15 @@ class WorkingRecord:
     def _staged_attributes(self) -> Frames:
         """The staged rows, plus what a non-partial axis obliges them to carry.
 
-        A patch layer holds only the edits (§9.7) - except along a dim owned
+        A patch layer holds only the edits - except along a dim owned
         whole, where touching one value makes this layer the owner of the
         attribute's entire extent along it, so `_restated` completes it from the
-        base (§5.5).
+        base.
+
+        Notes
+        -----
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
         names = self._staged_attribute_names()
         if not names:
@@ -1290,8 +1504,12 @@ class WorkingRecord:
         """The resolved entity frames, in the shape `write_record` persists.
 
         A resolved frame drops `component_type` (the type is the key it was
-        looked up by) while a layer's file carries it (§7.1), so it is added
+        looked up by) while a layer's file carries it, so it is added
         back for any type the staging area did not already rebuild.
+
+        Notes
+        -----
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         frames = self.components if kind == "components" else self.connections
 
@@ -1304,7 +1522,12 @@ class WorkingRecord:
         return LazyFrames(tuple(frames), build)
 
     def staged_only(self) -> _Written:
-        """The staged rows alone - what a patch layer holds (§9.7)."""
+        """The staged rows alone - what a patch layer holds.
+
+        Notes
+        -----
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        """
         return _Written(
             schema=self.schema,
             dims=EMPTY,
@@ -1313,16 +1536,21 @@ class WorkingRecord:
             attributes=self._staged_attributes(),
             # No `_restated` counterpart: results are complete as produced, never
             # a partial override of a parent's, so there is nothing to carry
-            # forward from the base (§5.5, §7.4).
+            # forward from the base (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override, https://energy-models.github.io/datarecord/design/read-path/#outputs).
             outputs=self.outputs,
         )
 
     def flattened(self) -> _Written:
-        """The staged rows over what the record already reads (§9.7).
+        """The staged rows over what the record already reads.
 
         `attributes` is this record's own, since a `WorkingRecord` already reads
-        the base with its pending edits applied (§9.10) - which is exactly the
+        the base with its pending edits applied - which is exactly the
         flattened result.
+
+        Notes
+        -----
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
         return _Written(
             schema=self.schema,
@@ -1333,19 +1561,50 @@ class WorkingRecord:
             outputs=self.outputs,
         )
 
+    def _base_revision(self) -> Any:
+        """The `Revision` this record's base resolves, for `NewChild()`'s default.
+
+        Only a layered base has one: a `DirectoryRecord` or a framework object
+        is not a node in the tree, so there is no parent to branch from and the
+        caller must name one.
+        """
+        from datarecord.layered.revision import LayeredRecord, Revision
+
+        if not isinstance(self.base, LayeredRecord):
+            msg = (
+                f"`NewChild()` needs a revision to branch from, and this "
+                f"`WorkingRecord`'s base is a {type(self.base).__name__} rather than a "
+                f"node in a layer tree; pass one as `NewChild(revision)`, or commit to "
+                f"a standalone record with `Directory(uri)` (https://energy-models.github.io/datarecord/design/working-record/#committing)"
+            )
+            raise ValueError(msg)
+        return Revision.get(self.base.node_cache.revision_id, self.con)
+
     def commit(self, target: Target) -> Any:
-        """Write everything staged and clear it (§9.7).
+        """Write everything staged and clear it.
 
         Returns
         -------
         The new child for a `NewChild` target, so the caller can read what it
         just wrote without going back to the record table; `None` for a
         `Directory`, which belongs to no record.
+
+        The layer lands in the *child*, never in the node that was branched
+        from - layers are write-once - so it is the returned node that
+        reads back the edits.
+
+        Notes
+        -----
+        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
         from datarecord.layered.write import write_record  # circular at module level
 
         if isinstance(target, NewChild):
-            child = target.record.child()
+            parent = (
+                target.record if target.record is not None else self._base_revision()
+            )
+            child = parent.child()
             write_record(child.id, self.staged_only(), self.con)
             self.rollback()
             return child
@@ -1358,10 +1617,16 @@ def _input_columns(schema: Schema) -> str:
     """DDL for the staged `inputs/` rows.
 
     `value` is `VARCHAR` because one staging table serves every attribute, where
-    §4.2 gives `value` a *per-attribute* type; `_typed_value` casts to the
+    The long schema gives `value` a *per-attribute* type; `_typed_value` casts to the
     declared dtype on the way into the layer.
 
-    No `component_type`: a staged row is the format's own row (§9.1, §4.3).
+    No `component_type`: a staged row is the format's own row.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
     """
     dims = "".join(f', "{d}" {schema.column_type(d)}' for d in schema.dims)
     return (
@@ -1387,7 +1652,7 @@ _COLUMNS = {
     "inputs": _input_columns,
     # `outputs/` uses the same long schema as `inputs/`; what differs is that it
     # does not overlay, which is a read-path property rather than a shape one
-    # (§7.4). So the staging DDL is shared.
+    # (https://energy-models.github.io/datarecord/design/read-path/#outputs). So the staging DDL is shared.
     "outputs": _input_columns,
     "components": _component_columns,
     "connections": _connection_columns,

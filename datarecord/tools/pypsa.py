@@ -1,9 +1,14 @@
-"""The PyPSA tool: record -> `pypsa.Network` -> results (design doc §10).
+"""The PyPSA tool: record -> `pypsa.Network` -> results.
 
 The only module that knows PyPSA's network shape - that its axes are
 `snapshot`/`period`/`scenario`, that a stochastic network is indexed by
 `(scenario, name)`, and how its static/series split maps onto the record's
-`dims/components` + `inputs/` split (§4.1).
+`dims/components` + `inputs/` split.
+
+Notes
+-----
+- [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
 from __future__ import annotations
@@ -39,13 +44,13 @@ if TYPE_CHECKING:
     import pypsa
 
 # The axes a PyPSA network is built from; all three must be declared in the
-# schema's `dimensions`, since a network shape is built from them (§10).
+# schema's `dimensions`, since a network shape is built from them (https://energy-models.github.io/datarecord/design/tools/).
 # A declared axis with no rows is fine - that is just a deterministic or
 # single-period network.
 SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
 
-# PyPSA's `defaults["type"]` vocabulary, mapped to the DuckDB types §4.2
+# PyPSA's `defaults["type"]` vocabulary, mapped to the DuckDB types the long schema
 # stores. `series` and `static or series` describe *where* a value lives, not
 # what it is - both are floats in a record's `value` column.
 _DTYPES = {
@@ -61,18 +66,27 @@ _DTYPES = {
 
 
 def _default(value: Any) -> Any:
-    """One `defaults["default"]` cell as JSON-storable, NaN as absent (§5.2)."""
+    """One `defaults["default"]` cell as JSON-storable, NaN as absent.
+
+    Notes
+    -----
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    """
     if isinstance(value, float) and math.isnan(value):
         return None
     return value.item() if hasattr(value, "item") else value
 
 
 def _text(value: Any) -> str | None:
-    """One `unit`/`description` cell as text, or None where PyPSA has none (§5.8).
+    """One `unit`/`description` cell as text, or None where PyPSA has none.
 
     Its registry leaves both NaN rather than empty, and `None` is the schema's
     "undeclared" - `""` would claim the attribute is documented as blank, or
     dimensionless, neither of which a missing cell says.
+
+    Notes
+    -----
+    - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return None
@@ -82,12 +96,16 @@ def _text(value: Any) -> str | None:
 
 @dataclass(frozen=True)
 class NetworkShape:
-    """PyPSA's reading of a record's axis frames (§10).
+    """PyPSA's reading of a record's axis frames.
 
     The axis names and the index convention live here rather than on the
     record, which stays schema-generic: a record may declare any dims, and it is
     this tool that decides `snapshot` is the time axis and that a non-empty
     `scenario` axis means a stochastic network.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
 
     dims: Frames
@@ -96,8 +114,12 @@ class NetworkShape:
         """`dim`'s axis as a DataFrame, empty if the record declares none.
 
         A dim with no rows anywhere is absent from the mapping rather than
-        present-and-empty (§4.2), and both read the same way here: an empty
+        present-and-empty, and both read the same way here: an empty
         frame, which is a deterministic or single-period network.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
         frame = self.dims.get(dim)
         return (
@@ -126,14 +148,19 @@ class NetworkShape:
 
     @property
     def index_names(self) -> list[str]:
-        """The static frame's index: PyPSA carries `scenario` as a level (§10)."""
+        """The static frame's index: PyPSA carries `scenario` as a level.
+
+        Notes
+        -----
+        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        """
         return [SCENARIO, "name"] if self.stochastic else ["name"]
 
 
 def _connection(record: Record) -> DuckDBPyConnection:
     """The DuckDB connection `record`'s frames belong to.
 
-    Off the concrete backing, since the protocol stays backend-agnostic (§3.7).
+    Off the concrete backing, since the protocol stays backend-agnostic.
     Needed because a relation exposes no reachable reference to its connection,
     and this tool's `PIVOT` - which narwhals cannot express and
     `relation.query` refuses as a `MULTI` statement - needs one.
@@ -142,6 +169,10 @@ def _connection(record: Record) -> DuckDBPyConnection:
     ------
     TypeError
         If `record` exposes no connection, i.e. is not DuckDB-backed.
+
+    Notes
+    -----
+    - [the protocol names no engine](https://energy-models.github.io/datarecord/design/record/#the-protocol-names-no-engine)
     """
     con = getattr(record, "con", None)
     if not isinstance(con, DuckDBPyConnection):
@@ -156,7 +187,7 @@ def _connection(record: Record) -> DuckDBPyConnection:
 # -- long -> wide -----------------------------------------------------------
 
 # Separates pivoted index-level values in a combined PIVOT column name; chosen
-# to never collide with a component/scenario name (§3 broadcast rule).
+# to never collide with a component/scenario name (the broadcast rule).
 _KEY_SEP = "\x01"
 
 
@@ -213,7 +244,7 @@ def _assign_static(
     joined = static
     attr_exprs = {}
     for attr, (long, flags) in attributes.items():
-        # PyPSA's `static` container takes the snapshot-broadcast rows (§3.6).
+        # PyPSA's `static` container takes the snapshot-broadcast rows (https://energy-models.github.io/datarecord/design/record/#flags).
         if SNAPSHOT not in flags.broadcast:
             continue
         rows = long.filter("snapshot IS NULL")
@@ -275,7 +306,11 @@ def _series_frame(
     ordered to match `static_index`: `_import_series_from_df` takes
     `df.columns` as-is without merging against `static`, so a column added
     just to complete `static_index` would wrongly force that component into
-    `dynamic` instead of leaving it static (§10).
+    `dynamic` instead of leaving it static.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     if shape.multiperiod:
         rows = periods.expand(rows, PERIOD)
@@ -301,7 +336,7 @@ def _series_frame(
     return wide
 
 
-# -- build (§10) -------------------------------------------------------------
+# -- build (https://energy-models.github.io/datarecord/design/tools/) -------------------------------------------------------------
 
 
 def _exported(c) -> bool:
@@ -316,12 +351,17 @@ def _exported(c) -> bool:
 
 
 def _colliding_names(n: pypsa.Network) -> frozenset[str]:
-    """Names more than one exported component type claims (§4.3, §10).
+    """Names more than one exported component type claims.
 
     Only exported types count, since only those become member rows. Read off the
     `name` level rather than the index: a stochastic network is keyed
     `(scenario, name)`, and comparing tuples would read one component in two
     scenarios as two names while missing a real collision.
+
+    Notes
+    -----
+    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     seen: dict[str, str] = {}
     clashing: set[str] = set()
@@ -340,15 +380,19 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
 
 
 # TODO(pypsa): every function below, up to `_new_network`, ports a method that
-# only exists on PyPSA's unreleased data-records branch (§10). Delete the
+# only exists on PyPSA's unreleased data-records branch (https://energy-models.github.io/datarecord/design/tools/). Delete the
 # ported copy and call the real method once a PyPSA release carries it.
 
 
 def _apply_snapshots_import(n: pypsa.Network, df: pd.DataFrame) -> None:
     """Set snapshots and snapshot weightings from an imported axis table.
 
-    Ported from `pypsa.Network._apply_snapshots_import` (unreleased, §10) -
+    Ported from `pypsa.Network._apply_snapshots_import` (unreleased) -
     built entirely from public surface (`set_snapshots`, `snapshot_weightings`).
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     snapshot_levels = {"period", "timestep", "snapshot"}.intersection(df.columns)
     if snapshot_levels:
@@ -366,7 +410,11 @@ def _apply_snapshots_import(n: pypsa.Network, df: pd.DataFrame) -> None:
 def _broadcast_standard_types(n: pypsa.Network) -> None:
     """Broadcast standard-type static tables across scenarios after import.
 
-    Ported from `pypsa.Network._broadcast_standard_types` (unreleased, §10).
+    Ported from `pypsa.Network._broadcast_standard_types` (unreleased).
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     for component in n.standard_type_components:
         comp = n.components[component]
@@ -379,10 +427,14 @@ def _broadcast_standard_types(n: pypsa.Network) -> None:
 def _collect_network_attributes(n: pypsa.Network) -> dict[str, Any]:
     """The serializable scalar network attributes (incl. `name`, `pypsa_version`).
 
-    Ported from `pypsa.Network._collect_network_attributes` (unreleased, §10),
+    Ported from `pypsa.Network._collect_network_attributes` (unreleased),
     trimmed of nothing - the reflection over `dir(n)` is exactly what decides
     which attributes are safe to round-trip, so there is no smaller version of
     this that still answers the same question.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     numpy_types = tuple(np.sctypeDict.values())
     allowed_types = (float, int, bool, str)
@@ -428,11 +480,15 @@ def _collect_network_attributes(n: pypsa.Network) -> dict[str, Any]:
 def _apply_network_attributes(n: pypsa.Network, attrs: dict[str, Any]) -> None:
     """Apply scalar network attributes read back from a record.
 
-    Ported from `pypsa.Network._apply_network_attributes` (unreleased, §10),
+    Ported from `pypsa.Network._apply_network_attributes` (unreleased),
     stripped of the version-compat warnings and PyPI update check the real
     method also does: those are for a human importing a file written by an
     older PyPSA, and have nothing to check here since `to_datarecord` and this
     function always agree on what `attrs` holds.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     attrs = dict(attrs)
     name = attrs.pop("name", None)
@@ -491,14 +547,14 @@ def _add_component_type(
         if SNAPSHOT not in flags.varies:
             continue
         ts_rows = long.filter("snapshot IS NOT NULL")
-        # Partial columns keep non-series components static (§10).
+        # Partial columns keep non-series components static (https://energy-models.github.io/datarecord/design/tools/).
         wide = _series_frame(
             ts_rows, shape, periods, scenarios, snapshots, static_index, con
         )
         n._import_series_from_df(wide, ctype, attr)
 
 
-# -- results (§7.4) ---------------------------------------------------------
+# -- results (https://energy-models.github.io/datarecord/design/read-path/#outputs) ---------------------------------------------------------
 
 
 def _output_attributes(c: pypsa.Components) -> list[str]:
@@ -512,27 +568,31 @@ def _output_attributes(c: pypsa.Components) -> list[str]:
     return list(defaults.index[is_output])
 
 
-# -- network -> layer (§4) ------------------------------------------------
+# -- network -> layer (https://energy-models.github.io/datarecord/design/format/) ------------------------------------------------
 
 # Which end of the component a port is. PyPSA encodes this only by sign
 # convention - `p0` flows in at `bus0`, `p1` out at `bus1` - so the mapping to
 # a record's `role` lives here, the one place that convention is written down
-# (§3.2). Ports beyond the first two are outputs: a multi-port Link's `bus2`
+# (https://energy-models.github.io/datarecord/design/record/#connections). Ports beyond the first two are outputs: a multi-port Link's `bus2`
 # onward are additional sinks.
 _INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT = "input", "output", "attached"
 
 # Attribute stems that exist once per port. A record stores each as one
-# bus-keyed attribute (§3.2), so these are the names whose port suffix is
+# bus-keyed attribute (https://energy-models.github.io/datarecord/design/record/#connections), so these are the names whose port suffix is
 # undone on write and reapplied on build.
 _PORT_STEMS = ("bus", "efficiency", "p")
 
 
 def _port_role(port: str) -> str:
-    """The `role` for a port index (§3.2).
+    """The `role` for a port index.
 
     A single-port component (`c.ports == [""]`, e.g. a Generator's one `bus`)
     is neither an input nor an output end - it has only one attachment - so it
     gets its own role rather than being forced into the two-ended convention.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     if port == "":
         return _SINGLE_PORT
@@ -544,7 +604,11 @@ def _port_attribute(stem: str, port: str) -> str:
 
     `bus` is suffixed from `0`, every other per-port attribute from `2` - the
     quirk that makes the port vocabulary unguessable from a registry and is why
-    a record keys connections by bus instead (§3.2).
+    a record keys connections by bus instead.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     if stem == "bus":
         return f"bus{port}"
@@ -552,11 +616,15 @@ def _port_attribute(stem: str, port: str) -> str:
 
 
 def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
-    """One type's connections as `(name, bus, role)` rows, from its port columns (§3.2).
+    """One type's connections as `(name, bus, role)` rows, from its port columns.
 
     Undoes PyPSA's positional encoding: `c.ports` is the authoritative port
     list (`["0", "1"]` plus `additional_ports`), so the port count comes from
     the network rather than a guessed bound.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     static = c.static
     frames = []
@@ -578,7 +646,7 @@ def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
 
 
 # TODO(pypsa): every function below, up to `_as_long`, ports a function that
-# only exists on PyPSA's unreleased data-records branch (§10). Delete the
+# only exists on PyPSA's unreleased data-records branch (https://energy-models.github.io/datarecord/design/tools/). Delete the
 # ported copy and call the real one once a PyPSA release carries it.
 
 
@@ -586,7 +654,11 @@ def _is_output(defaults: pd.DataFrame, attr: str) -> bool:
     """Whether `attr` is an output (custom attrs with no status are inputs).
 
     Ported from `pypsa.common._is_output` rather than depended on, since only
-    a released PyPSA can be relied on here (no `_as_long` yet, §10).
+    a released PyPSA can be relied on here (no `_as_long` yet).
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     if attr not in defaults.index:
         return False
@@ -663,10 +735,14 @@ def _as_long(
 
     Ported from `pypsa.components.array.Components._as_long` (with its
     helpers above) rather than called on `c`: only an unreleased PyPSA branch
-    carries this method (§10), and a tool may not require one. The reshaping
+    carries this method, and a tool may not require one. The reshaping
     is otherwise built entirely from public surface - `c.dynamic`, `c.static`,
     `c.defaults`, `c.has_scenarios`, `c.snapshots` - so porting it costs
     nothing PyPSA doesn't already expose.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     varying = attr in c.dynamic or (
         attr in c.defaults.index and bool(c.defaults.at[attr, "varying"])
@@ -697,12 +773,19 @@ def _as_long(
 def _long_rows(
     c: pypsa.Components, attribute: str, dims: tuple[str, ...]
 ) -> pd.DataFrame:
-    """One attribute's long rows for one component type, in the §3 schema.
+    """One attribute's long rows for one component type, in the long schema.
 
     `_as_long` already emits the dim columns and `value`; this adds the
     columns the record's schema fixes and PyPSA has no notion of - `attribute`,
     and the NULL `bus`/`breakpoint` that mark an attribute as the component's own
-    and a scalar (§3.2, §3.1). No `component_type` (§4.2).
+    and a scalar. No `component_type`.
+
+    Notes
+    -----
+    - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     long = _as_long(c, attribute, drop_defaults=False)
     long = long.assign(attribute=attribute, bus=None, breakpoint=None)
@@ -715,11 +798,15 @@ def _long_rows(
 def _per_port_long_rows(
     c: pypsa.Components, stem: str, dims: tuple[str, ...]
 ) -> pd.DataFrame:
-    """A per-connection attribute's long rows, `bus` filled from the port (§3.2).
+    """A per-connection attribute's long rows, `bus` filled from the port.
 
     The inverse of the positional collapse: `efficiency`/`efficiency2` become
     one attribute whose rows carry the bus each port attaches to, so the
     overlay owns them per connection rather than per component.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     static = c.static
     frames = []
@@ -790,17 +877,20 @@ class PyPSATool(Tool):
     def verify(self, record: Record) -> Requirements:
         """What this record fails to supply for a PyPSA build; falsy if it is usable.
 
-        Checks what a build needs: the schema declares PyPSA's axes
-        (§10), its key dims are ones this tool can honour, every component
+        Checks what a build needs: the schema declares PyPSA's axes, its key dims are ones this tool can honour, every component
         type it names is one PyPSA knows, and each type's required attributes
         are resolvable - either owned by some layer (the owner map), supplied
-        by the `dims/components` frame, or carrying a declared default
-        (§5.2). A renamed or computed attribute is checked against its sources
+        by the `dims/components` frame, or carrying a declared default. A renamed or computed attribute is checked against its sources
         (`Schema.sources`), which is also how it is reported.
 
         The key checks come first and return early: the owner-map fold keys
         its relations by those dims, so reading the map at all could raise a
         binder error before anything below could report it.
+
+        Notes
+        -----
+        - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
         dims = REQUIRED_DIMS - set(record.schema.dims)
         unsupported_keys = self._unsupported_keys(record)
@@ -825,7 +915,7 @@ class PyPSATool(Tool):
                 continue
             resolved = record.flags(ctype)
             owned = set(resolved)
-            # A curve, not a scalar (§3.1). PyPSA takes a scalar for every
+            # A curve, not a scalar (https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows). PyPSA takes a scalar for every
             # attribute this build assigns, so the record is storing something
             # correct that this translation cannot express - reported here
             # rather than silently pivoting one arbitrary breakpoint.
@@ -835,7 +925,7 @@ class PyPSATool(Tool):
             static_cols = _static_columns(record, ctype)
             # A port attribute the record supplies as connection rows rather
             # than as a column: `bus0`/`bus1` are satisfied by a connection
-            # per port, so the collapse in `build` can name them (§3.2).
+            # per port, so the collapse in `build` can name them (https://energy-models.github.io/datarecord/design/record/#connections).
             from_connections = _connection_attributes(record, ctype)
             specs = declared.get(ctype) or {}
             for attr in _required_attributes(ctype):
@@ -843,7 +933,7 @@ class PyPSATool(Tool):
                     if src in owned or src in static_cols or src in from_connections:
                         continue
                     # A declared default makes the attribute resolvable even
-                    # with no row anywhere (§3.3 broadcast rule).
+                    # with no row anywhere (the broadcast rule).
                     spec = specs.get(src)
                     if spec is not None and spec.default is not None:
                         continue
@@ -860,9 +950,13 @@ class PyPSATool(Tool):
 
         PyPSA's static/series split needs a component's whole series to come
         from one layer, so a snapshot-keyed overlay could leave a broadcast row
-        and a descendant's per-snapshot row with no single container to land in
-        (§5.5). A limit of the *representation*, not the format - which is why
-        the record layer permits the declaration and this reports it (§10).
+        and a descendant's per-snapshot row with no single container to land in. A limit of the *representation*, not the format - which is why
+        the record layer permits the declaration and this reports it.
+
+        Notes
+        -----
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
         defs = record.schema
         kinds = (
@@ -873,13 +967,17 @@ class PyPSATool(Tool):
         return {(key, SNAPSHOT) for key, dims in kinds if SNAPSHOT in dims}
 
     def build(self, record: Record) -> pypsa.Network:
-        """The resolved network, one component type at a time (§10, §10).
+        """The resolved network, one component type at a time.
 
         Raises
         ------
         UnsupportedRecordError
             If `verify` reports anything missing - a partial build would
             surface as a confusing PyPSA error several frames later.
+
+        Notes
+        -----
+        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
         missing = self.verify(record)
         if missing:
@@ -894,11 +992,11 @@ class PyPSATool(Tool):
             static = to_relation(record.components[ctype])
             if not shape.stochastic and SCENARIO in static.columns:
                 static = static.project(star(exclude=[SCENARIO]))
-            # Connections back to the positional columns PyPSA expects (§10).
+            # Connections back to the positional columns PyPSA expects (https://energy-models.github.io/datarecord/design/tools/).
             static = _collapse_connections(static, record, ctype, con)
 
             # Frames are built and released per type, so peak memory is one
-            # type's wide frames rather than the whole network (§10).
+            # type's wide frames rather than the whole network (https://energy-models.github.io/datarecord/design/tools/).
             attributes = {}
             for attr, flags in record.flags(ctype).items():
                 if attr not in schema.attributes.get(ctype, {}):
@@ -910,7 +1008,7 @@ class PyPSATool(Tool):
                     continue
                 # Through the schema, so a renamed or computed attribute
                 # reaches the pivot below as an ordinary long relation. Scoped
-                # by a semi-join against `static`, this type's entity table (§4.3).
+                # by a semi-join against `static`, this type's entity table (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
                 long = (
                     self.schema.resolve(record, ctype, attr)
                     .set_alias("a")
@@ -928,12 +1026,12 @@ class PyPSATool(Tool):
         return n
 
     def results(self, model: pypsa.Network) -> Frames:
-        """A solved network's result attributes in the record's long form (§7.4).
+        """A solved network's result attributes in the record's long form.
 
         Keyed by attribute, matching `outputs/<attr>.parquet`: every component
         type's rows for one attribute are concatenated into one frame, exactly as
-        `attributes` presents `inputs/` (§4.2). The union needs no
-        `component_type` to tell the arms apart (§4.3). Which attributes count as
+        `attributes` presents `inputs/`. The union needs no
+        `component_type` to tell the arms apart. Which attributes count as
         results comes from PyPSA's registry, so an upgrade that adds one is
         picked up.
 
@@ -943,7 +1041,14 @@ class PyPSATool(Tool):
 
         Rows still at the attribute's default are dropped: a static output like
         `Bus.control` carries its default whether or not the network was solved,
-        and an absent output file means exactly "take the default" (§3.3).
+        and an absent output file means exactly "take the default".
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
         per_attribute: dict[str, list[nw.LazyFrame]] = {}
         for c in model.components:
@@ -970,18 +1075,25 @@ class PyPSATool(Tool):
         }
 
     def to_datarecord(self, model: pypsa.Network) -> Record:
-        """Present a `Network` as the `Record` `write_record` persists (§8, §10).
+        """Present a `Network` as the `Record` `write_record` persists.
 
         The inverse of `build`, and the only place PyPSA's shape is undone:
         `c.static`/`c.dynamic` become long rows, and `bus0`/`bus1`/`efficiency2`
-        become connection rows carrying a `role` (§3.2). Key sets are read off the
+        become connection rows carrying a `role`. Key sets are read off the
         network, so listing unpivots nothing and a lookup only what is asked for.
 
         Raises
         ------
         UnsupportedRecordError
             If two component types share a name: PyPSA scopes names per type, a
-            record record-wide, and this reports rather than renames (§4.3, §10).
+            record record-wide, and this reports rather than renames.
+
+        Notes
+        -----
+        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
         clashing = _colliding_names(model)
         if clashing:
@@ -991,26 +1103,37 @@ class PyPSATool(Tool):
 
 @dataclass(frozen=True)
 class _NetworkSource:
-    """A `pypsa.Network` presented as a `Record` (§4).
+    """A `pypsa.Network` presented as a `Record`.
 
     Every `LazyFrames` here is built from key sets read off the network and
     its registry, so nothing is unpivoted until a key is looked up.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
 
     n: pypsa.Network
 
     # The dims a PyPSA network has axes for; `Dims` stays generic, this tool
-    # decides these three are what a network is shaped by (§10).
+    # decides these three are what a network is shaped by (https://energy-models.github.io/datarecord/design/tools/).
     _DIMS = (SNAPSHOT, PERIOD, SCENARIO)
 
     @property
     def schema(self) -> RecordSchema:
-        """The layer's schema, derived from PyPSA's own registry (§5).
+        """The layer's schema, derived from PyPSA's own registry.
 
-        `c.defaults` already declares what §5.2 asks for, so this reads it
+        `c.defaults` already declares what an `AttributeSpec` asks for, so this reads it
         rather than restating it. Every stored attribute, not only the varying
-        ones - `dims=frozenset()` is what puts one in `dims/components/` (§4.1).
-        Results are excluded, belonging to `outputs/` (§7.4).
+        ones - `dims=frozenset()` is what puts one in `dims/components/`.
+        Results are excluded, belonging to `outputs/`.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+        - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
         attributes: dict[str, dict[str, AttributeSpec]] = {}
         for c in self.n.components:
@@ -1018,7 +1141,7 @@ class _NetworkSource:
                 continue
             defaults = c.defaults
             # Per-port columns collapse to their stem, which a record keys by
-            # bus rather than by position (§3.2); `efficiency2` and `efficiency`
+            # bus rather than by position (https://energy-models.github.io/datarecord/design/record/#connections); `efficiency2` and `efficiency`
             # agree on every declaration, so either row answers.
             per_port = self._port_stems(c)
             outputs = set(_output_attributes(c))
@@ -1053,7 +1176,7 @@ class _NetworkSource:
                 ),
                 # `scenario` keys both entity tables: a network's components
                 # are the same across scenarios, but a layer may still patch
-                # one scenario's values (§5.3).
+                # one scenario's values (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys).
                 SCENARIO: Dimension(
                     dtype="VARCHAR",
                     keys=frozenset({"component", "connection"}),
@@ -1075,7 +1198,7 @@ class _NetworkSource:
             SNAPSHOT: lambda: self.n.snapshots.to_frame(index=False),
             PERIOD: lambda: self.n.investment_periods.to_frame(index=False),
             # With its weights: an axis frame carries the whole row, not just
-            # the key column (§3.4), and `scenarios` alone is a bare Index.
+            # the key column (https://energy-models.github.io/datarecord/design/record/#axis-order), and `scenarios` alone is a bare Index.
             SCENARIO: lambda: self.n.scenario_weightings.reset_index(),
         }
         present = tuple(d for d in self._DIMS if len(axes[d]()) > 0)
@@ -1108,13 +1231,18 @@ class _NetworkSource:
 
     @property
     def outputs(self) -> LazyFrames:
-        """Result attributes, keyed by name, from PyPSA's own registry (§7.4).
+        """Result attributes, keyed by name, from PyPSA's own registry.
 
         Keys are named per type by the registry and merged, matching the file
         layout - one `outputs/<attr>.parquet` across types, like `inputs/`.
         A network that was never solved still names them; the frame is then
         empty and `write_record` writes an empty file rather than none, which
-        reads back as "take the default" either way (§3.3).
+        reads back as "take the default" either way.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
         names: dict[str, list[str]] = {}
         for c in self.n.components:
@@ -1127,25 +1255,35 @@ class _NetworkSource:
         )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Never consulted: `write_record` persists frames, not flags (§8).
+        """Never consulted: `write_record` persists frames, not flags.
 
         A network-backed source exists to be written, and the write path reads
         only the frame mappings. Answering properly is easy - `c.static` and
         `c.dynamic` are PyPSA's own split on the snapshot axis, so it needs no
         scan - but an implementation no caller reaches is one no test pins, so
         the honest answer is the empty one, as `mutable._Written` gives.
+
+        Notes
+        -----
+        - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
         """
         return {}
 
     # -- key sets -----------------------------------------------------------
 
     def _record_attributes(self, c: pypsa.Components) -> list[str]:
-        """`c`'s *varying* input attributes, in the record's vocabulary (§4.1).
+        """`c`'s *varying* input attributes, in the record's vocabulary.
 
         Only varying attributes go to `inputs/`, and PyPSA agrees: a non-varying
         one has no `_as_long` representation. Per-port attributes collapse to
         their stem (`efficiency2` -> `efficiency`), a record keying them by bus
-        rather than position (§3.2). Outputs belong to `outputs/` (§7.4).
+        rather than position. Outputs belong to `outputs/`.
+
+        Notes
+        -----
+        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
         defaults = c.defaults
         outputs = set(_output_attributes(c))
@@ -1172,20 +1310,25 @@ class _NetworkSource:
     # -- frames -------------------------------------------------------------
 
     def _component_frame(self, ctype: str) -> nw.LazyFrame:
-        """Wide members of one type: the non-varying, non-port static columns (§3)."""
+        """Wide members of one type: the non-varying, non-port static columns.
+
+        Notes
+        -----
+        - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+        """
         c = self.n.c[ctype]
         defaults = c.defaults
         per_port = set(self._port_stems(c))
 
         def keep(column: str) -> bool:
             if column in per_port:
-                return False  # a connection supplies it (§3.2)
+                return False  # a connection supplies it (https://energy-models.github.io/datarecord/design/record/#connections)
             if column not in defaults.index:
                 # A custom column the registry has no entry for (e.g.
                 # `ac_dc_meshed`'s `Bus.country`). Non-varying by construction -
                 # a varying attribute needs a registry entry to have a
                 # container - so it belongs in the static frame, and dropping
-                # it would silently lose data §3 says to keep.
+                # it would silently lose data the protocol says to keep.
                 return True
             return (
                 not defaults.loc[column, "varying"]
@@ -1196,18 +1339,29 @@ class _NetworkSource:
         return nw.from_native(self._tagged(frame, ctype)).lazy()
 
     def _connection_frame(self, ctype: str) -> nw.LazyFrame:
-        """One type's connections, `(name, bus, role)` (§3.2)."""
+        """One type's connections, `(name, bus, role)`.
+
+        Notes
+        -----
+        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        """
         frame = _connection_rows(self.n.c[ctype])
         return nw.from_native(self._tagged(frame, ctype)).lazy()
 
     @staticmethod
     def _tagged(frame: pd.DataFrame, ctype: str) -> pd.DataFrame:
-        """A `dims/` frame with the columns the fold keys and scopes by (§7.1).
+        """A `dims/` frame with the columns the fold keys and scopes by.
 
         `component_type` because one owner map covers every type; `deleted`
-        because the fold reads the tombstone column from the same file (§6.3);
+        because the fold reads the tombstone column from the same file;
         `scenario` because it is a declared key dim, NULL meaning "every
-        scenario" for a deterministic network (§5.5).
+        scenario" for a deterministic network.
+
+        Notes
+        -----
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         frame = frame.assign(component_type=ctype)
         if "deleted" not in frame.columns:
@@ -1217,10 +1371,14 @@ class _NetworkSource:
         return frame
 
     def _long_frame(self, attribute: str, ctypes: list[str]) -> nw.LazyFrame:
-        """One attribute's long rows, across every type that has it (§3).
+        """One attribute's long rows, across every type that has it.
 
         A per-connection attribute contributes rows carrying the bus each port
         attaches to; a component-level one contributes rows with `bus` NULL.
+
+        Notes
+        -----
+        - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
         """
         dims = self._DIMS
         frames = []
@@ -1245,16 +1403,20 @@ class _NetworkSource:
         if not frames:
             return nw.from_native(pd.DataFrame(columns=columns)).lazy()
         # No dtype fixing here: `write_record` casts every schema column to the
-        # record layer's declared type on the way out (§8), so an all-NULL
+        # record layer's declared type on the way out (https://energy-models.github.io/datarecord/design/writing/), so an all-NULL
         # column pandas typed as float lands as the right type regardless.
         return nw.from_native(pd.concat(frames, ignore_index=True)[columns]).lazy()
 
     def _output_frame(self, attribute: str, ctypes: list[str]) -> nw.LazyFrame:
-        """One result attribute's long rows, across every type that has it (§7.4).
+        """One result attribute's long rows, across every type that has it.
 
         `drop_defaults` matters here as it does in `results`: a static output
         carries its default whether or not the network was solved, and an
         absent value means exactly "take the default" to a reader.
+
+        Notes
+        -----
+        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
         dims = self._DIMS
         frames = []
@@ -1299,14 +1461,20 @@ def _required_attributes(ctype: str) -> frozenset[str]:
 
 
 def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
-    """One type's connections with a port index assigned per component (§10).
+    """One type's connections with a port index assigned per component.
 
-    The positional collapse: connections come in member order (§7.3, an
-    overlay's `order_key`: first-introduced, §7.1) and are numbered within each
+    The positional collapse: connections come in member order (an
+    overlay's `order_key`: first-introduced) and are numbered within each
     component, so a port index follows the order connections were introduced
     and a patch that adds one appends rather than renumbering. Inputs are
     placed before outputs, so `bus0` is the input end PyPSA's sign convention
     expects.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     frame = record.connections.get(ctype)
     if frame is None:
@@ -1315,7 +1483,7 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
     if df.empty:
         return None
     # Per component *and* per value of every dim the connections map is keyed
-    # by (§5.3): a scenario-keyed record holds one row per scenario per port,
+    # by (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys): a scenario-keyed record holds one row per scenario per port,
     # and numbering across them would give one port as many indices as there
     # are scenarios.
     within = ["name", *(d for d in record.schema.connection_dims if d in df)]
@@ -1325,7 +1493,7 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
         )
     # A single-attachment component keeps PyPSA's unsuffixed `bus`, so its port
     # is the empty index rather than `0` (`_port_attribute`).
-    # `dropna=False`: a dim left NULL means "every value of it" (§3.3), which
+    # `dropna=False`: a dim left NULL means "every value of it" (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule), which
     # is an ordinary group here, not a row to drop.
     grouped = df.groupby(within, dropna=False)
     single = grouped["bus"].transform("size").eq(1) & df["role"].eq(_SINGLE_PORT)
@@ -1334,10 +1502,14 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
 
 
 def _connection_attributes(record: Record, ctype: str) -> frozenset[str]:
-    """Port attribute names this type's connection rows can supply (§3.2).
+    """Port attribute names this type's connection rows can supply.
 
     `bus0`/`bus1`/... for the ports that actually exist, so `verify` knows a
     required `bus0` is satisfied by a connection rather than by a column.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     df = _ordered_connections(record, ctype)
     if df is None:
@@ -1350,9 +1522,12 @@ def _collapse_connections(
 ) -> DuckDBPyRelation:
     """Add `bus0`/`bus1`/... columns to a static frame from its connection rows.
 
-    PyPSA wants a column per port; the record stores a row per connection
-    (§3.2). This is the seam between them, and the only direction that needs
+    PyPSA wants a column per port; the record stores a row per connection. This is the seam between them, and the only direction that needs
     positions at all.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     df = _ordered_connections(record, ctype)
     if df is None:
@@ -1360,7 +1535,7 @@ def _collapse_connections(
     # Pivoted on the same key the ports were numbered within, so each
     # (component, scenario, ...) keeps its own port columns.
     index = ["name", *(d for d in record.schema.connection_dims if d in df)]
-    # A dim left NULL means "every value of it" (§3.3), so it is a real key
+    # A dim left NULL means "every value of it" (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule), so it is a real key
     # here - but `pivot` drops NaN index levels, so such a dim is folded away
     # instead: every row shares its value, and the join below matches on the
     # dims that actually distinguish rows.
@@ -1382,8 +1557,12 @@ def _collapse_connections(
 def _static_columns(record: Record, ctype: str) -> frozenset[str]:
     """Columns `dims/components/<ctype>.parquet` supplies for this record.
 
-    The non-varying half of the static frame (§3): an attribute present here
+    The non-varying half of the static frame: an attribute present here
     needs no `inputs/` row to be resolvable.
+
+    Notes
+    -----
+    - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
     """
     frame = record.components.get(ctype)
     return (

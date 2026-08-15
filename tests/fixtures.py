@@ -1,4 +1,9 @@
-"""Hand-built patch layers, since the v2 write path does not exist (design doc §10)."""
+"""Hand-built patch layers, since the v2 write path does not exist.
+
+Notes
+-----
+- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+"""
 
 from pathlib import Path
 
@@ -8,7 +13,7 @@ from datarecord.layered.resolve import write_schema as record_write_schema
 from datarecord.schema import AttributeSpec, Dimension, Schema
 
 # No `component_type`: an attribute row is keyed by `name`, unique across every type
-# (design doc §4.3). The entity tables below keep it.
+# (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types). The entity tables below keep it.
 LONG_COLUMNS = [
     "name",
     "bus",
@@ -28,9 +33,14 @@ def write_input(
 
     Each row needs at least `name` and `value`; missing dimension columns
     default to NULL, i.e. "applies to the whole axis".
-    `bus` set marks a per-connection attribute (design doc §3.2), `breakpoint`
-    a piecewise-linear one (§3.1); both NULL is the ordinary component-level
+    `bus` set marks a per-connection attribute, `breakpoint`
+    a piecewise-linear one; both NULL is the ordinary component-level
     scalar.
+
+    Notes
+    -----
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     df = pd.DataFrame(rows)
     df["attribute"] = attribute
@@ -50,10 +60,14 @@ def write_input(
 
 
 def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
-    """Write `dims/connections/<ctype>.parquet`, including the `deleted` tombstone (§3.2).
+    """Write `dims/connections/<ctype>.parquet`, including the `deleted` tombstone.
 
     Each row needs `name` and `bus`; `role` describes the connection and keys
     nothing, so it is optional here.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     df = pd.DataFrame(rows)
     df["component_type"] = ctype
@@ -75,7 +89,12 @@ def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
 def tombstone_connection(
     layer: str, ctype: str, pairs: list[tuple[str, str]], scenario=None
 ) -> None:
-    """Mark connections deleted in this layer, by `(name, bus)` (§3.2)."""
+    """Mark connections deleted in this layer, by `(name, bus)`.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
     write_connections(
         layer,
         ctype,
@@ -105,7 +124,12 @@ def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
 
 
 def tombstone(layer: str, ctype: str, names: list[str], scenario=None) -> None:
-    """Mark components deleted in this layer (§6.3)."""
+    """Mark components deleted in this layer.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
     write_components(
         layer,
         ctype,
@@ -132,8 +156,12 @@ def write_periods(layer: str, rows: list[dict]) -> None:
 def write_snapshots(layer: str, rows: list[dict]) -> None:
     """Write `dims/snapshots.parquet`; each row needs `snapshot`.
 
-    A `period` column makes it a nested axis (§5.4), keyed by `(period,
+    A `period` column makes it a nested axis, keyed by `(period,
     snapshot)` rather than by the timestamp alone.
+
+    Notes
+    -----
+    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
     df = pd.DataFrame(rows)
     df["snapshot"] = pd.Series(df["snapshot"]).astype("datetime64[ns]")
@@ -149,8 +177,8 @@ def rename_components(n, ctype: str, suffix: str) -> None:
 
     PyPSA's example networks scope names per component type - a `Load` named
     after its `Bus`, a `Generator` after its `Carrier` - which a record cannot
-    represent, names being unique across types (design doc §4.3).
-    `PyPSA.to_datarecord` rejects such a network rather than renaming it (§10),
+    represent, names being unique across types.
+    `PyPSA.to_datarecord` rejects such a network rather than renaming it,
     so the suffix here is the test suite standing in for the caller that has to
     reconcile the two vocabularies.
 
@@ -163,6 +191,11 @@ def rename_components(n, ctype: str, suffix: str) -> None:
     `object` index where PyPSA's own is `str`, and `assert_networks_equal`
     compares index dtypes exactly - so without this the helper, not the code
     under test, would fail the round-trip.
+
+    Notes
+    -----
+    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     c = n.c[ctype]
     index = c.static.index
@@ -192,9 +225,13 @@ def export_network(n, revision, con) -> None:
     """Write `n` as `revision`'s layer, through the record layer's own writer.
 
     Not `n.export_to_parquet`: that emits PyPSA's upstream manifest format,
-    which is a different vocabulary from the schema a record declares (§5.6).
+    which is a different vocabulary from the schema a record declares.
     Going through `write_record` means a test record is written exactly as
     `blocks` writes one.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     from datarecord.layered.write import write_record
     from datarecord.tools.pypsa import PyPSA
@@ -203,16 +240,25 @@ def export_network(n, revision, con) -> None:
 
 
 def write_schema(schema: Schema, base_uri: str | None = None) -> None:
-    """Declare the record's one schema, beside the layers (§5.6).
+    """Declare the record's one schema, beside the layers.
 
     Not per layer: a layer holds only data, so this writes the record-level
     `manifest.json` that every layer in the tree is read under.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     record_write_schema(schema, base_uri)
 
 
 def write_directory_schema(directory: str, schema: Schema) -> None:
-    """Write `manifest.json` *inside* `directory`, for a standalone record (§5.6)."""
+    """Write `manifest.json` *inside* `directory`, for a standalone record.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    """
     Path(directory).mkdir(parents=True, exist_ok=True)
     Path(directory, "manifest.json").write_text(schema.model_dump_json())
 
@@ -229,12 +275,17 @@ def schema(
     },
     within: dict[str, set[str]] | None = None,
 ) -> Schema:
-    """A schema shaped like the PyPSA records most tests build on (§5).
+    """A schema shaped like the PyPSA records most tests build on.
 
     Defaults match `PyPSA.to_datarecord`: three declared dims, `scenario`
     alone `partial` and keying both entity tables. Override `partial`/`keys`
     to pin a different layering granularity, `dims` to declare another axis,
-    `within` to nest one axis inside another (§5.4).
+    `within` to nest one axis inside another.
+
+    Notes
+    -----
+    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
     nesting = within or {}
     return Schema(
@@ -264,5 +315,10 @@ def relation(revision, attribute: str):
 
 
 def outputs(revision, attribute: str):
-    """One result attribute as a DuckDB relation; outputs do not overlay (§7.4)."""
+    """One result attribute as a DuckDB relation; outputs do not overlay.
+
+    Notes
+    -----
+    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+    """
     return revision.node_cache.outputs(attribute)

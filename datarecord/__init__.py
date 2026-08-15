@@ -18,8 +18,11 @@ from datarecord.record import (
     LazyFrames,
     Record,
 )
+from datarecord.schema import AttributeSpec, Dimension, Schema
 
 __all__ = [
+    "AttributeSpec",
+    "Dimension",
     "Directory",
     "DirectoryRecord",
     "Flags",
@@ -30,6 +33,7 @@ __all__ = [
     "Pending",
     "Record",
     "Revision",
+    "Schema",
     "WorkingRecord",
     "connect",
     "layer_dir",

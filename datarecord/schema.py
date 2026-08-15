@@ -1,12 +1,17 @@
-"""The schema: what a record's data is, and how a patch to it behaves (§5).
+"""The schema: what a record's data is, and how a patch to it behaves.
 
 One schema per record, and `manifest.json` is how it is written down - the two
-words name the same thing, the file and the object (§5.6).
+words name the same thing, the file and the object.
 
 Framework-independent. `component_type`, `name` and `attribute` are strings
 because those vocabularies belong to a modelling framework and this package
 knows none: a type no tool recognises reads back fine and is reported by the
 tool that cannot build it, not rejected here.
+
+Notes
+-----
+- [the schema](https://energy-models.github.io/datarecord/design/schema/)
+- [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
 """
 
 from __future__ import annotations
@@ -24,12 +29,22 @@ from pydantic import (
 )
 
 KeyKind = Literal["component", "connection"]
-"""Which entity table a dim keys (§5.3)."""
+"""Which entity table a dim keys.
+
+Notes
+-----
+- [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
+"""
 
 BusRelation = Literal["component", "connection"]
-"""Whether an attribute belongs to a component or to one of its connections (§3.2)."""
+"""Whether an attribute belongs to a component or to one of its connections.
 
-# Columns the format fixes, whatever the schema declares (§4.2). Neither
+Notes
+-----
+- [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+"""
+
+# Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Neither
 # declared nor optional: `bus`/`breakpoint` are NULL for the ordinary
 # component-level scalar, so one column set serves every kind of row.
 STRUCTURAL_TYPES = {
@@ -47,43 +62,55 @@ STRUCTURAL_TYPES = {
 
 # The owner map's flag columns: two structs with a field per declared dim, so
 # the map's column set does not depend on the schema and adding a dim stays the
-# compatible change §5.7 says it is. `breakpoints` is outside both, being no dim
-# (§7.1, §3.6).
+# compatible change versioning calls it. `breakpoints` is outside both, being no dim
+# (https://energy-models.github.io/datarecord/design/read-path/#owner-map, https://energy-models.github.io/datarecord/design/record/#flags).
 FLAG_COLUMNS = ("varies", "broadcast", "breakpoints")
 
 
 def flag_type(dims: tuple[str, ...]) -> str:
-    """The DuckDB type of one flag struct: a BOOLEAN per declared dim (§7.1).
+    """The DuckDB type of one flag struct: a BOOLEAN per declared dim.
 
     `dims` is never empty: a schema declaring no dims describes no dimensioned
-    data, which `Schema` rejects (§5.1) - so the struct always has a field and
+    data, which `Schema` rejects - so the struct always has a field and
     needs no placeholder for DuckDB's want of an empty one.
+
+    Notes
+    -----
+    - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     fields = ", ".join(f'"{d}" BOOLEAN' for d in dims)
     return f"STRUCT({fields})"
 
 
 class Dimension(BaseModel):
-    """One axis attribute data may vary over: its shape, not its data (§5.1).
+    """One axis attribute data may vary over: its shape, not its data.
 
     Not which dims an *attribute* varies over (`AttributeSpec.dims`), nor the
     patch granularity (`Schema.partial`), nor order - an axis is ordered by its
-    file's row order, undeclared (§3.4).
+    file's row order, undeclared.
 
-    Parameters
+    Attributes
     ----------
     dtype
         The axis labels' type, as a DuckDB type name.
     within
-        Dims this one's labels identify a point only *within*; transitive (§5.4).
+        Dims this one's labels identify a point only *within*; transitive.
     keys
-        Which entity tables this dim keys, so an entity exists per value of it
-        (§5.3).
+        Which entity tables this dim keys, so an entity exists per value of it.
     unit
         What this axis's *labels* measure, if anything - `None` is undeclared,
-        `""` genuinely dimensionless (§5.8).
+        `""` genuinely dimensionless.
     description
-        What the axis is, in prose. Never interpreted (§5.8).
+        What the axis is, in prose. Never interpreted.
+
+    Notes
+    -----
+    - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+    - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
+    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
+    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
+    - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
 
     dtype: str
@@ -94,27 +121,36 @@ class Dimension(BaseModel):
 
 
 class AttributeSpec(BaseModel):
-    """What shape one attribute's data may take (§5.2).
+    """What shape one attribute's data may take.
 
-    Parameters
+    Attributes
     ----------
     dtype
         The value column's type, as a DuckDB type name.
     dims
         Dims this attribute may vary over; a subset of those declared. Varying
         over nothing is what puts it in `dims/components/<Type>.parquet` rather
-        than `inputs/`, so the schema decides the file split (§4.1).
+        than `inputs/`, so the schema decides the file split.
     default
-        The value a coordinate no row covers takes (§3.3).
+        The value a coordinate no row covers takes.
     breakpoints
-        Whether it may carry a piecewise-linear curve (§3.1).
+        Whether it may carry a piecewise-linear curve.
     bus
-        Whether it belongs to a component or to one of its connections (§3.2).
+        Whether it belongs to a component or to one of its connections.
     unit
         What the values measure - `"MW"`, `"EUR/MWh"`. Stored and never
-        interpreted; `None` is undeclared, `""` genuinely dimensionless (§5.8).
+        interpreted; `None` is undeclared, `""` genuinely dimensionless.
     description
-        What the attribute is, in prose. Never interpreted (§5.8).
+        What the attribute is, in prose. Never interpreted.
+
+    Notes
+    -----
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
 
     dtype: str
@@ -150,30 +186,41 @@ class AttributeSpec(BaseModel):
 
     @property
     def varying(self) -> bool:
-        """Whether this attribute lives in `inputs/` rather than `dims/components/` (§4.1)."""
+        """Whether this attribute lives in `inputs/` rather than `dims/components/`.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        """
         return bool(self.dims)
 
 
 class Schema(BaseModel):
-    """One record's schema (§5).
+    """One record's schema.
 
-    Parameters
+    Attributes
     ----------
     version
-        Bumped by any change to the declarations (§5.7). A reader meeting a
+        Bumped by any change to the declarations. A reader meeting a
         version it was not written for should refuse rather than guess.
     dimensions
         Every declared axis, keyed by dim name.
     attributes
         Component type -> attribute -> spec.
     partial
-        Which dims a layer may patch value by value (§5.5). `None` for a record
+        Which dims a layer may patch value by value. `None` for a record
         with no layers, since nothing overrides anything. A dim outside it is
         one a layer owns entirely once it touches it.
     meta
         A framework's own top-level data - network attributes, CRS, free-form
         metadata. Stored and never interpreted, since none of it describes the
         dimensioned data.
+
+    Notes
+    -----
+    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
 
     version: int = 1
@@ -184,16 +231,23 @@ class Schema(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> Schema:
-        """Check the rules the format itself fixes (§5.1, §5.3, §5.4)."""
+        """Check the rules the format itself fixes.
+
+        Notes
+        -----
+        - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
+        - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
+        - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
+        """
         declared = set(self.dimensions)
 
-        # Attributes but no axes is a table, not a record (§5.1). Rejected here
+        # Attributes but no axes is a table, not a record (https://energy-models.github.io/datarecord/design/schema/#dimensions). Rejected here
         # so the owner map never needs a struct with no fields, which DuckDB has
         # no type for. A wholly empty `Schema()` stays legal: "no manifest yet".
         if self.attributes and not declared:
             msg = (
                 "a schema declaring attributes must declare at least one dim; "
-                "attribute data varying over no axis is not a record (§5.1)"
+                "attribute data varying over no axis is not a record (https://energy-models.github.io/datarecord/design/schema/#dimensions)"
             )
             raise ValueError(msg)
 
@@ -207,7 +261,7 @@ class Schema(BaseModel):
                 raise ValueError(msg)
 
         # `TopologicalSorter` only needs preparing to reject a cycle, and
-        # `CycleError.args[1]` is the offending path - so the acyclicity §5.4
+        # `CycleError.args[1]` is the offending path - so the acyclicity `within`
         # requires is stdlib rather than a graph walk kept here.
         try:
             TopologicalSorter(
@@ -229,7 +283,7 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"`partial` names undeclared dims {unknown}"
                 raise ValueError(msg)
-            # Nothing for the tombstone to select (§5.3).
+            # Nothing for the tombstone to select (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys).
             for dim, spec in self.dimensions.items():
                 if spec.keys and dim not in self.partial:
                     msg = (
@@ -239,21 +293,30 @@ class Schema(BaseModel):
                     raise ValueError(msg)
         return self
 
-    # -- derived key sets (§5.3, §5.5) --------------------------------------
+    # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys, https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
 
     @property
     def dims(self) -> tuple[str, ...]:
-        """Every declared dim, in declaration order - the long schema's dim columns (§4.2)."""
+        """Every declared dim, in declaration order - the long schema's dim columns.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        """
         return tuple(self.dimensions)
 
     def owned_per(self, ctype: str, attribute: str) -> frozenset[str]:
-        """Which dims a layer owns `attribute` per (§5.5).
+        """Which dims a layer owns `attribute` per.
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
         attribute may vary over, `Schema.partial` which axes a layer may patch
         value by value, and ownership is their intersection. A dim in `dims`
         but not `partial` is owned whole, so a patch to one of its values
         restates the attribute's entire extent along it.
+
+        Notes
+        -----
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         """
         spec = self.attributes.get(ctype, {}).get(attribute)
         if spec is None:
@@ -262,14 +325,19 @@ class Schema(BaseModel):
 
     @property
     def input_dims(self) -> tuple[str, ...]:
-        """Dims that key `inputs/` rows, in declaration order (§7.1).
+        """Dims that key `inputs/` rows, in declaration order.
 
         `partial` itself: the fold's key is one fixed tuple over all
         attributes, so it must carry every axis *any* layer may patch by
         value, not only those some currently declared attribute varies over.
         An attribute not owned per one of them writes NULL there, which is the
-        existing "NULL means all values" rule (§3.3) - and that is also what
+        existing "NULL means all values" rule - and that is also what
         lets a schema declare an axis before any attribute uses it.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         partial = self.partial or frozenset()
         return tuple(d for d in self.dims if d in partial)
@@ -279,34 +347,53 @@ class Schema(BaseModel):
 
     @property
     def component_dims(self) -> tuple[str, ...]:
-        """Dims keying `dims/components/<Type>.parquet` and its tombstones (§5.3)."""
+        """Dims keying `dims/components/<Type>.parquet` and its tombstones.
+
+        Notes
+        -----
+        - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
+        """
         return self._keyed("component")
 
     @property
     def connection_dims(self) -> tuple[str, ...]:
-        """Dims keying `dims/connections/<Type>.parquet` and its tombstones (§5.3)."""
+        """Dims keying `dims/connections/<Type>.parquet` and its tombstones.
+
+        Notes
+        -----
+        - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
+        """
         return self._keyed("connection")
 
     def axis_key(self, dim: str) -> tuple[str, ...]:
-        """A dim's axis-table key: `(*parents, dim)`, parents first (§5.4).
+        """A dim's axis-table key: `(*parents, dim)`, parents first.
 
         Parents in declaration order, and transitively - a dim `within` another
         that is itself `within` a third is keyed by all three.
+
+        Notes
+        -----
+        - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
         """
         seen = _ancestors(dim, {d: s.within for d, s in self.dimensions.items()})
         return (*(d for d in self.dims if d in seen), dim)
 
-    # -- key and column sets (§4.2, §7.1) -----------------------------------
+    # -- key and column sets (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/read-path/#owner-map) -----------------------------------
 
     @property
     def long_columns(self) -> tuple[str, ...]:
-        """The long schema's full column set (§4.2).
+        """The long schema's full column set.
 
         `bus` and `breakpoint` are part of the schema, not optional extensions
         to it: both are NULL for the ordinary component-level scalar, so one
-        column set serves every kind of attribute row (§4.2).
+        column set serves every kind of attribute row.
 
-        No `component_type` (§4.3).
+        No `component_type`.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
         """
         return (
             "name",
@@ -319,61 +406,96 @@ class Schema(BaseModel):
 
     @property
     def input_key(self) -> tuple[str, ...]:
-        """Inputs-map key columns, compared NULL-safely when folding (§7.1).
+        """Inputs-map key columns, compared NULL-safely when folding.
 
         `bus` is in the key so a per-connection attribute is owned per
-        connection rather than per component (§3.2); it is NULL for a
+        connection rather than per component; it is NULL for a
         component-level attribute, which then keys against the map's NULL.
+
+        Notes
+        -----
+        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         return ("name", "bus", *self.input_dims, "attribute")
 
     @property
     def component_key(self) -> tuple[str, ...]:
-        """Components-map key columns, compared NULL-safely when folding (§7.1).
+        """Components-map key columns, compared NULL-safely when folding.
 
-        The type is carried as a column, not keyed (§4.3).
+        The type is carried as a column, not keyed.
+
+        Notes
+        -----
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         return ("name", *self.component_dims)
 
     @property
     def connection_key(self) -> tuple[str, ...]:
-        """Connections-map key columns (§3.2).
+        """Connections-map key columns.
 
         `bus` identifies the connection, so it is a required key column rather
         than a broadcast dim: never expanded against an axis, only compared
         NULL-safely. `role` and `component_type` describe the connection and key
-        nothing (§4.3).
+        nothing.
+
+        Notes
+        -----
+        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
         """
         return ("name", "bus", *self.connection_dims)
 
     @property
     def input_columns(self) -> tuple[str, ...]:
-        """The inputs map's full column set (§7.1)."""
+        """The inputs map's full column set.
+
+        Notes
+        -----
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        """
         return (*self.input_key, "layer_uuid", *FLAG_COLUMNS)
 
     @property
     def component_columns(self) -> tuple[str, ...]:
-        """The components map's full column set; the type is carried, not keyed (§4.3, §7.1)."""
+        """The components map's full column set; the type is carried, not keyed.
+
+        Notes
+        -----
+        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        """
         return ("component_type", *self.component_key, "layer_uuid", "order_key")
 
     @property
     def connection_columns(self) -> tuple[str, ...]:
-        """The connections map's full column set (§7.1)."""
+        """The connections map's full column set.
+
+        Notes
+        -----
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        """
         return ("component_type", *self.connection_key, "layer_uuid", "order_key")
 
-    # -- typing (§4.2, §8) -------------------------------------------------
+    # -- typing (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/writing/) -------------------------------------------------
 
     def column_type(self, column: str) -> str | None:
         """The declared type for one column, or None if the schema declares none.
 
         Covers the structural columns the format fixes, the declared dims, and
-        the owner map's two flag structs, whose fields follow the schema's dims
-        (§7.1).
+        the owner map's two flag structs, whose fields follow the schema's dims.
 
-        A schema declaring no dims at all is "no manifest yet" (§5.6) rather
+        A schema declaring no dims at all is "no manifest yet" rather
         than a record to fold, and DuckDB has no empty struct - so the flag
         columns are undeclared there, and a caller building an empty relation
         falls back to `VARCHAR` for a map that will never hold a row.
+
+        Notes
+        -----
+        - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         if column in STRUCTURAL_TYPES:
             return STRUCTURAL_TYPES[column]
@@ -384,30 +506,45 @@ class Schema(BaseModel):
         return None
 
     def value_type(self, ctype: str, attribute: str) -> str | None:
-        """The `value` column's type for one attribute (§4.2)."""
+        """The `value` column's type for one attribute.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        """
         spec = self.attributes.get(ctype, {}).get(attribute)
         return None if spec is None else spec.dtype
 
     def types_declaring(self, attribute: str) -> frozenset[str]:
-        """Which component types declare `attribute` - what `names=None` targets (§9.2)."""
+        """Which component types declare `attribute` - what `names=None` targets.
+
+        Notes
+        -----
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        """
         return frozenset(
             c for c, attrs in self.attributes.items() if attribute in attrs
         )
 
-    # -- versioning (§5.7) --------------------------------------------------
+    # -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) --------------------------------------------------
 
     def compatible_with(self, other: Schema) -> list[str]:
-        """Why layers written under `other` would not read under `self` (§5.7).
+        """Why layers written under `other` would not read under `self`.
 
         Empty when the change is compatible: old layers stay readable and only
         `version` moves. The compatible changes are those where NULL already
         means what the new schema needs it to mean, so the broadcast rule absorbs
-        them without touching a row (§3.3).
+        them without touching a row.
 
         Returns
         -------
         list of str
             One reason per incompatibility, empty if there are none.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
         """
         problems = []
 

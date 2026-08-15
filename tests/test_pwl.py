@@ -1,4 +1,9 @@
-"""Piecewise-linear values as breakpoint rows (design doc §3.1)."""
+"""Piecewise-linear values as breakpoint rows.
+
+Notes
+-----
+- [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+"""
 
 from datarecord.duck import layer_dir
 from datarecord.layered.revision import Revision
@@ -60,7 +65,12 @@ def test_curve_resolves_as_breakpoint_rows(con, base_uri):
 
 
 def test_breakpoints_distinguishes_curve_from_scalar(con, base_uri):
-    """The owner map says which keys are curves, without opening the file (§7.1)."""
+    """The owner map says which keys are curves, without opening the file.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
     revision = _root_with_curve(con)
     write_input(
         layer_dir(revision.id),
@@ -106,7 +116,12 @@ def test_patch_replaces_the_whole_curve(con, base_uri):
 
 
 def test_curve_on_a_connection(con, base_uri):
-    """`bus` and `breakpoint` compose: one keys, the other does not (§3.1)."""
+    """`bus` and `breakpoint` compose: one keys, the other does not.
+
+    Notes
+    -----
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+    """
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
