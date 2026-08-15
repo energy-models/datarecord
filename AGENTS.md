@@ -6,6 +6,13 @@ For the general contribution workflow, project conventions and architecture
 overview, see [`CONTRIBUTING.md`](CONTRIBUTING.md) (inlined at the end for Claude
 Code via `@`-import).
 
+**Part 1 is philosophy**: a change that breaks one of these is wrong here even
+where it would be right elsewhere. **Part 2 is defaults**: depart from one where
+the work is better served, and **say so in the PR in a sentence**, so the
+exception is a decision rather than a slip.
+
+# Part 1 — Philosophy
+
 ## AI-assisted contributions
 
 You're welcome to help author code, pull requests and issues. But the
@@ -48,5 +55,127 @@ must stay human and honest. Three rules:
    it's marked (see rule 1). But discussion itself — replies, answers to
    questions, review back-and-forth — must be written by the human. Don't let an
    agent argue, agree or decide on your behalf.
+
+In the tree nothing is marked: `Co-Authored-By: Claude …` is the record.
+
+## Breaking changes are free
+
+The project is pre-1.0 and holds no compatibility promise. Asked to change
+something, change it: rename, move, delete. No alias, no deprecation cycle, no
+`legacy_` path — spend the effort on the error that fires where the old name was
+used instead. **A test asserting the old behaviour is not a blocker**; say in the
+PR what coverage moved where.
+
+Where the change is to a construct the design doc defines, the rename lands in
+[`data-records.md`](docs/design-documents/data-records.md) too — the `§N` a
+docstring cites has to still mean what the docstring says it does.
+
+# Part 2 — Good defaults
+
+## Comments
+
+**No explanatory inline comments** — logic that needs explaining becomes a helper
+whose docstring carries the sentence:
+
+```python
+# no
+rel = try_read_parquet(...)  # union_by_name because a layer may lack a dim column
+
+# yes — the sentence lives in _deleted_relation's docstring
+rel = try_read_parquet(...)
+```
+
+What stays inline, because it belongs where the eye lands rather than in a
+docstring nobody opens:
+
+- **A justification of a line that reads as a mistake** — a swallowed exception,
+  a magic literal, a deliberate no-op, a slower construct chosen over the obvious
+  fast one. `duck.py`'s note on why `PROVIDER credential_chain` is skipped for
+  local records, and `record.py`'s on why `__contains__` is overridden, are the
+  model: they answer "why not the obvious thing", which no reader can recover
+  from the code. Keep them as short as the reason allows — a couple of lines
+  where the reason genuinely takes that, not a paragraph.
+- **A case label** where parametrizing the test would distort it.
+- **Pragmas with their reason** (`# type: ignore[…]`, `# noqa: …`, `# fmt: skip`),
+  `#:` attribute docs, and section banners.
+
+**Put the claim in the message that prints** — the assertion message in a test,
+the error text in the code. A comment is read by whoever already found the line,
+a message by whoever hit it:
+
+```python
+# no
+assert names == ["Manchester Wind", "Norway Gas"]  # member order, not sorted
+
+# yes
+assert names == ["Manchester Wind", "Norway Gas"], "members keep record order (§3.1)"
+```
+
+## Docstrings
+
+**As short as it can be without losing the reader** — and the reader of a public
+name is the _caller_, not the implementer.
+
+- **Carry, on anything a caller touches**: what it does, what it takes and
+  returns, how it fails, what it guarantees, in the caller's terms. How it works
+  inside belongs in the code, where anyone who needs it is already looking.
+- **A private helper is the exception** — there the reader _is_ a maintainer:
+  write the constraint that made it exist, and the invariant a change could break
+  unknowingly. `layered/resolve.py`'s `_deleted_relation` and
+  `_component_deleted_for_connections` are the model.
+- **Cut** restatement of the signature, argument for a settled decision,
+  narration of how the answer was found, and any tour of internals a caller
+  cannot see.
+- **Cite the design doc, don't restate it.** `(§3.2)` after the sentence it
+  governs; the argument stays in
+  [`data-records.md`](docs/design-documents/data-records.md). A docstring that
+  re-argues the design is a defect.
+- **The form is
+  [numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html)**: a summary
+  line, a blank line, then the body; `Parameters`, `Returns`, `Yields`, `Raises`,
+  `Attributes`, `Examples`, in that order, each underlined with `-`. **Omit the
+  type** where the annotation carries it — `name` alone above the description,
+  not `name : str`. Spell a type only where it adds what the annotation cannot,
+  as `ancestry : list of UUID` does.
+- **Document the parameters that need it, not all of them.** Unlike Google style
+  there is no all-or-nothing rule and no linter counting them, so a `Parameters`
+  block covering the two arguments that carry a constraint and skipping `con` is
+  correct — `resolve_dims` and `_deleted_relation` both do it. A parameter whose
+  name and annotation already say everything gets no entry, and a function where
+  that is true of every parameter gets the one-line docstring and no block.
+- **The gate is `datarecord/`**, where a docstring is a contract with a caller.
+  Under `tests/` the bullets above are off: there a docstring argues for one
+  assertion, and a summary line it has to fit in is the worse sentence.
+
+```python
+def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) -> Dims:
+    """Fold every dim `schema` declares to its axis relation.
+
+    A dim's axis file is `{dim}s.parquet`.
+
+    Parameters
+    ----------
+    schema
+        The record's schema, which declares the dims and their keys (§5).
+    ancestry : list of UUID
+        Root first, ending in the record being resolved, truncated at the
+        deepest materialised ancestor (`ancestry_to_read`).
+    """
+```
+
+## Issues
+
+Label from the existing set — `gh label list` shows them and their descriptions;
+pick from those rather than inventing new ones.
+
+Findings, issue bodies and your own earlier analysis are **claims to check** —
+re-read the code, fix what is still valid, name what you skipped. A body
+invalidated by a rewrite is closed and re-filed, not annotated.
+
+## Working with the user
+
+- **"Discuss", "should we", "is it worth" are questions.** Answer, then stop.
+- **Do not widen scope.** Name the adjacent thing in a sentence instead.
+- **Recommend, do not survey.**
 
 @CONTRIBUTING.md
