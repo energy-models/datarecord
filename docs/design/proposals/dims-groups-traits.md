@@ -22,12 +22,12 @@ Once that is seen, several other things in the design turn out to be the same me
 
 ## The four mechanisms
 
-| | what it declares | where it lives |
-| --- | --- | --- |
-| **dimension** | an axis of labels | `dims/<dim>.parquet` — labels and order, plus any attribute addressed by it alone |
-| **mapping** | each label of the dim I am `on` has one label of mine | a `Dimension` subclass; own axis file, plus a column on the classified dim's file |
-| **group** | which tuples over several dims exist | own table; subsumes connections |
-| **trait** | which entities an attribute applies to | a subscription on the component type |
+|               | what it declares                                      | where it lives                                                                    |
+| ------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **dimension** | an axis of labels                                     | `dims/<dim>.parquet` — labels and order, plus any attribute addressed by it alone |
+| **mapping**   | each label of the dim I am `on` has one label of mine | a `Dimension` subclass; own axis file, plus a column on the classified dim's file |
+| **group**     | which tuples over several dims exist                  | own table; subsumes connections                                                   |
+| **trait**     | which entities an attribute applies to                | a subscription on the component type                                              |
 
 `within` is unchanged and stays a fifth thing, distinct from mapping — see [mappings are not `within`](#mappings-are-not-within).
 
@@ -79,7 +79,7 @@ That is the thing that started this, expressible — and [the file-split rule](#
 
 `Schema.attributes` inverts: flat, one spec per attribute, and component types subscribe.
 
-The current nesting says an attribute *belongs to* a component type. Once `entity` is one dim among several that is false in both directions — `objective_weighting` has no type, and `p_max_pu` is carried by Generator, Link and StorageUnit as three identical specs.
+The current nesting says an attribute _belongs to_ a component type. Once `entity` is one dim among several that is false in both directions — `objective_weighting` has no type, and `p_max_pu` is carried by Generator, Link and StorageUnit as three identical specs.
 
 The storage already disagrees with the declaration: `inputs/p_max_pu.parquet` holds every type's rows in one file, keyed by name alone, with one `value` dtype.
 So the nesting is expressive where the storage is not — two types may declare the same attribute with **different dtypes**, and one column has to serve both.
@@ -112,19 +112,19 @@ That test breaks the moment `entity` is a dim — `capacity` gains `dims={"entit
 
 The rule that replaces it: **an attribute naming exactly one addressing coordinate and nothing else is a column on that thing's own table.**
 
-| `dims` | lands in |
-| --- | --- |
-| `{"entity"}` | `dims/components/<Type>.parquet` — one column per attribute, per type |
-| `{"connection"}` | the `connection` group's table |
-| `{"corridor"}` | `dims/corridor.parquet` |
-| `{"scenario"}` | `dims/scenario.parquet` — the axis file |
-| `{"entity", "snapshot"}` | `inputs/<attr>.parquet` |
-| `{"connection", "snapshot"}` | `inputs/<attr>.parquet` |
+| `dims`                       | lands in                                                              |
+| ---------------------------- | --------------------------------------------------------------------- |
+| `{"entity"}`                 | `dims/components/<Type>.parquet` — one column per attribute, per type |
+| `{"connection"}`             | the `connection` group's table                                        |
+| `{"corridor"}`               | `dims/corridor.parquet`                                               |
+| `{"scenario"}`               | `dims/scenario.parquet` — the axis file                               |
+| `{"entity", "snapshot"}`     | `inputs/<attr>.parquet`                                               |
+| `{"connection", "snapshot"}` | `inputs/<attr>.parquet`                                               |
 
 So `varying` is not "has dims" but **"has dims beyond its address"**, and one rule now covers what were three unrelated stories: a component's constant columns, a connection's `role`, and an axis's payload.
 
 That last one is what the [opening problem](#what-starts-it) actually was.
-`scenario_weighting` with `dims={"scenario"}` is not a special "record-level attribute" needing a new home — it is the axis-file case of the same rule, and the weighting column the fold already carries beside `dims/scenario.parquet` becomes a *declared* one with a `dtype`, a `default` and a `description`.
+`scenario_weighting` with `dims={"scenario"}` is not a special "record-level attribute" needing a new home — it is the axis-file case of the same rule, and the weighting column the fold already carries beside `dims/scenario.parquet` becomes a _declared_ one with a `dtype`, a `default` and a `description`.
 
 **No separate payload declaration.** A group's table columns, an axis file's payload columns and a component table's constant columns are all just attributes whose `dims` name exactly that one thing.
 Declaring them a second time on the `Group` or the `Dimension` would be two ways to say it, disagreeing eventually.
@@ -194,8 +194,8 @@ groups = {
 ```
 
 `over` maps **coordinate name -> dim**, not a bare set of dims, for two reasons.
-A group over two coordinates drawn from the *same* dim needs two column names — a corridor between two entities is `(from, to)`, and a set could not spell it.
-And an attribute over a group carries the group's *coordinate* names as columns, never the group's own name:
+A group over two coordinates drawn from the _same_ dim needs two column names — a corridor between two entities is `(from, to)`, and a set could not spell it.
+And an attribute over a group carries the group's _coordinate_ names as columns, never the group's own name:
 
 ```text
 inputs/flow.parquet       from | to | snapshot | attribute | breakpoint | value
@@ -210,7 +210,7 @@ The fixed prefix becomes `entity | attribute | breakpoint | value`, and every co
 `entity` is the one dim the format still knows by name, and not merely because it is an axis: it is **the axis the component types partition**. `dims/entity.parquet` carries `component_type`, which decides an attribute vocabulary, and `dims/components/<Type>.parquet` is keyed by it. Nothing else in the schema does that.
 
 **A group in `dims` expands to its coordinates.** `dims={"connection", "snapshot"}` means the attribute's effective columns are `entity | bus | snapshot`, the group contributing both of its own.
-So the fold's key does not vary per attribute: [`input_dims`](../schema.md#partial-the-granularity-of-an-override) stays one fixed tuple over every attribute, now the union of plain dims and group *coordinate* names rather than dim names alone.
+So the fold's key does not vary per attribute: [`input_dims`](../schema.md#partial-the-granularity-of-an-override) stays one fixed tuple over every attribute, now the union of plain dims and group _coordinate_ names rather than dim names alone.
 An attribute not addressed by a coordinate writes NULL there, exactly as one not varying over a dim does today.
 
 Coordinate names rather than dim names is what makes `corridor` work: `from` and `to` both draw on `entity`, so a key built from dims would collapse them into one column.
@@ -220,7 +220,7 @@ Coordinate names rather than dim names is what makes `corridor` work: `from` and
 **Broadcast, for a group coordinate, enumerates the group** rather than the product of its dims.
 That is the rule today's `bus` gets by being excluded from expansion, stated as a rule rather than an exception: a NULL `bus` on a connection attribute means "every connection of this entity", which is the group's rows, not the whole bus axis.
 
-This closes [whether `within` should subsume `bus`](../open-questions.md) as *no — groups do it*.
+This closes [whether `within` should subsume `bus`](../open-questions.md) as _no — groups do it_.
 The blocker recorded there is that `bus` inverts the NULL rule. That premise does not survive: expansion is already governed by whether a dim is in the fold's key set, and [`input_dims`](../schema.md#partial-the-granularity-of-an-override) is already `dims ∩ partial` — a filter over declared dims, not every declared dim. A non-partial dim like `timestep` is never expanded either, and an attribute whose `dims` omit `scenario` writes a NULL there that means "inapplicable", not "all scenarios".
 So the behaviour that "makes a dim a dim" is not uniform today, and `bus` is not an exception to it.
 
@@ -271,7 +271,7 @@ class Shape:
     ]  # component types with rows, empty for a record-level attribute
 ```
 
-`shape()` answers *what exists* — which attributes have rows at all, which coordinates they use, which types they touch — for every attribute in one call.
+`shape()` answers _what exists_ — which attributes have rows at all, which coordinates they use, which types they touch — for every attribute in one call.
 `flags(ctype)` keeps its meaning as the per-type question a framework assembling containers asks; `shape()` is the record-level one, and `types` is what lets a consumer get from one to the other without opening a file.
 
 **It is cheap because the owner map already computes it.**
@@ -282,7 +282,7 @@ So `shape()` for a `LayeredRecord` is a projection of the folded map — no attr
 A `DirectoryRecord` pays a `GROUP BY` scan over `inputs/`, as it already does for `flags` — [the same asymmetry](../read-path.md#what-differs-between-the-implementations), not a new one.
 
 **Open:** whether `flags(ctype)` survives at all, or becomes `shape()` filtered by `types`.
-The two would then differ only in scoping, and one method answering both is smaller — but `flags` is per type *by construction* (its union stops at the type boundary deliberately), and a filtered `shape()` would have to reproduce that. Not settled here.
+The two would then differ only in scoping, and one method answering both is smaller — but `flags` is per type _by construction_ (its union stops at the type boundary deliberately), and a filtered `shape()` would have to reproduce that. Not settled here.
 
 ## Mappings
 
@@ -325,14 +325,14 @@ Single-valued **by construction** — it is a column, so a row has one value. A 
 
 Both are dim→dim, both acyclic, both put a column on another dim's file. They mean opposite things, and the doc must present them together rather than let a reader infer the difference from two similar signatures.
 
-- **`within`** names my *parents*: my label set is **scoped per parent**, so `t1` in period 2015 and `t1` in period 2020 are different points, and the axis key is `(period, timestep)`.
-- **`on`** names the dim I *classify*: one flat label set, each label of that dim picking one of mine. `country` is not scoped by `bus`; it is a partition of buses.
+- **`within`** names my _parents_: my label set is **scoped per parent**, so `t1` in period 2015 and `t1` in period 2020 are different points, and the axis key is `(period, timestep)`.
+- **`on`** names the dim I _classify_: one flat label set, each label of that dim picking one of mine. `country` is not scoped by `bus`; it is a partition of buses.
 
 Nesting versus classification. `within` cannot express `country`, and a mapping cannot express `timestep`.
 
 ## `keys` goes
 
-[`keys`](../schema.md#keys-which-entity-tables-a-dim-keys) declares that an entity exists *per value* of a dim — a generator present in scenario `high` and absent from `low` — which puts the dim in the entity table's key and scopes its tombstones.
+[`keys`](../schema.md#keys-which-entity-tables-a-dim-keys) declares that an entity exists _per value_ of a dim — a generator present in scenario `high` and absent from `low` — which puts the dim in the entity table's key and scopes its tombstones.
 
 It cannot survive this proposal, and not merely because it is hard to grasp.
 `KeyKind` is the closed set `{"component", "connection"}`, and `Schema._keyed(kind)` derives `component_dims` and `connection_dims` by asking every dim which of those two tables it keys.
@@ -350,7 +350,7 @@ What is decided independently: a **mapping never scopes existence**, whatever th
 
 ## A PyPSA network in full
 
-The point of the example. Attribute names, dtypes, defaults and trait boundaries below are read from PyPSA's own component registry rather than invented; the trait *names* are authored.
+The point of the example. Attribute names, dtypes, defaults and trait boundaries below are read from PyPSA's own component registry rather than invented; the trait _names_ are authored.
 
 ```jsonc
 {
@@ -359,22 +359,22 @@ The point of the example. Attribute names, dtypes, defaults and trait boundaries
   "dimensions": {
     // no `keys`: whether existence may vary along a dim is deliberately
     // unanswered here — see "may existence depend on a dim"
-    "entity":   { "dtype": "VARCHAR", "description": "A component." },
+    "entity": { "dtype": "VARCHAR", "description": "A component." },
     "snapshot": { "dtype": "TIMESTAMP", "description": "A point in the operational time series." },
-    "period":   { "dtype": "BIGINT", "unit": "year", "description": "An investment period." },
+    "period": { "dtype": "BIGINT", "unit": "year", "description": "An investment period." },
     "scenario": { "dtype": "VARCHAR" },
-    "bus":      { "dtype": "VARCHAR", "description": "A node of the network." },
+    "bus": { "dtype": "VARCHAR", "description": "A node of the network." },
 
     // a mapping: each bus is in one country; the column lives on dims/bus.parquet
-    "country":  { "dtype": "VARCHAR", "on": "bus" }
+    "country": { "dtype": "VARCHAR", "on": "bus" },
   },
 
   "groups": {
     // subsumes dims/connections/: a component attaches to a bus.
     // No payload block — `role` is an attribute over this group, below
     "connection": {
-      "over": { "entity": "entity", "bus": "bus" }
-    }
+      "over": { "entity": "entity", "bus": "bus" },
+    },
   },
 
   "traits": {
@@ -382,31 +382,67 @@ The point of the example. Attribute names, dtypes, defaults and trait boundaries
     // `capacity*` is renamed from PyPSA's p_nom/s_nom/e_nom, which lets the
     // capacity itself sit in the trait rather than only its costs — see below
     "investable": [
-      "capital_cost", "overnight_cost", "discount_rate",
-      "fom_cost", "build_year", "lifetime",
-      "capacity", "capacity_extendable", "capacity_min", "capacity_max", "capacity_set", "capacity_mod"
+      "capital_cost",
+      "overnight_cost",
+      "discount_rate",
+      "fom_cost",
+      "build_year",
+      "lifetime",
+      "capacity",
+      "capacity_extendable",
+      "capacity_min",
+      "capacity_max",
+      "capacity_set",
+      "capacity_mod",
     ],
     // measured: shared by Generator, Link, StorageUnit
     "dispatchable": ["p_min_pu", "p_max_pu", "p_set"],
     // measured: shared by Generator, Link
     "committable": [
-      "committable", "min_up_time", "min_down_time", "up_time_before", "down_time_before",
-      "start_up_cost", "shut_down_cost", "stand_by_cost",
-      "ramp_limit_up", "ramp_limit_down", "ramp_limit_start_up", "ramp_limit_shut_down"
+      "committable",
+      "min_up_time",
+      "min_down_time",
+      "up_time_before",
+      "down_time_before",
+      "start_up_cost",
+      "shut_down_cost",
+      "stand_by_cost",
+      "ramp_limit_up",
+      "ramp_limit_down",
+      "ramp_limit_start_up",
+      "ramp_limit_shut_down",
     ],
     // measured: shared by Line, Transformer
-    "passive_branch": ["r", "b", "g", "s_max_pu", "num_parallel", "v_ang_min", "v_ang_max"]
+    "passive_branch": ["r", "b", "g", "s_max_pu", "num_parallel", "v_ang_min", "v_ang_max"],
   },
 
   "component_types": {
-    "Bus":         { "traits": [], "attributes": ["v_nom", "v_mag_pu_set", "v_mag_pu_min", "v_mag_pu_max", "carrier", "unit", "location"] },
-    "Carrier":     { "traits": [], "attributes": ["co2_emissions", "color", "nice_name", "max_growth", "max_relative_growth"] },
-    "Generator":   { "traits": ["investable", "dispatchable", "committable"], "attributes": ["efficiency", "sign", "carrier", "active", "control", "q_set", "e_sum_min", "e_sum_max", "weight", "marginal_cost", "marginal_cost_quadratic"] },
-    "Line":        { "traits": ["investable", "passive_branch"], "attributes": ["length", "terrain_factor", "carrier", "active", "x"] },
-    "Link":        { "traits": ["investable", "dispatchable", "committable"], "attributes": ["efficiency", "length", "terrain_factor", "carrier", "active", "marginal_cost", "marginal_cost_quadratic"] },
-    "Store":       { "traits": ["investable"], "attributes": ["e_cyclic", "e_initial", "standing_loss", "marginal_cost", "marginal_cost_storage", "carrier", "active"] },
-    "StorageUnit": { "traits": ["investable", "dispatchable"], "attributes": ["max_hours", "efficiency_store", "efficiency_dispatch", "standing_loss", "cyclic_state_of_charge", "state_of_charge_initial", "inflow", "marginal_cost", "marginal_cost_storage", "carrier", "active"] },
-    "Load":        { "traits": [], "attributes": ["p_set", "q_set", "sign", "carrier", "active"] }
+    "Bus": { "traits": [], "attributes": ["v_nom", "v_mag_pu_set", "v_mag_pu_min", "v_mag_pu_max", "carrier", "unit", "location"] },
+    "Carrier": { "traits": [], "attributes": ["co2_emissions", "color", "nice_name", "max_growth", "max_relative_growth"] },
+    "Generator": {
+      "traits": ["investable", "dispatchable", "committable"],
+      "attributes": ["efficiency", "sign", "carrier", "active", "control", "q_set", "e_sum_min", "e_sum_max", "weight", "marginal_cost", "marginal_cost_quadratic"],
+    },
+    "Line": { "traits": ["investable", "passive_branch"], "attributes": ["length", "terrain_factor", "carrier", "active", "x"] },
+    "Link": { "traits": ["investable", "dispatchable", "committable"], "attributes": ["efficiency", "length", "terrain_factor", "carrier", "active", "marginal_cost", "marginal_cost_quadratic"] },
+    "Store": { "traits": ["investable"], "attributes": ["e_cyclic", "e_initial", "standing_loss", "marginal_cost", "marginal_cost_storage", "carrier", "active"] },
+    "StorageUnit": {
+      "traits": ["investable", "dispatchable"],
+      "attributes": [
+        "max_hours",
+        "efficiency_store",
+        "efficiency_dispatch",
+        "standing_loss",
+        "cyclic_state_of_charge",
+        "state_of_charge_initial",
+        "inflow",
+        "marginal_cost",
+        "marginal_cost_storage",
+        "carrier",
+        "active",
+      ],
+    },
+    "Load": { "traits": [], "attributes": ["p_set", "q_set", "sign", "carrier", "active"] },
   },
 
   // One rule places every one of these: an attribute naming exactly one
@@ -414,17 +450,17 @@ The point of the example. Attribute names, dtypes, defaults and trait boundaries
   // is long rows in inputs/. See "where a value lives".
   "attributes": {
     // dims = {entity} -> a column in dims/components/<Type>.parquet
-    "capacity":            { "dtype": "DOUBLE",  "dims": ["entity"], "default": 0.0, "unit": "MW" },
+    "capacity": { "dtype": "DOUBLE", "dims": ["entity"], "default": 0.0, "unit": "MW" },
     "capacity_extendable": { "dtype": "BOOLEAN", "dims": ["entity"], "default": false },
-    "capacity_max":        { "dtype": "DOUBLE",  "dims": ["entity"], "default": "__inf__" },
-    "capital_cost":        { "dtype": "DOUBLE",  "dims": ["entity"], "default": 0.0, "unit": "EUR/MW" },
-    "carrier":             { "dtype": "VARCHAR", "dims": ["entity"], "default": "" },
-    "v_nom":               { "dtype": "DOUBLE",  "dims": ["entity"], "default": 1.0, "unit": "kV" },
+    "capacity_max": { "dtype": "DOUBLE", "dims": ["entity"], "default": "__inf__" },
+    "capital_cost": { "dtype": "DOUBLE", "dims": ["entity"], "default": 0.0, "unit": "EUR/MW" },
+    "carrier": { "dtype": "VARCHAR", "dims": ["entity"], "default": "" },
+    "v_nom": { "dtype": "DOUBLE", "dims": ["entity"], "default": 1.0, "unit": "kV" },
 
     // beyond its address -> inputs/<attr>.parquet, as long rows
-    "p_max_pu":      { "dtype": "DOUBLE", "dims": ["entity", "snapshot", "scenario"], "default": 1.0 },
+    "p_max_pu": { "dtype": "DOUBLE", "dims": ["entity", "snapshot", "scenario"], "default": 1.0 },
     "marginal_cost": { "dtype": "DOUBLE", "dims": ["entity", "snapshot", "scenario"], "default": 0.0, "breakpoints": true, "unit": "EUR/MWh" },
-    "efficiency":    { "dtype": "DOUBLE", "dims": ["connection", "snapshot"], "default": 1.0 },
+    "efficiency": { "dtype": "DOUBLE", "dims": ["connection", "snapshot"], "default": 1.0 },
 
     // dims = {connection} -> a column on the group's own table. Replaces the
     // `payload` block, and gives `role` a dtype it never had
@@ -435,17 +471,17 @@ The point of the example. Attribute names, dtypes, defaults and trait boundaries
     // the PyPSA tool recognises by name
     "objective_weighting": { "dtype": "DOUBLE", "dims": ["snapshot"], "default": 1.0 },
     "generator_weighting": { "dtype": "DOUBLE", "dims": ["snapshot"], "default": 1.0 },
-    "store_weighting":     { "dtype": "DOUBLE", "dims": ["snapshot"], "default": 1.0 },
+    "store_weighting": { "dtype": "DOUBLE", "dims": ["snapshot"], "default": 1.0 },
 
     // dims = {scenario} -> dims/scenario.parquet, beside the axis labels
-    "scenario_weighting":  { "dtype": "DOUBLE", "dims": ["scenario"], "default": 1.0 },
+    "scenario_weighting": { "dtype": "DOUBLE", "dims": ["scenario"], "default": 1.0 },
 
     // dims = {country} -> dims/country.parquet, a mapping's own axis file
-    "co2_budget": { "dtype": "DOUBLE", "dims": ["country"], "unit": "t" }
+    "co2_budget": { "dtype": "DOUBLE", "dims": ["country"], "unit": "t" },
   },
 
   "partial": ["scenario"],
-  "meta": { "format": "pypsa-parquet" }
+  "meta": { "format": "pypsa-parquet" },
 }
 ```
 
@@ -456,12 +492,12 @@ Both name questions are ones the **storage already asks and the nested schema hi
 So flattening does not introduce them. It makes them representable.
 
 **One name per concept.** PyPSA spells the same quantity `p_nom` (Generator, Link, StorageUnit), `s_nom` (Line, Transformer) and `e_nom` (Store).
-Nested under a component type those are three unrelated attributes; flat, they are one concept under three names, and `investable` could otherwise hold only the *costs* of investing rather than the thing invested in.
+Nested under a component type those are three unrelated attributes; flat, they are one concept under three names, and `investable` could otherwise hold only the _costs_ of investing rather than the thing invested in.
 
 The example renames them to `capacity`, which is what lets `capacity` and its bounds sit in the trait alongside `capital_cost`. That is the outcome to want — an equation in lpspec asking for "the capacity of anything investable" gets one name — and it implies: **the record's vocabulary is not PyPSA's**, and the tool renames on the way in and out.
 
 **Renaming happens tool-side, and traits declare no roles.** The [schema a tool carries](../tools.md) already maps a framework's attribute names to a record's, per component type, so `p_nom -> capacity` for a Generator and `s_nom -> capacity` for a Line is what that mechanism is for.
-A trait naming a *role* an attribute fills would put the same mapping in the record's schema instead, which is one more indirection for something the tool seam already answers — and it would mean an equation dispatching on `capacity` has to resolve a role before it can read a column.
+A trait naming a _role_ an attribute fills would put the same mapping in the record's schema instead, which is one more indirection for something the tool seam already answers — and it would mean an equation dispatching on `capacity` has to resolve a role before it can read a column.
 
 **Collisions become representable rather than silent.** `Bus.x` is a coordinate, `Line.x` is reactance; `Bus.type` and `Line.type` are unrelated standard-type references.
 These are **already collisions today**: both types' `x` rows go to one `inputs/x.parquet` with one `value` dtype, so the nested schema declares two specs over storage that can only honour one.
@@ -475,7 +511,7 @@ A tool reconciles on its own side — prefixing (`line_x`), renaming to somethin
 No qualified names, no per-type namespaces: both would put the component type back into an attribute's address, which is exactly what [name uniqueness](../format.md#name-is-unique-across-types) removed and what makes one file per attribute possible.
 The example accordingly removes `type` from every type and `x`/`y` from `Bus` rather than inventing a mechanism.
 
-**Per-port attributes.** `Link.efficiency2`, `bus0`/`bus1` collapse to a stem addressed by the `connection` group, which the example shows for `efficiency` but not for the `bus0`/`bus1` columns themselves — those become group *rows*, not attributes, and the example does not show the group table.
+**Per-port attributes.** `Link.efficiency2`, `bus0`/`bus1` collapse to a stem addressed by the `connection` group, which the example shows for `efficiency` but not for the `bus0`/`bus1` columns themselves — those become group _rows_, not attributes, and the example does not show the group table.
 
 Outputs are deliberately left out of this proposal.
 
@@ -488,7 +524,7 @@ Rough, and deliberately so — the design is not finished, and the ordering belo
 Two breaks in `mutable.py` are worth naming before they are met, because neither announces itself:
 
 - **`AttributeSpec.varying` inverts at step 4.** `add` routes columns by `declared[c].varying`, which is `bool(spec.dims)`. Once `capacity` declares `dims={"entity"}` that is true, so every non-varying attribute would route to `inputs/` instead of its component table. [The file-split rule](#where-a-value-lives) is the fix, but the routing site has to move with it.
-- **`_overlay`'s broadcast set shifts without being edited.** It computes `broadcast` as the declared dims *minus* the input key, which today is exactly the non-partial dims (`snapshot`, `period`) — the axes an attribute is not owned per.
+- **`_overlay`'s broadcast set shifts without being edited.** It computes `broadcast` as the declared dims _minus_ the input key, which today is exactly the non-partial dims (`snapshot`, `period`) — the axes an attribute is not owned per.
   The key spells `name` and `bus` as literals, so renaming the entity axis to `entity` while `schema.dims` gains it puts **`entity` in `broadcast`**, where a staged row with a NULL entity anti-joins every base row regardless of entity — one edit wiping another component's values from an overlay read.
   `bus` is unaffected, being a literal in the key already.
   The fix is to derive the key's address coordinates rather than spell them, after which `broadcast` means what it did; the hazard is only that nothing fails loudly first. `_long_columns` has the same literals-beside-`schema.dims` shape but breaks loudly, by emitting a column twice.
@@ -506,7 +542,7 @@ Two breaks in `mutable.py` are worth naming before they are met, because neither
 5. **Groups, connections as the instance — including `keys`.** `fixed=("name","bus")` in `layered/resolve.py` becomes schema-derived; the `varies`/`broadcast` structs key on coordinates rather than dims. Deletes `AttributeSpec.bus` and the `bus` special case.
    [`keys` goes in the same step](#keys-goes), not after it: `connection_dims` is derived by scanning every dim for `"connection"` in its `keys`, so the moment connections stop being an entity table that scan has no referent. `KeyKind`, `_keyed`, `component_dims` and `connection_dims` all disappear with it, and nothing replaces them until [the open question](#may-existence-depend-on-a-dim) is answered.
 
-Dropping `keys` narrows what a record can express, so step 5 is where scenario-scoped *membership* stops being representable until [the open question](#may-existence-depend-on-a-dim) is settled — scenario-varying *values* are untouched, as is every per-scenario overlay.
+Dropping `keys` narrows what a record can express, so step 5 is where scenario-scoped _membership_ stops being representable until [the open question](#may-existence-depend-on-a-dim) is settled — scenario-varying _values_ are untouched, as is every per-scenario overlay.
 That makes 5 the one step with a functional regression rather than a pure refactor, and it should not land without the answer.
 
 Its tests go with it, in the same step rather than ahead of it — the behaviour is shipped and working until the code implementing it is removed:
