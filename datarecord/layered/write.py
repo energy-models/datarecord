@@ -18,9 +18,10 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import narwhals as nw
+from duckdb import CoalesceOperator as coalesce
 from duckdb import DuckDBPyRelation
 
-from datarecord.duck import base_uri_of, layer_dir
+from datarecord.duck import base_uri_of, col, fn, layer_dir, lit, try_read_parquet
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.record import Record
 from datarecord.schema import Schema
@@ -137,7 +138,7 @@ def write_record(
                         frame.select("entity")
                         .collect(backend="pyarrow")
                         .lazy()
-                        # Cast after collecting: DuckDB lands `name` as arrow
+                        # Cast after collecting: DuckDB lands `entity` as arrow
                         # `large_string` where pandas gives `string`, and concat
                         # compares arrow schemas.
                         .select(
@@ -149,6 +150,7 @@ def write_record(
                     frame, f"{staging}{subdir}/{key}.parquet", con, local, schema
                 )
         _require_unique(tagged)
+        _write_entity_axis(staging, schema, con)
     except BaseException:
         if local:
             shutil.rmtree(staging, ignore_errors=True)
@@ -236,6 +238,54 @@ def _typed(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
         for c in rel.columns
     )
     return rel.project(cols)
+
+
+def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) -> None:
+    """Write `dims/entity.parquet`: one row per component, with its type.
+
+    The entity axis is what a component's identity *is* - which entities the
+    layer names, what type each is, and which are tombstoned. Derived rather
+    than handed over: the per-type frames just written say all three, so a
+    `Record` never has to produce it and cannot disagree with itself about it.
+
+    Read back through DuckDB rather than unioned from the source frames,
+    because `_write_frame` has already cast every column to what the schema
+    declares - where the frames themselves may disagree, an all-NULL `scenario`
+    landing as arrow `null` for one type and `string` for another.
+
+    `component_type` is a column of this axis and of nothing else, which is
+    what makes `attributes_for` reachable from an entity alone.
+
+    Notes
+    -----
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    """
+    rel = try_read_parquet(
+        f"{staging}dims/components/*.parquet",
+        con,
+        union_by_name=True,
+        filename=True,
+    )
+    if rel is None:
+        return
+    # The type is the file a row is in, so it comes from the filename rather
+    # than a column - which is exactly the glob-and-derive this axis exists to
+    # replace for every later reader.
+    ctype = fn.regexp_extract(col("filename"), lit(r"([^/]+)\.parquet$"), lit(1)).alias(
+        "component_type"
+    )
+    deleted = (
+        coalesce(col("deleted"), lit(False))  # noqa: FBT003
+        if "deleted" in rel.columns
+        else lit(False)  # noqa: FBT003
+    ).alias("deleted")
+    rel.project(
+        col("entity"),
+        ctype,
+        *(col(d) for d in schema.component_dims),
+        deleted,
+    ).to_parquet(f"{staging}dims/entity.parquet")
 
 
 def _require_unique(tagged: list[nw.LazyFrame]) -> None:

@@ -106,7 +106,16 @@ def tombstone_connection(
 
 
 def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
-    """Write `dims/components/<ctype>.parquet`, including the `deleted` tombstone."""
+    """Write `dims/components/<ctype>.parquet` *and* this type's entity rows.
+
+    Membership and tombstones live on `dims/entity.parquet`, which the writer
+    derives from the per-type frames - so a hand-built layer has to keep the
+    two in step the way `write_record` does.
+
+    Notes
+    -----
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    """
     df = pd.DataFrame(rows)
     df["component_type"] = ctype
     if "scenario" not in df:
@@ -121,6 +130,14 @@ def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
     target = Path(layer, "dims", "components")
     target.mkdir(parents=True, exist_ok=True)
     df[ordered].to_parquet(target / f"{ctype}.parquet", index=False)
+
+    # Appended rather than replaced: several types land in one entity axis, and
+    # a layer may write them one call at a time.
+    axis = Path(layer, "dims", "entity.parquet")
+    entities = df[["entity", "component_type", "scenario", "deleted"]]
+    if axis.exists():
+        entities = pd.concat([pd.read_parquet(axis), entities], ignore_index=True)
+    entities.to_parquet(axis, index=False)
 
 
 def tombstone(layer: str, ctype: str, names: list[str], scenario=None) -> None:

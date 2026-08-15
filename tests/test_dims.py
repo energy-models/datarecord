@@ -239,3 +239,28 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
     # And in the owner map the fold builds over them.
     assert "entity" in revision.node_cache.components.df().columns
+
+
+def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
+    """`dims/entity.parquet` says which entities exist and what type each is.
+
+    Derived by the writer from the per-type frames rather than handed over, so
+    a record cannot disagree with itself about it. The components map folds
+    from this one file, where it used to glob `dims/components/` and take the
+    type from the filename.
+
+    Notes
+    -----
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    """
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+
+    axis = con.read_parquet(layer_dir(revision.id) + "dims/entity.parquet").df()
+    assert {"entity", "component_type", "deleted"} <= set(axis.columns)
+    assert not axis["entity"].duplicated().any()
+    assert "Generator" in set(axis["component_type"])
+
+    # And it is what the fold reads: the map's entities are the axis's.
+    mapped = revision.node_cache.components.df()
+    assert set(mapped["entity"]) == set(axis.loc[~axis["deleted"], "entity"])

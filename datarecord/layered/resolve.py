@@ -275,7 +275,7 @@ def _deleted_relation(
     keys: Dims,
     con: DuckDBPyConnection,
     *,
-    subdir: str = "components",
+    uri: str,
     fixed: tuple[str, ...] = ("entity",),
     dims: tuple[str, ...] | None = None,
 ) -> DuckDBPyRelation:
@@ -283,9 +283,10 @@ def _deleted_relation(
 
     Parameters
     ----------
-    subdir
-        `"components"` or `"connections"` - which `dims/` subdirectory the
-        tombstones are read from.
+    uri
+        The layer file the tombstones are read from - the same one the map
+        they filter is built from, since reading membership from one source
+        and deletions from another would resolve a deletion the map never saw.
     fixed
         Key columns compared NULL-safely and never axis-expanded. `bus` joins
         these for a connection tombstone, since it identifies the connection
@@ -302,9 +303,7 @@ def _deleted_relation(
     """
     if dims is None:
         dims = keys.schema.component_dims
-    rel = try_read_parquet(
-        layer_dir(revision_id) + f"dims/{subdir}/*.parquet", con, union_by_name=True
-    )
+    rel = try_read_parquet(uri, con, union_by_name=True)
     if rel is None or "deleted" not in rel.columns:
         return _empty_relation(keys.schema, con, *fixed, *dims)
     rel = rel.filter(col("deleted")).set_alias("i")
@@ -323,7 +322,9 @@ def _component_deleted(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    return _deleted_relation(revision_id, keys, con)
+    return _deleted_relation(
+        revision_id, keys, con, uri=layer_dir(revision_id) + "dims/entity.parquet"
+    )
 
 
 def _component_deleted_for_connections(
@@ -364,7 +365,7 @@ def _connection_deleted(
         revision_id,
         keys,
         con,
-        subdir="connections",
+        uri=layer_dir(revision_id) + "dims/connections/*.parquet",
         fixed=("entity", "bus"),
         dims=keys.schema.connection_dims,
     )
@@ -533,7 +534,7 @@ def fold_components(
         keys,
         con,
         parent,
-        subdir="components",
+        uri=layer_dir(revision_id) + "dims/entity.parquet",
         key=keys.schema.component_key,
         columns=keys.schema.component_columns,
         dims=keys.schema.component_dims,
@@ -566,7 +567,7 @@ def fold_connections(
         keys,
         con,
         parent,
-        subdir="connections",
+        uri=layer_dir(revision_id) + "dims/connections/*.parquet",
         key=keys.schema.connection_key,
         columns=keys.schema.connection_columns,
         dims=keys.schema.connection_dims,
@@ -584,7 +585,7 @@ def _fold_ordered(
     con: DuckDBPyConnection,
     parent: DuckDBPyRelation,
     *,
-    subdir: str,
+    uri: str,
     key: tuple[str, ...],
     columns: tuple[str, ...],
     dims: tuple[str, ...],
@@ -595,8 +596,8 @@ def _fold_ordered(
 ) -> DuckDBPyRelation:
     """The shared fold for the two maps that carry an `order_key`.
 
-    `components` and `connections` differ only in which `dims/` subdirectory
-    they read, which columns key them, and whether a second tombstone kind
+    `components` and `connections` differ only in which file they read,
+    which columns key them, and whether a second tombstone kind
     applies - so the `order_key` assignment, which is the subtle part, lives
     here once rather than in each.
 
@@ -613,9 +614,7 @@ def _fold_ordered(
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    rel = try_read_parquet(
-        layer_dir(revision_id) + f"dims/{subdir}/*.parquet", con, union_by_name=True
-    )
+    rel = try_read_parquet(uri, con, union_by_name=True)
     if rel is None:
         # No rows, so `order_key` needs no values either - just the column.
         own = _empty_relation(keys.schema, con, *columns)
@@ -653,9 +652,7 @@ def _fold_ordered(
             _null_safe("p", "a", also_deleted_key),
             how="anti",
         )
-    deleted = _deleted_relation(
-        revision_id, keys, con, subdir=subdir, fixed=fixed, dims=dims
-    )
+    deleted = _deleted_relation(revision_id, keys, con, uri=uri, fixed=fixed, dims=dims)
     kept = kept.join(
         deleted.set_alias("x"), _null_safe("p", "x", key), how="anti"
     ).join(own.set_alias("o"), _null_safe("p", "o", key), how="anti")
