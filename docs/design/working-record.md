@@ -245,7 +245,7 @@ class Pending:
     def connections(self) -> Mapping[str, int]: ...  # groups["connection"]
 ```
 
-A **derived summary, not a second place rows live**: the counts are a `GROUP BY` over [the staging tables](#staging), computed on access and discarded.
+A **derived summary, not a second place rows live**: the counts are aggregates over [the staging tables](#staging), computed on access and discarded — a `GROUP BY` for the entity kinds, and one `count(*)` per attribute table, which is already keyed by the attribute.
 There is one staging layer and it is in DuckDB, so a hundred-thousand-row edit yields a `Pending` of a few integers.
 
 `groups` is keyed by **group then component type**, so a record declaring a second [group](schema.md#groups) is counted rather than silently omitted — a field named `connection` could only ever report the one group it named.
@@ -314,14 +314,21 @@ The membership read this needs is the one [`set`](#set) already performs, so der
 Staged rows live in DuckDB tables on the record's own connection:
 
 ```sql
-CREATE TABLE staged_inputs_<id>      (<long schema>, _seq BIGINT);          -- no component_type
-CREATE TABLE staged_components_<id>  (<component columns>, deleted BOOLEAN, _seq BIGINT);
-CREATE TABLE staged_<group>_<id>     (<group coordinates>, ..., deleted BOOLEAN, _seq BIGINT);
+CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>, _seq BIGINT);  -- no component_type
+CREATE TABLE staged_outputs_<attr>_<id>  (<that attribute's long columns>, _seq BIGINT);
+CREATE TABLE staged_components_<id>      (<component columns>, deleted BOOLEAN, _seq BIGINT);
+CREATE TABLE staged_<group>_<id>         (<group coordinates>, ..., deleted BOOLEAN, _seq BIGINT);
 ```
+
+**One table per staged attribute**, because that is the file it becomes: its columns are [the attribute's own coordinates](format.md#the-long-schema) and `value` has the attribute's declared type.
+A shared table would have to widen `value` to text and carry every declared dim, which costs twice: the value needs casting back on the way out, and a NULL in a dim column becomes ambiguous between "this attribute has no such axis" and [the broadcast rule](record.md#the-broadcast-rule)'s "every value of it".
+Per attribute both questions are answered by the table's shape, so neither is asked.
+
+A result the schema never declares has no declared type to take; the table records the one its frame arrived with, settled once at creation rather than guessed per read.
 
 One staging table per declared [group](schema.md#groups), mirroring [the maps the fold builds](read-path.md#owner-map): `connection` is one instance, so a record declaring a second group stages it through the same path rather than a second method.
 
-The staged rows are [the format's own rows](#the-shape-of-an-edit), so `staged_inputs` loses `component_type` exactly as `inputs/` does, and the entity tables keep it.
+The staged rows are [the format's own rows](#the-shape-of-an-edit), so a staged long table loses `component_type` exactly as `inputs/` does, and the entity tables keep it.
 
 These tables are the **only** place a staged row exists: `pending` counts them and [the reads](#reading-with-pending-edits) fold them, neither holding a copy.
 

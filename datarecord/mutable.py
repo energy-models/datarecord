@@ -14,7 +14,8 @@ from __future__ import annotations
 import itertools
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from hashlib import sha256
+from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import uuid4
 
 import narwhals as nw
@@ -24,9 +25,9 @@ from duckdb import DuckDBPyRelation, Expression
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import ex_all, fn, union_all_by_name
+from datarecord.duck import ex_all, fn, struct_of, union_all_by_name
 from datarecord.record import EMPTY, Flags, Frames, LazyFrames, Record
-from datarecord.schema import Schema
+from datarecord.schema import LONG_TAIL, Schema
 
 # The one group `connect`/`disconnect` name: they are a connection's own API,
 # where `groups` is the general one.
@@ -355,35 +356,123 @@ class WorkingRecord:
         self.base = base
         self.con = con
         self._id = uuid4().hex
-        self._staged: set[str] = set()
+        # Keyed by `(kind, attribute)`, the attribute being None for the entity
+        # kinds. A long kind stages one table per attribute because that is the
+        # file it stands for: one `value` column at the attribute's own type,
+        # and its own coordinates and no others.
+        self._staged: dict[tuple[str, str | None], str] = {}
 
     # -- staging tables -----------------------------------------------------
 
-    def _table(self, kind: str) -> str:
-        return f"staged_{kind}_{self._id}"
+    def _table(self, kind: str, attribute: str | None = None) -> str:
+        """A staging table's name, unique per record and per attribute.
 
-    def _ensure(self, kind: str) -> str:
+        The attribute is hashed rather than spelled: it is a caller's string,
+        and a table name is the one thing here that cannot be an expression, so
+        it would be an injection and a quoting problem at once.
+        """
+        if attribute is None:
+            return f"staged_{kind}_{self._id}"
+        digest = sha256(attribute.encode()).hexdigest()[:16]
+        return f"staged_{kind}_{digest}_{self._id}"
+
+    def _ensure(
+        self, kind: str, attribute: str | None = None, value_hint: str | None = None
+    ) -> str:
         """The staging table for `kind`, created on first use.
 
         `kind` is one of the fixed three, or a declared group's name - a group
         gets a table shaped by its own coordinates.
+
+        A long kind takes an `attribute` and gets a table per attribute, shaped
+        like the file it becomes: `long_columns_for` for the columns, and the
+        declared dtype for `value`. An undeclared result has no declared dtype,
+        so `value_hint` carries the one its frame arrived with - that being the
+        only thing that knows, and settling it here is what spares the read back
+        a cast that cannot be right for both a string and a number.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
-        name = self._table(kind)
-        if kind not in self._staged:
+        key = (kind, attribute)
+        if key in self._staged:
+            return self._staged[key]
+        name = self._table(kind, attribute)
+        if attribute is not None:
+            shape = self._empty_long(attribute, value_hint)
+        else:
             columns = _COLUMNS.get(kind)
-            ddl = (
+            shape = _empty(
+                self.con,
                 columns(self.schema)
                 if columns is not None
-                else _group_columns(self.schema, kind)
+                else _group_columns(self.schema, kind),
             )
-            self.con.execute(f"CREATE TABLE {name} ({ddl})")
-            self._staged.add(kind)
+        shape.create(name)
+        self._staged[key] = name
         return name
 
-    def _rows(self, kind: str) -> DuckDBPyRelation | None:
-        if kind not in self._staged:
-            return None
-        return self.con.table(self._table(kind))
+    def _empty_long(self, attribute: str, value_hint: str | None) -> DuckDBPyRelation:
+        """A row-less relation shaped like one attribute's long file.
+
+        What the staging table is created from, so the table's shape is a
+        projection rather than assembled DDL - the same expressions the inserts
+        then project, which is what keeps the two from drifting.
+
+        `value` takes the attribute's declared type, or `value_hint` for an
+        undeclared result. Neither means the frame carried no `value` column at
+        all, so the table will hold no value to have a type.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
+        """
+        value_type = self.schema.value_type(attribute) or value_hint or "VARCHAR"
+        types = {"attribute": "VARCHAR", "breakpoint": "DOUBLE", "value": value_type}
+        return _empty(
+            self.con,
+            [
+                *(
+                    _null(types.get(c) or self._column_type(c), c)
+                    for c in self.schema.long_columns_for(attribute)
+                ),
+                _null("BIGINT", "_seq"),
+            ],
+        )
+
+    def _rows(self, kind: str, attribute: str | None = None) -> DuckDBPyRelation | None:
+        name = self._staged.get((kind, attribute))
+        return None if name is None else self.con.table(name)
+
+    def _staged_attributes_of(self, kind: str) -> tuple[str, ...]:
+        """Which attributes `kind` has staged rows for, in insertion order.
+
+        The staging map is the answer, so this is not a query: a table exists
+        exactly where rows were staged.
+        """
+        return tuple(a for (k, a), _ in self._staged.items() if k == kind and a)
+
+    def _column_type(self, column: str) -> str:
+        return _column_type(self.schema, column)
+
+    def _staged_coordinates(self, attribute: str) -> tuple[str, ...]:
+        """The dim columns one attribute's staging table has, in table order.
+
+        `long_columns_for` minus the fixed tail, rather than `coordinates_of`:
+        the two disagree for an *undeclared* attribute, where the first widens
+        to every declared dim and the second answers none. The table is built
+        from the first, so an insert deriving its columns from the second would
+        supply too few - which is the shape a result arrives in.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        """
+        return tuple(
+            c for c in self.schema.long_columns_for(attribute) if c not in LONG_TAIL
+        )
 
     # -- Record, over base plus pending (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits) -----------------------------
 
@@ -511,11 +600,7 @@ class WorkingRecord:
         return LazyFrames(keys, self._attribute_frame)
 
     def _staged_attribute_names(self) -> tuple[str, ...]:
-        rel = self._rows("inputs")
-        if rel is None:
-            return ()
-        rows = rel.project("attribute").distinct().order("attribute").fetchall()
-        return tuple(r[0] for r in rows)
+        return tuple(sorted(self._staged_attributes_of("inputs")))
 
     def _attribute_frame(self, attribute: str) -> nw.LazyFrame:
         base = (
@@ -523,16 +608,11 @@ class WorkingRecord:
             if attribute in self.base.attributes
             else None
         )
-        rel = self._rows("inputs")
-        if rel is None:
+        staged = self._collapsed_inputs(attribute)
+        if staged is None:
             if base is None:
                 raise KeyError(attribute)
             return base
-        staged = (
-            self._collapsed_inputs()
-            .filter(col("attribute") == lit(attribute))
-            .project(*self._typed_value(attribute))
-        )
         if base is None:
             return nw.from_native(staged)
         # The staged rows are the last layer, so they win per key (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits).
@@ -591,30 +671,6 @@ class WorkingRecord:
         return union_all_by_name([kept, staged], self.con).project(
             *(col(c) for c in self._long_columns(attribute))
         )
-
-    def _typed_value(self, attribute: str) -> list[Expression]:
-        """A projection of `_long_columns` with `value` cast to its dtype.
-
-        `value` is staged as text because one staging table holds every
-        attribute's values (`_input_columns`); here the attribute is known, so
-        the declared dtype applies. One attribute is one spec, so there is one
-        answer rather than a per-type agreement to hope for.
-
-        `TRY_CAST`, not `cast`: a value that does not parse as the declared dtype
-        reads as NULL rather than failing the whole relation, which is what the
-        text staging column makes possible in the first place.
-
-        Notes
-        -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        """
-        dtype = self.schema.value_type(attribute) or "DOUBLE"
-        return [
-            sql(f'TRY_CAST("value" AS {dtype})').alias("value")
-            if c == "value"
-            else col(c)
-            for c in self._long_columns(attribute)
-        ]
 
     def _long_columns(self, attribute: str) -> tuple[str, ...]:
         return self.schema.long_columns_for(attribute)
@@ -691,21 +747,18 @@ class WorkingRecord:
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        rel = self._rows("outputs")
-        if rel is None:
+        names = tuple(sorted(self._staged_attributes_of("outputs")))
+        if not names:
             return EMPTY
-        names = tuple(
-            r[0]
-            for r in rel.project("attribute").distinct().order("attribute").fetchall()
-        )
-        return LazyFrames(
-            names,
-            lambda attr: nw.from_native(
-                rel.filter(col("attribute") == lit(attr)).project(
-                    *self._typed_value(attr)
-                )
-            ),
-        )
+
+        def frame(attr: str) -> nw.LazyFrame:
+            rel = cast("DuckDBPyRelation", self._rows("outputs", attr))
+            # `_seq` is staging bookkeeping, not data. Results are otherwise
+            # read as staged: they do not overlay, so there is nothing to
+            # collapse them against (https://energy-models.github.io/datarecord/design/read-path/#outputs).
+            return nw.from_native(rel.project(star(exclude=["_seq"])))
+
+        return LazyFrames(names, frame)
 
     def flags(self, ctype: str) -> dict[str, Flags]:
         """Base flags unioned with what the staged rows use.
@@ -719,51 +772,85 @@ class WorkingRecord:
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
         out = dict(self.base.flags(ctype))
-        rel = self._rows("inputs")
-        if rel is None:
-            return out
         names = self._resolved_names(ctype)
         if not names:
             return out
-        # Only the dims a NULL broadcasts over: "did a row set this" is not a
-        # question about `entity` or a group's coordinate, which address the
-        # row rather than expanding against an axis.
+        arms = [
+            arm
+            for attribute in self._staged_attributes_of("inputs")
+            if (arm := self._flags_arm(attribute, names)) is not None
+        ]
+        if not arms:
+            return out
+        # The structs come back as dicts keyed by dim, so each set is a filter
+        # by name rather than a positional slice into the projection - the same
+        # shape the fold's `flags` unpacks (https://energy-models.github.io/datarecord/design/read-path/#owner-map).
+        for attribute, varies, broadcast, breakpoints in union_all_by_name(
+            arms, self.con
+        ).fetchall():
+            was = out.get(attribute) or Flags(frozenset(), frozenset(), False)  # noqa: FBT003
+            out[attribute] = Flags(
+                varies=was.varies | frozenset(d for d, on in varies.items() if on),
+                broadcast=was.broadcast
+                | frozenset(d for d, on in broadcast.items() if on),
+                breakpoints=was.breakpoints or bool(breakpoints),
+            )
+        return out
+
+    def _flags_arm(
+        self, attribute: str, names: Sequence[str]
+    ) -> DuckDBPyRelation | None:
+        """One attribute's flags as a single row, in a shape every arm shares.
+
+        `(attribute, varies, broadcast, breakpoints)`, the two middle fields
+        structs keyed by dim. The staging tables differ in columns where the
+        answer does not, so a dim this attribute has no column for is a constant
+        `false` - "no such axis" rather than "every row broadcasts over it".
+        Uniform arms are what let one union answer every attribute in a single
+        query instead of a round trip each.
+
+        None where the attribute carries no `entity` column at all: `flags` is
+        answered per component type, and an attribute addressed by an axis alone
+        belongs to the record rather than to any type's members.
+
+        Notes
+        -----
+        - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        """
+        rel = self._rows("inputs", attribute)
+        if rel is None or "entity" not in rel.columns:
+            return None
+        present = set(rel.columns)
+
+        def used(dim: str, *, broadcast: bool) -> Expression:
+            if dim not in present:
+                return lit(False)  # noqa: FBT003
+            value = col(dim).isnull() if broadcast else col(dim).isnotnull()
+            return fn.bool_or(value)
+
         dims = self.schema.broadcast_dims
-        rows = (
+        return (
             rel.filter(col("entity").isin(*(lit(n) for n in names)))
             .aggregate(
                 [
-                    col("attribute"),
-                    *(fn.bool_or(col(d).isnotnull()).alias(f"v_{d}") for d in dims),
-                    *(fn.bool_or(col(d).isnull()).alias(f"b_{d}") for d in dims),
+                    lit(attribute).alias("attribute"),
+                    struct_of({d: used(d, broadcast=False) for d in dims}).alias(
+                        "varies"
+                    ),
+                    struct_of({d: used(d, broadcast=True) for d in dims}).alias(
+                        "broadcast"
+                    ),
                     fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
+                    fn.count_star().alias("_rows"),
                 ]
             )
-            .fetchall()
+            # An ungrouped aggregate answers one row whatever the filter matched,
+            # so the count is what distinguishes "this type has no rows of it" -
+            # which is absence from the mapping - from flags that are all false.
+            .filter(col("_rows") > lit(0))
+            .project(star(exclude=["_rows"]))
         )
-        n = len(dims)
-        for row in rows:
-            attribute = row[0]
-            # Scoped to what the attribute is addressed by: one staging table
-            # holds every attribute's rows at the full width, so a dim another
-            # uses is NULL here and would otherwise read as "every row
-            # broadcasts over it" rather than "no such axis" (https://energy-models.github.io/datarecord/design/record/#flags).
-            own = set(self.schema.coordinates_of(attribute)) or set(dims)
-            varies = frozenset(
-                d for d, on in zip(dims, row[1 : 1 + n], strict=True) if on and d in own
-            )
-            broadcast = frozenset(
-                d
-                for d, on in zip(dims, row[1 + n : 1 + 2 * n], strict=True)
-                if on and d in own
-            )
-            was = out.get(attribute)
-            out[attribute] = Flags(
-                varies=(was.varies if was else frozenset()) | varies,
-                broadcast=(was.broadcast if was else frozenset()) | broadcast,
-                breakpoints=(was.breakpoints if was else False) or bool(row[1 + 2 * n]),
-            )
-        return out
 
     # -- edits (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one, https://energy-models.github.io/datarecord/design/working-record/#add-remove) ----------------------------------------
 
@@ -1022,10 +1109,12 @@ class WorkingRecord:
                 self._validate_attribute(ctype, attribute, dims, name=name)
 
         seq = next(_SEQ)
-        table = self._ensure(kind)
+        table = self._ensure(kind, attribute, _scalar_dtype(values))
         # Positional, so the order must be the staging table's own
-        # (`_input_columns`): every declared dim, then the fixed three.
-        dim_cols = self.schema.dims
+        # (`_empty_long`): this attribute's coordinates, then the fixed
+        # three. Its own, not every declared dim - the table is the shape of the
+        # file it becomes (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+        dim_cols = self._staged_coordinates(attribute)
         placeholders = ", ".join(["?"] * (len(dim_cols) + 4))
 
         def row(name: str, val: Any, label_of: dict[str, Any]) -> list[Any]:
@@ -1102,31 +1191,28 @@ class WorkingRecord:
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        _in_long = lazy.to_native()  # noqa: F841 - referenced by name below
-        table = self._ensure(kind)
+        table = self._ensure(kind, attribute, _value_dtype(lazy))
         # A coordinate the frame does not carry comes from `dims` if the caller
         # scoped it there, and is otherwise NULL - "every value of it" (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         # Typed as the schema declares it either way, so the insert matches the
-        # staging table's column type rather than relying on a VARCHAR coercion.
+        # staging table's column type rather than relying on a coercion.
+        # Only this attribute's own coordinates: the table is its file's shape,
+        # so a dim it is not addressed by has no column to fill (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
         present = set(lazy.collect_schema().names())
-        params: list[Any] = []
 
-        def column(d: str) -> str:
+        def column(d: str) -> Expression:
             if d in present:
-                return f'"{d}"'
-            if d in dims:
-                params.append(dims[d])
-                return f'?::{self.schema.column_type(d)} AS "{d}"'
-            return f'NULL::{self.schema.column_type(d)} AS "{d}"'
+                return col(d)
+            value = dims.get(d)
+            return lit(value).cast(self._column_type(d)).alias(d)
 
-        cols = ", ".join(column(d) for d in self.schema.dims)
-        self.con.execute(
-            f"INSERT INTO {table} SELECT {cols}, "
-            f"? AS attribute, NULL::DOUBLE AS breakpoint, "
-            f"value::VARCHAR AS value, ? "
-            f"FROM _in_long",
-            [*params, attribute, next(_SEQ)],
-        )
+        _as_relation(lazy, self.con).project(
+            *(column(d) for d in self._staged_coordinates(attribute)),
+            lit(attribute).alias("attribute"),
+            lit(None).cast("DOUBLE").alias("breakpoint"),
+            col("value"),
+            lit(next(_SEQ)).alias("_seq"),
+        ).insert_into(table)
 
     def _stage_derived(
         self,
@@ -1191,33 +1277,35 @@ class WorkingRecord:
                 raise KeyError(msg)
         if frame is None:
             return
-        self._stage_resolved(frame.with_columns(expr.alias("value")), kind)
+        self._stage_resolved(frame.with_columns(expr.alias("value")), attribute, kind)
 
-    def _stage_resolved(self, frame: nw.LazyFrame, kind: str = "inputs") -> None:
+    def _stage_resolved(
+        self, frame: nw.LazyFrame, attribute: str, kind: str = "inputs"
+    ) -> None:
         """Stage an already-long frame carrying every key column.
 
-        `value` is cast to text on the way in, since the staging table holds
-        every attribute's values in one column (`_input_columns`).
-
-        Every declared dim rather than one attribute's coordinates: the staging
-        table is one relation over every attribute, so its shape is the widest
-        one. Narrowing to the attribute's own columns happens on the way *out*
-        (`_long_columns`), where one file is one attribute.
+        `value` needs no cast: the table is this attribute's own, so its column
+        already has the attribute's type (`_empty_long`).
         """
-        _upd = frame.to_native()  # noqa: F841 - bound by replacement scan below
-        table = self._ensure(kind)
-        # Only the columns the frame actually carries: one attribute's long
-        # frame is a subset of the staging table's width (`long_columns_for`),
-        # and `INSERT ... BY NAME` fills the rest with NULL.
+        table = self._ensure(kind, attribute, _value_dtype(frame))
+        # A coordinate the frame leaves out is one it broadcasts over, so it is
+        # filled with a typed NULL rather than left to `INSERT ... BY NAME`:
+        # projecting the table's full column list keeps the insert positional
+        # and the types the table's own (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         present = set(frame.collect_schema().names())
-        cols = ", ".join(
-            '"value"::VARCHAR AS "value"' if c == "value" else f'"{c}"'
-            for c in self.schema.long_columns
-            if c in present
-        )
-        self.con.execute(
-            f"INSERT INTO {table} BY NAME SELECT {cols}, {next(_SEQ)} AS _seq FROM _upd"
-        )
+
+        def column(c: str) -> Expression:
+            if c in present:
+                return col(c)
+            if c == "attribute":
+                return lit(attribute).alias(c)
+            dtype = "DOUBLE" if c == "breakpoint" else self._column_type(c)
+            return lit(None).cast(dtype).alias(c)
+
+        _as_relation(frame, self.con).project(
+            *(column(c) for c in self.schema.long_columns_for(attribute)),
+            lit(next(_SEQ)).alias("_seq"),
+        ).insert_into(table)
 
     def add(self, ctype: str, frame: Any) -> None:
         """Stage new components from a wide frame.
@@ -1272,10 +1360,14 @@ class WorkingRecord:
         # wide frame's attribute columns are whatever the caller passed, so
         # they are added as they are first seen rather than declared up front.
         existing = {c.lower() for c in self.con.table(table).columns}
+        # The frame's own type where the schema declares none: `VARCHAR` would
+        # take a float column and store `'1234.5'`, which then reads back as
+        # text for every consumer of the member frame.
+        incoming = dict(zip(_add.columns, (str(t) for t in _add.types), strict=True))
         for c in extra:
             if c.lower() in existing:
                 continue
-            dtype = self.schema.value_type(c) or "VARCHAR"
+            dtype = self.schema.value_type(c) or incoming[c]
             self.con.execute(f'ALTER TABLE {table} ADD COLUMN "{c}" {dtype}')
             existing.add(c.lower())
         extra_sql = "".join(f', "{c}"' for c in extra)
@@ -1416,6 +1508,18 @@ class WorkingRecord:
             rows = rel.aggregate([col(by), fn.count_star().alias("n")]).fetchall()
             return {r[0]: r[1] for r in rows}
 
+        def attribute_counts() -> dict[str, int]:
+            """One `count(*)` per staged table, the attribute being the table."""
+            out = {}
+            for attribute in self._staged_attributes_of("inputs"):
+                rel = self._rows("inputs", attribute)
+                if rel is None:
+                    continue
+                row = rel.aggregate([fn.count_star().alias("n")]).fetchone()
+                if row is not None:
+                    out[attribute] = row[0]
+            return out
+
         # `tombstones` spans every entity kind: a `disconnect` is a deletion
         # like a `remove`, so counting only components would report a staged
         # one as nothing pending (https://energy-models.github.io/datarecord/design/working-record/#pending).
@@ -1428,7 +1532,7 @@ class WorkingRecord:
             if live:
                 groups[group] = live
         return Pending(
-            attributes=counts("inputs", "attribute"),
+            attributes=attribute_counts(),
             components=counts("components", "component_type", deleted=False),
             groups=groups,
             tombstones=dead,
@@ -1441,24 +1545,36 @@ class WorkingRecord:
         -----
         - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)
         """
-        for kind in list(self._staged):
-            self.con.execute(f"DROP TABLE IF EXISTS {self._table(kind)}")
+        for name in self._staged.values():
+            self.con.execute(f"DROP TABLE IF EXISTS {name}")
         self._staged.clear()
 
-    def _collapsed_inputs(self) -> DuckDBPyRelation:
-        """Staged attribute rows, last-write-wins per key, tombstones applied.
+    def _collapsed_inputs(self, attribute: str) -> DuckDBPyRelation | None:
+        """One attribute's staged rows, last-write-wins per key, tombstones applied.
+
+        None where nothing is staged for it, which is what says the base's rows
+        stand alone.
 
         Notes
         -----
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        rel = self._rows("inputs")
-        assert rel is not None
+        rel = self._rows("inputs", attribute)
+        if rel is None:
+            return None
         # Per coordinate, not per input key: the input key excludes the dims an
         # attribute is not owned per (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override), so partitioning on it alone would
         # collapse a whole staged series to one row - two `set` calls at
         # different snapshots are not two writes to the same key.
-        key = dict.fromkeys((*self.schema.input_key, *self.schema.dims, "breakpoint"))
+        #
+        # Intersected with the table's own columns: it carries this attribute's
+        # coordinates and no others (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+        columns = set(self._long_columns(attribute))
+        key = dict.fromkeys(
+            c
+            for c in (*self.schema.input_key, *self.schema.dims, "breakpoint")
+            if c in columns
+        )
         live = _latest_per(rel, key)
         dead = self._tombstoned()
         if dead is None:
@@ -1548,12 +1664,9 @@ class WorkingRecord:
         names = self._staged_attribute_names()
         if not names:
             return EMPTY
-        collapsed = self._collapsed_inputs()
 
         def frame(attr: str) -> nw.LazyFrame:
-            staged = collapsed.filter(col("attribute") == lit(attr)).project(
-                *self._typed_value(attr)
-            )
+            staged = cast("DuckDBPyRelation", self._collapsed_inputs(attr))
             return nw.from_native(self._restated(attr, staged))
 
         return LazyFrames(names, frame)
@@ -1671,36 +1784,79 @@ class WorkingRecord:
         return None
 
 
-def _input_columns(schema: Schema) -> str:
-    """DDL for the staged `inputs/` rows.
+def _value_dtype(frame: nw.LazyFrame) -> str | None:
+    """A frame's `value` column as a DuckDB type name, or None if it has none.
 
-    `value` is `VARCHAR` because one staging table serves every attribute, where
-    The long schema gives `value` a *per-attribute* type; `_typed_value` casts to the
-    declared dtype on the way into the layer.
-
-    No `component_type`: a staged row is the format's own row.
-
-    Notes
-    -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-    - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
+    What an undeclared result's staging column is created as, there being no
+    declaration to take it from. Narrow on purpose: `String` is the case that
+    must not become a number, and everything else lands as `DOUBLE`, which is
+    what every numeric result the tools produce already is.
     """
-    # One staging table serves every attribute, so its columns are every
-    # declared dim rather than any one attribute's, with a row leaving NULL
-    # where its attribute has no such coordinate. Derived, never spelled:
-    # `entity` and a group's coordinates are declared dims, so naming them
-    # here would emit each twice.
-    columns = "".join(f'"{d}" {schema.column_type(d)}, ' for d in schema.dims)
-    return f"{columns}attribute VARCHAR, breakpoint DOUBLE, value VARCHAR, _seq BIGINT"
+    schema = frame.collect_schema()
+    if "value" not in schema.names():
+        return None
+    return "VARCHAR" if schema["value"] == nw.String else "DOUBLE"
 
 
-def _component_columns(schema: Schema) -> str:  # noqa: ARG001 - shape is fixed
-    return "component_type VARCHAR, entity VARCHAR, deleted BOOLEAN, _seq BIGINT"
+def _scalar_dtype(values: Sequence[Any]) -> str | None:
+    """The same answer for a sequence of Python scalars."""
+    if not values:
+        return None
+    return "VARCHAR" if any(isinstance(v, str) for v in values) else "DOUBLE"
 
 
-def _group_columns(schema: Schema, group: str) -> str:
-    """DDL for one group's staged rows: its coordinates, plus what it carries.
+def _column_type(schema: Schema, column: str) -> str:
+    """A staged column's DuckDB type, for a typed NULL or literal.
+
+    Every column a staging table has is a declared dim or a structural one,
+    both of which the schema types - so a missing type is a disagreement
+    between the table's shape and the schema, not a column to guess at.
+
+    Raises
+    ------
+    ValueError
+        If the schema declares no type for `column`.
+    """
+    dtype = schema.column_type(column)
+    if dtype is None:
+        msg = (
+            f"the schema declares no type for {column!r}, which a staged "
+            f"row needs to fill (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
+        )
+        raise ValueError(msg)
+    return dtype
+
+
+def _null(dtype: str, name: str) -> Expression:
+    """A typed NULL, which is one column of a shape-only relation."""
+    return lit(None).cast(dtype).alias(name)
+
+
+def _empty(con: DuckDBPyConnection, columns: Sequence[Expression]) -> DuckDBPyRelation:
+    """A row-less relation with `columns`' names and types.
+
+    What a staging table is created from: `create` takes the table's shape from
+    the relation, so a shape is built as expressions rather than assembled as
+    DDL text. One row of typed NULLs, kept for its types and dropped for its
+    rows.
+
+    A tuple rather than a list is what routes `values` to its expression
+    overload; the stub types only the scalar one.
+    """
+    return con.values(tuple(columns)).limit(0)  # type: ignore[arg-type]
+
+
+def _component_columns(schema: Schema) -> list[Expression]:  # noqa: ARG001 - shape is fixed
+    return [
+        _null("VARCHAR", "component_type"),
+        _null("VARCHAR", "entity"),
+        _null("BOOLEAN", "deleted"),
+        _null("BIGINT", "_seq"),
+    ]
+
+
+def _group_columns(schema: Schema, group: str) -> list[Expression]:
+    """One group's staged columns: its coordinates, plus what it carries.
 
     `role` is spelled because PyPSA's connections have one and no group yet
     declares its own non-key columns; a column a caller passes that is not
@@ -1710,17 +1866,19 @@ def _group_columns(schema: Schema, group: str) -> str:
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
-    coords = "".join(
-        f'"{c}" {schema.column_type(c)}, ' for c in schema.group_coordinates(group)
-    )
-    return f"component_type VARCHAR, {coords}role VARCHAR, deleted BOOLEAN, _seq BIGINT"
+    return [
+        _null("VARCHAR", "component_type"),
+        *(_null(_column_type(schema, c), c) for c in schema.group_coordinates(group)),
+        _null("VARCHAR", "role"),
+        _null("BOOLEAN", "deleted"),
+        _null("BIGINT", "_seq"),
+    ]
 
 
+# The entity kinds only. A long kind is staged per attribute, so its columns
+# take the attribute and come from `_empty_long` instead; `outputs/` shares
+# that shape with `inputs/`, differing only in not overlaying, which is a
+# read-path property rather than a shape one (https://energy-models.github.io/datarecord/design/read-path/#outputs).
 _COLUMNS = {
-    "inputs": _input_columns,
-    # `outputs/` uses the same long schema as `inputs/`; what differs is that it
-    # does not overlay, which is a read-path property rather than a shape one
-    # (https://energy-models.github.io/datarecord/design/read-path/#outputs). So the staging DDL is shared.
-    "outputs": _input_columns,
     "components": _component_columns,
 }

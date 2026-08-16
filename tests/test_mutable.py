@@ -605,6 +605,27 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     assert buses["Manchester Wind"] == "Manchester"
 
 
+def test_add_keeps_an_undeclared_columns_own_type(staged):
+    """A member column the schema does not declare stays the type it arrived as.
+
+    The staging table starts with the key columns and gains an attribute column
+    as it is first seen, so the type has to come from somewhere. Defaulting to
+    `VARCHAR` stored a float as `'1234.5'`, and every consumer of the member
+    frame then read text - silently, since a wide member column is never cast
+    back the way a staged `value` is.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    assert "capex" not in staged.schema.attributes, "undeclared, which is the case here"
+    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "capex": 1234.5}]))
+
+    members = staged.components[GEN].collect().to_native().to_pandas()
+    capex = members.loc[members["entity"] == "NewSolar", "capex"]
+    assert capex.tolist() == [1234.5], "the float survives, rather than becoming text"
+
+
 def test_remove_tombstones_without_enumerating_attributes(staged, root):
     staged.remove(GEN, ["Norway Gas"])
     assert staged.pending.tombstones == {GEN: 1}
@@ -948,6 +969,32 @@ def test_results_accept_a_component_type_the_record_never_declared(staged):
     # The same name as an input is still rejected: membership governs inputs.
     with pytest.raises(KeyError, match="member row"):
         staged.set("p_nom", 1.0, entity=["NoSuchGenerator"])
+
+
+def test_an_undeclared_results_value_keeps_its_own_type(staged):
+    """A result the schema does not declare is not cast to a guessed dtype.
+
+    Staged values are held as text, since one staging table serves every
+    attribute, and reading one back casts to its declared dtype. A result has
+    no declaration - so guessing a numeric one would `TRY_CAST` a string result
+    to NULL and lose it with nothing raised. PyPSA's `sub_network` is the real
+    case, a string-valued output no schema declares.
+
+    Notes
+    -----
+    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
+    """
+    assert "sub_network" not in staged.schema.attributes, "undeclared, as a result is"
+    staged.set("sub_network", "0", entity=["Manchester Wind"], kind="outputs")
+
+    rows = staged.outputs["sub_network"].collect().to_native().to_pandas()
+    assert rows["value"].tolist() == ["0"], "a string result survives the round trip"
+
+    # The other half: dropping the cast altogether would answer '42.0' here,
+    # a number read back as the text the staging column holds it as.
+    staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
+    numeric = staged.outputs["p"].collect().to_native().to_pandas()
+    assert numeric["value"].tolist() == [42.0], "a numeric result comes back a number"
 
 
 def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
