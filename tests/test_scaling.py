@@ -21,9 +21,20 @@ pytestmark = pytest.mark.slow
 
 @pytest.fixture(scope="module")
 def carbon():
+    """`carbon_management`, with every type that shares a `Bus` name renamed off it.
+
+    Same reconciliation `ac_dc` needs (see `conftest.ac_dc`): the network names
+    its `Load`s, `Store`s, `Link`s and `Generator`s after the `Bus` they sit on,
+    which a record cannot represent (design doc §4.3).
+    """
     import pypsa
 
-    return pypsa.examples.carbon_management()
+    from tests.fixtures import rename_components
+
+    n = pypsa.examples.carbon_management()
+    for ctype in ("Load", "Store", "Link", "Generator"):
+        rename_components(n, ctype, f" {ctype}")
+    return n
 
 
 def test_to_model_peaks_near_one_component_type(con, base_uri, carbon):
