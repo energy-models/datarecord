@@ -18,7 +18,7 @@ from datarecord.record import (
     LazyFrames,
     Record,
 )
-from datarecord.schema import AttributeSpec, ComponentType, Dimension, Schema
+from datarecord.schema import AttributeSpec, ComponentType, Dimension, Group, Schema
 
 __all__ = [
     "AttributeSpec",
@@ -28,6 +28,7 @@ __all__ = [
     "DirectoryRecord",
     "Flags",
     "Frames",
+    "Group",
     "LayeredRecord",
     "LazyFrames",
     "NewChild",
