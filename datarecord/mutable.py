@@ -1342,13 +1342,22 @@ class WorkingRecord:
         # ancestors' files lack, which then reads as NULL for their rows. It
         # says so by naming the group among its `dims`, which is what replaced
         # a field of its own (https://energy-models.github.io/datarecord/design/record/#connections).
-        ports = [
-            c
-            for c in columns
-            if declared.get(c) and self.schema.groups_of(c) and c not in varying
-        ]
+        # Only a group `entity` itself coordinates: a wide frame adding one
+        # component can describe that component's own row of such a group
+        # (`bus`, for `connection`), but not a `corridor`, which relates two
+        # entities neither is "the" one being added here - that goes through
+        # `add_group` directly.
+        by_group: dict[str, list[str]] = {}
+        for c in columns:
+            if not declared.get(c) or c in varying:
+                continue
+            for group in self.schema.groups_of(c):
+                if "entity" in self.schema.group_coordinates(group):
+                    by_group.setdefault(group, []).append(c)
+        ports = [c for cols in by_group.values() for c in cols]
         # A column the schema does not name goes to `dims/components/`
-        # unchanged, like any non-varying one.
+        # unchanged, like any non-varying one. `role` rides along on the
+        # connection group rather than being a declared attribute of its own.
         member_cols = [
             c for c in columns if c not in varying and c not in ports and c != "role"
         ]
@@ -1388,19 +1397,28 @@ class WorkingRecord:
                 "inputs",
                 {},
             )
-        # `bus` names the connection itself rather than being an attribute of
-        # one, so it becomes the connection row; any other port attribute
-        # rides along on it (https://energy-models.github.io/datarecord/design/record/#connections). `role` is passed through when the caller
-        # supplies it and left NULL otherwise: what the roles of a type's ports
-        # are is a framework's vocabulary, not this layer's to invent.
-        if "bus" in ports:
-            self.connect(
+        # A group's coordinates name the row itself rather than being an
+        # attribute of one, so they become that group's row; any other column
+        # the group's columns include rides along
+        # (https://energy-models.github.io/datarecord/design/record/#connections). `role` is passed through for
+        # `connection` when the caller supplies it and left NULL otherwise:
+        # what the roles of a type's ports are is a framework's vocabulary,
+        # not this layer's to invent.
+        for group, group_cols in by_group.items():
+            coordinates = self.schema.group_coordinates(group)
+            extra = [c for c in group_cols if c not in coordinates]
+            self.add_group(
+                group,
                 ctype,
                 lazy.select(
                     "entity",
-                    nw.col("bus"),
-                    *(nw.col(c) for c in ports if c != "bus"),
-                    *([nw.col("role")] if "role" in columns else []),
+                    *(nw.col(c) for c in coordinates if c != "entity"),
+                    *(nw.col(c) for c in extra),
+                    *(
+                        [nw.col("role")]
+                        if group == CONNECTION and "role" in columns
+                        else []
+                    ),
                 ),
             )
 
@@ -1450,29 +1468,61 @@ class WorkingRecord:
             [[ctype, name] for name in names],
         )
 
+    def add_group(self, group: str, ctype: str, frame: Any) -> None:
+        """Stage rows of one declared group from a frame carrying its coordinates.
+
+        `connect` is this call for the `connection` group - the general path
+        every group is added through, `connection` being one instance rather
+        than a case of its own.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        coordinates = self.schema.group_coordinates(group)
+        lazy = _incoming(frame, self.con)
+        columns = lazy.collect_schema().names()
+        for required in coordinates:
+            if required not in columns:
+                msg = f"`add_group({group!r}, ...)` needs a {required!r} column"
+                raise ValueError(msg)
+        _rows = lazy.to_native()  # noqa: F841 - bound by replacement scan below
+        table = self._ensure(group)
+        extra = [c for c in columns if c not in coordinates]
+        extra_sql = "".join(f', "{c}"' for c in extra)
+        coordinate_sql = ", ".join(f'"{c}"' for c in coordinates)
+        self.con.execute(
+            f"INSERT INTO {table} BY NAME "
+            f"SELECT $ctype AS component_type, {coordinate_sql}{extra_sql}, "
+            f"false AS deleted, {next(_SEQ)} AS _seq FROM _rows",
+            {"ctype": ctype},
+        )
+
+    def remove_group(
+        self, group: str, ctype: str, keys: Sequence[tuple[Any, ...]]
+    ) -> None:
+        """Stage a tombstone per key, over one declared group's own coordinates.
+
+        `disconnect` is this call for the `connection` group.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        self._stage_tombstones(
+            group,
+            ("component_type", *self.schema.group_coordinates(group)),
+            [[ctype, *key] for key in keys],
+        )
+
     def connect(self, ctype: str, frame: Any) -> None:
-        """Stage connection rows from a frame carrying `name` and `bus`.
+        """Stage connection rows from a frame carrying `entity` and `bus`.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         """
-        lazy = _incoming(frame, self.con)
-        columns = lazy.collect_schema().names()
-        for required in ("entity", "bus"):
-            if required not in columns:
-                msg = f"`connect` needs a {required!r} column"
-                raise ValueError(msg)
-        _conn = lazy.to_native()  # noqa: F841 - bound by replacement scan below
-        table = self._ensure(CONNECTION)
-        extra = [c for c in columns if c not in ("entity", "bus")]
-        extra_sql = "".join(f', "{c}"' for c in extra)
-        self.con.execute(
-            f"INSERT INTO {table} BY NAME "
-            f"SELECT $ctype AS component_type, entity, bus{extra_sql}, "
-            f"false AS deleted, {next(_SEQ)} AS _seq FROM _conn",
-            {"ctype": ctype},
-        )
+        self.add_group(CONNECTION, ctype, frame)
 
     def disconnect(self, ctype: str, pairs: Sequence[tuple[str, str]]) -> None:
         """Stage a tombstone per `(entity, bus)`.
@@ -1481,11 +1531,7 @@ class WorkingRecord:
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         """
-        self._stage_tombstones(
-            CONNECTION,
-            ("component_type", *self.schema.group_coordinates(CONNECTION)),
-            [[ctype, name, bus] for name, bus in pairs],
-        )
+        self.remove_group(CONNECTION, ctype, pairs)
 
     # -- pending / commit / rollback (https://energy-models.github.io/datarecord/design/working-record/#pending, https://energy-models.github.io/datarecord/design/working-record/#committing) -------------------------
 

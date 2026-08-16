@@ -22,6 +22,11 @@ class WorkingRecord:
     def add(self, ctype: str, frame: IntoFrame) -> None: ...
     def remove(self, ctype: str, names: Sequence[str]) -> None: ...
 
+    def add_group(self, group: str, ctype: str, frame: IntoFrame) -> None: ...
+    def remove_group(
+        self, group: str, ctype: str, keys: Sequence[tuple[Any, ...]]
+    ) -> None: ...
+
     def connect(self, ctype: str, frame: IntoFrame) -> None: ...
     def disconnect(self, ctype: str, pairs: Sequence[tuple[str, str]]) -> None: ...
 
@@ -53,12 +58,13 @@ Two properties follow from accumulate-then-commit, and both are the point:
 
 Each edit maps onto exactly one part of the format:
 
-| edit                        | writes                                                                                        | key it targets                           |
-| --------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| set an attribute on a group | `inputs/<attr>.parquet` rows                                                                  | `(*partial dims, attribute)`             |
-| add components              | `dims/entity.parquet` and `dims/components/` rows, plus `inputs/` rows for varying attributes | `entity`                                 |
-| remove components           | a `deleted = true` tombstone on the entity axis                                               | `entity`                                 |
-| connect / disconnect        | `dims/connection/` rows and tombstones                                                        | the group's coordinates, `(entity, bus)` |
+| edit                        | writes                                                                                        | key it targets                                               |
+| --------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| set an attribute on a group | `inputs/<attr>.parquet` rows                                                                  | `(*partial dims, attribute)`                                 |
+| add components              | `dims/entity.parquet` and `dims/components/` rows, plus `inputs/` rows for varying attributes | `entity`                                                     |
+| remove components           | a `deleted = true` tombstone on the entity axis                                               | `entity`                                                     |
+| add_group / remove_group    | `dims/<group>/` rows and tombstones                                                           | the group's own coordinates                                  |
+| connect / disconnect        | `dims/connection/` rows and tombstones                                                        | `(entity, bus)` — `add_group`/`remove_group` on `connection` |
 
 The inputs key is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: `partial` necessarily contains `entity` and every [group](schema.md#groups) coordinate, since neither broadcasts.
 Every key is `entity`-based, because `entity` is [what identifies a component](format.md#entity-is-unique-across-types).
@@ -229,6 +235,19 @@ Membership is not reducible to attribute values.
 `remove` stages a tombstone on the [entity axis](format.md#the-entity-axis), one row per entity and no dim scope: a component [exists or it does not](schema.md#existence-does-not-vary-along-a-dim), so there is no axis to scope a deletion along.
 It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute, and to every row of a group over `entity` — deleting a component deletes its connections with it.
 
+## `add_group` / `remove_group`
+
+```python
+record.add_group("connection", "Link", frame)  # entity + the group's own coordinates
+record.remove_group("connection", "Link", [("dc", "north")])
+```
+
+The general staging path every declared [group](schema.md#groups) writes through — `connect`/`disconnect` are `add_group`/`remove_group` fixed to the `connection` group, not a separate mechanism.
+`frame` carries `group`'s own coordinate columns (`entity` and `bus` for `connection`, `from` and `to` for a `corridor`) plus whatever else the group's table holds; `keys` is a tuple per row in that same coordinate order.
+
+`add`'s own port-splitting calls `add_group` too, but only for a group whose coordinates include `entity` — the case where a row describes one of the component's own group memberships (`bus`, for `connection`).
+A group like `corridor`, relating two entities neither of which is "the" one being added, has no such row to derive from a single component's wide frame and is staged through `add_group` directly.
+
 ## `pending`
 
 ```python
@@ -252,7 +271,7 @@ There is one staging layer and it is in DuckDB, so a hundred-thousand-row edit y
 A group with nothing staged is absent rather than present-and-empty, matching how the other three read.
 
 `connections` survives as a property over `groups["connection"]`, since asking about connections is what most callers do and spelling it out is noise.
-It is a convenience over the general answer rather than a second source of truth, which is the same relation [`connect`/`disconnect`](#add-remove) have to the general staging path.
+It is a convenience over the general answer rather than a second source of truth, which is the same relation [`connect`/`disconnect`](#add_group-remove_group) have to [`add_group`/`remove_group`](#add_group-remove_group).
 
 ## Committing
 

@@ -740,10 +740,10 @@ def test_pending_counts_every_declared_group(con, base_uri, ac_dc):
     staged.connect(
         "Generator", pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
     )
-    con.execute(
-        f"INSERT INTO {staged._ensure('corridor')} BY NAME SELECT "
-        "'Line' AS component_type, 'Manchester Wind' AS \"from\", "
-        "'Norway' AS \"to\", false AS deleted, 0 AS _seq"
+    staged.add_group(
+        "corridor",
+        "Line",
+        pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}]),
     )
 
     assert staged.pending.groups == {
