@@ -169,6 +169,19 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
     """
 ```
 
+## Running the tests
+
+The suite takes ~90s, which is long enough that reading it as it scrolls wastes
+the wait. Redirect it to a file and grep the file instead:
+
+```console
+$ pixi run test > "$TMPDIR/pytest.log" 2>&1; echo "exit=$?"
+$ grep -n "FAILED\|Error\|assert" "$TMPDIR/pytest.log"
+```
+
+Run it in the background and do the next piece of work while it goes; come back
+to the log rather than watching it.
+
 ## Issues
 
 Label from the existing set — `gh label list` shows them and their descriptions;
