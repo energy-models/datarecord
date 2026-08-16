@@ -17,7 +17,7 @@ Notes
 """
 
 import os
-from collections.abc import Callable, Iterable, MutableMapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
 from functools import partial, reduce
 from uuid import UUID
 from weakref import WeakKeyDictionary
@@ -275,6 +275,25 @@ def ex_all(exprs: Iterable[Expression]) -> Expression:
     return reduce(lambda x, y: x & y, exprs)
 
 
+def struct_of(fields: Mapping[str, Expression]) -> Expression:
+    """A struct expression: field name to the expression for its value.
+
+    A struct rather than a column per field, because it comes back as a dict
+    keyed by name: the caller filters it by name instead of counting columns
+    into a positional slice.
+
+    `struct_pack` is what says this in DuckDB, and the field names are its
+    *keyword* arguments - which `FunctionExpression` cannot pass, being
+    positional-only. So the call is assembled as text here and the values are
+    interpolated as the expressions they already are, keeping SQL text out of
+    every caller.
+
+    Never empty, DuckDB having no empty struct.
+    """
+    packed = ", ".join(f'"{name}" := {value}' for name, value in fields.items())
+    return sql(f"struct_pack({packed})")
+
+
 def dims_dirs(ancestry: list[UUID]) -> list[str]:
     """`dims/`-containing directories for resolving a record's axes.
 
@@ -337,6 +356,8 @@ def fold_axis(
 
     union = union_all_by_name(layers, con)
     partition = ", ".join(str(col(c)) for c in key)
+    # `OVER (PARTITION BY ...)` stays text below: DuckDB's expression API has no
+    # window construct, so only what the window wraps is built as an expression.
     ranked = union.project(
         star(),
         sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _depth DESC)").alias(
@@ -346,9 +367,10 @@ def fold_axis(
         # `min()` over two separate window aggregates would answer "smallest
         # _depth" and "smallest _row" independently, not the pair belonging
         # to the earliest actual row.
-        sql(f"min({{'d': _depth, 'r': _row}}) OVER (PARTITION BY {partition})").alias(
-            "_first"
-        ),
+        sql(
+            f"{fn.min(struct_of({'d': col('_depth'), 'r': col('_row')}))} "
+            f"OVER (PARTITION BY {partition})"
+        ).alias("_first"),
     )
     return (
         ranked.filter(col("_rank") == lit(1))

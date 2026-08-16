@@ -42,6 +42,7 @@ from datarecord.duck import (
     layer_dir,
     resolved_dir,
     schema_uri,
+    struct_of,
     try_read_parquet,
     union_all_by_name,
 )
@@ -378,25 +379,6 @@ def _empty_relation(
     return con.sql(f"SELECT {cols} WHERE false")
 
 
-def _struct_of(dims: tuple[str, ...], predicate: str) -> str:
-    """`bool_or(predicate)` per dim, packed into one flag struct.
-
-    `predicate` is formatted with the dim name, so `'"_raw_{}" IS NULL'` gives
-    the broadcast struct. A field aggregating to NULL - what a map written before
-    the dim was declared yields - reads as "not set", the same as false.
-
-    `dims` is never empty: `Schema` rejects attributes with no dims,
-    which is what keeps DuckDB's want of an empty struct off this path.
-
-    Notes
-    -----
-    - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    """
-    fields = ", ".join(f"'{d}': bool_or({predicate.format(d)})" for d in dims)
-    return f"{{{fields}}}"
-
-
 def _null_safe(alias_a: str, alias_b: str, columns: tuple[str, ...]) -> str:
     return " AND ".join(
         f"{alias_a}.{c} IS NOT DISTINCT FROM {alias_b}.{c}" for c in columns
@@ -471,8 +453,15 @@ def fold_inputs(
         own = tagged.aggregate(
             [
                 *(col(c) for c in (*keys.schema.input_key, "layer_uuid")),
-                sql(_struct_of(broadcast, '"_raw_{}" IS NOT NULL')).alias("varies"),
-                sql(_struct_of(broadcast, '"_raw_{}" IS NULL')).alias("broadcast"),
+                # A field aggregating to NULL - what a map written before the
+                # dim was declared yields - reads as "not set", the same as
+                # false.
+                struct_of(
+                    {d: fn.bool_or(col(f"_raw_{d}").isnotnull()) for d in broadcast}
+                ).alias("varies"),
+                struct_of(
+                    {d: fn.bool_or(col(f"_raw_{d}").isnull()) for d in broadcast}
+                ).alias("broadcast"),
                 fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
             ]
         )
@@ -1021,8 +1010,12 @@ class NodeCache:
             .aggregate(
                 [
                     col("attribute"),
-                    sql(_struct_of(dims, '"varies"."{}"')).alias("varies"),
-                    sql(_struct_of(dims, '"broadcast"."{}"')).alias("broadcast"),
+                    struct_of({d: fn.bool_or(col("varies", d)) for d in dims}).alias(
+                        "varies"
+                    ),
+                    struct_of({d: fn.bool_or(col("broadcast", d)) for d in dims}).alias(
+                        "broadcast"
+                    ),
                     fn.bool_or(col("breakpoints")).alias("breakpoints"),
                 ]
             )
