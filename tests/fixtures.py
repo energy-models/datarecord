@@ -297,7 +297,6 @@ def write_directory_schema(directory: str, schema: Schema) -> None:
 def schema(
     *,
     partial: set[str] = {"scenario"},
-    keys: dict[str, set[str]] = {"scenario": {"component", "connection"}},
     attributes: dict[str, dict[str, AttributeSpec]] | None = None,
     dims: dict[str, str] = {
         "snapshot": "TIMESTAMP",
@@ -312,10 +311,10 @@ def schema(
     """A schema shaped like the PyPSA records most tests build on.
 
     Defaults match `PyPSA.to_datarecord`: the `entity` axis and a `connection`
-    group over `(entity, bus)`, three declared dims, and `scenario` keying both
-    entity tables. Override `partial`/`keys` to pin a different layering
-    granularity, `dims` to declare another axis, `groups` to declare a
-    different sparse relation, `within` to nest one axis inside another.
+    group over `(entity, bus)`, and three declared dims. Override `partial` to
+    pin a different layering granularity, `dims` to declare another axis,
+    `groups` to declare a different sparse relation, `within` to nest one axis
+    inside another.
 
     `entity` and every group coordinate are declared dims and are `partial`:
     a layer patches one component's value, or one connection's, without
@@ -350,11 +349,7 @@ def schema(
     return Schema(
         groups={g: Group(over=over) for g, over in groups.items()},
         dimensions={
-            d: Dimension(
-                dtype=t,
-                keys=frozenset(keys.get(d, set())),
-                within=frozenset(nesting.get(d, set())),
-            )
+            d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))
             for d, t in declared.items()
         },
         attributes=flat,

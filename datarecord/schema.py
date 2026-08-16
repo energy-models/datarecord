@@ -299,7 +299,8 @@ class Schema(BaseModel):
         Notes
         -----
         - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
-        - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
         """
         declared = set(self.dimensions)
@@ -413,7 +414,7 @@ class Schema(BaseModel):
                 raise ValueError(msg)
         return self
 
-    # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys, https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
+    # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
 
     @property
     def dims(self) -> tuple[str, ...]:

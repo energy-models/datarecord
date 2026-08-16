@@ -17,7 +17,7 @@ from datarecord.mutable import Directory, NewChild, WorkingRecord, normalise_val
 from datarecord.record import Record
 from datarecord.schema import AttributeSpec
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network
+from tests.fixtures import export_network, schema
 
 GEN = "Generator"
 
@@ -660,7 +660,7 @@ def test_connect_stages_a_new_connection(staged, root):
 
 
 def test_disconnect_stages_a_tombstone(staged, root):
-    """One `deleted` row per `(name, bus)`, scoped by the connection key dims.
+    """One `deleted` row per `(entity, bus)`, the group's own coordinates.
 
     Notes
     -----
@@ -684,6 +684,48 @@ def test_disconnect_stages_a_tombstone(staged, root):
 def test_connect_needs_a_bus(staged):
     with pytest.raises(ValueError, match="'bus'"):
         staged.connect("Generator", pd.DataFrame([{"entity": "Manchester Wind"}]))
+
+
+def test_pending_counts_every_declared_group(con, base_uri, ac_dc):
+    """`pending.groups` is keyed by group, so a second one is not silently dropped.
+
+    `connection` is one group among several. A `Pending` naming it as a field
+    of its own could count only that one, so a record declaring a `corridor`
+    would report nothing staged while holding rows to commit.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [pending](https://energy-models.github.io/datarecord/design/working-record/#pending)
+    """
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    write_schema(
+        schema(
+            groups={
+                "connection": {"entity": "entity", "bus": "bus"},
+                "corridor": {"from": "entity", "to": "entity"},
+            }
+        )
+    )
+    staged = WorkingRecord(revision.record, con)
+
+    staged.connect(
+        "Generator", pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
+    )
+    con.execute(
+        f"INSERT INTO {staged._ensure('corridor')} BY NAME SELECT "
+        "'Line' AS component_type, 'Manchester Wind' AS \"from\", "
+        "'Norway' AS \"to\", false AS deleted, 0 AS _seq"
+    )
+
+    assert staged.pending.groups == {
+        "connection": {"Generator": 1},
+        "corridor": {"Line": 1},
+    }, "both groups counted, keyed by group name"
+    # The old spelling still answers for the one group it named.
+    assert staged.pending.connections == {"Generator": 1}
+    assert bool(staged.pending), "a staged group row is something pending"
 
 
 # -- rollback (https://energy-models.github.io/datarecord/design/working-record/#pending) --------------------------------------------------------

@@ -235,18 +235,24 @@ It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it
 @dataclass(frozen=True)
 class Pending:
     attributes: Mapping[str, int]  # attribute -> staged row count
-    components: Mapping[str, int]
-    connections: Mapping[str, int]
+    components: Mapping[str, int]  # component type -> count
+    groups: Mapping[str, Mapping[str, int]]  # group -> component type -> count
     tombstones: Mapping[str, int]
 
     def __bool__(self) -> bool: ...
+
+    @property
+    def connections(self) -> Mapping[str, int]: ...  # groups["connection"]
 ```
 
 A **derived summary, not a second place rows live**: the counts are a `GROUP BY` over [the staging tables](#staging), computed on access and discarded.
 There is one staging layer and it is in DuckDB, so a hundred-thousand-row edit yields a `Pending` of a few integers.
 
-`connections` names the `connection` [group](schema.md#groups) specifically, and is the one place the edit API still spells a group rather than deriving it — a record declaring a second group stages and commits it correctly but has nowhere here to count it.
-Widening this to `groups: Mapping[str, Mapping[str, int]]` is the obvious repair and is not done.
+`groups` is keyed by **group then component type**, so a record declaring a second [group](schema.md#groups) is counted rather than silently omitted — a field named `connection` could only ever report the one group it named.
+A group with nothing staged is absent rather than present-and-empty, matching how the other three read.
+
+`connections` survives as a property over `groups["connection"]`, since asking about connections is what most callers do and spelling it out is noise.
+It is a convenience over the general answer rather than a second source of truth, which is the same relation [`connect`/`disconnect`](#add-remove) have to the general staging path.
 
 ## Committing
 

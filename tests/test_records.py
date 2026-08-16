@@ -225,7 +225,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     narrow = {"snapshot": "TIMESTAMP", "period": "BIGINT"}
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
-    write_schema(schema(dims=narrow, keys={}, partial=set()))
+    write_schema(schema(dims=narrow, partial=set()))
     write_components(layer, "Generator", [{"entity": "wind"}])
     write_input(
         layer,
@@ -243,7 +243,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     assert "scenario" not in str(persisted.types[0])
 
     # The dim arrives after the map is on disk.
-    write_schema(schema(dims={**narrow, "scenario": "VARCHAR"}, keys={}, partial=set()))
+    write_schema(schema(dims={**narrow, "scenario": "VARCHAR"}, partial=set()))
     child = revision.child()
     flags = LayeredRecord(child.node_cache).flags("Generator")["p_max_pu"]
     assert "snapshot" in flags.varies
@@ -490,7 +490,7 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
     for name, dims in (("a", {"scenario": "VARCHAR"}), ("b", {"vintage": "BIGINT"})):
         root = str(tmp_path / name)
         con = duck.connect(base_uri=root)
-        write_manifest(schema(dims=dims, partial=set(dims), keys={}), root)
+        write_manifest(schema(dims=dims, partial=set(dims)), root)
         roots[name] = (root, con, Revision.create(con))
 
     (_, _, revision_a), (root_b, con_b, revision_b) = roots["a"], roots["b"]

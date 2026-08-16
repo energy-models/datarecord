@@ -87,7 +87,7 @@ def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    _with_schema(revision, dims={"snapshot": "TIMESTAMP"}, partial=set(), keys={})
+    _with_schema(revision, dims={"snapshot": "TIMESTAMP"}, partial=set())
 
     missing = PyPSA.verify(revision.record)
     assert missing

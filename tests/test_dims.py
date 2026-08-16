@@ -1,8 +1,7 @@
 """Layer keys beyond `scenario`, resolved through a real record.
 
-What `partial` and `keys` *mean* as declarations is pinned in
-`test_schema.py`; here they are written into a layer and the fold is asked
-whether it keyed by them.
+What `partial` *means* as a declaration is pinned in `test_schema.py`; here it
+is written into a layer and the fold is asked whether it keyed by it.
 
 Notes
 -----
@@ -30,9 +29,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     """With `period` `partial`, a child may replace one period only."""
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(
-        schema(partial={"scenario", "period"}, keys={"scenario": {"component"}})
-    )
+    write_schema(schema(partial={"scenario", "period"}))
     revision.materialise()
 
     child = revision.child()
@@ -65,8 +62,9 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
 def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_dc):
     """Deletion always acts on the whole component, never scoped to a period.
 
-    `period` is `partial` but keys nothing, so it never reaches the
-    components map's key - which is what makes the tombstone unscoped.
+    `period` is `partial`, so it keys the *inputs* map - but the components map
+    is keyed by `entity` alone, which is what makes the tombstone unscoped.
+    Existence does not vary along a dim, so there is nothing to scope it by.
 
     Notes
     -----
@@ -74,7 +72,7 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(schema(partial={"period"}, keys={}))
+    write_schema(schema(partial={"period"}))
     revision.materialise()
 
     child = revision.child()
@@ -98,9 +96,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(
-        schema(partial={"scenario", "period"}, keys={"scenario": {"component"}})
-    )
+    write_schema(schema(partial={"scenario", "period"}))
     write_input(
         layer_dir(revision.id),
         "p_max_pu",
@@ -209,7 +205,7 @@ def test_a_dim_names_its_own_file(con, base_uri):
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
     revision = Revision.create(con)
-    write_schema(schema(dims={"bus": "VARCHAR"}, partial=set(), keys={}))
+    write_schema(schema(dims={"bus": "VARCHAR"}, partial=set()))
     target = Path(layer_dir(revision.id), "dims")
     target.mkdir(parents=True, exist_ok=True)
     pd.DataFrame([{"bus": "north"}, {"bus": "south"}]).to_parquet(

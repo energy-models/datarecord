@@ -67,7 +67,8 @@ w.disconnect("Link", [("dc", "south")])
 
 ```python
 w.pending  # Pending(attributes={...}, components={...},
-#         connections={...}, tombstones={...})
+#         groups={"connection": {...}}, tombstones={...})
+w.pending.connections  # shorthand for groups["connection"]
 bool(w.pending)  # whether anything is staged
 w.rollback()  # discard everything staged
 ```

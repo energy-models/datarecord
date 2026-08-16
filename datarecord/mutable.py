@@ -93,17 +93,32 @@ class Pending:
     components: Mapping[str, int] = field(default_factory=dict)
     """Components staged to exist, per component type."""
 
-    connections: Mapping[str, int] = field(default_factory=dict)
-    """Connections staged to exist, per component type."""
+    groups: Mapping[str, Mapping[str, int]] = field(default_factory=dict)
+    """Group rows staged to exist, per group then component type.
+
+    Keyed by group rather than naming `connection`, so a record declaring a
+    second group is counted rather than silently omitted. A group with nothing
+    staged is absent rather than present-and-empty.
+    """
 
     tombstones: Mapping[str, int] = field(default_factory=dict)
-    """Deletions staged, per component type - components and connections both."""
+    """Deletions staged, per component type - components and group rows both."""
 
     def __bool__(self) -> bool:
         """Whether anything is staged."""
         return bool(
-            self.attributes or self.components or self.connections or self.tombstones
+            self.attributes or self.components or self.groups or self.tombstones
         )
+
+    @property
+    def connections(self) -> Mapping[str, int]:
+        """The `connection` group's staged rows, or empty if it declares none.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        return self.groups.get(CONNECTION, {})
 
 
 # -- value normalisation (https://energy-models.github.io/datarecord/design/working-record/#set) ----------------------------------------------
@@ -1373,16 +1388,21 @@ class WorkingRecord:
             rows = rel.aggregate([col(by), fn.count_star().alias("n")]).fetchall()
             return {r[0]: r[1] for r in rows}
 
-        # `tombstones` spans both entity kinds: a `disconnect` is a deletion
+        # `tombstones` spans every entity kind: a `disconnect` is a deletion
         # like a `remove`, so counting only components would report a staged
         # one as nothing pending (https://energy-models.github.io/datarecord/design/working-record/#pending).
         dead = counts("components", "component_type", deleted=True)
-        for ctype, n in counts(CONNECTION, "component_type", deleted=True).items():
-            dead[ctype] = dead.get(ctype, 0) + n
+        groups = {}
+        for group in self.schema.groups:
+            for ctype, n in counts(group, "component_type", deleted=True).items():
+                dead[ctype] = dead.get(ctype, 0) + n
+            live = counts(group, "component_type", deleted=False)
+            if live:
+                groups[group] = live
         return Pending(
             attributes=counts("inputs", "attribute"),
             components=counts("components", "component_type", deleted=False),
-            connections=counts(CONNECTION, "component_type", deleted=False),
+            groups=groups,
             tombstones=dead,
         )
 
