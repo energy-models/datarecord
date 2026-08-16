@@ -772,13 +772,13 @@ class WorkingRecord:
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
         out = dict(self.base.flags(ctype))
-        names = self._resolved_names(ctype)
-        if not names:
+        if ctype not in self.components:
             return out
+        members = _as_relation(self.components[ctype], self.con).project("entity")
         arms = [
             arm
             for attribute in self._staged_attributes_of("inputs")
-            if (arm := self._flags_arm(attribute, names)) is not None
+            if (arm := self._flags_arm(attribute, members)) is not None
         ]
         if not arms:
             return out
@@ -798,7 +798,7 @@ class WorkingRecord:
         return out
 
     def _flags_arm(
-        self, attribute: str, names: Sequence[str]
+        self, attribute: str, members: DuckDBPyRelation
     ) -> DuckDBPyRelation | None:
         """One attribute's flags as a single row, in a shape every arm shares.
 
@@ -831,7 +831,8 @@ class WorkingRecord:
 
         dims = self.schema.broadcast_dims
         return (
-            rel.filter(col("entity").isin(*(lit(n) for n in names)))
+            rel.set_alias("i")
+            .join(members.set_alias("m"), "i.entity = m.entity", how="semi")
             .aggregate(
                 [
                     lit(attribute).alias("attribute"),
