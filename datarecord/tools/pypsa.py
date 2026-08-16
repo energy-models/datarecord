@@ -833,18 +833,23 @@ def _long_rows(
 
     `_as_long` already emits the dim columns and `value`; this adds the
     columns the record's schema fixes and PyPSA has no notion of - `attribute`,
-    and the NULL `bus`/`breakpoint` that mark an attribute as the component's own
-    and a scalar. No `component_type`.
+    and the NULL `breakpoint` that marks the value a scalar. No
+    `component_type`, and no `bus`: that is the `connection` group's
+    coordinate, so it belongs to the rows of an attribute addressed by that
+    group and `_per_port_long_rows` is what fills it.
+
+    The widest shape any caller needs, from which `_long_frame` selects the
+    attribute's own columns - `dims` is every axis a network has, not one
+    attribute's.
 
     Notes
     -----
     - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
     - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     long = _as_long(c, attribute, drop_defaults=False)
-    long = long.assign(attribute=attribute, bus=None, breakpoint=None)
+    long = long.assign(attribute=attribute, breakpoint=None)
     for dim in dims:
         if dim not in long.columns:
             long[dim] = None
@@ -1488,11 +1493,14 @@ class _NetworkSource:
         """One attribute's long rows, across every type that has it.
 
         A per-connection attribute contributes rows carrying the bus each port
-        attaches to; a component-level one contributes rows with `bus` NULL.
+        attaches to; a component-level one has no `bus` column at all, that
+        being the connection group's coordinate rather than a column the format
+        fixes.
 
         Notes
         -----
         - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+        - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
         """
         dims = self._DIMS
         frames = []
@@ -1539,19 +1547,16 @@ class _NetworkSource:
                 continue
             if long.empty:
                 continue
-            long = long.assign(attribute=attribute, bus=None, breakpoint=None)
+            long = long.assign(attribute=attribute, breakpoint=None)
             for dim in dims:
                 if dim not in long.columns:
                     long[dim] = None
             frames.append(long)
-        columns = [
-            "entity",
-            "bus",
-            *dims,
-            "attribute",
-            "breakpoint",
-            "value",
-        ]
+        # No `bus`: a result comes from a per-entity container, never a per-port
+        # one - PyPSA keeps `Link.p0` and `p1` as separate result attributes
+        # where it collapses the *input* `efficiency`/`efficiency2` to one over
+        # the connection group. So there is no port to key a result by.
+        columns = ["entity", *dims, "attribute", "breakpoint", "value"]
         if not frames:
             return nw.from_native(pd.DataFrame(columns=columns)).lazy()
         return nw.from_native(pd.concat(frames, ignore_index=True)[columns]).lazy()

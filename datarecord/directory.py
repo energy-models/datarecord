@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING
 
 import narwhals as nw
 from duckdb import ColumnExpression as col
-from duckdb import ConstantExpression as lit
 
 from datarecord.duck import fn, try_read_parquet
 from datarecord.layered.resolve import read_json, read_schema, with_columns
@@ -139,11 +138,6 @@ class DirectoryRecord:
             # where the attribute is known (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
             rel = with_columns(self.schema, rel, *declared)
             dims = declared
-            pwl = (
-                fn.bool_or(col("breakpoint").isnotnull())
-                if "breakpoint" in rel.columns
-                else lit(False)
-            )
             rows = (
                 rel.set_alias("i")
                 .join(
@@ -156,7 +150,7 @@ class DirectoryRecord:
                         col("attribute"),
                         *(fn.bool_or(col(d).isnotnull()).alias(f"v_{d}") for d in dims),
                         *(fn.bool_or(col(d).isnull()).alias(f"b_{d}") for d in dims),
-                        pwl.alias("breakpoints"),
+                        fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
                     ]
                 )
                 .fetchall()
