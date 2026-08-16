@@ -240,7 +240,7 @@ class LayeredRecord:
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         return {
             group: self._group_frames(group) for group in self.node_cache.schema.groups

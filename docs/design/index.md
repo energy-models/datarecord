@@ -11,7 +11,7 @@ a comment that re-argues the design is a defect.
 
 Dimensioned attribute data with a declared schema.
 
-A record holds **components** (named members of a type), **connections** between components and buses, **attribute values** over both, and the **axes** those values vary along.
+A record holds **components** (named members of a type), **groups** of them — connections between components and buses being the one every network has — **attribute values** over both, and the **axes** those values vary along.
 A schema declares what may exist; the data says what does.
 
 A record exposes seven things:

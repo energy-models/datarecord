@@ -8,16 +8,6 @@
 
   Reopening it means deciding all three: whether it is needed at all, whether an entity table and a group may disagree about which dims scope them, and what the coarser one's rows mean if they may.
 
-- **Whether `within` should subsume `bus`.** `bus` and a nested dim express the same relation.
-  A `timestep` label identifies a point only within a `period`; a `bus` label identifies a connection only within a component — `"north"` alone names nothing, since every component may attach to `north`, while `(link_dc, north)` names one connection.
-  Written as a dim that would be `Dimension(dtype="str", within={"name"})`, and `bus` would stop being a hardcoded key column.
-  [Name uniqueness](format.md#entity-is-unique-across-types) strengthens the analogy rather than weakening it: `entity` is now a single global axis rather than one qualified by `component_type`, so `within={"name"}` names something well-defined where `within={"component_type", "name"}` would have been the awkward spelling.
-
-  What blocks it is that `bus` inverts the rule NULL follows for a dim.
-  A NULL declared dim means "all values", and [the fold](read-path.md#resolving-a-relation) expands it against the axis; a NULL `bus` means "this attribute belongs to the component rather than to any connection", and is compared NULL-safely, never expanded.
-  So `bus` would be a dim carrying an explicit exception to the one behaviour that makes a dim a dim.
-  With one instance of each relation in hand there is nothing to generalise against, and unifying them would touch every key and every NULL comparison.
-
 - **Whether `partial` should ever be per attribute.** [The schema](schema.md#partial-the-granularity-of-an-override) puts it on the axis because it is true of every attribute varying over that axis.
   A counter-example would be an attribute whose series a consumer _can_ accept in pieces while others cannot — none known, and permitting it would make the fold's key vary per attribute, which the fixed inputs key assumes it does not.
 
@@ -38,3 +28,15 @@
   Asking it through the protocol costs a frame per type instead, which `WorkingRecord` pays on every [`set`](working-record.md#validation).
   What is open is the granularity: "which types have live rows" and "how many members a type has" are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
   Whatever is chosen, a `DirectoryRecord` must answer it without a fold, or it is fast for one implementation and a rename of the slow path for the other.
+
+- **Whether [`flags(ctype)`](record.md#flags) needs a record-level counterpart.** It takes a component type, which two kinds of attribute do not have: one addressed by an axis alone, and one addressed by a [group](schema.md#groups)'s coordinates. Neither has a `ctype` to ask about, so neither is reachable through it.
+
+  A second method keyed by attribute and scoped record-wide would answer it — which attributes have rows at all, which coordinates they use, which types they touch — and the [owner map](read-path.md#owner-map) already computes the material, so it costs a projection rather than a scan.
+  What is unsettled is whether that replaces `flags` or sits beside it. `flags` is per type _by construction_, its union deliberately stopping at the type boundary, and a record-level answer filtered by type would have to reproduce that.
+
+## Settled
+
+- **Whether `within` should subsume `bus`** — no; [groups](schema.md#groups) do it.
+  The recorded blocker was that `bus` inverts the rule NULL follows for a dim: a NULL declared dim means "all values" and the fold expands it against the axis, while a NULL `bus` is compared NULL-safely and never expanded.
+  That premise did not survive. Expansion is governed by whether a coordinate is in the fold's key set, and a non-`partial` dim is never expanded either — so the behaviour that "makes a dim a dim" was never uniform, and `bus` was not an exception to it.
+  A group states the rule instead of carrying an exception: a group coordinate addresses a sparse subset with no axis to expand against, which is [the broadcast rule](record.md#the-broadcast-rule) rather than a special case in it.

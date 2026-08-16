@@ -321,7 +321,7 @@ def _group_deleted(
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
     return _deleted_relation(
         revision_id,
@@ -529,7 +529,7 @@ def fold_group(
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     coordinates = keys.schema.group_coordinates(group)
@@ -675,7 +675,7 @@ def map_kinds(
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     kinds: dict[str, tuple[Callable[[Dims], tuple[str, ...]], Callable]] = {
@@ -903,7 +903,7 @@ class NodeCache:
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         return self._map(name)
 
@@ -1123,7 +1123,7 @@ class NodeCache:
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         return self._dim_frame(
             ctype,

@@ -396,7 +396,7 @@ class WorkingRecord:
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
         return {group: self._entity_frames(group) for group in self.schema.groups}
@@ -1660,7 +1660,7 @@ def _group_columns(schema: Schema, group: str) -> str:
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
     coords = "".join(
         f'"{c}" {schema.column_type(c)}, ' for c in schema.group_coordinates(group)

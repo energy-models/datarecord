@@ -8,7 +8,7 @@ Everything a consumer codes against. It is read-only, and structural — a plain
 record.schema  # what may exist: the axes, the attributes
 record.dims["scenario"]  # axis frames, keyed by dim
 record.components["Generator"]  # wide member rows, keyed by component type
-record.connections["Link"]  # component↔bus rows, keyed by component type
+record.groups["connection"]["Link"]  # group rows, keyed by group then type
 record.attributes["p_max_pu"]  # long input frames, keyed by attribute
 record.outputs["p"]  # long result frames, keyed by attribute
 record.flags("Generator")  # which axes each attribute actually uses
@@ -22,13 +22,15 @@ gens = record.components["Generator"].collect().to_pandas()
 
 ## Wide and long
 
-`components`, `connections` and `dims` are **wide** — one row per thing. `attributes` and `outputs` are **long** — one row per value:
+`components`, `groups` and `dims` are **wide** — one row per thing. `attributes` and `outputs` are **long** — one row per value:
 
 ```text
-entity | bus | <one column per declared dim> | attribute | breakpoint | value
+<coordinate> ... | attribute | breakpoint | value
 ```
 
-A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). `bus` is non-NULL only for a value belonging to one connection rather than to the component ([design](../design/record.md#connections)); `breakpoint` carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's `default` from the schema.
+The coordinates are the attribute's own, from its declared `dims` — `entity` for `p_max_pu`, `entity | bus` for a connection attribute like `efficiency`, and no entity column at all for one addressed by an axis alone ([design](../design/format.md#the-long-schema)).
+
+A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). Two coordinates are the exception and never broadcast — `entity`, and a group's coordinate such as `bus`, where a NULL means "every connection of this entity" rather than every bus. `breakpoint` carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's `default` from the schema.
 
 There is no `component_type` column, and none in the mapping's key either — `attributes["p_max_pu"]` holds every type's rows together. An `entity` identifies one component **across every type**, so the type is something the record knows about a name rather than part of its address ([design](../design/format.md#entity-is-unique-across-types)). To scope to one type, join `components` on `entity`.
 

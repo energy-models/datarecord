@@ -14,19 +14,16 @@ class WorkingRecord:
         attribute: str,
         value: Any,  # scalar | sequence | mapping | frame | nw.Expr
         *,
-        names: Sequence[str] | None = None,
-        bus: str | None = None,
+        entity: Sequence[str] | None = None,
         kind: Literal["inputs", "outputs"] = "inputs",
         **dims: Any,
     ) -> None: ...
 
     def add(self, ctype: str, frame: IntoFrame) -> None: ...
-    def remove(self, ctype: str, names: Sequence[str], **dims: Any) -> None: ...
+    def remove(self, ctype: str, names: Sequence[str]) -> None: ...
 
     def connect(self, ctype: str, frame: IntoFrame) -> None: ...
-    def disconnect(
-        self, ctype: str, pairs: Sequence[tuple[str, str]], **dims: Any
-    ) -> None: ...
+    def disconnect(self, ctype: str, pairs: Sequence[tuple[str, str]]) -> None: ...
 
     @property
     def pending(self) -> Pending: ...
@@ -56,13 +53,14 @@ Two properties follow from accumulate-then-commit, and both are the point:
 
 Each edit maps onto exactly one part of the format:
 
-| edit                        | writes                                                              | key it targets                              |
-| --------------------------- | ------------------------------------------------------------------- | ------------------------------------------- |
-| set an attribute on a group | `inputs/<attr>.parquet` rows                                        | `(entity, bus, *owned_per dims, attribute)` |
-| add components              | `dims/components/` rows, plus `inputs/` rows for varying attributes | `(name, *component key dims)`               |
-| remove components           | a `deleted = true` tombstone                                        | `(name, *component key dims)`               |
-| connect / disconnect        | `dims/connections/` rows and tombstones                             | `(entity, bus, *connection key dims)`       |
+| edit                        | writes                                                                                        | key it targets                           |
+| --------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| set an attribute on a group | `inputs/<attr>.parquet` rows                                                                  | `(*partial dims, attribute)`             |
+| add components              | `dims/entity.parquet` and `dims/components/` rows, plus `inputs/` rows for varying attributes | `entity`                                 |
+| remove components           | a `deleted = true` tombstone on the entity axis                                               | `entity`                                 |
+| connect / disconnect        | `dims/connection/` rows and tombstones                                                        | the group's coordinates, `(entity, bus)` |
 
+The inputs key is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: `partial` necessarily contains `entity` and every [group](schema.md#groups) coordinate, since neither broadcasts.
 Every key is `entity`-based, because `entity` is [what identifies a component](format.md#entity-is-unique-across-types).
 An **entity** edit still _names_ a type — `add("Generator", frame)` — because it creates the thing that has one, and the row it writes records it; but the type is a column of that row rather than part of the key it targets.
 That is what makes `remove("Generator", ["x"])` followed by `add("Bus", frame)` collapse to the later edit: one name has one answer, where a type-partitioned key would keep both and commit a record whose two types share a name.
@@ -83,35 +81,39 @@ record.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
 record.set("p", solved, kind="outputs")  # a result
 ```
 
-**There is no `component_type` keyword.** A name identifies one component across every type ([entity is unique across types](format.md#entity-is-unique-across-types)), so the type is a property of the name rather than something the caller supplies: the record looks it up in the resolved components map, which is the same read `names` is already [checked against](#validation).
+**There is no `component_type` keyword.** A name identifies one component across every type ([entity is unique across types](format.md#entity-is-unique-across-types)), so the type is a property of the name rather than something the caller supplies: the record looks it up in the resolved components map, which is the same read `entity` is already [checked against](#validation).
 That removes the parameter that had to be either given or inferred in every earlier spelling, and with it the class of error where a name was staged under the wrong type.
 
-One call may therefore span types, since the names decide: `set("p_nom", {"wind1": 150.0, "link_dc": 80.0})` validates `wind1` against `Generator.p_nom` and `link_dc` against `Link.p_nom`, and stages both.
-Each name is [validated](#validation) against **its own** type's `AttributeSpec`, so an attribute one type declares and another does not is an error naming the name that caused it.
+One call may therefore span types, since the names decide: `set("p_nom", {"wind1": 150.0, "link_dc": 80.0})` checks that Generator and Link each [carry](schema.md#traits) `p_nom`, and stages both.
+The **spec** is the same for both, one attribute having [one spec record-wide](schema.md#attributespec); what varies per type is whether it carries the attribute at all, so an attribute one type subscribes to and another does not is an error naming the name that caused it.
 
 `entity=None` means every component the record resolves that the schema declares this attribute for — the types declaring `attribute`, not every type.
 `set("p_max_pu", 0.9)` is "every component with a `p_max_pu`", which is the only reading left once the type keyword is gone, and the useful one.
 
-`bus` names a [connection](record.md#connections) rather than the component; every other keyword is a dim, so `scenario="high"` scopes the edit and its absence means "every scenario" by the NULL broadcast rule.
+**Every coordinate but `entity` goes through `**dims`**, a [group](schema.md#groups)'s included: `bus="north"` addresses one connection, `from=`/`to=` one corridor.
+None has a parameter of its own, because which coordinates exist is declared rather than fixed — a `bus=` keyword would spell one group's coordinate and be unable to name a two-coordinate group at all.
+
+A plain dim keyword scopes the edit and its absence means "every value" by the NULL broadcast rule, so `scenario="high"` patches one scenario.
+A group coordinate does not broadcast that way: omitting `bus` means "every connection of this entity" — [the group's rows](record.md#the-broadcast-rule), not the bus axis.
 
 `kind` names the destination in the format's own terms — [the shape of an edit](#the-shape-of-an-edit) is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
 `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool [hands results back](#results-through-kindoutputs) to a record before it is committed.
 
 `value` takes five forms, because assigning one value to a group and assigning a different value to each member are equally ordinary and neither should require building a frame:
 
-| `value`   | meaning                         | `names`                                                                      |
-| --------- | ------------------------------- | ---------------------------------------------------------------------------- |
-| scalar    | broadcast to every name         | required unless `None` means all                                             |
-| sequence  | aligned positionally to `names` | required, same length                                                        |
-| mapping   | keys are names                  | ignored if given, else the keys are the names                                |
-| frame     | supplies its own keys           | redundant                                                                    |
-| `nw.Expr` | a function of the current value | selects what to [derive from](#an-nwexpr-value-derived-from-the-current-one) |
+| `value`   | meaning                          | `entity`                                                                     |
+| --------- | -------------------------------- | ---------------------------------------------------------------------------- |
+| scalar    | broadcast to every name          | required unless `None` means all                                             |
+| sequence  | aligned positionally to `entity` | required, same length                                                        |
+| mapping   | keys are names                   | ignored if given, else the keys are the names                                |
+| frame     | supplies its own keys            | redundant                                                                    |
+| `nw.Expr` | a function of the current value  | selects what to [derive from](#an-nwexpr-value-derived-from-the-current-one) |
 
 A frame "supplies its own keys" now means its `entity` column alone: a `component_type` column is neither required nor read, since [the name determines the type](format.md#entity-is-unique-across-types).
 A frame carrying one is rejected rather than ignored — it says the writer believes the type is part of the key, and silently dropping the column would let a genuine disagreement through.
 
 The first three normalise to a long frame before staging, so there is one staging path.
-A length mismatch between a sequence and `names` is an error at the call, not a silently truncated edit.
+A length mismatch between a sequence and `entity` is an error at the call, not a silently truncated edit.
 
 Every form is checked against [the components the record resolves](#validation), the frame form included: "supplies its own keys" decides where the names come from, not whether they have to exist.
 
@@ -141,7 +143,7 @@ What it does differently is read before it stages:
 The expression is evaluated by narwhals against the resolved long frame, so it names `value` rather than the attribute: the frame is long, and one attribute per call means the column is always `value`.
 
 **A named target must resolve to a row.**
-If the caller names `names`, a `bus` or any dim scope, every one of those targets must produce a row to derive from, or the call raises.
+If the caller names `entity`, a group coordinate or any dim scope, every one of those targets must produce a row to derive from, or the call raises.
 The caller asked for those rows to take a new value and there is nothing to compute one from, which is a failed change rather than a no-op — the same class of error as [naming a component no layer declares](#validation), and it was silently staging zero rows before.
 
 With `entity=None` and no scope the instruction is "whatever resolves", so an empty result is an answer rather than a failure.
@@ -193,24 +195,23 @@ record["Link", "north"]["efficiency", "dc"] = 0.9  # a connection
 record["Generator", {"scenario": "high"}]["p_nom", "wind1"] = 200.0
 ```
 
-The component type in the subscript is a **scope**, not part of the key it writes: it selects which members `names` resolves against and which `AttributeSpec` a bare attribute means, then `set` [addresses the names it produced](format.md#entity-is-unique-across-types).
+The component type in the subscript is a **scope**, not part of the key it writes: it selects which members `entity` resolves against and which `AttributeSpec` a bare attribute means, then `set` [addresses the names it produced](format.md#entity-is-unique-across-types).
 So `record["Generator"]["p_nom"] = 150.0` is "every Generator", which `set("p_nom", 150.0)` alone cannot say — that being the one thing an accessor would add now that the keyword is gone, and the reason this spelling survives the change.
 
-Sugar with **no added capability** otherwise: `__setitem__` normalises its key into `(attribute, names)` and its extra arguments into `bus=`/dims, then calls `set`.
+Sugar with **no added capability** otherwise: `__setitem__` normalises its key into `(attribute, entity)` and its extra arguments into dims, then calls `set`.
 Keeping the method as the protocol member and any accessor on top is deliberate — `set` is what an implementation provides and other code calls, so a spelling over it can change, or not exist, without touching an implementation.
 
 It reads as well as writes, since a `WorkingRecord` is a `Record`: `record["Generator"]["p_nom"]` returns that type's resolved frame, so getter and setter are symmetric and the accessor is a component-type view rather than a write-only handle.
 The read must be scoped by both the component type and the names — an accessor whose getter ignores either is not the view this describes.
 
 It deliberately does not reproduce a dataframe library's full indexing grammar — no boolean masks, no slices — because a record is not a dataframe and a partial imitation invites the assumption that the rest works.
-Omitting `names` is how "all" is spelled.
+Omitting `entity` is how "all" is spelled.
 
 ## `add` / `remove`
 
 ```python
 record.add("Generator", frame)  # wide, in dims/components/ shape
 record.remove("Generator", ["old_coal"])
-record.remove("Generator", ["old_coal"], scenario="high")  # one scenario only
 ```
 
 `add` takes a wide frame and splits it: attributes varying over nothing stay in `dims/components/`, varying ones become `inputs/` rows, per [where a value lives](format.md#where-a-value-lives).
@@ -225,8 +226,8 @@ It is **not** a sequence of `set` calls, even though the varying columns it stag
 Adding a bus with no attributes makes the point — nothing to `set`, yet the bus must exist.
 Membership is not reducible to attribute values.
 
-`remove` stages a tombstone, scoped by whichever component key dims the keywords name.
-It need not enumerate what it deletes: one row per key, and [the fold](layers.md#deletion) applies it to every attribute.
+`remove` stages a tombstone on the [entity axis](format.md#the-entity-axis), one row per entity and no dim scope: a component [exists or it does not](schema.md#existence-does-not-vary-along-a-dim), so there is no axis to scope a deletion along.
+It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute, and to every row of a group over `entity` — deleting a component deletes its connections with it.
 
 ## `pending`
 
@@ -243,6 +244,9 @@ class Pending:
 
 A **derived summary, not a second place rows live**: the counts are a `GROUP BY` over [the staging tables](#staging), computed on access and discarded.
 There is one staging layer and it is in DuckDB, so a hundred-thousand-row edit yields a `Pending` of a few integers.
+
+`connections` names the `connection` [group](schema.md#groups) specifically, and is the one place the edit API still spells a group rather than deriving it — a record declaring a second group stages and commits it correctly but has nowhere here to count it.
+Widening this to `groups: Mapping[str, Mapping[str, int]]` is the obvious repair and is not done.
 
 ## Committing
 
@@ -306,8 +310,10 @@ Staged rows live in DuckDB tables on the record's own connection:
 ```sql
 CREATE TABLE staged_inputs_<id>      (<long schema>, _seq BIGINT);          -- no component_type
 CREATE TABLE staged_components_<id>  (<component columns>, deleted BOOLEAN, _seq BIGINT);
-CREATE TABLE staged_connections_<id> (<connection columns>, deleted BOOLEAN, _seq BIGINT);
+CREATE TABLE staged_<group>_<id>     (<group coordinates>, ..., deleted BOOLEAN, _seq BIGINT);
 ```
+
+One staging table per declared [group](schema.md#groups), mirroring [the maps the fold builds](read-path.md#owner-map): `connection` is one instance, so a record declaring a second group stages it through the same path rather than a second method.
 
 The staged rows are [the format's own rows](#the-shape-of-an-edit), so `staged_inputs` loses `component_type` exactly as `inputs/` does, and the entity tables keep it.
 

@@ -42,33 +42,52 @@ The components [owner map](read-path.md#owner-map) folds from this file, and so 
 
 ## Where a value lives
 
-Decided by the attribute's [declared `dims`](schema.md#attributespec), not by a particular value:
+Decided by the attribute's [declared `dims`](schema.md#attributespec), not by a particular value.
 
-- **`dims/components/<Type>.parquet`** — attributes that vary over nothing (`dims = {}`): one column per attribute, indexed by `entity`.
+The rule: **an attribute naming exactly one addressing coordinate is a column on that thing's own table; anything more is long rows in `inputs/`.**
+
+| `dims`                       | lands in                                                              |
+| ---------------------------- | --------------------------------------------------------------------- |
+| `{"entity"}`                 | `dims/components/<Type>.parquet` — one column per attribute, per type |
+| `{"connection"}`             | the `connection` group's table                                        |
+| `{"scenario"}`               | `dims/scenario.parquet` — the axis file                               |
+| `{"country"}`                | `dims/country.parquet` — a mapping's own axis file                    |
+| `{"entity", "snapshot"}`     | `inputs/<attr>.parquet`                                               |
+| `{"connection", "snapshot"}` | `inputs/<attr>.parquet`                                               |
+
+So "varying" is not "has dims" but **"has dims beyond its address"**, and one rule now covers what were three unrelated stories: a component's constant columns, a connection's `role`, and an axis's payload.
+
+- **`dims/components/<Type>.parquet`** — attributes addressed by `entity` alone: one column per attribute, indexed by `entity`.
   Values only: a component's _membership_ is its row on the [entity axis](#the-entity-axis), not its presence here.
-- **`inputs/<attr>.parquet`** — every attribute that may vary, even where a given component's value happens to be constant.
+- **A [group](schema.md#groups)'s table** — attributes addressed by that group alone, `role` being the case.
+- **An axis file** — attributes addressed by one dim alone. A snapshot weighting is a number per snapshot and belongs to no component, so `dims/snapshot.parquet` carries it as a declared column with a `dtype`, a `default` and a `description`.
+- **`inputs/<attr>.parquet`** — every attribute addressed by more than its own coordinate, even where a given component's value happens to be constant.
   That component is then a row with the varying dim NULL.
 
 So a component type's constant frame is assembled from both: the non-varying columns, and the dim-NULL rows of the varying files.
 
-A [group](proposals/dims-groups-traits.md#groups)'s rows are in `dims/<group>/<Type>.parquet`, keyed by that group's coordinates and carrying their own tombstones - `dims/connection/Link.parquet` for the `connection` group over `(entity, bus)`.
+A [group](schema.md#groups)'s rows are in `dims/<group>/<Type>.parquet`, keyed by that group's coordinates and carrying their own tombstones — `dims/connection/Link.parquet` for the `connection` group over `(entity, bus)`.
 A record with no such directory has no rows of that group.
 
 ## The long schema
 
-Every `inputs/` and `outputs/` file carries the long columns [the protocol](record.md#wide-and-long-rows) describes, in this order, whatever its rows use:
+Every `inputs/` and `outputs/` file carries its attribute's own coordinates, then the columns every row has:
 
 ```text
-entity | bus | attribute | breakpoint | value | <dim> ...
+<coordinate> ... | attribute | breakpoint | value
 ```
 
-So `bus` and `breakpoint` are all-NULL columns in a record with no connections and no curves.
-That uniformity is what lets one `UNION ALL BY NAME` and one join shape serve every kind of attribute row ([resolving a relation](read-path.md#resolving-a-relation)), and it means a file written without one of these columns still reads back correctly, since `union_by_name` supplies the NULL.
+The coordinates are what the attribute's [`dims`](schema.md#attributespec) declare, with a [group](schema.md#groups) expanding to its coordinate names — so `inputs/efficiency.parquet` over the `connection` group carries `entity | bus`, and `inputs/objective_weighting.parquet` over `snapshot` alone carries neither.
+
+**Per attribute rather than schema-wide.** One attribute is one file, so one column set per file; a fixed prefix of `entity | bus` would put an all-NULL `entity` on a record-level weighting, claiming a component the value has none of, and would privilege one group's spelling of `bus` over every other group's coordinates.
+
+That the shapes differ costs nothing, because `UNION ALL BY NAME` supplies NULL for a column a file does not carry — which is also what lets a file written before a dim was declared still read back correctly ([resolving a relation](read-path.md#resolving-a-relation)).
+The fold's _key_ is uniform even though the files are not: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`, one fixed tuple over every attribute, and a coordinate an attribute does not carry reads as NULL there.
 
 One attribute per file, so `value` carries that attribute's dtype.
 There is **no `component_type` column**: `entity` is unique across every type ([below](#entity-is-unique-across-types)), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by entity alone, and a reader wanting one type's rows joins `dims/components/`.
 
-A connection's `role` is not in the long schema: it lives on the connection row and identifies nothing in `inputs/` ([connections](record.md#connections)).
+A connection's `role` is not in the long schema: it is an attribute over the `connection` group, so it lives on that group's table as a column ([where a value lives](#where-a-value-lives)) rather than in `inputs/`.
 
 ## `entity` is unique across types
 

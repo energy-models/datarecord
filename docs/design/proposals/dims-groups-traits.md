@@ -1,9 +1,17 @@
 # Proposal: dims, mappings, groups and traits
 
-Status: Draft · Date: 2026-08-15
+Status: **Landed** · Drafted 2026-08-15 · Landed 2026-08-16
 
-A proposal, not the design. [The schema](../schema.md) and [the record format](../format.md) describe what is shipped; this page describes where they would go and why.
-Nothing here is implemented, and the [worked example](#a-pypsa-network-in-full) exists to test whether the mechanisms are complete before any of it is written down as settled.
+**This page is the argument, not the design.** What shipped is described by [the schema](../schema.md) — [groups](../schema.md#groups), [traits](../schema.md#traits), [mappings](../schema.md#on-a-mapping-over-another-axis) — together with [the record format](../format.md) and [the read path](../read-path.md), and those pages are authoritative where the two disagree.
+
+It is kept because the reasoning is not reproduced there: why `keys` was deleted rather than replaced, why `bus` stopped being structural, and what the [worked example](#a-pypsa-network-in-full) exposed about vocabulary collisions.
+Two things it raises stayed open and moved to [open questions](../open-questions.md): [whether existence may depend on a dim](#may-existence-depend-on-a-dim), and whether `flags(ctype)` needs a record-level counterpart.
+
+Read below for why; read the design pages for what.
+
+Two departures from the sketch below are worth naming, since the text still reads as though neither happened.
+`shape()` was **not** implemented — `flags(ctype)` stands alone, and the gap it leaves is the open question above.
+And `set` grew no `bus=` parameter: every coordinate but `entity` goes through `**dims`, which is what lets a two-coordinate group be addressed at all.
 
 ## What starts it
 

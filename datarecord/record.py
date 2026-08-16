@@ -164,7 +164,7 @@ class Record(Protocol):
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         ...
 

@@ -90,7 +90,7 @@ class DirectoryRecord:
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         return {g: self._by_type(f"dims/{g}") for g in self.schema.groups}
 

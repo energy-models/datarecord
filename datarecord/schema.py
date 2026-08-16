@@ -209,7 +209,7 @@ class Group(BaseModel):
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
 
     over: dict[str, str]
@@ -238,7 +238,7 @@ class ComponentType(BaseModel):
 
     Notes
     -----
-    - [traits](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#traits)
+    - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
     """
 
     traits: frozenset[str] = frozenset()
@@ -451,7 +451,7 @@ class Schema(BaseModel):
         Notes
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         sparse = {c for g in self.groups.values() for c in g.coordinates}
         return tuple(d for d in self.dims if d != "entity" and d not in sparse)
@@ -470,7 +470,7 @@ class Schema(BaseModel):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
         spec = self.attributes.get(attribute)
@@ -507,7 +507,7 @@ class Schema(BaseModel):
 
         Notes
         -----
-        - [traits](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#traits)
+        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         """
         spec = self.component_types.get(ctype)
         if spec is None:
@@ -580,7 +580,7 @@ class Schema(BaseModel):
 
         Notes
         -----
-        - [mappings](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#mappings)
+        - [mappings](https://energy-models.github.io/datarecord/design/schema/#on-a-mapping-over-another-axis)
         """
         return tuple(d for d, s in self.dimensions.items() if dim in s.on)
 
@@ -639,7 +639,7 @@ class Schema(BaseModel):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         spec = self.attributes.get(attribute)
         if spec is None:
@@ -655,7 +655,7 @@ class Schema(BaseModel):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         spec = self.groups.get(group)
         return () if spec is None else spec.coordinates
@@ -686,7 +686,7 @@ class Schema(BaseModel):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         return (

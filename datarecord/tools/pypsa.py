@@ -1202,7 +1202,7 @@ class _NetworkSource:
                 row = defaults.loc[attr]
                 # A per-port attribute belongs to the connection, which it
                 # says by naming the `connection` group among its dims rather
-                # than by a field of its own (https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups).
+                # than by a field of its own (https://energy-models.github.io/datarecord/design/schema/#groups).
                 dims = {SNAPSHOT} if row["varying"] else set()
                 if attr in per_port:
                     dims.add(CONNECTION)
@@ -1294,7 +1294,7 @@ class _NetworkSource:
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         types = tuple(c.name for c in self.n.components if _exported(c) and c.ports)
         return {CONNECTION: LazyFrames(types, self._connection_frame)}

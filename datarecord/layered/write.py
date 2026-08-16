@@ -407,6 +407,6 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
         msg = (
             f"dims/{kind}/{key}.parquet is missing the {kind!r} group's "
             f"coordinates {missing}; the fold would key by a column that is "
-            f"not there (https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)"
+            f"not there (https://energy-models.github.io/datarecord/design/schema/#groups)"
         )
         raise ValueError(msg)

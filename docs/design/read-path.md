@@ -3,33 +3,39 @@
 ## Owner map
 
 The owner map answers, for a node, which layer owns each key.
-Three maps, not one:
+Several maps, not one: `inputs`, `components`, and **one per declared [group](schema.md#groups)**.
 
 Key columns first, then what each map carries over them:
 
 ```text
-# inputs                            # components               # connections
-name                                name                       name
-bus  -- NULL for component-level    <component key dims>       bus  -- never NULL
-<owned_per dims>                    --                         <connection key dims>
-attribute                           component_type             --
---                                  layer_uuid                 component_type
-layer_uuid                          order_key                  layer_uuid
-varies      STRUCT(<dim>: BOOLEAN, ...)                        order_key
+# inputs                            # components               # <group>
+<partial dims>                      entity                     <group coordinates>
+  entity     -- never NULL          --                         --
+  <group coordinates>               --                         --
+  <owned_per dims>                  --                         --
+attribute                           component_type             component_type
+layer_uuid                          layer_uuid                 layer_uuid
+varies      STRUCT(<dim>: BOOLEAN, ...)   order_key            order_key
 broadcast   STRUCT(<dim>: BOOLEAN, ...)
 breakpoints BOOLEAN
 ```
 
-All three map to the owning `layer_uuid`, with deletions already applied.
+All of them map to the owning `layer_uuid`, with deletions already applied.
 None carries `value`, a varying dim's value, or `breakpoint`, so all stay small regardless of the series data or the size of a curve.
 
-Splitting them keeps each row shape honest — `attribute` and the flags are meaningless for a component or connection row — and lets each persist as its own file.
+Splitting them keeps each row shape honest — `attribute` and the flags are meaningless for a component or a group row — and lets each persist as its own file.
+
+**One kind per group rather than a `connections` map**, because a group is not a structural category: `connection` is one instance, `corridor` another, and a fold that named the first in its own code would have nothing to do with the second.
+Each group folds the same way — keys, tombstones, an `order_key` — differing only in which columns key it, which is `Group.over`'s coordinate names.
+
+The **inputs key is schema-derived**, not spelled: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`, where `partial` necessarily contains `entity` and every group coordinate because [neither broadcasts](record.md#the-broadcast-rule).
+A coordinate an attribute's own file does not carry reads as NULL, which is what keeps the key one fixed tuple across attributes whose columns differ.
 
 `component_type` is on the **entity** maps only, never on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the components map is what says which type an entity is.
 So that map is the entity mapping every type-scoped question goes through — [`flags(ctype)`](record.md#flags) joins it, as does a consumer wanting one type's frame.
 
 Where it is present it is a **column, not part of the key.**
-Every one of the three maps is keyed on `entity` (plus `bus` and the dims that apply); the components map carries `component_type` because it is the table that answers "what type is this entity", and that answer is functionally determined by the key rather than keying alongside it.
+Every map is keyed on its own coordinates — `entity` for components, the group's for a group, `partial_dims` plus `attribute` for inputs; the components map carries `component_type` because it is the table that answers "what type is this entity", and that answer is functionally determined by the key rather than keying alongside it.
 The fold therefore aggregates the type over the group-by instead of grouping on it.
 
 The distinction is load-bearing rather than pedantic.
@@ -43,22 +49,28 @@ It is **derived, never stored**: no layer's parquet carries it, and [`write_reco
 The fold computes it from each layer file's own row order, so file order is the input and `order_key` the answer, persisted only where a node's maps are [materialised](layers.md#materialised-node-caches).
 Nothing sorts eagerly either — the maps carry it as a column, and a consumer wanting order applies `ORDER BY order_key`.
 
-`order_key` is on the components and connections maps only; the axes need none, since an axis row's order comes from its file ([axis order](record.md#axis-order)).
-The two carry it for different reasons, and only one is a correctness requirement.
+`order_key` is on the components and group maps only; the axes need none, since an axis row's order comes from its file ([axis order](record.md#axis-order)).
+The two kinds carry it for different reasons, and only one is a correctness requirement.
 
-For **connections** it is load-bearing.
-A framework wanting positional ports numbers them by this order, so a patch layer adding a third connection appends rather than renumbering.
+For a **group** it is load-bearing.
+A framework wanting positional ports numbers a component's connections by this order, so a patch layer adding a third connection appends rather than renumbering.
 Without it the port index would follow whatever order the fold happened to emit, and adding a connection could silently move an existing one's attributes to a different port — the positional-keying failure [connections](record.md#connections) exists to prevent, reappearing at the point where position is reconstructed.
 
 For **components** it is a stability guarantee rather than a correctness one: nothing resolves differently, since a component's rows are keyed the same way whatever order they come back in.
 What it buys is that member order is deterministic across reads and recognisable — a record round-tripped through the write path comes back in the order it was authored, with additions appended, rather than reshuffled.
 
 Each map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
-A node whose maps are [materialised](layers.md#materialised-node-caches) persists all three, so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
+A node whose maps are [materialised](layers.md#materialised-node-caches) persists every one of them, so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
+They are written together, so the presence of one answers for all: `inputs` is the probe, being the kind every schema has whatever groups it declares.
+
+**A component tombstone reaches a group's rows** where that group is over `entity`: deleting a component deletes every connection of it, so the group's fold anti-joins the parent against component tombstones as well as its own.
+A group not over `entity` gets no such treatment — `corridor` over `(from, to)` draws both coordinates from the entity axis under names of its own, and which of them a tombstone should match is not the fold's to guess.
 Elsewhere the fold runs live over that node's persisted maps, cached per connection; since [layers are write-once](layers.md#a-layers-data-is-write-once), such a cache never needs invalidating.
 
 The [flags](record.md#flags) are folded in alongside the ownership group-by, so they cost nothing beyond it.
 They are computed **per key**, so per component: whether _this_ component's `p_max_pu` sets `timestep` is a different question from whether any does.
+
+The structs have a field per **broadcast** dim rather than per declared dim: an address coordinate never broadcasts, so "did a row set it" is not a question about it — `entity` and a group's coordinate are always set, by construction.
 
 Two **structs** rather than a `varies_<dim>` column per dim, because which dims exist is [declared](schema.md#dimensions) and a flat layout would make the map's _column set_ depend on the schema.
 [Versioning](schema.md#versioning) calls adding a dim compatible; that has to hold for a map already persisted at a [materialised node](layers.md#materialised-node-caches), not only for the layers.
@@ -86,22 +98,23 @@ FROM ( -- one arm per distinct layer the map names for this attribute
   ...
 ) u
 JOIN inputs o
-  ON o.entity      = u.entity
- AND o.bus         IS NOT DISTINCT FROM u.bus   -- NULL-safe: component-level keys NULL against NULL
+  ON o.entity      IS NOT DISTINCT FROM u.entity  -- address coordinates: NULL-safe,
+ AND o.bus         IS NOT DISTINCT FROM u.bus     -- never expanded against an axis
  AND o.attribute   = u.attribute
  AND o.layer_uuid  = u.layer_uuid
  AND (u.scenario IS NULL OR u.scenario IS NOT DISTINCT FROM o.scenario)
 ```
 
-`entity` joins on equality rather than NULL-safely: it is required and unique ([entity is unique across types](format.md#entity-is-unique-across-types)), so there is no NULL to be safe about — the one column the old key needed a second equality for is simply gone.
+The projected coordinates are the **attribute's own**, not a fixed prefix: `entity | bus` for a connection attribute, `from | to` for one over a corridor, neither for a record-level weighting ([the long schema](format.md#the-long-schema)).
+The join's address columns follow from the same place, so the query shape is derived from the schema rather than spelling `entity` and `bus` as literals — which is what lets a second group resolve through the identical code.
 
 The map already names the winning layer per key, so resolution reads only the owning layers' files.
 There is no per-read `MAX`/group-by and no tombstone filter — deletions are already absent from the map.
 
 Each owned-per dim's arm is **NULL-aware**: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.
 
-`bus` is joined **NULL-safely** rather than NULL-aware: it is part of the key but a required column rather than a broadcast dim, so NULL means "this attribute is the component's, not a connection's" and never "every bus".
-It is the `connections` map that decides which connections exist at all; a row whose connection was tombstoned is gone because that tombstone removed its `inputs` keys from the map, not by a filter here.
+A **group coordinate** like `bus` is joined **NULL-safely** rather than NULL-aware: it is part of the key but an address rather than a broadcast dim, so NULL means "this attribute is the component's, not a connection's" and never "every bus" ([the broadcast rule](record.md#the-broadcast-rule)).
+It is that group's own map that decides which of its rows exist at all; a row whose connection was tombstoned is gone because that tombstone removed its `inputs` keys from the map, not by a filter here.
 
 `breakpoint` is projected but not joined on, being no part of the key: a curve is owned whole ([wide and long rows](record.md#wide-and-long-rows)), so every breakpoint of a key comes from the winning layer.
 
