@@ -141,9 +141,26 @@ class Dims:
         """
         return broadcast_match(alias_a, alias_b, fixed, ())
 
-    def input_match(self, alias_a: str, alias_b: str, *fixed: str) -> Expression:
-        """Match a raw `inputs/` row against an already-resolved key."""
-        return broadcast_match(alias_a, alias_b, fixed, self.schema.partial_dims)
+    def input_match(
+        self,
+        alias_a: str,
+        alias_b: str,
+        *fixed: str,
+        dims: tuple[str, ...] | None = None,
+    ) -> Expression:
+        """Match a raw `inputs/` row against an already-resolved key.
+
+        `dims` narrows the broadcast arms to the coordinates the raw side
+        actually carries, which one attribute's file is a subset of
+        (`long_columns_for`). Defaults to every partial dim, for a caller
+        matching against a relation carrying all of them.
+        """
+        return broadcast_match(
+            alias_a,
+            alias_b,
+            fixed,
+            self.schema.partial_dims if dims is None else dims,
+        )
 
     def expand_dims(
         self, rel: DuckDBPyRelation, layer_keys: tuple[str, ...]
@@ -386,20 +403,21 @@ def _null_safe(alias_a: str, alias_b: str, columns: tuple[str, ...]) -> str:
     )
 
 
-def _with_columns(
+def with_columns(
     schema: Schema, rel: DuckDBPyRelation, *columns: str
 ) -> DuckDBPyRelation:
     """`rel` with any of `columns` it lacks added as typed NULLs.
 
-    `bus` and `breakpoint` are part of the long schema but absent from files
-    written before them, and a layer may legitimately carry neither: no
-    connections, no curves. Reading them as NULL is that exact reading, and
-    materialising the column here means every path downstream can project it
+    One file carries one attribute's coordinates, so a column another attribute
+    uses is simply absent - and a coordinate an attribute is not addressed by
+    means the value applies across every value of it, which is what NULL means.
+    Materialising it here lets every path downstream project the column
     unconditionally instead of branching on its presence.
 
     Notes
     -----
-    - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
     missing = [c for c in columns if c not in rel.columns]
     if not missing:
@@ -431,7 +449,7 @@ def fold_inputs(
         broadcast = keys.schema.broadcast_dims
         rel = _cast(
             keys.schema,
-            _with_columns(keys.schema, rel, "breakpoint", *keys.schema.dims),
+            with_columns(keys.schema, rel, "breakpoint", *keys.schema.dims),
         )
         rel, dims = keys.expand_dims(rel.set_alias("i"), keys.schema.partial_dims)
         # Each broadcast dim is carried twice: the (possibly broadcast) key
@@ -1010,12 +1028,28 @@ class NodeCache:
             )
             .fetchall()
         )
+
         # The structs come back as dicts keyed by dim, so the two sets are a
         # filter rather than a positional slice. A field aggregating to NULL -
         # a dim declared after this map was written - is falsy, so absent.
+        #
+        # `varies` is scoped to each attribute's own coordinates: the map is one
+        # relation over every attribute, so a dim one attribute uses is NULL for
+        # the rows of one that does not, and the aggregate would otherwise
+        # report a dim the attribute has no column for as varying.
+        #
+        # `broadcast` is not scoped. A dim absent from the file is one every row
+        # applies across, which is exactly what broadcast means - so it belongs
+        # in the set whether the column is there and NULL or not there at all.
+        # That is what a `DirectoryRecord` answers too, once its missing columns
+        # read as NULL (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+        def varying(attribute: str) -> tuple[str, ...]:
+            own = set(self.schema.coordinates_of(attribute))
+            return tuple(d for d in dims if d in own) if own else dims
+
         return {
             attribute: (
-                frozenset(d for d in dims if varies.get(d)),
+                frozenset(d for d in varying(attribute) if varies.get(d)),
                 frozenset(d for d in dims if broadcast.get(d)),
                 bool(breakpoints),
             )
@@ -1051,34 +1085,48 @@ class NodeCache:
         om = self.inputs.filter(col("attribute") == lit(attribute))
         keys = self.dims
         partial_dims = keys.schema.partial_dims
+        # This attribute's own columns, not every declared dim: one file per
+        # attribute is one column set per attribute (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+        columns = keys.schema.long_columns_for(attribute)
+        # The join's arms are the map's key columns this attribute's file also
+        # carries. A dim outside `partial` is in neither: it is not in the map
+        # at all, so it constrains nothing and passes straight through.
+        #
+        # Of those that are, an address coordinate matches NULL-safely and a
+        # broadcast dim NULL-aware - the split `broadcast_dims` draws
+        # (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
+        coordinates = set(keys.schema.coordinates_of(attribute))
+        broadcasts = set(keys.schema.broadcast_dims)
+        address = tuple(
+            d for d in partial_dims if d in coordinates and d not in broadcasts
+        )
+        broadcast_over = tuple(
+            d for d in partial_dims if d in coordinates and d in broadcasts
+        )
         layers = [
-            _with_columns(
+            with_columns(
                 keys.schema,
                 con.read_parquet(f"{layer_dir(layer_uuid)}inputs/{attribute}.parquet"),
-                "bus",
-                "breakpoint",
+                *columns,
             ).project(lit(layer_uuid).alias("layer_uuid"), col("*"))
             for (layer_uuid,) in om["layer_uuid"].distinct().fetchall()
         ]
         if not layers:
-            return _empty_relation(keys.schema, con, *keys.schema.long_columns)
+            return _empty_relation(keys.schema, con, *columns)
 
         return (
             union_all_by_name(layers, con)
             .set_alias("l")
             .join(
                 om.set_alias("o"),
-                # `bus` joins the fixed columns, not the broadcast dims: NULL
-                # means "the component's own attribute", never "every bus",
-                # so it is compared NULL-safely and never expanded (https://energy-models.github.io/datarecord/design/record/#connections).
-                keys.input_match("l", "o", "entity", "bus", "layer_uuid"),
+                keys.input_match("l", "o", *address, "layer_uuid", dims=broadcast_over),
             )
             .project(
                 *(
                     coalesce(col("l", dim), col("o", dim)).alias(dim)
                     if dim in partial_dims
                     else col("l", dim)
-                    for dim in keys.schema.long_columns
+                    for dim in columns
                 )
             )
         )

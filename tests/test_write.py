@@ -18,7 +18,7 @@ from datarecord.layered.resolve import read_schema
 from datarecord.layered.write import write_record
 from datarecord.record import EMPTY, LazyFrames, Record
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import relation, schema
+from tests.fixtures import export_network, relation, schema
 
 
 class _Source:
@@ -194,7 +194,59 @@ def test_write_record_refuses_an_existing_layer(con, base_uri):
         write_record(revision.id, source, con)
 
 
+def test_a_file_carries_only_its_own_attributes_coordinates(con, base_uri, ac_dc):
+    """One attribute is one file, so one column set - not every declared dim.
+
+    A component attribute has no `bus` column, a connection attribute does, and
+    neither carries a dim it is not addressed by. The uniform prefix this
+    replaces put an all-NULL `bus` on every file and a `period` column on
+    attributes that never vary over one.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    inputs = Path(layer_dir(revision.id), "inputs")
+
+    def columns(attribute: str) -> set[str]:
+        return set(con.read_parquet(str(inputs / f"{attribute}.parquet")).columns)
+
+    assert columns("p_max_pu") == {
+        "entity",
+        "snapshot",
+        "attribute",
+        "breakpoint",
+        "value",
+    }, "a component attribute carries `entity`, not the connection group's `bus`"
+
+    efficiency = columns("efficiency")
+    assert "bus" in efficiency, "a connection attribute carries the group's coordinates"
+    assert "period" not in efficiency, "and no dim it is not addressed by"
+
+
 # -- validation -------------------------------------------------------------
+
+
+def test_write_record_rejects_an_undeclared_attribute(con, base_uri):
+    """An attribute with no spec has no shape, so there is nothing to write it as.
+
+    Its `dims` are what say which columns the file carries, so writing one the
+    schema does not declare would put a file in `inputs/` whose column set no
+    reader could derive. A *result* is exempt - a tool derives those from its
+    own registry, never from the schema.
+
+    Notes
+    -----
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    """
+    revision = Revision.create(con)
+    source = _Source(_SCHEMA, attributes={"not_declared": _long(attribute="nope")})
+
+    with pytest.raises(ValueError, match="not a declared attribute"):
+        write_record(revision.id, source, con)
 
 
 def test_write_record_rejects_a_missing_long_column(con, base_uri):

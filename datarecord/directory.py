@@ -21,7 +21,7 @@ from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 
 from datarecord.duck import fn, try_read_parquet
-from datarecord.layered.resolve import read_json, read_schema
+from datarecord.layered.resolve import read_json, read_schema, with_columns
 from datarecord.record import EMPTY, Flags, LazyFrames
 from datarecord.schema import Schema
 
@@ -132,7 +132,12 @@ class DirectoryRecord:
             # "did a row set this" is not a question about `entity` or a
             # group's coordinate, which address the row rather than expanding.
             declared = self.schema.broadcast_dims
-            dims = tuple(d for d in declared if d in rel.columns)
+            # Materialised as NULL where no file carries the column at all: a
+            # dim an attribute is not addressed by is one every row applies
+            # across, which is what `broadcast` reports, and the fold answers it
+            # the same way (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+            rel = with_columns(self.schema, rel, *declared)
+            dims = declared
             pwl = (
                 fn.bool_or(col("breakpoint").isnotnull())
                 if "breakpoint" in rel.columns

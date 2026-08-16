@@ -29,11 +29,6 @@ from datarecord.schema import Schema
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
 
-# The long schema's fixed columns (https://energy-models.github.io/datarecord/design/format/#the-long-schema). `bus`/`breakpoint` are part of it, not
-# optional extensions to it: both NULL is the ordinary component-level scalar.
-# No `component_type`: an attribute row is keyed by `entity` alone (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-_LONG_FIXED = ("entity", "bus", "attribute", "breakpoint", "value")
-
 
 def write_record(
     revision_id: UUID | None,
@@ -149,6 +144,13 @@ def write_record(
                             component_type=nw.lit(key).cast(nw.String()),
                         )
                     )
+                if kind in ("attributes", "outputs"):
+                    # One file is one attribute, so it carries that attribute's
+                    # coordinates and no others - a source handing over a wider
+                    # frame (every declared dim, all-NULL where unused) is
+                    # narrowed here rather than storing columns the attribute
+                    # cannot be addressed by (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+                    frame = frame.select(*schema.long_columns_for(key))
                 _write_frame(
                     frame, f"{staging}{subdir}/{key}.parquet", con, local, schema
                 )
@@ -343,11 +345,16 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
 def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) -> None:
     """Check one frame is shaped for the fold to resolve it.
 
-    Structural only: a long frame carries the long-schema columns, and a `dims/` frame
-    carries every dim the schema declares it keyed by. Values
+    Structural only: a long frame carries its own attribute's coordinates, and a
+    `dims/` frame carries every dim the schema declares it keyed by. Values
     are not checked - which component types and attribute names are valid
     belongs to whatever vocabulary the schema declares, and the record layer
     knows none.
+
+    An attribute's coordinates are what its `dims` declare, so one file's column
+    set is not another's and neither is every declared dim. A result the schema
+    does not declare has no coordinates to derive, so it falls back to the fixed
+    columns every long row has.
 
     Reads the schema rather than the rows, so validating an unmaterialised
     frame costs nothing.
@@ -365,7 +372,17 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
     # overlay (https://energy-models.github.io/datarecord/design/read-path/#outputs), which is a read-path property rather than a shape one.
     if kind in ("attributes", "outputs"):
         subdir = "inputs" if kind == "attributes" else "outputs"
-        required = {*_LONG_FIXED, *schema.dims}
+        # An input's shape comes from its spec, so one the schema does not
+        # declare has no shape to check it against - and writing it would put a
+        # file in `inputs/` that no read path knows the columns of. A *result*
+        # is never declared, a tool deriving those from its own registry.
+        if kind == "attributes" and key not in schema.attributes:
+            msg = (
+                f"inputs/{key}.parquet is not a declared attribute; its `dims` "
+                f"are what say which columns the file carries (https://energy-models.github.io/datarecord/design/schema/#attributespec)"
+            )
+            raise ValueError(msg)
+        required = set(schema.long_columns_for(key))
         missing = sorted(required - columns)
         if missing:
             msg = (

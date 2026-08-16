@@ -363,7 +363,9 @@ def test_a_non_float_attribute_stages_and_commits(staged, root):
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
     amended = read_schema()
-    amended.attributes["carrier"] = AttributeSpec(dtype="VARCHAR", dims={"scenario"})
+    amended.attributes["carrier"] = AttributeSpec(
+        dtype="VARCHAR", dims={"entity", "scenario"}
+    )
     write_schema(amended)
 
     staged.set("carrier", "solar", entity=["Manchester Wind"])
@@ -402,7 +404,9 @@ def test_a_non_partial_axis_is_restated_whole(staged, root):
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     assert "snapshot" not in (staged.schema.partial or frozenset())
-    assert staged.schema.owned_per("p_max_pu") == frozenset()
+    # Owned per entity, since a layer patches one component without restating
+    # the rest - but not per snapshot, which is the axis this test is about.
+    assert "snapshot" not in staged.schema.owned_per("p_max_pu")
 
     base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
     mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
@@ -453,7 +457,9 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    assert staged.schema.owned_per("p_nom") == frozenset()
+    # Owned per entity alone: `p_nom` varies over no other axis, so there is no
+    # extent along one to restate.
+    assert staged.schema.owned_per("p_nom") == frozenset({"entity"})
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 

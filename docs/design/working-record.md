@@ -214,7 +214,7 @@ record.add("Generator", frame)  # wide, in dims/components/ shape
 record.remove("Generator", ["old_coal"])
 ```
 
-`add` takes a wide frame and splits it: attributes varying over nothing stay in `dims/components/`, varying ones become `inputs/` rows, per [where a value lives](format.md#where-a-value-lives).
+`add` takes a wide frame and splits it: attributes addressed by `entity` alone stay in `dims/components/`, ones varying beyond it become `inputs/` rows, and ones addressed by a [group](schema.md#groups) go to that group's table — per [where a value lives](format.md#where-a-value-lives).
 Which is which comes from the schema, so `add` needs no framework registry.
 A column the schema does not name is written to `dims/components/` unchanged.
 

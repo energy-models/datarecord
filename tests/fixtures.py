@@ -294,6 +294,30 @@ def write_directory_schema(directory: str, schema: Schema) -> None:
     Path(directory, "manifest.json").write_text(schema.model_dump_json())
 
 
+def _default_attributes(dims: dict[str, str], groups: dict[str, dict[str, str]]):
+    """The attributes tests write, declared over whichever dims are in play.
+
+    Writing an attribute the schema does not declare is rejected, since its
+    `dims` are what say which columns its file carries - so every attribute a
+    test writes has to be declared, and these are the ones they write.
+
+    Addressed over every declared dim rather than a narrower set, which is the
+    widest shape and so the one that accepts any row a test writes.
+    `efficiency` is the exception, being over the `connection` group where one
+    is declared: that is what puts a `bus` column on its file.
+    """
+    varying = {"entity", *dims}
+    connection = "connection" if "connection" in groups else "entity"
+    return {
+        "p_nom": AttributeSpec(dtype="DOUBLE", dims=varying),
+        "e_nom": AttributeSpec(dtype="DOUBLE", dims=varying),
+        "p_max_pu": AttributeSpec(dtype="DOUBLE", dims=varying),
+        "p_min_pu": AttributeSpec(dtype="DOUBLE", dims=varying),
+        "marginal_cost": AttributeSpec(dtype="DOUBLE", dims=varying, breakpoints=True),
+        "efficiency": AttributeSpec(dtype="DOUBLE", dims={connection, *dims}),
+    }
+
+
 def schema(
     *,
     partial: set[str] = {"scenario"},
@@ -337,6 +361,11 @@ def schema(
         for attr, spec in attrs.items():
             flat.setdefault(attr, spec)
         subscriptions[ctype] = ComponentType(attributes=frozenset(attrs))
+    # Declared whether or not a caller named them: a test writing `p_max_pu`
+    # needs it declared, and one passing `attributes=` is narrowing what a type
+    # *carries* rather than shortening the record's vocabulary.
+    for attr, spec in _default_attributes(dims, groups).items():
+        flat.setdefault(attr, spec)
     # A group's coordinates are dims like any other, so they are declared here
     # rather than assumed - which is what lets a caller pass a group over
     # coordinates that are not called `bus`.

@@ -34,7 +34,7 @@ Three things live here that were previously spread across `dims/components/`:
 - **Its type.** `component_type` is a column, so `entity -> component_type` is one read rather than a glob across every type's file with the type taken from the filename.
 - **Its tombstone.** Deleting a component is deleting its entity row.
 
-What remains in `dims/components/<Type>.parquet` is only [what varies over nothing](#where-a-value-lives) — the non-varying attribute values, partitioned by type because that is the one thing genuinely per type: every type has a different column set.
+What remains in `dims/components/<Type>.parquet` is only [what is addressed by `entity` alone](#where-a-value-lives) — the non-varying attribute values, partitioned by type because that is the one thing genuinely per type: every type has a different column set.
 
 The components [owner map](read-path.md#owner-map) folds from this file, and so do component tombstones. Both must read the same source: membership from one and deletions from another would resolve a deletion the map never saw.
 

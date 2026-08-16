@@ -44,6 +44,12 @@ STRUCTURAL_TYPES = {
 }
 
 
+# Every long row's trailing columns, whatever coordinates precede them: the
+# attribute named, the abscissa of a piecewise-linear value, and the value
+# (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+LONG_TAIL = ("attribute", "breakpoint", "value")
+
+
 # The owner map's flag columns: two structs with a field per declared dim, so
 # the map's column set does not depend on the schema and adding a dim stays the
 # compatible change versioning calls it. `breakpoints` is outside both, being no dim
@@ -178,13 +184,22 @@ class AttributeSpec(BaseModel):
 
     @property
     def varying(self) -> bool:
-        """Whether this attribute lives in `inputs/` rather than `dims/components/`.
+        """Whether this attribute's values are long rows rather than a column.
+
+        "Varies beyond its address", not "has dims": naming exactly one
+        addressing coordinate is a column on that thing's own table, so
+        `dims={"entity"}` is a component column and `dims={"connection"}` a
+        column of the group's table. Anything more is `inputs/<attr>.parquet`.
+
+        A bare `bool(dims)` was the test before `entity` was a declared dim,
+        when a component attribute declared none - it would now call every
+        attribute varying and route every constant to `inputs/`.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
-        return bool(self.dims)
+        return len(self.dims) > 1
 
 
 class Group(BaseModel):
@@ -487,16 +502,24 @@ class Schema(BaseModel):
     def long_columns_for(self, attribute: str) -> tuple[str, ...]:
         """One attribute's full `inputs/` column set, in order.
 
+        An attribute carries the coordinates its `dims` name and no others, so a
+        record-level weighting has no `entity` column and a component attribute
+        has no `bus`.
+
+        An attribute the schema does not declare is `long_columns` - every
+        declared dim, the widest shape. Only a *result* reaches this: an
+        undeclared input is rejected on write, where a result is never declared
+        at all because a tool derives which attributes count as one from its own
+        registry.
+
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [results](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
         """
-        return (
-            *self.coordinates_of(attribute),
-            "attribute",
-            "breakpoint",
-            "value",
-        )
+        if attribute not in self.attributes:
+            return self.long_columns
+        return (*self.coordinates_of(attribute), *LONG_TAIL)
 
     def attributes_for(self, ctype: str) -> dict[str, AttributeSpec]:
         """Which attributes `ctype` carries: its traits' bundles, plus its own.
@@ -603,12 +626,7 @@ class Schema(BaseModel):
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
-        return (
-            *self.dims,
-            "attribute",
-            "breakpoint",
-            "value",
-        )
+        return (*self.dims, *LONG_TAIL)
 
     @property
     def input_key(self) -> tuple[str, ...]:

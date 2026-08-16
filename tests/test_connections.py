@@ -150,7 +150,16 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
 
 
 def test_component_level_attribute_is_unaffected(con, base_uri):
-    """A NULL `bus` keys against the map's NULL, exactly as before connections existed."""
+    """A component attribute carries no `bus` column at all, and resolves as ever.
+
+    `bus` is the `connection` group's coordinate, so it is on the files of the
+    attributes addressed by that group and on no others - where before every
+    long file carried it, all-NULL, whether or not the attribute could use it.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    """
     root = _root(con)
     write_input(
         layer_dir(root.id),
@@ -168,7 +177,7 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
 
     df = relation(child, "p_nom").df()
     assert list(df["value"]) == [250.0]
-    assert df["bus"].isna().all()
+    assert "bus" not in df.columns, "`p_nom` is not addressed by the connection group"
 
 
 def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri):

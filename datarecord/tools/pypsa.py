@@ -258,7 +258,10 @@ def _assign_static(
         # PyPSA's `static` container takes the snapshot-broadcast rows (https://energy-models.github.io/datarecord/design/record/#flags).
         if SNAPSHOT not in flags.broadcast:
             continue
-        rows = long.filter("snapshot IS NULL")
+        # An attribute not addressed by `snapshot` has no such column at all
+        # (https://energy-models.github.io/datarecord/design/format/#the-long-schema), and every one of its rows is static - so the
+        # filter is a no-op rather than a column to bind against.
+        rows = long.filter("snapshot IS NULL") if SNAPSHOT in long.columns else long
         if shape.stochastic:
             rows = scenarios.expand(rows, SCENARIO)
         # First-wins on a duplicate key, same as `values[~values.index.duplicated()]`;
@@ -1054,15 +1057,17 @@ class PyPSATool(Tool):
                 # Through the schema, so a renamed or computed attribute
                 # reaches the pivot below as an ordinary long relation. Scoped
                 # by a semi-join against `static`, this type's entity table (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-                long = (
-                    self.schema.resolve(record, ctype, attr)
-                    .set_alias("a")
-                    .join(
+                long = self.schema.resolve(record, ctype, attr)
+                # An attribute addressed by `entity` scopes to this type's
+                # members; one addressed by an axis alone has no entity column
+                # to scope by, and belongs to the record rather than to a
+                # component (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+                if ENTITY in long.columns:
+                    long = long.set_alias("a").join(
                         static.project("entity").distinct().set_alias("m"),
                         "a.entity = m.entity",
                         how="semi",
                     )
-                )
                 attributes[attr] = (long, flags)
 
             _add_component_type(n, ctype, static, attributes, shape, con)
@@ -1180,6 +1185,11 @@ class _NetworkSource:
         - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
+        # What PyPSA's `varying` flag means as coordinates: the time axis, plus
+        # the scenario axis where the network has one. A stochastic network's
+        # series differ per scenario, so an attribute not declaring it would be
+        # one the fold owns once across every scenario.
+        varying_dims = (SNAPSHOT, SCENARIO) if self.n.has_scenarios else (SNAPSHOT,)
         attributes: dict[str, AttributeSpec] = {}
         component_types: dict[str, ComponentType] = {}
         for c in self.n.components:
@@ -1200,12 +1210,13 @@ class _NetworkSource:
                     continue
                 carried.add(stem)
                 row = defaults.loc[attr]
-                # A per-port attribute belongs to the connection, which it
-                # says by naming the `connection` group among its dims rather
-                # than by a field of its own (https://energy-models.github.io/datarecord/design/schema/#groups).
-                dims = {SNAPSHOT} if row["varying"] else set()
-                if attr in per_port:
-                    dims.add(CONNECTION)
+                # `entity` is a dim like any other, so a component attribute
+                # declares it: `dims` is the whole address, and an attribute
+                # omitting it would be one no component owns (https://energy-models.github.io/datarecord/design/schema/#attributespec).
+                # A per-port attribute names the `connection` group instead,
+                # which expands to `(entity, bus)` (https://energy-models.github.io/datarecord/design/schema/#groups).
+                dims = set(varying_dims) if row["varying"] else set()
+                dims.add(CONNECTION if attr in per_port else ENTITY)
                 spec = AttributeSpec(
                     dtype=_DTYPES.get(row["type"], "VARCHAR"),
                     dims=frozenset(dims),

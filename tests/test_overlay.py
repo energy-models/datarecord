@@ -193,7 +193,7 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     # Declared once, record-wide, then subscribed to by the type that carries
     # it - the two halves an amendment now has.
     amended.attributes["p_min_pu"] = AttributeSpec(
-        dtype="DOUBLE", dims={"snapshot"}, default=0.25
+        dtype="DOUBLE", dims={"entity", "snapshot"}, default=0.25
     )
     was = amended.component_types["Generator"]
     amended.component_types["Generator"] = was.model_copy(

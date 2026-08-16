@@ -536,10 +536,10 @@ class WorkingRecord:
         if base is None:
             return nw.from_native(staged)
         # The staged rows are the last layer, so they win per key (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits).
-        return nw.from_native(self._overlay(base.to_native(), staged))
+        return nw.from_native(self._overlay(attribute, base.to_native(), staged))
 
     def _overlay(
-        self, base: DuckDBPyRelation, staged: DuckDBPyRelation
+        self, attribute: str, base: DuckDBPyRelation, staged: DuckDBPyRelation
     ) -> DuckDBPyRelation:
         """`staged` over `base`, last-writer-wins per coordinate.
 
@@ -560,13 +560,23 @@ class WorkingRecord:
         # row that *does* name a coordinate displaces only that one, which is
         # what keeps the rest of the series (`_restated` writes it out at
         # commit).
-        fixed = (*self.schema.input_key, "breakpoint")
+        # Both sides carry this attribute's columns and no others, so the key
+        # and the broadcast set are intersected with them: a dim the attribute
+        # is not addressed by is absent from the file rather than NULL in it,
+        # and joining on it would fail to bind.
+        columns = set(self._long_columns(attribute))
+        fixed = (
+            *(c for c in self.schema.input_key if c in columns),
+            "breakpoint",
+        )
         # The dims a NULL broadcasts over, minus those the key already fixes.
         # Read off `broadcast_dims` rather than subtracted from `schema.dims`:
         # an address coordinate is in neither, and a subtraction would put one
         # here the moment it left the key.
         key = set(self.schema.input_key)
-        broadcast = tuple(d for d in self.schema.broadcast_dims if d not in key)
+        broadcast = tuple(
+            d for d in self.schema.broadcast_dims if d not in key and d in columns
+        )
         on = ex_all(
             [
                 _null_safe_on(dict.fromkeys(fixed)),
@@ -579,7 +589,7 @@ class WorkingRecord:
         )
         kept = base.set_alias("b").join(staged.set_alias("s"), on, how="anti")
         return union_all_by_name([kept, staged], self.con).project(
-            *(col(c) for c in self._long_columns())
+            *(col(c) for c in self._long_columns(attribute))
         )
 
     def _typed_value(self, attribute: str) -> list[Expression]:
@@ -603,14 +613,11 @@ class WorkingRecord:
             sql(f'TRY_CAST("value" AS {dtype})').alias("value")
             if c == "value"
             else col(c)
-            for c in self._long_columns()
+            for c in self._long_columns(attribute)
         ]
 
-    def _long_columns(self) -> tuple[str, ...]:
-        # Derived, never spelled: `entity` and a group's coordinates are
-        # declared dims, so naming them beside `schema.dims` would emit each
-        # twice. The staging table's own order (`_input_columns`).
-        return (*self.schema.dims, "attribute", "breakpoint", "value")
+    def _long_columns(self, attribute: str) -> tuple[str, ...]:
+        return self.schema.long_columns_for(attribute)
 
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
         """`AttributeSpec.dims` minus `Schema.partial`, for every type declaring
@@ -645,7 +652,11 @@ class WorkingRecord:
         if attribute not in self.base.attributes:
             return staged
 
-        scope = [c for c in self.schema.input_key if c not in whole]
+        # Intersected with the attribute's own columns: a key column its file
+        # does not carry is absent from both sides rather than NULL in them,
+        # and joining on it would fail to bind (`long_columns_for`).
+        columns = set(self._long_columns(attribute))
+        scope = [c for c in self.schema.input_key if c not in whole and c in columns]
         coordinate = [*scope, *whole, "breakpoint"]
         base = _as_relation(self.base.attributes[attribute], self.con)
         # Semi-join first to the keys this edit touched, then anti-join away the
@@ -658,7 +669,7 @@ class WorkingRecord:
             .join(staged.set_alias("s"), _null_safe_on(coordinate), how="anti")
         )
         return union_all_by_name([staged, carried], self.con).project(
-            *(col(c) for c in self._long_columns())
+            *(col(c) for c in self._long_columns(attribute))
         )
 
     @property
@@ -1180,12 +1191,22 @@ class WorkingRecord:
 
         `value` is cast to text on the way in, since the staging table holds
         every attribute's values in one column (`_input_columns`).
+
+        Every declared dim rather than one attribute's coordinates: the staging
+        table is one relation over every attribute, so its shape is the widest
+        one. Narrowing to the attribute's own columns happens on the way *out*
+        (`_long_columns`), where one file is one attribute.
         """
         _upd = frame.to_native()  # noqa: F841 - bound by replacement scan below
         table = self._ensure(kind)
+        # Only the columns the frame actually carries: one attribute's long
+        # frame is a subset of the staging table's width (`long_columns_for`),
+        # and `INSERT ... BY NAME` fills the rest with NULL.
+        present = set(frame.collect_schema().names())
         cols = ", ".join(
             '"value"::VARCHAR AS "value"' if c == "value" else f'"{c}"'
-            for c in self._long_columns()
+            for c in self.schema.long_columns
+            if c in present
         )
         self.con.execute(
             f"INSERT INTO {table} BY NAME SELECT {cols}, {next(_SEQ)} AS _seq FROM _upd"
@@ -1194,7 +1215,7 @@ class WorkingRecord:
     def add(self, ctype: str, frame: Any) -> None:
         """Stage new components from a wide frame.
 
-        Splits it: attributes varying over nothing stay in `dims/components/`,
+        Splits it: attributes addressed by `entity` alone stay in `dims/components/`,
         varying ones become `inputs/` rows. Which is which comes from the
         schema, so this needs no framework registry.
 
