@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, partial
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
@@ -204,9 +204,6 @@ def _map_uri(revision_id: UUID, kind: str) -> str:
     return f"{resolved_dir(revision_id)}owner_map/{kind}.parquet"
 
 
-_KIND_NAMES = ("inputs", "components", "connections")
-
-
 def materialised(revision_id: UUID, con: DuckDBPyConnection) -> bool:
     """Whether `revision_id`'s node caches are materialised.
 
@@ -222,7 +219,9 @@ def materialised(revision_id: UUID, con: DuckDBPyConnection) -> bool:
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    return try_read_parquet(_map_uri(revision_id, _KIND_NAMES[0]), con) is not None
+    # `inputs` answers for the rest: the maps are written together, and it is
+    # the one kind every schema has, whatever groups it declares.
+    return try_read_parquet(_map_uri(revision_id, "inputs"), con) is not None
 
 
 def ancestry_to_read(ancestry: list[UUID], con: DuckDBPyConnection) -> list[UUID]:
@@ -314,21 +313,22 @@ def _component_deleted(
     )
 
 
-def _connection_deleted(
-    revision_id: UUID, keys: Dims, con: DuckDBPyConnection
+def _group_deleted(
+    group: str, revision_id: UUID, keys: Dims, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """This layer's tombstoned connections, keyed by the group's coordinates.
+    """This layer's tombstoned rows of one group, keyed by its coordinates.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
     """
     return _deleted_relation(
         revision_id,
         keys,
         con,
-        uri=layer_dir(revision_id) + "dims/connections/*.parquet",
-        fixed=keys.schema.group_coordinates("connection"),
+        uri=f"{layer_dir(revision_id)}dims/{group}/*.parquet",
+        fixed=keys.schema.group_coordinates(group),
     )
 
 
@@ -459,19 +459,23 @@ def fold_inputs(
             ]
         )
 
-    # Deleting a component drops its attribute rows; deleting one connection
-    # drops only that connection's, which the map can scope because the group's
+    # Deleting a component drops its attribute rows; deleting one row of a
+    # group drops only that row's, which the map can scope because a group's
     # coordinates are in `input_key` (https://energy-models.github.io/datarecord/design/record/#connections).
     #
     # Each anti-join is skipped where its key is not in the inputs key at all:
     # a schema declaring no dims is "no manifest yet", so there is no entity
     # column to match a tombstone against, and no rows either.
+    tombstones: list[tuple[Callable[..., DuckDBPyRelation], tuple[str, ...]]] = [
+        (_component_deleted, ("entity",))
+    ]
+    tombstones += [
+        (partial(_group_deleted, group), keys.schema.group_coordinates(group))
+        for group in keys.schema.groups
+    ]
     kept = parent.set_alias("p")
     keyed = set(keys.schema.input_key)
-    for deleted, key in (
-        (_component_deleted, ("entity",)),
-        (_connection_deleted, keys.schema.group_coordinates("connection")),
-    ):
+    for deleted, key in tombstones:
         if key and keyed.issuperset(key):
             kept = kept.join(
                 deleted(revision_id, keys, con).set_alias("x"),
@@ -504,34 +508,42 @@ def fold_components(
     )
 
 
-def fold_connections(
-    revision_id: UUID, keys: Dims, con: DuckDBPyConnection, parent: DuckDBPyRelation
+def fold_group(
+    group: str,
+    revision_id: UUID,
+    keys: Dims,
+    con: DuckDBPyConnection,
+    parent: DuckDBPyRelation,
 ) -> DuckDBPyRelation:
-    """This node's connections map: `dims/connections/` keys, folded over `parent`.
+    """One group's map: `dims/<group>/` keys, folded over `parent`.
 
     `fold_components` keyed by the group's coordinates rather than the entity
-    alone, and with one more tombstone: a component tombstone removes every
-    connection of it, so `parent` is anti-joined against that as well as
-    against this layer's own connection tombstones.
+    alone, and with one more tombstone where the group is over `entity`: a
+    component tombstone removes every row of it, so `parent` is anti-joined
+    against that as well as against this layer's own group tombstones.
+
+    A group not over `entity` has no such relation - `corridor` over
+    `(from, to)` draws both from the entity axis but under names of its own,
+    and which of them a tombstone should match is not this fold's to guess.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    coordinates = keys.schema.group_coordinates("connection")
+    coordinates = keys.schema.group_coordinates(group)
+    over_entity = "entity" in coordinates
     return _fold_ordered(
         revision_id,
         keys,
         con,
         parent,
-        uri=layer_dir(revision_id) + "dims/connections/*.parquet",
+        uri=f"{layer_dir(revision_id)}dims/{group}/*.parquet",
         key=coordinates,
-        columns=keys.schema.connection_columns,
-        # A component tombstone kills every connection of it, matched on the
-        # entity the two share.
-        also_deleted=_component_deleted,
-        also_deleted_key=("entity",),
+        columns=keys.schema.group_columns(group),
+        also_deleted=_component_deleted if over_entity else None,
+        also_deleted_key=("entity",) if over_entity else (),
     )
 
 
@@ -651,18 +663,41 @@ def _fold_map(
     return rel
 
 
-# The three owner maps (https://energy-models.github.io/datarecord/design/read-path/#owner-map), each a `kind` -> (column set, fold) pair.
-_KINDS: dict[str, tuple[Callable[[Dims], tuple[str, ...]], Callable]] = {
-    "inputs": (lambda keys: keys.schema.input_columns, fold_inputs),
-    "components": (lambda keys: keys.schema.component_columns, fold_components),
-    "connections": (lambda keys: keys.schema.connection_columns, fold_connections),
-}
+def map_kinds(
+    schema: Schema,
+) -> dict[str, tuple[Callable[[Dims], tuple[str, ...]], Callable]]:
+    """This schema's owner maps, each a `kind` -> (column set, fold) pair.
+
+    Two fixed - `inputs` for attribute values, `components` for the entity
+    axis - and one per declared group. A group is a table of which tuples
+    exist, so it is folded like any other: keys, tombstones and an
+    `order_key`, differing only in which columns key it.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
+    kinds: dict[str, tuple[Callable[[Dims], tuple[str, ...]], Callable]] = {
+        "inputs": (lambda keys: keys.schema.input_columns, fold_inputs),
+        "components": (lambda keys: keys.schema.component_columns, fold_components),
+    }
+    for group in schema.groups:
+        kinds[group] = (
+            partial(_group_columns, group),
+            partial(fold_group, group),
+        )
+    return kinds
+
+
+def _group_columns(group: str, keys: Dims) -> tuple[str, ...]:
+    return keys.schema.group_columns(group)
 
 
 def _fold_kind(
     kind: str, ancestry: list[UUID], con: DuckDBPyConnection, schema: Schema
 ) -> DuckDBPyRelation:
-    columns, fold = _KINDS[kind]
+    columns, fold = map_kinds(schema)[kind]
     return _fold_map(
         ancestry,
         con,
@@ -728,7 +763,7 @@ def materialise(
     if "://" not in base:
         # A record that wrote nothing to its layer has no node dir yet either.
         Path(base).mkdir(parents=True, exist_ok=True)
-    for kind in _KINDS:
+    for kind in map_kinds(schema):
         _fold_kind(kind, ancestry, con, schema).to_parquet(_map_uri(revision_id, kind))
     _materialise_dims(revision_id, ancestry, con, schema)
 
@@ -863,9 +898,14 @@ class NodeCache:
     def components(self) -> DuckDBPyRelation:
         return self._map("components")
 
-    @property
-    def connections(self) -> DuckDBPyRelation:
-        return self._map("connections")
+    def group(self, name: str) -> DuckDBPyRelation:
+        """One declared group's owner map.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        """
+        return self._map(name)
 
     @cached_property
     def dims(self) -> Dims:
@@ -1073,22 +1113,23 @@ class NodeCache:
             match=("entity",),
         )
 
-    def connection_frame(self, ctype: str) -> DuckDBPyRelation | None:
-        """One type's connections, resolved from the `connections` owner map.
+    def group_frame(self, group: str, ctype: str) -> DuckDBPyRelation | None:
+        """One type's rows of one group, resolved from that group's owner map.
 
-        Carries `role` and any other non-key column of the connection row -
-        those describe the connection rather than keying it, so the fold does
-        not track them and they come straight from the owning layer's file.
+        Carries every non-key column of the row - `role` on a connection, say.
+        Those describe the row rather than keying it, so the fold does not
+        track them and they come straight from the owning layer's file.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
         """
         return self._dim_frame(
             ctype,
-            subdir="connections",
-            owner_map=self.connections,
-            match=self.schema.group_coordinates("connection"),
+            subdir=group,
+            owner_map=self.group(group),
+            match=self.schema.group_coordinates(group),
         )
 
     def _dim_frame(

@@ -235,7 +235,7 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
         schema = narrowed
         dims = EMPTY
         components = EMPTY
-        connections = EMPTY
+        groups: dict = {}
         attributes = EMPTY
         outputs = EMPTY
 

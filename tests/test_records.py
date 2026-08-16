@@ -20,7 +20,7 @@ from datarecord.schema import Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import schema, write_components, write_input, write_schema
 
-MEMBERS = ("dims", "components", "connections", "attributes")
+MEMBERS = ("dims", "components", "attributes")
 
 
 @pytest.fixture
@@ -90,7 +90,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
         schema: Schema
         dims: Frames
         components: Frames
-        connections: Frames
+        groups: dict[str, Frames]
         attributes: Frames
         outputs: Frames
 
@@ -376,7 +376,7 @@ def test_directory_record_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
 def test_directory_record_has_no_connections_when_none_were_written(
     con, base_uri, tmp_path
 ):
-    """A record with no `dims/connections/` reads as having none, not as an error.
+    """A record with no `dims/connection/` reads as having none, not as an error.
 
     Notes
     -----
@@ -387,7 +387,7 @@ def test_directory_record_has_no_connections_when_none_were_written(
     write_schema(schema())
     write_components(layer, "Generator", [{"entity": "wind"}])
 
-    assert list(DirectoryRecord(layer, con).connections) == []
+    assert list(DirectoryRecord(layer, con).groups["connection"]) == []
 
 
 def test_directory_record_reads_connections_blocks_wrote(written, con):
@@ -398,9 +398,9 @@ def test_directory_record_reads_connections_blocks_wrote(written, con):
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     record = DirectoryRecord(layer_dir(written.id), con)
-    assert "Link" in record.connections
+    assert "Link" in record.groups["connection"]
 
-    rows = record.connections["Link"].collect().to_native().to_pandas()
+    rows = record.groups["connection"]["Link"].collect().to_native().to_pandas()
     assert set(rows["role"]) == {"input", "output"}
 
 
@@ -455,7 +455,7 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
         schema = solved.schema
         dims = solved.dims
         components = solved.components
-        connections = solved.connections
+        groups = solved.groups
         attributes = solved.attributes
         outputs = EMPTY
         flags = solved.flags

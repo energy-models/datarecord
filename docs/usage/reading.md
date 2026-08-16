@@ -65,7 +65,7 @@ record/
 ├── manifest.json                   # the schema
 ├── dims/
 │   ├── components/<Type>.parquet   # members + non-varying attribute columns
-│   ├── connections/<Type>.parquet  # component↔bus connections
+│   ├── <group>/<Type>.parquet      # which tuples of the group exist
 │   └── <dim>.parquet               # one axis table per declared dim
 ├── inputs/<attr>.parquet           # one varying input attribute per file
 └── outputs/<attr>.parquet          # one result attribute per file

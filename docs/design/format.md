@@ -9,7 +9,7 @@ record/
 ├── dims/
 │   ├── entity.parquet              # which entities exist, and of what type
 │   ├── components/<Type>.parquet   # non-varying attribute columns, per type
-│   ├── connections/<Type>.parquet  # component↔bus connections
+│   ├── <group>/<Type>.parquet      # which tuples of the group exist
 │   └── <dim>.parquet               # one axis table per declared dim
 ├── inputs/<attr>.parquet           # one varying input attribute per file
 └── outputs/<attr>.parquet          # one result attribute per file
@@ -51,8 +51,8 @@ Decided by the attribute's [declared `dims`](schema.md#attributespec), not by a 
 
 So a component type's constant frame is assembled from both: the non-varying columns, and the dim-NULL rows of the varying files.
 
-[Connections](record.md#connections) are rows in `dims/connections/<Type>.parquet`, keyed by `(entity, bus, *connection key dims)` and carrying their own tombstones.
-A record with no such directory has no connections.
+A [group](proposals/dims-groups-traits.md#groups)'s rows are in `dims/<group>/<Type>.parquet`, keyed by that group's coordinates and carrying their own tombstones - `dims/connection/Link.parquet` for the `connection` group over `(entity, bus)`.
+A record with no such directory has no rows of that group.
 
 ## The long schema
 

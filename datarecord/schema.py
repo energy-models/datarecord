@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import math
 from graphlib import CycleError, TopologicalSorter
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import (
     BaseModel,
@@ -27,14 +27,6 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-
-BusRelation = Literal["component", "connection"]
-"""Whether an attribute belongs to a component or to one of its connections.
-
-Notes
------
-- [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-"""
 
 # Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Neither
 # declared nor optional: `bus`/`breakpoint` are NULL for the ordinary
@@ -138,8 +130,6 @@ class AttributeSpec(BaseModel):
         The value a coordinate no row covers takes.
     breakpoints
         Whether it may carry a piecewise-linear curve.
-    bus
-        Whether it belongs to a component or to one of its connections.
     unit
         What the values measure - `"MW"`, `"EUR/MWh"`. Stored and never
         interpreted; `None` is undeclared, `""` genuinely dimensionless.
@@ -160,7 +150,6 @@ class AttributeSpec(BaseModel):
     default: Any | None = None
     dims: frozenset[str] = frozenset()
     breakpoints: bool = False
-    bus: BusRelation = "component"
     unit: str | None = None
     description: str | None = None
 
@@ -692,17 +681,17 @@ class Schema(BaseModel):
         """
         return ("component_type", "entity", "layer_uuid", "order_key")
 
-    @property
-    def connection_columns(self) -> tuple[str, ...]:
-        """The connections map's full column set.
+    def group_columns(self, group: str) -> tuple[str, ...]:
+        """One group's owner-map column set: its coordinates, plus what it carries.
 
         Notes
         -----
+        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         return (
             "component_type",
-            *self.group_coordinates("connection"),
+            *self.group_coordinates(group),
             "layer_uuid",
             "order_key",
         )

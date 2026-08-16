@@ -61,8 +61,8 @@ class _Source:
         return self._frames(self._components, "components")
 
     @property
-    def connections(self):
-        return self._frames(self._connections, "connections")
+    def groups(self):
+        return {"connection": self._frames(self._connections, "connection")}
 
     @property
     def attributes(self):
@@ -324,7 +324,7 @@ def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
 
     assert isinstance(source, Record)
     assert "Generator" in source.components
-    assert "Link" in source.connections
+    assert "Link" in source.groups["connection"]
     assert "p_max_pu" in source.attributes
     # Non-varying attributes belong to `dims/components/`, not `inputs/` (https://energy-models.github.io/datarecord/design/record/).
     assert "v_nom" not in source.attributes
@@ -376,7 +376,7 @@ def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
 
     # Stored bus-keyed, with a role from PyPSA's sign convention.
     rows = con.read_parquet(
-        layer_dir(revision.id) + "dims/connections/Link.parquet"
+        layer_dir(revision.id) + "dims/connection/Link.parquet"
     ).df()
     assert set(rows["role"]) == {"input", "output"}
     assert set(rows["bus"]) >= set(ac_dc.c["Link"].static["bus0"])
@@ -397,7 +397,7 @@ def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
     rows = con.read_parquet(
-        layer_dir(revision.id) + "dims/connections/Generator.parquet"
+        layer_dir(revision.id) + "dims/connection/Generator.parquet"
     ).df()
     assert set(rows["role"]) == {"attached"}
 

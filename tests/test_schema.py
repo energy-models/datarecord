@@ -5,20 +5,32 @@ Notes
 - [the schema](https://energy-models.github.io/datarecord/design/schema/)
 """
 
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
-from datarecord.schema import AttributeSpec, ComponentType, Dimension, Schema, flag_type
+from datarecord.schema import (
+    AttributeSpec,
+    ComponentType,
+    Dimension,
+    Group,
+    Schema,
+    flag_type,
+)
 
 
 def _schema(**overrides) -> Schema:
     """A schema shaped like a stochastic multi-period record."""
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "dimensions": {
+            "entity": Dimension(dtype="VARCHAR"),
+            "bus": Dimension(dtype="VARCHAR"),
             "period": Dimension(dtype="BIGINT"),
             "timestep": Dimension(dtype="TIMESTAMP", within={"period"}),
-            "scenario": Dimension(dtype="VARCHAR", keys={"component", "connection"}),
+            "scenario": Dimension(dtype="VARCHAR"),
         },
+        "groups": {"connection": Group(over={"entity": "entity", "bus": "bus"})},
         # Declared once, record-wide; a type subscribes to what it carries.
         "attributes": {
             "p_nom": AttributeSpec(dtype="DOUBLE"),
@@ -27,8 +39,10 @@ def _schema(**overrides) -> Schema:
                 dtype="DOUBLE", dims={"scenario"}, breakpoints=True
             ),
             "carrier": AttributeSpec(dtype="VARCHAR"),
+            # A connection attribute says so by naming the group among its
+            # dims, rather than by a field of its own.
             "efficiency": AttributeSpec(
-                dtype="DOUBLE", dims={"scenario", "timestep"}, bus="connection"
+                dtype="DOUBLE", dims={"connection", "scenario", "timestep"}
             ),
         },
         "component_types": {
@@ -40,6 +54,10 @@ def _schema(**overrides) -> Schema:
         "partial": frozenset({"scenario"}),
     }
     kwargs.update(overrides)
+    # `entity` and the group's coordinates do not broadcast, so the schema
+    # requires them `partial`. Added after the override so a caller varying
+    # `partial` says what else is patchable, not whether those are.
+    kwargs["partial"] = frozenset(kwargs["partial"]) | {"entity", "bus"}
     return Schema(**kwargs)
 
 
@@ -70,11 +88,12 @@ def test_a_scenario_varying_capacity_is_a_schema_violation():
 def test_partial_dims_is_the_union_over_attributes():
     """The fold's key is one fixed tuple, so an unowned dim is NULL rather than absent."""
     s = _schema()
-    assert s.partial_dims == ("scenario",)
+    # `entity` and `bus` are always partial - they do not broadcast.
+    assert s.partial_dims == ("entity", "bus", "scenario")
 
     # Make `timestep` partial too and it joins the key.
     wider = _schema(partial=frozenset({"scenario", "timestep"}))
-    assert wider.partial_dims == ("period", "timestep", "scenario")[1:]
+    assert wider.partial_dims == ("entity", "bus", "timestep", "scenario")
 
 
 def test_file_split_follows_dims():
@@ -257,12 +276,16 @@ def test_removing_from_partial_is_incompatible():
 
 
 def test_changing_nesting_is_incompatible():
+    """Un-nesting `timestep` changes the axis key's shape, so old rows misread.
+
+    `new` is `_schema()` with the one difference under test: `timestep` no
+    longer `within` `period`, where every other dim is restated unchanged.
+    """
     old = _schema()
     new = _schema(
         dimensions={
-            "period": Dimension(dtype="BIGINT"),
+            **old.dimensions,
             "timestep": Dimension(dtype="TIMESTAMP"),
-            "scenario": Dimension(dtype="VARCHAR", keys={"component", "connection"}),
         }
     )
     reasons = new.compatible_with(old)
@@ -343,7 +366,7 @@ def test_column_types_cover_structural_dims_and_flags():
     # the map's column set does not widen when a dim is declared.
     for column in ("varies", "broadcast"):
         column_type = s.column_type(column)
-        assert column_type == flag_type(s.dims)
+        assert column_type == flag_type(s.broadcast_dims)
         assert column_type is not None
         assert '"scenario" BOOLEAN' in column_type
     assert s.column_type("value") is None

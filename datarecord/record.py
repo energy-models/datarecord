@@ -154,12 +154,17 @@ class Record(Protocol):
         ...
 
     @property
-    def connections(self) -> Frames:
-        """Connection rows, keyed by component type, in member order.
+    def groups(self) -> Mapping[str, Frames]:
+        """Each declared group's rows, keyed by group then by component type.
+
+        A group declares which tuples over several dims exist - `connection`
+        over `(entity, bus)` is the one every record with connections has, and
+        it is one instance rather than a member of its own.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
         """
         ...
 

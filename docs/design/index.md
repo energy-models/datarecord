@@ -20,7 +20,7 @@ A record exposes seven things:
 record.schema        what may exist: the axes, the attributes
 record.dims          the axes themselves, keyed by dim
 record.components    members, keyed by component type
-record.connections   component↔bus rows, keyed by component type
+record.groups        which tuples exist, keyed by group then component type
 record.attributes    the values, keyed by attribute name
 record.outputs       results, keyed by attribute name
 record.flags(ctype)  which axes an attribute actually uses

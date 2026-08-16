@@ -66,7 +66,7 @@ def write_input(
 
 
 def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
-    """Write `dims/connections/<ctype>.parquet`, including the `deleted` tombstone.
+    """Write `dims/connection/<ctype>.parquet`, including the `deleted` tombstone.
 
     Each row needs `name` and `bus`; `role` describes the connection and keys
     nothing, so it is optional here.
@@ -87,7 +87,7 @@ def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
 
     lead = ["component_type", "entity", "bus", "role", "scenario", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
-    target = Path(layer, "dims", "connections")
+    target = Path(layer, "dims", "connection")
     target.mkdir(parents=True, exist_ok=True)
     df[ordered].to_parquet(target / f"{ctype}.parquet", index=False)
 

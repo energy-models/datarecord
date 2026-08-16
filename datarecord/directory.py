@@ -11,6 +11,7 @@ Notes
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -84,8 +85,14 @@ class DirectoryRecord:
         return self._by_type("dims/components")
 
     @cached_property
-    def connections(self) -> LazyFrames:
-        return self._by_type("dims/connections")
+    def groups(self) -> Mapping[str, LazyFrames]:
+        """Each declared group's rows, keyed by group then by component type.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        """
+        return {g: self._by_type(f"dims/{g}") for g in self.schema.groups}
 
     @cached_property
     def attributes(self) -> LazyFrames:

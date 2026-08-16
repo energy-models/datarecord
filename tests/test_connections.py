@@ -23,7 +23,7 @@ PROCESS = "Process"
 
 def _connections(revision, ctype=PROCESS):
     """`connection_frame`, asserted non-`None` for tests where a row must exist."""
-    frame = revision.node_cache.connection_frame(ctype)
+    frame = revision.node_cache.group_frame("connection", ctype)
     assert frame is not None
     return frame
 
@@ -252,5 +252,5 @@ def test_component_tombstone_removes_every_connection(con, base_uri):
     child = root.child()
     tombstone(layer_dir(child.id), PROCESS, ["steel_dri"])
 
-    assert child.node_cache.connection_frame(PROCESS) is None
+    assert child.node_cache.group_frame("connection", PROCESS) is None
     assert _efficiencies(child) == {}

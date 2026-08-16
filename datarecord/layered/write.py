@@ -115,7 +115,10 @@ def write_record(
         kinds = [
             ("dims", source.dims, "dims"),
             ("components", source.components, "dims/components"),
-            ("connections", source.connections, "dims/connections"),
+            *(
+                (group, frames, f"dims/{group}")
+                for group, frames in source.groups.items()
+            ),
             ("attributes", source.attributes, "inputs"),
         ]
         # `outputs/` only for a source carrying results, so a record with none
@@ -395,14 +398,14 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
         # before any bus is assigned one, and a NULL is "unclassified".
         return
 
-    if kind != "connections":
+    if kind not in schema.groups:
         return
     # A group's row is keyed by its coordinates, so a frame lacking one would
     # be keyed by a column that is not there.
-    missing = sorted(set(schema.group_coordinates("connection")) - columns)
+    missing = sorted(set(schema.group_coordinates(kind)) - columns)
     if missing:
         msg = (
-            f"dims/{kind}/{key}.parquet is missing the `connection` group's "
+            f"dims/{kind}/{key}.parquet is missing the {kind!r} group's "
             f"coordinates {missing}; the fold would key by a column that is "
             f"not there (https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)"
         )

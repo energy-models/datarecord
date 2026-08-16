@@ -28,6 +28,10 @@ from datarecord.duck import ex_all, fn, union_all_by_name
 from datarecord.record import EMPTY, Flags, Frames, LazyFrames, Record
 from datarecord.schema import Schema
 
+# The one group `connect`/`disconnect` name: they are a connection's own API,
+# where `groups` is the general one.
+CONNECTION = "connection"
+
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
 
@@ -293,7 +297,7 @@ class _Written:
     schema: Schema
     dims: Frames
     components: Frames
-    connections: Frames
+    groups: Mapping[str, Frames]
     attributes: Frames
     # `default_factory` because `EMPTY` is a `LazyFrames` instance, which
     # `dataclass` reads as a mutable default even though it never mutates.
@@ -344,10 +348,20 @@ class WorkingRecord:
         return f"staged_{kind}_{self._id}"
 
     def _ensure(self, kind: str) -> str:
-        """The staging table for `kind`, created on first use."""
+        """The staging table for `kind`, created on first use.
+
+        `kind` is one of the fixed three, or a declared group's name - a group
+        gets a table shaped by its own coordinates.
+        """
         name = self._table(kind)
         if kind not in self._staged:
-            self.con.execute(f"CREATE TABLE {name} ({_COLUMNS[kind](self.schema)})")
+            columns = _COLUMNS.get(kind)
+            ddl = (
+                columns(self.schema)
+                if columns is not None
+                else _group_columns(self.schema, kind)
+            )
+            self.con.execute(f"CREATE TABLE {name} ({ddl})")
             self._staged.add(kind)
         return name
 
@@ -377,17 +391,24 @@ class WorkingRecord:
         return self._entity_frames("components")
 
     @property
-    def connections(self) -> Frames:
-        """Base connections with pending ones applied.
+    def groups(self) -> Mapping[str, Frames]:
+        """Each declared group's rows, with pending ones applied.
 
         Notes
         -----
+        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
-        return self._entity_frames("connections")
+        return {group: self._entity_frames(group) for group in self.schema.groups}
+
+    def _base_of(self, kind: str) -> Frames:
+        """The base's frames of one kind: its members, or one group's rows."""
+        if kind == "components":
+            return self.base.components
+        return self.base.groups.get(kind, EMPTY)
 
     def _entity_frames(self, kind: str) -> Frames:
-        base = self.base.components if kind == "components" else self.base.connections
+        base = self._base_of(kind)
         staged = self._collapsed_entities(kind)
         if staged is None:
             return base
@@ -405,7 +426,7 @@ class WorkingRecord:
         an edit to it, so the staged row wins on the entity key while a name
         only the base holds passes through.
         """
-        base = self.base.components if kind == "components" else self.base.connections
+        base = self._base_of(kind)
         staged = self._collapsed_entities(kind)
         assert staged is not None
         mine = staged.filter(col("component_type") == lit(ctype))
@@ -413,9 +434,7 @@ class WorkingRecord:
             return nw.from_native(mine.filter(~col("deleted")))
 
         key = (
-            ("entity",)
-            if kind == "components"
-            else self.schema.group_coordinates("connection")
+            ("entity",) if kind == "components" else self.schema.group_coordinates(kind)
         )
         frame = base[ctype]
         # `collect_schema` reads names without materialising, and `_as_relation`
@@ -1186,13 +1205,15 @@ class WorkingRecord:
 
         declared = self.schema.attributes_for(ctype)
         varying = [c for c in columns if declared.get(c) and declared[c].varying]
-        # A connection attribute belongs to `dims/connections/`, keyed by bus
-        # (https://energy-models.github.io/datarecord/design/record/#connections) - putting it in the member frame would introduce a column the
-        # ancestors' files lack, which then reads as NULL for their rows.
+        # An attribute addressed by a group belongs to that group's table, not
+        # the member frame - putting it there would introduce a column the
+        # ancestors' files lack, which then reads as NULL for their rows. It
+        # says so by naming the group among its `dims`, which is what replaced
+        # a field of its own (https://energy-models.github.io/datarecord/design/record/#connections).
         ports = [
             c
             for c in columns
-            if declared.get(c) and declared[c].bus == "connection" and c not in varying
+            if declared.get(c) and self.schema.groups_of(c) and c not in varying
         ]
         # A column the schema does not name goes to `dims/components/`
         # unchanged, like any non-varying one.
@@ -1307,7 +1328,7 @@ class WorkingRecord:
                 msg = f"`connect` needs a {required!r} column"
                 raise ValueError(msg)
         _conn = lazy.to_native()  # noqa: F841 - bound by replacement scan below
-        table = self._ensure("connections")
+        table = self._ensure(CONNECTION)
         extra = [c for c in columns if c not in ("entity", "bus")]
         extra_sql = "".join(f', "{c}"' for c in extra)
         self.con.execute(
@@ -1325,8 +1346,8 @@ class WorkingRecord:
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         """
         self._stage_tombstones(
-            "connections",
-            ("component_type", *self.schema.group_coordinates("connection")),
+            CONNECTION,
+            ("component_type", *self.schema.group_coordinates(CONNECTION)),
             [[ctype, name, bus] for name, bus in pairs],
         )
 
@@ -1356,12 +1377,12 @@ class WorkingRecord:
         # like a `remove`, so counting only components would report a staged
         # one as nothing pending (https://energy-models.github.io/datarecord/design/working-record/#pending).
         dead = counts("components", "component_type", deleted=True)
-        for ctype, n in counts("connections", "component_type", deleted=True).items():
+        for ctype, n in counts(CONNECTION, "component_type", deleted=True).items():
             dead[ctype] = dead.get(ctype, 0) + n
         return Pending(
             attributes=counts("inputs", "attribute"),
             components=counts("components", "component_type", deleted=False),
-            connections=counts("connections", "component_type", deleted=False),
+            connections=counts(CONNECTION, "component_type", deleted=False),
             tombstones=dead,
         )
 
@@ -1500,7 +1521,7 @@ class WorkingRecord:
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        frames = self.components if kind == "components" else self.connections
+        frames = self.components if kind == "components" else self.groups[kind]
 
         def build(ctype: str) -> nw.LazyFrame:
             frame = frames[ctype]
@@ -1521,7 +1542,7 @@ class WorkingRecord:
             schema=self.schema,
             dims=EMPTY,
             components=self._staged_entities("components"),
-            connections=self._staged_entities("connections"),
+            groups={g: self._staged_entities(g) for g in self.schema.groups},
             attributes=self._staged_attributes(),
             # No `_restated` counterpart: results are complete as produced, never
             # a partial override of a parent's, so there is nothing to carry
@@ -1545,7 +1566,7 @@ class WorkingRecord:
             schema=self.schema,
             dims=self.base.dims,
             components=self._writable_entities("components"),
-            connections=self._writable_entities("connections"),
+            groups={g: self._writable_entities(g) for g in self.schema.groups},
             attributes=self.attributes,
             outputs=self.outputs,
         )
@@ -1630,11 +1651,19 @@ def _component_columns(schema: Schema) -> str:  # noqa: ARG001 - shape is fixed
     return "component_type VARCHAR, entity VARCHAR, deleted BOOLEAN, _seq BIGINT"
 
 
-def _connection_columns(schema: Schema) -> str:
-    # The `connection` group's own coordinates, which are what identifies one.
+def _group_columns(schema: Schema, group: str) -> str:
+    """DDL for one group's staged rows: its coordinates, plus what it carries.
+
+    `role` is spelled because PyPSA's connections have one and no group yet
+    declares its own non-key columns; a column a caller passes that is not
+    here is added by `ALTER TABLE` as it is first seen, like a component's.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+    """
     coords = "".join(
-        f'"{c}" {schema.column_type(c)}, '
-        for c in schema.group_coordinates("connection")
+        f'"{c}" {schema.column_type(c)}, ' for c in schema.group_coordinates(group)
     )
     return f"component_type VARCHAR, {coords}role VARCHAR, deleted BOOLEAN, _seq BIGINT"
 
@@ -1646,5 +1675,4 @@ _COLUMNS = {
     # (https://energy-models.github.io/datarecord/design/read-path/#outputs). So the staging DDL is shared.
     "outputs": _input_columns,
     "components": _component_columns,
-    "connections": _connection_columns,
 }

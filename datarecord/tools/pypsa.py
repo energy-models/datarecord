@@ -29,7 +29,7 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all
-from datarecord.record import Flags, Frames, LazyFrames, Record
+from datarecord.record import EMPTY, Flags, Frames, LazyFrames, Record
 from datarecord.schema import AttributeSpec, ComponentType, Dimension, Group
 from datarecord.schema import Schema as RecordSchema
 from datarecord.tools.base import (
@@ -1285,12 +1285,19 @@ class _NetworkSource:
         return LazyFrames(types, self._component_frame)
 
     @property
-    def connections(self) -> LazyFrames:
-        # Every type with any port, single-attachment ones included: a
-        # Generator's one `bus` is as much a connection as a Link's `bus0`,
-        # and `c.ports == [""]` makes `_port_attribute` name it correctly.
+    def groups(self) -> dict[str, LazyFrames]:
+        """The `connection` group, which is the only one a network has.
+
+        Every type with any port, single-attachment ones included: a
+        Generator's one `bus` is as much a connection as a Link's `bus0`,
+        and `c.ports == [""]` makes `_port_attribute` name it correctly.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+        """
         types = tuple(c.name for c in self.n.components if _exported(c) and c.ports)
-        return LazyFrames(types, self._connection_frame)
+        return {CONNECTION: LazyFrames(types, self._connection_frame)}
 
     @property
     def attributes(self) -> LazyFrames:
@@ -1568,7 +1575,7 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
     - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    frame = record.connections.get(ctype)
+    frame = record.groups.get(CONNECTION, EMPTY).get(ctype)
     if frame is None:
         return None
     df = frame.to_native().df()

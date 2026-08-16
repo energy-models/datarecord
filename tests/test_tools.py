@@ -194,7 +194,7 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     # A Generator member carrying no `bus` column at all, no connection row
     # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
     write_components(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
-    Path(layer_dir(revision.id), "dims", "connections", "Generator.parquet").unlink()
+    Path(layer_dir(revision.id), "dims", "connection", "Generator.parquet").unlink()
     _without_default(revision, "Generator", "bus")
 
     missing = PyPSA.verify(revision.record)

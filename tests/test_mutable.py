@@ -654,7 +654,7 @@ def test_connect_stages_a_new_connection(staged, root):
     assert staged.pending.connections == {"Generator": 1}
 
     child = staged.commit(NewChild(root))
-    rows = child.node_cache.connection_frame("Generator").df()
+    rows = child.node_cache.group_frame("connection", "Generator").df()
     got = set(rows[rows["entity"] == "Manchester Wind"]["bus"])
     assert "Norway" in got
 
@@ -673,7 +673,7 @@ def test_disconnect_stages_a_tombstone(staged, root):
     assert staged.pending.connections == {}
 
     child = staged.commit(NewChild(root))
-    rows = child.node_cache.connection_frame("Link").df()
+    rows = child.node_cache.group_frame("connection", "Link").df()
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     # The component's other port survives: deletion is per connection, not per
