@@ -23,6 +23,8 @@ Which component types are valid belongs to [the schema's vocabulary](schema.md),
 An **input attribute the schema does not declare is rejected**, unlike a component type: its [`dims`](schema.md#attributespec) are what say which columns its file carries, so an undeclared one has no shape to write it in and would leave a file no reader could derive the columns of.
 A **result is exempt** — [`Tool.results`](tools.md) derives which attributes count as results from a framework's own registry, so an unknown name is an error for an input and simply unknowable for a result.
 
-A source handing over a wider frame — every declared dim, all-NULL where unused — is **narrowed to the attribute's coordinates** on the way out rather than rejected, since the extra columns carry no information the schema does not already have.
+A frame carrying a column its attribute is **not** addressed by is rejected too, rather than narrowed on the way out.
+The read path projects an attribute's own coordinates, so such a column would be written and never read — and a source emitting one means something different by the attribute than the schema does, which is worth reporting rather than absorbing.
+A result is exempt from both checks: its shape is a framework's business, and a name it shares with an input says nothing about which coordinates the result varies over.
 
 Because a [`Record`](record.md) is the input, anything satisfying the protocol can be written — including a framework object presenting itself as one, which is what puts read and write on a single seam.

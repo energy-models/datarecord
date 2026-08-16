@@ -1502,14 +1502,10 @@ class _NetworkSource:
                 continue
             if not rows.empty:
                 frames.append(rows)
-        columns = [
-            "entity",
-            "bus",
-            *dims,
-            "attribute",
-            "breakpoint",
-            "value",
-        ]
+        # This attribute's own columns, from its spec: one file is one
+        # attribute, so a component attribute hands over no `bus` and none of
+        # them a dim they are not addressed by (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+        columns = list(self.schema.long_columns_for(attribute))
         if not frames:
             return nw.from_native(pd.DataFrame(columns=columns)).lazy()
         # No dtype fixing here: `write_record` casts every schema column to the

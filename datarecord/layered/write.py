@@ -144,13 +144,6 @@ def write_record(
                             component_type=nw.lit(key).cast(nw.String()),
                         )
                     )
-                if kind in ("attributes", "outputs"):
-                    # One file is one attribute, so it carries that attribute's
-                    # coordinates and no others - a source handing over a wider
-                    # frame (every declared dim, all-NULL where unused) is
-                    # narrowed here rather than storing columns the attribute
-                    # cannot be addressed by (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
-                    frame = frame.select(*schema.long_columns_for(key))
                 _write_frame(
                     frame, f"{staging}{subdir}/{key}.parquet", con, local, schema
                 )
@@ -382,12 +375,36 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
                 f"are what say which columns the file carries (https://energy-models.github.io/datarecord/design/schema/#attributespec)"
             )
             raise ValueError(msg)
-        required = set(schema.long_columns_for(key))
+        # A result's shape is not the schema's to fix, even where its name
+        # matches a declared attribute: `outputs/control.parquet` may vary over
+        # axes the *input* `control` does not. So only the fixed columns every
+        # long row has are required of one (https://energy-models.github.io/datarecord/design/read-path/#outputs).
+        required = (
+            set(schema.long_columns_for(key))
+            if kind == "attributes"
+            else {"attribute", "breakpoint", "value"}
+        )
         missing = sorted(required - columns)
         if missing:
             msg = (
                 f"{subdir}/{key}.parquet is missing long-schema columns {missing}; "
                 f"the resolved relation needs {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
+            )
+            raise ValueError(msg)
+        # And an *input* carries nothing else: a coordinate the attribute is
+        # not addressed by would be a column the read path never projects,
+        # written as a fact about a value that does not have one. Reported
+        # rather than dropped, since a source emitting one disagrees with the
+        # schema about what the attribute is - the source's bug to fix.
+        #
+        # A result is exempt for the same reason it need not be declared: its
+        # shape is a framework's business, and a name it shares with an input
+        # says nothing about which coordinates the *result* varies over.
+        extra = sorted(columns - required) if kind == "attributes" else []
+        if extra:
+            msg = (
+                f"{subdir}/{key}.parquet carries columns {extra} the attribute is "
+                f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
             )
             raise ValueError(msg)
         return

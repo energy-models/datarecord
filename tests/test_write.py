@@ -76,12 +76,20 @@ class _Source:
         return {}
 
 
+_SCHEMA = schema()
+
+
 def _long(**overrides) -> pd.DataFrame:
-    """One long-schema row, with every long-schema column present.
+    """One long row carrying its attribute's own coordinates, and no others.
+
+    Shaped from the spec rather than spelled: a source handing over a column
+    the attribute is not addressed by is what `write_record` now rejects, so a
+    helper that spelled every declared dim would be testing against a record no
+    reader would accept.
 
     Notes
     -----
-    - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     row = {
         "entity": "steel_dri",
@@ -94,10 +102,8 @@ def _long(**overrides) -> pd.DataFrame:
         "value": 1.0,
     }
     row.update(overrides)
-    return pd.DataFrame([row])
-
-
-_SCHEMA = schema()
+    columns = _SCHEMA.long_columns_for(str(row["attribute"]))
+    return pd.DataFrame([{c: row[c] for c in columns}])
 
 
 # -- the lazy mapping (https://energy-models.github.io/datarecord/design/format/) -------------------------------------------------
@@ -246,6 +252,28 @@ def test_write_record_rejects_an_undeclared_attribute(con, base_uri):
     source = _Source(_SCHEMA, attributes={"not_declared": _long(attribute="nope")})
 
     with pytest.raises(ValueError, match="not a declared attribute"):
+        write_record(revision.id, source, con)
+
+
+def test_write_record_rejects_a_coordinate_the_attribute_lacks(con, base_uri):
+    """A column the attribute is not addressed by is a disagreement, not a spare.
+
+    The read path projects an attribute's own coordinates, so a `bus` on a
+    component attribute would be written and never read - and a source emitting
+    one means something different by the attribute than the schema does.
+    Reported rather than dropped, since silently narrowing would hide that.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    """
+    revision = Revision.create(con)
+    wide = _long().assign(bus=None)
+    source = _Source(_SCHEMA, attributes={"p_nom": wide})
+
+    with pytest.raises(
+        ValueError, match=r"carries columns \['bus'\].*not addressed by"
+    ):
         write_record(revision.id, source, con)
 
 

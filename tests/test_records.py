@@ -75,10 +75,12 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
             " NULL::VARCHAR AS scenario"
         )
     )
+    # `p_nom`'s own coordinates and no others: no `component_type` in a long
+    # row, and no `bus`, which is the connection group's coordinate rather than
+    # a column every attribute carries.
     long = nw.from_native(
         con.sql(
-            "SELECT 'Generator' AS component_type, 'wind' AS entity,"
-            " NULL::VARCHAR AS bus, 'p_nom' AS attribute,"
+            "SELECT 'wind' AS entity, 'p_nom' AS attribute,"
             " NULL::DOUBLE AS breakpoint, 100.0 AS value,"
             " NULL::VARCHAR AS snapshot, NULL::VARCHAR AS scenario,"
             " NULL::BIGINT AS period"
