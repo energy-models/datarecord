@@ -132,10 +132,11 @@ class DirectoryRecord:
             # "did a row set this" is not a question about `entity` or a
             # group's coordinate, which address the row rather than expanding.
             declared = self.schema.broadcast_dims
-            # Materialised as NULL where no file carries the column at all: a
-            # dim an attribute is not addressed by is one every row applies
-            # across, which is what `broadcast` reports, and the fold answers it
-            # the same way (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+            # Materialised as NULL where no file carries the column, so the
+            # aggregate binds over one relation: `union_by_name` already does
+            # this for a dim *some* file has, and this covers a dim none does.
+            # Scoping to each attribute's own coordinates then happens below,
+            # where the attribute is known (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
             rel = with_columns(self.schema, rel, *declared)
             dims = declared
             pwl = (
@@ -161,15 +162,30 @@ class DirectoryRecord:
                 .fetchall()
             )
             n = len(dims)
+
+            def scope(attribute: str) -> set[str]:
+                """Which of `dims` this attribute is actually addressed by.
+
+                One relation covers every attribute, so a dim another uses reads
+                NULL here - which must not be reported as "every row broadcasts
+                over it" when the attribute has no such axis at all. Falls back
+                to all of them for an attribute the schema does not declare,
+                whose shape is not the schema's to say.
+                """
+                own = set(self.schema.coordinates_of(attribute))
+                return own & set(dims) if own else set(dims)
+
             result = {
                 r[0]: Flags(
                     frozenset(
-                        d for d, on in zip(dims, r[1 : 1 + n], strict=True) if on
+                        d
+                        for d, on in zip(dims, r[1 : 1 + n], strict=True)
+                        if on and d in scope(r[0])
                     ),
                     frozenset(
                         d
                         for d, on in zip(dims, r[1 + n : 1 + 2 * n], strict=True)
-                        if on
+                        if on and d in scope(r[0])
                     ),
                     bool(r[1 + 2 * n]),
                 )

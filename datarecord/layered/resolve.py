@@ -1033,24 +1033,25 @@ class NodeCache:
         # filter rather than a positional slice. A field aggregating to NULL -
         # a dim declared after this map was written - is falsy, so absent.
         #
-        # `varies` is scoped to each attribute's own coordinates: the map is one
-        # relation over every attribute, so a dim one attribute uses is NULL for
-        # the rows of one that does not, and the aggregate would otherwise
-        # report a dim the attribute has no column for as varying.
+        # Both sets are scoped to the attribute's own coordinates. The map is
+        # one relation over every attribute, so a dim one attribute is
+        # addressed by reads NULL for the rows of one that is not - and an
+        # unscoped aggregate would report that NULL as "every row broadcasts
+        # over it" when the truth is "this attribute has no such axis".
         #
-        # `broadcast` is not scoped. A dim absent from the file is one every row
-        # applies across, which is exactly what broadcast means - so it belongs
-        # in the set whether the column is there and NULL or not there at all.
-        # That is what a `DirectoryRecord` answers too, once its missing columns
-        # read as NULL (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
-        def varying(attribute: str) -> tuple[str, ...]:
+        # The distinction is what a consumer plans reads against: `varies |
+        # broadcast` is the test for whether an attribute touches a dim at all
+        # (https://energy-models.github.io/datarecord/design/record/#flags), and a dim in neither means there is nothing to
+        # build a container along. Reporting an unaddressed dim as broadcast
+        # would answer that question wrongly for every attribute in the record.
+        def scope(attribute: str) -> tuple[str, ...]:
             own = set(self.schema.coordinates_of(attribute))
             return tuple(d for d in dims if d in own) if own else dims
 
         return {
             attribute: (
-                frozenset(d for d in varying(attribute) if varies.get(d)),
-                frozenset(d for d in dims if broadcast.get(d)),
+                frozenset(d for d in scope(attribute) if varies.get(d)),
+                frozenset(d for d in scope(attribute) if broadcast.get(d)),
                 bool(breakpoints),
             )
             for attribute, varies, broadcast, breakpoints in rows

@@ -135,7 +135,13 @@ That is an instruction to use both containers: `timestep in broadcast` selects t
 Per component they would be complements; the aggregation over a type is what makes the pair carry information.
 
 **`varies | broadcast`** is the test for whether an attribute touches a dim at all.
-Both sets empty for a dim means no row mentions it, so the consumer skips the attribute.
+Both sets empty for a dim means the attribute has no values along it, so the consumer builds no container there.
+
+**Both sets are scoped to what the attribute is addressed by.** A dim outside its [`dims`](schema.md#attributespec) is in neither, never in `broadcast`.
+The two are easy to conflate because the [owner map](read-path.md#owner-map) is one relation over every attribute, so a dim one attribute uses reads NULL for the rows of one that does not — but that NULL means "no such axis", not "every value of it".
+Reporting it as broadcast would answer the question above wrongly for every attribute in the record: a consumer would build a constant container along an axis the attribute has no values on.
+
+So an attribute addressed by `entity` alone reports both sets empty, and that is not the same as having no rows — an attribute with no rows at all is [absent from the mapping](#flags) entirely.
 
 Per component type, because one file holds every type's rows: unioning across types would report a Generator's per-timestep rows and a Link's single row as one shape, which describes neither.
 Scoping is a join to the components map on `entity`, not a filter on the attribute rows ([entity is unique across types](format.md#entity-is-unique-across-types)).

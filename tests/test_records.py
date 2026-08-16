@@ -16,7 +16,7 @@ from datarecord.duck import layer_dir, resolved_dir
 from datarecord.layered.revision import LayeredRecord
 from datarecord.layered.write import write_record
 from datarecord.record import EMPTY, Flags, Frames, Record
-from datarecord.schema import Schema
+from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import schema, write_components, write_input, write_schema
 
@@ -282,6 +282,53 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
         combined = record.flags("Generator")["p_max_pu"]
         assert "snapshot" in combined.varies
         assert "snapshot" in combined.broadcast
+
+
+def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
+    """A dim an attribute has no column for is in neither set, not in `broadcast`.
+
+    `varies | broadcast` is the test for whether an attribute touches a dim at
+    all, so a dim it is not addressed by has to be absent from both - otherwise
+    a consumer builds a container along an axis the attribute has no values on.
+
+    The two are easy to conflate because one relation holds every attribute's
+    rows: `p_nom` is stored beside `p_max_pu`, whose `snapshot` column is NULL
+    for `p_nom`'s rows. That NULL is "no such axis", not "every snapshot".
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    """
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
+    write_schema(
+        schema(
+            attributes={
+                "Generator": {
+                    # Addressed by the entity axis and nothing else.
+                    "p_nom": AttributeSpec(dtype="DOUBLE", dims={"entity"}),
+                    "p_max_pu": AttributeSpec(
+                        dtype="DOUBLE", dims={"entity", "snapshot"}
+                    ),
+                }
+            }
+        )
+    )
+    write_components(layer, "Generator", [{"entity": "wind"}])
+    write_input(layer, "p_nom", [{"entity": "wind", "value": 100.0}])
+    write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
+
+    for record in (LayeredRecord(revision.node_cache), DirectoryRecord(layer, con)):
+        flags = record.flags("Generator")
+        # Addressed by `entity` alone, so no axis is reportable either way.
+        assert flags["p_nom"].varies == frozenset()
+        assert flags["p_nom"].broadcast == frozenset(), (
+            "a dim `p_nom` has no column for is not one it broadcasts over"
+        )
+        # Addressed by `snapshot`, with a row leaving it NULL - that *is* a
+        # broadcast, and the two cases must not read the same.
+        assert "snapshot" in flags["p_max_pu"].broadcast
 
 
 def test_flags_report_a_curve(con, base_uri):

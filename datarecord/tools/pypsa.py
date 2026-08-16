@@ -255,13 +255,17 @@ def _assign_static(
     joined = static
     attr_exprs = {}
     for attr, (long, flags) in attributes.items():
-        # PyPSA's `static` container takes the snapshot-broadcast rows (https://energy-models.github.io/datarecord/design/record/#flags).
-        if SNAPSHOT not in flags.broadcast:
+        # PyPSA's `static` container takes the rows that do not vary over
+        # `snapshot`. Two ways an attribute has them, and the flags distinguish
+        # the two because they are scoped to what it is addressed by (https://energy-models.github.io/datarecord/design/record/#flags):
+        # a NULL-snapshot row on an attribute that *may* vary over it puts
+        # `snapshot` in `broadcast`, while one not addressed by it at all has
+        # `snapshot` in neither set and every row static.
+        addressed = SNAPSHOT in (flags.varies | flags.broadcast)
+        if addressed and SNAPSHOT not in flags.broadcast:
             continue
-        # An attribute not addressed by `snapshot` has no such column at all
-        # (https://energy-models.github.io/datarecord/design/format/#the-long-schema), and every one of its rows is static - so the
-        # filter is a no-op rather than a column to bind against.
-        rows = long.filter("snapshot IS NULL") if SNAPSHOT in long.columns else long
+        # No column to filter on where the attribute is not addressed by it.
+        rows = long.filter("snapshot IS NULL") if addressed else long
         if shape.stochastic:
             rows = scenarios.expand(rows, SCENARIO)
         # First-wins on a duplicate key, same as `values[~values.index.duplicated()]`;
@@ -1049,11 +1053,11 @@ class PyPSATool(Tool):
             for attr, flags in record.flags(ctype).items():
                 if attr not in carried:
                     continue
-                # Neither container would take it: no rows on the snapshot axis
-                # either way (an attribute with no rows at all is absent from
-                # the map, so this is the both-sets-empty case).
-                if not (flags.varies | flags.broadcast):
-                    continue
+                # Both sets empty no longer means "no rows": the flags are
+                # scoped to what an attribute is addressed by (https://energy-models.github.io/datarecord/design/record/#flags), so an
+                # attribute over `entity` alone has no broadcast dim to report
+                # and still has values. An attribute with no rows at all is
+                # absent from the map entirely, which is what this filtered.
                 # Through the schema, so a renamed or computed attribute
                 # reaches the pivot below as an ordinary long relation. Scoped
                 # by a semi-join against `static`, this type's entity table (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).

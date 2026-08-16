@@ -744,11 +744,18 @@ class WorkingRecord:
         n = len(dims)
         for row in rows:
             attribute = row[0]
+            # Scoped to what the attribute is addressed by: one staging table
+            # holds every attribute's rows at the full width, so a dim another
+            # uses is NULL here and would otherwise read as "every row
+            # broadcasts over it" rather than "no such axis" (https://energy-models.github.io/datarecord/design/record/#flags).
+            own = set(self.schema.coordinates_of(attribute)) or set(dims)
             varies = frozenset(
-                d for d, on in zip(dims, row[1 : 1 + n], strict=True) if on
+                d for d, on in zip(dims, row[1 : 1 + n], strict=True) if on and d in own
             )
             broadcast = frozenset(
-                d for d, on in zip(dims, row[1 + n : 1 + 2 * n], strict=True) if on
+                d
+                for d, on in zip(dims, row[1 + n : 1 + 2 * n], strict=True)
+                if on and d in own
             )
             was = out.get(attribute)
             out[attribute] = Flags(
