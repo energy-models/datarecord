@@ -9,7 +9,7 @@
 # If you want to run this as a one-off command, prefix with:
 #   `pixi exec --spec copier --spec ruamel.yaml -- {command}`
 _commit: v0.5.3
-_src_path: https://github.com/quantco/copier-template-python-open-source
+_src_path: https://github.com/energy-models/copier-template-python-open-source
 add_autobump_workflow: true
 author_email: jonas.hoersch@openenergytransition.org
 author_name: Jonas Hörsch
