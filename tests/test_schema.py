@@ -7,9 +7,12 @@ Notes
 
 from typing import Any
 
+import duckdb
+import narwhals as nw
 import pytest
 from pydantic import ValidationError
 
+from datarecord.duck import DuckTypes
 from datarecord.schema import (
     AttributeSpec,
     ComponentType,
@@ -24,25 +27,27 @@ def _schema(**overrides) -> Schema:
     """A schema shaped like a stochastic multi-period record."""
     kwargs: dict[str, Any] = {
         "dimensions": {
-            "entity": Dimension(dtype="VARCHAR"),
-            "bus": Dimension(dtype="VARCHAR"),
-            "period": Dimension(dtype="BIGINT"),
-            "timestep": Dimension(dtype="TIMESTAMP", within={"period"}),
-            "scenario": Dimension(dtype="VARCHAR"),
+            "entity": Dimension(dtype=nw.String()),
+            "bus": Dimension(dtype=nw.String()),
+            "period": Dimension(dtype=nw.Int64()),
+            "timestep": Dimension(dtype=nw.Datetime(), within={"period"}),
+            "scenario": Dimension(dtype=nw.String()),
         },
         "groups": {"connection": Group(over={"entity": "entity", "bus": "bus"})},
         # Declared once, record-wide; a type subscribes to what it carries.
         "attributes": {
-            "p_nom": AttributeSpec(dtype="DOUBLE"),
-            "p_max_pu": AttributeSpec(dtype="DOUBLE", dims={"scenario", "timestep"}),
-            "marginal_cost": AttributeSpec(
-                dtype="DOUBLE", dims={"scenario"}, breakpoints=True
+            "p_nom": AttributeSpec(dtype=nw.Float64()),
+            "p_max_pu": AttributeSpec(
+                dtype=nw.Float64(), dims={"scenario", "timestep"}
             ),
-            "carrier": AttributeSpec(dtype="VARCHAR"),
+            "marginal_cost": AttributeSpec(
+                dtype=nw.Float64(), dims={"scenario"}, breakpoints=True
+            ),
+            "carrier": AttributeSpec(dtype=nw.String()),
             # A connection attribute says so by naming the group among its
             # dims, rather than by a field of its own.
             "efficiency": AttributeSpec(
-                dtype="DOUBLE", dims={"connection", "scenario", "timestep"}
+                dtype=nw.Float64(), dims={"connection", "scenario", "timestep"}
             ),
         },
         "component_types": {
@@ -124,8 +129,8 @@ def test_a_non_broadcast_dim_must_be_partial():
     with pytest.raises(ValidationError, match="do not broadcast"):
         Schema(
             dimensions={
-                "entity": Dimension(dtype="VARCHAR"),
-                "scenario": Dimension(dtype="VARCHAR"),
+                "entity": Dimension(dtype=nw.String()),
+                "scenario": Dimension(dtype=nw.String()),
             },
             partial=frozenset({"scenario"}),
         )
@@ -151,9 +156,9 @@ def test_nesting_is_transitive():
     """
     s = Schema(
         dimensions={
-            "horizon": Dimension(dtype="BIGINT"),
-            "period": Dimension(dtype="BIGINT", within={"horizon"}),
-            "timestep": Dimension(dtype="TIMESTAMP", within={"period"}),
+            "horizon": Dimension(dtype=nw.Int64()),
+            "period": Dimension(dtype=nw.Int64(), within={"horizon"}),
+            "timestep": Dimension(dtype=nw.Datetime(), within={"period"}),
         }
     )
     assert s.axis_key("timestep") == ("horizon", "period", "timestep")
@@ -163,9 +168,9 @@ def test_several_direct_parents():
     """A set, since two axes may each qualify a label without containing each other."""
     s = Schema(
         dimensions={
-            "period": Dimension(dtype="BIGINT"),
-            "stage": Dimension(dtype="VARCHAR"),
-            "timestep": Dimension(dtype="TIMESTAMP", within={"period", "stage"}),
+            "period": Dimension(dtype=nw.Int64()),
+            "stage": Dimension(dtype=nw.String()),
+            "timestep": Dimension(dtype=nw.Datetime(), within={"period", "stage"}),
         }
     )
     assert s.axis_key("timestep") == ("period", "stage", "timestep")
@@ -173,29 +178,29 @@ def test_several_direct_parents():
 
 def test_nesting_must_name_declared_dims():
     with pytest.raises(ValidationError, match="undeclared"):
-        Schema(dimensions={"timestep": Dimension(dtype="TIMESTAMP", within={"nope"})})
+        Schema(dimensions={"timestep": Dimension(dtype=nw.Datetime(), within={"nope"})})
 
 
 def test_nesting_must_be_acyclic():
     with pytest.raises(ValidationError, match="cyclic"):
         Schema(
             dimensions={
-                "a": Dimension(dtype="BIGINT", within={"b"}),
-                "b": Dimension(dtype="BIGINT", within={"a"}),
+                "a": Dimension(dtype=nw.Int64(), within={"b"}),
+                "b": Dimension(dtype=nw.Int64(), within={"a"}),
             }
         )
 
 
 def test_a_dim_cannot_be_within_itself():
     with pytest.raises(ValidationError, match="within` itself"):
-        Schema(dimensions={"a": Dimension(dtype="BIGINT", within={"a"})})
+        Schema(dimensions={"a": Dimension(dtype=nw.Int64(), within={"a"})})
 
 
 def test_an_attribute_cannot_vary_over_an_undeclared_dim():
     with pytest.raises(ValidationError, match="undeclared"):
         Schema(
-            dimensions={"scenario": Dimension(dtype="VARCHAR")},
-            attributes={"p": AttributeSpec(dtype="DOUBLE", dims={"nope"})},
+            dimensions={"scenario": Dimension(dtype=nw.String())},
+            attributes={"p": AttributeSpec(dtype=nw.Float64(), dims={"nope"})},
         )
 
 
@@ -217,8 +222,8 @@ def test_a_default_survives_the_manifest_round_trip(value):
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
     """
     schema = Schema(
-        dimensions={"scenario": Dimension(dtype="VARCHAR")},
-        attributes={"p_nom_max": AttributeSpec(dtype="DOUBLE", default=value)},
+        dimensions={"scenario": Dimension(dtype=nw.String())},
+        attributes={"p_nom_max": AttributeSpec(dtype=nw.Float64(), default=value)},
     )
     back = Schema.model_validate_json(schema.model_dump_json())
     assert repr(back.attributes["p_nom_max"].default) == repr(value)
@@ -230,7 +235,7 @@ def test_a_default_survives_the_manifest_round_trip(value):
 def test_adding_an_attribute_is_compatible():
     old = _schema()
     new = _schema()
-    new.attributes["p_min_pu"] = AttributeSpec(dtype="DOUBLE", dims={"scenario"})
+    new.attributes["p_min_pu"] = AttributeSpec(dtype=nw.Float64(), dims={"scenario"})
     assert new.compatible_with(old) == []
 
 
@@ -239,7 +244,7 @@ def test_widening_dims_is_compatible():
     old = _schema()
     new = _schema()
     new.attributes["marginal_cost"] = AttributeSpec(
-        dtype="DOUBLE", dims={"scenario", "timestep"}, breakpoints=True
+        dtype=nw.Float64(), dims={"scenario", "timestep"}, breakpoints=True
     )
     assert new.compatible_with(old) == []
 
@@ -254,7 +259,7 @@ def test_widening_partial_is_compatible():
 def test_narrowing_dims_is_incompatible():
     old = _schema()
     new = _schema()
-    new.attributes["p_max_pu"] = AttributeSpec(dtype="DOUBLE", dims={"scenario"})
+    new.attributes["p_max_pu"] = AttributeSpec(dtype=nw.Float64(), dims={"scenario"})
     (reason,) = new.compatible_with(old)
     assert "no longer varies over ['timestep']" in reason
 
@@ -262,9 +267,9 @@ def test_narrowing_dims_is_incompatible():
 def test_changing_a_dtype_is_incompatible():
     old = _schema()
     new = _schema()
-    new.attributes["p_nom"] = AttributeSpec(dtype="BIGINT")
+    new.attributes["p_nom"] = AttributeSpec(dtype=nw.Int64())
     (reason,) = new.compatible_with(old)
-    assert "DOUBLE -> BIGINT" in reason
+    assert "Float64 -> Int64" in reason
 
 
 def test_removing_from_partial_is_incompatible():
@@ -285,7 +290,7 @@ def test_changing_nesting_is_incompatible():
     new = _schema(
         dimensions={
             **old.dimensions,
-            "timestep": Dimension(dtype="TIMESTAMP"),
+            "timestep": Dimension(dtype=nw.Datetime()),
         }
     )
     reasons = new.compatible_with(old)
@@ -305,13 +310,13 @@ def test_unit_and_description_are_declared_on_both():
     s = Schema(
         dimensions={
             "vintage": Dimension(
-                dtype="BIGINT", unit="year", description="Build year."
+                dtype=nw.Int64(), unit="year", description="Build year."
             ),
-            "scenario": Dimension(dtype="VARCHAR", description="One realisation."),
+            "scenario": Dimension(dtype=nw.String(), description="One realisation."),
         },
         attributes={
             "p_nom": AttributeSpec(
-                dtype="DOUBLE", unit="MW", description="Nominal power."
+                dtype=nw.Float64(), unit="MW", description="Nominal power."
             )
         },
     )
@@ -328,8 +333,8 @@ def test_undeclared_is_none_not_empty():
     -----
     - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
-    assert AttributeSpec(dtype="DOUBLE").unit is None
-    assert AttributeSpec(dtype="DOUBLE", unit="").unit == ""
+    assert AttributeSpec(dtype=nw.Float64()).unit is None
+    assert AttributeSpec(dtype=nw.Float64(), unit="").unit == ""
 
 
 def test_changing_a_unit_is_compatible():
@@ -360,17 +365,18 @@ def test_round_trips_through_json():
 
 def test_column_types_cover_structural_dims_and_flags():
     s = _schema()
-    assert s.column_type("component_type") == "VARCHAR"
-    assert s.column_type("timestep") == "TIMESTAMP"
+    assert s.column_type("component_type") == nw.String()
+    assert s.column_type("timestep") == nw.Datetime()
     # One struct per flag column, a BOOLEAN field per declared dim (https://energy-models.github.io/datarecord/design/read-path/#owner-map), so
     # the map's column set does not widen when a dim is declared.
     for column in ("varies", "broadcast"):
         column_type = s.column_type(column)
         assert column_type == flag_type(s.broadcast_dims)
         assert column_type is not None
-        assert '"scenario" BOOLEAN' in column_type
+        duck_types = DuckTypes(duckdb.connect())
+        assert "scenario BOOLEAN" in str(duck_types(column_type))
     assert s.column_type("value") is None
-    assert s.value_type("p_nom") == "DOUBLE"
+    assert s.value_type("p_nom") == nw.Float64()
 
 
 def test_attributes_need_at_least_one_dim():
@@ -386,7 +392,7 @@ def test_attributes_need_at_least_one_dim():
     - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
     """
     with pytest.raises(ValidationError, match="at least one dim"):
-        Schema(attributes={"p_nom": AttributeSpec(dtype="DOUBLE")})
+        Schema(attributes={"p_nom": AttributeSpec(dtype=nw.Float64())})
 
 
 def test_a_schema_declaring_nothing_stays_legal():

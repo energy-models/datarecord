@@ -224,7 +224,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    narrow = {"snapshot": "TIMESTAMP", "period": "BIGINT"}
+    narrow = {"snapshot": nw.Datetime(), "period": nw.Int64()}
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema(dims=narrow, partial=set()))
@@ -245,7 +245,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     assert "scenario" not in str(persisted.types[0])
 
     # The dim arrives after the map is on disk.
-    write_schema(schema(dims={**narrow, "scenario": "VARCHAR"}, partial=set()))
+    write_schema(schema(dims={**narrow, "scenario": nw.String()}, partial=set()))
     child = revision.child()
     flags = LayeredRecord(child.node_cache).flags("Generator")["p_max_pu"]
     assert "snapshot" in flags.varies
@@ -307,9 +307,9 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
             attributes={
                 "Generator": {
                     # Addressed by the entity axis and nothing else.
-                    "p_nom": AttributeSpec(dtype="DOUBLE", dims={"entity"}),
+                    "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
                     "p_max_pu": AttributeSpec(
-                        dtype="DOUBLE", dims={"entity", "snapshot"}
+                        dtype=nw.Float64(), dims={"entity", "snapshot"}
                     ),
                 }
             }
@@ -536,7 +536,11 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
     from datarecord.layered.resolve import write_schema as write_manifest
 
     roots = {}
-    for name, dims in (("a", {"scenario": "VARCHAR"}), ("b", {"vintage": "BIGINT"})):
+    cases: list[tuple[str, dict[str, nw.dtypes.DType]]] = [
+        ("a", {"scenario": nw.String()}),
+        ("b", {"vintage": nw.Int64()}),
+    ]
+    for name, dims in cases:
         root = str(tmp_path / name)
         con = duck.connect(base_uri=root)
         write_manifest(schema(dims=dims, partial=set(dims)), root)

@@ -364,7 +364,7 @@ def test_a_non_float_attribute_stages_and_commits(staged, root):
     """
     amended = read_schema()
     amended.attributes["carrier"] = AttributeSpec(
-        dtype="VARCHAR", dims={"entity", "scenario"}
+        dtype=nw.String(), dims={"entity", "scenario"}
     )
     write_schema(amended)
 

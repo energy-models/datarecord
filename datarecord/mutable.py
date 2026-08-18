@@ -25,7 +25,7 @@ from duckdb import DuckDBPyRelation, Expression
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import ex_all, fn, struct_of, union_all_by_name
+from datarecord.duck import DuckTypes, ex_all, fn, struct_of, union_all_by_name
 from datarecord.record import EMPTY, Flags, Frames, LazyFrames, Record
 from datarecord.schema import LONG_TAIL, Schema
 
@@ -377,7 +377,10 @@ class WorkingRecord:
         return f"staged_{kind}_{digest}_{self._id}"
 
     def _ensure(
-        self, kind: str, attribute: str | None = None, value_hint: str | None = None
+        self,
+        kind: str,
+        attribute: str | None = None,
+        value_hint: nw.dtypes.DType | None = None,
     ) -> str:
         """The staging table for `kind`, created on first use.
 
@@ -402,18 +405,21 @@ class WorkingRecord:
         if attribute is not None:
             shape = self._empty_long(attribute, value_hint)
         else:
+            duck_types = DuckTypes(self.con)
             columns = _COLUMNS.get(kind)
-            shape = _empty(
-                self.con,
+            shaped = (
                 columns(self.schema)
                 if columns is not None
-                else _group_columns(self.schema, kind),
+                else _group_columns(self.schema, kind)
             )
+            shape = duck_types.empty_relation(**shaped)
         shape.create(name)
         self._staged[key] = name
         return name
 
-    def _empty_long(self, attribute: str, value_hint: str | None) -> DuckDBPyRelation:
+    def _empty_long(
+        self, attribute: str, value_hint: nw.dtypes.DType | None
+    ) -> DuckDBPyRelation:
         """A row-less relation shaped like one attribute's long file.
 
         What the staging table is created from, so the table's shape is a
@@ -429,18 +435,18 @@ class WorkingRecord:
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
         """
-        value_type = self.schema.value_type(attribute) or value_hint or "VARCHAR"
-        types = {"attribute": "VARCHAR", "breakpoint": "DOUBLE", "value": value_type}
-        return _empty(
-            self.con,
-            [
-                *(
-                    _null(types.get(c) or self._column_type(c), c)
-                    for c in self.schema.long_columns_for(attribute)
-                ),
-                _null("BIGINT", "_seq"),
-            ],
-        )
+        duck_types = DuckTypes(self.con)
+        value_type = self.schema.value_type(attribute) or value_hint or nw.String()
+        types = {
+            "attribute": nw.String(),
+            "breakpoint": nw.Float64(),
+            "value": value_type,
+        }
+        shaped = {
+            c: types.get(c) or self._column_type(c)
+            for c in self.schema.long_columns_for(attribute)
+        }
+        return duck_types.empty_relation(**shaped, _seq=nw.Int64())
 
     def _rows(self, kind: str, attribute: str | None = None) -> DuckDBPyRelation | None:
         name = self._staged.get((kind, attribute))
@@ -454,7 +460,7 @@ class WorkingRecord:
         """
         return tuple(a for (k, a), _ in self._staged.items() if k == kind and a)
 
-    def _column_type(self, column: str) -> str:
+    def _column_type(self, column: str) -> nw.dtypes.DType:
         return _column_type(self.schema, column)
 
     def _staged_coordinates(self, attribute: str) -> tuple[str, ...]:
@@ -1201,16 +1207,19 @@ class WorkingRecord:
         # so a dim it is not addressed by has no column to fill (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
         present = set(lazy.collect_schema().names())
 
+        rel = _as_relation(lazy, self.con)
+        duck_types = DuckTypes(rel)
+
         def column(d: str) -> Expression:
             if d in present:
                 return col(d)
             value = dims.get(d)
-            return lit(value).cast(self._column_type(d)).alias(d)
+            return duck_types.lit(value, self._column_type(d)).alias(d)
 
-        _as_relation(lazy, self.con).project(
+        rel.project(
             *(column(d) for d in self._staged_coordinates(attribute)),
             lit(attribute).alias("attribute"),
-            lit(None).cast("DOUBLE").alias("breakpoint"),
+            duck_types.null(nw.Float64()).alias("breakpoint"),
             col("value"),
             lit(next(_SEQ)).alias("_seq"),
         ).insert_into(table)
@@ -1295,15 +1304,18 @@ class WorkingRecord:
         # and the types the table's own (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         present = set(frame.collect_schema().names())
 
+        rel = _as_relation(frame, self.con)
+        duck_types = DuckTypes(rel)
+
         def column(c: str) -> Expression:
             if c in present:
                 return col(c)
             if c == "attribute":
                 return lit(attribute).alias(c)
-            dtype = "DOUBLE" if c == "breakpoint" else self._column_type(c)
-            return lit(None).cast(dtype).alias(c)
+            dtype = nw.Float64() if c == "breakpoint" else self._column_type(c)
+            return duck_types.null(dtype).alias(c)
 
-        _as_relation(frame, self.con).project(
+        rel.project(
             *(column(c) for c in self.schema.long_columns_for(attribute)),
             lit(next(_SEQ)).alias("_seq"),
         ).insert_into(table)
@@ -1374,10 +1386,12 @@ class WorkingRecord:
         # take a float column and store `'1234.5'`, which then reads back as
         # text for every consumer of the member frame.
         incoming = dict(zip(_add.columns, (str(t) for t in _add.types), strict=True))
+        duck_types = DuckTypes(_add)
         for c in extra:
             if c.lower() in existing:
                 continue
-            dtype = self.schema.value_type(c) or incoming[c]
+            spec_dtype = self.schema.value_type(c)
+            dtype = duck_types(spec_dtype) if spec_dtype else incoming[c]
             self.con.execute(f'ALTER TABLE {table} ADD COLUMN "{c}" {dtype}')
             existing.add(c.lower())
         extra_sql = "".join(f', "{c}"' for c in extra)
@@ -1831,29 +1845,29 @@ class WorkingRecord:
         return None
 
 
-def _value_dtype(frame: nw.LazyFrame) -> str | None:
-    """A frame's `value` column as a DuckDB type name, or None if it has none.
+def _value_dtype(frame: nw.LazyFrame) -> nw.dtypes.DType | None:
+    """A frame's `value` column type, or None if it has none.
 
     What an undeclared result's staging column is created as, there being no
     declaration to take it from. Narrow on purpose: `String` is the case that
-    must not become a number, and everything else lands as `DOUBLE`, which is
+    must not become a number, and everything else lands as `Float64`, which is
     what every numeric result the tools produce already is.
     """
     schema = frame.collect_schema()
     if "value" not in schema.names():
         return None
-    return "VARCHAR" if schema["value"] == nw.String else "DOUBLE"
+    return nw.String() if schema["value"] == nw.String else nw.Float64()
 
 
-def _scalar_dtype(values: Sequence[Any]) -> str | None:
+def _scalar_dtype(values: Sequence[Any]) -> nw.dtypes.DType | None:
     """The same answer for a sequence of Python scalars."""
     if not values:
         return None
-    return "VARCHAR" if any(isinstance(v, str) for v in values) else "DOUBLE"
+    return nw.String() if any(isinstance(v, str) for v in values) else nw.Float64()
 
 
-def _column_type(schema: Schema, column: str) -> str:
-    """A staged column's DuckDB type, for a typed NULL or literal.
+def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
+    """A staged column's declared type, for a typed NULL or literal.
 
     Every column a staging table has is a declared dim or a structural one,
     both of which the schema types - so a missing type is a disagreement
@@ -1874,35 +1888,16 @@ def _column_type(schema: Schema, column: str) -> str:
     return dtype
 
 
-def _null(dtype: str, name: str) -> Expression:
-    """A typed NULL, which is one column of a shape-only relation."""
-    return lit(None).cast(dtype).alias(name)
+def _component_columns(schema: Schema) -> dict[str, nw.dtypes.DType]:  # noqa: ARG001 - shape is fixed
+    return {
+        "component_type": nw.String(),
+        "entity": nw.String(),
+        "deleted": nw.Boolean(),
+        "_seq": nw.Int64(),
+    }
 
 
-def _empty(con: DuckDBPyConnection, columns: Sequence[Expression]) -> DuckDBPyRelation:
-    """A row-less relation with `columns`' names and types.
-
-    What a staging table is created from: `create` takes the table's shape from
-    the relation, so a shape is built as expressions rather than assembled as
-    DDL text. One row of typed NULLs, kept for its types and dropped for its
-    rows.
-
-    A tuple rather than a list is what routes `values` to its expression
-    overload; the stub types only the scalar one.
-    """
-    return con.values(tuple(columns)).limit(0)  # type: ignore[arg-type]
-
-
-def _component_columns(schema: Schema) -> list[Expression]:  # noqa: ARG001 - shape is fixed
-    return [
-        _null("VARCHAR", "component_type"),
-        _null("VARCHAR", "entity"),
-        _null("BOOLEAN", "deleted"),
-        _null("BIGINT", "_seq"),
-    ]
-
-
-def _group_columns(schema: Schema, group: str) -> list[Expression]:
+def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
     """One group's staged columns: its coordinates, plus what it carries.
 
     `role` is spelled because PyPSA's connections have one and no group yet
@@ -1913,13 +1908,13 @@ def _group_columns(schema: Schema, group: str) -> list[Expression]:
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
-    return [
-        _null("VARCHAR", "component_type"),
-        *(_null(_column_type(schema, c), c) for c in schema.group_coordinates(group)),
-        _null("VARCHAR", "role"),
-        _null("BOOLEAN", "deleted"),
-        _null("BIGINT", "_seq"),
-    ]
+    return {
+        "component_type": nw.String(),
+        **{c: _column_type(schema, c) for c in schema.group_coordinates(group)},
+        "role": nw.String(),
+        "deleted": nw.Boolean(),
+        "_seq": nw.Int64(),
+    }
 
 
 # The entity kinds only. A long kind is staged per attribute, so its columns

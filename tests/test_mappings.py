@@ -13,6 +13,7 @@ Notes
 - [mappings](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#mappings)
 """
 
+import narwhals as nw
 import pytest
 from pydantic import ValidationError
 
@@ -26,9 +27,9 @@ def _schema(**overrides) -> Schema:
     """A record classified twice over: bus -> state -> country."""
     kwargs = {
         "dimensions": {
-            "bus": Dimension(dtype="VARCHAR"),
-            "state": Dimension(dtype="VARCHAR", on={"bus"}),
-            "country": Dimension(dtype="VARCHAR", on={"state"}),
+            "bus": Dimension(dtype=nw.String()),
+            "state": Dimension(dtype=nw.String(), on={"bus"}),
+            "country": Dimension(dtype=nw.String(), on={"state"}),
         },
         "partial": frozenset(),
     }
@@ -46,7 +47,7 @@ def test_a_mapping_is_a_dim():
     assert s.dimensions["country"].mapping
     assert not s.dimensions["bus"].mapping
     # Typed like any dim, so a column carrying its labels casts correctly.
-    assert s.column_type("country") == "VARCHAR"
+    assert s.column_type("country") == nw.String()
 
 
 def test_the_column_lives_on_the_classified_axis():
@@ -89,14 +90,14 @@ def test_a_mapping_on_an_undeclared_dim_is_refused():
     with pytest.raises(ValidationError, match="`on` undeclared dims"):
         _schema(
             dimensions={
-                "country": Dimension(dtype="VARCHAR", on={"nope"}),
+                "country": Dimension(dtype=nw.String(), on={"nope"}),
             }
         )
 
 
 def test_a_mapping_cannot_classify_itself():
     with pytest.raises(ValidationError, match="`on` itself"):
-        _schema(dimensions={"country": Dimension(dtype="VARCHAR", on={"country"})})
+        _schema(dimensions={"country": Dimension(dtype=nw.String(), on={"country"})})
 
 
 def test_a_mapping_cycle_is_refused():
@@ -104,8 +105,8 @@ def test_a_mapping_cycle_is_refused():
     with pytest.raises(ValidationError, match="`on` is cyclic"):
         _schema(
             dimensions={
-                "state": Dimension(dtype="VARCHAR", on={"country"}),
-                "country": Dimension(dtype="VARCHAR", on={"state"}),
+                "state": Dimension(dtype=nw.String(), on={"country"}),
+                "country": Dimension(dtype=nw.String(), on={"state"}),
             }
         )
 
@@ -122,7 +123,9 @@ def test_a_mapping_folds_as_an_ordinary_axis(con, base_uri):
     revision = Revision.create(con)
     write_schema(
         _schema(
-            attributes={"co2_budget": AttributeSpec(dtype="DOUBLE", dims={"country"})},
+            attributes={
+                "co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})
+            },
         )
     )
     write_axis(layer_dir(revision.id), "bus", [{"bus": "north", "state": "lower"}])

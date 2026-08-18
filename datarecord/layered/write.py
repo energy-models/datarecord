@@ -22,7 +22,7 @@ from duckdb import CoalesceOperator as coalesce
 from duckdb import DuckDBPyRelation
 
 from datarecord.duck import base_uri_of, col, fn, layer_dir, lit, try_read_parquet
-from datarecord.layered.resolve import read_schema, write_schema
+from datarecord.layered.resolve import cast_declared, read_schema, write_schema
 from datarecord.record import Record
 from datarecord.schema import Schema
 
@@ -217,25 +217,7 @@ def _write_frame(
         # the type is what distinguishes them, not the method).
         arrow = frame.collect(backend="pyarrow").to_native()  # noqa: F841 - by name
         native = con.sql("FROM arrow")
-    _typed(schema, native).to_parquet(uri)
-
-
-def _typed(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
-    """`rel` with every column the schema declares a type for cast to it.
-
-    Undeclared columns pass through: a `dims/components/` frame's attribute
-    columns belong to the schema's own vocabulary, so their types are the
-    writer's business.
-
-    Notes
-    -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-    """
-    cols = ", ".join(
-        f'"{c}"::{t} AS "{c}"' if (t := schema.column_type(c)) else f'"{c}"'
-        for c in rel.columns
-    )
-    return rel.project(cols)
+    cast_declared(schema, native).to_parquet(uri)
 
 
 def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) -> None:

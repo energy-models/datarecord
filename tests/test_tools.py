@@ -87,7 +87,7 @@ def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    _with_schema(revision, dims={"snapshot": "TIMESTAMP"}, partial=set())
+    _with_schema(revision, dims={"snapshot": nw.Datetime()}, partial=set())
 
     missing = PyPSA.verify(revision.record)
     assert missing
@@ -122,7 +122,11 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
         PyPSA.build(revision.record)
 
 
-_DIMS = {"snapshot": "TIMESTAMP", "period": "BIGINT", "scenario": "VARCHAR"}
+_DIMS = {
+    "snapshot": nw.Datetime(),
+    "period": nw.Int64(),
+    "scenario": nw.String(),
+}
 
 
 def _without_default(revision, ctype: str, attribute: str) -> None:
@@ -483,7 +487,7 @@ def test_schema_dims_stay_generic(con, base_uri, ac_dc):
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    _with_schema(revision, dims={**_DIMS, "vintage": "VARCHAR"})
+    _with_schema(revision, dims={**_DIMS, "vintage": nw.String()})
     dims = revision.node_cache.dims
     assert "vintage" in dims.schema.dims
     # No axis rows anywhere, so the dim is absent from the mapping rather than

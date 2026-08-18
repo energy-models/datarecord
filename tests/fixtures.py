@@ -7,6 +7,7 @@ Notes
 
 from pathlib import Path
 
+import narwhals as nw
 import pandas as pd
 
 from datarecord.layered.resolve import write_schema as record_write_schema
@@ -294,7 +295,9 @@ def write_directory_schema(directory: str, schema: Schema) -> None:
     Path(directory, "manifest.json").write_text(schema.model_dump_json())
 
 
-def _default_attributes(dims: dict[str, str], groups: dict[str, dict[str, str]]):
+def _default_attributes(
+    dims: dict[str, nw.dtypes.DType], groups: dict[str, dict[str, str]]
+):
     """The attributes tests write, declared over whichever dims are in play.
 
     Writing an attribute the schema does not declare is rejected, since its
@@ -309,12 +312,14 @@ def _default_attributes(dims: dict[str, str], groups: dict[str, dict[str, str]])
     varying = {"entity", *dims}
     connection = "connection" if "connection" in groups else "entity"
     return {
-        "p_nom": AttributeSpec(dtype="DOUBLE", dims=varying),
-        "e_nom": AttributeSpec(dtype="DOUBLE", dims=varying),
-        "p_max_pu": AttributeSpec(dtype="DOUBLE", dims=varying),
-        "p_min_pu": AttributeSpec(dtype="DOUBLE", dims=varying),
-        "marginal_cost": AttributeSpec(dtype="DOUBLE", dims=varying, breakpoints=True),
-        "efficiency": AttributeSpec(dtype="DOUBLE", dims={connection, *dims}),
+        "p_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
+        "e_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
+        "p_max_pu": AttributeSpec(dtype=nw.Float64(), dims=varying),
+        "p_min_pu": AttributeSpec(dtype=nw.Float64(), dims=varying),
+        "marginal_cost": AttributeSpec(
+            dtype=nw.Float64(), dims=varying, breakpoints=True
+        ),
+        "efficiency": AttributeSpec(dtype=nw.Float64(), dims={connection, *dims}),
     }
 
 
@@ -322,10 +327,10 @@ def schema(
     *,
     partial: set[str] = {"scenario"},
     attributes: dict[str, dict[str, AttributeSpec]] | None = None,
-    dims: dict[str, str] = {
-        "snapshot": "TIMESTAMP",
-        "period": "BIGINT",
-        "scenario": "VARCHAR",
+    dims: dict[str, nw.dtypes.DType] = {
+        "snapshot": nw.Datetime(),
+        "period": nw.Int64(),
+        "scenario": nw.String(),
     },
     groups: dict[str, dict[str, str]] = {
         "connection": {"entity": "entity", "bus": "bus"}
@@ -371,8 +376,8 @@ def schema(
     # coordinates that are not called `bus`.
     coordinates = {c for over in groups.values() for c in over}
     declared = {
-        "entity": "VARCHAR",
-        **{c: "VARCHAR" for c in coordinates},
+        "entity": nw.String(),
+        **{c: nw.String() for c in coordinates},
         **dims,
     }
     return Schema(

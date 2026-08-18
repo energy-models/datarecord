@@ -20,27 +20,83 @@ import math
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
+import narwhals as nw
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     field_serializer,
     field_validator,
     model_validator,
 )
 
+# Narwhals dtypes `manifest.json` encodes by bare class name, covering what a
+# dim or attribute actually declares. `Enum` and `Datetime` carry parameters
+# and are handled separately in `_dump_dtype`/`_parse_dtype` - extend here as
+# a new bare dtype shows up rather than widening the parametrized branches.
+_BARE_DTYPES: dict[str, type[nw.dtypes.DType]] = {
+    "String": nw.String,
+    "Float64": nw.Float64,
+    "Int64": nw.Int64,
+    "Boolean": nw.Boolean,
+    "Date": nw.Date,
+}
+
+
+def _dump_dtype(dtype: nw.dtypes.DType) -> Any:
+    """Encode a narwhals dtype for `manifest.json`.
+
+    A bare class name for what `_BARE_DTYPES` covers; a one-key dict of class
+    name to constructor args for `Enum`/`Datetime`, the parametrized dtypes a
+    schema actually declares.
+    """
+    if isinstance(dtype, nw.Enum):
+        return {"Enum": list(dtype.categories)}
+    if isinstance(dtype, nw.Datetime):
+        return {"Datetime": dtype.time_unit}
+    base = dtype.base_type()
+    if base.__name__ in _BARE_DTYPES:
+        return base.__name__
+    msg = f"no manifest.json encoding for narwhals dtype {base.__name__}"
+    raise ValueError(msg)
+
+
+def _parse_dtype(value: Any) -> nw.dtypes.DType:
+    """The `dtype=` field_validator shared by `Dimension` and `AttributeSpec`.
+
+    An instance (`nw.String()`) passes through; anything else is what
+    `_dump_dtype` wrote to `manifest.json`, decoded back to an instance -
+    `dtype=` takes an instance only, not a bare class.
+    """
+    if isinstance(value, nw.dtypes.DType):
+        return value
+    if isinstance(value, str):
+        if value not in _BARE_DTYPES:
+            msg = f"unknown narwhals dtype {value!r} in manifest.json"
+            raise ValueError(msg)
+        return _BARE_DTYPES[value]()
+    if isinstance(value, dict) and len(value) == 1:
+        ((name, arg),) = value.items()
+        if name == "Enum":
+            return nw.Enum(arg)
+        if name == "Datetime":
+            return nw.Datetime(arg)
+    msg = f"unrecognised dtype encoding in manifest.json: {value!r}"
+    raise ValueError(msg)
+
+
 # Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Neither
 # declared nor optional: `bus`/`breakpoint` are NULL for the ordinary
 # component-level scalar, so one column set serves every kind of row.
 STRUCTURAL_TYPES = {
-    "component_type": "VARCHAR",
-    "entity": "VARCHAR",
-    "bus": "VARCHAR",
-    "attribute": "VARCHAR",
-    "breakpoint": "DOUBLE",
-    "layer_uuid": "UUID",
-    "order_key": "BIGINT",
-    "deleted": "BOOLEAN",
-    "breakpoints": "BOOLEAN",
+    "component_type": nw.String(),
+    "entity": nw.String(),
+    "bus": nw.String(),
+    "attribute": nw.String(),
+    "breakpoint": nw.Float64(),
+    "order_key": nw.Int64(),
+    "deleted": nw.Boolean(),
+    "breakpoints": nw.Boolean(),
 }
 
 
@@ -57,8 +113,8 @@ LONG_TAIL = ("attribute", "breakpoint", "value")
 FLAG_COLUMNS = ("varies", "broadcast", "breakpoints")
 
 
-def flag_type(dims: tuple[str, ...]) -> str:
-    """The DuckDB type of one flag struct: a BOOLEAN per declared dim.
+def flag_type(dims: tuple[str, ...]) -> nw.dtypes.DType:
+    """One flag struct's type: a BOOLEAN field per declared dim.
 
     `dims` is never empty: a schema declaring no dims describes no dimensioned
     data, which `Schema` rejects - so the struct always has a field and
@@ -69,8 +125,7 @@ def flag_type(dims: tuple[str, ...]) -> str:
     - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    fields = ", ".join(f'"{d}" BOOLEAN' for d in dims)
-    return f"STRUCT({fields})"
+    return nw.Struct({d: nw.Boolean() for d in dims})
 
 
 class Dimension(BaseModel):
@@ -83,7 +138,9 @@ class Dimension(BaseModel):
     Attributes
     ----------
     dtype
-        The axis labels' type, as a DuckDB type name.
+        The axis labels' type, as a narwhals dtype instance (`nw.String()`,
+        `nw.Datetime()`, ...) - translated to its DuckDB name only where a
+        column of it is built.
     within
         Dims this one's labels identify a point only *within*; transitive.
     on
@@ -109,11 +166,22 @@ class Dimension(BaseModel):
     - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
 
-    dtype: str
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    dtype: nw.dtypes.DType
     within: frozenset[str] = frozenset()
     on: frozenset[str] = frozenset()
     unit: str | None = None
     description: str | None = None
+
+    @field_validator("dtype", mode="before")
+    @classmethod
+    def _parse_dtype(cls, value: Any) -> Any:
+        return _parse_dtype(value)
+
+    @field_serializer("dtype")
+    def _dump_dtype(self, value: nw.dtypes.DType) -> Any:
+        return _dump_dtype(value)
 
     @property
     def mapping(self) -> bool:
@@ -127,7 +195,9 @@ class AttributeSpec(BaseModel):
     Attributes
     ----------
     dtype
-        The value column's type, as a DuckDB type name.
+        The value column's type, as a narwhals dtype instance (`nw.String()`,
+        `nw.Datetime()`, ...) - translated to its DuckDB name only where a
+        column of it is built.
     dims
         Dims this attribute may vary over; a subset of those declared. Varying
         over nothing is what puts it in `dims/components/<Type>.parquet` rather
@@ -152,12 +222,23 @@ class AttributeSpec(BaseModel):
     - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
 
-    dtype: str
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    dtype: nw.dtypes.DType
     default: Any | None = None
     dims: frozenset[str] = frozenset()
     breakpoints: bool = False
     unit: str | None = None
     description: str | None = None
+
+    @field_validator("dtype", mode="before")
+    @classmethod
+    def _parse_dtype(cls, value: Any) -> Any:
+        return _parse_dtype(value)
+
+    @field_serializer("dtype")
+    def _dump_dtype(self, value: nw.dtypes.DType) -> Any:
+        return _dump_dtype(value)
 
     @field_serializer("default")
     def _serialise_default(self, value: Any) -> Any:
@@ -717,11 +798,13 @@ class Schema(BaseModel):
 
     # -- typing (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/writing/) -------------------------------------------------
 
-    def column_type(self, column: str) -> str | None:
+    def column_type(self, column: str) -> nw.dtypes.DType | None:
         """The declared type for one column, or None if the schema declares none.
 
         Covers the structural columns the format fixes, the declared dims, and
-        the owner map's two flag structs, whose fields follow the schema's dims.
+        the owner map's two flag structs, whose fields follow the schema's
+        dims. A narwhals dtype, translated to DuckDB (`duck.DuckTypes`) only where
+        a caller builds a column of it.
 
         A schema declaring no dims at all is "no manifest yet" rather
         than a record to fold, and DuckDB has no empty struct - so the flag
@@ -741,11 +824,13 @@ class Schema(BaseModel):
             return flag_type(self.broadcast_dims) if self.broadcast_dims else None
         return None
 
-    def value_type(self, attribute: str) -> str | None:
+    def value_type(self, attribute: str) -> nw.dtypes.DType | None:
         """The `value` column's type for one attribute.
 
         No `ctype`: one attribute is one `inputs/<attr>.parquet` with one
-        `value` column, so the dtype is the attribute's alone.
+        `value` column, so the dtype is the attribute's alone. A narwhals
+        dtype, translated to DuckDB (`duck.DuckTypes`) only where a caller builds
+        a column of it.
 
         Notes
         -----

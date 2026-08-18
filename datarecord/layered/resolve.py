@@ -26,6 +26,7 @@ from urllib.request import urlopen
 from uuid import UUID
 
 import duckdb
+import narwhals as nw
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
@@ -34,6 +35,7 @@ from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
+    DuckTypes,
     base_uri_of,
     dims_dirs,
     ex_all,
@@ -47,6 +49,10 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.schema import Schema
+
+# The owner map's `layer_uuid` column type - a layering mechanism, not
+# something a schema declares.
+LAYER_UUID_TYPE = "UUID"
 
 
 def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) -> Dims:
@@ -350,18 +356,19 @@ def _group_deleted(
     )
 
 
-def _cast(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
+def cast_declared(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
     """`rel`, with its columns of a declared type cast, others as-is.
 
     Notes
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    cols = ", ".join(
-        f'"{c}"::{t} AS "{c}"' if (t := schema.column_type(c)) else f'"{c}"'
+    duck_types = DuckTypes(rel)
+    cols = [
+        col(c).cast(duck_types(t)).alias(c) if (t := schema.column_type(c)) else col(c)
         for c in rel.columns
-    )
-    return rel.project(cols)
+    ]
+    return rel.project(*cols)
 
 
 def _empty_relation(
@@ -373,10 +380,9 @@ def _empty_relation(
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    cols = ", ".join(
-        f"NULL::{schema.column_type(c) or 'VARCHAR'} AS {c}" for c in columns
+    return DuckTypes(con).empty_relation(
+        **{c: schema.column_type(c) or nw.String() for c in columns}
     )
-    return con.sql(f"SELECT {cols} WHERE false")
 
 
 def _null_safe(alias_a: str, alias_b: str, columns: tuple[str, ...]) -> str:
@@ -404,10 +410,11 @@ def with_columns(
     missing = [c for c in columns if c not in rel.columns]
     if not missing:
         return rel
-    added = ", ".join(
-        f'NULL::{schema.column_type(c) or "VARCHAR"} AS "{c}"' for c in missing
-    )
-    return rel.project(f"*, {added}")
+    duck_types = DuckTypes(rel)
+    added = [
+        duck_types.null(schema.column_type(c) or nw.String()).alias(c) for c in missing
+    ]
+    return rel.project(star(), *added)
 
 
 def fold_inputs(
@@ -429,7 +436,7 @@ def fold_inputs(
         # its own attribute's columns, so a coordinate another attribute uses
         # is absent here and must read as NULL rather than fail to bind.
         broadcast = keys.schema.broadcast_dims
-        rel = _cast(
+        rel = cast_declared(
             keys.schema,
             with_columns(keys.schema, rel, "breakpoint", *keys.schema.dims),
         )
@@ -447,7 +454,7 @@ def fold_inputs(
             *(expr.alias(d) for d, expr in dims.items()),
             *(col("i", d).alias(f"_raw_{d}") for d in broadcast),
             col("i", "attribute"),
-            lit(str(revision_id)).cast("UUID").alias("layer_uuid"),
+            lit(str(revision_id)).cast(LAYER_UUID_TYPE).alias("layer_uuid"),
             col("i", "breakpoint"),
         )
         own = tagged.aggregate(
@@ -595,14 +602,14 @@ def _fold_ordered(
         own = _empty_relation(keys.schema, con, *columns)
     else:
         not_deleted = ~col("deleted") if "deleted" in rel.columns else lit(True)
-        rel = _cast(keys.schema, rel)
+        rel = cast_declared(keys.schema, rel)
         tagged = (
             rel.filter(not_deleted)
             .set_alias("i")
             .project(
                 col("i", "component_type"),
                 *(col("i", c) for c in key),
-                lit(str(revision_id)).cast("UUID").alias("layer_uuid"),
+                lit(str(revision_id)).cast(LAYER_UUID_TYPE).alias("layer_uuid"),
                 sql("row_number() OVER ()").alias("_row"),
             )
         )
@@ -663,7 +670,7 @@ def _fold_map(
     root = try_read_parquet(map_uri(ancestry[0]), con) if len(ancestry) > 1 else None
     start = 0
     if root is not None:
-        rel, start = _cast(keys.schema, root), 1
+        rel, start = cast_declared(keys.schema, root), 1
 
     for uid in ancestry[start:]:
         rel = fold(uid, keys, con, rel)
@@ -738,7 +745,7 @@ def _table(
     """
     persisted = try_read_parquet(_map_uri(revision_id, kind), con)
     if persisted is not None:
-        return _cast(schema, persisted)
+        return cast_declared(schema, persisted)
 
     name = _table_name(revision_id, kind)
     try:
@@ -1190,13 +1197,13 @@ class NodeCache:
         """
         con = self.con
         owned = owner_map.filter(col("component_type") == lit(ctype))
-        owning_ids = [
+        owning_ids: list[UUID] = [
             layer_uuid for (layer_uuid,) in owned["layer_uuid"].distinct().fetchall()
         ]
         if not owning_ids:
             return None
 
-        layers = []
+        layers: list[DuckDBPyRelation] = []
         for layer_uuid in owning_ids:
             uri = f"{layer_dir(layer_uuid)}dims/{subdir}/{ctype}.parquet"
             rel = try_read_parquet(uri, con)

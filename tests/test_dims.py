@@ -10,6 +10,7 @@ Notes
 
 from pathlib import Path
 
+import narwhals as nw
 import pandas as pd
 
 from datarecord import Revision
@@ -133,7 +134,11 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
 
 # -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------
 
-_NESTED_DIMS = {"snapshot": "TIMESTAMP", "period": "BIGINT", "scenario": "VARCHAR"}
+_NESTED_DIMS = {
+    "snapshot": nw.Datetime(),
+    "period": nw.Int64(),
+    "scenario": nw.String(),
+}
 _NESTED_WITHIN = {"snapshot": {"period"}}
 
 
@@ -205,7 +210,7 @@ def test_a_dim_names_its_own_file(con, base_uri):
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
     revision = Revision.create(con)
-    write_schema(schema(dims={"bus": "VARCHAR"}, partial=set()))
+    write_schema(schema(dims={"bus": nw.String()}, partial=set()))
     target = Path(layer_dir(revision.id), "dims")
     target.mkdir(parents=True, exist_ok=True)
     pd.DataFrame([{"bus": "north"}, {"bus": "south"}]).to_parquet(

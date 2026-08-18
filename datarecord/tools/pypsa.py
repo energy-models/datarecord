@@ -51,18 +51,18 @@ SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
 ENTITY, BUS, CONNECTION = "entity", "bus", "connection"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
 
-# PyPSA's `defaults["type"]` vocabulary, mapped to the DuckDB types the long schema
-# stores. `series` and `static or series` describe *where* a value lives, not
-# what it is - both are floats in a record's `value` column.
+# PyPSA's `defaults["type"]` vocabulary, mapped to the narwhals types the long
+# schema stores. `series` and `static or series` describe *where* a value
+# lives, not what it is - both are floats in a record's `value` column.
 _DTYPES = {
-    "boolean": "BOOLEAN",
-    "float": "DOUBLE",
-    "int": "BIGINT",
-    "string": "VARCHAR",
-    "geometry": "VARCHAR",
-    "series": "DOUBLE",
-    "static": "DOUBLE",
-    "static or series": "DOUBLE",
+    "boolean": nw.Boolean(),
+    "float": nw.Float64(),
+    "int": nw.Int64(),
+    "string": nw.String(),
+    "geometry": nw.String(),
+    "series": nw.Float64(),
+    "static": nw.Float64(),
+    "static or series": nw.Float64(),
 }
 
 
@@ -1227,7 +1227,7 @@ class _NetworkSource:
                 dims = set(varying_dims) if row["varying"] else set()
                 dims.add(CONNECTION if attr in per_port else ENTITY)
                 spec = AttributeSpec(
-                    dtype=_DTYPES.get(row["type"], "VARCHAR"),
+                    dtype=_DTYPES.get(row["type"], nw.String()),
                     dims=frozenset(dims),
                     default=_default(row["default"]),
                     unit=_text(row.get("unit")),
@@ -1245,11 +1245,11 @@ class _NetworkSource:
         return RecordSchema(
             dimensions={
                 SNAPSHOT: Dimension(
-                    dtype="TIMESTAMP",
+                    dtype=nw.Datetime(),
                     description="A point in the operational time series.",
                 ),
                 PERIOD: Dimension(
-                    dtype="BIGINT",
+                    dtype=nw.Int64(),
                     unit="year",
                     description="An investment period, labelled by its year.",
                 ),
@@ -1257,15 +1257,15 @@ class _NetworkSource:
                 # are the same across scenarios, but a layer may still patch
                 # one scenario's values (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys).
                 SCENARIO: Dimension(
-                    dtype="VARCHAR",
+                    dtype=nw.String(),
                     keys=frozenset({"component", "connection"}),
                     description="One realisation of a stochastic problem.",
                 ),
                 # The two axes the `connection` group is over. `entity` is the
                 # component axis the format knows by name; `bus` is an
                 # ordinary dim, one coordinate of one group.
-                ENTITY: Dimension(dtype="VARCHAR", description="A component."),
-                BUS: Dimension(dtype="VARCHAR", description="A node of the network."),
+                ENTITY: Dimension(dtype=nw.String(), description="A component."),
+                BUS: Dimension(dtype=nw.String(), description="A node of the network."),
             },
             groups={
                 CONNECTION: Group(
