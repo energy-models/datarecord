@@ -87,7 +87,7 @@ record.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
 record.set("p", solved, kind="outputs")  # a result
 ```
 
-**There is no `component_type` keyword.** A name identifies one component across every type ([entity is unique across types](format.md#entity-is-unique-across-types)), so the type is a property of the name rather than something the caller supplies: the record looks it up in the resolved components map, which is the same read `entity` is already [checked against](#validation).
+**There is no `entity_type` keyword.** A name identifies one component across every type ([entity is unique across types](format.md#entity-is-unique-across-types)), so the type is a property of the name rather than something the caller supplies: the record looks it up in the resolved components map, which is the same read `entity` is already [checked against](#validation).
 That removes the parameter that had to be either given or inferred in every earlier spelling, and with it the class of error where a name was staged under the wrong type.
 
 One call may therefore span types, since the names decide: `set("p_nom", {"wind1": 150.0, "link_dc": 80.0})` checks that Generator and Link each [carry](schema.md#traits) `p_nom`, and stages both.
@@ -115,7 +115,7 @@ A group coordinate does not broadcast that way: omitting `bus` means "every conn
 | frame     | supplies its own keys            | redundant                                                                    |
 | `nw.Expr` | a function of the current value  | selects what to [derive from](#an-nwexpr-value-derived-from-the-current-one) |
 
-A frame "supplies its own keys" now means its `entity` column alone: a `component_type` column is neither required nor read, since [the name determines the type](format.md#entity-is-unique-across-types).
+A frame "supplies its own keys" now means its `entity` column alone: a `entity_type` column is neither required nor read, since [the name determines the type](format.md#entity-is-unique-across-types).
 A frame carrying one is rejected rather than ignored — it says the writer believes the type is part of the key, and silently dropping the column would let a genuine disagreement through.
 
 The first three normalise to a long frame before staging, so there is one staging path.
@@ -333,7 +333,7 @@ The membership read this needs is the one [`set`](#set) already performs, so der
 Staged rows live in DuckDB tables on the record's own connection:
 
 ```sql
-CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>, _seq BIGINT);  -- no component_type
+CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>, _seq BIGINT);  -- no entity_type
 CREATE TABLE staged_outputs_<attr>_<id>  (<that attribute's long columns>, _seq BIGINT);
 CREATE TABLE staged_components_<id>      (<component columns>, deleted BOOLEAN, _seq BIGINT);
 CREATE TABLE staged_<group>_<id>         (<group coordinates>, ..., deleted BOOLEAN, _seq BIGINT);
@@ -347,7 +347,7 @@ A result the schema never declares has no declared type to take; the table recor
 
 One staging table per declared [group](schema.md#groups), mirroring [the maps the fold builds](read-path.md#owner-map): `connection` is one instance, so a record declaring a second group stages it through the same path rather than a second method.
 
-The staged rows are [the format's own rows](#the-shape-of-an-edit), so a staged long table loses `component_type` exactly as `inputs/` does, and the entity tables keep it.
+The staged rows are [the format's own rows](#the-shape-of-an-edit), so a staged long table loses `entity_type` exactly as `inputs/` does, and the entity tables keep it.
 
 These tables are the **only** place a staged row exists: `pending` counts them and [the reads](#reading-with-pending-edits) fold them, neither holding a copy.
 

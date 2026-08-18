@@ -21,7 +21,7 @@ w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
 w.set("p", solved_frame, kind="outputs")  # a result
 ```
 
-**There is no `component_type` keyword.** A name identifies one component across every type, so the record looks the type up and checks that each name's type carries the attribute — one call may legitimately span types ([design](../design/working-record.md#set)).
+**There is no `entity_type` keyword.** A name identifies one component across every type, so the record looks the type up and checks that each name's type carries the attribute — one call may legitimately span types ([design](../design/working-record.md#set)).
 
 `entity=None` means every component whose type carries this attribute. Every other coordinate goes through `**dims`, a group's included — `bus="north"` addresses one connection, `from=`/`to=` one corridor. A plain dim's absence means "every value of that dim" by the NULL broadcast rule; a group coordinate's means "every row of the group for this entity" ([design](../design/record.md#the-broadcast-rule)).
 

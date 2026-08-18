@@ -71,11 +71,11 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     """
     members = nw.from_native(
         con.sql(
-            "SELECT 'Generator' AS component_type, 'wind' AS entity,"
+            "SELECT 'Generator' AS entity_type, 'wind' AS entity,"
             " NULL::VARCHAR AS scenario"
         )
     )
-    # `p_nom`'s own coordinates and no others: no `component_type` in a long
+    # `p_nom`'s own coordinates and no others: no `entity_type` in a long
     # row, and no `bus`, which is the connection group's coordinate rather than
     # a column every attribute carries.
     long = nw.from_native(

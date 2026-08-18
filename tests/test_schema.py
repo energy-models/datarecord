@@ -15,10 +15,10 @@ from pydantic import ValidationError
 from datarecord.duck import DuckTypes
 from datarecord.schema import (
     AttributeSpec,
-    ComponentType,
     Dimension,
     Group,
     Schema,
+    Trait,
     flag_type,
 )
 
@@ -32,29 +32,36 @@ def _schema(**overrides) -> Schema:
             "period": Dimension(dtype=nw.Int64()),
             "timestep": Dimension(dtype=nw.Datetime(), within={"period"}),
             "scenario": Dimension(dtype=nw.String()),
+            "entity_type": Dimension(
+                dtype=nw.Enum(["Generator", "Link"]), on={"entity"}
+            ),
         },
         "groups": {"connection": Group(over={"entity": "entity", "bus": "bus"})},
-        # Declared once, record-wide; a type subscribes to what it carries.
+        # Declared once, record-wide; a trait narrows one to some types.
         "attributes": {
-            "p_nom": AttributeSpec(dtype=nw.Float64()),
+            "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
             "p_max_pu": AttributeSpec(
-                dtype=nw.Float64(), dims={"scenario", "timestep"}
+                dtype=nw.Float64(), dims={"entity", "scenario", "timestep"}
             ),
             "marginal_cost": AttributeSpec(
-                dtype=nw.Float64(), dims={"scenario"}, breakpoints=True
+                dtype=nw.Float64(), dims={"entity", "scenario"}, breakpoints=True
             ),
-            "carrier": AttributeSpec(dtype=nw.String()),
+            "carrier": AttributeSpec(dtype=nw.String(), dims={"entity"}),
             # A connection attribute says so by naming the group among its
             # dims, rather than by a field of its own.
             "efficiency": AttributeSpec(
                 dtype=nw.Float64(), dims={"connection", "scenario", "timestep"}
             ),
         },
-        "component_types": {
-            "Generator": ComponentType(
-                attributes={"p_nom", "p_max_pu", "marginal_cost", "carrier"}
+        "traits": {
+            "dispatchable": Trait(
+                attributes={"p_nom", "p_max_pu", "marginal_cost", "carrier"},
+                on={"entity_type": frozenset({"Generator"})},
             ),
-            "Link": ComponentType(attributes={"efficiency"}),
+            "converting": Trait(
+                attributes={"efficiency"},
+                on={"entity_type": frozenset({"Link"})},
+            ),
         },
         "partial": frozenset({"scenario"}),
     }
@@ -72,13 +79,15 @@ def _schema(**overrides) -> Schema:
 def test_ownership_is_derived_not_declared():
     """`owned_per` is `dims` and `partial` together, never a third declaration."""
     s = _schema()
-    # Varies over both axes, but only `scenario` is partial - so a patch to one
-    # timestep restates that scenario's whole series.
-    assert s.owned_per("p_max_pu") == frozenset({"scenario"})
-    assert s.owned_per("marginal_cost") == frozenset({"scenario"})
-    # A first-stage decision: one value, owned once across everything.
-    assert s.owned_per("p_nom") == frozenset()
-    assert s.owned_per("carrier") == frozenset()
+    # Varies over both time axes, but only `scenario` is partial among them -
+    # so a patch to one timestep restates that scenario's whole series.
+    # `entity` joins it because a layer patches one component's value.
+    assert s.owned_per("p_max_pu") == frozenset({"entity", "scenario"})
+    assert s.owned_per("marginal_cost") == frozenset({"entity", "scenario"})
+    # A first-stage decision: one value per component, owned once across
+    # every axis it does not vary over.
+    assert s.owned_per("p_nom") == frozenset({"entity"})
+    assert s.owned_per("carrier") == frozenset({"entity"})
 
 
 def test_a_scenario_varying_capacity_is_a_schema_violation():
@@ -87,7 +96,9 @@ def test_a_scenario_varying_capacity_is_a_schema_violation():
     assert "scenario" not in s.attributes["p_nom"].dims
     # Nothing owns it per scenario, so the fold writes NULL there and one value
     # applies to every scenario.
-    assert s.owned_per("p_nom") == frozenset()
+    assert s.owned_per("p_nom") == frozenset({"entity"}), (
+        "owned per entity, not scenario"
+    )
 
 
 def test_partial_dims_is_the_union_over_attributes():
@@ -134,6 +145,144 @@ def test_a_non_broadcast_dim_must_be_partial():
             },
             partial=frozenset({"scenario"}),
         )
+
+
+# -- entity types and traits (https://energy-models.github.io/datarecord/design/schema/#traits) ------------------------------------
+
+
+def test_an_untraited_attribute_is_carried_by_every_type():
+    """A trait narrows; declaring `entity` in `dims` is what grants.
+
+    `sign` is bundled by no trait, so every type addressed by `entity` carries
+    it - the same thing `dims={"scenario"}` means along the scenario axis.
+    Where `p_max_pu`, which `dispatchable` bundles, reaches Generator alone.
+    """
+    s = _schema(
+        attributes={
+            **_schema().attributes,
+            "sign": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+        }
+    )
+    assert "p_max_pu" not in s.attributes_for("Link"), "narrowed to Generator"
+    assert "sign" in s.attributes_for("Link"), "untraited, so carried by all"
+    assert "sign" in s.attributes_for("Generator")
+
+
+def test_an_attribute_addressing_no_entity_reaches_no_type():
+    """A record-level attribute belongs to the record, however few traits name it.
+
+    Default-open is scoped by addressing rather than by trait membership: with
+    no `entity` among its coordinates there is no component for it to reach,
+    so `names=None` targets nothing rather than every component in the record.
+    """
+    s = _schema(
+        attributes={
+            **_schema().attributes,
+            "weighting": AttributeSpec(dtype=nw.Float64(), dims={"timestep"}),
+        }
+    )
+    assert not s.addresses_entity("weighting")
+    assert "weighting" not in s.attributes_for("Generator")
+    assert s.types_declaring("weighting") == frozenset()
+
+
+def test_a_group_addressed_attribute_reaches_the_types_it_coordinates():
+    """`efficiency` is over `connection`, whose coordinates include `entity`."""
+    s = _schema()
+    assert s.addresses_entity("efficiency")
+    assert "efficiency" in s.attributes_for("Link")
+
+
+def test_a_trait_may_only_be_scoped_by_an_entity_type_axis():
+    """Any other mapping would make the vocabulary a per-entity data lookup."""
+    with pytest.raises(ValidationError, match="does not classify `entity`"):
+        Schema(
+            dimensions={
+                "entity": Dimension(dtype=nw.String()),
+                "bus": Dimension(dtype=nw.String()),
+                "country": Dimension(dtype=nw.String(), on={"bus"}),
+            },
+            attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
+            traits={"t": Trait(attributes={"p_nom"}, on={"country": {"DE"}})},
+            partial=frozenset({"entity", "bus"}),
+        )
+
+
+def test_an_entity_type_axis_addresses_nothing():
+    """Naming it in `dims` would key a row by its entity and by its type."""
+    with pytest.raises(ValidationError, match="classifies `entity`"):
+        Schema(
+            dimensions={
+                "entity": Dimension(dtype=nw.String()),
+                "entity_type": Dimension(dtype=nw.Enum(["Bus"]), on={"entity"}),
+            },
+            attributes={
+                "p_nom": AttributeSpec(
+                    dtype=nw.Float64(), dims={"entity", "entity_type"}
+                )
+            },
+            partial=frozenset({"entity"}),
+        )
+
+
+def test_only_one_dim_may_classify_entity():
+    """A component has one type, so two vocabularies have no resolved answer."""
+    with pytest.raises(ValidationError, match="all classify `entity`"):
+        Schema(
+            dimensions={
+                "entity": Dimension(dtype=nw.String()),
+                "entity_type": Dimension(dtype=nw.Enum(["Bus"]), on={"entity"}),
+                "kind": Dimension(dtype=nw.Enum(["thing"]), on={"entity"}),
+            },
+            attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
+            partial=frozenset({"entity"}),
+        )
+
+
+def test_an_entity_type_axis_is_no_long_schema_coordinate():
+    """Its column is on the entity axis, so a long row never carries it."""
+    s = _schema()
+    assert "entity_type" not in s.long_columns
+    assert "entity_type" not in s.broadcast_dims
+    assert "entity_type" not in s.partial_dims
+
+
+def test_a_record_may_declare_no_entity_type_at_all():
+    """Types are optional: with no such axis every entity carries everything.
+
+    A tool needing types requires the axis in the schema it builds, which is
+    where that requirement belongs.
+    """
+    s = Schema(
+        dimensions={
+            "entity": Dimension(dtype=nw.String()),
+            "timestep": Dimension(dtype=nw.Datetime()),
+        },
+        attributes={
+            "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+            "weighting": AttributeSpec(dtype=nw.Float64(), dims={"timestep"}),
+        },
+        partial=frozenset({"entity"}),
+    )
+    assert s.entity_types == frozenset(), "no axis, so no declared vocabulary"
+    assert sorted(s.attributes_for("anything")) == ["p_nom"], (
+        "entity-addressed only, whatever label is asked for"
+    )
+
+
+def test_a_string_entity_type_axis_leaves_the_labels_as_data():
+    """An `Enum` pins the vocabulary; a plain string does not declare one."""
+    s = Schema(
+        dimensions={
+            "entity": Dimension(dtype=nw.String()),
+            "entity_type": Dimension(dtype=nw.String(), on={"entity"}),
+        },
+        attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
+        partial=frozenset({"entity"}),
+    )
+    assert s.entity_type_dim == "entity_type"
+    assert s.entity_types == frozenset(), "labels are data, not declarations"
+    assert "p_nom" in s.attributes_for("Whatever")
 
 
 # -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------
@@ -244,7 +393,7 @@ def test_widening_dims_is_compatible():
     old = _schema()
     new = _schema()
     new.attributes["marginal_cost"] = AttributeSpec(
-        dtype=nw.Float64(), dims={"scenario", "timestep"}, breakpoints=True
+        dtype=nw.Float64(), dims={"entity", "scenario", "timestep"}, breakpoints=True
     )
     assert new.compatible_with(old) == []
 
@@ -259,7 +408,10 @@ def test_widening_partial_is_compatible():
 def test_narrowing_dims_is_incompatible():
     old = _schema()
     new = _schema()
-    new.attributes["p_max_pu"] = AttributeSpec(dtype=nw.Float64(), dims={"scenario"})
+    # `entity` kept, so `timestep` is the one axis under test.
+    new.attributes["p_max_pu"] = AttributeSpec(
+        dtype=nw.Float64(), dims={"entity", "scenario"}
+    )
     (reason,) = new.compatible_with(old)
     assert "no longer varies over ['timestep']" in reason
 
@@ -267,7 +419,7 @@ def test_narrowing_dims_is_incompatible():
 def test_changing_a_dtype_is_incompatible():
     old = _schema()
     new = _schema()
-    new.attributes["p_nom"] = AttributeSpec(dtype=nw.Int64())
+    new.attributes["p_nom"] = AttributeSpec(dtype=nw.Int64(), dims={"entity"})
     (reason,) = new.compatible_with(old)
     assert "Float64 -> Int64" in reason
 
@@ -365,7 +517,7 @@ def test_round_trips_through_json():
 
 def test_column_types_cover_structural_dims_and_flags():
     s = _schema()
-    assert s.column_type("component_type") == nw.String()
+    assert s.column_type("entity_type") == nw.String()
     assert s.column_type("timestep") == nw.Datetime()
     # One struct per flag column, a BOOLEAN field per declared dim (https://energy-models.github.io/datarecord/design/read-path/#owner-map), so
     # the map's column set does not widen when a dim is declared.

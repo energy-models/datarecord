@@ -23,7 +23,7 @@ A dim's file is its name and nothing else — no pluralisation, which would be E
 `dims/entity.parquet` is what a component's identity **is**: which entities the layer names, what type each is, and which are tombstoned.
 
 ```text
-entity | component_type | <component key dims> | deleted
+entity | entity_type | <component key dims> | deleted
 ```
 
 It is **derived, not declared**. [`write_record`](writing.md) builds it from the per-type frames it has just written — the type from the file a row landed in — so a `Record` never hands it over and cannot disagree with itself about it.
@@ -31,7 +31,7 @@ It is **derived, not declared**. [`write_record`](writing.md) builds it from the
 Three things live here that were previously spread across `dims/components/`:
 
 - **Membership.** A component exists because it has a row here, not because some type's file mentions it.
-- **Its type.** `component_type` is a column, so `entity -> component_type` is one read rather than a glob across every type's file with the type taken from the filename.
+- **Its type.** `entity_type` is a column, so `entity -> entity_type` is one read rather than a glob across every type's file with the type taken from the filename.
 - **Its tombstone.** Deleting a component is deleting its entity row.
 
 What remains in `dims/components/<Type>.parquet` is only [what is addressed by `entity` alone](#where-a-value-lives) — the non-varying attribute values, partitioned by type because that is the one thing genuinely per type: every type has a different column set.
@@ -85,7 +85,7 @@ That the shapes differ costs nothing, because `UNION ALL BY NAME` supplies NULL 
 The fold's _key_ is uniform even though the files are not: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`, one fixed tuple over every attribute, and a coordinate an attribute does not carry reads as NULL there.
 
 One attribute per file, so `value` carries that attribute's dtype.
-There is **no `component_type` column**: `entity` is unique across every type ([below](#entity-is-unique-across-types)), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by entity alone, and a reader wanting one type's rows joins `dims/components/`.
+There is **no `entity_type` column**: `entity` is unique across every type ([below](#entity-is-unique-across-types)), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by entity alone, and a reader wanting one type's rows joins `dims/components/`.
 
 A connection's `role` is not in the long schema: it is an attribute over the `connection` group, so it lives on that group's table as a column ([where a value lives](#where-a-value-lives)) rather than in `inputs/`.
 
@@ -94,15 +94,15 @@ A connection's `role` is not in the long schema: it is an attribute over the `co
 An `entity` identifies one component across the whole record.
 Two types may not share one: a `Bus` and a `Generator` both called `north` are a collision, not two components.
 
-That is what removes `component_type` from every attribute key.
+That is what removes `entity_type` from every attribute key.
 An `inputs/` row addresses `(entity, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
 The alternative — carrying the type in the key — makes it a _component's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
 
-**The entity axis is the mapping.** `dims/entity.parquet` carries `component_type` as a column, so `entity -> component_type` is one read of one file rather than a glob over every type's.
-`component_type` is a column of that axis and of the owner map it feeds, never of the attribute rows.
+**The entity axis is the mapping.** `dims/entity.parquet` carries `entity_type` as a column, so `entity -> entity_type` is one read of one file rather than a glob over every type's.
+`entity_type` is a column of that axis and of the owner map it feeds, never of the attribute rows.
 
 So a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the components map on `entity`.
-That join is what the `component_type` filter used to be, and it is against a relation the read path already builds.
+That join is what the `entity_type` filter used to be, and it is against a relation the read path already builds.
 
 Two things follow, and they are the reason to want this.
 An attribute row is addressed the way a component is, so `set("p_nom", 150.0, entity=["wind1"])` needs no type: the entity determines it ([set](working-record.md#set)).

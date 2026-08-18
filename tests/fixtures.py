@@ -13,13 +13,13 @@ import pandas as pd
 from datarecord.layered.resolve import write_schema as record_write_schema
 from datarecord.schema import (
     AttributeSpec,
-    ComponentType,
     Dimension,
     Group,
     Schema,
+    Trait,
 )
 
-# No `component_type`: an attribute row is keyed by `name`, unique across every type
+# No `entity_type`: an attribute row is keyed by `name`, unique across every type
 # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
 LONG_COLUMNS = [
     "entity",
@@ -77,7 +77,7 @@ def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     df = pd.DataFrame(rows)
-    df["component_type"] = ctype
+    df["entity_type"] = ctype
     for col in ("scenario", "role"):
         if col not in df:
             df[col] = None
@@ -86,7 +86,7 @@ def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["component_type", "entity", "bus", "role", "scenario", "deleted"]
+    lead = ["entity_type", "entity", "bus", "role", "scenario", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
     target = Path(layer, "dims", "connection")
     target.mkdir(parents=True, exist_ok=True)
@@ -119,12 +119,12 @@ def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
     df = pd.DataFrame(rows)
-    df["component_type"] = ctype
+    df["entity_type"] = ctype
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["component_type", "entity", "deleted"]
+    lead = ["entity_type", "entity", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
     target = Path(layer, "dims", "components")
     target.mkdir(parents=True, exist_ok=True)
@@ -133,7 +133,7 @@ def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
     # Appended rather than replaced: several types land in one entity axis, and
     # a layer may write them one call at a time.
     axis = Path(layer, "dims", "entity.parquet")
-    entities = df[["entity", "component_type", "deleted"]]
+    entities = df[["entity", "entity_type", "deleted"]]
     if axis.exists():
         entities = pd.concat([pd.read_parquet(axis), entities], ignore_index=True)
     entities.to_parquet(axis, index=False)
@@ -358,14 +358,17 @@ def schema(
     """
     nesting = within or {}
     # Callers declare per type, which is how a modelling framework thinks; the
-    # schema stores one spec per attribute, record-wide. Flattening here keeps
-    # the tests readable and is exactly what a tool does on the way in.
+    # schema stores one spec per attribute, record-wide, and a trait per type
+    # narrows it back. Flattening here keeps the tests readable and is exactly
+    # what a tool does on the way in.
     flat: dict[str, AttributeSpec] = {}
-    subscriptions: dict[str, ComponentType] = {}
+    traits: dict[str, Trait] = {}
     for ctype, attrs in (attributes or {}).items():
         for attr, spec in attrs.items():
             flat.setdefault(attr, spec)
-        subscriptions[ctype] = ComponentType(attributes=frozenset(attrs))
+        traits[ctype] = Trait(
+            attributes=frozenset(attrs), on={"entity_type": frozenset({ctype})}
+        )
     # Declared whether or not a caller named them: a test writing `p_max_pu`
     # needs it declared, and one passing `attributes=` is narrowing what a type
     # *carries* rather than shortening the record's vocabulary.
@@ -385,9 +388,13 @@ def schema(
         dimensions={
             d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))
             for d, t in declared.items()
-        },
+        }
+        # A plain string rather than an enum: the tests name types freely, and
+        # pinning the categories here would make every fixture that adds one
+        # declare it twice (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
+        | {"entity_type": Dimension(dtype=nw.String(), on=frozenset({"entity"}))},
         attributes=flat,
-        component_types=subscriptions,
+        traits=traits,
         partial=frozenset(partial) | {"entity", *coordinates},
     )
 

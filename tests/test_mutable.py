@@ -556,7 +556,7 @@ def test_resolve_types_rejects_a_name_no_layer_declares(staged):
 def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
     """`remove` then `add` under another type collapses to the later op.
 
-    The staged entity rows are keyed without `component_type`, so one name has
+    The staged entity rows are keyed without `entity_type`, so one name has
     one answer. Partitioning on the type as well would keep both the Generator
     tombstone and the Bus member row, and commit would write a record whose two
     types share a name - the collision `write_record` rejects.
@@ -624,6 +624,32 @@ def test_add_keeps_an_undeclared_columns_own_type(staged):
     members = staged.components[GEN].collect().to_native().to_pandas()
     capex = members.loc[members["entity"] == "NewSolar", "capex"]
     assert capex.tolist() == [1234.5], "the float survives, rather than becoming text"
+
+
+def test_add_fills_a_column_an_earlier_add_created(staged):
+    """A frame omitting a column another `add` introduced stages it as NULL.
+
+    The staging table gains a column as it is first seen, so a later `add` of
+    a different type meets columns its own frame never carried - and an
+    earlier one meets those the later `add` introduces. Both are NULL rather
+    than an error, which is what the column list being the *table's* rather
+    than the frame's has to mean.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "capex": 1234.5}]))
+    # No `capex`, and an `opex` the first frame had no column for.
+    staged.add(GEN, pd.DataFrame([{"entity": "NewWind", "opex": 7.0}]))
+
+    members = (
+        staged.components[GEN].collect().to_native().to_pandas().set_index("entity")
+    )
+    assert pd.isna(members.loc["NewWind", "capex"]), "not carried, so NULL"
+    assert pd.isna(members.loc["NewSolar", "opex"]), "column created after it was added"
+    assert members.loc["NewSolar", "capex"] == 1234.5
+    assert members.loc["NewWind", "opex"] == 7.0
 
 
 def test_remove_tombstones_without_enumerating_attributes(staged, root):
@@ -1001,7 +1027,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
     """One frame spanning types is one call, keyed by name alone.
 
     `Tool.results` hands over one frame per attribute carrying every type's rows; with names unique there is no type to stamp, so the frame needs no
-    `component_type` and nothing can be silently relabelled.
+    `entity_type` and nothing can be silently relabelled.
 
     Notes
     -----
@@ -1033,7 +1059,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
         .to_pandas()
     )
     assert set(got["entity"]) == {"Manchester Wind", "0"}
-    assert "component_type" not in got.columns
+    assert "entity_type" not in got.columns
 
 
 def test_a_frame_carrying_component_type_is_rejected(staged):
@@ -1044,9 +1070,9 @@ def test_a_frame_carrying_component_type_is_rejected(staged):
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
     frame = pd.DataFrame(
-        [{"component_type": GEN, "entity": "Manchester Wind", "value": 1.0}]
+        [{"entity_type": GEN, "entity": "Manchester Wind", "value": 1.0}]
     )
-    with pytest.raises(ValueError, match="component_type"):
+    with pytest.raises(ValueError, match="entity_type"):
         staged.set("p_max_pu", frame)
 
 

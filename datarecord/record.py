@@ -173,7 +173,7 @@ class Record(Protocol):
         """Long input frames, keyed by attribute name - one per file.
 
         Not by component type: one `inputs/p_max_pu.parquet` holds every type's
-        rows, keyed by `entity` alone. A row carries no `component_type` - entities
+        rows, keyed by `entity` alone. A row carries no `entity_type` - entities
         are unique across every type - so a reader wanting one type joins `components`
         on `name`.
 

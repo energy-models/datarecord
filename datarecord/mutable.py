@@ -171,11 +171,6 @@ def _null_safe_on(
     )
 
 
-def _without(columns: Sequence[str], drop: Sequence[str]) -> list[Expression]:
-    """`columns` minus `drop`, as projectable column expressions."""
-    return [col(c) for c in columns if c not in drop]
-
-
 def _latest_per(rel: DuckDBPyRelation, key: Iterable[str]) -> DuckDBPyRelation:
     """`rel`'s newest row per `key`, by `_seq` - last write wins.
 
@@ -522,9 +517,7 @@ class WorkingRecord:
         staged = self._collapsed_entities(kind)
         if staged is None:
             return base
-        types = tuple(
-            r[0] for r in staged.project("component_type").distinct().fetchall()
-        )
+        types = tuple(r[0] for r in staged.project("entity_type").distinct().fetchall())
         keys = tuple(dict.fromkeys((*base, *types)))
         return LazyFrames(keys, lambda ctype: self._entity_frame(kind, ctype))
 
@@ -539,7 +532,7 @@ class WorkingRecord:
         base = self._base_of(kind)
         staged = self._collapsed_entities(kind)
         assert staged is not None
-        mine = staged.filter(col("component_type") == lit(ctype))
+        mine = staged.filter(col("entity_type") == lit(ctype))
         if ctype not in base:
             return nw.from_native(mine.filter(~col("deleted")))
 
@@ -567,17 +560,17 @@ class WorkingRecord:
     ) -> DuckDBPyRelation:
         """`staged` over `base` on the entity key, tombstones removed.
 
-        `component_type` and `deleted` are supplied whatever the base carried:
+        `entity_type` and `deleted` are supplied whatever the base carried:
         a resolved frame drops them (the type is the key it was looked up by)
         while `write_record` needs them back, so one shape serves both.
         """
-        drop = ("component_type", "deleted")
-        b = (
-            base.project(*_without(base.columns, drop))
-            if any(c in base.columns for c in drop)
-            else base
-        )
-        s = staged.project(*_without(staged.columns, drop), col("deleted"))
+        drop = ("entity_type", "deleted")
+        # Filtered against `base`'s own columns, since DuckDB rejects excluding
+        # one the relation does not have: a resolved frame carries neither of
+        # these where a `write_record` source carries both. `staged` always
+        # carries them, having just been filtered on `entity_type`.
+        b = base.project(star(exclude=[c for c in drop if c in base.columns]))
+        s = staged.project(star(exclude=list(drop)), col("deleted"))
         # The staged row wins on the entity key, so the base keeps only what the
         # staging area does not restate; the two are then unioned by name, since
         # a staged member row carries whatever columns the caller passed.
@@ -585,7 +578,7 @@ class WorkingRecord:
         live = s.filter(~col("deleted")).project(star(exclude=["deleted"]))
         return union_all_by_name([kept, live], self.con).project(
             star(),
-            lit(ctype).alias("component_type"),
+            lit(ctype).alias("entity_type"),
             lit(False).alias("deleted"),  # noqa: FBT003
         )
 
@@ -886,7 +879,7 @@ class WorkingRecord:
         return [str(n) for n in frame["entity"].to_list()]
 
     def _name_types(self) -> nw.LazyFrame | None:
-        """`(name, component_type)` over everything this record resolves.
+        """`(name, entity_type)` over everything this record resolves.
 
         Notes
         -----
@@ -895,7 +888,7 @@ class WorkingRecord:
         parts = [
             self.components[ctype]
             .select("entity")
-            .with_columns(component_type=nw.lit(ctype))
+            .with_columns(entity_type=nw.lit(ctype))
             for ctype in self.components
         ]
         if not parts:
@@ -921,12 +914,12 @@ class WorkingRecord:
             lazy.select("entity")
             .unique("entity")
             .join(
-                known.filter(nw.col("component_type") != ctype),
+                known.filter(nw.col("entity_type") != ctype),
                 on="entity",
                 how="inner",
             )
-            .unique(["entity", "component_type"])
-            .select("entity", "component_type")  # the order `iter_rows` unpacks
+            .unique(["entity", "entity_type"])
+            .select("entity", "entity_type")  # the order `iter_rows` unpacks
             .collect()
         )
         if not clashing.is_empty():
@@ -958,7 +951,7 @@ class WorkingRecord:
         else:
             matched = (
                 known.filter(nw.col("entity").is_in(wanted))
-                .select("entity", "component_type")
+                .select("entity", "entity_type")
                 .collect()
             )
             found = {str(n): str(t) for n, t in matched.iter_rows()}
@@ -1011,11 +1004,15 @@ class WorkingRecord:
         """
         who = f" (for {name!r})" if name is not None else ""
         # The type's existence and its vocabulary are separate questions once
-        # attributes are declared record-wide: `component_types` answers the
+        # attributes are declared record-wide: `entity_types` answers the
         # first, `attributes_for` the second, and a type carrying nothing is
-        # not the same as a type the schema never declared.
-        if ctype not in self.schema.component_types:
-            msg = f"the schema declares no component type {ctype!r}{who}"
+        # not the same as a type the schema never declared. An empty
+        # `entity_types` is no vocabulary rather than an empty one - the axis
+        # is undeclared or a plain string - so there is nothing to check
+        # against and any label passes.
+        known = self.schema.entity_types
+        if known and ctype not in known:
+            msg = f"the schema declares no entity type {ctype!r}{who}"
             raise KeyError(msg)
         declared = self.schema.attributes_for(ctype)
         if attribute not in declared:
@@ -1047,7 +1044,7 @@ class WorkingRecord:
         of the current value* rather than a value, so it reads before it stages
         and two such calls compose.
 
-        No `component_type` parameter: the type is looked up from the entity,
+        No `entity_type` parameter: the type is looked up from the entity,
         so one call may span types and each is validated against its own
         type's spec. `entity=None` means every component whose type
         declares `attribute`.
@@ -1081,9 +1078,9 @@ class WorkingRecord:
         is_long_frame = _is_frame(value) and _series_index(value) is None
         if is_long_frame:
             lazy = _incoming(value, self.con)
-            if "component_type" in lazy.collect_schema().names():
+            if "entity_type" in lazy.collect_schema().names():
                 msg = (
-                    f"`set({attribute!r}, <frame>)` was given a `component_type` "
+                    f"`set({attribute!r}, <frame>)` was given a `entity_type` "
                     f"column; names are unique across every type, so an attribute row "
                     f"carries no type and the column would be ignored (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
                 )
@@ -1146,13 +1143,23 @@ class WorkingRecord:
     def _names_declaring(self, attribute: str) -> list[str]:
         """Every resolved name whose type declares `attribute` - `names=None`.
 
+        The types come from the record rather than from `types_declaring` where
+        the schema declares no entity-type labels: the axis is then a plain
+        string and its labels are data, so what types exist is a question only
+        the resolved components can answer.
+
         Notes
         -----
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
+        declared = self.schema.types_declaring(attribute)
+        if not self.schema.entity_types:
+            declared = frozenset(
+                c for c in self.components if attribute in self.schema.attributes_for(c)
+            )
         return [
             name
-            for ctype in sorted(self.schema.types_declaring(attribute))
+            for ctype in sorted(declared)
             if ctype in self.components
             for name in self._resolved_names(ctype)
         ]
@@ -1374,9 +1381,8 @@ class WorkingRecord:
             c for c in columns if c not in varying and c not in ports and c != "role"
         ]
 
-        _add = lazy.to_native()  # noqa: F841 - bound by replacement scan below
+        rel = _as_relation(lazy, self.con)
         table = self._ensure("components")
-        dim_cols = ""
         extra = [c for c in member_cols if c != "entity" and c not in self.schema.dims]
         # The staging table starts with the key columns only (`_COLUMNS`); a
         # wide frame's attribute columns are whatever the caller passed, so
@@ -1385,8 +1391,8 @@ class WorkingRecord:
         # The frame's own type where the schema declares none: `VARCHAR` would
         # take a float column and store `'1234.5'`, which then reads back as
         # text for every consumer of the member frame.
-        incoming = dict(zip(_add.columns, (str(t) for t in _add.types), strict=True))
-        duck_types = DuckTypes(_add)
+        incoming = dict(zip(rel.columns, (str(t) for t in rel.types), strict=True))
+        duck_types = DuckTypes(rel)
         for c in extra:
             if c.lower() in existing:
                 continue
@@ -1394,14 +1400,33 @@ class WorkingRecord:
             dtype = duck_types(spec_dtype) if spec_dtype else incoming[c]
             self.con.execute(f'ALTER TABLE {table} ADD COLUMN "{c}" {dtype}')
             existing.add(c.lower())
-        extra_sql = "".join(f', "{c}"' for c in extra)
-        self.con.execute(
-            f"INSERT INTO {table} BY NAME "
-            f"SELECT $ctype AS component_type, entity"
-            f"{', ' + dim_cols if dim_cols else ''}"
-            f"{extra_sql}, false AS deleted, {next(_SEQ)} AS _seq FROM _add",
-            {"ctype": ctype},
-        )
+
+        # Projected in the table's own column order, `insert_into` being
+        # positional: `ALTER TABLE` appends each extra as it is first seen, so
+        # the order is the table's to state rather than this call's. A column
+        # an earlier `add` created that this frame does not carry is NULL,
+        # typed from the table so the insert needs no coercion.
+        staging = self.con.table(table)
+        supplied = {
+            "entity_type": lit(ctype),
+            "deleted": lit(False),  # noqa: FBT003
+            "_seq": lit(next(_SEQ)),
+        }
+        carried = {c.lower() for c in rel.columns}
+
+        def column(name: str, dtype: str) -> Expression:
+            if name in supplied:
+                return supplied[name].alias(name)
+            if name.lower() in carried:
+                return col(name)
+            return lit(None).cast(dtype).alias(name)
+
+        rel.project(
+            *(
+                column(c, str(t))
+                for c, t in zip(staging.columns, staging.types, strict=True)
+            )
+        ).insert_into(table)
         for attribute in varying:
             # Always `inputs`: `add` declares components, and a component's
             # attribute values are inputs whatever a later solve produces.
@@ -1478,7 +1503,7 @@ class WorkingRecord:
         """
         self._stage_tombstones(
             "components",
-            ("component_type", "entity"),
+            ("entity_type", "entity"),
             [[ctype, name] for name in names],
         )
 
@@ -1507,7 +1532,7 @@ class WorkingRecord:
         coordinate_sql = ", ".join(f'"{c}"' for c in coordinates)
         self.con.execute(
             f"INSERT INTO {table} BY NAME "
-            f"SELECT $ctype AS component_type, {coordinate_sql}{extra_sql}, "
+            f"SELECT $ctype AS entity_type, {coordinate_sql}{extra_sql}, "
             f"false AS deleted, {next(_SEQ)} AS _seq FROM _rows",
             {"ctype": ctype},
         )
@@ -1525,7 +1550,7 @@ class WorkingRecord:
         """
         self._stage_tombstones(
             group,
-            ("component_type", *self.schema.group_coordinates(group)),
+            ("entity_type", *self.schema.group_coordinates(group)),
             [[ctype, *key] for key in keys],
         )
 
@@ -1584,17 +1609,17 @@ class WorkingRecord:
         # `tombstones` spans every entity kind: a `disconnect` is a deletion
         # like a `remove`, so counting only components would report a staged
         # one as nothing pending (https://energy-models.github.io/datarecord/design/working-record/#pending).
-        dead = counts("components", "component_type", deleted=True)
+        dead = counts("components", "entity_type", deleted=True)
         groups = {}
         for group in self.schema.groups:
-            for ctype, n in counts(group, "component_type", deleted=True).items():
+            for ctype, n in counts(group, "entity_type", deleted=True).items():
                 dead[ctype] = dead.get(ctype, 0) + n
-            live = counts(group, "component_type", deleted=False)
+            live = counts(group, "entity_type", deleted=False)
             if live:
                 groups[group] = live
         return Pending(
             attributes=attribute_counts(),
-            components=counts("components", "component_type", deleted=False),
+            components=counts("components", "entity_type", deleted=False),
             groups=groups,
             tombstones=dead,
         )
@@ -1670,7 +1695,7 @@ class WorkingRecord:
     def _collapsed_entities(self, kind: str) -> DuckDBPyRelation | None:
         """Staged member or connection rows, last-write-wins per key.
 
-        The entity key, so no `component_type` - partitioning on it too
+        The entity key, so no `entity_type` - partitioning on it too
         would keep both a tombstone and a later `add` under a different type.
 
         Notes
@@ -1697,16 +1722,14 @@ class WorkingRecord:
             return EMPTY
         types = tuple(
             r[0]
-            for r in rel.project("component_type")
+            for r in rel.project("entity_type")
             .distinct()
-            .order("component_type")
+            .order("entity_type")
             .fetchall()
         )
         return LazyFrames(
             types,
-            lambda ctype: nw.from_native(
-                rel.filter(col("component_type") == lit(ctype))
-            ),
+            lambda ctype: nw.from_native(rel.filter(col("entity_type") == lit(ctype))),
         )
 
     def _staged_attributes(self) -> Frames:
@@ -1735,7 +1758,7 @@ class WorkingRecord:
     def _writable_entities(self, kind: str) -> Frames:
         """The resolved entity frames, in the shape `write_record` persists.
 
-        A resolved frame drops `component_type` (the type is the key it was
+        A resolved frame drops `entity_type` (the type is the key it was
         looked up by) while a layer's file carries it, so it is added
         back for any type the staging area did not already rebuild.
 
@@ -1747,9 +1770,9 @@ class WorkingRecord:
 
         def build(ctype: str) -> nw.LazyFrame:
             frame = frames[ctype]
-            if "component_type" in frame.collect_schema().names():
+            if "entity_type" in frame.collect_schema().names():
                 return frame
-            return frame.with_columns(component_type=nw.lit(ctype))
+            return frame.with_columns(entity_type=nw.lit(ctype))
 
         return LazyFrames(tuple(frames), build)
 
@@ -1890,7 +1913,7 @@ def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
 
 def _component_columns(schema: Schema) -> dict[str, nw.dtypes.DType]:  # noqa: ARG001 - shape is fixed
     return {
-        "component_type": nw.String(),
+        "entity_type": nw.String(),
         "entity": nw.String(),
         "deleted": nw.Boolean(),
         "_seq": nw.Int64(),
@@ -1909,7 +1932,7 @@ def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
     return {
-        "component_type": nw.String(),
+        "entity_type": nw.String(),
         **{c: _column_type(schema, c) for c in schema.group_coordinates(group)},
         "role": nw.String(),
         "deleted": nw.Boolean(),

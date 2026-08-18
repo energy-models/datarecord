@@ -54,7 +54,7 @@ def _root(con) -> Revision:
         layer,
         "efficiency",
         [
-            {"component_type": PROCESS, "entity": "steel_dri", "bus": b, "value": v}
+            {"entity_type": PROCESS, "entity": "steel_dri", "bus": b, "value": v}
             for b, v in (("h2_north", 2.1), ("iron_ore", 1.6), ("dri", 1.0))
         ],
     )
@@ -87,7 +87,7 @@ def test_patch_overrides_one_connection_only(con, base_uri):
         "efficiency",
         [
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "bus": "h2_north",
                 "value": 9.9,
@@ -118,7 +118,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
         "efficiency",
         [
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "bus": "elec_north",
                 "value": 0.4,
@@ -133,7 +133,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
         "efficiency",
         [
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "bus": "dri",
                 "value": 7.7,
@@ -164,7 +164,7 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
     write_input(
         layer_dir(root.id),
         "p_nom",
-        [{"component_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
+        [{"entity_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
     )
     root.materialise()
 
@@ -172,7 +172,7 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
     write_input(
         layer_dir(child.id),
         "p_nom",
-        [{"component_type": PROCESS, "entity": "steel_dri", "value": 250.0}],
+        [{"entity_type": PROCESS, "entity": "steel_dri", "value": 250.0}],
     )
 
     df = relation(child, "p_nom").df()
@@ -200,20 +200,20 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
         [
             # one static row, and a two-snapshot series for the same connection
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "bus": "h2_north",
                 "value": 2.0,
             },
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "bus": "h2_north",
                 "snapshot": "2030-01-01",
                 "value": 2.5,
             },
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "bus": "h2_north",
                 "snapshot": "2030-01-02",

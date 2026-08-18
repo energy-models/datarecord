@@ -54,7 +54,7 @@ A row names what the value belongs to, the coordinate it sits at, and the value 
 So `efficiency` over the `connection` group carries `entity | bus`, `flow` over a `corridor` carries `from | to`, and `objective_weighting` over `snapshot` alone carries no entity column at all — an all-NULL `entity` would be a column claiming a component the value has none of.
 `union_by_name` is what lets the fold union files of differing shape, supplying NULL for a coordinate a given file does not carry.
 
-There is **no `component_type` column** in that row, and none in the mapping's key either: `attributes["p_max_pu"]` holds every type's `p_max_pu` together, since an `entity` already identifies a component on its own ([what a data record is](index.md#what-a-data-record-is)).
+There is **no `entity_type` column** in that row, and none in the mapping's key either: `attributes["p_max_pu"]` holds every type's `p_max_pu` together, since an `entity` already identifies a component on its own ([what a data record is](index.md#what-a-data-record-is)).
 A consumer wanting one type's rows joins `components` on `entity` — the entity frames are what say which type an entity is.
 
 **`breakpoint`** is NULL for the ordinary case. It carries the abscissa of a piecewise-linear value: a curve is one row per breakpoint, `value` the ordinate at each. Convexity is never checked or recorded — that is a framework's judgement.

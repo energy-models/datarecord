@@ -5,7 +5,7 @@ that maps a record UUID to its record location. The connection is passed as a
 parameter throughout, never a module global, so each test can open its own
 `:memory:` connection.
 
-Nothing here knows about a modelling framework: `component_type` and
+Nothing here knows about a modelling framework: `entity_type` and
 `attribute` are plain `VARCHAR`, so a record whose types no tool recognises
 still reads, and it is a tool's `verify` that reports it.
 

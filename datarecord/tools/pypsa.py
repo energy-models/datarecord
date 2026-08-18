@@ -30,7 +30,7 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all
 from datarecord.record import EMPTY, Flags, Frames, LazyFrames, Record
-from datarecord.schema import AttributeSpec, ComponentType, Dimension, Group
+from datarecord.schema import AttributeSpec, Dimension, Group, Trait
 from datarecord.schema import Schema as RecordSchema
 from datarecord.tools.base import (
     Requirements,
@@ -49,6 +49,7 @@ if TYPE_CHECKING:
 # single-period network.
 SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
 ENTITY, BUS, CONNECTION = "entity", "bus", "connection"
+ENTITY_TYPE = "entity_type"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
 
 # PyPSA's `defaults["type"]` vocabulary, mapped to the narwhals types the long
@@ -834,7 +835,7 @@ def _long_rows(
     `_as_long` already emits the dim columns and `value`; this adds the
     columns the record's schema fixes and PyPSA has no notion of - `attribute`,
     and the NULL `breakpoint` that marks the value a scalar. No
-    `component_type`, and no `bus`: that is the `connection` group's
+    `entity_type`, and no `bus`: that is the `connection` group's
     coordinate, so it belongs to the rows of an attribute addressed by that
     group and `_per_port_long_rows` is what fills it.
 
@@ -968,7 +969,7 @@ class PyPSATool(Tool):
         declared = record.schema
         for ctype in sorted(record.components):
             # A type PyPSA has no registry entry for. Reported rather than
-            # raised: the record layer stores `component_type` as a plain
+            # raised: the record layer stores `entity_type` as a plain
             # string, so an unknown type reads back fine and it is this
             # tool's business that it cannot be built.
             if ctype not in known:
@@ -1090,7 +1091,7 @@ class PyPSATool(Tool):
         Keyed by attribute, matching `outputs/<attr>.parquet`: every component
         type's rows for one attribute are concatenated into one frame, exactly as
         `attributes` presents `inputs/`. The union needs no
-        `component_type` to tell the arms apart. Which attributes count as
+        `entity_type` to tell the arms apart. Which attributes count as
         results comes from PyPSA's registry, so an upgrade that adds one is
         picked up.
 
@@ -1200,7 +1201,7 @@ class _NetworkSource:
         # one the fold owns once across every scenario.
         varying_dims = (SNAPSHOT, SCENARIO) if self.n.has_scenarios else (SNAPSHOT,)
         attributes: dict[str, AttributeSpec] = {}
-        component_types: dict[str, ComponentType] = {}
+        carries: dict[str, frozenset[str]] = {}
         for c in self.n.components:
             if not _exported(c):
                 continue
@@ -1241,7 +1242,15 @@ class _NetworkSource:
                 # per-type divergence the storage could not have honoured.
                 attributes.setdefault(stem, spec)
             if carried:
-                component_types[c.name] = ComponentType(attributes=frozenset(carried))
+                carries[c.name] = frozenset(carried)
+        # PyPSA's registry is per type - a `Line` has no `efficiency` - so every
+        # attribute is narrowed to the types that declare it, and none is left
+        # carried by all. One trait per type is the faithful translation of a
+        # registry that ships no trait vocabulary of its own (https://energy-models.github.io/datarecord/design/schema/#traits).
+        traits = {
+            ctype: Trait(attributes=carried, on={ENTITY_TYPE: frozenset({ctype})})
+            for ctype, carried in carries.items()
+        }
         return RecordSchema(
             dimensions={
                 SNAPSHOT: Dimension(
@@ -1253,12 +1262,8 @@ class _NetworkSource:
                     unit="year",
                     description="An investment period, labelled by its year.",
                 ),
-                # `scenario` keys both entity tables: a network's components
-                # are the same across scenarios, but a layer may still patch
-                # one scenario's values (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys).
                 SCENARIO: Dimension(
                     dtype=nw.String(),
-                    keys=frozenset({"component", "connection"}),
                     description="One realisation of a stochastic problem.",
                 ),
                 # The two axes the `connection` group is over. `entity` is the
@@ -1266,6 +1271,14 @@ class _NetworkSource:
                 # ordinary dim, one coordinate of one group.
                 ENTITY: Dimension(dtype=nw.String(), description="A component."),
                 BUS: Dimension(dtype=nw.String(), description="A node of the network."),
+                # The kinds a component may be, as an axis classifying `entity`:
+                # the labels are PyPSA's registry, so an enum rather than a
+                # bare string, and a type outside it is rejected on write.
+                ENTITY_TYPE: Dimension(
+                    dtype=nw.Enum(sorted(carries)),
+                    on=frozenset({ENTITY}),
+                    description="What kind of component an entity is.",
+                ),
             },
             groups={
                 CONNECTION: Group(
@@ -1274,7 +1287,7 @@ class _NetworkSource:
                 )
             },
             attributes=attributes,
-            component_types=component_types,
+            traits=traits,
             # `entity` and the `connection` group's coordinates are patchable
             # value by value: a layer may set one generator's `p_nom`, or one
             # connection's `efficiency`, without restating every other's. That
@@ -1468,7 +1481,7 @@ class _NetworkSource:
     def _tagged(frame: pd.DataFrame, ctype: str) -> pd.DataFrame:
         """A `dims/` frame with the columns the fold keys and scopes by.
 
-        `component_type` because one owner map covers every type; `deleted`
+        `entity_type` because one owner map covers every type; `deleted`
         because the fold reads the tombstone column from the same file.
 
         No `scenario`: an entity exists or it does not, so nothing scopes
@@ -1484,7 +1497,7 @@ class _NetworkSource:
         """
         if SCENARIO in frame.columns:
             frame = frame.drop(columns=[SCENARIO]).drop_duplicates(subset=["entity"])
-        frame = frame.assign(component_type=ctype)
+        frame = frame.assign(entity_type=ctype)
         if "deleted" not in frame.columns:
             frame["deleted"] = False
         return frame

@@ -100,7 +100,7 @@ def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
 def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     """A type outside PyPSA's registry is reported by `verify`, not raised in the fold.
 
-    The record layer stores `component_type` as a plain `VARCHAR` - the
+    The record layer stores `entity_type` as a plain `VARCHAR` - the
     vocabulary belongs to a framework, and the record layer knows none - so an
     unknown type reads back fine and it is this tool's business that it cannot
     be built. `Requirements.component_types` is what carries it.
@@ -158,7 +158,7 @@ def _with_schema(revision, **kwargs) -> None:
         update={
             "attributes": was.attributes,
             "groups": was.groups,
-            "component_types": was.component_types,
+            "traits": was.traits,
             "meta": was.meta,
         }
     )
@@ -373,9 +373,9 @@ def test_results_extracts_long_form_outputs(single_revision):
     assert isinstance(results["p"], nw.LazyFrame)
     p = results["p"].collect()
     # The long schema's columns (https://energy-models.github.io/datarecord/design/record/), so the write path can persist it as-is -
-    # and no `component_type`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+    # and no `entity_type`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
     assert {"entity", "snapshot", "scenario", "period", "value"} <= set(p.columns)
-    assert "component_type" not in p.columns
+    assert "entity_type" not in p.columns
     assert set(p["attribute"].to_list()) == {"p"}
     # Series output: one row per (name, snapshot), for the Generator rows -
     # selected by name, since the frame no longer carries the type.

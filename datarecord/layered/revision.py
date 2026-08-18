@@ -231,7 +231,7 @@ class LayeredRecord:
 
     @cached_property
     def components(self) -> LazyFrames:
-        types = tuple(sorted(self.node_cache.component_types()))
+        types = tuple(sorted(self.node_cache.entity_types()))
         return LazyFrames(types, self._component_frame)
 
     @cached_property
@@ -247,7 +247,7 @@ class LayeredRecord:
         }
 
     def _group_frames(self, group: str) -> LazyFrames:
-        rows = self.node_cache.group(group).project("component_type").distinct()
+        rows = self.node_cache.group(group).project("entity_type").distinct()
         types = tuple(sorted(r[0] for r in rows.fetchall()))
         return LazyFrames(types, lambda ctype: self._group_frame(group, ctype))
 

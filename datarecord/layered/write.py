@@ -141,7 +141,7 @@ def write_record(
                         # compares arrow schemas.
                         .select(
                             nw.col("entity").cast(nw.String()),
-                            component_type=nw.lit(key).cast(nw.String()),
+                            entity_type=nw.lit(key).cast(nw.String()),
                         )
                     )
                 _write_frame(
@@ -233,7 +233,7 @@ def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) ->
     declares - where the frames themselves may disagree, an all-NULL `scenario`
     landing as arrow `null` for one type and `string` for another.
 
-    `component_type` is a column of this axis and of nothing else, which is
+    `entity_type` is a column of this axis and of nothing else, which is
     what makes `attributes_for` reachable from an entity alone.
 
     Notes
@@ -259,7 +259,7 @@ def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) ->
         else lit(False)  # noqa: FBT003
     )
     rel.project(
-        col("entity"), ctype.alias("component_type"), deleted.alias("deleted")
+        col("entity"), ctype.alias("entity_type"), deleted.alias("deleted")
     ).to_parquet(f"{staging}dims/entity.parquet")
 
 
@@ -273,7 +273,7 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
     Parameters
     ----------
     tagged
-        One frame per component type, each `(name, component_type)`, on a common
+        One frame per component type, each `(name, entity_type)`, on a common
         backend so `nw.concat` accepts them.
 
     Raises
@@ -287,17 +287,17 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
     """
     if len(tagged) < 2:  # nothing to collide with
         return
-    pairs = nw.concat(tagged, how="vertical").unique(["entity", "component_type"])
+    pairs = nw.concat(tagged, how="vertical").unique(["entity", "entity_type"])
     clashing = (
         pairs.join(
             pairs.group_by("entity")
-            .agg(nw.col("component_type").n_unique().alias("_types"))
+            .agg(nw.col("entity_type").n_unique().alias("_types"))
             .filter(nw.col("_types") > 1)
             .select("entity"),
             on="entity",
             how="inner",
         )
-        .select("entity", "component_type")  # the order `iter_rows` unpacks
+        .select("entity", "entity_type")  # the order `iter_rows` unpacks
         .collect()
     )
     if not clashing.is_empty():
