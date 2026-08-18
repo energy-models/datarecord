@@ -143,5 +143,5 @@ nav:
   - Contributing: contributing.md
   - Changelog: CHANGELOG.md
   - Reference:
-    - reference/index.md
-    - AGENTS.md
+      - reference/index.md
+      - AGENTS.md

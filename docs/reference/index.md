@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Reference
 
 Here you will find the AGENTS.md we use and the Python API generated from the docstrings.
