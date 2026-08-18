@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from datarecord import Revision
 from datarecord.duck import layer_dir
+from datarecord.mutable import NewChild, WorkingRecord
 from datarecord.schema import AttributeSpec, Dimension, Schema
 from tests.fixtures import write_axis, write_schema
 
@@ -114,6 +115,14 @@ def test_a_mapping_cycle_is_refused():
 # -- through a real record --------------------------------------------------
 
 
+def _budget_schema() -> Schema:
+    """The mapping chain, with an attribute addressed by `country` alone."""
+    return _schema(
+        attributes={"co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})},
+        partial=frozenset({"country"}),
+    )
+
+
 def test_a_mapping_folds_as_an_ordinary_axis(con, base_uri):
     """The fold learns nothing new: a mapping has an axis file like any dim.
 
@@ -121,13 +130,7 @@ def test_a_mapping_folds_as_an_ordinary_axis(con, base_uri):
     bus column could hold.
     """
     revision = Revision.create(con)
-    write_schema(
-        _schema(
-            attributes={
-                "co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})
-            },
-        )
-    )
+    write_schema(_budget_schema())
     write_axis(layer_dir(revision.id), "bus", [{"bus": "north", "state": "lower"}])
     write_axis(layer_dir(revision.id), "state", [{"state": "lower", "country": "DE"}])
     write_axis(
@@ -140,6 +143,166 @@ def test_a_mapping_folds_as_an_ordinary_axis(con, base_uri):
     # time: bus -> state here, state -> country next.
     assert axes["bus"].df()["state"].tolist() == ["lower"]
     assert axes["state"].df()["country"].tolist() == ["DE"]
+
+
+def test_an_attribute_addressed_by_a_mapping_alone_is_a_column_of_its_axis(
+    con, base_uri
+):
+    """`co2_budget` is a property of the country, so it rides on the axis file.
+
+    Not `inputs/co2_budget.parquet`: one addressing coordinate is a column on
+    that thing's own table, and for a mapping that table is its own axis file.
+    """
+    revision = Revision.create(con)
+    schema = _budget_schema()
+    write_schema(schema)
+    write_axis(
+        layer_dir(revision.id),
+        "country",
+        [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
+    )
+
+    assert schema.attributes_on("country") == ("co2_budget",)
+    axis = revision.node_cache.dims.axes["country"].df()
+    assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 40.0, "FR": 55.0}
+    assert "co2_budget" not in revision.record.attributes, (
+        "an axis-file column is no long frame"
+    )
+
+
+def test_setting_a_mapping_addressed_attribute_stages_an_axis_row(con, base_uri):
+    """`set` states a value for a label the axis already has.
+
+    The staged row carries the label and the column, so a read with pending
+    edits answers the new value while every untouched label keeps the base's.
+    """
+    revision = Revision.create(con)
+    write_schema(_budget_schema())
+    write_axis(
+        layer_dir(revision.id),
+        "country",
+        [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
+    )
+
+    staged = WorkingRecord(revision.record, con)
+    staged.set("co2_budget", {"DE": 12.0})
+
+    frame = staged.dims["country"].collect().to_native()
+    got = dict(zip(frame["country"].to_pylist(), frame["co2_budget"].to_pylist()))
+    assert got == {"DE": 12.0, "FR": 55.0}, (
+        "FR is untouched, so it keeps the base value"
+    )
+
+
+def test_a_child_layer_holds_only_the_axis_labels_it_touched(con, base_uri):
+    """With the axis `partial`, a patch layer's `dims/` is the edits alone.
+
+    The fold resolves every untouched label from the parent, which is what
+    `partial` buys - and what it costs is a wider owner map, so an axis is only
+    declared so where a layer really does patch label by label.
+    """
+    revision = Revision.create(con)
+    write_schema(_budget_schema())
+    write_axis(
+        layer_dir(revision.id),
+        "country",
+        [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
+    )
+
+    # Deliberately not materialised: a patch layer resolves over its parent's
+    # raw layer, so no node cache is required for the fold to see both labels.
+    staged = WorkingRecord(revision.record, con)
+    staged.set("co2_budget", {"DE": 12.0})
+    patch = staged.staged_only().dims["country"].collect().to_native()
+    assert patch["country"].to_pylist() == ["DE"], "only the touched label"
+
+    child = staged.commit(NewChild(revision))
+    axis = child.node_cache.dims.axes["country"].df()
+    resolved = dict(zip(axis["country"], axis["co2_budget"]))
+    assert resolved == {"DE": 12.0, "FR": 55.0}, "last writer wins per label"
+    assert axis["country"].tolist() == ["DE", "FR"], (
+        "axis order follows the layer that introduced each label"
+    )
+
+
+def test_a_child_layer_restates_an_axis_it_owns_whole(con, base_uri):
+    """Outside `partial`, touching an axis means carrying every label of it.
+
+    A layer holding the edited label alone would not leave the others stale, it
+    would remove them: the fold keys by the axis key, so the axis here is what
+    this layer says it is. That is the price of keeping `partial` small, and it
+    is bounded by the axis rather than paid by every read.
+    """
+    revision = Revision.create(con)
+    # `partial` left empty, unlike `_budget_schema`.
+    write_schema(
+        _schema(
+            attributes={
+                "co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})
+            }
+        )
+    )
+    write_axis(
+        layer_dir(revision.id),
+        "country",
+        [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
+    )
+
+    staged = WorkingRecord(revision.record, con)
+    staged.set("co2_budget", {"DE": 12.0})
+
+    patch = staged.staged_only().dims["country"].collect().to_native()
+    assert sorted(patch["country"].to_pylist()) == ["DE", "FR"], (
+        "the whole axis, not just the edited label"
+    )
+
+    child = staged.commit(NewChild(revision))
+    axis = child.node_cache.dims.axes["country"].df()
+    assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "FR": 55.0}, (
+        "FR survives because this layer carried it"
+    )
+
+
+def test_an_axis_resolves_over_an_unmaterialised_parent(con, base_uri):
+    """A node cache is an optimisation, so a fold without one answers the same.
+
+    `ancestry_to_read` keeps an unmaterialised ancestor in the ancestry, so the
+    dirs it is folded over must name that layer's raw `dims/` and not only the
+    `resolved/dims/` it has never written.
+    """
+    revision = Revision.create(con)
+    write_schema(_budget_schema())
+    write_axis(
+        layer_dir(revision.id), "country", [{"country": "DE"}, {"country": "FR"}]
+    )
+
+    child = revision.child()
+    write_axis(layer_dir(child.id), "country", [{"country": "NO"}])
+
+    labels = child.node_cache.dims.axes["country"].df()["country"].tolist()
+    assert labels == ["DE", "FR", "NO"], (
+        "the parent's labels survive, in the order it introduced them"
+    )
+
+
+def test_set_may_name_a_label_no_layer_has_written(con, base_uri):
+    """A mapping introduces the label, the fold keying per label rather than whole.
+
+    So this layer's axis file gains `NO` beside the `DE` it patches, and the
+    parent's `DE` row is what the fold resolves against.
+    """
+    revision = Revision.create(con)
+    write_schema(_budget_schema())
+    write_axis(
+        layer_dir(revision.id), "country", [{"country": "DE", "co2_budget": 40.0}]
+    )
+
+    staged = WorkingRecord(revision.record, con)
+    staged.set("co2_budget", {"DE": 12.0, "NO": 3.0})
+
+    child = staged.commit(NewChild(revision))
+    axis = child.node_cache.dims.axes["country"].df()
+    assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
 
 
 def test_a_mapping_axis_keeps_its_own_order(con, base_uri):

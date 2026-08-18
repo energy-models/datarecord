@@ -12,10 +12,11 @@ class WorkingRecord:
     def set(
         self,
         attribute: str,
-        value: Any,  # scalar | sequence | mapping | frame | nw.Expr
+        value: Any,  # scalar | sequence | mapping | series | frame | nw.Expr
         *,
         entity: Sequence[str] | None = None,
         kind: Literal["inputs", "outputs"] = "inputs",
+        indexed_by: str | None = None,  # what a series' index holds
         **dims: Any,
     ) -> None: ...
 
@@ -81,6 +82,8 @@ record.set("p_nom", 150.0, entity=["wind1", "wind2"])  # broadcast
 record.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per name
 record.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
 record.set("p_max_pu", frame, entity=["wind1"])  # long frame
+record.set("p_max_pu", series, entity=["wind1"], indexed_by="snapshot")  # a series
+record.set("icon", {"Generator": "turbine"})  # keyed by the type axis
 record.set("efficiency", 0.9, entity=["dc"], bus="north")  # a connection
 record.set("p_nom", 200.0, entity=["wind1"], scenario="high")  # scoped
 record.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
@@ -102,29 +105,38 @@ None has a parameter of its own, because which coordinates exist is declared rat
 A plain dim keyword scopes the edit and its absence means "every value" by the NULL broadcast rule, so `scenario="high"` patches one scenario.
 A group coordinate does not broadcast that way: omitting `bus` means "every connection of this entity" — [the group's rows](record.md#the-broadcast-rule), not the bus axis.
 
+**An attribute addressed by one axis alone is keyed by that axis's labels**, not by `entity`: `set("icon", {"Generator": "turbine"})` states one type's icon, and `set("co2_budget", 3.0)` reaches every country the axis has.
+The edit stages a row of [that axis's own file](format.md#where-a-value-lives) rather than a long row, so `entity=` is refused — an icon belongs to no component — and a sequence is refused too, there being no name list to align against.
+A label the axis does not have is refused rather than introduced: an axis row is a label's existence, which an axis file states. Where the axis's dtype is an `Enum` the vocabulary is the schema's, so an undeclared label is rejected without reading the axis at all.
+
 `kind` names the destination in the format's own terms — [the shape of an edit](#the-shape-of-an-edit) is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
 `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool [hands results back](#results-through-kindoutputs) to a record before it is committed.
 
-`value` takes five forms, because assigning one value to a group and assigning a different value to each member are equally ordinary and neither should require building a frame:
+`value` takes six forms, because assigning one value to a group and assigning a different value to each member are equally ordinary and neither should require building a frame:
 
-| `value`   | meaning                          | `entity`                                                                     |
-| --------- | -------------------------------- | ---------------------------------------------------------------------------- |
-| scalar    | broadcast to every name          | required unless `None` means all                                             |
-| sequence  | aligned positionally to `entity` | required, same length                                                        |
-| mapping   | keys are names                   | ignored if given, else the keys are the names                                |
-| frame     | supplies its own keys            | redundant                                                                    |
-| `nw.Expr` | a function of the current value  | selects what to [derive from](#an-nwexpr-value-derived-from-the-current-one) |
+| `value`   | meaning                              | `entity`                                                                     |
+| --------- | ------------------------------------ | ---------------------------------------------------------------------------- |
+| scalar    | broadcast to every name              | required unless `None` means all                                             |
+| sequence  | aligned positionally to `entity`     | required, same length                                                        |
+| mapping   | keys are names                       | ignored if given, else the keys are the names                                |
+| series    | index is names, or one axis's labels | names unless `indexed_by=` or the index's own name says otherwise            |
+| frame     | supplies its own keys                | redundant                                                                    |
+| `nw.Expr` | a function of the current value      | selects what to [derive from](#an-nwexpr-value-derived-from-the-current-one) |
 
 A frame "supplies its own keys" now means its `entity` column alone: a `entity_type` column is neither required nor read, since [the name determines the type](format.md#entity-is-unique-across-types).
 A frame carrying one is rejected rather than ignored — it says the writer believes the type is part of the key, and silently dropping the column would let a genuine disagreement through.
 
-The first three normalise to a long frame before staging, so there is one staging path.
+The first four normalise to a long frame before staging, so there is one staging path.
 A length mismatch between a sequence and `entity` is an error at the call, not a silently truncated edit.
 
 Every form is checked against [the components the record resolves](#validation), the frame form included: "supplies its own keys" decides where the names come from, not whether they have to exist.
 
-A one-dimensional labelled series is genuinely ambiguous: its index may hold names or axis labels.
-Index dtype does not settle it, since an axis label may be a string like a name, so the tie is broken by membership — an index whose labels are all resolved axis values is a series, otherwise a mapping over names — and an index matching both is rejected rather than guessed.
+A one-dimensional labelled series is ambiguous: its index may hold names or axis labels, and neither its dtype nor its values settle it, an axis label being a string like a name.
+**The caller says which** — `indexed_by="snapshot"`, or the series' own `index.name` where it names a coordinate of the attribute, a caller who built the series from a named index having said it already.
+An index that says neither holds names.
+
+Never inferred from the labels themselves: testing them against the axis would make one call mean different things in two records — a scenario labelled `wind1` would silently capture a series meant per component — and a partial overlap would pick a reading without saying so.
+An unnamed index of timestamps is therefore read as names and fails the [member check](#validation), which is the loud version of the same mistake.
 
 `entity=None` means every component of that type the record currently resolves, which is a read, so it includes earlier pending edits.
 
@@ -136,7 +148,7 @@ record.set("p_max_pu", nw.col("value").clip(upper=0.9), entity=["wind1"])
 ```
 
 A fifth `value` form rather than a second method.
-Nothing else a caller passes is an `nw.Expr`, so the dispatch is unambiguous — unlike the series-versus-mapping tie [`set`](#set) has to break by membership.
+Nothing else a caller passes is an `nw.Expr`, so the dispatch is unambiguous — unlike the series-versus-mapping tie, which [`set`](#set) has the caller settle rather than guessing at.
 
 What it does differently is read before it stages:
 
@@ -295,6 +307,15 @@ A `NewChild` writes **only the edits** — that is what a patch layer is, and th
 A `Directory` writes **the resolved result**, since there is no parent to resolve against.
 Both go through [`write_record`](writing.md), which is possible because each reading is presented as a `Record` — the one place the protocol's several implementations earn it twice over.
 
+An edited axis follows [`partial`](schema.md#partial-the-granularity-of-an-override), exactly as an attribute's rows do.
+A `partial` axis is patched label by label: the layer holds the labels the edit touched, and the fold resolves the rest from the parent, last-writer-wins per [axis key](record.md#axis-order).
+An axis **outside** `partial` is owned whole once touched, so the layer restates every label with the static attributes attached to them — one rule for what non-partial means, rather than an axis-shaped exception to it.
+The fold would resolve the narrower form correctly, since it keys per label and an omitted one keeps its parent's row; what ownership buys is that a layer's axis file says what the axis _is_ there, rather than being readable only against its parent.
+A `Directory` writes the resolved axis whole either way, and an axis nothing touched is written by neither.
+
+That is the reason not to reach for `partial` when an axis gains an attribute: it is the fold's key, so every entry widens the owner map and the resolution it keys.
+The cost of leaving an axis out is restating it on edit, which is bounded by the axis; the cost of putting it in is paid by every read.
+
 Neither carries the **base's** results across.
 An edit changes the inputs a result was computed from, so a parent's `outputs/` says nothing about the child — results belong to the node that was solved, and a node with different inputs is a different node.
 
@@ -372,3 +393,7 @@ resolved = fold(parent layers..., staged rows)
 For a layered mutable record this is exactly one more fold step over the same [owner-map machinery](read-path.md#owner-map), with the staging tables standing in for a layer directory.
 It costs what one more layer costs.
 `flags` follows: a staged edge setting a dim adds it to `varies`, one leaving it NULL adds it to `broadcast`, and a staged curve sets `breakpoints` — unioned with the underlying answer.
+It says nothing about an attribute addressed by one axis alone, being keyed per component type; `dims` is where that value is read from, staged edits included, and [`Schema.attributes_on`](schema.md#on-a-mapping-over-another-axis) is what names the columns an axis frame carries.
+
+`dims` overlays per column rather than per row: a staged label's edited columns win, and a label the edit did not name keeps the base's whole row.
+So two `set` calls for two attributes on one axis compose instead of the later one blanking the earlier's column.

@@ -233,8 +233,10 @@ def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) ->
     declares - where the frames themselves may disagree, an all-NULL `scenario`
     landing as arrow `null` for one type and `string` for another.
 
-    `entity_type` is a column of this axis and of nothing else, which is
-    what makes `attributes_for` reachable from an entity alone.
+    `entity_type` is a column of this axis and of no attribute row, which is
+    what makes `attributes_for` reachable from an entity alone. Being a mapping
+    it has an axis file of its own too, carrying the attributes addressed by the
+    type alone - written from `source.dims` like any axis, not derived here.
 
     Notes
     -----
@@ -409,9 +411,35 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
             )
             raise ValueError(msg)
         # A mapping's column lives on the axis it classifies, so that file is
-        # where the classification is stored and where its absence shows.
-        # Not required, only checked for type: a record may declare `country`
-        # before any bus is assigned one, and a NULL is "unclassified".
+        # where the classification is stored and where its absence shows. Not
+        # required: a record may declare `country` before any bus is assigned
+        # one, and a NULL is "unclassified". The same goes for an attribute
+        # addressed by this axis alone, which is a column here and resolves to
+        # its `default` where no layer wrote one (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        #
+        # A column no declaration accounts for is rejected, as a long frame's
+        # extras are: an axis file's payload is the schema's to state, and one
+        # riding along uninvited would be read back as data nothing knows the
+        # dtype or meaning of.
+        known = (
+            set(schema.axis_key(key))
+            | set(schema.mappings_on(key))
+            | set(schema.attributes_on(key))
+            # The structural columns an axis file may carry: a tombstone, and an
+            # explicit order key. Not every name in `STRUCTURAL_TYPES` - most of
+            # those are a long row's, and `attribute` or `breakpoint` here would
+            # be a long frame written to the wrong place.
+            | {"deleted", "order_key"}
+        )
+        extra = sorted(columns - known)
+        if extra:
+            msg = (
+                f"dims/{key}.parquet carries columns {extra} the schema does not "
+                f"declare for the {key!r} axis; an axis file holds its key, the "
+                f"mappings that classify it, and the attributes addressed by it "
+                f"alone (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+            )
+            raise ValueError(msg)
         return
 
     if kind not in schema.groups:

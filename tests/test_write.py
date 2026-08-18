@@ -395,6 +395,51 @@ def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
     assert not Path(layer_dir(revision.id)).exists()
 
 
+def test_write_record_rejects_an_undeclared_axis_column(con, base_uri):
+    """An axis file's payload is the schema's to state, like a long frame's.
+
+    A column no declaration accounts for would be read back with no dtype and
+    no meaning, so it is refused rather than carried along.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    revision = Revision.create(con)
+    source = _Source(
+        schema(),
+        dims={"scenario": pd.DataFrame({"scenario": ["high"], "nonsense": [1.0]})},
+    )
+
+    with pytest.raises(ValueError, match="does not declare for the 'scenario' axis"):
+        write_record(revision.id, source, con)
+    assert not Path(layer_dir(revision.id)).exists()
+
+
+def test_an_axis_carries_the_attributes_addressed_by_it_alone(con, base_uri):
+    """`weight` over `scenario` alone is a column of that axis's file.
+
+    Declared, so it round-trips with a dtype - which is what distinguishes it
+    from the undeclared column above.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    revision = Revision.create(con)
+    declared = schema()
+    assert "weight" in declared.attributes_on("scenario")
+
+    source = _Source(
+        declared,
+        dims={"scenario": pd.DataFrame({"scenario": ["high"], "weight": [0.4]})},
+    )
+    write_record(revision.id, source, con)
+
+    axis = revision.node_cache.dims.axes["scenario"].df()
+    assert dict(zip(axis["scenario"], axis["weight"])) == {"high": 0.4}
+
+
 # -- the PyPSA source (https://energy-models.github.io/datarecord/design/format/) ------------------------------------------------
 
 

@@ -14,7 +14,7 @@ from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
-from datarecord.tools.pypsa import PyPSA, _colliding_names
+from datarecord.tools.pypsa import ENTITY_TYPE, PyPSA, _colliding_names
 from tests.fixtures import (
     export_network,
     relation,
@@ -100,18 +100,35 @@ def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
 def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     """A type outside PyPSA's registry is reported by `verify`, not raised in the fold.
 
-    The record layer stores `entity_type` as a plain `VARCHAR` - the
-    vocabulary belongs to a framework, and the record layer knows none - so an
-    unknown type reads back fine and it is this tool's business that it cannot
-    be built. `Requirements.component_types` is what carries it.
+    The type must be one the *schema* declares - the entity-type axis is an
+    `Enum` and that vocabulary is upheld everywhere, so a record cannot hold a
+    type its own schema excludes. What it can hold is a type this tool has no
+    registry entry for, which reads back fine and is this tool's business rather
+    than the record layer's. `Requirements.component_types` is what carries it.
 
     Notes
     -----
-    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+    - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
+    # Declared alongside PyPSA's own types, since the axis pins the vocabulary.
+    declared = read_schema(con)
+    axis = declared.dimensions[ENTITY_TYPE]
+    assert isinstance(axis.dtype, nw.Enum), "PyPSA declares its types as an enum"
+    write_schema(
+        declared.model_copy(
+            update={
+                "dimensions": {
+                    **declared.dimensions,
+                    ENTITY_TYPE: axis.model_copy(
+                        update={"dtype": nw.Enum([*axis.dtype.categories, "Widget"])}
+                    ),
+                }
+            }
+        )
+    )
     write_components(layer_dir(revision.id), "Widget", [{"entity": "w1"}])
 
     missing = PyPSA.verify(revision.record)

@@ -208,9 +208,13 @@ def test_a_trait_may_only_be_scoped_by_an_entity_type_axis():
         )
 
 
-def test_an_entity_type_axis_addresses_nothing():
-    """Naming it in `dims` would key a row by its entity and by its type."""
-    with pytest.raises(ValidationError, match="classifies `entity`"):
+def test_a_mapping_may_not_key_an_attribute_with_the_axis_it_classifies():
+    """The mapping's label is a column of that axis, so the row is keyed twice.
+
+    Stated for the entity-type axis, which is the case the format names, but
+    the rule is general - see the `country`-over-`bus` case below.
+    """
+    with pytest.raises(ValidationError, match="keys a row twice over"):
         Schema(
             dimensions={
                 "entity": Dimension(dtype=nw.String()),
@@ -223,6 +227,45 @@ def test_an_entity_type_axis_addresses_nothing():
             },
             partial=frozenset({"entity"}),
         )
+
+
+def test_the_redundant_addressing_rule_covers_every_mapping():
+    """Not an `entity_type` special case: `country` over `bus` is the same shape."""
+    with pytest.raises(ValidationError, match="keys a row twice over"):
+        Schema(
+            dimensions={
+                "bus": Dimension(dtype=nw.String()),
+                "country": Dimension(dtype=nw.String(), on={"bus"}),
+            },
+            attributes={
+                "x": AttributeSpec(dtype=nw.Float64(), dims={"bus", "country"})
+            },
+            partial=frozenset({"bus"}),
+        )
+
+
+def test_an_attribute_may_be_addressed_by_the_entity_type_alone():
+    """A per-type icon is a value per type, keyed once - an axis-file column.
+
+    The type axis is a mapping, and a mapping is a dim like any other; what it
+    may not do is key a row *alongside* the axis it classifies.
+    """
+    s = Schema(
+        dimensions={
+            "entity": Dimension(dtype=nw.String()),
+            "entity_type": Dimension(
+                dtype=nw.Enum(["Bus", "Generator"]), on={"entity"}
+            ),
+        },
+        attributes={
+            "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+            "icon": AttributeSpec(dtype=nw.String(), dims={"entity_type"}),
+        },
+        partial=frozenset({"entity"}),
+    )
+    assert s.attributes_on("entity_type") == ("icon",), "a column of the type axis"
+    assert not s.attributes["icon"].varying, "addressed by one dim, so not varying"
+    assert "icon" not in s.attributes_for("Bus"), "it belongs to no component"
 
 
 def test_only_one_dim_may_classify_entity():
@@ -240,7 +283,11 @@ def test_only_one_dim_may_classify_entity():
 
 
 def test_an_entity_type_axis_is_no_long_schema_coordinate():
-    """Its column is on the entity axis, so a long row never carries it."""
+    """Its column is on the entity axis, so a long row never carries it.
+
+    Nor does an attribute addressed by the type alone put it here: that is a
+    column of the type axis file, not a long row.
+    """
     s = _schema()
     assert "entity_type" not in s.long_columns
     assert "entity_type" not in s.broadcast_dims
@@ -517,7 +564,11 @@ def test_round_trips_through_json():
 
 def test_column_types_cover_structural_dims_and_flags():
     s = _schema()
-    assert s.column_type("entity_type") == nw.String()
+    # A declared dim wins over the structural default, so the type axis carries
+    # the `Enum` that pins its vocabulary rather than a bare string - and one a
+    # schema calls `kind` is typed the same way.
+    assert s.column_type("entity_type") == nw.Enum(["Generator", "Link"])
+    assert s.column_type("entity") == nw.String()
     assert s.column_type("timestep") == nw.Datetime()
     # One struct per flag column, a BOOLEAN field per declared dim (https://energy-models.github.io/datarecord/design/read-path/#owner-map), so
     # the map's column set does not widen when a dim is declared.

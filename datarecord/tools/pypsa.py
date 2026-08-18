@@ -48,6 +48,9 @@ if TYPE_CHECKING:
 # A declared axis with no rows is fine - that is just a deterministic or
 # single-period network.
 SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
+# PyPSA's own name for the column `scenario_weightings` carries, so a record
+# round-trips it without renaming.
+SCENARIO_WEIGHT = "weight"
 ENTITY, BUS, CONNECTION = "entity", "bus", "connection"
 ENTITY_TYPE = "entity_type"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
@@ -968,10 +971,11 @@ class PyPSATool(Tool):
         known = self.component_types()
         declared = record.schema
         for ctype in sorted(record.components):
-            # A type PyPSA has no registry entry for. Reported rather than
-            # raised: the record layer stores `entity_type` as a plain
-            # string, so an unknown type reads back fine and it is this
-            # tool's business that it cannot be built.
+            # A type PyPSA has no registry entry for, though the record's own
+            # schema declares it. Reported rather than raised: the record layer
+            # upholds its schema's vocabulary and knows no framework's, so this
+            # reads back fine and it is this tool's business that it cannot be
+            # built.
             if ctype not in known:
                 component_types.add(ctype)
                 continue
@@ -1201,6 +1205,17 @@ class _NetworkSource:
         # one the fold owns once across every scenario.
         varying_dims = (SNAPSHOT, SCENARIO) if self.n.has_scenarios else (SNAPSHOT,)
         attributes: dict[str, AttributeSpec] = {}
+        if self.n.has_scenarios:
+            # A probability per scenario, which `dims` addresses by the scenario
+            # axis alone - so it is a column of `dims/scenario.parquet`, where
+            # `scenario_weightings` already puts it, rather than a long row.
+            # Declared because it is data a consumer reads back: `set_scenarios`
+            # takes it on import, and an undeclared column would carry no dtype.
+            attributes[SCENARIO_WEIGHT] = AttributeSpec(
+                dtype=nw.Float64(),
+                dims=frozenset({SCENARIO}),
+                description="How much this scenario counts in the expectation.",
+            )
         carries: dict[str, frozenset[str]] = {}
         for c in self.n.components:
             if not _exported(c):

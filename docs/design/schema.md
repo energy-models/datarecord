@@ -57,8 +57,8 @@ class Schema(BaseModel):
 `partial` is the only layering-specific part, and so the only optional one.
 Everything else describes the data and is always present.
 
-`entity_type`, `entity` and `attribute` are `VARCHAR`: those vocabularies belong to a modelling framework, and this package knows none.
-A type no tool recognises reads back fine and is reported by the tool that cannot build it, not rejected inside the fold.
+`entity` and `attribute` are `VARCHAR`: those vocabularies belong to a modelling framework, and this package knows none.
+The [entity-type axis](#entity_type-the-axis-of-kinds) is typed as the schema declares it, which is a record's own statement rather than a framework's — so a type _the schema declares_ but no tool recognises reads back fine and is reported by the tool that cannot build it, not rejected inside the fold.
 
 `meta` is where a framework's own top-level data goes — network attributes, coordinate reference system, free-form metadata.
 It is stored and never interpreted, since none of it describes the dimensioned data.
@@ -124,9 +124,12 @@ dimensions = {
 It is a [mapping](#on-a-mapping-over-another-axis) and gets a mapping's treatment for free: the column lives on the classified axis, so `dims/entity.parquet` carries `entity_type` — which is [where the format already put it](format.md#entity-is-unique-across-types) before the axis was declared at all.
 An `Enum` dtype pins the vocabulary and makes an unknown type a write-time error; a plain `str` leaves the labels as data, which is the right declaration for a record whose types are not known up front.
 
-**It addresses nothing.** No attribute may name it in `dims`: a value "per type" is a value per entity of that type, and naming it would key a row twice over.
-For the same reason it is [not a broadcast dim](record.md#the-broadcast-rule) and never a coordinate of the long schema — it is a column of the entity axis, and the entity carries the address.
-It is exempt from `partial` on that ground too: there is no ownership to key by it.
+**It may not address a value alongside the entity.** An attribute naming both `entity` and the type in its `dims` is rejected: the type is a column of the entity axis, so the second coordinate is determined by the first, the row is keyed twice over and the two are free to disagree.
+That is [why no attribute row carries the type](format.md#entity-is-unique-across-types), and it is the general rule for [a mapping and the axis it classifies](#on-a-mapping-over-another-axis) rather than anything particular to types — `country` over `bus` is rejected the same way.
+
+**Addressed by the type alone is ordinary.** A per-type `icon` is a value per type, keyed once, and it lands where any [attribute addressed by one dim alone](format.md#where-a-value-lives) does: a column of `dims/entity_type.parquet`.
+Its axis file is owned like any other's: outside [`partial`](#partial-the-granularity-of-an-override) a layer touching one type's icon restates the type axis whole, which is what a dim owned entirely means everywhere else.
+Being a mapping buys it no exemption, and carrying an attribute is no reason to declare it `partial` — that would widen the fold's key with a column no `inputs/` row can carry.
 
 **Entirely optional.** A schema declaring no such axis has components with no types, and everything addressed by `entity` reaches all of them.
 A tool that needs types requires the axis in the schema it builds — [PyPSA does](tools.md) — which is where that requirement belongs, not here.
@@ -315,6 +318,16 @@ And a `p_nom` row carrying a non-NULL `scenario` becomes a write-time violation 
 
 What the fold does with this is unchanged: the inputs key is one fixed tuple over all attributes, and an attribute not varying over a dim writes NULL there.
 So the declarations constrain and validate; they do not make the key vary per row.
+
+**An axis file is owned the same way**, and the [attributes it carries](format.md#where-a-value-lives) do not argue for adding it.
+Outside `partial`, a layer touching an axis restates it whole — every label, with the static attributes attached to them — because a layer holding one label is not saying the others are unchanged but that they are not there: the fold keys by the axis key, so what this layer carries is what the axis has here.
+That is the same "no half-owned extent" rule a series obeys, applied to a set of labels rather than a curve.
+
+**Keep it small.** `partial` is the fold's key, so every entry widens the owner map and the resolution it keys, for every read of every attribute.
+The cost of leaving an axis out is paid once per edit and bounded by the axis; the cost of putting it in is paid by every read forever.
+So it stays what it is for `entity` and a group's coordinate — the dims a layer genuinely patches value by value — rather than growing to cover whatever an axis happens to hold.
+
+The [entity-type axis](#entity_type-the-axis-of-kinds) is the case that tests this: it carries an attribute and is exempt from `partial`, and it still restates whole rather than earning an exception.
 
 ## One schema per record
 

@@ -12,13 +12,16 @@ Notes
 from __future__ import annotations
 
 import itertools
-from collections.abc import Iterable, Mapping, Sequence
+import re
+from collections.abc import Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import uuid4
 
+import duckdb
 import narwhals as nw
+from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, Expression
@@ -217,8 +220,24 @@ def _series_index(value: Any) -> Sequence[Any] | None:
     return list(index)
 
 
+def _series_index_name(value: Any) -> str | None:
+    """A labelled series' index name, where it has one a caller could have meant.
+
+    `pd.Series(...).index.name` is the caller already saying what the index
+    holds, so an `indexed_by=` repeating it is noise. A `MultiIndex` has `names`
+    rather than one `name` and is no one-dimensional index, so it answers None
+    and the caller says it explicitly.
+    """
+    index = getattr(value, "index", None)
+    name = getattr(index, "name", None)
+    return name if isinstance(name, str) else None
+
+
 def normalise_value(
-    value: Any, names: Sequence[str] | None, axis_labels: Mapping[str, Sequence[Any]]
+    value: Any,
+    names: Sequence[str] | None,
+    *,
+    indexed_by: str | None = None,
 ) -> tuple[list[str] | None, list[Any], dict[str, list[Any]]]:
     """One of `set`'s four `value` forms as per-name values.
 
@@ -228,9 +247,10 @@ def normalise_value(
         Scalar, sequence, mapping, or a one-dimensional labelled series.
     names
         The names to broadcast or align to.
-    axis_labels
-        Per dim, its resolved labels - used to break the labelled-series
-        ambiguity by membership rather than by dtype.
+    indexed_by
+        Which axis a labelled series' index holds, where the caller's `entity=`
+        or `**dims` said so. `None` means the index holds entity names, which is
+        the only other thing it can be.
 
     Returns
     -------
@@ -244,8 +264,7 @@ def normalise_value(
     Raises
     ------
     ValueError
-        If a sequence's length does not match `names`, or a labelled series'
-        index matches both a name set and an axis.
+        If a sequence's length does not match `names`.
 
     Notes
     -----
@@ -253,22 +272,11 @@ def normalise_value(
     """
     labels = _series_index(value)
     if labels is not None:
-        # A series is genuinely ambiguous: its index may hold names or axis
-        # labels. Index dtype does not settle it, since an axis label may be a
-        # string like a name, so the tie is broken by membership (https://energy-models.github.io/datarecord/design/working-record/#set).
-        matches_axis = [
-            dim for dim, values in axis_labels.items() if set(labels) <= set(values)
-        ]
-        matches_names = names is not None and set(labels) <= set(names)
-        if matches_axis and matches_names:
-            msg = (
-                f"index {labels!r} matches both the names and the "
-                f"{matches_axis[0]!r} axis; rejected rather than guessed"
-            )
-            raise ValueError(msg)
-        if matches_axis:
-            dim = matches_axis[0]
-            return None, list(value), {dim: list(labels)}
+        # Told, never inferred: an axis label may be a string just like an entity
+        # name, so testing membership would make one call mean different things
+        # in two records (https://energy-models.github.io/datarecord/design/working-record/#set).
+        if indexed_by is not None:
+            return None, list(value), {indexed_by: list(labels)}
         return list(labels), list(value), {}
 
     if isinstance(value, Mapping):
@@ -366,6 +374,11 @@ class WorkingRecord:
         and a table name is the one thing here that cannot be an expression, so
         it would be an injection and a quoting problem at once.
         """
+        if kind.startswith(_AXIS_PREFIX):
+            # Hashed for the same reason the attribute is: a dim name is a
+            # caller's string, and this becomes an identifier.
+            digest = sha256(kind[len(_AXIS_PREFIX) :].encode()).hexdigest()[:16]
+            return f"staged_axis_{digest}_{self._id}"
         if attribute is None:
             return f"staged_{kind}_{self._id}"
         digest = sha256(attribute.encode()).hexdigest()[:16]
@@ -402,11 +415,12 @@ class WorkingRecord:
         else:
             duck_types = DuckTypes(self.con)
             columns = _COLUMNS.get(kind)
-            shaped = (
-                columns(self.schema)
-                if columns is not None
-                else _group_columns(self.schema, kind)
-            )
+            if columns is not None:
+                shaped = columns(self.schema)
+            elif kind.startswith(_AXIS_PREFIX):
+                shaped = _axis_columns(self.schema, kind[len(_AXIS_PREFIX) :])
+            else:
+                shaped = _group_columns(self.schema, kind)
             shape = duck_types.empty_relation(**shaped)
         shape.create(name)
         self._staged[key] = name
@@ -483,7 +497,12 @@ class WorkingRecord:
 
     @property
     def dims(self) -> Frames:
-        return self.base.dims
+        staged = self._staged_dims()
+        if not staged:
+            return self.base.dims
+        base = self.base.dims
+        keys = tuple(dict.fromkeys((*base, *staged)))
+        return LazyFrames(keys, self._axis_frame)
 
     @property
     def components(self) -> Frames:
@@ -854,13 +873,143 @@ class WorkingRecord:
 
     # -- edits (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one, https://energy-models.github.io/datarecord/design/working-record/#add-remove) ----------------------------------------
 
-    def _axis_labels(self) -> dict[str, list[Any]]:
-        labels: dict[str, list[Any]] = {}
-        for dim in self.schema.dims:
-            if dim in self.base.dims:
-                frame = self.base.dims[dim].collect().to_native()
-                labels[dim] = list(frame[dim]) if dim in frame.columns else []
-        return labels
+    def _series_axis(
+        self, attribute: str, value: Any, indexed_by: str | None
+    ) -> str | None:
+        """Which axis a labelled series' index holds, or None for entity names.
+
+        The caller says which - `indexed_by="snapshot"`, or the series' own
+        `index.name` where it names a coordinate of this attribute. Never read
+        off the labels: an axis label may be a string just like an entity name,
+        so a membership test would make one call mean different things in two
+        records.
+
+        An `index.name` naming no coordinate is ignored rather than rejected; it
+        may be `None`, or a pandas artefact like `"index"`.
+
+        Notes
+        -----
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        """
+        if _series_index(value) is None:
+            if indexed_by is not None:
+                msg = (
+                    f"`set({attribute!r}, ..., indexed_by={indexed_by!r})` says what "
+                    f"a series index holds, but the value is not a labelled series"
+                )
+                raise ValueError(msg)
+            return None
+        named = indexed_by if indexed_by is not None else _series_index_name(value)
+        if named is None:
+            return None
+        coordinates = [
+            c for c in self.schema.coordinates_of(attribute) if c != "entity"
+        ]
+        if named not in coordinates:
+            if indexed_by is None:
+                return None
+            msg = (
+                f"`indexed_by={named!r}` is no coordinate of {attribute!r}, "
+                f"which is addressed by {coordinates or ['entity']}"
+            )
+            raise ValueError(msg)
+        return named
+
+    def _axis_of(self, attribute: str) -> str | None:
+        """The dim whose axis file carries `attribute`, or `None`.
+
+        A declared attribute addressed by one dim alone is a column of that
+        dim's axis file rather than a long row, so an edit to it stages an axis
+        row. `attributes_on` is the rule, so `entity` answers None here too: its
+        sole-coordinate attributes are the component frame's columns, which
+        `add` already stages. An undeclared attribute is never one either - only
+        a result is undeclared, and a result is always long.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        """
+        spec = self.schema.attributes.get(attribute)
+        if spec is None or spec.varying:
+            return None
+        (dim,) = spec.dims
+        return dim if attribute in self.schema.attributes_on(dim) else None
+
+    def _stage_axis(
+        self,
+        dim: str,
+        attribute: str,
+        value: Any,
+        *,
+        entity: Sequence[str] | None,
+    ) -> None:
+        """Stage one axis-file attribute, keyed by the axis's own labels.
+
+        `value` is a mapping from label to value, or a scalar for every label the
+        axis currently has. A mapping may name a label no layer has written yet,
+        which becomes a row of this layer's axis file - the fold keys per label,
+        so introducing one displaces nothing.
+
+        One row per label carrying this attribute's column alone, so a second
+        `set` on the same axis adds its own and `_collapsed_axis` folds the two
+        together per label.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        """
+        if entity is not None:
+            msg = (
+                f"`set({attribute!r}, ..., entity=...)` names components, but "
+                f"{attribute!r} is addressed by {dim!r} alone - it is a column of "
+                f"dims/{dim}.parquet and belongs to no component"
+            )
+            raise ValueError(msg)
+        if _is_frame(value) or isinstance(value, (list, tuple)):
+            msg = (
+                f"`set({attribute!r}, <sequence>)` has no labels to align to; "
+                f"{attribute!r} is addressed by {dim!r} alone, so pass a mapping "
+                f"from {dim!r} label to value, or a scalar for every label"
+            )
+            raise ValueError(msg)
+        if len(self.schema.axis_key(dim)) > 1:
+            msg = (
+                f"{attribute!r} is addressed by {dim!r}, which is `within` "
+                f"{sorted(self.schema.dimensions[dim].within)}; a nested axis's "
+                f"labels identify a point only within its parents, which a "
+                f"mapping from label alone cannot name"
+            )
+            raise ValueError(msg)
+
+        seq = next(_SEQ)
+        table = self._ensure(f"{_AXIS_PREFIX}{dim}", None)
+        if isinstance(value, Mapping):
+            if not value:
+                return
+            rel = self._values_relation(
+                {dim: list(value), attribute: list(value.values())},
+                {
+                    dim: self._column_type(dim),
+                    attribute: self.schema.value_type(attribute),
+                },
+            )
+            supplied = {"_seq": lit(seq)}
+        else:
+            if dim not in self.base.dims:
+                msg = (
+                    f"`set({attribute!r}, <scalar>)` reaches every label the "
+                    f"{dim!r} axis has, and it has none; name the labels as a "
+                    f"mapping, or write the axis file first"
+                )
+                raise ValueError(msg)
+            # The key alone: the axis frame may carry a sibling attribute's
+            # column, and this edit states only its own - `_collapsed_axis` folds
+            # the rest back per label.
+            rel = _as_relation(self.base.dims[dim], self.con).project(col(dim))
+            supplied = {attribute: lit(value), "_seq": lit(seq)}
+
+        self._insert(rel, table, supplied)
 
     def _resolved_names(self, ctype: str) -> list[str]:
         """Every name `ctype` currently resolves to, base plus staged.
@@ -1034,9 +1183,17 @@ class WorkingRecord:
         *,
         entity: Sequence[str] | None = None,
         kind: Literal["inputs", "outputs"] = "inputs",
+        indexed_by: str | None = None,
         **dims: Any,
     ) -> None:
         """Stage an attribute value for a group of components.
+
+        A labelled series must say what its index holds: `indexed_by="snapshot"`
+        names the axis, and `entity=` implies it where the attribute has exactly
+        one other coordinate. Without either the index is read as entity names.
+        Never inferred from the labels themselves - an axis label may be a string
+        just like a name, so that would make one call mean different things in
+        two records.
 
         `value` takes five forms: a scalar broadcast to every name, a sequence
         aligned positionally to `names`, a mapping keyed by name, a long frame
@@ -1097,10 +1254,19 @@ class WorkingRecord:
             self._stage_derived(attribute, value, entity=entity, kind=kind, **dims)
             return
 
+        axis = self._axis_of(attribute) if kind == "inputs" else None
+        if axis is not None:
+            self._stage_axis(axis, attribute, value, entity=entity)
+            return
+
         target = (
             list(entity) if entity is not None else self._names_declaring(attribute)
         )
-        keys, values, per_dim = normalise_value(value, target, self._axis_labels())
+        keys, values, per_dim = normalise_value(
+            value,
+            target,
+            indexed_by=self._series_axis(attribute, value, indexed_by),
+        )
         if keys is None:
             keys = target
             if len(values) == 1 and len(keys) > 1:
@@ -1112,33 +1278,8 @@ class WorkingRecord:
             for name, ctype in self._resolve_types(keys).items():
                 self._validate_attribute(ctype, attribute, dims, name=name)
 
-        seq = next(_SEQ)
         table = self._ensure(kind, attribute, _scalar_dtype(values))
-        # Positional, so the order must be the staging table's own
-        # (`_empty_long`): this attribute's coordinates, then the fixed
-        # three. Its own, not every declared dim - the table is the shape of the
-        # file it becomes (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
-        dim_cols = self._staged_coordinates(attribute)
-        placeholders = ", ".join(["?"] * (len(dim_cols) + 4))
-
-        def row(name: str, val: Any, label_of: dict[str, Any]) -> list[Any]:
-            # The entity comes from `entity=`, every other coordinate from
-            # `dims` - which is why no coordinate is spelled here.
-            return [
-                name if d == "entity" else label_of.get(d, dims.get(d))
-                for d in dim_cols
-            ] + [attribute, None, val, seq]
-
-        rows: list[list[Any]] = []
-        if per_dim:
-            (dim, labels) = next(iter(per_dim.items()))
-            for label, val in zip(labels, values, strict=True):
-                rows.extend(row(name, val, {dim: label}) for name in keys)
-        else:
-            rows.extend(
-                row(name, val, {}) for name, val in zip(keys, values, strict=True)
-            )
-        self.con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", rows)
+        self._stage_rows(attribute, table, keys, values, per_dim, dims)
 
     def _names_declaring(self, attribute: str) -> list[str]:
         """Every resolved name whose type declares `attribute` - `names=None`.
@@ -1191,6 +1332,166 @@ class WorkingRecord:
         for name, ctype in self._resolve_types(names).items():
             self._validate_attribute(ctype, attribute, dims, name=name)
 
+    def _stage_rows(
+        self,
+        attribute: str,
+        table: str,
+        keys: list[str],
+        values: list[Any],
+        per_dim: dict[str, list[Any]],
+        dims: Mapping[str, Any],
+    ) -> None:
+        """Stage the scalar/sequence/mapping forms, as a relation rather than rows.
+
+        The rows are `keys` x `per_dim`'s labels - every named entity at every
+        coordinate the value covers - so a per-snapshot series over a year for a
+        thousand components is millions of them. Both factors are small, and only
+        their product is not, so each becomes a one-column relation and DuckDB
+        joins them: the product never exists as Python objects.
+
+        `keys` and `values` are positionally aligned where there is no `per_dim`;
+        with one, `values` aligns to its labels and every key takes all of them.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        """
+        entity = {"entity": self._column_type("entity")}
+        # `value` is inferred: an undeclared result has no declared dtype, and
+        # the staging table already took its type from `_scalar_dtype`.
+        if per_dim:
+            (dim, labels) = next(iter(per_dim.items()))
+            # The value belongs to the label, so it rides on that side of the
+            # join and every entity picks it up.
+            rel = self._values_relation({"entity": keys}, entity).cross(
+                self._values_relation(
+                    {dim: labels, "value": values},
+                    {dim: self._column_type(dim), "value": None},
+                )
+            )
+            present = {"entity", dim}
+        else:
+            rel = self._values_relation(
+                {"entity": keys, "value": values}, {**entity, "value": None}
+            )
+            present = {"entity"}
+
+        self._insert_long(rel, table, attribute, present, dims)
+
+    def _insert(
+        self, rel: DuckDBPyRelation, table: str, supplied: Mapping[str, Expression]
+    ) -> None:
+        """Project `rel` into `table`'s column order and insert it.
+
+        `insert_into` is positional, and a staging table's order is its own -
+        `ALTER TABLE` appends each extra column as `add` first sees one - so the
+        projection is built from the table rather than from the caller. A column
+        `supplied` does not name is taken from `rel` where it carries one, and is
+        otherwise a NULL typed from the table, which is what spares the insert a
+        coercion.
+        """
+        staging = self.con.table(table)
+        carried = {c.lower() for c in rel.columns}
+
+        def column(name: str, dtype: str) -> Expression:
+            if name in supplied:
+                return supplied[name].alias(name)
+            if name.lower() in carried:
+                return col(name)
+            return lit(None).cast(dtype).alias(name)
+
+        projected = rel.project(
+            *(
+                column(c, str(t))
+                for c, t in zip(staging.columns, staging.types, strict=True)
+            )
+        )
+        try:
+            projected.insert_into(table)
+        except duckdb.ConversionException as exc:
+            # An `Enum` dim reaches DuckDB as one, so this is what rejects a
+            # label its vocabulary does not hold - as a conversion to `UINT8`,
+            # the enum's storage type, naming neither the dim nor what it
+            # declares. The source column is in the message, which is what makes
+            # it restatable.
+            match = re.search(r"casting from source column (\w+)", str(exc))
+            if match is None:
+                raise
+            source = match.group(1)
+            dim = self.schema.dimensions.get(source)
+            if dim is None or not isinstance(dim.dtype, nw.Enum):
+                raise
+            msg = (
+                f"{source!r} declares no such label; its dtype is an Enum over "
+                f"{sorted(dim.dtype.categories)}, which pins the vocabulary"
+            )
+            raise ValueError(msg) from exc
+
+    def _insert_long(
+        self,
+        rel: DuckDBPyRelation,
+        table: str,
+        attribute: str,
+        present: Container[str],
+        dims: Mapping[str, Any],
+    ) -> None:
+        """Insert `rel` as one attribute's long rows.
+
+        `present` names the coordinates `rel` already carries; the rest come from
+        `dims` where the caller scoped them and are otherwise NULL - "every value
+        of it" by the broadcast rule - typed as the schema declares them either
+        way, so the insert needs no coercion.
+
+        Only this attribute's own coordinates: the staging table is the shape of
+        the file it becomes, so a dim it is not addressed by has no column to
+        fill, and the projection is in that table's order.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        """
+        duck_types = DuckTypes(rel)
+        rel.project(
+            *(
+                col(d)
+                if d in present
+                else duck_types.lit(dims.get(d), self._column_type(d)).alias(d)
+                for d in self._staged_coordinates(attribute)
+            ),
+            lit(attribute).alias("attribute"),
+            duck_types.null(nw.Float64()).alias("breakpoint"),
+            col("value"),
+            lit(next(_SEQ)).alias("_seq"),
+        ).insert_into(table)
+
+    def _values_relation(
+        self,
+        columns: Mapping[str, Sequence[Any]],
+        schema: Mapping[str, nw.dtypes.DType | None],
+    ) -> DuckDBPyRelation:
+        """A relation over `columns`, each an equal-length sequence of scalars.
+
+        Column-wise, so nothing here is per-row: a caller's product of entities
+        and labels never becomes Python objects.
+
+        A `None` in `schema` is inferred, which an undeclared result's value
+        column needs. An `Enum` is built as its `String` and cast by the insert -
+        narwhals cannot construct an arrow enum - which is also what rejects a
+        label the dtype does not declare.
+        """
+        buildable = {
+            name: (nw.String() if isinstance(dtype, nw.Enum) else dtype)
+            for name, dtype in schema.items()
+        }
+        return _as_relation(
+            nw.DataFrame.from_dict(
+                dict(columns), schema=buildable, backend="pyarrow"
+            ).lazy(),
+            self.con,
+        )
+
     def _stage_long(
         self, attribute: str, lazy: nw.LazyFrame, kind: str, dims: dict[str, Any]
     ) -> None:
@@ -1206,30 +1507,10 @@ class WorkingRecord:
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         table = self._ensure(kind, attribute, _value_dtype(lazy))
-        # A coordinate the frame does not carry comes from `dims` if the caller
-        # scoped it there, and is otherwise NULL - "every value of it" (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
-        # Typed as the schema declares it either way, so the insert matches the
-        # staging table's column type rather than relying on a coercion.
-        # Only this attribute's own coordinates: the table is its file's shape,
-        # so a dim it is not addressed by has no column to fill (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
-        present = set(lazy.collect_schema().names())
-
         rel = _as_relation(lazy, self.con)
-        duck_types = DuckTypes(rel)
-
-        def column(d: str) -> Expression:
-            if d in present:
-                return col(d)
-            value = dims.get(d)
-            return duck_types.lit(value, self._column_type(d)).alias(d)
-
-        rel.project(
-            *(column(d) for d in self._staged_coordinates(attribute)),
-            lit(attribute).alias("attribute"),
-            duck_types.null(nw.Float64()).alias("breakpoint"),
-            col("value"),
-            lit(next(_SEQ)).alias("_seq"),
-        ).insert_into(table)
+        self._insert_long(
+            rel, table, attribute, set(lazy.collect_schema().names()), dims
+        )
 
     def _stage_derived(
         self,
@@ -1259,15 +1540,18 @@ class WorkingRecord:
         - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
         """
         source = self.outputs if kind == "outputs" else self.attributes
+        # Once: three uses follow, and something iterating only once would be
+        # exhausted by the first.
+        names = None if entity is None else list(entity)
         if attribute not in source:
             frame = None
         else:
             frame = source[attribute]
-            if entity is not None:
+            if names is not None:
                 if kind == "inputs":
-                    for name, ctype in self._resolve_types(list(entity)).items():
+                    for name, ctype in self._resolve_types(names).items():
                         self._validate_attribute(ctype, attribute, dims, name=name)
-                frame = frame.filter(nw.col("entity").is_in(list(entity)))
+                frame = frame.filter(nw.col("entity").is_in(names))
             for dim, value in dims.items():
                 frame = frame.filter(nw.col(dim) == value)
 
@@ -1275,13 +1559,15 @@ class WorkingRecord:
         # no-op: the caller asked for these rows to take a new value and there
         # is nothing to derive one from. With `entity=None` and no scope the
         # instruction is "whatever resolves", so an empty result is an answer.
-        if entity is not None or dims:
-            if frame is None or frame.select("entity").collect().is_empty():
+        if names is not None or dims:
+            # `head(1)`: `is_empty` is a `DataFrame` method, so the question
+            # costs a collect either way - this one collects a single row.
+            if frame is None or frame.select("entity").head(1).collect().is_empty():
                 scope = ", ".join(
                     filter(
                         None,
                         [
-                            f"entity={list(entity)}" if entity is not None else "",
+                            f"entity={names}" if names is not None else "",
                             *(f"{d}={v!r}" for d, v in dims.items()),
                         ],
                     )
@@ -1401,32 +1687,15 @@ class WorkingRecord:
             self.con.execute(f'ALTER TABLE {table} ADD COLUMN "{c}" {dtype}')
             existing.add(c.lower())
 
-        # Projected in the table's own column order, `insert_into` being
-        # positional: `ALTER TABLE` appends each extra as it is first seen, so
-        # the order is the table's to state rather than this call's. A column
-        # an earlier `add` created that this frame does not carry is NULL,
-        # typed from the table so the insert needs no coercion.
-        staging = self.con.table(table)
-        supplied = {
-            "entity_type": lit(ctype),
-            "deleted": lit(False),  # noqa: FBT003
-            "_seq": lit(next(_SEQ)),
-        }
-        carried = {c.lower() for c in rel.columns}
-
-        def column(name: str, dtype: str) -> Expression:
-            if name in supplied:
-                return supplied[name].alias(name)
-            if name.lower() in carried:
-                return col(name)
-            return lit(None).cast(dtype).alias(name)
-
-        rel.project(
-            *(
-                column(c, str(t))
-                for c, t in zip(staging.columns, staging.types, strict=True)
-            )
-        ).insert_into(table)
+        self._insert(
+            rel,
+            table,
+            {
+                "entity_type": lit(ctype),
+                "deleted": lit(False),  # noqa: FBT003
+                "_seq": lit(next(_SEQ)),
+            },
+        )
         for attribute in varying:
             # Always `inputs`: `add` declares components, and a component's
             # attribute values are inputs whatever a later solve produces.
@@ -1471,23 +1740,31 @@ class WorkingRecord:
 
         Shared by `remove` and `disconnect`, which differ only in their key
         columns - `disconnect` carries the group's coordinates where `remove`
-        carries the entity. One helper so the placeholder count is derived
-        from the column list rather than restated per caller, which is what
-        let the two drift out of step.
+        carries the entity. One helper so the shape is derived from the column
+        list rather than restated per caller, which is what let the two drift
+        out of step.
+
+        `keys` arrives row-oriented and is transposed to build the relation,
+        columns being how every insert here crosses into DuckDB.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
-        columns = (*fixed, "deleted", "_seq")
-        quoted = ", ".join(f'"{c}"' for c in columns)
         table = self._ensure(kind)
+        if not keys:
+            return
         seq = next(_SEQ)
-        self.con.executemany(
-            f"INSERT INTO {table} ({quoted}) "
-            f"VALUES ({', '.join(['?'] * len(columns))})",
-            [[*key, True, seq] for key in keys],
+        by_column = dict(zip(fixed, zip(*keys, strict=True), strict=True))
+        rel = self._values_relation(by_column, {c: self._column_type(c) for c in fixed})
+        self._insert(
+            rel,
+            table,
+            {
+                "deleted": lit(True),  # noqa: FBT003
+                "_seq": lit(seq),
+            },
         )
 
     def remove(self, ctype: str, names: Sequence[str]) -> None:
@@ -1713,7 +1990,126 @@ class WorkingRecord:
             else self.schema.group_coordinates("connection"),
         )
 
+    def _collapsed_axis(self, dim: str) -> DuckDBPyRelation | None:
+        """Staged rows for one axis, last-write-wins per label *per column*.
+
+        Not `_latest_per`, which picks a whole row: two `set` calls for two
+        attributes on one axis each stage rows carrying only their own column,
+        so the newest whole row would drop the other attribute's value. A
+        `max_by` per column keeps each attribute's own latest, which is what
+        makes the two calls commute.
+
+        Notes
+        -----
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        """
+        rel = self._rows(f"{_AXIS_PREFIX}{dim}")
+        if rel is None:
+            return None
+        staged = [a for a in self.schema.attributes_on(dim) if a in rel.columns]
+        return rel.aggregate(
+            [
+                col(dim),
+                # The FILTER is what keeps a sibling attribute's row, which
+                # leaves this column NULL, from winning it.
+                *(
+                    sql(f"max_by({a}, _seq) FILTER (WHERE {a} IS NOT NULL)").alias(a)
+                    for a in staged
+                ),
+            ],
+            str(col(dim)),
+        )
+
     # -- what commit writes (https://energy-models.github.io/datarecord/design/working-record/#committing) -----------------------------------------
+
+    def _staged_dims(self) -> tuple[str, ...]:
+        """Which axes have staged rows, in declaration order.
+
+        Rows rather than tables: `_ensure` creates the table before the label
+        checks run, so a rejected `set` leaves an empty one behind and a table
+        that exists is not yet an edit.
+        """
+        staged = {
+            k[len(_AXIS_PREFIX) :]
+            for (k, _), _ in self._staged.items()
+            if k.startswith(_AXIS_PREFIX)
+        }
+        return tuple(
+            d
+            for d in self.schema.dims
+            if d in staged
+            and self.con.table(self._table(f"{_AXIS_PREFIX}{d}")).limit(1).fetchone()
+        )
+
+    def _staged_axes(self) -> Frames:
+        """The staged axis rows, completed from the base where the axis is owned whole.
+
+        Only the axis files an edit touched. What each holds follows `partial`,
+        as an attribute's rows do:
+
+        - **`partial`** - the touched labels alone, the fold resolving the rest
+          from the parent.
+        - **not `partial`** - every label with its attributes, since a dim
+          outside `partial` is one a layer owns entirely once it touches it.
+
+        Notes
+        -----
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        """
+        dims = self._staged_dims()
+        if not dims:
+            return EMPTY
+        return LazyFrames(dims, lambda dim: nw.from_native(self._axis_layer(dim)))
+
+    def _axis_layer(self, dim: str) -> DuckDBPyRelation:
+        """One axis as this layer writes it, per `partial`.
+
+        A `partial` axis contributes its edited labels; one owned whole
+        contributes the resolved axis entire, which is `_axis_frame` - the same
+        relation a read with pending edits answers.
+        """
+        if dim in self.schema.partial_dims:
+            return cast("DuckDBPyRelation", self._collapsed_axis(dim))
+        return _as_relation(self._axis_frame(dim), self.con)
+
+    def _axis_frame(self, dim: str) -> nw.LazyFrame:
+        """One axis, staged columns over the base's row for each label.
+
+        An outer join, since a `set` may name a label no layer has written: one
+        side or the other may be missing, and both belong to the answer.
+        """
+        base = self.base.dims[dim]
+        staged = self._collapsed_axis(dim)
+        if staged is None:
+            return base
+        present = list(base.collect_schema().names())
+        edited = [a for a in staged.columns if a != dim]
+        rel = (
+            _as_relation(base, self.con)
+            .set_alias("b")
+            .join(
+                staged.set_alias("s"),
+                f"b.{dim} IS NOT DISTINCT FROM s.{dim}",
+                how="outer",
+            )
+        )
+        # `coalesce` per column, not "staged row wins": an untouched label is
+        # NULL on the staged side and would otherwise read as cleared. The label
+        # itself coalesces the other way round, a staged-only row having no base.
+        return nw.from_native(
+            rel.project(
+                *(
+                    coalesce(col("s", dim), col("b", dim)).alias(dim)
+                    if c == dim
+                    else coalesce(col("s", c), col("b", c)).alias(c)
+                    if c in edited
+                    else col("b", c).alias(c)
+                    for c in present
+                ),
+                *(col("s", c).alias(c) for c in edited if c not in present),
+            )
+        )
 
     def _staged_entities(self, kind: str) -> Frames:
         """One kind's staged member or connection rows, keyed by component type."""
@@ -1785,7 +2181,7 @@ class WorkingRecord:
         """
         return _Written(
             schema=self.schema,
-            dims=EMPTY,
+            dims=self._staged_axes(),
             components=self._staged_entities("components"),
             groups={g: self._staged_entities(g) for g in self.schema.groups},
             attributes=self._staged_attributes(),
@@ -1809,7 +2205,7 @@ class WorkingRecord:
         """
         return _Written(
             schema=self.schema,
-            dims=self.base.dims,
+            dims=self.dims,
             components=self._writable_entities("components"),
             groups={g: self._writable_entities(g) for g in self.schema.groups},
             attributes=self.attributes,
@@ -1940,10 +2336,35 @@ def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
     }
 
 
+def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
+    """One axis's staged columns: its key, plus the attributes it carries.
+
+    The shape of `dims/{dim}.parquet` for the attributes addressed by `dim`
+    alone (`attributes_on`). A mapping's classification column is not here: it
+    lives on the axis it classifies, and no edit stages one.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    return {
+        **{c: _column_type(schema, c) for c in schema.axis_key(dim)},
+        **{a: schema.value_type(a) or nw.String() for a in schema.attributes_on(dim)},
+        "_seq": nw.Int64(),
+    }
+
+
 # The entity kinds only. A long kind is staged per attribute, so its columns
 # take the attribute and come from `_empty_long` instead; `outputs/` shares
 # that shape with `inputs/`, differing only in not overlaying, which is a
 # read-path property rather than a shape one (https://energy-models.github.io/datarecord/design/read-path/#outputs).
+# An axis kind is staged per dim rather than per attribute, since one axis file
+# carries every attribute addressed by that dim alone.
 _COLUMNS = {
     "components": _component_columns,
 }
+
+# A staging kind, so it becomes part of a table name: no punctuation a SQL
+# identifier would need quoting for, and no collision with a group's name,
+# which `Schema` already rejects for colliding with a declared dim.
+_AXIS_PREFIX = "axis_of_"

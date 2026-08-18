@@ -77,7 +77,8 @@ Every `inputs/` and `outputs/` file carries its attribute's own coordinates, the
 <coordinate> ... | attribute | breakpoint | value
 ```
 
-The coordinates are what the attribute's [`dims`](schema.md#attributespec) declare, with a [group](schema.md#groups) expanding to its coordinate names — so `inputs/efficiency.parquet` over the `connection` group carries `entity | bus`, and `inputs/objective_weighting.parquet` over `snapshot` alone carries neither.
+The coordinates are what the attribute's [`dims`](schema.md#attributespec) declare, with a [group](schema.md#groups) expanding to its coordinate names — so `inputs/efficiency.parquet` over the `connection` group carries `entity | bus`, and `inputs/p_max_pu.parquet` over `entity` and `snapshot` carries `entity | snapshot` and no `bus`.
+An attribute over one dim alone has no file here at all: it is [a column of that dim's own table](#where-a-value-lives).
 
 **Per attribute rather than schema-wide.** One attribute is one file, so one column set per file; a fixed prefix of `entity | bus` would put an all-NULL `entity` on a record-level weighting, claiming a component the value has none of, and would privilege one group's spelling of `bus` over every other group's coordinates.
 
@@ -100,6 +101,7 @@ The alternative — carrying the type in the key — makes it a _component's_ id
 
 **The entity axis is the mapping.** `dims/entity.parquet` carries `entity_type` as a column, so `entity -> entity_type` is one read of one file rather than a glob over every type's.
 `entity_type` is a column of that axis and of the owner map it feeds, never of the attribute rows.
+Being a [mapping](schema.md#on-a-mapping-over-another-axis) it also has an axis file of its own, `dims/entity_type.parquet`, which is where a value addressed by the type alone — a per-type icon — lives; that is a column keyed by type, not an attribute row keyed by entity, so it takes nothing back from the paragraph above.
 
 So a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the components map on `entity`.
 That join is what the `entity_type` filter used to be, and it is against a relation the read path already builds.

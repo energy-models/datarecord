@@ -85,13 +85,12 @@ def _parse_dtype(value: Any) -> nw.dtypes.DType:
     raise ValueError(msg)
 
 
-# Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Neither
-# declared nor optional: `bus`/`breakpoint` are NULL for the ordinary
-# component-level scalar, so one column set serves every kind of row.
+# Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Not the
+# dims: `entity`, a group's `bus` and the entity-type axis are declared like any
+# other axis and typed from that declaration, which is what lets an `Enum` there
+# pin its vocabulary. These are the ones no schema names - `breakpoint` is NULL
+# for the ordinary component-level scalar, so one column set serves every row.
 STRUCTURAL_TYPES = {
-    "entity_type": nw.String(),
-    "entity": nw.String(),
-    "bus": nw.String(),
     "attribute": nw.String(),
     "breakpoint": nw.Float64(),
     "order_key": nw.Int64(),
@@ -483,16 +482,20 @@ class Schema(BaseModel):
                     f"dims or groups {unknown}"
                 )
                 raise ValueError(msg)
-            # The entity-type axis addresses nothing: its labels are a column
-            # of the entity axis, so a value "per type" is a value per entity
-            # of that type, and naming it here would key a row twice over.
-            if entity_type is not None and entity_type in attr_spec.dims:
-                msg = (
-                    f"attribute {attr!r} is addressed by {entity_type!r}, which "
-                    f"classifies `entity` rather than addressing a value; a "
-                    f"per-type attribute is one a trait narrows"
-                )
-                raise ValueError(msg)
+            for dim in sorted(attr_spec.dims & declared):
+                # A mapping and an axis it classifies cannot both key one
+                # attribute: the mapping's label is a column of that axis, so
+                # the second coordinate is determined by the first and the row
+                # would be keyed twice over, free to disagree with the axis
+                # file (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+                both = sorted(self.dimensions[dim].on & attr_spec.dims)
+                if both:
+                    msg = (
+                        f"attribute {attr!r} is addressed by {dim!r} and {both}, "
+                        f"which {dim!r} classifies; a {dim!r} label is a column of "
+                        f"{both}, so naming both keys a row twice over"
+                    )
+                    raise ValueError(msg)
 
         # A trait may only name an attribute that is declared: it says which
         # attributes apply, never what they are, so a name with no spec is a
@@ -571,7 +574,9 @@ class Schema(BaseModel):
           labels are a column of `dims/entity.parquet`, so a NULL there is a
           component whose type is unknown rather than one of every type. Only
           a mapping `on` `entity` - a `country` over `bus` is an ordinary
-          coordinate and broadcasts like one.
+          coordinate and broadcasts like one. An attribute addressed by the
+          type *alone* never reaches here: it is a column of the type axis
+          file rather than a long row, so it has no NULL to expand.
         - A group's coordinate, because there is no axis to expand against.
           "Every bus of this component" is the group's rows, not the bus axis -
           a sparse subset only the group's table knows.
@@ -795,6 +800,35 @@ class Schema(BaseModel):
         """
         return tuple(d for d, s in self.dimensions.items() if dim in s.on)
 
+    def attributes_on(self, dim: str) -> tuple[str, ...]:
+        """Attributes stored as columns of `dims/{dim}.parquet`.
+
+        An attribute addressed by `dim` alone: a per-country CO2 budget, a
+        snapshot weighting, a per-type icon. `AttributeSpec.varying` is False
+        for exactly these, and this is the axis-side counterpart of
+        `addresses_entity` - what `dims/components/<Type>.parquet` is to a
+        component's constant columns, the axis file is to these.
+
+        Never `entity`, whose sole-coordinate attributes are the *component*
+        frame's columns - `dims/components/<Type>.parquet`, one file per type,
+        which is a different destination with a different key.
+
+        Keyed off `dims` rather than `coordinates_of`, because a group with one
+        coordinate is indistinguishable there: `dims={"connection"}` over a
+        single `bus` coordinate also yields `("bus",)`, and it belongs in the
+        group's table rather than on the bus axis.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [mappings](https://energy-models.github.io/datarecord/design/schema/#on-a-mapping-over-another-axis)
+        """
+        if dim == "entity" or dim not in self.dimensions:
+            return ()
+        return tuple(
+            a for a, spec in self.attributes.items() if spec.dims == frozenset({dim})
+        )
+
     # -- key and column sets (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/read-path/#owner-map) -----------------------------------
 
     @property
@@ -806,10 +840,12 @@ class Schema(BaseModel):
         its own attribute's columns (`long_columns_for`), and `union_by_name`
         supplies NULL for the rest when the fold unions them here.
 
-        No `entity_type`: an entity-type axis is a mapping whose column lives
-        on `dims/entity.parquet`, and a row here is addressed by the entity
-        alone - carrying the type too would key it twice and let the two
-        disagree.
+        No `entity_type`: a row here is keyed by entity, and an entity is unique
+        record-wide, so a type column would restate what the entity already says
+        and let the two disagree. Every *declared* attribute is shaped by
+        `long_columns_for` rather than by this, where naming both is rejected
+        outright and one addressed by the type alone is a column of the type
+        axis file (`attributes_on`) rather than a long row at all.
 
         Notes
         -----
@@ -911,10 +947,22 @@ class Schema(BaseModel):
     def column_type(self, column: str) -> nw.dtypes.DType | None:
         """The declared type for one column, or None if the schema declares none.
 
-        Covers the structural columns the format fixes, the declared dims, and
-        the owner map's two flag structs, whose fields follow the schema's
-        dims. A narwhals dtype, translated to DuckDB (`duck.DuckTypes`) only where
-        a caller builds a column of it.
+        Covers the structural columns the format fixes, the declared dims, the
+        attributes an axis file carries as columns (`attributes_on`), and the
+        owner map's two flag structs, whose fields follow the schema's dims. A
+        narwhals dtype, translated to DuckDB (`duck.DuckTypes`) only where a
+        caller builds a column of it.
+
+        No dim is structural - `entity` and a group's `bus` included: each is
+        declared, and typed from that declaration. So an `Enum` on the entity-type
+        axis pins its vocabulary everywhere the column is built, and an axis a
+        schema happens to call `kind` is typed no differently.
+
+        An attribute addressed by one axis alone is a *column* rather than a
+        `value` cell, so this is where its type is read from - `cast_declared`
+        would otherwise leave an axis file's attribute column as whatever the
+        incoming frame happened to carry. An attribute with any other `dims` is
+        `value_type`'s, not this: it is a long row's value.
 
         A schema declaring no dims at all is "no manifest yet" rather
         than a record to fold, and DuckDB has no empty struct - so the flag
@@ -932,6 +980,11 @@ class Schema(BaseModel):
             return self.dimensions[column].dtype
         if column in ("varies", "broadcast"):
             return flag_type(self.broadcast_dims) if self.broadcast_dims else None
+        spec = self.attributes.get(column)
+        if spec is not None and not spec.varying:
+            (dim,) = spec.dims
+            if column in self.attributes_on(dim):
+                return spec.dtype
         return None
 
     def value_type(self, attribute: str) -> nw.dtypes.DType | None:

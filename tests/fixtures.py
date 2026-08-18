@@ -308,10 +308,15 @@ def _default_attributes(
     widest shape and so the one that accepts any row a test writes.
     `efficiency` is the exception, being over the `connection` group where one
     is declared: that is what puts a `bus` column on its file.
+
+    `weight` is the other, addressed by `scenario` alone - so it is a column of
+    `dims/scenario.parquet` rather than a long row, and it is declared because
+    `write_scenarios` writes that column and an axis file rejects one no
+    declaration accounts for.
     """
     varying = {"entity", *dims}
     connection = "connection" if "connection" in groups else "entity"
-    return {
+    declared = {
         "p_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
         "e_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
         "p_max_pu": AttributeSpec(dtype=nw.Float64(), dims=varying),
@@ -321,6 +326,13 @@ def _default_attributes(
         ),
         "efficiency": AttributeSpec(dtype=nw.Float64(), dims={connection, *dims}),
     }
+    if "scenario" in dims:
+        declared["weight"] = AttributeSpec(
+            dtype=nw.Float64(),
+            dims={"scenario"},
+            description="How much this scenario counts in the expectation.",
+        )
+    return declared
 
 
 def schema(

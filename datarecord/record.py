@@ -139,7 +139,20 @@ class Record(Protocol):
 
     @property
     def dims(self) -> Frames:
-        """Axis frames, keyed by dim (`"scenario"` -> `dims/scenarios.parquet`)."""
+        """Axis frames, keyed by dim (`"scenario"` -> `dims/scenarios.parquet`).
+
+        An axis frame is its key column, the mappings classifying it
+        (`Schema.mappings_on`), and the attributes addressed by it alone
+        (`Schema.attributes_on`) - so a per-country CO2 budget or a per-type icon
+        is read from here rather than from `attributes`, which holds long frames
+        only. A column absent from the frame is one no layer wrote, whose value
+        is that attribute's `default`.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+        """
         ...
 
     @property

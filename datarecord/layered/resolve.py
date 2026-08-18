@@ -77,7 +77,11 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
     -----
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
     """
-    dirs = dims_dirs(ancestry)
+    # `ancestry` stopped either at a materialised ancestor or at the root, and
+    # only the head can be the former - every entry below it is an
+    # unmaterialised intermediate layer, or the record itself.
+    from_cache = len(ancestry) > 1 and materialised(ancestry[0], con)
+    dirs = dims_dirs(ancestry, from_cache=from_cache)
     axes = {}
     for dim in schema.dims:
         # Keyed by the axis key, not the dim alone: a nested dim's labels
