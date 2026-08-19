@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Single-layer read path: our DuckDB reader against PyPSA's own.
 
 Notes
@@ -39,9 +43,7 @@ def assert_networks_equal(got, expected):
         if exp_c.static.empty:
             continue
         got_c = got.c[ctype]
-        pd.testing.assert_index_equal(
-            got_c.static.index, exp_c.static.index, check_names=False
-        )
+        pd.testing.assert_index_equal(got_c.static.index, exp_c.static.index, check_names=False)
         # No junk columns (join artifacts, `deleted`, ...) may leak through.
         assert not set(got_c.static.columns) - set(exp_c.static.columns)
         for col in exp_c.static.columns:
@@ -53,9 +55,7 @@ def assert_networks_equal(got, expected):
                 check_dtype=False,
                 check_names=False,
             )
-        assert set(got_c.dynamic) >= {
-            a for a, f in exp_c.dynamic.items() if not f.empty
-        }
+        assert set(got_c.dynamic) >= {a for a, f in exp_c.dynamic.items() if not f.empty}
         for attr, frame in exp_c.dynamic.items():
             if frame.empty:
                 continue

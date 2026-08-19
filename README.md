@@ -1,3 +1,10 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<!--- --8<-- [start:docs-preamble] -->
+
 # datarecord
 
 [![docs](https://img.shields.io/badge/docs-energy--models.github.io-blue?style=flat-square&logo=materialformkdocs&logoColor=white)](https://energy-models.github.io/datarecord/)
@@ -5,6 +12,7 @@
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/datarecord?logoColor=white&logo=conda-forge&style=flat-square)](https://prefix.dev/channels/conda-forge/packages/datarecord)
 [![pypi-version](https://img.shields.io/pypi/v/datarecord.svg?logo=pypi&logoColor=white&style=flat-square)](https://pypi.org/project/datarecord)
 [![python-version](https://img.shields.io/pypi/pyversions/datarecord?logoColor=white&logo=python&style=flat-square)](https://pypi.org/project/datarecord)
+[![Documentation build status](https://readthedocs.org/projects/datarecord/badge/?version=latest)](https://datarecord.readthedocs.io)
 
 Dimensioned attribute data with a declared schema.
 
@@ -13,14 +21,6 @@ A record holds **components** (named members of a type), **connections** between
 Records stack: a layer is a partial record on top of a parent, resolved last-writer-wins, so a scenario variant costs the rows it changes rather than a copy of everything. On disk a record is a plain parquet directory that a tool knowing nothing about this package can read.
 
 `datarecord` depends only on `duckdb`, `narwhals` and `pydantic`. It names no modelling framework — a framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
-
-## Documentation
-
-Full documentation is at **<https://energy-models.github.io/datarecord/>**:
-
-- [Usage](https://energy-models.github.io/datarecord/usage/) — reading, editing, layering and writing a record
-- [Design](https://energy-models.github.io/datarecord/design/) — what a record is and why, the authoritative design
-- [API Reference](https://energy-models.github.io/datarecord/api/) — every public symbol
 
 ## Installation
 
@@ -56,9 +56,14 @@ child = w.commit(NewChild())
 
 See [Usage](https://energy-models.github.io/datarecord/usage/) for the rest.
 
+<!--- --8<-- [end:docs-preamble] -->
+<!--- --8<-- [start:docs-postamble] -->
+
 ## Development
 
-This project is managed by [pixi](https://pixi.sh):
+This project is managed by [pixi](https://pixi.prefix.dev/):
+
+<!--- --8<-- [start:docs-install-dev] -->
 
 ```bash
 git clone https://github.com/energy-models/datarecord
@@ -66,6 +71,20 @@ cd datarecord
 
 pixi run test    # the test suite
 pixi run lint    # ruff, prettier, taplo, typos, zizmor, reuse, mypy
+pixi run docs-serve    # serve this site locally
 ```
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow and conventions, and [`AGENTS.md`](AGENTS.md) for how AI-assisted contributions must be marked.
+<!--- --8<-- [end:docs-install-dev] -->
+
+See the [contributing guide](./contributing.md) for the workflow and conventions,
+and [`AGENTS.md`](./AGENTS.md) for how AI-assisted contributions must be marked.
+
+<!--- --8<-- [end:docs-postamble] -->
+
+## Documentation
+
+Full documentation is at **<https://energy-models.github.io/datarecord/>**:
+
+- [Usage](https://energy-models.github.io/datarecord/usage/) — reading, editing, layering and writing a record
+- [Design](https://energy-models.github.io/datarecord/design/) — what a record is and why, the authoritative design
+- [API Reference](https://energy-models.github.io/datarecord/api/) — every public symbol

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """`Record` over an overlay and over a directory.
 
 Notes
@@ -70,10 +74,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
     """
     members = nw.from_native(
-        con.sql(
-            "SELECT 'Generator' AS component_type, 'wind' AS name,"
-            " NULL::VARCHAR AS scenario"
-        )
+        con.sql("SELECT 'Generator' AS component_type, 'wind' AS name, NULL::VARCHAR AS scenario")
     )
     long = nw.from_native(
         con.sql(
@@ -97,9 +98,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
         def flags(self, ctype: str) -> dict[str, Flags]:
             return {}
 
-    record = DictRecord(
-        schema(), {}, {"Generator": members}, {}, {"p_nom": long}, EMPTY
-    )
+    record = DictRecord(schema(), {}, {"Generator": members}, {}, {"p_nom": long}, EMPTY)
     assert isinstance(record, Record)
     # Results absent, spelled as an empty mapping rather than a protocol a
     # consumer has to test for (https://energy-models.github.io/datarecord/design/record/#frames).
@@ -296,10 +295,7 @@ def test_flags_report_a_curve(con, base_uri):
     write_input(
         layer,
         "marginal_cost",
-        [
-            {"name": "steel", "breakpoint": x, "value": v}
-            for x, v in ((0.0, 20.0), (50.0, 35.0))
-        ],
+        [{"name": "steel", "breakpoint": x, "value": v} for x, v in ((0.0, 20.0), (50.0, 35.0))],
     )
 
     for record in (LayeredRecord(revision.node_cache), DirectoryRecord(layer, con)):
@@ -373,9 +369,7 @@ def test_directory_record_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
     assert record.schema.attributes
 
 
-def test_directory_record_has_no_connections_when_none_were_written(
-    con, base_uri, tmp_path
-):
+def test_directory_record_has_no_connections_when_none_were_written(con, base_uri, tmp_path):
     """A record with no `dims/connections/` reads as having none, not as an error.
 
     Notes

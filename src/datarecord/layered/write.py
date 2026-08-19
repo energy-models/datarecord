@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Writing a whole record as a layer.
 
 A `Record` hands over narwhals frames and this module turns them into parquet;
@@ -146,9 +150,7 @@ def write_record(
                         )
                     )
                 name = f"{key}s" if kind == "dims" else key
-                _write_frame(
-                    frame, f"{staging}{subdir}/{name}.parquet", con, local, schema
-                )
+                _write_frame(frame, f"{staging}{subdir}/{name}.parquet", con, local, schema)
         _require_unique(tagged)
     except BaseException:
         if local:
@@ -233,8 +235,7 @@ def _typed(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     cols = ", ".join(
-        f'"{c}"::{t} AS "{c}"' if (t := schema.column_type(c)) else f'"{c}"'
-        for c in rel.columns
+        f'"{c}"::{t} AS "{c}"' if (t := schema.column_type(c)) else f'"{c}"' for c in rel.columns
     )
     return rel.project(cols)
 
@@ -283,8 +284,7 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
         # Sorted here rather than in the query: the message must be
         # deterministic, and this is a handful of rows.
         detail = "; ".join(
-            f"{n!r} is a {' and a '.join(sorted(t))}"
-            for n, t in sorted(by_name.items())
+            f"{n!r} is a {' and a '.join(sorted(t))}" for n, t in sorted(by_name.items())
         )
         msg = (
             f"component types reuse names: {detail}; a name identifies one "

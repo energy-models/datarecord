@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The scenario axis and per-scenario overlay.
 
 Notes
@@ -69,9 +73,7 @@ def test_map_is_scenario_expanded(con, parent, stochastic):
     df = parent.node_cache.inputs.df()
     assert set(df["scenario"]) == set(stochastic.scenarios)
 
-    solar = df[
-        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
-    ]
+    solar = df[(df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")]
     assert set(solar["scenario"]) == set(stochastic.scenarios)
 
 
@@ -92,9 +94,7 @@ def test_partial_scenario_override(con, parent, stochastic):
     )
 
     df = child.node_cache.inputs.df()
-    solar = df[
-        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
-    ]
+    solar = df[(df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")]
     owners = dict(zip(solar["scenario"], solar["layer_uuid"], strict=True))
     assert owners[scenario] == child.id
     for other in stochastic.scenarios[1:]:
@@ -231,9 +231,7 @@ def test_scenario_axis_survives_closed_grandchild(con, parent, stochastic):
     )
 
     df = grandchild.node_cache.inputs.df()
-    solar = df[
-        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
-    ]
+    solar = df[(df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")]
     assert set(solar["scenario"]) == set(stochastic.scenarios)
     assert set(solar["layer_uuid"]) == {grandchild.id}
 
@@ -248,9 +246,7 @@ def test_scenario_null_row_broadcasts(con, parent, stochastic):
     )
 
     df = child.node_cache.inputs.df()
-    solar = df[
-        (df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
-    ]
+    solar = df[(df["name"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")]
     assert set(solar["layer_uuid"]) == {child.id}
 
     rel = relation(child, "p_max_pu").df()

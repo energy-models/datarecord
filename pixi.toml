@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 [workspace]
 name = "datarecord"
 channels = ["conda-forge"]
@@ -11,7 +15,7 @@ name = "datarecord"
 name = "pixi-build-python"
 version = "*"
 [package.host-dependencies]
-python = ">=3.11"
+python = ">=3.12"
 hatchling = "*"
 uv = "*"
 
@@ -50,14 +54,21 @@ pypsa = "*"
 # mkdocstrings integration preliminary, so this stays here until that settles.
 [feature.docs.dependencies]
 mkdocs = ">=1.6,<2"
-mkdocs-material = ">=9.5,<10"
-mkdocstrings-python = ">=1.10"
+mkdocs-material = ">=9.5"
+mkdocstrings = ">=0.29"
+mkdocstrings-python = ">=1.16"
+mkdocs-bibtex = ">=2.16"
+pymdown-extensions = ">=10.0"
+mkdocs-macros-plugin = ">=1.0"
+mkdocs-table-reader-plugin = ">=3.1"
 # mkdocstrings formats signatures with one of these; without it every signature
 # renders on a single unwrapped line.
 ruff = "*"
-[feature.docs.tasks]
-docs = "mkdocs serve"
-docs-build = "mkdocs build --strict"
+[feature.docs.tasks.docs-serve]
+cmd = "mkdocs serve"
+[feature.docs.tasks.docs-build]
+cmd = "mkdocs build --strict {{ dir }}"
+args = ["dir"]
 
 # Material prints a red MkDocs 2.0 advisory on every build. It is editorial, not
 # a deprecation of anything used here, and in a CI log it reads as a failure -
@@ -87,8 +98,11 @@ reuse = "*"
 pre-commit-install = "lefthook install"
 lint = "lefthook run pre-commit --all-files"
 
-[feature.py311.dependencies]
-python = "3.11.*"
+[feature.template.dependencies]
+copier = ">=9.16"
+[feature.template.tasks.template-update]
+cmd = "copier update --trust --skip-answered --skip-tasks ."
+
 [feature.py312.dependencies]
 python = "3.12.*"
 [feature.py313.dependencies]
@@ -97,9 +111,8 @@ python = "3.13.*"
 python = "3.14.*"
 
 [environments]
-default = ["test", "build", "lint"]
-docs = ["docs"]
-py311 = ["py311", "test"]
+default = ["test", "build", "lint", "docs"]
+template = ["template"]
 py312 = ["py312", "test"]
 py313 = ["py313", "test"]
 py314 = ["py314", "test"]

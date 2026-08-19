@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Open questions
 
 - **What a component tombstone means for a connection keyed by fewer dims.** When `component` keys `scenario` and `connection` does not, deleting a component in one scenario removes a connection that is not scenario-scoped, even though the component survives elsewhere.

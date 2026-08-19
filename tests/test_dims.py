@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Layer keys beyond `scenario`, resolved through a real record.
 
 What `partial` and `keys` *mean* as declarations is pinned in
@@ -26,9 +30,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     """With `period` `partial`, a child may replace one period only."""
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(
-        schema(partial={"scenario", "period"}, keys={"scenario": {"component"}})
-    )
+    write_schema(schema(partial={"scenario", "period"}, keys={"scenario": {"component"}}))
     revision.materialise()
 
     child = revision.child()
@@ -45,9 +47,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     )
 
     df = child.node_cache.inputs.df()
-    wind = df[
-        (df["name"] == "Manchester Wind") & (df["attribute"].astype(str) == "p_max_pu")
-    ]
+    wind = df[(df["name"] == "Manchester Wind") & (df["attribute"].astype(str) == "p_max_pu")]
     owners = dict(zip(wind["period"], wind["layer_uuid"], strict=False))
     assert owners.get(2030) == child.id
 
@@ -93,9 +93,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(
-        schema(partial={"scenario", "period"}, keys={"scenario": {"component"}})
-    )
+    write_schema(schema(partial={"scenario", "period"}, keys={"scenario": {"component"}}))
     write_input(
         layer_dir(revision.id),
         "p_max_pu",

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Overlay semantics over a parent/child pair.
 
 Notes
@@ -221,9 +225,7 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     narrowed = read_schema()
-    narrowed.attributes["Generator"]["p_max_pu"] = AttributeSpec(
-        dtype="DOUBLE", dims=frozenset()
-    )
+    narrowed.attributes["Generator"]["p_max_pu"] = AttributeSpec(dtype="DOUBLE", dims=frozenset())
 
     class _Narrowed:
         """The record's own source, with one attribute's dims taken away."""

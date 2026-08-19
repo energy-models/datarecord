@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Tool representations of a `Revision`.
 
 A record is tool-agnostic: it resolves to dims, components and attributes. A

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The `Record` protocol: what a record answers, however it is backed.
 
 Backings: `layered.revision.LayeredRecord` (a resolved overlay) and

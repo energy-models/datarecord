@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Hand-built patch layers, since the v2 write path does not exist.
 
 Notes
@@ -98,10 +102,7 @@ def tombstone_connection(
     write_connections(
         layer,
         ctype,
-        [
-            {"name": name, "bus": bus, "scenario": scenario, "deleted": True}
-            for name, bus in pairs
-        ],
+        [{"name": name, "bus": bus, "scenario": scenario, "deleted": True} for name, bus in pairs],
     )
 
 

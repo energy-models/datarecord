@@ -1,9 +1,14 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # AGENTS.md
 
 Contribution rules and conventions for datarecord, for humans and AI agents alike.
 
 For the general contribution workflow, project conventions and architecture
-overview, see [`CONTRIBUTING.md`](CONTRIBUTING.md) (inlined at the end for Claude
+overview, see `CONTRIBUTING.md` (inlined at the end for Claude
 Code via `@`-import).
 
 **Part 1 is philosophy**: a change that breaks one of these is wrong here even
@@ -67,9 +72,8 @@ used instead. **A test asserting the old behaviour is not a blocker**; say in th
 PR what coverage moved where.
 
 Where the change is to a construct the design pages define, the rename lands in
-[`docs/design/`](docs/design/) too — a docstring's `Notes` links to a section by
-anchor, so a heading that moves has to be followed there. `pixi run -e docs
-docs-build` fails on a link that stopped resolving.
+`docs/design/` too — a docstring's `Notes` links to a section by
+anchor, so a heading that moves has to be followed there. `pixi run docs-build` fails on a link that stopped resolving.
 
 # Part 2 — Good defaults
 
@@ -128,7 +132,7 @@ name is the _caller_, not the implementer.
   narration of how the answer was found, and any tour of internals a caller
   cannot see.
 - **Cite the design pages, don't restate them.** A `Notes` section at the end of
-  the docstring, listing the [`docs/design/`](docs/design/) pages it depends on
+  the docstring, listing the `docs/design/` pages it depends on
   by link; the argument stays there. A docstring that re-argues the design is a
   defect. `Notes` rather than `References`, which numpydoc reserves for sources
   that augment a docstring rather than ones it needs to be understood.
@@ -168,6 +172,17 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
     """
 ```
+
+## Licensing
+
+Always place a REUSE 3.0 header comment in each file, following the format of `datarecord contributors` as the copyright text and `MIT` as the license for code and `CC-BY-4.0` for docs.
+If the file format does not support comments, add an annotation in REUSE.toml.
+
+## Linting & testing
+
+Call `pixi run lint` to run the pre-commit checks (incl. linting & formatting).
+Call `pixi run test` to run the test suite and `pixi run test <test-file>` to run specific files.
+Call `pixi run test-coverage` to run the test suite with a line coverage check; this is a slower operation so should be run sparingly.
 
 ## Issues
 

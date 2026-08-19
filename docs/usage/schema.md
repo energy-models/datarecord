@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # The schema
 
 One schema per record, written down as `manifest.json` ([design](../design/schema.md)).
@@ -16,9 +22,7 @@ schema = Schema(
         "Generator": {
             "p_nom": AttributeSpec(dtype="DOUBLE", default=0.0, unit="MW"),
             "carrier": AttributeSpec(dtype="VARCHAR"),
-            "p_max_pu": AttributeSpec(
-                dtype="DOUBLE", dims={"scenario", "timestep"}, default=1.0
-            ),
+            "p_max_pu": AttributeSpec(dtype="DOUBLE", dims={"scenario", "timestep"}, default=1.0),
         },
     },
     partial={"scenario"},

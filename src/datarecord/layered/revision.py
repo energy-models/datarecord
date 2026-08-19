@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The `Revision` node and its ancestry query.
 
 A thin façade over `resolve`: it holds the node's identity and reads the
@@ -50,9 +54,7 @@ def _insert(con: DuckDBPyConnection, parent: UUID | None) -> tuple[UUID, UUID | 
 
 def _fetch(con: DuckDBPyConnection, revision_id: UUID) -> tuple[UUID, UUID | None]:
     """Read one revision's row, or raise `KeyError`."""
-    row = con.execute(
-        "SELECT id, parent FROM revisions WHERE id = ?", [revision_id]
-    ).fetchone()
+    row = con.execute("SELECT id, parent FROM revisions WHERE id = ?", [revision_id]).fetchone()
     if row is None:
         msg = f"No revision {revision_id}"
         raise KeyError(msg)
@@ -142,9 +144,7 @@ class Revision(BaseModel):
     # -- tree ---------------------------------------------------------------
 
     @classmethod
-    def create(
-        cls, con: DuckDBPyConnection | None = None, parent: UUID | None = None
-    ) -> Self:
+    def create(cls, con: DuckDBPyConnection | None = None, parent: UUID | None = None) -> Self:
         """Insert a new revision, letting the DB assign the UUID."""
         con = con or default_connection()
         id_, parent_ = _insert(con, parent)
@@ -242,16 +242,12 @@ class LayeredRecord:
     @cached_property
     def attributes(self) -> LazyFrames:
         names = tuple(self.node_cache.attribute_names())
-        return LazyFrames(
-            names, lambda attr: nw.from_native(self.node_cache.relation(attr))
-        )
+        return LazyFrames(names, lambda attr: nw.from_native(self.node_cache.relation(attr)))
 
     @cached_property
     def outputs(self) -> LazyFrames:
         names = tuple(self.node_cache.output_names())
-        return LazyFrames(
-            names, lambda attr: nw.from_native(self.node_cache.outputs(attr))
-        )
+        return LazyFrames(names, lambda attr: nw.from_native(self.node_cache.outputs(attr)))
 
     def flags(self, ctype: str) -> dict[str, Flags]:
         """Straight off the `inputs` owner map, which folded these in for free.

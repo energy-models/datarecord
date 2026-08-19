@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # The schema
 
 One schema per record, and `manifest.json` is how it is written down — the two words name the same thing, the file and the object.
@@ -29,9 +35,7 @@ class Schema(BaseModel):
     version: int  # bumped by any change to the declarations
 
     dimensions: dict[str, Dimension]
-    attributes: dict[
-        str, dict[str, AttributeSpec]
-    ]  # component type -> attribute -> spec
+    attributes: dict[str, dict[str, AttributeSpec]]  # component type -> attribute -> spec
 
     # Which dims a layer may patch value by value; absent for a record with no
     # layers, since nothing overrides anything.

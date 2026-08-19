@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The owner map, and the resolved reads gated by it.
 
 The map answers which layer owns each key; `NodeCache` exposes the reads over
@@ -96,9 +100,7 @@ def broadcast_match(
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    match = ex_all(
-        sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}") for c in fixed
-    )
+    match = ex_all(sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}") for c in fixed)
     for dim in dims:
         match = match & (
             col(alias_a, dim).isnull()
@@ -314,9 +316,7 @@ def _deleted_relation(
     ).distinct()
 
 
-def _component_deleted(
-    revision_id: UUID, keys: Dims, con: DuckDBPyConnection
-) -> DuckDBPyRelation:
+def _component_deleted(revision_id: UUID, keys: Dims, con: DuckDBPyConnection) -> DuckDBPyRelation:
     """This layer's tombstoned components, scoped by `component_dims`.
 
     Notes
@@ -343,17 +343,13 @@ def _component_deleted_for_connections(
     - [open questions](https://energy-models.github.io/datarecord/design/open-questions/)
     """
     deleted = _component_deleted(revision_id, keys, con)
-    if not [
-        d for d in keys.schema.component_dims if d not in keys.schema.connection_dims
-    ]:
+    if not [d for d in keys.schema.component_dims if d not in keys.schema.connection_dims]:
         return deleted
     shared = ("name", *keys.schema.connection_dims)
     return deleted.project(*(col(c) for c in shared)).distinct()
 
 
-def _connection_deleted(
-    revision_id: UUID, keys: Dims, con: DuckDBPyConnection
-) -> DuckDBPyRelation:
+def _connection_deleted(revision_id: UUID, keys: Dims, con: DuckDBPyConnection) -> DuckDBPyRelation:
     """This layer's tombstoned connections, scoped by `connection_dims`.
 
     Notes
@@ -378,24 +374,19 @@ def _cast(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     cols = ", ".join(
-        f'"{c}"::{t} AS "{c}"' if (t := schema.column_type(c)) else f'"{c}"'
-        for c in rel.columns
+        f'"{c}"::{t} AS "{c}"' if (t := schema.column_type(c)) else f'"{c}"' for c in rel.columns
     )
     return rel.project(cols)
 
 
-def _empty_relation(
-    schema: Schema, con: DuckDBPyConnection, *columns: str
-) -> DuckDBPyRelation:
+def _empty_relation(schema: Schema, con: DuckDBPyConnection, *columns: str) -> DuckDBPyRelation:
     """A zero-row relation with `columns`, cast to their declared type, `VARCHAR` if none.
 
     Notes
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    cols = ", ".join(
-        f"NULL::{schema.column_type(c) or 'VARCHAR'} AS {c}" for c in columns
-    )
+    cols = ", ".join(f"NULL::{schema.column_type(c) or 'VARCHAR'} AS {c}" for c in columns)
     return con.sql(f"SELECT {cols} WHERE false")
 
 
@@ -419,14 +410,10 @@ def _struct_of(dims: tuple[str, ...], predicate: str) -> str:
 
 
 def _null_safe(alias_a: str, alias_b: str, columns: tuple[str, ...]) -> str:
-    return " AND ".join(
-        f"{alias_a}.{c} IS NOT DISTINCT FROM {alias_b}.{c}" for c in columns
-    )
+    return " AND ".join(f"{alias_a}.{c} IS NOT DISTINCT FROM {alias_b}.{c}" for c in columns)
 
 
-def _with_columns(
-    schema: Schema, rel: DuckDBPyRelation, *columns: str
-) -> DuckDBPyRelation:
+def _with_columns(schema: Schema, rel: DuckDBPyRelation, *columns: str) -> DuckDBPyRelation:
     """`rel` with any of `columns` it lacks added as typed NULLs.
 
     `bus` and `breakpoint` are part of the long schema but absent from files
@@ -442,9 +429,7 @@ def _with_columns(
     missing = [c for c in columns if c not in rel.columns]
     if not missing:
         return rel
-    added = ", ".join(
-        f'NULL::{schema.column_type(c) or "VARCHAR"} AS "{c}"' for c in missing
-    )
+    added = ", ".join(f'NULL::{schema.column_type(c) or "VARCHAR"} AS "{c}"' for c in missing)
     return rel.project(f"*, {added}")
 
 
@@ -457,9 +442,7 @@ def fold_inputs(
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    rel = try_read_parquet(
-        layer_dir(revision_id) + "inputs/*.parquet", con, union_by_name=True
-    )
+    rel = try_read_parquet(layer_dir(revision_id) + "inputs/*.parquet", con, union_by_name=True)
     if rel is None:
         own = _empty_relation(keys.schema, con, *keys.schema.input_columns)
     else:
@@ -487,12 +470,8 @@ def fold_inputs(
         own = tagged.aggregate(
             [
                 *(col(c) for c in (*keys.schema.input_key, "layer_uuid")),
-                sql(_struct_of(keys.schema.dims, '"_raw_{}" IS NOT NULL')).alias(
-                    "varies"
-                ),
-                sql(_struct_of(keys.schema.dims, '"_raw_{}" IS NULL')).alias(
-                    "broadcast"
-                ),
+                sql(_struct_of(keys.schema.dims, '"_raw_{}" IS NOT NULL')).alias("varies"),
+                sql(_struct_of(keys.schema.dims, '"_raw_{}" IS NULL')).alias("broadcast"),
                 fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
             ]
         )
@@ -512,9 +491,7 @@ def fold_inputs(
             _null_safe("c", "p", keys.schema.connection_key),
             how="anti",
         )
-        .join(
-            own.set_alias("o"), _null_safe("p", "o", keys.schema.input_key), how="anti"
-        )
+        .join(own.set_alias("o"), _null_safe("p", "o", keys.schema.input_key), how="anti")
     )
     return union_all_by_name([kept, own], con)
 
@@ -589,8 +566,7 @@ def _fold_ordered(
     columns: tuple[str, ...],
     dims: tuple[str, ...],
     fixed: tuple[str, ...] = ("name",),
-    also_deleted: Callable[[UUID, Dims, DuckDBPyConnection], DuckDBPyRelation]
-    | None = None,
+    also_deleted: Callable[[UUID, Dims, DuckDBPyConnection], DuckDBPyRelation] | None = None,
     also_deleted_key: tuple[str, ...] = (),
 ) -> DuckDBPyRelation:
     """The shared fold for the two maps that carry an `order_key`.
@@ -653,12 +629,10 @@ def _fold_ordered(
             _null_safe("p", "a", also_deleted_key),
             how="anti",
         )
-    deleted = _deleted_relation(
-        revision_id, keys, con, subdir=subdir, fixed=fixed, dims=dims
+    deleted = _deleted_relation(revision_id, keys, con, subdir=subdir, fixed=fixed, dims=dims)
+    kept = kept.join(deleted.set_alias("x"), _null_safe("p", "x", key), how="anti").join(
+        own.set_alias("o"), _null_safe("p", "o", key), how="anti"
     )
-    kept = kept.join(
-        deleted.set_alias("x"), _null_safe("p", "x", key), how="anti"
-    ).join(own.set_alias("o"), _null_safe("p", "o", key), how="anti")
     return union_all_by_name([kept, own], con)
 
 
@@ -669,9 +643,7 @@ def _fold_map(
     *,
     columns: Callable[[Dims], tuple[str, ...]],
     map_uri: Callable[[UUID], str],
-    fold: Callable[
-        [UUID, Dims, DuckDBPyConnection, DuckDBPyRelation], DuckDBPyRelation
-    ],
+    fold: Callable[[UUID, Dims, DuckDBPyConnection, DuckDBPyRelation], DuckDBPyRelation],
 ) -> DuckDBPyRelation:
     """A record's owner map of one kind, folded down over `ancestry`.
 
@@ -751,9 +723,7 @@ def _table(
         return con.table(name)
 
 
-def materialise(
-    revision_id: UUID, ancestry: list[UUID], con: DuckDBPyConnection
-) -> None:
+def materialise(revision_id: UUID, ancestry: list[UUID], con: DuckDBPyConnection) -> None:
     """Write `revision_id`'s node caches: owner maps and resolved dims.
 
     Purely additive. It changes no answer a read would give, only how many
@@ -972,9 +942,7 @@ class NodeCache:
         rows = rel.project("attribute").distinct().order("attribute").fetchall()
         return [r[0] for r in rows]
 
-    def attributes_of(
-        self, ctype: str
-    ) -> dict[str, tuple[frozenset[str], frozenset[str], bool]]:
+    def attributes_of(self, ctype: str) -> dict[str, tuple[frozenset[str], frozenset[str], bool]]:
         """Per attribute of `ctype`, which dims its rows use.
 
         The map computes the flags per key, so per component; this unions them
@@ -997,9 +965,7 @@ class NodeCache:
         dims = self.schema.dims
         # Scoped by a semi-join to the components map, the entity table saying
         # what type a name is (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
-        of_type = self.components.filter(col("component_type") == lit(ctype)).project(
-            "name"
-        )
+        of_type = self.components.filter(col("component_type") == lit(ctype)).project("name")
         rows = (
             self.inputs.set_alias("i")
             .join(of_type.distinct().set_alias("e"), "i.name = e.name", how="semi")
@@ -1153,9 +1119,7 @@ class NodeCache:
         """
         con = self.con
         owned = owner_map.filter(col("component_type") == lit(ctype))
-        owning_ids = [
-            layer_uuid for (layer_uuid,) in owned["layer_uuid"].distinct().fetchall()
-        ]
+        owning_ids = [layer_uuid for (layer_uuid,) in owned["layer_uuid"].distinct().fetchall()]
         if not owning_ids:
             return None
 
@@ -1187,11 +1151,7 @@ class NodeCache:
         return joined.project(
             *(col("u", c) for c in union.columns if c not in skip),
             *(
-                (
-                    coalesce(col("u", d), col("o", d))
-                    if d in union.columns
-                    else col("o", d)
-                ).alias(d)
+                (coalesce(col("u", d), col("o", d)) if d in union.columns else col("o", d)).alias(d)
                 for d in dims
             ),
             col("o", "order_key"),

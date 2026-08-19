@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The typed schema: declarations, derived keys, validation, versioning.
 
 Notes
@@ -22,12 +26,8 @@ def _schema(**overrides) -> Schema:
         "attributes": {
             "Generator": {
                 "p_nom": AttributeSpec(dtype="DOUBLE"),
-                "p_max_pu": AttributeSpec(
-                    dtype="DOUBLE", dims={"scenario", "timestep"}
-                ),
-                "marginal_cost": AttributeSpec(
-                    dtype="DOUBLE", dims={"scenario"}, breakpoints=True
-                ),
+                "p_max_pu": AttributeSpec(dtype="DOUBLE", dims={"scenario", "timestep"}),
+                "marginal_cost": AttributeSpec(dtype="DOUBLE", dims={"scenario"}, breakpoints=True),
                 "carrier": AttributeSpec(dtype="VARCHAR"),
             },
             "Link": {
@@ -169,9 +169,7 @@ def test_an_attribute_cannot_vary_over_an_undeclared_dim():
     with pytest.raises(ValidationError, match="undeclared"):
         Schema(
             dimensions={"scenario": Dimension(dtype="VARCHAR")},
-            attributes={
-                "Generator": {"p": AttributeSpec(dtype="DOUBLE", dims={"nope"})}
-            },
+            attributes={"Generator": {"p": AttributeSpec(dtype="DOUBLE", dims={"nope"})}},
         )
 
 
@@ -194,9 +192,7 @@ def test_a_default_survives_the_manifest_round_trip(value):
     """
     schema = Schema(
         dimensions={"scenario": Dimension(dtype="VARCHAR")},
-        attributes={
-            "Generator": {"p_nom_max": AttributeSpec(dtype="DOUBLE", default=value)}
-        },
+        attributes={"Generator": {"p_nom_max": AttributeSpec(dtype="DOUBLE", default=value)}},
     )
     back = Schema.model_validate_json(schema.model_dump_json())
     assert repr(back.attributes["Generator"]["p_nom_max"].default) == repr(value)
@@ -208,9 +204,7 @@ def test_a_default_survives_the_manifest_round_trip(value):
 def test_adding_an_attribute_is_compatible():
     old = _schema()
     new = _schema()
-    new.attributes["Generator"]["p_min_pu"] = AttributeSpec(
-        dtype="DOUBLE", dims={"scenario"}
-    )
+    new.attributes["Generator"]["p_min_pu"] = AttributeSpec(dtype="DOUBLE", dims={"scenario"})
     assert new.compatible_with(old) == []
 
 
@@ -234,9 +228,7 @@ def test_widening_partial_is_compatible():
 def test_narrowing_dims_is_incompatible():
     old = _schema()
     new = _schema()
-    new.attributes["Generator"]["p_max_pu"] = AttributeSpec(
-        dtype="DOUBLE", dims={"scenario"}
-    )
+    new.attributes["Generator"]["p_max_pu"] = AttributeSpec(dtype="DOUBLE", dims={"scenario"})
     (reason,) = new.compatible_with(old)
     assert "no longer varies over ['timestep']" in reason
 
@@ -282,16 +274,12 @@ def test_unit_and_description_are_declared_on_both():
     """
     s = Schema(
         dimensions={
-            "vintage": Dimension(
-                dtype="BIGINT", unit="year", description="Build year."
-            ),
+            "vintage": Dimension(dtype="BIGINT", unit="year", description="Build year."),
             "scenario": Dimension(dtype="VARCHAR", description="One realisation."),
         },
         attributes={
             "Generator": {
-                "p_nom": AttributeSpec(
-                    dtype="DOUBLE", unit="MW", description="Nominal power."
-                )
+                "p_nom": AttributeSpec(dtype="DOUBLE", unit="MW", description="Nominal power.")
             }
         },
     )

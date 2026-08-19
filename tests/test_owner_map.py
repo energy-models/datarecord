@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The fold, the cache and persistence.
 
 Notes
@@ -168,9 +172,7 @@ def test_live_fold_is_cached_per_connection(con, parent):
         f"owner_map_inputs_{child.id.hex}",
         f"owner_map_components_{child.id.hex}",
     ):
-        assert con.execute(
-            "SELECT 1 FROM duckdb_tables() WHERE table_name = ?", [table]
-        ).fetchone()
+        assert con.execute("SELECT 1 FROM duckdb_tables() WHERE table_name = ?", [table]).fetchone()
 
 
 def test_materialising_does_not_change_the_map(con, parent):

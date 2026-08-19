@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Connections as bus-keyed rows, and `bus` in the inputs key.
 
 Notes
@@ -178,9 +182,7 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
     layer = layer_dir(revision.id)
     write_schema(schema())
     write_components(layer, PROCESS, [{"name": "steel_dri"}])
-    write_connections(
-        layer, PROCESS, [{"name": "steel_dri", "bus": "h2_north", "role": "input"}]
-    )
+    write_connections(layer, PROCESS, [{"name": "steel_dri", "bus": "h2_north", "role": "input"}])
     write_input(
         layer,
         "efficiency",
@@ -276,9 +278,7 @@ def test_connection_exists_per_scenario(con, base_uri):
     revision.materialise()
 
     child = revision.child()
-    tombstone_connection(
-        layer_dir(child.id), PROCESS, [("steel_dri", "co2")], scenario="high"
-    )
+    tombstone_connection(layer_dir(child.id), PROCESS, [("steel_dri", "co2")], scenario="high")
 
     frame = _connections(child).df()
     assert list(zip(frame["bus"], frame["scenario"], strict=True)) == [("co2", "low")]
@@ -326,9 +326,7 @@ def test_narrower_connection_key_than_component_key(con, base_uri):
     write_components(
         layer, PROCESS, [{"name": "steel_dri", "scenario": s} for s in ("low", "high")]
     )
-    write_connections(
-        layer, PROCESS, [{"name": "steel_dri", "bus": "co2", "role": "output"}]
-    )
+    write_connections(layer, PROCESS, [{"name": "steel_dri", "bus": "co2", "role": "output"}])
     revision.materialise()
 
     # `scenario` does not key connections, so that map carries no such column.

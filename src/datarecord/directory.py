@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """`DirectoryRecord`, a plain parquet directory as a `Record`.
 
 Framework-independent, like the rest of `datarecord`: hands over narwhals
@@ -148,14 +152,8 @@ class DirectoryRecord:
             n = len(dims)
             result = {
                 r[0]: Flags(
-                    frozenset(
-                        d for d, on in zip(dims, r[1 : 1 + n], strict=True) if on
-                    ),
-                    frozenset(
-                        d
-                        for d, on in zip(dims, r[1 + n : 1 + 2 * n], strict=True)
-                        if on
-                    ),
+                    frozenset(d for d, on in zip(dims, r[1 : 1 + n], strict=True) if on),
+                    frozenset(d for d, on in zip(dims, r[1 + n : 1 + 2 * n], strict=True) if on),
                     bool(r[1 + 2 * n]),
                 )
                 for r in rows
