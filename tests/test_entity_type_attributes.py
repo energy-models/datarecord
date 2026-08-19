@@ -73,7 +73,7 @@ def root(con, base_uri, typed_schema):
     return child
 
 
-def _icons(record) -> dict[str, str]:
+def _icons(record) -> dict[str, str | None]:
     frame = record.dims["entity_type"].collect().to_native()
     return {
         str(k): (None if v is None else str(v))
