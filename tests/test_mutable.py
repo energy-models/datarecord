@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """`WorkingRecord`: staging, the edit operations, commit.
 
 Notes
@@ -103,9 +107,7 @@ def test_a_series_indexed_by_names_is_per_name():
 def test_a_series_indexed_by_an_axis_is_per_coordinate():
     """The same type, read as a dim series - which axis labels it carries decides."""
     series = pd.Series({"2030-01-01": 0.4, "2030-01-02": 0.6})
-    names, values, dims = normalise_value(
-        series, None, {"snapshot": ["2030-01-01", "2030-01-02"]}
-    )
+    names, values, dims = normalise_value(series, None, {"snapshot": ["2030-01-01", "2030-01-02"]})
     assert names is None
     assert values == [0.4, 0.6]
     assert list(dims) == ["snapshot"]
@@ -331,9 +333,7 @@ def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
 
     staged.set(
         "marginal_cost",
-        pd.DataFrame(
-            [{"name": "Manchester Wind", "snapshot": ac_dc.snapshots[0], "value": 7.5}]
-        ),
+        pd.DataFrame([{"name": "Manchester Wind", "snapshot": ac_dc.snapshots[0], "value": 7.5}]),
         names=["Manchester Wind"],
     )
 
@@ -357,9 +357,7 @@ def test_a_non_float_attribute_stages_and_commits(staged, root):
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
     amended = read_schema()
-    amended.attributes[GEN]["carrier"] = AttributeSpec(
-        dtype="VARCHAR", dims={"scenario"}
-    )
+    amended.attributes[GEN]["carrier"] = AttributeSpec(dtype="VARCHAR", dims={"scenario"})
     write_schema(amended)
 
     staged.set("carrier", "solar", names=["Manchester Wind"])
@@ -506,9 +504,7 @@ def test_add_accepts_a_name_of_its_own_type(staged, root):
     """Re-adding a name of the same type is an edit to that member, not a clash."""
     staged.add(GEN, pd.DataFrame([{"name": "Manchester Wind", "p_nom": 5.0}]))
     child = staged.commit(NewChild(root))
-    assert (
-        PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 5.0
-    )
+    assert PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 5.0
 
 
 def test_a_name_lookup_stays_a_query_until_it_is_filtered(staged):
@@ -560,9 +556,7 @@ def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
     staged.add("Bus", pd.DataFrame([{"name": "Manchester Wind"}]))
 
     rows = [
-        r
-        for r in staged._collapsed_entities("components").fetchall()
-        if r[1] == "Manchester Wind"
+        r for r in staged._collapsed_entities("components").fetchall() if r[1] == "Manchester Wind"
     ]
     assert len(rows) == 1
     assert rows[0][0] == "Bus"
@@ -648,9 +642,7 @@ def test_connect_stages_a_new_connection(staged, root):
     """
     staged.connect(
         "Generator",
-        pd.DataFrame(
-            [{"name": "Manchester Wind", "bus": "Norway", "role": "attached"}]
-        ),
+        pd.DataFrame([{"name": "Manchester Wind", "bus": "Norway", "role": "attached"}]),
     )
     assert staged.pending.connections == {"Generator": 1}
 
@@ -809,9 +801,7 @@ def test_a_committed_child_builds_a_network(staged, root):
     staged.set("p_nom", 150.0, names=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    assert (
-        PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 150.0
-    )
+    assert PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 150.0
 
 
 # -- the `Expr` value form's raise rule (https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one) -------------------------------
@@ -838,9 +828,7 @@ def test_an_expression_over_a_named_target_with_no_rows_raises(staged):
 
 def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(staged):
     """`names=None` and no scope means "whatever resolves", so empty is an answer."""
-    absent = next(
-        a for a in sorted(staged.schema.attributes[GEN]) if a not in staged.attributes
-    )
+    absent = next(a for a in sorted(staged.schema.attributes[GEN]) if a not in staged.attributes)
     staged.set(absent, nw.col("value") * 2)
     assert absent not in staged.pending.attributes
 
@@ -859,9 +847,7 @@ def test_results_stage_and_read_back_without_committing(staged):
     staged.set("p", 42.0, names=["Manchester Wind"], kind="outputs")
 
     rows = staged.outputs["p"].collect().to_native().to_pandas()
-    assert dict(zip(rows["name"], rows["value"], strict=True)) == {
-        "Manchester Wind": 42.0
-    }
+    assert dict(zip(rows["name"], rows["value"], strict=True)) == {"Manchester Wind": 42.0}
     # Staged as a result, so it is not an input.
     assert "p" not in staged.pending.attributes
 
@@ -934,13 +920,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
 
     # And it survives the commit into the layer's own `outputs/`.
     child = staged.commit(NewChild(root))
-    got = (
-        DirectoryRecord(layer_dir(child.id), con)
-        .outputs["p"]
-        .collect()
-        .to_native()
-        .to_pandas()
-    )
+    got = DirectoryRecord(layer_dir(child.id), con).outputs["p"].collect().to_native().to_pandas()
     assert set(got["name"]) == {"Manchester Wind", "0"}
     assert "component_type" not in got.columns
 
@@ -952,9 +932,7 @@ def test_a_frame_carrying_component_type_is_rejected(staged):
     -----
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
-    frame = pd.DataFrame(
-        [{"component_type": GEN, "name": "Manchester Wind", "value": 1.0}]
-    )
+    frame = pd.DataFrame([{"component_type": GEN, "name": "Manchester Wind", "value": 1.0}])
     with pytest.raises(ValueError, match="component_type"):
         staged.set("p_max_pu", frame)
 

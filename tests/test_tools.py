@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The tool layer: verify a record, build a model, read results back.
 
 Notes
@@ -148,9 +152,7 @@ def _with_schema(revision, **kwargs) -> None:
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     was = read_schema()
-    now = schema(**kwargs).model_copy(
-        update={"attributes": was.attributes, "meta": was.meta}
-    )
+    now = schema(**kwargs).model_copy(update={"attributes": was.attributes, "meta": was.meta})
     write_schema(now)
 
 
@@ -239,9 +241,7 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     assert ("Generator", "bus") in missing.attributes
 
 
-def test_verify_accepts_a_declared_default_for_a_required_attribute(
-    con, base_uri, ac_dc
-):
+def test_verify_accepts_a_declared_default_for_a_required_attribute(con, base_uri, ac_dc):
     """A declared default makes an attribute resolvable with no row anywhere.
 
     Notes
@@ -443,9 +443,7 @@ def test_results_concatenate_every_type_under_one_attribute(single_revision):
     # The names identify which type each row came from, no tag column needed -
     # that being what unique names buy the union (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
     contributing = {
-        c.name
-        for c in n.components
-        if not c.static.empty and set(c.static.index) & names
+        c.name for c in n.components if not c.static.empty and set(c.static.index) & names
     }
     assert len(contributing) > 1
     assert not p["name"].is_null().any()

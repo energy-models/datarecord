@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """DuckDB connection setup for the record layer.
 
 Owns the `revisions` metadata table and the `layer_dir` path convention
@@ -107,11 +111,7 @@ def layer_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
     - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
     """
     base = DEFAULT_BASE_URI if base_uri is None else base_uri
-    return (
-        f"{base.rstrip('/')}/layers/{revision_id}/"
-        if base
-        else f"layers/{revision_id}/"
-    )
+    return f"{base.rstrip('/')}/layers/{revision_id}/" if base else f"layers/{revision_id}/"
 
 
 def resolved_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
@@ -150,9 +150,7 @@ def _register_macros(con: DuckDBPyConnection, base_uri: str) -> None:
     con.execute(f"CREATE MACRO layer_dir(id) AS '{prefix}layers/' || id || '/'")
 
 
-def connect(
-    database: str = ":memory:", base_uri: str | None = None
-) -> DuckDBPyConnection:
+def connect(database: str = ":memory:", base_uri: str | None = None) -> DuckDBPyConnection:
     """Open a connection with the record layer's table and macros.
 
     Parameters
@@ -175,9 +173,7 @@ def connect(
         try:
             con.execute("INSTALL httpfs; LOAD httpfs;")
             # S3 credentials come from the environment, never hard-coded (https://energy-models.github.io/datarecord/design/module-layout/).
-            con.execute(
-                "CREATE SECRET IF NOT EXISTS (TYPE s3, PROVIDER credential_chain)"
-            )
+            con.execute("CREATE SECRET IF NOT EXISTS (TYPE s3, PROVIDER credential_chain)")
         except duckdb.Error:
             pass
     con.execute(CREATE_TABLE)
@@ -339,16 +335,12 @@ def fold_axis(
     partition = ", ".join(str(col(c)) for c in key)
     ranked = union.project(
         star(),
-        sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _depth DESC)").alias(
-            "_rank"
-        ),
+        sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _depth DESC)").alias("_rank"),
         # The first-introducing (depth, row) pair, as one orderable struct -
         # `min()` over two separate window aggregates would answer "smallest
         # _depth" and "smallest _row" independently, not the pair belonging
         # to the earliest actual row.
-        sql(f"min({{'d': _depth, 'r': _row}}) OVER (PARTITION BY {partition})").alias(
-            "_first"
-        ),
+        sql(f"min({{'d': _depth, 'r': _row}}) OVER (PARTITION BY {partition})").alias("_first"),
     )
     return (
         ranked.filter(col("_rank") == lit(1))

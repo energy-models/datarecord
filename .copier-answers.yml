@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: CC0-1.0
+
 # This file is managed by Copier; DO NOT EDIT OR REMOVE.
 #
 # If you want to change any of the copier answers, run one of the following:
@@ -8,14 +12,15 @@
 #
 # If you want to run this as a one-off command, prefix with:
 #   `pixi exec --spec copier --spec ruamel.yaml -- {command}`
-_commit: 0691f7fccd9de3dc76f7acfde6151d2597cab39f
+_commit: v1.0.0
 _src_path: https://github.com/energy-models/copier-template-python-open-source
 add_autobump_workflow: true
 author_email: jonas.hoersch@openenergytransition.org
 author_name: Jonas Hörsch
-github_url: https://github.com/energy-models/datarecord
 github_user: coroa
-minimal_python_version: py311
+license: MIT
+minimal_python_version: py312
 project_short_description: Dimensioned attribute data with a declared schema
 project_slug: datarecord
+repository_owner: energy-models
 use_devcontainer: false

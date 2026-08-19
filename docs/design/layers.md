@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Layered resolution
 
 A `LayeredRecord` resolves a tree of layers.

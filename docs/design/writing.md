@@ -1,9 +1,13 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Writing a whole record
 
 ```python
-def write_record(
-    revision_id: UUID, source: Record, con: DuckDBPyConnection
-) -> None: ...
+def write_record(revision_id: UUID, source: Record, con: DuckDBPyConnection) -> None: ...
 ```
 
 Writes `source` as a new layer.

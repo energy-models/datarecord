@@ -4,6 +4,20 @@ SPDX-PackageSupplier = "Jonas Hörsch <jonas.hoersch@openenergytransition.org>"
 SPDX-PackageDownloadLocation = "https://github.com/energy-models/datarecord"
 
 [[annotations]]
-path = ["**"]
+path = [
+  ".github/pull_request_template.md",
+  ".all-contributorsrc",
+  "src/py.typed",
+]
+SPDX-FileCopyrightText = "datarecord contributors"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = ["resources/**/*"]
+SPDX-FileCopyrightText = "datarecord contributors"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = ["pixi.lock"]
 SPDX-FileCopyrightText = "datarecord contributors"
 SPDX-License-Identifier = "MIT"

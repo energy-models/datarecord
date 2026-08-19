@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Memory-bounded per-type build on a large network.
 
 Marked slow: `carbon_management` is ~2164 buses / 6830 links / 168 snapshots,

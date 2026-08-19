@@ -1,4 +1,14 @@
-# datarecord
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<!--
+By default, the index will be a copy of your repository README preamble.
+You can replace this cross-reference or append/prepend to it by updating this page.
+-->
+
+--8<-- "README.md:docs"
 
 Dimensioned attribute data with a declared schema.
 
@@ -38,21 +48,15 @@ record.flags("Generator")  # which axes each attribute uses
   What a record is and why it is that way — the authoritative design. The
   docstrings cite these pages rather than restating the argument.
 
-- :material-api: **[API Reference](api/index.md)**
-
-  Generated signatures and docstrings for every public symbol.
-
 </div>
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](https://github.com/energy-models/datarecord/blob/main/CONTRIBUTING.md)
-for the workflow and conventions, and
-[`AGENTS.md`](https://github.com/energy-models/datarecord/blob/main/AGENTS.md)
-for how AI-assisted contributions must be marked.
+See the [contributing guide](./contributing.md) for the workflow and conventions,
+and [`AGENTS.md`](./AGENTS.md) for how AI-assisted contributions must be marked.
 
 ```bash
 pixi run test    # the test suite
 pixi run lint    # ruff, prettier, taplo, typos, zizmor, reuse, mypy
-pixi run -e docs docs    # serve this site locally
+pixi run docs-serve    # serve this site locally
 ```

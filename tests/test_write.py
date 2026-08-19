@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Writing a layer from long-format frames.
 
 Notes
@@ -128,9 +132,7 @@ def test_write_record_builds_each_key_once(con, base_uri):
     source = _Source(
         _SCHEMA,
         attributes={"p_nom": _long(), "e_nom": _long(attribute="e_nom")},
-        components={
-            "Process": pd.DataFrame({"name": ["steel_dri"], "scenario": [None]})
-        },
+        components={"Process": pd.DataFrame({"name": ["steel_dri"], "scenario": [None]})},
     )
     write_record(revision.id, source, con)
 
@@ -375,9 +377,7 @@ def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
     # Stored bus-keyed, with a role from PyPSA's sign convention.
-    rows = con.read_parquet(
-        layer_dir(revision.id) + "dims/connections/Link.parquet"
-    ).df()
+    rows = con.read_parquet(layer_dir(revision.id) + "dims/connections/Link.parquet").df()
     assert set(rows["role"]) == {"input", "output"}
     assert set(rows["bus"]) >= set(ac_dc.c["Link"].static["bus0"])
 
@@ -396,15 +396,11 @@ def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
-    rows = con.read_parquet(
-        layer_dir(revision.id) + "dims/connections/Generator.parquet"
-    ).df()
+    rows = con.read_parquet(layer_dir(revision.id) + "dims/connections/Generator.parquet").df()
     assert set(rows["role"]) == {"attached"}
 
     back = PyPSA.build(revision.record)
-    assert list(back.c["Generator"].static["bus"]) == list(
-        ac_dc.c["Generator"].static["bus"]
-    )
+    assert list(back.c["Generator"].static["bus"]) == list(ac_dc.c["Generator"].static["bus"])
 
 
 def test_static_series_split_survives_the_writer(con, base_uri, ac_dc):

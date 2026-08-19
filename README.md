@@ -1,3 +1,10 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<!--- --8<-- [start:docs] -->
+
 # datarecord
 
 [![docs](https://img.shields.io/badge/docs-energy--models.github.io-blue?style=flat-square&logo=materialformkdocs&logoColor=white)](https://energy-models.github.io/datarecord/)
@@ -5,6 +12,9 @@
 [![conda-forge](https://img.shields.io/conda/vn/conda-forge/datarecord?logoColor=white&logo=conda-forge&style=flat-square)](https://prefix.dev/channels/conda-forge/packages/datarecord)
 [![pypi-version](https://img.shields.io/pypi/v/datarecord.svg?logo=pypi&logoColor=white&style=flat-square)](https://pypi.org/project/datarecord)
 [![python-version](https://img.shields.io/pypi/pyversions/datarecord?logoColor=white&logo=python&style=flat-square)](https://pypi.org/project/datarecord)
+[![Documentation build status](https://readthedocs.org/projects/datarecord/badge/?version=latest)](https://datarecord.readthedocs.io)
+
+<!--- --8<-- [end:docs] -->
 
 Dimensioned attribute data with a declared schema.
 
@@ -58,7 +68,9 @@ See [Usage](https://energy-models.github.io/datarecord/usage/) for the rest.
 
 ## Development
 
-This project is managed by [pixi](https://pixi.sh):
+This project is managed by [pixi](https://pixi.prefix.dev/):
+
+<!--- --8<-- [start:docs-install-dev] -->
 
 ```bash
 git clone https://github.com/energy-models/datarecord
@@ -68,4 +80,9 @@ pixi run test    # the test suite
 pixi run lint    # ruff, prettier, taplo, typos, zizmor, reuse, mypy
 ```
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow and conventions, and [`AGENTS.md`](AGENTS.md) for how AI-assisted contributions must be marked.
+See [`CONTRIBUTING.md`](contributing.md) for the workflow and conventions, and `AGENTS.md` for how AI-assisted contributions must be marked.
+<!--- --8<-- [end:docs-install-dev] -->
+
+## Documentation
+
+For more detailed instructions, see our [documentation](https://datarecord.readthedocs.io/latest).

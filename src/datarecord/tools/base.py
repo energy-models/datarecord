@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The tool interface: verify a record, build a model, read results back.
 
 The seam between a tool-agnostic record and one modelling framework. The call runs from the tool inward (`PyPSA.build(revision.record)`), so the
@@ -88,14 +92,10 @@ class Requirements:
         if self.attributes:
             parts.append(f"attributes {sorted(self.attributes)}")
         if self.unsupported_keys:
-            unsupported = ", ".join(
-                f"{dim} as {key}" for key, dim in sorted(self.unsupported_keys)
-            )
+            unsupported = ", ".join(f"{dim} as {key}" for key, dim in sorted(self.unsupported_keys))
             parts.append(f"unsupported keys ({unsupported})")
         if self.unsupported_values:
-            parts.append(
-                f"piecewise-linear attributes {sorted(self.unsupported_values)}"
-            )
+            parts.append(f"piecewise-linear attributes {sorted(self.unsupported_values)}")
         if self.names:
             parts.append(
                 f"names claimed by more than one component type "
@@ -229,9 +229,7 @@ class UnsupportedRecordError(ValueError):
     """A record does not define everything the tool needs (`Tool.verify`)."""
 
     def __init__(self, tool: str, missing: Requirements) -> None:
-        super().__init__(
-            f"record cannot build a {tool} model; missing: {missing.describe()}"
-        )
+        super().__init__(f"record cannot build a {tool} model; missing: {missing.describe()}")
         self.missing = missing
 
 

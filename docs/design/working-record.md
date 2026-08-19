@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # `WorkingRecord`
 
 [`Record`](record.md) is read-only, and [`write_record`](writing.md) writes a whole record from a source that already knows everything it will contain.
@@ -24,9 +30,7 @@ class WorkingRecord:
     def remove(self, ctype: str, names: Sequence[str], **dims: Any) -> None: ...
 
     def connect(self, ctype: str, frame: IntoFrame) -> None: ...
-    def disconnect(
-        self, ctype: str, pairs: Sequence[tuple[str, str]], **dims: Any
-    ) -> None: ...
+    def disconnect(self, ctype: str, pairs: Sequence[tuple[str, str]], **dims: Any) -> None: ...
 
     @property
     def pending(self) -> Pending: ...

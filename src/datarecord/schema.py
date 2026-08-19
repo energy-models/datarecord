@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The schema: what a record's data is, and how a patch to it behaves.
 
 One schema per record, and `manifest.json` is how it is written down - the two
@@ -264,9 +268,7 @@ class Schema(BaseModel):
         # `CycleError.args[1]` is the offending path - so the acyclicity `within`
         # requires is stdlib rather than a graph walk kept here.
         try:
-            TopologicalSorter(
-                {d: s.within for d, s in self.dimensions.items()}
-            ).prepare()
+            TopologicalSorter({d: s.within for d, s in self.dimensions.items()}).prepare()
         except CycleError as e:
             msg = f"`within` is cyclic: {' -> '.join(e.args[1])}"
             raise ValueError(msg) from e
@@ -522,9 +524,7 @@ class Schema(BaseModel):
         -----
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        return frozenset(
-            c for c, attrs in self.attributes.items() if attribute in attrs
-        )
+        return frozenset(c for c, attrs in self.attributes.items() if attribute in attrs)
 
     # -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) --------------------------------------------------
 
@@ -556,9 +556,7 @@ class Schema(BaseModel):
             if now.dtype != was.dtype:
                 problems.append(f"dim {dim!r} dtype {was.dtype} -> {now.dtype}")
             if now.within != was.within:
-                problems.append(
-                    f"dim {dim!r} nesting changed; the axis key changes shape"
-                )
+                problems.append(f"dim {dim!r} nesting changed; the axis key changes shape")
             gained = now.keys - was.keys
             if gained:
                 problems.append(
@@ -573,9 +571,7 @@ class Schema(BaseModel):
                     problems.append(f"{ctype}.{attr} removed")
                     continue
                 if now_spec.dtype != was_spec.dtype:
-                    problems.append(
-                        f"{ctype}.{attr} dtype {was_spec.dtype} -> {now_spec.dtype}"
-                    )
+                    problems.append(f"{ctype}.{attr} dtype {was_spec.dtype} -> {now_spec.dtype}")
                 narrowed = was_spec.dims - now_spec.dims
                 if narrowed:
                     problems.append(

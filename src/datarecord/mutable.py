@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Editing a record: staged edits, materialised on commit.
 
 What `Record` (read-only) and `write_record` (a whole record at once) do not
@@ -97,9 +101,7 @@ class Pending:
 
     def __bool__(self) -> bool:
         """Whether anything is staged."""
-        return bool(
-            self.attributes or self.components or self.connections or self.tombstones
-        )
+        return bool(self.attributes or self.components or self.connections or self.tombstones)
 
 
 # -- value normalisation (https://energy-models.github.io/datarecord/design/working-record/#set) ----------------------------------------------
@@ -136,19 +138,14 @@ def _incoming(frame: Any, con: DuckDBPyConnection) -> nw.LazyFrame:
     return nw.from_native(_as_relation(nw.from_native(frame).lazy(), con)).lazy()
 
 
-def _null_safe_on(
-    columns: Iterable[str], alias_a: str = "b", alias_b: str = "s"
-) -> Expression:
+def _null_safe_on(columns: Iterable[str], alias_a: str = "b", alias_b: str = "s") -> Expression:
     """A NULL-safe join condition over `columns`, for two aliases.
 
     An `Expression` rather than a SQL string: `join` takes one directly, so the
     condition composes with `&` (`_overlay`'s broadcast arms) instead of being
     spliced into a template.
     """
-    return ex_all(
-        sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}")
-        for c in columns
-    )
+    return ex_all(sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}") for c in columns)
 
 
 def _without(columns: Sequence[str], drop: Sequence[str]) -> list[Expression]:
@@ -171,9 +168,7 @@ def _latest_per(rel: DuckDBPyRelation, key: Iterable[str]) -> DuckDBPyRelation:
     partition = ", ".join(str(col(c)) for c in key)
     ranked = rel.project(
         star(),
-        sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _seq DESC)").alias(
-            "_rn"
-        ),
+        sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _seq DESC)").alias("_rn"),
     )
     return ranked.filter(col("_rn") == lit(1)).project(star(exclude=["_rn", "_seq"]))
 
@@ -241,9 +236,7 @@ def normalise_value(
         # A series is genuinely ambiguous: its index may hold names or axis
         # labels. Index dtype does not settle it, since an axis label may be a
         # string like a name, so the tie is broken by membership (https://energy-models.github.io/datarecord/design/working-record/#set).
-        matches_axis = [
-            dim for dim, values in axis_labels.items() if set(labels) <= set(values)
-        ]
+        matches_axis = [dim for dim, values in axis_labels.items() if set(labels) <= set(values)]
         matches_names = names is not None and set(labels) <= set(names)
         if matches_axis and matches_names:
             msg = (
@@ -391,9 +384,7 @@ class WorkingRecord:
         staged = self._collapsed_entities(kind)
         if staged is None:
             return base
-        types = tuple(
-            r[0] for r in staged.project("component_type").distinct().fetchall()
-        )
+        types = tuple(r[0] for r in staged.project("component_type").distinct().fetchall())
         keys = tuple(dict.fromkeys((*base, *types)))
         return LazyFrames(keys, lambda ctype: self._entity_frame(kind, ctype))
 
@@ -412,11 +403,7 @@ class WorkingRecord:
         if ctype not in base:
             return nw.from_native(mine.filter(~col("deleted")))
 
-        dims = (
-            self.schema.component_dims
-            if kind == "components"
-            else self.schema.connection_dims
-        )
+        dims = self.schema.component_dims if kind == "components" else self.schema.connection_dims
         key = ("name", *(("bus",) if kind == "connections" else ()), *dims)
         frame = base[ctype]
         # `collect_schema` reads names without materialising, and `_as_relation`
@@ -426,9 +413,7 @@ class WorkingRecord:
         # pending edits at what one more layer costs.
         present = set(frame.collect_schema().names())
         on = _null_safe_on([c for c in key if c in present])
-        return nw.from_native(
-            self._entity_union(_as_relation(frame, self.con), mine, on, ctype)
-        )
+        return nw.from_native(self._entity_union(_as_relation(frame, self.con), mine, on, ctype))
 
     def _entity_union(
         self,
@@ -485,11 +470,7 @@ class WorkingRecord:
         return tuple(r[0] for r in rows)
 
     def _attribute_frame(self, attribute: str) -> nw.LazyFrame:
-        base = (
-            self.base.attributes[attribute]
-            if attribute in self.base.attributes
-            else None
-        )
+        base = self.base.attributes[attribute] if attribute in self.base.attributes else None
         rel = self._rows("inputs")
         if rel is None:
             if base is None:
@@ -505,9 +486,7 @@ class WorkingRecord:
         # The staged rows are the last layer, so they win per key (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits).
         return nw.from_native(self._overlay(base.to_native(), staged))
 
-    def _overlay(
-        self, base: DuckDBPyRelation, staged: DuckDBPyRelation
-    ) -> DuckDBPyRelation:
+    def _overlay(self, base: DuckDBPyRelation, staged: DuckDBPyRelation) -> DuckDBPyRelation:
         """`staged` over `base`, last-writer-wins per coordinate.
 
         Per *coordinate*, not per input key: the input key excludes the dims an
@@ -533,8 +512,7 @@ class WorkingRecord:
             [
                 _null_safe_on(dict.fromkeys(fixed)),
                 *(
-                    col("s", d).isnull()
-                    | sql(f"{col('s', d)} IS NOT DISTINCT FROM {col('b', d)}")
+                    col("s", d).isnull() | sql(f"{col('s', d)} IS NOT DISTINCT FROM {col('b', d)}")
                     for d in broadcast
                 ),
             ]
@@ -569,9 +547,7 @@ class WorkingRecord:
             "DOUBLE",
         )
         return [
-            sql(f'TRY_CAST("value" AS {dtype})').alias("value")
-            if c == "value"
-            else col(c)
+            sql(f'TRY_CAST("value" AS {dtype})').alias("value") if c == "value" else col(c)
             for c in self._long_columns()
         ]
 
@@ -663,15 +639,12 @@ class WorkingRecord:
         if rel is None:
             return EMPTY
         names = tuple(
-            r[0]
-            for r in rel.project("attribute").distinct().order("attribute").fetchall()
+            r[0] for r in rel.project("attribute").distinct().order("attribute").fetchall()
         )
         return LazyFrames(
             names,
             lambda attr: nw.from_native(
-                rel.filter(col("attribute") == lit(attr)).project(
-                    *self._typed_value(attr)
-                )
+                rel.filter(col("attribute") == lit(attr)).project(*self._typed_value(attr))
             ),
         )
 
@@ -709,9 +682,7 @@ class WorkingRecord:
         n = len(dims)
         for row in rows:
             attribute = row[0]
-            varies = frozenset(
-                d for d, on in zip(dims, row[1 : 1 + n], strict=True) if on
-            )
+            varies = frozenset(d for d, on in zip(dims, row[1 : 1 + n], strict=True) if on)
             broadcast = frozenset(
                 d for d, on in zip(dims, row[1 + n : 1 + 2 * n], strict=True) if on
             )
@@ -757,9 +728,7 @@ class WorkingRecord:
         - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
         """
         parts = [
-            self.components[ctype]
-            .select("name")
-            .with_columns(component_type=nw.lit(ctype))
+            self.components[ctype].select("name").with_columns(component_type=nw.lit(ctype))
             for ctype in self.components
         ]
         if not parts:
@@ -796,9 +765,7 @@ class WorkingRecord:
         if not clashing.is_empty():
             # Sorted here rather than in the query: the message must be
             # deterministic, and this is a handful of rows.
-            detail = ", ".join(
-                f"{n!r} is already a {t}" for n, t in sorted(clashing.iter_rows())
-            )
+            detail = ", ".join(f"{n!r} is already a {t}" for n, t in sorted(clashing.iter_rows()))
             msg = (
                 f"cannot add {ctype} components whose names are taken: {detail}; "
                 f"names are unique across every component type (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)"
@@ -953,9 +920,7 @@ class WorkingRecord:
 
         if isinstance(value, nw.Expr):
             self._validate_dims(dims)
-            self._stage_derived(
-                attribute, value, names=names, bus=bus, kind=kind, **dims
-            )
+            self._stage_derived(attribute, value, names=names, bus=bus, kind=kind, **dims)
             return
 
         target = list(names) if names is not None else self._names_declaring(attribute)
@@ -989,9 +954,7 @@ class WorkingRecord:
         else:
             for name, val in zip(keys, values, strict=True):
                 rows.append(
-                    [name, bus, attribute, None, val]
-                    + [dims.get(d) for d in dim_cols]
-                    + [seq]
+                    [name, bus, attribute, None, val] + [dims.get(d) for d in dim_cols] + [seq]
                 )
         self.con.executemany(f"INSERT INTO {table} VALUES ({placeholders})", rows)
 
@@ -1009,9 +972,7 @@ class WorkingRecord:
             for name in self._resolved_names(ctype)
         ]
 
-    def _validate_frame(
-        self, lazy: nw.LazyFrame, attribute: str, dims: Mapping[str, Any]
-    ) -> None:
+    def _validate_frame(self, lazy: nw.LazyFrame, attribute: str, dims: Mapping[str, Any]) -> None:
         """A long input frame's dims, names and per-name specs.
 
         The frame supplies its own names, so each is resolved to its type and
@@ -1026,16 +987,11 @@ class WorkingRecord:
         self._validate_dims(dims)
         if "name" not in lazy.collect_schema().names():
             return
-        names = [
-            str(n)
-            for n in lazy.select("name").unique("name").collect()["name"].to_list()
-        ]
+        names = [str(n) for n in lazy.select("name").unique("name").collect()["name"].to_list()]
         for name, ctype in self._resolve_types(names).items():
             self._validate_attribute(ctype, attribute, dims, name=name)
 
-    def _stage_long(
-        self, attribute: str, lazy: nw.LazyFrame, bus: str | None, kind: str
-    ) -> None:
+    def _stage_long(self, attribute: str, lazy: nw.LazyFrame, bus: str | None, kind: str) -> None:
         """Stage a long frame that supplies its own keys.
 
         Its keys are `name` and whatever dims it carries.
@@ -1188,16 +1144,12 @@ class WorkingRecord:
         ]
         # A column the schema does not name goes to `dims/components/`
         # unchanged, like any non-varying one.
-        member_cols = [
-            c for c in columns if c not in varying and c not in ports and c != "role"
-        ]
+        member_cols = [c for c in columns if c not in varying and c not in ports and c != "role"]
 
         _add = lazy.to_native()  # noqa: F841 - bound by replacement scan below
         table = self._ensure("components")
         dim_cols = ", ".join(
-            f'"{d}"'
-            if d in member_cols
-            else f'CAST(NULL AS {self.schema.column_type(d)}) AS "{d}"'
+            f'"{d}"' if d in member_cols else f'CAST(NULL AS {self.schema.column_type(d)}) AS "{d}"'
             for d in self.schema.component_dims
         )
         extra = [c for c in member_cols if c != "name" and c not in self.schema.dims]
@@ -1269,8 +1221,7 @@ class WorkingRecord:
         table = self._ensure(kind)
         seq = next(_SEQ)
         self.con.executemany(
-            f"INSERT INTO {table} ({quoted}) "
-            f"VALUES ({', '.join(['?'] * len(columns))})",
+            f"INSERT INTO {table} ({quoted}) VALUES ({', '.join(['?'] * len(columns))})",
             [[*key, *(dims.get(d) for d in dim_cols), True, seq] for key in keys],
         )
 
@@ -1320,9 +1271,7 @@ class WorkingRecord:
             {"ctype": ctype},
         )
 
-    def disconnect(
-        self, ctype: str, pairs: Sequence[tuple[str, str]], **dims: Any
-    ) -> None:
+    def disconnect(self, ctype: str, pairs: Sequence[tuple[str, str]], **dims: Any) -> None:
         """Stage a tombstone per `(name, bus)`.
 
         Notes
@@ -1352,9 +1301,7 @@ class WorkingRecord:
         - [pending](https://energy-models.github.io/datarecord/design/working-record/#pending)
         """
 
-        def counts(
-            kind: str, by: str, *, deleted: bool | None = None
-        ) -> dict[str, int]:
+        def counts(kind: str, by: str, *, deleted: bool | None = None) -> dict[str, int]:
             rel = self._rows(kind)
             if rel is None:
                 return {}
@@ -1426,11 +1373,7 @@ class WorkingRecord:
         cols = self.schema.component_key
         # An `add` after a `remove` means the component exists again, so only
         # the latest row per key counts (https://energy-models.github.io/datarecord/design/working-record/#committing).
-        return (
-            _latest_per(rel, cols)
-            .filter(col("deleted"))
-            .project(*(col(c) for c in cols))
-        )
+        return _latest_per(rel, cols).filter(col("deleted")).project(*(col(c) for c in cols))
 
     def _collapsed_entities(self, kind: str) -> DuckDBPyRelation | None:
         """Staged member or connection rows, last-write-wins per key.
@@ -1448,9 +1391,7 @@ class WorkingRecord:
             return None
         return _latest_per(
             rel,
-            self.schema.component_key
-            if kind == "components"
-            else self.schema.connection_key,
+            self.schema.component_key if kind == "components" else self.schema.connection_key,
         )
 
     # -- what commit writes (https://energy-models.github.io/datarecord/design/working-record/#committing) -----------------------------------------
@@ -1462,16 +1403,11 @@ class WorkingRecord:
             return EMPTY
         types = tuple(
             r[0]
-            for r in rel.project("component_type")
-            .distinct()
-            .order("component_type")
-            .fetchall()
+            for r in rel.project("component_type").distinct().order("component_type").fetchall()
         )
         return LazyFrames(
             types,
-            lambda ctype: nw.from_native(
-                rel.filter(col("component_type") == lit(ctype))
-            ),
+            lambda ctype: nw.from_native(rel.filter(col("component_type") == lit(ctype))),
         )
 
     def _staged_attributes(self) -> Frames:
@@ -1601,9 +1537,7 @@ class WorkingRecord:
         from datarecord.layered.write import write_record  # circular at module level
 
         if isinstance(target, NewChild):
-            parent = (
-                target.record if target.record is not None else self._base_revision()
-            )
+            parent = target.record if target.record is not None else self._base_revision()
             child = parent.child()
             write_record(child.id, self.staged_only(), self.con)
             self.rollback()

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # The record format
 
 A record's **on-disk form** is a parquet directory: [`write_record`](writing.md) produces it, `DirectoryRecord` reads it, and a foreign tool can consume it knowing nothing about this package.

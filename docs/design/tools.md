@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Consuming a record
 
 A **tool** is the framework-specific translation target built from a record.

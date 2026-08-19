@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The PyPSA tool: record -> `pypsa.Network` -> results.
 
 The only module that knows PyPSA's network shape - that its axes are
@@ -122,9 +126,7 @@ class NetworkShape:
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
         frame = self.dims.get(dim)
-        return (
-            frame.to_native().df() if frame is not None else pd.DataFrame(columns=[dim])
-        )
+        return frame.to_native().df() if frame is not None else pd.DataFrame(columns=[dim])
 
     @cached_property
     def snapshots(self) -> pd.DataFrame:
@@ -252,30 +254,23 @@ def _assign_static(
             rows = scenarios.expand(rows, SCENARIO)
         # First-wins on a duplicate key, same as `values[~values.index.duplicated()]`;
         # any deterministic order is fine since a valid record never actually collides.
-        rows = rows.project(
-            f"*, row_number() OVER (PARTITION BY {', '.join(keys)}) AS _rn"
-        ).filter("_rn = 1")
+        rows = rows.project(f"*, row_number() OVER (PARTITION BY {', '.join(keys)}) AS _rn").filter(
+            "_rn = 1"
+        )
         # LEFT JOIN from `static`, not `rows`, so a value with no matching static
         # row is dropped rather than added (`common = values.index.intersection(...)`).
         on = ex_all(col(static.alias, k) == col(rows.alias, k) for k in keys)
         joined = joined.join(rows, on, how="left")
         value = col(rows.alias, "value")
         attr_exprs[attr] = (
-            coalesce(value, col(static.alias, attr))
-            if attr in static.columns
-            else value
+            coalesce(value, col(static.alias, attr)) if attr in static.columns else value
         ).alias(attr)
 
     wide = joined.project(
         *(col(static.alias, c) for c in static.columns if c not in attr_exprs),
         *attr_exprs.values(),
     )
-    return (
-        wide.order("order_key")
-        .project(star(exclude=["order_key"]))
-        .df()
-        .set_index(keys)
-    )
+    return wide.order("order_key").project(star(exclude=["order_key"])).df().set_index(keys)
 
 
 def _flat_index(index: pd.Index, sep: str = "_") -> pd.Index[str]:
@@ -318,9 +313,7 @@ def _series_frame(
         rows = scenarios.expand(rows, SCENARIO)
     group_by = [PERIOD, SNAPSHOT] if shape.multiperiod else [SNAPSHOT]
     pivot_key = f" || '{_KEY_SEP}' || ".join(shape.index_names)
-    piv = con.sql(
-        f"PIVOT rows ON {pivot_key} USING first(value) GROUP BY {', '.join(group_by)}"
-    )
+    piv = con.sql(f"PIVOT rows ON {pivot_key} USING first(value) GROUP BY {', '.join(group_by)}")
 
     present = set(piv.columns) - set(group_by)
     pivoted_names = _flat_index(static_index, _KEY_SEP)
@@ -369,9 +362,7 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
         if not _exported(c):
             continue
         index = c.static.index
-        names = (
-            index.get_level_values("name") if "name" in (index.names or []) else index
-        )
+        names = index.get_level_values("name") if "name" in (index.names or []) else index
         for value in names:
             name = str(value)
             if seen.setdefault(name, c.name) != c.name:
@@ -419,9 +410,7 @@ def _broadcast_standard_types(n: pypsa.Network) -> None:
     for component in n.standard_type_components:
         comp = n.components[component]
         if n.has_scenarios and not isinstance(comp.static.index, pd.MultiIndex):
-            comp.static = pd.concat(
-                dict.fromkeys(n.scenarios, comp.static), names=["scenario"]
-            )
+            comp.static = pd.concat(dict.fromkeys(n.scenarios, comp.static), names=["scenario"])
 
 
 def _collect_network_attributes(n: pypsa.Network) -> dict[str, Any]:
@@ -548,9 +537,7 @@ def _add_component_type(
             continue
         ts_rows = long.filter("snapshot IS NOT NULL")
         # Partial columns keep non-series components static (https://energy-models.github.io/datarecord/design/tools/).
-        wide = _series_frame(
-            ts_rows, shape, periods, scenarios, snapshots, static_index, con
-        )
+        wide = _series_frame(ts_rows, shape, periods, scenarios, snapshots, static_index, con)
         n._import_series_from_df(wide, ctype, attr)
 
 
@@ -728,9 +715,7 @@ def _scalar_rows(c: pypsa.Components, attr: str, exclude: pd.Index) -> pd.DataFr
     return out
 
 
-def _as_long(
-    c: pypsa.Components, attr: str, *, drop_defaults: bool = False
-) -> pd.DataFrame:
+def _as_long(c: pypsa.Components, attr: str, *, drop_defaults: bool = False) -> pd.DataFrame:
     """`attr` as a long/tidy DataFrame; `drop_defaults` omits default-valued scalars.
 
     Ported from `pypsa.components.array.Components._as_long` (with its
@@ -770,9 +755,7 @@ def _as_long(
     return out
 
 
-def _long_rows(
-    c: pypsa.Components, attribute: str, dims: tuple[str, ...]
-) -> pd.DataFrame:
+def _long_rows(c: pypsa.Components, attribute: str, dims: tuple[str, ...]) -> pd.DataFrame:
     """One attribute's long rows for one component type, in the long schema.
 
     `_as_long` already emits the dim columns and `value`; this adds the
@@ -795,9 +778,7 @@ def _long_rows(
     return long
 
 
-def _per_port_long_rows(
-    c: pypsa.Components, stem: str, dims: tuple[str, ...]
-) -> pd.DataFrame:
+def _per_port_long_rows(c: pypsa.Components, stem: str, dims: tuple[str, ...]) -> pd.DataFrame:
     """A per-connection attribute's long rows, `bus` filled from the port.
 
     The inverse of the positional collapse: `efficiency`/`efficiency2` become
@@ -895,9 +876,7 @@ class PyPSATool(Tool):
         dims = REQUIRED_DIMS - set(record.schema.dims)
         unsupported_keys = self._unsupported_keys(record)
         if unsupported_keys:
-            return Requirements(
-                dims=frozenset(dims), unsupported_keys=frozenset(unsupported_keys)
-            )
+            return Requirements(dims=frozenset(dims), unsupported_keys=frozenset(unsupported_keys))
 
         component_types: set[str] = set()
         attributes: set[tuple[str, str]] = set()
@@ -1225,9 +1204,7 @@ class _NetworkSource:
                 continue
             for attr in self._record_attributes(c):
                 names.setdefault(attr, []).append(c.name)
-        return LazyFrames(
-            tuple(names), lambda attr: self._long_frame(attr, names[attr])
-        )
+        return LazyFrames(tuple(names), lambda attr: self._long_frame(attr, names[attr]))
 
     @property
     def outputs(self) -> LazyFrames:
@@ -1250,9 +1227,7 @@ class _NetworkSource:
                 continue
             for attr in _output_attributes(c):
                 names.setdefault(attr, []).append(c.name)
-        return LazyFrames(
-            tuple(names), lambda attr: self._output_frame(attr, names[attr])
-        )
+        return LazyFrames(tuple(names), lambda attr: self._output_frame(attr, names[attr]))
 
     def flags(self, ctype: str) -> dict[str, Flags]:
         """Never consulted: `write_record` persists frames, not flags.
@@ -1331,8 +1306,7 @@ class _NetworkSource:
                 # it would silently lose data the protocol says to keep.
                 return True
             return (
-                not defaults.loc[column, "varying"]
-                and defaults.loc[column, "status"] != "Output"
+                not defaults.loc[column, "varying"] and defaults.loc[column, "status"] != "Output"
             )
 
         frame = c.static[[x for x in c.static.columns if keep(x)]].reset_index()
@@ -1565,9 +1539,7 @@ def _static_columns(record: Record, ctype: str) -> frozenset[str]:
     - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
     """
     frame = record.components.get(ctype)
-    return (
-        frozenset(frame.collect_schema().names()) if frame is not None else frozenset()
-    )
+    return frozenset(frame.collect_schema().names()) if frame is not None else frozenset()
 
 
 # The tool is a module-level singleton, imported rather than looked up by
