@@ -18,6 +18,9 @@ jobs:
           fetch-depth: 0
       - name: Set up pixi
         uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347 # v0.10.1
+        with:
+          # Pinned, see ci.yml.
+          pixi-version: v0.76.2
       - name: Derive version
         id: version
         if: startsWith(github.ref, 'refs/tags/')

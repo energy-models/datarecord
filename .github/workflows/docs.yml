@@ -38,6 +38,8 @@ jobs:
       - name: Set up pixi
         uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347 # v0.10.1
         with:
+          # Pinned, see ci.yml.
+          pixi-version: v0.76.2
           environments: docs
       # A pull request's build is served from a subdirectory, so the links
       # mkdocs generates have to be rooted there rather than at the domain.
