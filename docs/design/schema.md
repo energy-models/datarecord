@@ -31,11 +31,11 @@ class Group(BaseModel):
     description: str | None = None
 
 
-class ComponentType(BaseModel):
-    """What one component type carries: subscriptions, never declarations."""
+class Trait(BaseModel):
+    """A bundle of attributes, and which entity types carry it."""
 
-    traits: frozenset[str] = frozenset()
     attributes: frozenset[str] = frozenset()
+    on: dict[str, frozenset[str]] = {}  # entity-type axis -> the labels it applies to
     description: str | None = None
 
 
@@ -45,8 +45,7 @@ class Schema(BaseModel):
     dimensions: dict[str, Dimension]
     attributes: dict[str, AttributeSpec]  # flat: one attribute, one spec
     groups: dict[str, Group]
-    traits: dict[str, frozenset[str]]  # trait -> the attributes it bundles
-    component_types: dict[str, ComponentType]
+    traits: dict[str, Trait]  # the only thing that narrows an attribute to some types
 
     # Which dims a layer may patch value by value; absent for a record with no
     # layers, since nothing overrides anything.
@@ -58,8 +57,8 @@ class Schema(BaseModel):
 `partial` is the only layering-specific part, and so the only optional one.
 Everything else describes the data and is always present.
 
-`component_type`, `entity` and `attribute` are `VARCHAR`: those vocabularies belong to a modelling framework, and this package knows none.
-A type no tool recognises reads back fine and is reported by the tool that cannot build it, not rejected inside the fold.
+`entity` and `attribute` are `VARCHAR`: those vocabularies belong to a modelling framework, and this package knows none.
+The [entity-type axis](#entity_type-the-axis-of-kinds) is typed as the schema declares it, which is a record's own statement rather than a framework's — so a type _the schema declares_ but no tool recognises reads back fine and is reported by the tool that cannot build it, not rejected inside the fold.
 
 `meta` is where a framework's own top-level data goes — network attributes, coordinate reference system, free-form metadata.
 It is stored and never interpreted, since none of it describes the dimensioned data.
@@ -111,24 +110,57 @@ There is no `bus` field: an attribute is a [connection](record.md#connections) a
 
 An attribute naming exactly one addressing coordinate is a column on that thing's own table, and anything more is long rows in `inputs/` — [where a value lives](format.md#where-a-value-lives) is the rule, and it is the schema that decides the file split rather than a writer guessing it.
 
+## `entity_type` — the axis of kinds
+
+What kind of thing a component is, declared like any other classification: a dim `on` `entity`.
+
+```python
+dimensions = {
+    "entity": Dimension(dtype="str"),
+    "entity_type": Dimension(dtype=Enum(["Bus", "Generator", "Link"]), on={"entity"}),
+}
+```
+
+It is a [mapping](#on-a-mapping-over-another-axis) and gets a mapping's treatment for free: the column lives on the classified axis, so `dims/entity.parquet` carries `entity_type` — which is [where the format already put it](format.md#entity-is-unique-across-types) before the axis was declared at all.
+An `Enum` dtype pins the vocabulary and makes an unknown type a write-time error; a plain `str` leaves the labels as data, which is the right declaration for a record whose types are not known up front.
+
+**It may not address a value alongside the entity.** An attribute naming both `entity` and the type in its `dims` is rejected: the type is a column of the entity axis, so the second coordinate is determined by the first, the row is keyed twice over and the two are free to disagree.
+That is [why no attribute row carries the type](format.md#entity-is-unique-across-types), and it is the general rule for [a mapping and the axis it classifies](#on-a-mapping-over-another-axis) rather than anything particular to types — `country` over `bus` is rejected the same way.
+
+**Addressed by the type alone is ordinary.** A per-type `icon` is a value per type, keyed once, and it lands where any [attribute addressed by one dim alone](format.md#where-a-value-lives) does: a column of `dims/entity_type.parquet`.
+Its axis file is owned like any other's: outside [`partial`](#partial-the-granularity-of-an-override) a layer touching one type's icon restates the type axis whole, which is what a dim owned entirely means everywhere else.
+Being a mapping buys it no exemption, and carrying an attribute is no reason to declare it `partial` — that would widen the fold's key with a column no `inputs/` row can carry.
+
+**Entirely optional.** A schema declaring no such axis has components with no types, and everything addressed by `entity` reaches all of them.
+A tool that needs types requires the axis in the schema it builds — [PyPSA does](tools.md) — which is where that requirement belongs, not here.
+
+**At most one.** A second dim `on` `entity` is rejected: a component has one type, and two vocabularies over one axis leave `attributes_for` with no resolved answer for what it carries.
+
 ## Traits
 
-A trait is a named bundle of attributes. A component type subscribes to traits and may add its own:
+A trait is a named bundle of attributes, and which entity types carry them:
 
 ```python
 traits = {
-    "investable": {"capital_cost", "build_year", "lifetime", "capacity"},
-    "dispatchable": {"p_min_pu", "p_max_pu", "p_set"},
-}
-component_types = {
-    "Generator": ComponentType(
-        traits={"investable", "dispatchable"},
-        attributes={"efficiency", "sign"},
+    "investable": Trait(
+        attributes={"capital_cost", "build_year", "lifetime", "capacity"},
+        on={"entity_type": {"Generator", "Line", "Link", "Store"}},
+    ),
+    "dispatchable": Trait(
+        attributes={"p_min_pu", "p_max_pu", "p_set"},
+        on={"entity_type": {"Generator", "Link"}},
     ),
 }
 ```
 
-`Schema.attributes_for(ctype)` — the union of the subscribed traits plus the type's own — is what [`flags`](record.md#flags) and the [`add` routing](working-record.md#add-remove) read, so everything downstream asks one question and gets a resolved answer.
+**A trait narrows; it does not grant.** An attribute the schema declares is carried by every entity type it can address, and a trait is the only thing that cuts that down.
+Writing `entity` in an attribute's `dims` is what says it is per component; declining to bundle it says it is so for every type — the same thing `dims={"scenario"}` already means along the scenario axis, where no subscription mechanism exists and nobody finds it surprising.
+
+That direction is why [an attribute belonging to no type](proposals/dims-groups-traits.md#what-starts-it) has somewhere to live at all.
+Under the previous shape a type _subscribed_ and an attribute reached nothing until one did, which is what forced `attributes` to be nested under types and left snapshot weightings homeless.
+
+`Schema.attributes_for(ctype)` — the untraited attributes addressed by `entity`, plus what the traits naming `ctype` bundle — is what [`flags`](record.md#flags) and the [`add` routing](working-record.md#add-remove) read, so everything downstream asks one question and gets a resolved answer.
+An attribute addressed by an axis alone is carried by no type however few traits mention it: a snapshot weighting belongs to the record.
 
 A trait rather than a bare list of attribute names, for two reasons.
 The deduplication is real: the boundaries are measured from a framework's registry rather than invented, and `investable` covers six types.
@@ -136,7 +168,11 @@ And a trait is **queryable** — a consumer dispatching on "everything investabl
 
 **Declared, not inferred.** No framework ships a trait registry to read, so the mapping from its component registry to traits is authored and maintained. That cost is the price of the vocabulary being useful to something other than this schema.
 
-A trait or a type may only name an attribute the schema declares: a subscription says which attributes apply, never what they are, so a name with no spec is a typo rather than a shorthand declaration.
+**Only an entity-type axis may scope a trait.** `on` is keyed by a dim declared `on={"entity"}` and the schema rejects any other, because a trait scoped to, say, `country` would make an attribute's vocabulary depend on data — which attributes a component carries would follow from what its bus maps to, a per-entity lookup every caller of `attributes_for` treats as answerable from the schema alone.
+
+A trait with an empty `on` narrows nothing: it is a bundle for a consumer to dispatch on, and its attributes stay carried by every type.
+
+A trait may only name an attribute the schema declares: it says which attributes apply, never what they are, so a name with no spec is a typo rather than a shorthand declaration.
 Two traits bundling one attribute is fine — they resolve to a set — since [one attribute has one spec](#attributespec) and there is nothing left to conflict.
 
 ## Groups
@@ -282,6 +318,16 @@ And a `p_nom` row carrying a non-NULL `scenario` becomes a write-time violation 
 
 What the fold does with this is unchanged: the inputs key is one fixed tuple over all attributes, and an attribute not varying over a dim writes NULL there.
 So the declarations constrain and validate; they do not make the key vary per row.
+
+**An axis file is owned the same way**, and the [attributes it carries](format.md#where-a-value-lives) do not argue for adding it.
+Outside `partial`, a layer touching an axis restates it whole — every label, with the static attributes attached to them — because a layer holding one label is not saying the others are unchanged but that they are not there: the fold keys by the axis key, so what this layer carries is what the axis has here.
+That is the same "no half-owned extent" rule a series obeys, applied to a set of labels rather than a curve.
+
+**Keep it small.** `partial` is the fold's key, so every entry widens the owner map and the resolution it keys, for every read of every attribute.
+The cost of leaving an axis out is paid once per edit and bounded by the axis; the cost of putting it in is paid by every read forever.
+So it stays what it is for `entity` and a group's coordinate — the dims a layer genuinely patches value by value — rather than growing to cover whatever an axis happens to hold.
+
+The [entity-type axis](#entity_type-the-axis-of-kinds) is the case that tests this: it carries an attribute and is exempt from `partial`, and it still restates whole rather than earning an exception.
 
 ## One schema per record
 

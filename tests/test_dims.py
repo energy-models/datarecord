@@ -225,7 +225,7 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     """`entity` names the component in every frame the protocol hands back.
 
     The one axis the format knows by name, because it is the axis the component
-    types partition: `component_type` hangs off it and `dims/components/` is
+    types partition: `entity_type` hangs off it and `dims/components/` is
     keyed by it. Every other dim is declared.
 
     Notes
@@ -258,9 +258,9 @@ def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
     export_network(ac_dc, revision, con)
 
     axis = con.read_parquet(layer_dir(revision.id) + "dims/entity.parquet").df()
-    assert {"entity", "component_type", "deleted"} <= set(axis.columns)
+    assert {"entity", "entity_type", "deleted"} <= set(axis.columns)
     assert not axis["entity"].duplicated().any()
-    assert "Generator" in set(axis["component_type"])
+    assert "Generator" in set(axis["entity_type"])
 
     # And it is what the fold reads: the map's entities are the axis's.
     mapped = revision.node_cache.components.df()

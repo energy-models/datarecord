@@ -43,7 +43,7 @@ def _root_with_curve(con) -> Revision:
         "marginal_cost",
         [
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "breakpoint": x,
                 "value": v,
@@ -75,7 +75,7 @@ def test_breakpoints_distinguishes_curve_from_scalar(con, base_uri):
     write_input(
         layer_dir(revision.id),
         "p_nom",
-        [{"component_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
+        [{"entity_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
     )
 
     curve = _flags(revision, PROCESS, "marginal_cost")
@@ -101,7 +101,7 @@ def test_patch_replaces_the_whole_curve(con, base_uri):
         "marginal_cost",
         [
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "breakpoint": x,
                 "value": v,
@@ -139,7 +139,7 @@ def test_curve_on_a_connection(con, base_uri):
         "efficiency",
         [
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "bus": bus,
                 "breakpoint": x,
@@ -161,7 +161,7 @@ def test_curve_on_a_connection(con, base_uri):
         "efficiency",
         [
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "bus": "h2_north",
                 "breakpoint": x,
@@ -192,7 +192,7 @@ def test_curve_varying_by_snapshot(con, base_uri):
         "marginal_cost",
         [
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "snapshot": snap,
                 "breakpoint": x,
@@ -224,7 +224,7 @@ def test_scalar_replaced_by_a_curve(con, base_uri):
     write_input(
         layer,
         "marginal_cost",
-        [{"component_type": PROCESS, "entity": "steel_dri", "value": 20.0}],
+        [{"entity_type": PROCESS, "entity": "steel_dri", "value": 20.0}],
     )
     revision.materialise()
 
@@ -234,7 +234,7 @@ def test_scalar_replaced_by_a_curve(con, base_uri):
         "marginal_cost",
         [
             {
-                "component_type": PROCESS,
+                "entity_type": PROCESS,
                 "entity": "steel_dri",
                 "breakpoint": x,
                 "value": v,

@@ -204,7 +204,7 @@ class DirectoryRecord:
         rel = self._read(f"{subdir}/*.parquet", union_by_name=True)
         if rel is None:
             return EMPTY
-        rows = rel.project("component_type").distinct().order("component_type")
+        rows = rel.project("entity_type").distinct().order("entity_type")
         types = tuple(r[0] for r in rows.fetchall())
         return LazyFrames(
             types,

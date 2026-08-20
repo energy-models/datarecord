@@ -141,7 +141,7 @@ def write_record(
                         # compares arrow schemas.
                         .select(
                             nw.col("entity").cast(nw.String()),
-                            component_type=nw.lit(key).cast(nw.String()),
+                            entity_type=nw.lit(key).cast(nw.String()),
                         )
                     )
                 _write_frame(
@@ -233,8 +233,10 @@ def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) ->
     declares - where the frames themselves may disagree, an all-NULL `scenario`
     landing as arrow `null` for one type and `string` for another.
 
-    `component_type` is a column of this axis and of nothing else, which is
-    what makes `attributes_for` reachable from an entity alone.
+    `entity_type` is a column of this axis and of no attribute row, which is
+    what makes `attributes_for` reachable from an entity alone. Being a mapping
+    it has an axis file of its own too, carrying the attributes addressed by the
+    type alone - written from `source.dims` like any axis, not derived here.
 
     Notes
     -----
@@ -259,7 +261,7 @@ def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) ->
         else lit(False)  # noqa: FBT003
     )
     rel.project(
-        col("entity"), ctype.alias("component_type"), deleted.alias("deleted")
+        col("entity"), ctype.alias("entity_type"), deleted.alias("deleted")
     ).to_parquet(f"{staging}dims/entity.parquet")
 
 
@@ -273,7 +275,7 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
     Parameters
     ----------
     tagged
-        One frame per component type, each `(name, component_type)`, on a common
+        One frame per component type, each `(name, entity_type)`, on a common
         backend so `nw.concat` accepts them.
 
     Raises
@@ -287,17 +289,17 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
     """
     if len(tagged) < 2:  # nothing to collide with
         return
-    pairs = nw.concat(tagged, how="vertical").unique(["entity", "component_type"])
+    pairs = nw.concat(tagged, how="vertical").unique(["entity", "entity_type"])
     clashing = (
         pairs.join(
             pairs.group_by("entity")
-            .agg(nw.col("component_type").n_unique().alias("_types"))
+            .agg(nw.col("entity_type").n_unique().alias("_types"))
             .filter(nw.col("_types") > 1)
             .select("entity"),
             on="entity",
             how="inner",
         )
-        .select("entity", "component_type")  # the order `iter_rows` unpacks
+        .select("entity", "entity_type")  # the order `iter_rows` unpacks
         .collect()
     )
     if not clashing.is_empty():
@@ -409,9 +411,35 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
             )
             raise ValueError(msg)
         # A mapping's column lives on the axis it classifies, so that file is
-        # where the classification is stored and where its absence shows.
-        # Not required, only checked for type: a record may declare `country`
-        # before any bus is assigned one, and a NULL is "unclassified".
+        # where the classification is stored and where its absence shows. Not
+        # required: a record may declare `country` before any bus is assigned
+        # one, and a NULL is "unclassified". The same goes for an attribute
+        # addressed by this axis alone, which is a column here and resolves to
+        # its `default` where no layer wrote one (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        #
+        # A column no declaration accounts for is rejected, as a long frame's
+        # extras are: an axis file's payload is the schema's to state, and one
+        # riding along uninvited would be read back as data nothing knows the
+        # dtype or meaning of.
+        known = (
+            set(schema.axis_key(key))
+            | set(schema.mappings_on(key))
+            | set(schema.attributes_on(key))
+            # The structural columns an axis file may carry: a tombstone, and an
+            # explicit order key. Not every name in `STRUCTURAL_TYPES` - most of
+            # those are a long row's, and `attribute` or `breakpoint` here would
+            # be a long frame written to the wrong place.
+            | {"deleted", "order_key"}
+        )
+        extra = sorted(columns - known)
+        if extra:
+            msg = (
+                f"dims/{key}.parquet carries columns {extra} the schema does not "
+                f"declare for the {key!r} axis; an axis file holds its key, the "
+                f"mappings that classify it, and the attributes addressed by it "
+                f"alone (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+            )
+            raise ValueError(msg)
         return
 
     if kind not in schema.groups:

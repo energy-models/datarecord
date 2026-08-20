@@ -77,7 +77,11 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
     -----
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
     """
-    dirs = dims_dirs(ancestry)
+    # `ancestry` stopped either at a materialised ancestor or at the root, and
+    # only the head can be the former - every entry below it is an
+    # unmaterialised intermediate layer, or the record itself.
+    from_cache = len(ancestry) > 1 and materialised(ancestry[0], con)
+    dirs = dims_dirs(ancestry, from_cache=from_cache)
     axes = {}
     for dim in schema.dims:
         # Keyed by the axis key, not the dim alone: a nested dim's labels
@@ -607,19 +611,19 @@ def _fold_ordered(
             rel.filter(not_deleted)
             .set_alias("i")
             .project(
-                col("i", "component_type"),
+                col("i", "entity_type"),
                 *(col("i", c) for c in key),
                 lit(str(revision_id)).cast(LAYER_UUID_TYPE).alias("layer_uuid"),
                 sql("row_number() OVER ()").alias("_row"),
             )
         )
-        # `component_type` is aggregated, not grouped by: it is determined by
+        # `entity_type` is aggregated, not grouped by: it is determined by
         # `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types), and grouping on it would keep one name under two types
         # as two rows.
         own = tagged.aggregate(
             [
                 *(col(c) for c in (*key, "layer_uuid")),
-                fn.any_value(col("component_type")).alias("component_type"),
+                fn.any_value(col("entity_type")).alias("entity_type"),
                 fn.min(col("_row")).alias("_row"),
             ]
         )
@@ -938,14 +942,14 @@ class NodeCache:
         """
         return read_schema(self.con)
 
-    def component_types(self) -> set[str]:
+    def entity_types(self) -> set[str]:
         """Types with any live component row, straight from the owner map.
 
         Notes
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
-        rows = self.components.project("component_type").distinct().fetchall()
+        rows = self.components.project("entity_type").distinct().fetchall()
         return {r[0] for r in rows}
 
     def attribute_names(self) -> list[str]:
@@ -1008,7 +1012,7 @@ class NodeCache:
         dims = self.schema.broadcast_dims
         # Scoped by a semi-join to the components map, the entity table saying
         # what type a name is (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-        of_type = self.components.filter(col("component_type") == lit(ctype)).project(
+        of_type = self.components.filter(col("entity_type") == lit(ctype)).project(
             "entity"
         )
         rows = (
@@ -1196,7 +1200,7 @@ class NodeCache:
         which columns match.
         """
         con = self.con
-        owned = owner_map.filter(col("component_type") == lit(ctype))
+        owned = owner_map.filter(col("entity_type") == lit(ctype))
         owning_ids: list[UUID] = [
             layer_uuid for (layer_uuid,) in owned["layer_uuid"].distinct().fetchall()
         ]
@@ -1226,7 +1230,7 @@ class NodeCache:
         # Project the file's attribute columns and `order_key` explicitly: a
         # bare star over the join would leak the map's duplicate key columns
         # and the layer's `deleted` into the frame.
-        skip = {"component_type", "layer_uuid", "deleted"}
+        skip = {"entity_type", "layer_uuid", "deleted"}
         return joined.project(
             *(col("u", c) for c in union.columns if c not in skip),
             col("o", "order_key"),
