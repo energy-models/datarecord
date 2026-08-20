@@ -11,7 +11,7 @@ a comment that re-argues the design is a defect.
 
 Dimensioned attribute data with a declared schema.
 
-A record holds **components** (named members of a type), **connections** between components and buses, **attribute values** over both, and the **axes** those values vary along.
+A record holds **components** (named members of a type), **groups** of them — connections between components and buses being the one every network has — **attribute values** over both, and the **axes** those values vary along.
 A schema declares what may exist; the data says what does.
 
 A record exposes seven things:
@@ -20,7 +20,7 @@ A record exposes seven things:
 record.schema        what may exist: the axes, the attributes
 record.dims          the axes themselves, keyed by dim
 record.components    members, keyed by component type
-record.connections   component↔bus rows, keyed by component type
+record.groups        which tuples exist, keyed by group then component type
 record.attributes    the values, keyed by attribute name
 record.outputs       results, keyed by attribute name
 record.flags(ctype)  which axes an attribute actually uses
@@ -28,7 +28,7 @@ record.flags(ctype)  which axes an attribute actually uses
 
 That is the [`Record` protocol](record.md), and [The Record protocol](record.md) gives it precisely.
 
-A component's `name` identifies it **across every type**: names are unique record-wide, not per type ([name is unique across types](format.md#name-is-unique-across-types)).
+A component's `entity` identifies it **across every type**: names are unique record-wide, not per type ([entity is unique across types](format.md#entity-is-unique-across-types)).
 That is why the values are keyed by attribute and not by type — an attribute row names a component and nothing more, and a component's type is something the record knows about it rather than part of its address.
 
 There are several implementations for storing a record:

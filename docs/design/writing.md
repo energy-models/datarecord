@@ -17,7 +17,14 @@ Frames are staged into a sibling directory and renamed on success, so a frame th
 Every column the schema declares a type for is cast to it on the way out, so a record's files carry the schema's types and a reader can trust them.
 Without that a source may hand over an all-NULL column its dataframe library typed as float, and every reader would re-cast defensively instead.
 
-Validation is structural: a long frame carries [the format's columns](format.md#the-long-schema), and an entity frame carries every dim it is keyed by.
-Which component types and attribute names are valid belongs to [the schema's vocabulary](schema.md).
+Validation is structural: a long frame carries [its attribute's own coordinates](format.md#the-long-schema), and an entity frame carries every dim it is keyed by.
+Which component types are valid belongs to [the schema's vocabulary](schema.md), which the record layer does not interpret.
+
+An **input attribute the schema does not declare is rejected**, unlike a component type: its [`dims`](schema.md#attributespec) are what say which columns its file carries, so an undeclared one has no shape to write it in and would leave a file no reader could derive the columns of.
+A **result is exempt** — [`Tool.results`](tools.md) derives which attributes count as results from a framework's own registry, so an unknown name is an error for an input and simply unknowable for a result.
+
+A frame carrying a column its attribute is **not** addressed by is rejected too, rather than narrowed on the way out.
+The read path projects an attribute's own coordinates, so such a column would be written and never read — and a source emitting one means something different by the attribute than the schema does, which is worth reporting rather than absorbing.
+A result is exempt from both checks: its shape is a framework's business, and a name it shares with an input says nothing about which coordinates the result varies over.
 
 Because a [`Record`](record.md) is the input, anything satisfying the protocol can be written — including a framework object presenting itself as one, which is what puts read and write on a single seam.

@@ -18,46 +18,92 @@ from __future__ import annotations
 
 import math
 from graphlib import CycleError, TopologicalSorter
-from typing import Any, Literal
+from typing import Any
 
+import narwhals as nw
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     field_serializer,
     field_validator,
     model_validator,
 )
 
-KeyKind = Literal["component", "connection"]
-"""Which entity table a dim keys.
+# Narwhals dtypes `manifest.json` encodes by bare class name, covering what a
+# dim or attribute actually declares. `Enum` and `Datetime` carry parameters
+# and are handled separately in `_dump_dtype`/`_parse_dtype` - extend here as
+# a new bare dtype shows up rather than widening the parametrized branches.
+_BARE_DTYPES: dict[str, type[nw.dtypes.DType]] = {
+    "String": nw.String,
+    "Float64": nw.Float64,
+    "Int64": nw.Int64,
+    "Boolean": nw.Boolean,
+    "Date": nw.Date,
+}
 
-Notes
------
-- [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
-"""
 
-BusRelation = Literal["component", "connection"]
-"""Whether an attribute belongs to a component or to one of its connections.
+def _dump_dtype(dtype: nw.dtypes.DType) -> Any:
+    """Encode a narwhals dtype for `manifest.json`.
 
-Notes
------
-- [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-"""
+    A bare class name for what `_BARE_DTYPES` covers; a one-key dict of class
+    name to constructor args for `Enum`/`Datetime`, the parametrized dtypes a
+    schema actually declares.
+    """
+    if isinstance(dtype, nw.Enum):
+        return {"Enum": list(dtype.categories)}
+    if isinstance(dtype, nw.Datetime):
+        return {"Datetime": dtype.time_unit}
+    base = dtype.base_type()
+    if base.__name__ in _BARE_DTYPES:
+        return base.__name__
+    msg = f"no manifest.json encoding for narwhals dtype {base.__name__}"
+    raise ValueError(msg)
+
+
+def _parse_dtype(value: Any) -> nw.dtypes.DType:
+    """The `dtype=` field_validator shared by `Dimension` and `AttributeSpec`.
+
+    An instance (`nw.String()`) passes through; anything else is what
+    `_dump_dtype` wrote to `manifest.json`, decoded back to an instance -
+    `dtype=` takes an instance only, not a bare class.
+    """
+    if isinstance(value, nw.dtypes.DType):
+        return value
+    if isinstance(value, str):
+        if value not in _BARE_DTYPES:
+            msg = f"unknown narwhals dtype {value!r} in manifest.json"
+            raise ValueError(msg)
+        return _BARE_DTYPES[value]()
+    if isinstance(value, dict) and len(value) == 1:
+        ((name, arg),) = value.items()
+        if name == "Enum":
+            return nw.Enum(arg)
+        if name == "Datetime":
+            return nw.Datetime(arg)
+    msg = f"unrecognised dtype encoding in manifest.json: {value!r}"
+    raise ValueError(msg)
+
 
 # Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Neither
 # declared nor optional: `bus`/`breakpoint` are NULL for the ordinary
 # component-level scalar, so one column set serves every kind of row.
 STRUCTURAL_TYPES = {
-    "component_type": "VARCHAR",
-    "name": "VARCHAR",
-    "bus": "VARCHAR",
-    "attribute": "VARCHAR",
-    "breakpoint": "DOUBLE",
-    "layer_uuid": "UUID",
-    "order_key": "BIGINT",
-    "deleted": "BOOLEAN",
-    "breakpoints": "BOOLEAN",
+    "component_type": nw.String(),
+    "entity": nw.String(),
+    "bus": nw.String(),
+    "attribute": nw.String(),
+    "breakpoint": nw.Float64(),
+    "order_key": nw.Int64(),
+    "deleted": nw.Boolean(),
+    "breakpoints": nw.Boolean(),
 }
+
+
+# Every long row's trailing columns, whatever coordinates precede them: the
+# attribute named, the abscissa of a piecewise-linear value, and the value
+# (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+LONG_TAIL = ("attribute", "breakpoint", "value")
 
 
 # The owner map's flag columns: two structs with a field per declared dim, so
@@ -67,8 +113,8 @@ STRUCTURAL_TYPES = {
 FLAG_COLUMNS = ("varies", "broadcast", "breakpoints")
 
 
-def flag_type(dims: tuple[str, ...]) -> str:
-    """The DuckDB type of one flag struct: a BOOLEAN per declared dim.
+def flag_type(dims: tuple[str, ...]) -> nw.dtypes.DType:
+    """One flag struct's type: a BOOLEAN field per declared dim.
 
     `dims` is never empty: a schema declaring no dims describes no dimensioned
     data, which `Schema` rejects - so the struct always has a field and
@@ -79,8 +125,7 @@ def flag_type(dims: tuple[str, ...]) -> str:
     - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    fields = ", ".join(f'"{d}" BOOLEAN' for d in dims)
-    return f"STRUCT({fields})"
+    return nw.Struct({d: nw.Boolean() for d in dims})
 
 
 class Dimension(BaseModel):
@@ -93,11 +138,20 @@ class Dimension(BaseModel):
     Attributes
     ----------
     dtype
-        The axis labels' type, as a DuckDB type name.
+        The axis labels' type, as a narwhals dtype instance (`nw.String()`,
+        `nw.Datetime()`, ...) - translated to its DuckDB name only where a
+        column of it is built.
     within
         Dims this one's labels identify a point only *within*; transitive.
-    keys
-        Which entity tables this dim keys, so an entity exists per value of it.
+    on
+        Dims this one *classifies*: each of their labels carries exactly one of
+        mine, as a column on their axis file named after me. A dim declaring
+        `on` is a mapping - `country` on `bus` means every bus is in one
+        country, and `dims/bus.parquet` gains a `country` column.
+
+        The opposite direction from `within`, which names my *parents*: a
+        mapping is one flat label set partitioning another axis, where `within`
+        scopes my labels per parent so `t1` in two periods is two points.
     unit
         What this axis's *labels* measure, if anything - `None` is undeclared,
         `""` genuinely dimensionless.
@@ -108,16 +162,31 @@ class Dimension(BaseModel):
     -----
     - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
     - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
-    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
 
-    dtype: str
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    dtype: nw.dtypes.DType
     within: frozenset[str] = frozenset()
-    keys: frozenset[KeyKind] = frozenset()
+    on: frozenset[str] = frozenset()
     unit: str | None = None
     description: str | None = None
+
+    @field_validator("dtype", mode="before")
+    @classmethod
+    def _parse_dtype(cls, value: Any) -> Any:
+        return _parse_dtype(value)
+
+    @field_serializer("dtype")
+    def _dump_dtype(self, value: nw.dtypes.DType) -> Any:
+        return _dump_dtype(value)
+
+    @property
+    def mapping(self) -> bool:
+        """Whether this dim classifies another rather than standing alone."""
+        return bool(self.on)
 
 
 class AttributeSpec(BaseModel):
@@ -126,7 +195,9 @@ class AttributeSpec(BaseModel):
     Attributes
     ----------
     dtype
-        The value column's type, as a DuckDB type name.
+        The value column's type, as a narwhals dtype instance (`nw.String()`,
+        `nw.Datetime()`, ...) - translated to its DuckDB name only where a
+        column of it is built.
     dims
         Dims this attribute may vary over; a subset of those declared. Varying
         over nothing is what puts it in `dims/components/<Type>.parquet` rather
@@ -135,8 +206,6 @@ class AttributeSpec(BaseModel):
         The value a coordinate no row covers takes.
     breakpoints
         Whether it may carry a piecewise-linear curve.
-    bus
-        Whether it belongs to a component or to one of its connections.
     unit
         What the values measure - `"MW"`, `"EUR/MWh"`. Stored and never
         interpreted; `None` is undeclared, `""` genuinely dimensionless.
@@ -153,13 +222,23 @@ class AttributeSpec(BaseModel):
     - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
 
-    dtype: str
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    dtype: nw.dtypes.DType
     default: Any | None = None
     dims: frozenset[str] = frozenset()
     breakpoints: bool = False
-    bus: BusRelation = "component"
     unit: str | None = None
     description: str | None = None
+
+    @field_validator("dtype", mode="before")
+    @classmethod
+    def _parse_dtype(cls, value: Any) -> Any:
+        return _parse_dtype(value)
+
+    @field_serializer("dtype")
+    def _dump_dtype(self, value: nw.dtypes.DType) -> Any:
+        return _dump_dtype(value)
 
     @field_serializer("default")
     def _serialise_default(self, value: Any) -> Any:
@@ -186,13 +265,81 @@ class AttributeSpec(BaseModel):
 
     @property
     def varying(self) -> bool:
-        """Whether this attribute lives in `inputs/` rather than `dims/components/`.
+        """Whether this attribute's values are long rows rather than a column.
+
+        "Varies beyond its address", not "has dims": naming exactly one
+        addressing coordinate is a column on that thing's own table, so
+        `dims={"entity"}` is a component column and `dims={"connection"}` a
+        column of the group's table. Anything more is `inputs/<attr>.parquet`.
+
+        A bare `bool(dims)` was the test before `entity` was a declared dim,
+        when a component attribute declared none - it would now call every
+        attribute varying and route every constant to `inputs/`.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
-        return bool(self.dims)
+        return len(self.dims) > 1
+
+
+class Group(BaseModel):
+    """Which tuples over several dims exist: a sparse subset of a dim product.
+
+    Not a dim. A dim declares an axis of labels and NULL in its column means
+    "every value of it"; a group declares *which combinations are there*, which
+    no axis can say because the product is sparse - a component attaches to two
+    buses out of a thousand.
+
+    An attribute names the group in its `dims` and its rows carry the group's
+    *coordinate* names as columns, never the group's own name. Coordinates
+    rather than dims because two of them may draw on the same axis: a corridor
+    between two entities is `(from, to)`, which a set of dims could not spell.
+
+    Attributes
+    ----------
+    over
+        Coordinate name -> the dim it draws its labels from.
+    description
+        What the group is, in prose. Never interpreted.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+
+    over: dict[str, str]
+    description: str | None = None
+
+    @property
+    def coordinates(self) -> tuple[str, ...]:
+        """The columns a row of this group is keyed by, in declaration order."""
+        return tuple(self.over)
+
+
+class ComponentType(BaseModel):
+    """What one component type carries: the traits it subscribes to, plus its own.
+
+    A type does not *own* an attribute - `Schema.attributes` declares each once,
+    record-wide, and a type subscribes. This is the subscription.
+
+    Attributes
+    ----------
+    traits
+        Traits this type subscribes to; every attribute they bundle applies.
+    attributes
+        Attributes this type carries that no trait bundles.
+    description
+        What the type is, in prose. Never interpreted.
+
+    Notes
+    -----
+    - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
+    """
+
+    traits: frozenset[str] = frozenset()
+    attributes: frozenset[str] = frozenset()
+    description: str | None = None
 
 
 class Schema(BaseModel):
@@ -206,7 +353,16 @@ class Schema(BaseModel):
     dimensions
         Every declared axis, keyed by dim name.
     attributes
-        Component type -> attribute -> spec.
+        Attribute -> spec, flat and record-wide. One attribute is one spec and
+        one `inputs/<attr>.parquet`, so a dtype cannot differ per type.
+    groups
+        Group name -> which tuples over several dims exist. `connection` is
+        the one every record with connections declares.
+    traits
+        Trait -> the attributes it bundles. A vocabulary a consumer dispatches
+        on, declared rather than derived.
+    component_types
+        Component type -> what it carries. `attributes_for` resolves the two.
     partial
         Which dims a layer may patch value by value. `None` for a record
         with no layers, since nothing overrides anything. A dim outside it is
@@ -225,7 +381,10 @@ class Schema(BaseModel):
 
     version: int = 1
     dimensions: dict[str, Dimension] = Field(default_factory=dict)
-    attributes: dict[str, dict[str, AttributeSpec]] = Field(default_factory=dict)
+    attributes: dict[str, AttributeSpec] = Field(default_factory=dict)
+    groups: dict[str, Group] = Field(default_factory=dict)
+    traits: dict[str, frozenset[str]] = Field(default_factory=dict)
+    component_types: dict[str, ComponentType] = Field(default_factory=dict)
     partial: frozenset[str] | None = None
     meta: dict[str, Any] = Field(default_factory=dict)
 
@@ -236,7 +395,8 @@ class Schema(BaseModel):
         Notes
         -----
         - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
-        - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
         """
         declared = set(self.dimensions)
@@ -259,7 +419,13 @@ class Schema(BaseModel):
             if dim in spec.within:
                 msg = f"dim {dim!r} is `within` itself"
                 raise ValueError(msg)
-
+            unknown = sorted(spec.on - declared)
+            if unknown:
+                msg = f"dim {dim!r} is `on` undeclared dims {unknown}"
+                raise ValueError(msg)
+            if dim in spec.on:
+                msg = f"dim {dim!r} is `on` itself"
+                raise ValueError(msg)
         # `TopologicalSorter` only needs preparing to reject a cycle, and
         # `CycleError.args[1]` is the offending path - so the acyclicity `within`
         # requires is stdlib rather than a graph walk kept here.
@@ -271,29 +437,80 @@ class Schema(BaseModel):
             msg = f"`within` is cyclic: {' -> '.join(e.args[1])}"
             raise ValueError(msg) from e
 
-        for ctype, attrs in self.attributes.items():
-            for attr, attr_spec in attrs.items():
-                unknown = sorted(attr_spec.dims - declared)
-                if unknown:
-                    msg = f"{ctype}.{attr} varies over undeclared dims {unknown}"
-                    raise ValueError(msg)
+        # A separate graph from `within`, and pointing the other way: `on`
+        # names the dims I classify, so a cycle here is `country on state on
+        # country` rather than a label scoped by its own descendant.
+        try:
+            TopologicalSorter({d: s.on for d, s in self.dimensions.items()}).prepare()
+        except CycleError as e:
+            msg = f"`on` is cyclic: {' -> '.join(e.args[1])}"
+            raise ValueError(msg) from e
+
+        # A group's coordinates draw their labels from declared dims, and its
+        # name may not collide with one: an attribute's `dims` names either,
+        # so one namespace has to answer.
+        for group, group_spec in self.groups.items():
+            if group in declared:
+                msg = f"group {group!r} collides with a declared dim"
+                raise ValueError(msg)
+            unknown = sorted(set(group_spec.over.values()) - declared)
+            if unknown:
+                msg = f"group {group!r} is over undeclared dims {unknown}"
+                raise ValueError(msg)
+
+        addressable = declared | set(self.groups)
+        for attr, attr_spec in self.attributes.items():
+            unknown = sorted(attr_spec.dims - addressable)
+            if unknown:
+                msg = (
+                    f"attribute {attr!r} is addressed by undeclared "
+                    f"dims or groups {unknown}"
+                )
+                raise ValueError(msg)
+
+        # A trait or a type may only name an attribute that is declared: the
+        # subscription says which attributes apply, never what they are, so a
+        # name with no spec is a typo rather than a shorthand declaration.
+        for trait, bundled in self.traits.items():
+            unknown = sorted(bundled - set(self.attributes))
+            if unknown:
+                msg = f"trait {trait!r} bundles undeclared attributes {unknown}"
+                raise ValueError(msg)
+
+        for ctype, subscription in self.component_types.items():
+            unknown = sorted(subscription.traits - set(self.traits))
+            if unknown:
+                msg = f"component type {ctype!r} subscribes to undeclared traits {unknown}"
+                raise ValueError(msg)
+            unknown = sorted(subscription.attributes - set(self.attributes))
+            if unknown:
+                msg = (
+                    f"component type {ctype!r} carries undeclared attributes {unknown}"
+                )
+                raise ValueError(msg)
 
         if self.partial is not None:
             unknown = sorted(self.partial - declared)
             if unknown:
                 msg = f"`partial` names undeclared dims {unknown}"
                 raise ValueError(msg)
-            # Nothing for the tombstone to select (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys).
-            for dim, spec in self.dimensions.items():
-                if spec.keys and dim not in self.partial:
-                    msg = (
-                        f"dim {dim!r} keys {sorted(spec.keys)} but is not `partial`; "
-                        f"membership cannot be scoped per value of an axis owned whole"
-                    )
-                    raise ValueError(msg)
+            # A dim that does not broadcast is one whose values are addressed
+            # individually, so a layer necessarily patches it value by value -
+            # non-broadcast and `partial` are the same fact from two sides.
+            # Declared rather than assumed: a schema omitting one would key
+            # ownership without it, and resolve one layer's edit as owning
+            # every value of it at once.
+            missing = sorted(set(self.dims) - set(self.broadcast_dims) - self.partial)
+            if missing:
+                msg = (
+                    f"{missing} do not broadcast, so a layer patches them value "
+                    f"by value; declare them `partial` or the fold owns every "
+                    f"value of them at once"
+                )
+                raise ValueError(msg)
         return self
 
-    # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys, https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
+    # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
 
     @property
     def dims(self) -> tuple[str, ...]:
@@ -305,7 +522,107 @@ class Schema(BaseModel):
         """
         return tuple(self.dimensions)
 
-    def owned_per(self, ctype: str, attribute: str) -> frozenset[str]:
+    @property
+    def broadcast_dims(self) -> tuple[str, ...]:
+        """The dims a NULL broadcasts over: every dim but `entity` and a group's.
+
+        A NULL here means "every value of this dim", which the fold expands
+        against the axis. The two exclusions cannot mean that:
+
+        - `entity`, because a NULL there is a value belonging to no component
+          rather than to all of them. The one dim named literally, being the
+          one the component types partition: `dims/entity.parquet` carries
+          `component_type`, which decides an attribute vocabulary, and no
+          other dim does anything of the sort.
+        - A group's coordinate, because there is no axis to expand against.
+          "Every bus of this component" is the group's rows, not the bus axis -
+          a sparse subset only the group's table knows.
+
+        The complement of this is what `Schema` requires to be `partial`: a dim
+        whose values are addressed individually is one a layer patches value by
+        value.
+
+        What the `varies`/`broadcast` structs have a field per, and what
+        `expand_dims` joins.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        sparse = {c for g in self.groups.values() for c in g.coordinates}
+        return tuple(d for d in self.dims if d != "entity" and d not in sparse)
+
+    def coordinates_of(self, attribute: str) -> tuple[str, ...]:
+        """The dim columns one attribute's rows carry, groups expanded.
+
+        An attribute is addressed by what its `dims` declare, and a group there
+        expands to its coordinates - so `dims={"connection", "snapshot"}` gives
+        `("entity", "bus", "snapshot")` and `dims={"snapshot"}` gives
+        `("snapshot",)` with no entity column at all.
+
+        Per attribute rather than schema-wide: one file per attribute means one
+        column set per attribute, and an all-NULL `entity` on a record-level
+        weighting would be a column claiming a component the value has none of.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        """
+        spec = self.attributes.get(attribute)
+        if spec is None:
+            return ()
+        named: set[str] = set()
+        for d in spec.dims:
+            group = self.groups.get(d)
+            named.update(group.coordinates if group is not None else (d,))
+        # Declaration order, so every consumer sees one column order.
+        return tuple(d for d in self.dims if d in named)
+
+    def long_columns_for(self, attribute: str) -> tuple[str, ...]:
+        """One attribute's full `inputs/` column set, in order.
+
+        An attribute carries the coordinates its `dims` name and no others, so a
+        record-level weighting has no `entity` column and a component attribute
+        has no `bus`.
+
+        An attribute the schema does not declare is `long_columns` - every
+        declared dim, the widest shape. Only a *result* reaches this: an
+        undeclared input is rejected on write, where a result is never declared
+        at all because a tool derives which attributes count as one from its own
+        registry.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [results](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
+        """
+        if attribute not in self.attributes:
+            return self.long_columns
+        return (*self.coordinates_of(attribute), *LONG_TAIL)
+
+    def attributes_for(self, ctype: str) -> dict[str, AttributeSpec]:
+        """Which attributes `ctype` carries: its traits' bundles, plus its own.
+
+        The resolved view of the two declarations, and what every per-type
+        question reads. Empty for a type the schema does not declare, which is
+        why callers wanting to reject an unknown type test `component_types`
+        rather than this.
+
+        Notes
+        -----
+        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
+        """
+        spec = self.component_types.get(ctype)
+        if spec is None:
+            return {}
+        names = set(spec.attributes)
+        for trait in spec.traits:
+            names |= self.traits.get(trait, frozenset())
+        return {a: self.attributes[a] for a in sorted(names) if a in self.attributes}
+
+    def owned_per(self, attribute: str) -> frozenset[str]:
         """Which dims a layer owns `attribute` per.
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
@@ -318,16 +635,17 @@ class Schema(BaseModel):
         -----
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         """
-        spec = self.attributes.get(ctype, {}).get(attribute)
+        spec = self.attributes.get(attribute)
         if spec is None:
             return frozenset()
         return spec.dims & (self.partial or frozenset())
 
     @property
-    def input_dims(self) -> tuple[str, ...]:
-        """Dims that key `inputs/` rows, in declaration order.
+    def partial_dims(self) -> tuple[str, ...]:
+        """The dims a layer may patch value by value, in declaration order.
 
-        `partial` itself: the fold's key is one fixed tuple over all
+        `partial` itself, ordered - not the dims of an `inputs/` row, which are
+        every declared one. The fold's key is one fixed tuple over all
         attributes, so it must carry every axis *any* layer may patch by
         value, not only those some currently declared attribute varies over.
         An attribute not owned per one of them writes NULL there, which is the
@@ -336,34 +654,12 @@ class Schema(BaseModel):
 
         Notes
         -----
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         partial = self.partial or frozenset()
         return tuple(d for d in self.dims if d in partial)
-
-    def _keyed(self, kind: KeyKind) -> tuple[str, ...]:
-        return tuple(d for d, s in self.dimensions.items() if kind in s.keys)
-
-    @property
-    def component_dims(self) -> tuple[str, ...]:
-        """Dims keying `dims/components/<Type>.parquet` and its tombstones.
-
-        Notes
-        -----
-        - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
-        """
-        return self._keyed("component")
-
-    @property
-    def connection_dims(self) -> tuple[str, ...]:
-        """Dims keying `dims/connections/<Type>.parquet` and its tombstones.
-
-        Notes
-        -----
-        - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
-        """
-        return self._keyed("connection")
 
     def axis_key(self, dim: str) -> tuple[str, ...]:
         """A dim's axis-table key: `(*parents, dim)`, parents first.
@@ -378,75 +674,91 @@ class Schema(BaseModel):
         seen = _ancestors(dim, {d: s.within for d, s in self.dimensions.items()})
         return (*(d for d in self.dims if d in seen), dim)
 
+    def mappings_on(self, dim: str) -> tuple[str, ...]:
+        """Mappings classifying `dim` - the extra columns its axis file carries.
+
+        One column per mapping, named for the mapping rather than for `dim`:
+        `country` declared `on={"bus"}` puts a `country` column on
+        `dims/bus.parquet`. Immediate only, never transitive - a chain is not
+        denormalised, so a bus carries `state` and the country is reached
+        through `dims/state.parquet`.
+
+        Notes
+        -----
+        - [mappings](https://energy-models.github.io/datarecord/design/schema/#on-a-mapping-over-another-axis)
+        """
+        return tuple(d for d, s in self.dimensions.items() if dim in s.on)
+
     # -- key and column sets (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/read-path/#owner-map) -----------------------------------
 
     @property
     def long_columns(self) -> tuple[str, ...]:
         """The long schema's full column set.
 
-        `bus` and `breakpoint` are part of the schema, not optional extensions
-        to it: both are NULL for the ordinary component-level scalar, so one
-        column set serves every kind of attribute row.
+        The *map's* column set, which is uniform across attributes because the
+        map is one relation over all of them. An individual file carries only
+        its own attribute's columns (`long_columns_for`), and `union_by_name`
+        supplies NULL for the rest when the fold unions them here.
 
         No `component_type`.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
-        return (
-            "name",
-            "bus",
-            *self.dims,
-            "attribute",
-            "breakpoint",
-            "value",
-        )
+        return (*self.dims, *LONG_TAIL)
 
     @property
     def input_key(self) -> tuple[str, ...]:
         """Inputs-map key columns, compared NULL-safely when folding.
 
-        `bus` is in the key so a per-connection attribute is owned per
-        connection rather than per component; it is NULL for a
-        component-level attribute, which then keys against the map's NULL.
+        `partial` itself, plus `attribute`. `entity` and a group's coordinates
+        are in it because a layer may patch one component's value, or one
+        connection's, without restating every other's - which is what `partial`
+        says, and why they are declared `partial` rather than added here.
+
+        A coordinate an attribute's own file does not carry reads as NULL,
+        which is what makes the key one fixed tuple over attributes whose
+        columns differ.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return ("name", "bus", *self.input_dims, "attribute")
+        return (*self.partial_dims, "attribute")
 
-    @property
-    def component_key(self) -> tuple[str, ...]:
-        """Components-map key columns, compared NULL-safely when folding.
+    def groups_of(self, attribute: str) -> tuple[str, ...]:
+        """Which declared groups address `attribute`, in declaration order.
 
-        The type is carried as a column, not keyed.
+        An attribute is a connection attribute because its `dims` name the
+        `connection` group - not because a separate field says so. That is
+        what lets a second group exist without a second field.
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        return ("name", *self.component_dims)
+        spec = self.attributes.get(attribute)
+        if spec is None:
+            return ()
+        return tuple(g for g in self.groups if g in spec.dims)
 
-    @property
-    def connection_key(self) -> tuple[str, ...]:
-        """Connections-map key columns.
+    def group_coordinates(self, group: str) -> tuple[str, ...]:
+        """One group's coordinate columns, or `()` if it is not declared.
 
-        `bus` identifies the connection, so it is a required key column rather
-        than a broadcast dim: never expanded against an axis, only compared
-        NULL-safely. `role` and `component_type` describe the connection and key
-        nothing.
+        What a row of the group is keyed by, before the dims its membership is
+        scoped along. Coordinate names rather than dim names, so two drawing on
+        one axis stay two columns.
 
         Notes
         -----
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        return ("name", "bus", *self.connection_dims)
+        spec = self.groups.get(group)
+        return () if spec is None else spec.coordinates
 
     @property
     def input_columns(self) -> tuple[str, ...]:
@@ -464,28 +776,35 @@ class Schema(BaseModel):
 
         Notes
         -----
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return ("component_type", *self.component_key, "layer_uuid", "order_key")
+        return ("component_type", "entity", "layer_uuid", "order_key")
 
-    @property
-    def connection_columns(self) -> tuple[str, ...]:
-        """The connections map's full column set.
+    def group_columns(self, group: str) -> tuple[str, ...]:
+        """One group's owner-map column set: its coordinates, plus what it carries.
 
         Notes
         -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return ("component_type", *self.connection_key, "layer_uuid", "order_key")
+        return (
+            "component_type",
+            *self.group_coordinates(group),
+            "layer_uuid",
+            "order_key",
+        )
 
     # -- typing (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/writing/) -------------------------------------------------
 
-    def column_type(self, column: str) -> str | None:
+    def column_type(self, column: str) -> nw.dtypes.DType | None:
         """The declared type for one column, or None if the schema declares none.
 
         Covers the structural columns the format fixes, the declared dims, and
-        the owner map's two flag structs, whose fields follow the schema's dims.
+        the owner map's two flag structs, whose fields follow the schema's
+        dims. A narwhals dtype, translated to DuckDB (`duck.DuckTypes`) only where
+        a caller builds a column of it.
 
         A schema declaring no dims at all is "no manifest yet" rather
         than a record to fold, and DuckDB has no empty struct - so the flag
@@ -502,28 +821,36 @@ class Schema(BaseModel):
         if column in self.dimensions:
             return self.dimensions[column].dtype
         if column in ("varies", "broadcast"):
-            return flag_type(self.dims) if self.dims else None
+            return flag_type(self.broadcast_dims) if self.broadcast_dims else None
         return None
 
-    def value_type(self, ctype: str, attribute: str) -> str | None:
+    def value_type(self, attribute: str) -> nw.dtypes.DType | None:
         """The `value` column's type for one attribute.
+
+        No `ctype`: one attribute is one `inputs/<attr>.parquet` with one
+        `value` column, so the dtype is the attribute's alone. A narwhals
+        dtype, translated to DuckDB (`duck.DuckTypes`) only where a caller builds
+        a column of it.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
-        spec = self.attributes.get(ctype, {}).get(attribute)
+        spec = self.attributes.get(attribute)
         return None if spec is None else spec.dtype
 
     def types_declaring(self, attribute: str) -> frozenset[str]:
-        """Which component types declare `attribute` - what `names=None` targets.
+        """Which component types carry `attribute` - what `names=None` targets.
+
+        Empty for a record-level attribute, which no type carries and which
+        therefore targets no names at all.
 
         Notes
         -----
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         return frozenset(
-            c for c, attrs in self.attributes.items() if attribute in attrs
+            c for c in self.component_types if attribute in self.attributes_for(c)
         )
 
     # -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) --------------------------------------------------
@@ -559,29 +886,34 @@ class Schema(BaseModel):
                 problems.append(
                     f"dim {dim!r} nesting changed; the axis key changes shape"
                 )
-            gained = now.keys - was.keys
-            if gained:
+
+        for attr, was_spec in other.attributes.items():
+            now_spec = self.attributes.get(attr)
+            if now_spec is None:
+                problems.append(f"attribute {attr!r} removed")
+                continue
+            if now_spec.dtype != was_spec.dtype:
                 problems.append(
-                    f"dim {dim!r} gained keys {sorted(gained)}; existing entity rows "
-                    f"carry no such column"
+                    f"attribute {attr!r} dtype {was_spec.dtype} -> {now_spec.dtype}"
+                )
+            narrowed = was_spec.dims - now_spec.dims
+            if narrowed:
+                problems.append(
+                    f"attribute {attr!r} no longer varies over {sorted(narrowed)}; "
+                    f"rows setting those dims have no valid reading"
                 )
 
-        for ctype, attrs in other.attributes.items():
-            for attr, was_spec in attrs.items():
-                now_spec = self.attributes.get(ctype, {}).get(attr)
-                if now_spec is None:
-                    problems.append(f"{ctype}.{attr} removed")
-                    continue
-                if now_spec.dtype != was_spec.dtype:
-                    problems.append(
-                        f"{ctype}.{attr} dtype {was_spec.dtype} -> {now_spec.dtype}"
-                    )
-                narrowed = was_spec.dims - now_spec.dims
-                if narrowed:
-                    problems.append(
-                        f"{ctype}.{attr} no longer varies over {sorted(narrowed)}; "
-                        f"rows setting those dims have no valid reading"
-                    )
+        # A type losing an attribute is incompatible for the same reason a
+        # narrowed `dims` is: its rows are still in the file, now unreadable
+        # for that type. Losing a whole type says the same of all of them.
+        for ctype in other.component_types:
+            was_attrs = set(other.attributes_for(ctype))
+            dropped = sorted(was_attrs - set(self.attributes_for(ctype)))
+            if dropped:
+                problems.append(
+                    f"component type {ctype!r} no longer carries {dropped}; "
+                    f"rows written for it have no valid reading"
+                )
 
         if other.partial is not None and self.partial is not None:
             lost = other.partial - self.partial

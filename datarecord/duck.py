@@ -17,17 +17,21 @@ Notes
 """
 
 import os
-from collections.abc import Callable, Iterable, MutableMapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
 from functools import partial, reduce
+from typing import Any
 from uuid import UUID
 from weakref import WeakKeyDictionary
 
 import duckdb
+import narwhals as nw
+import narwhals._duckdb.utils as _nw_duckdb
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, FunctionExpression
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
+from narwhals._utils import Version
 
 
 class _Functions:
@@ -275,6 +279,89 @@ def ex_all(exprs: Iterable[Expression]) -> Expression:
     return reduce(lambda x, y: x & y, exprs)
 
 
+def struct_of(fields: Mapping[str, Expression]) -> Expression:
+    """A struct expression: field name to the expression for its value.
+
+    A struct rather than a column per field, because it comes back as a dict
+    keyed by name: the caller filters it by name instead of counting columns
+    into a positional slice.
+
+    `struct_pack` is what says this in DuckDB, and the field names are its
+    *keyword* arguments - which `FunctionExpression` cannot pass, being
+    positional-only. So the call is assembled as text here and the values are
+    interpolated as the expressions they already are, keeping SQL text out of
+    every caller.
+
+    Never empty, DuckDB having no empty struct.
+    """
+    packed = ", ".join(f'"{name}" := {value}' for name, value in fields.items())
+    return sql(f"struct_pack({packed})")
+
+
+class DuckTypes:
+    """Builds DuckDB types and typed shapes from narwhals dtypes, just in time.
+
+    Built once per connection and called per dtype - the constructor's
+    relation is where a timezone-aware `Datetime` resolves its zone (DuckDB
+    keeps timezone on the connection, not the dtype), and is fetched at most
+    once no matter how many dtypes this instance translates.
+
+    Reaches into narwhals' private DuckDB backend
+    (`narwhals._duckdb.utils.narwhals_to_native_dtype`) rather than a local
+    translation table - unversioned within the `narwhals>=2,<3` pin, so
+    `pixi run test` is what catches a break, not a type error here.
+
+    Parameters
+    ----------
+    rel_or_con
+        A connection is queried for the throwaway relation
+        `DeferredTimeZone` needs; a relation already in hand is used as-is,
+        skipping that query.
+    """
+
+    deferred_tz: _nw_duckdb.DeferredTimeZone
+    con: DuckDBPyConnection | None
+
+    def __init__(self, rel_or_con: DuckDBPyRelation | DuckDBPyConnection):
+        if isinstance(rel_or_con, DuckDBPyConnection):
+            self.con = rel_or_con
+            rel = rel_or_con.sql("SELECT 1")
+        else:
+            self.con = None
+            rel = rel_or_con
+        self.deferred_tz = _nw_duckdb.DeferredTimeZone(rel)
+
+    def __call__(self, dtype: nw.dtypes.DType) -> duckdb.sqltypes.DuckDBPyType:
+        """`dtype`'s DuckDB type."""
+        return _nw_duckdb.narwhals_to_native_dtype(
+            dtype, Version.MAIN, self.deferred_tz
+        )
+
+    def lit(self, value: Any, dtype: nw.dtypes.DType) -> Expression:
+        """`value`, cast to `dtype`'s DuckDB type - a typed literal."""
+        return lit(value).cast(self(dtype))
+
+    def null(self, dtype: nw.dtypes.DType) -> Expression:
+        """A typed NULL, which is one column of a shape-only relation."""
+        return self.lit(None, dtype)
+
+    def empty_relation(self, **columns: nw.dtypes.DType) -> DuckDBPyRelation:
+        """A row-less relation with `columns`' names and types.
+
+        What a staging table is created from: `create` takes the table's
+        shape from the relation, so a shape is built as expressions rather
+        than assembled as DDL text. One row of typed NULLs, kept for its
+        types and dropped for its rows.
+
+        A tuple rather than a list is what routes `values` to its expression
+        overload; the stub types only the scalar one.
+        """
+        assert self.con is not None
+        return self.con.values(
+            tuple(self.null(t).alias(n) for n, t in columns.items())
+        ).limit(0)  # type: ignore[arg-type]
+
+
 def dims_dirs(ancestry: list[UUID]) -> list[str]:
     """`dims/`-containing directories for resolving a record's axes.
 
@@ -337,6 +424,8 @@ def fold_axis(
 
     union = union_all_by_name(layers, con)
     partition = ", ".join(str(col(c)) for c in key)
+    # `OVER (PARTITION BY ...)` stays text below: DuckDB's expression API has no
+    # window construct, so only what the window wraps is built as an expression.
     ranked = union.project(
         star(),
         sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _depth DESC)").alias(
@@ -346,9 +435,10 @@ def fold_axis(
         # `min()` over two separate window aggregates would answer "smallest
         # _depth" and "smallest _row" independently, not the pair belonging
         # to the earliest actual row.
-        sql(f"min({{'d': _depth, 'r': _row}}) OVER (PARTITION BY {partition})").alias(
-            "_first"
-        ),
+        sql(
+            f"{fn.min(struct_of({'d': col('_depth'), 'r': col('_row')}))} "
+            f"OVER (PARTITION BY {partition})"
+        ).alias("_first"),
     )
     return (
         ranked.filter(col("_rank") == lit(1))

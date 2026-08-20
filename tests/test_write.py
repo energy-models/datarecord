@@ -18,7 +18,7 @@ from datarecord.layered.resolve import read_schema
 from datarecord.layered.write import write_record
 from datarecord.record import EMPTY, LazyFrames, Record
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import relation, schema
+from tests.fixtures import export_network, relation, schema
 
 
 class _Source:
@@ -61,8 +61,8 @@ class _Source:
         return self._frames(self._components, "components")
 
     @property
-    def connections(self):
-        return self._frames(self._connections, "connections")
+    def groups(self):
+        return {"connection": self._frames(self._connections, "connection")}
 
     @property
     def attributes(self):
@@ -76,15 +76,23 @@ class _Source:
         return {}
 
 
+_SCHEMA = schema()
+
+
 def _long(**overrides) -> pd.DataFrame:
-    """One long-schema row, with every long-schema column present.
+    """One long row carrying its attribute's own coordinates, and no others.
+
+    Shaped from the spec rather than spelled: a source handing over a column
+    the attribute is not addressed by is what `write_record` now rejects, so a
+    helper that spelled every declared dim would be testing against a record no
+    reader would accept.
 
     Notes
     -----
-    - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     row = {
-        "name": "steel_dri",
+        "entity": "steel_dri",
         "bus": None,
         "snapshot": None,
         "scenario": None,
@@ -94,10 +102,8 @@ def _long(**overrides) -> pd.DataFrame:
         "value": 1.0,
     }
     row.update(overrides)
-    return pd.DataFrame([row])
-
-
-_SCHEMA = schema()
+    columns = _SCHEMA.long_columns_for(str(row["attribute"]))
+    return pd.DataFrame([{c: row[c] for c in columns}])
 
 
 # -- the lazy mapping (https://energy-models.github.io/datarecord/design/format/) -------------------------------------------------
@@ -129,7 +135,7 @@ def test_write_record_builds_each_key_once(con, base_uri):
         _SCHEMA,
         attributes={"p_nom": _long(), "e_nom": _long(attribute="e_nom")},
         components={
-            "Process": pd.DataFrame({"name": ["steel_dri"], "scenario": [None]})
+            "Process": pd.DataFrame({"entity": ["steel_dri"], "scenario": [None]})
         },
     )
     write_record(revision.id, source, con)
@@ -194,7 +200,81 @@ def test_write_record_refuses_an_existing_layer(con, base_uri):
         write_record(revision.id, source, con)
 
 
+def test_a_file_carries_only_its_own_attributes_coordinates(con, base_uri, ac_dc):
+    """One attribute is one file, so one column set - not every declared dim.
+
+    A component attribute has no `bus` column, a connection attribute does, and
+    neither carries a dim it is not addressed by. The uniform prefix this
+    replaces put an all-NULL `bus` on every file and a `period` column on
+    attributes that never vary over one.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    inputs = Path(layer_dir(revision.id), "inputs")
+
+    def columns(attribute: str) -> set[str]:
+        return set(con.read_parquet(str(inputs / f"{attribute}.parquet")).columns)
+
+    assert columns("p_max_pu") == {
+        "entity",
+        "snapshot",
+        "attribute",
+        "breakpoint",
+        "value",
+    }, "a component attribute carries `entity`, not the connection group's `bus`"
+
+    efficiency = columns("efficiency")
+    assert "bus" in efficiency, "a connection attribute carries the group's coordinates"
+    assert "period" not in efficiency, "and no dim it is not addressed by"
+
+
 # -- validation -------------------------------------------------------------
+
+
+def test_write_record_rejects_an_undeclared_attribute(con, base_uri):
+    """An attribute with no spec has no shape, so there is nothing to write it as.
+
+    Its `dims` are what say which columns the file carries, so writing one the
+    schema does not declare would put a file in `inputs/` whose column set no
+    reader could derive. A *result* is exempt - a tool derives those from its
+    own registry, never from the schema.
+
+    Notes
+    -----
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    """
+    revision = Revision.create(con)
+    source = _Source(_SCHEMA, attributes={"not_declared": _long(attribute="nope")})
+
+    with pytest.raises(ValueError, match="not a declared attribute"):
+        write_record(revision.id, source, con)
+
+
+def test_write_record_rejects_a_coordinate_the_attribute_lacks(con, base_uri):
+    """A column the attribute is not addressed by is a disagreement, not a spare.
+
+    The read path projects an attribute's own coordinates, so a `bus` on a
+    component attribute would be written and never read - and a source emitting
+    one means something different by the attribute than the schema does.
+    Reported rather than dropped, since silently narrowing would hide that.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    """
+    revision = Revision.create(con)
+    wide = _long().assign(bus=None)
+    source = _Source(_SCHEMA, attributes={"p_nom": wide})
+
+    with pytest.raises(
+        ValueError, match=r"carries columns \['bus'\].*not addressed by"
+    ):
+        write_record(revision.id, source, con)
 
 
 def test_write_record_rejects_a_missing_long_column(con, base_uri):
@@ -208,20 +288,20 @@ def test_write_record_rejects_a_missing_long_column(con, base_uri):
     assert not Path(layer_dir(revision.id)).exists()
 
 
-def test_write_record_rejects_an_unbacked_key_dim(con, base_uri):
-    """A schema keying by a dim the frames lack would misresolve.
+def test_write_record_rejects_a_group_frame_missing_a_coordinate(con, base_uri):
+    """A group's row is keyed by its coordinates, so one lacking them misresolves.
 
     Notes
     -----
-    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
+    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
     """
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
-        components={"Process": pd.DataFrame({"name": ["steel_dri"]})},  # no `scenario`
+        connections={"Process": pd.DataFrame({"entity": ["steel_dri"]})},  # no `bus`
     )
 
-    with pytest.raises(ValueError, match="missing key dims.*scenario"):
+    with pytest.raises(ValueError, match="coordinates.*bus"):
         write_record(revision.id, source, con)
 
 
@@ -234,14 +314,14 @@ def test_write_record_rejects_a_name_two_types_share(con, base_uri):
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
         components={
-            "Process": pd.DataFrame({"name": ["shared"], "scenario": [None]}),
-            "Widget": pd.DataFrame({"name": ["shared"], "scenario": [None]}),
+            "Process": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
+            "Widget": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
         },
     )
 
@@ -258,8 +338,8 @@ def test_write_record_accepts_one_name_per_type(con, base_uri):
     source = _Source(
         _SCHEMA,
         components={
-            "Process": pd.DataFrame({"name": ["a"], "scenario": [None]}),
-            "Widget": pd.DataFrame({"name": ["b"], "scenario": [None]}),
+            "Process": pd.DataFrame({"entity": ["a"], "scenario": [None]}),
+            "Widget": pd.DataFrame({"entity": ["b"], "scenario": [None]}),
         },
     )
 
@@ -283,8 +363,8 @@ def test_the_uniqueness_check_spans_backends(con, base_uri):
         _SCHEMA,
         components={
             # DuckDB-backed, and pandas-backed, colliding on `shared`.
-            "Process": con.sql("SELECT 'shared' AS name, NULL AS scenario"),
-            "Widget": pd.DataFrame({"name": ["shared"], "scenario": [None]}),
+            "Process": con.sql("SELECT 'shared' AS entity, NULL AS scenario"),
+            "Widget": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
         },
     )
 
@@ -296,7 +376,7 @@ def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
     """A `within` dim's file needs a column per parent, or the fold miskeys it.
 
     `snapshot within period` makes the axis key `(period, snapshot)`, so a
-    `snapshots.parquet` carrying only timestamps would fold two periods'
+    `snapshot.parquet` carrying only timestamps would fold two periods'
     identically labelled hours into one row.
 
     Notes
@@ -324,7 +404,7 @@ def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
 
     assert isinstance(source, Record)
     assert "Generator" in source.components
-    assert "Link" in source.connections
+    assert "Link" in source.groups["connection"]
     assert "p_max_pu" in source.attributes
     # Non-varying attributes belong to `dims/components/`, not `inputs/` (https://energy-models.github.io/datarecord/design/record/).
     assert "v_nom" not in source.attributes
@@ -376,7 +456,7 @@ def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
 
     # Stored bus-keyed, with a role from PyPSA's sign convention.
     rows = con.read_parquet(
-        layer_dir(revision.id) + "dims/connections/Link.parquet"
+        layer_dir(revision.id) + "dims/connection/Link.parquet"
     ).df()
     assert set(rows["role"]) == {"input", "output"}
     assert set(rows["bus"]) >= set(ac_dc.c["Link"].static["bus0"])
@@ -397,7 +477,7 @@ def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
     rows = con.read_parquet(
-        layer_dir(revision.id) + "dims/connections/Generator.parquet"
+        layer_dir(revision.id) + "dims/connection/Generator.parquet"
     ).df()
     assert set(rows["role"]) == {"attached"}
 
@@ -435,8 +515,8 @@ def test_written_layer_overlays(con, base_uri, ac_dc):
     write_input(
         layer_dir(child.id),
         "p_nom",
-        [{"name": "Manchester Wind", "value": 999.0}],
+        [{"entity": "Manchester Wind", "value": 999.0}],
     )
 
-    resolved = relation(child, "p_nom").filter("name = 'Manchester Wind'").df()
+    resolved = relation(child, "p_nom").filter("entity = 'Manchester Wind'").df()
     assert list(resolved["value"]) == [999.0]
