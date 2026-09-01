@@ -19,7 +19,6 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cached_property, partial
-from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
 from urllib.request import urlopen
@@ -37,17 +36,21 @@ from duckdb import StarExpression as star
 from datarecord.duck import (
     DuckTypes,
     base_uri_of,
+    broadcast_match,
     dims_dirs,
-    ex_all,
+    distinct_values,
+    ensure_local_dir,
     fn,
     fold_axis,
     layer_dir,
+    null_safe,
     resolved_dir,
     schema_uri,
     struct_of,
     try_read_parquet,
     union_all_by_name,
 )
+from datarecord.record import Flags, flags_from_rows
 from datarecord.schema import Schema
 
 # The owner map's `layer_uuid` column type - a layering mechanism, not
@@ -91,31 +94,6 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
         if rel is not None:
             axes[dim] = rel
     return Dims(schema=schema, axes=axes)
-
-
-def broadcast_match(
-    alias_a: str, alias_b: str, fixed: tuple[str, ...], dims: tuple[str, ...]
-) -> Expression:
-    """NULL-safe equality on `fixed`, broadcast-OR on `dims`.
-
-    A raw row's `dim = NULL` means "every value of `dim`", so it must
-    match regardless of the resolved side's value there, unlike a plain
-    `IS NOT DISTINCT FROM` which only matches NULL against NULL.
-
-    Notes
-    -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-    """
-    match = ex_all(
-        sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}") for c in fixed
-    )
-    for dim in dims:
-        match = match & (
-            col(alias_a, dim).isnull()
-            | sql(f"{col(alias_a, dim)} IS NOT DISTINCT FROM {col(alias_b, dim)}")
-        )
-    return match
 
 
 @dataclass(frozen=True)
@@ -392,12 +370,6 @@ def _empty_relation(
     )
 
 
-def _null_safe(alias_a: str, alias_b: str, columns: tuple[str, ...]) -> str:
-    return " AND ".join(
-        f"{alias_a}.{c} IS NOT DISTINCT FROM {alias_b}.{c}" for c in columns
-    )
-
-
 def with_columns(
     schema: Schema, rel: DuckDBPyRelation, *columns: str
 ) -> DuckDBPyRelation:
@@ -500,11 +472,11 @@ def fold_inputs(
         if key and keyed.issuperset(key):
             kept = kept.join(
                 deleted(revision_id, keys, con).set_alias("x"),
-                _null_safe("x", "p", key),
+                null_safe("x", "p", key),
                 how="anti",
             ).set_alias("p")
     kept = kept.join(
-        own.set_alias("o"), _null_safe("p", "o", keys.schema.input_key), how="anti"
+        own.set_alias("o"), null_safe("p", "o", keys.schema.input_key), how="anti"
     )
     return union_all_by_name([kept, own], con)
 
@@ -648,13 +620,13 @@ def _fold_ordered(
     if also_deleted is not None:
         kept = kept.join(
             also_deleted(revision_id, keys, con).set_alias("a"),
-            _null_safe("p", "a", also_deleted_key),
+            null_safe("p", "a", also_deleted_key),
             how="anti",
         )
     deleted = _deleted_relation(revision_id, keys, con, uri=uri, fixed=key)
-    kept = kept.join(
-        deleted.set_alias("x"), _null_safe("p", "x", key), how="anti"
-    ).join(own.set_alias("o"), _null_safe("p", "o", key), how="anti")
+    kept = kept.join(deleted.set_alias("x"), null_safe("p", "x", key), how="anti").join(
+        own.set_alias("o"), null_safe("p", "o", key), how="anti"
+    )
     return union_all_by_name([kept, own], con)
 
 
@@ -789,9 +761,7 @@ def materialise(
     """
     schema = read_schema(con)
     base = resolved_dir(revision_id) + "owner_map/"
-    if "://" not in base:
-        # A record that wrote nothing to its layer has no node dir yet either.
-        Path(base).mkdir(parents=True, exist_ok=True)
+    ensure_local_dir(base)
     for kind in map_kinds(schema):
         _fold_kind(kind, ancestry, con, schema).to_parquet(_map_uri(revision_id, kind))
     _materialise_dims(revision_id, ancestry, con, schema)
@@ -808,8 +778,7 @@ def _materialise_dims(
     """
     dims = resolve_dims(schema, ancestry, con)
     base = resolved_dir(revision_id) + "dims/"
-    if "://" not in base:
-        Path(base).mkdir(parents=True, exist_ok=True)
+    ensure_local_dir(base)
     for dim, rel in dims.axes.items():
         rel.to_parquet(f"{base}{dim}.parquet")
 
@@ -876,8 +845,7 @@ def write_schema(schema: Schema, base_uri: str | None = None) -> None:
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     uri = schema_uri(base_uri)
-    if "://" not in uri:
-        Path(uri).parent.mkdir(parents=True, exist_ok=True)
+    ensure_local_dir(uri, parent=True)
     with open(uri, "w") as fh:
         fh.write(schema.model_dump_json())
 
@@ -960,8 +928,7 @@ class NodeCache:
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
-        rows = self.components.project("entity_type").distinct().fetchall()
-        return {r[0] for r in rows}
+        return set(distinct_values(self.components, "entity_type", order=False))
 
     def attribute_names(self) -> list[str]:
         """Every input attribute any layer owns a row for, from the owner map.
@@ -976,8 +943,7 @@ class NodeCache:
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
         """
-        rows = self.inputs.project("attribute").distinct().order("attribute").fetchall()
-        return [r[0] for r in rows]
+        return list(distinct_values(self.inputs, "attribute"))
 
     def output_names(self) -> list[str]:
         """Every result attribute this record's own layer holds.
@@ -993,12 +959,9 @@ class NodeCache:
         rel = try_read_parquet(uri, self.con, union_by_name=True)
         if rel is None:
             return []
-        rows = rel.project("attribute").distinct().order("attribute").fetchall()
-        return [r[0] for r in rows]
+        return list(distinct_values(rel, "attribute"))
 
-    def attributes_of(
-        self, ctype: str
-    ) -> dict[str, tuple[frozenset[str], frozenset[str], bool]]:
+    def attributes_of(self, ctype: str) -> dict[str, Flags]:
         """Per attribute of `ctype`, which dims its rows use.
 
         The map computes the flags per key, so per component; this unions them
@@ -1007,12 +970,6 @@ class NodeCache:
         sets - the instruction to use both containers, each taking the rows it
         matches. The union stops at the type boundary: across types it
         would describe neither.
-
-        Returns
-        -------
-        dict
-            `attribute -> (varies, broadcast, breakpoints)`, the raw material
-            `Record.flags` turns into `Flags`.
 
         Notes
         -----
@@ -1044,33 +1001,9 @@ class NodeCache:
             .fetchall()
         )
 
-        # The structs come back as dicts keyed by dim, so the two sets are a
-        # filter rather than a positional slice. A field aggregating to NULL -
-        # a dim declared after this map was written - is falsy, so absent.
-        #
-        # Both sets are scoped to the attribute's own coordinates. The map is
-        # one relation over every attribute, so a dim one attribute is
-        # addressed by reads NULL for the rows of one that is not - and an
-        # unscoped aggregate would report that NULL as "every row broadcasts
-        # over it" when the truth is "this attribute has no such axis".
-        #
-        # The distinction is what a consumer plans reads against: `varies |
-        # broadcast` is the test for whether an attribute touches a dim at all
-        # (https://energy-models.github.io/datarecord/design/record/#flags), and a dim in neither means there is nothing to
-        # build a container along. Reporting an unaddressed dim as broadcast
-        # would answer that question wrongly for every attribute in the record.
-        def scope(attribute: str) -> tuple[str, ...]:
-            own = set(self.schema.coordinates_of(attribute))
-            return tuple(d for d in dims if d in own) if own else dims
-
-        return {
-            attribute: (
-                frozenset(d for d in scope(attribute) if varies.get(d)),
-                frozenset(d for d in scope(attribute) if broadcast.get(d)),
-                bool(breakpoints),
-            )
-            for attribute, varies, broadcast, breakpoints in rows
-        }
+        # The structs come back as dicts keyed by dim, so each set is a filter by
+        # name rather than a positional slice.
+        return flags_from_rows(self.schema, dims, rows)
 
     def relation(self, attribute: str) -> DuckDBPyRelation:
         """The resolved long relation for one input attribute.
@@ -1170,10 +1103,9 @@ class NodeCache:
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
-        return self._dim_frame(
-            ctype,
-            subdir="components",
-            owner_map=self.components,
+        return self._owned_frame(
+            uri=lambda uid: f"{layer_dir(uid)}dims/components/{ctype}.parquet",
+            owned=self.components.filter(col("entity_type") == lit(ctype)),
             match=("entity",),
         )
 
@@ -1195,25 +1127,6 @@ class NodeCache:
             uri=lambda layer_uuid: f"{layer_dir(layer_uuid)}groups/{group}.parquet",
             owned=self.group(group),
             match=self.schema.group_key(group),
-        )
-
-    def _dim_frame(
-        self,
-        ctype: str,
-        *,
-        subdir: str,
-        owner_map: DuckDBPyRelation,
-        match: tuple[str, ...],
-    ) -> DuckDBPyRelation | None:
-        """One type's rows from a `dims/` subdirectory, gated by its owner map.
-
-        The per-type read, which is `components` alone: a group is one file
-        keyed by its coordinates and goes through `_owned_frame` directly.
-        """
-        return self._owned_frame(
-            uri=lambda uid: f"{layer_dir(uid)}dims/{subdir}/{ctype}.parquet",
-            owned=owner_map.filter(col("entity_type") == lit(ctype)),
-            match=match,
         )
 
     def _owned_frame(

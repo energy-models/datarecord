@@ -241,8 +241,7 @@ The fold's key therefore does not vary per attribute: [`partial_dims`](#partial-
 A group's file columns are **not declared here.** They are the attributes whose `dims` name exactly this group ([where a value lives](format.md#where-a-value-lives)) — PyPSA's `role` on a connection is `AttributeSpec(dtype="VARCHAR", dims={"connection"})`, declared by [the tool](tools.md) whose vocabulary the word is.
 Declaring them a second time on the `Group` would be two ways to say one thing, disagreeing eventually.
 
-**A group's key coordinate never broadcasts.** A NULL `bus` on a connection attribute means "every connection of this entity", which is [the group's rows](record.md#the-broadcast-rule) rather than the whole bus axis — there is no axis to expand against, only a sparse subset the group's table knows.
-That is why a key coordinate lands in the fold's key and must be declared `partial`, alongside `entity` and for the same reason.
+**A group's key coordinate [never broadcasts](record.md#the-broadcast-rule)**, so it lands in the fold's key and must be declared `partial`, alongside `entity` and for the same reason.
 A functional group's `into` dim is not one of these: it is an ordinary axis whose NULL means "every country" like any other dim's.
 
 **Connections are one instance**, not a structural category: `Group(over={"entity": "entity", "bus": "bus"})`, with `role` an ordinary attribute over it. `bus` is accordingly one coordinate of one group rather than a column the format fixes, and neither word appears in the record layer — `connection` is whatever a schema calls it, and `role` is [a tool's declaration](tools.md).

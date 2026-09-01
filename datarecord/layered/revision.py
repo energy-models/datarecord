@@ -272,12 +272,7 @@ class LayeredRecord:
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return {
-            attribute: Flags(varies, broadcast, breakpoints)
-            for attribute, (varies, broadcast, breakpoints) in (
-                self.node_cache.attributes_of(ctype).items()
-            )
-        }
+        return self.node_cache.attributes_of(ctype)
 
     # -- frames, ordered by the map's `order_key` (https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations) ---------------------
 

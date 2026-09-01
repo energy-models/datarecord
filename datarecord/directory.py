@@ -18,9 +18,9 @@ from typing import TYPE_CHECKING
 import narwhals as nw
 from duckdb import ColumnExpression as col
 
-from datarecord.duck import fn, try_read_parquet
+from datarecord.duck import distinct_values, fn, struct_of, try_read_parquet
 from datarecord.layered.resolve import read_json, read_schema, with_columns
-from datarecord.record import EMPTY, Flags, LazyFrames
+from datarecord.record import EMPTY, Flags, LazyFrames, flags_from_rows
 from datarecord.schema import Schema
 
 if TYPE_CHECKING:
@@ -80,7 +80,7 @@ class DirectoryRecord:
 
     @cached_property
     def components(self) -> LazyFrames:
-        return self._by_type("dims/components")
+        return self._keyed_by("dims/components", "entity_type")
 
     @cached_property
     def groups(self) -> LazyFrames:
@@ -101,11 +101,11 @@ class DirectoryRecord:
 
     @cached_property
     def attributes(self) -> LazyFrames:
-        return self._by_attribute("inputs")
+        return self._keyed_by("inputs", "attribute")
 
     @cached_property
     def outputs(self) -> LazyFrames:
-        return self._by_attribute("outputs")
+        return self._keyed_by("outputs", "attribute")
 
     def flags(self, ctype: str) -> dict[str, Flags]:
         """Aggregated from `inputs/*.parquet`, scoped to one component type.
@@ -136,14 +136,13 @@ class DirectoryRecord:
             # Only the dims a NULL broadcasts over, as the fold's flags are:
             # "did a row set this" is not a question about `entity` or a
             # group's coordinate, which address the row rather than expanding.
-            declared = self.schema.broadcast_dims
+            dims = self.schema.broadcast_dims
             # Materialised as NULL where no file carries the column, so the
             # aggregate binds over one relation: `union_by_name` already does
             # this for a dim *some* file has, and this covers a dim none does.
-            # Scoping to each attribute's own coordinates then happens below,
-            # where the attribute is known (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
-            rel = with_columns(self.schema, rel, *declared)
-            dims = declared
+            # Scoping to each attribute's own coordinates then happens in
+            # `flags_from_rows` (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+            rel = with_columns(self.schema, rel, *dims)
             rows = (
                 rel.set_alias("i")
                 .join(
@@ -154,43 +153,18 @@ class DirectoryRecord:
                 .aggregate(
                     [
                         col("attribute"),
-                        *(fn.bool_or(col(d).isnotnull()).alias(f"v_{d}") for d in dims),
-                        *(fn.bool_or(col(d).isnull()).alias(f"b_{d}") for d in dims),
+                        struct_of(
+                            {d: fn.bool_or(col(d).isnotnull()) for d in dims}
+                        ).alias("varies"),
+                        struct_of({d: fn.bool_or(col(d).isnull()) for d in dims}).alias(
+                            "broadcast"
+                        ),
                         fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
                     ]
                 )
                 .fetchall()
             )
-            n = len(dims)
-
-            def scope(attribute: str) -> set[str]:
-                """Which of `dims` this attribute is actually addressed by.
-
-                One relation covers every attribute, so a dim another uses reads
-                NULL here - which must not be reported as "every row broadcasts
-                over it" when the attribute has no such axis at all. Falls back
-                to all of them for an attribute the schema does not declare,
-                whose shape is not the schema's to say.
-                """
-                own = set(self.schema.coordinates_of(attribute))
-                return own & set(dims) if own else set(dims)
-
-            result = {
-                r[0]: Flags(
-                    frozenset(
-                        d
-                        for d, on in zip(dims, r[1 : 1 + n], strict=True)
-                        if on and d in scope(r[0])
-                    ),
-                    frozenset(
-                        d
-                        for d, on in zip(dims, r[1 + n : 1 + 2 * n], strict=True)
-                        if on and d in scope(r[0])
-                    ),
-                    bool(r[1 + 2 * n]),
-                )
-                for r in rows
-            }
+            result = flags_from_rows(self.schema, dims, rows)
         cache[ctype] = result
         return result
 
@@ -205,30 +179,18 @@ class DirectoryRecord:
             raise KeyError(path)
         return rel
 
-    def _by_type(self, subdir: str) -> LazyFrames:
-        """Keys from the `<Type>.parquet` files present in `subdir`."""
-        rel = self._read(f"{subdir}/*.parquet", union_by_name=True)
-        if rel is None:
-            return EMPTY
-        rows = rel.project("entity_type").distinct().order("entity_type")
-        types = tuple(r[0] for r in rows.fetchall())
-        return LazyFrames(
-            types,
-            lambda ctype: nw.from_native(self._require(f"{subdir}/{ctype}.parquet")),
-        )
+    def _keyed_by(self, subdir: str, column: str) -> LazyFrames:
+        """`subdir`'s files, keyed by the distinct values of `column`.
 
-    def _by_attribute(self, subdir: str) -> LazyFrames:
-        """Keys from the `<attr>.parquet` files present in `subdir`.
-
-        Read from the `attribute` column rather than by listing filenames, so
-        one code path serves a local directory and a remote prefix alike.
+        Read from a column rather than by listing filenames, so one code path
+        serves a local directory and a remote prefix alike: `entity_type` names
+        the per-type files under `dims/components/`, `attribute` the per-attribute
+        ones under `inputs/` and `outputs/`.
         """
         rel = self._read(f"{subdir}/*.parquet", union_by_name=True)
         if rel is None:
             return EMPTY
-        rows = rel.project("attribute").distinct().order("attribute")
-        names = tuple(r[0] for r in rows.fetchall())
         return LazyFrames(
-            names,
-            lambda attr: nw.from_native(self._require(f"{subdir}/{attr}.parquet")),
+            distinct_values(rel, column),
+            lambda key: nw.from_native(self._require(f"{subdir}/{key}.parquet")),
         )

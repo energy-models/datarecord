@@ -295,6 +295,90 @@ def ex_all(exprs: Iterable[Expression]) -> Expression:
     return reduce(lambda x, y: x & y, exprs)
 
 
+def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
+    """NULL-safe equality on `columns`, between two aliased relations.
+
+    What an address coordinate is matched on everywhere: a row exists or it does
+    not, so NULL means "this key has no value there" and must match the same
+    NULL on the other side, which a plain `=` never does.
+    """
+    return ex_all(
+        sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}")
+        for c in columns
+    )
+
+
+def broadcast_match(
+    alias_a: str, alias_b: str, fixed: Iterable[str], dims: Iterable[str]
+) -> Expression:
+    """NULL-safe equality on `fixed`, broadcast-OR on `dims`.
+
+    A raw row's `dim = NULL` means "every value of `dim`", so it must match
+    regardless of the resolved side's value there, unlike the `IS NOT DISTINCT
+    FROM` of `null_safe` which only matches NULL against NULL. `alias_a` is the
+    broadcasting side.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    """
+    match = null_safe(alias_a, alias_b, fixed)
+    for dim in dims:
+        match = match & (
+            col(alias_a, dim).isnull()
+            | sql(f"{col(alias_a, dim)} IS NOT DISTINCT FROM {col(alias_b, dim)}")
+        )
+    return match
+
+
+def distinct_values(
+    rel: DuckDBPyRelation, column: str, *, order: bool = True
+) -> tuple[Any, ...]:
+    """`rel`'s distinct values of `column`, as a tuple.
+
+    What keys a `LazyFrames` built over a relation: the values are read from a
+    column rather than from a directory listing, so one code path serves a local
+    directory and a remote prefix alike.
+    """
+    projected = rel.project(column).distinct()
+    if order:
+        projected = projected.order(column)
+    return tuple(r[0] for r in projected.fetchall())
+
+
+def as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelation:
+    """One narwhals frame as a DuckDB relation, without collecting where possible.
+
+    A DuckDB-backed frame is already a plan, so it passes straight through; any
+    other backend is collected to arrow and re-registered. The one boundary where
+    a native representation is reached, shared by the write and edit paths.
+    """
+    native = frame.to_native()
+    if isinstance(native, DuckDBPyRelation):
+        return native
+    arrow = frame.collect(backend="pyarrow").to_native()  # noqa: F841 - bound by name
+    return con.sql("FROM arrow")
+
+
+def ensure_local_dir(uri: str, *, parent: bool = False) -> None:
+    """Create `uri`'s directory where it is a local path, a no-op for a remote one.
+
+    A remote store needs no directory created; a local write does, and a record
+    that wrote nothing to its layer has no directory yet either.
+
+    Parameters
+    ----------
+    parent
+        `uri` names a file whose directory is created, rather than the directory
+        itself.
+    """
+    if "://" in uri:
+        return
+    path = Path(uri)
+    (path.parent if parent else path).mkdir(parents=True, exist_ok=True)
+
+
 def struct_of(fields: Mapping[str, Expression]) -> Expression:
     """A struct expression: field name to the expression for its value.
 

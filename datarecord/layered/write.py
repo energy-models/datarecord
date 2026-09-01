@@ -19,11 +19,18 @@ from uuid import UUID
 
 import narwhals as nw
 from duckdb import CoalesceOperator as coalesce
-from duckdb import DuckDBPyRelation
 
-from datarecord.duck import base_uri_of, col, fn, layer_dir, lit, try_read_parquet
+from datarecord.duck import (
+    as_relation,
+    base_uri_of,
+    col,
+    fn,
+    layer_dir,
+    lit,
+    try_read_parquet,
+)
 from datarecord.layered.resolve import cast_declared, read_schema, write_schema
-from datarecord.record import Record
+from datarecord.record import Record, collision_detail
 from datarecord.schema import Schema
 
 if TYPE_CHECKING:
@@ -196,10 +203,10 @@ def _write_frame(
 ) -> None:
     """Persist one narwhals frame as parquet, through `con`.
 
-    The one place a native representation is reached: a DuckDB-backed
-    frame goes to `to_parquet` unmaterialised, anything else via arrow. Columns
-    are cast to their declared types on the way out, so a reader can trust them
-    rather than re-casting an all-NULL column pandas typed as float.
+    A DuckDB-backed frame goes to `to_parquet` unmaterialised, anything else
+    through arrow (`as_relation`). Columns are cast to their declared types on
+    the way out, so a reader can trust them rather than re-casting an all-NULL
+    column pandas typed as float.
 
     Notes
     -----
@@ -208,13 +215,7 @@ def _write_frame(
     """
     if local:
         Path(uri).parent.mkdir(parents=True, exist_ok=True)
-    native = frame.to_native()
-    if not isinstance(native, DuckDBPyRelation):
-        # Not already a DuckDB plan (a pandas frame also has `to_parquet`, so
-        # the type is what distinguishes them, not the method).
-        arrow = frame.collect(backend="pyarrow").to_native()  # noqa: F841 - by name
-        native = con.sql("FROM arrow")
-    cast_declared(schema, native).to_parquet(uri)
+    cast_declared(schema, as_relation(frame, con)).to_parquet(uri)
 
 
 def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) -> None:
@@ -301,15 +302,7 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
         .collect()
     )
     if not clashing.is_empty():
-        by_name: dict[str, list[str]] = {}
-        for name, ctype in clashing.iter_rows():
-            by_name.setdefault(str(name), []).append(str(ctype))
-        # Sorted here rather than in the query: the message must be
-        # deterministic, and this is a handful of rows.
-        detail = "; ".join(
-            f"{n!r} is a {' and a '.join(sorted(t))}"
-            for n, t in sorted(by_name.items())
-        )
+        detail = collision_detail(clashing.iter_rows())
         msg = (
             f"component types reuse names: {detail}; a name identifies one "
             f"component across every type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"

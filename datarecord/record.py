@@ -12,9 +12,9 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import narwhals as nw
 
@@ -113,6 +113,69 @@ class Flags:
     varies: frozenset[str]
     broadcast: frozenset[str]
     breakpoints: bool = False
+
+
+def flags_from_rows(
+    schema: Schema,
+    dims: tuple[str, ...],
+    rows: Iterable[tuple[str, Mapping[str, Any], Mapping[str, Any], Any]],
+) -> dict[str, Flags]:
+    """Fold `(attribute, varies, broadcast, breakpoints)` rows into `Flags`.
+
+    Every backing aggregates the flags differently - the fold reads them off the
+    owner map, a directory scans `inputs/`, a `WorkingRecord` unions its staging
+    tables - but all three answer in this shape and must scope it identically,
+    so the scoping lives here once.
+
+    Both sets are cut to the attribute's own coordinates. The relation aggregated
+    over covers every attribute, so a dim one attribute is addressed by reads
+    NULL for the rows of one that is not, and reporting that NULL as "every row
+    broadcasts over it" would tell a consumer to build a container along an axis
+    the attribute has no values on. An attribute the schema does not declare
+    keeps every dim, its shape not being the schema's to say.
+
+    Parameters
+    ----------
+    dims
+        The broadcast dims the two mappings have an entry per; a dim missing
+        from one - declared after a persisted map was written - reads as unset.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    """
+
+    def scope(attribute: str) -> tuple[str, ...]:
+        own = set(schema.coordinates_of(attribute))
+        return tuple(d for d in dims if d in own) if own else dims
+
+    return {
+        attribute: Flags(
+            frozenset(d for d in scope(attribute) if varies.get(d)),
+            frozenset(d for d in scope(attribute) if broadcast.get(d)),
+            bool(breakpoints),
+        )
+        for attribute, varies, broadcast, breakpoints in rows
+    }
+
+
+def collision_detail(rows: Iterable[tuple[Any, Any]]) -> str:
+    """`(entity, entity_type)` pairs as the detail of a name-collision message.
+
+    Sorted here rather than in the query the pairs came from: the message must
+    be deterministic, and a collision is a handful of rows.
+
+    Notes
+    -----
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    """
+    by_name: dict[str, list[str]] = {}
+    for name, ctype in rows:
+        by_name.setdefault(str(name), []).append(str(ctype))
+    return "; ".join(
+        f"{name!r} is a {' and a '.join(sorted(types))}"
+        for name, types in sorted(by_name.items())
+    )
 
 
 @runtime_checkable

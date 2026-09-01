@@ -16,7 +16,7 @@ class Record(Protocol):
     @property
     def components(self) -> Frames: ...  # members, keyed by component type
     @property
-    def groups(self) -> Mapping[str, Frames]: ...  # per group, then by type
+    def groups(self) -> Frames: ...  # each group's rows, keyed by group
     @property
     def attributes(self) -> Frames: ...  # long input frames, keyed by attribute
 
@@ -138,7 +138,7 @@ Per component they would be complements; the aggregation over a type is what mak
 Both sets empty for a dim means the attribute has no values along it, so the consumer builds no container there.
 
 **Both sets are scoped to what the attribute is addressed by.** A dim outside its [`dims`](schema.md#attributespec) is in neither, never in `broadcast`.
-The two are easy to conflate because the [owner map](read-path.md#owner-map) is one relation over every attribute, so a dim one attribute uses reads NULL for the rows of one that does not — but that NULL means "no such axis", not "every value of it".
+The two are easy to conflate because whatever the flags are aggregated from — the [owner map](read-path.md#owner-map), a scan of `inputs/`, a staging table — is one relation over every attribute, so a dim one attribute uses reads NULL for the rows of one that does not; but that NULL means "no such axis", not "every value of it".
 Reporting it as broadcast would answer the question above wrongly for every attribute in the record: a consumer would build a constant container along an axis the attribute has no values on.
 
 So an attribute addressed by `entity` alone reports both sets empty, and that is not the same as having no rows — an attribute with no rows at all is [absent from the mapping](#flags) entirely.

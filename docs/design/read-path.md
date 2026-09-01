@@ -38,9 +38,8 @@ Where it is present it is a **column, not part of the key.**
 Every map is keyed on its own coordinates — `entity` for components, the group's for a group, `partial_dims` plus `attribute` for inputs; the components map carries `entity_type` because it is the table that answers "what type is this entity", and that answer is functionally determined by the key rather than keying alongside it.
 The fold therefore aggregates the type over the group-by instead of grouping on it.
 
-The distinction is load-bearing rather than pedantic.
-Keying on the type would mean an entity could resolve to two rows — one per type — which is exactly the collision [name uniqueness](format.md#entity-is-unique-across-types) forbids, silently admitted at read time instead of rejected at write time.
-The same holds in the staging area: `remove` under one type followed by `add` under another must collapse to the later edit ([committing](working-record.md#committing)), and a type-partitioned key keeps both.
+The distinction is load-bearing rather than pedantic: keying on the type would let an entity resolve to two rows, admitting at read time the collision [name uniqueness](format.md#entity-is-unique-across-types) rejects at write time.
+The same holds in the staging area, where `remove` under one type followed by `add` under another must collapse to the later edit ([committing](working-record.md#committing)).
 
 `order_key` is monotonic across the fold history, giving first-introduced order across layers ([axis order](record.md#axis-order)).
 It is assigned pre-union, per layer, because the fold's own output has no order of its own — a bare `row_number()` over what `UNION ALL` returns would scramble which row counts as first.
@@ -70,7 +69,7 @@ Elsewhere the fold runs live over that node's persisted maps, cached per connect
 The [flags](record.md#flags) are folded in alongside the ownership group-by, so they cost nothing beyond it.
 They are computed **per key**, so per component: whether _this_ component's `p_max_pu` sets `timestep` is a different question from whether any does.
 
-The structs have a field per **broadcast** dim rather than per declared dim: an address coordinate never broadcasts, so "did a row set it" is not a question about it — `entity` and a group's coordinate are always set, by construction.
+The structs have a field per **broadcast** dim rather than per declared dim: an address coordinate [never broadcasts](record.md#the-broadcast-rule), so "did a row set it" is not a question about it — `entity` and a group's coordinate are always set, by construction.
 
 Two **structs** rather than a `varies_<dim>` column per dim, because which dims exist is [declared](schema.md#dimensions) and a flat layout would make the map's _column set_ depend on the schema.
 [Versioning](schema.md#versioning) calls adding a dim compatible; that has to hold for a map already persisted at a [materialised node](layers.md#materialised-node-caches), not only for the layers.
@@ -80,9 +79,7 @@ The map's columns are then fixed, and only the fields move.
 `breakpoints` stays outside both structs, being no dim ([wide and long rows](record.md#wide-and-long-rows)).
 That also means the dim namespace lives entirely inside `varies`/`broadcast`, so a dim named `breakpoints` would collide with nothing.
 
-`Record.flags(ctype)` unions them over the entities of one type, which is [the granularity every consumer works at](record.md#flags).
-The union is not a loss of the per-key answer so much as the question being asked of a type: a framework assigns containers per type, so a type whose components disagree must be told so, and a dim landing in both sets is exactly that message.
-The union stops at the type boundary, since across types it would describe neither.
+`Record.flags(ctype)` unions them over the entities of one type, which is [the granularity every consumer works at](record.md#flags) — where what the union means, and why it stops at the type boundary, is argued.
 
 ## Resolving a relation
 
@@ -113,7 +110,7 @@ There is no per-read `MAX`/group-by and no tombstone filter — deletions are al
 
 Each owned-per dim's arm is **NULL-aware**: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.
 
-A **group coordinate** like `bus` is joined **NULL-safely** rather than NULL-aware: it is part of the key but an address rather than a broadcast dim, so NULL means "this attribute is the component's, not a connection's" and never "every bus" ([the broadcast rule](record.md#the-broadcast-rule)).
+A **group coordinate** like `bus` is joined **NULL-safely** rather than NULL-aware, being [an address rather than a broadcast dim](record.md#the-broadcast-rule).
 It is that group's own map that decides which of its rows exist at all; a row whose connection was tombstoned is gone because that tombstone removed its `inputs` keys from the map, not by a filter here.
 
 `breakpoint` is projected but not joined on, being no part of the key: a curve is owned whole ([wide and long rows](record.md#wide-and-long-rows)), so every breakpoint of a key comes from the winning layer.

@@ -28,8 +28,24 @@ from duckdb import DuckDBPyRelation, Expression
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import DuckTypes, ex_all, fn, struct_of, union_all_by_name
-from datarecord.record import EMPTY, Flags, Frames, LazyFrames, Record
+from datarecord.duck import (
+    DuckTypes,
+    as_relation,
+    broadcast_match,
+    distinct_values,
+    fn,
+    null_safe,
+    struct_of,
+    union_all_by_name,
+)
+from datarecord.record import (
+    EMPTY,
+    Flags,
+    Frames,
+    LazyFrames,
+    Record,
+    flags_from_rows,
+)
 from datarecord.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
@@ -114,24 +130,6 @@ class Pending:
 # -- value normalisation (https://energy-models.github.io/datarecord/design/working-record/#set) ----------------------------------------------
 
 
-def _as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelation:
-    """One narwhals frame as a DuckDB relation, without collecting where possible.
-
-    A DuckDB-backed frame is already a plan, so it passes straight through; any
-    other backend is collected to arrow and re-registered, which is the same
-    boundary `write_record` crosses.
-
-    Notes
-    -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-    """
-    native = frame.to_native()
-    if isinstance(native, DuckDBPyRelation):
-        return native
-    arrow = frame.collect(backend="pyarrow").to_native()  # noqa: F841 - by name
-    return con.sql("FROM arrow")
-
-
 def _incoming(frame: Any, con: DuckDBPyConnection) -> nw.LazyFrame:
     """A caller's frame as a lazy frame on `con`, whatever backend it arrived on.
 
@@ -142,22 +140,7 @@ def _incoming(frame: Any, con: DuckDBPyConnection) -> nw.LazyFrame:
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    return nw.from_native(_as_relation(nw.from_native(frame).lazy(), con)).lazy()
-
-
-def _null_safe_on(
-    columns: Iterable[str], alias_a: str = "b", alias_b: str = "s"
-) -> Expression:
-    """A NULL-safe join condition over `columns`, for two aliases.
-
-    An `Expression` rather than a SQL string: `join` takes one directly, so the
-    condition composes with `&` (`_overlay`'s broadcast arms) instead of being
-    spliced into a template.
-    """
-    return ex_all(
-        sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}")
-        for c in columns
-    )
+    return nw.from_native(as_relation(nw.from_native(frame).lazy(), con)).lazy()
 
 
 def _latest_per(rel: DuckDBPyRelation, key: Iterable[str]) -> DuckDBPyRelation:
@@ -536,9 +519,9 @@ class WorkingRecord:
         key = self.schema.group_key(group)
         frame = base[group]
         present = set(frame.collect_schema().names())
-        on = _null_safe_on([c for c in key if c in present])
+        on = null_safe("b", "s", [c for c in key if c in present])
         return nw.from_native(
-            self._group_union(_as_relation(frame, self.con), staged, on)
+            self._group_union(as_relation(frame, self.con), staged, on)
         )
 
     def _entity_frames(self, kind: str) -> Frames:
@@ -546,7 +529,7 @@ class WorkingRecord:
         staged = self._collapsed_entities(kind)
         if staged is None:
             return base
-        types = tuple(r[0] for r in staged.project("entity_type").distinct().fetchall())
+        types = distinct_values(staged, "entity_type", order=False)
         keys = tuple(dict.fromkeys((*base, *types)))
         return LazyFrames(keys, lambda ctype: self._entity_frame(kind, ctype))
 
@@ -573,9 +556,9 @@ class WorkingRecord:
         # overlay prices a read with
         # pending edits at what one more layer costs.
         present = set(frame.collect_schema().names())
-        on = _null_safe_on([c for c in key if c in present])
+        on = null_safe("b", "s", [c for c in key if c in present])
         return nw.from_native(
-            self._entity_union(_as_relation(frame, self.con), mine, on, ctype)
+            self._entity_union(as_relation(frame, self.con), mine, on, ctype)
         )
 
     def _entity_union(
@@ -700,16 +683,8 @@ class WorkingRecord:
         broadcast = tuple(
             d for d in self.schema.broadcast_dims if d not in key and d in columns
         )
-        on = ex_all(
-            [
-                _null_safe_on(dict.fromkeys(fixed)),
-                *(
-                    col("s", d).isnull()
-                    | sql(f"{col('s', d)} IS NOT DISTINCT FROM {col('b', d)}")
-                    for d in broadcast
-                ),
-            ]
-        )
+        # The staged side broadcasts, so it is `broadcast_match`'s first alias.
+        on = broadcast_match("s", "b", dict.fromkeys(fixed), broadcast)
         kept = base.set_alias("b").join(staged.set_alias("s"), on, how="anti")
         return union_all_by_name([kept, staged], self.con).project(
             *(col(c) for c in self._long_columns(attribute))
@@ -757,15 +732,15 @@ class WorkingRecord:
         columns = set(self._long_columns(attribute))
         scope = [c for c in self.schema.input_key if c not in whole and c in columns]
         coordinate = [*scope, *whole, "breakpoint"]
-        base = _as_relation(self.base.attributes[attribute], self.con)
+        base = as_relation(self.base.attributes[attribute], self.con)
         # Semi-join first to the keys this edit touched, then anti-join away the
         # exact coordinates it named: what survives is the rest of the extent the
         # layer now owns whole and so must carry.
         carried = (
             base.set_alias("b")
-            .join(staged.set_alias("s"), _null_safe_on(scope), how="semi")
+            .join(staged.set_alias("s"), null_safe("b", "s", scope), how="semi")
             .set_alias("b")
-            .join(staged.set_alias("s"), _null_safe_on(coordinate), how="anti")
+            .join(staged.set_alias("s"), null_safe("b", "s", coordinate), how="anti")
         )
         return union_all_by_name([staged, carried], self.con).project(
             *(col(c) for c in self._long_columns(attribute))
@@ -817,7 +792,7 @@ class WorkingRecord:
         out = dict(self.base.flags(ctype))
         if ctype not in self.components:
             return out
-        members = _as_relation(self.components[ctype], self.con).project("entity")
+        members = as_relation(self.components[ctype], self.con).project("entity")
         arms = [
             arm
             for attribute in self._staged_attributes_of("inputs")
@@ -825,18 +800,19 @@ class WorkingRecord:
         ]
         if not arms:
             return out
-        # The structs come back as dicts keyed by dim, so each set is a filter
-        # by name rather than a positional slice into the projection - the same
-        # shape the fold's `flags` unpacks (https://energy-models.github.io/datarecord/design/read-path/#owner-map).
-        for attribute, varies, broadcast, breakpoints in union_all_by_name(
-            arms, self.con
-        ).fetchall():
+        # The arms answer in the shape the fold's own flags do, so they scope the
+        # same way (https://energy-models.github.io/datarecord/design/read-path/#owner-map) before being unioned into the base's.
+        staged = flags_from_rows(
+            self.schema,
+            self.schema.broadcast_dims,
+            union_all_by_name(arms, self.con).fetchall(),
+        )
+        for attribute, flags in staged.items():
             was = out.get(attribute) or Flags(frozenset(), frozenset(), False)  # noqa: FBT003
             out[attribute] = Flags(
-                varies=was.varies | frozenset(d for d, on in varies.items() if on),
-                broadcast=was.broadcast
-                | frozenset(d for d, on in broadcast.items() if on),
-                breakpoints=was.breakpoints or bool(breakpoints),
+                varies=was.varies | flags.varies,
+                broadcast=was.broadcast | flags.broadcast,
+                breakpoints=was.breakpoints or flags.breakpoints,
             )
         return out
 
@@ -1031,7 +1007,7 @@ class WorkingRecord:
             # The key alone: the axis frame may carry a sibling attribute's
             # column, and this edit states only its own - `_collapsed_axis` folds
             # the rest back per label.
-            rel = _as_relation(self.base.dims[dim], self.con).project(col(dim))
+            rel = as_relation(self.base.dims[dim], self.con).project(col(dim))
             supplied = {attribute: lit(value), "_seq": lit(seq)}
 
         self._insert(rel, table, supplied)
@@ -1097,8 +1073,8 @@ class WorkingRecord:
             .collect()
         )
         if not clashing.is_empty():
-            # Sorted here rather than in the query: the message must be
-            # deterministic, and this is a handful of rows.
+            # Sorted here rather than in the query, as `collision_detail` is:
+            # the message must be deterministic, and this is a handful of rows.
             detail = ", ".join(
                 f"{n!r} is already a {t}" for n, t in sorted(clashing.iter_rows())
             )
@@ -1510,7 +1486,7 @@ class WorkingRecord:
             name: (nw.String() if isinstance(dtype, nw.Enum) else dtype)
             for name, dtype in schema.items()
         }
-        return _as_relation(
+        return as_relation(
             nw.DataFrame.from_dict(
                 dict(columns), schema=buildable, backend="pyarrow"
             ).lazy(),
@@ -1532,7 +1508,7 @@ class WorkingRecord:
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         table = self._ensure(kind, attribute, _value_dtype(lazy))
-        rel = _as_relation(lazy, self.con)
+        rel = as_relation(lazy, self.con)
         self._insert_long(
             rel, table, attribute, set(lazy.collect_schema().names()), dims
         )
@@ -1622,7 +1598,7 @@ class WorkingRecord:
         # and the types the table's own (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         present = set(frame.collect_schema().names())
 
-        rel = _as_relation(frame, self.con)
+        rel = as_relation(frame, self.con)
         duck_types = DuckTypes(rel)
 
         def column(c: str) -> Expression:
@@ -1688,7 +1664,7 @@ class WorkingRecord:
         # unchanged, like any non-varying one.
         member_cols = [c for c in columns if c not in varying and c not in ports]
 
-        rel = _as_relation(lazy, self.con)
+        rel = as_relation(lazy, self.con)
         table = self._ensure("components")
         extra = [c for c in member_cols if c != "entity" and c not in self.schema.dims]
         self._widen(table, rel, extra)
@@ -1826,7 +1802,7 @@ class WorkingRecord:
         _rows = lazy.to_native()  # noqa: F841 - bound by replacement scan below
         table = self._ensure(group)
         extra = [c for c in columns if c not in coordinates]
-        self._widen(table, _as_relation(lazy, self.con), extra)
+        self._widen(table, as_relation(lazy, self.con), extra)
         extra_sql = "".join(f', "{c}"' for c in extra)
         coordinate_sql = ", ".join(f'"{c}"' for c in coordinates)
         self.con.execute(
@@ -1963,7 +1939,7 @@ class WorkingRecord:
         #
         # Matched on `name` alone: the tombstone carries a type and a staged
         # input row does not (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-        on = _null_safe_on(("entity",), "l", "d")
+        on = null_safe("l", "d", ("entity",))
         return live.set_alias("l").join(dead.set_alias("d"), on, how="anti")
 
     def _tombstoned(self) -> DuckDBPyRelation | None:
@@ -2097,7 +2073,7 @@ class WorkingRecord:
         """
         if dim in self.schema.partial_dims:
             return cast("DuckDBPyRelation", self._collapsed_axis(dim))
-        return _as_relation(self._axis_frame(dim), self.con)
+        return as_relation(self._axis_frame(dim), self.con)
 
     def _axis_frame(self, dim: str) -> nw.LazyFrame:
         """One axis, staged columns over the base's row for each label.
@@ -2112,13 +2088,9 @@ class WorkingRecord:
         present = list(base.collect_schema().names())
         edited = [a for a in staged.columns if a != dim]
         rel = (
-            _as_relation(base, self.con)
+            as_relation(base, self.con)
             .set_alias("b")
-            .join(
-                staged.set_alias("s"),
-                f"b.{dim} IS NOT DISTINCT FROM s.{dim}",
-                how="outer",
-            )
+            .join(staged.set_alias("s"), null_safe("b", "s", [dim]), how="outer")
         )
         # `coalesce` per column, not "staged row wins": an untouched label is
         # NULL on the staged side and would otherwise read as cleared. The label
@@ -2142,13 +2114,7 @@ class WorkingRecord:
         rel = self._collapsed_entities(kind)
         if rel is None:
             return EMPTY
-        types = tuple(
-            r[0]
-            for r in rel.project("entity_type")
-            .distinct()
-            .order("entity_type")
-            .fetchall()
-        )
+        types = distinct_values(rel, "entity_type")
         return LazyFrames(
             types,
             lambda ctype: nw.from_native(rel.filter(col("entity_type") == lit(ctype))),

@@ -310,8 +310,7 @@ An axis **outside** `partial` is owned whole once touched, so the layer restates
 The fold would resolve the narrower form correctly, since it keys per label and an omitted one keeps its parent's row; what ownership buys is that a layer's axis file says what the axis _is_ there, rather than being readable only against its parent.
 A `Directory` writes the resolved axis whole either way, and an axis nothing touched is written by neither.
 
-That is the reason not to reach for `partial` when an axis gains an attribute: it is the fold's key, so every entry widens the owner map and the resolution it keys.
-The cost of leaving an axis out is restating it on edit, which is bounded by the axis; the cost of putting it in is paid by every read.
+Restating on edit is what an axis outside `partial` costs, and it is [the cheaper side of that trade](schema.md#partial-the-granularity-of-an-override) — which is the reason not to reach for `partial` when an axis merely gains an attribute.
 
 Neither carries the **base's** results across.
 An edit changes the inputs a result was computed from, so a parent's `outputs/` says nothing about the child — results belong to the node that was solved, and a node with different inputs is a different node.
