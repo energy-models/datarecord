@@ -11,7 +11,7 @@ from datarecord.directory import DirectoryRecord
 from datarecord.duck import connect, layer_dir
 from datarecord.layered.revision import LayeredRecord, Revision
 from datarecord.layered.write import write_record
-from datarecord.mutable import Directory, NewChild, Pending, WorkingRecord
+from datarecord.mutable import Directory, NewChild, WorkingRecord
 from datarecord.record import (
     Flags,
     Frames,
@@ -31,7 +31,6 @@ __all__ = [
     "LayeredRecord",
     "LazyFrames",
     "NewChild",
-    "Pending",
     "Record",
     "Revision",
     "Schema",

@@ -68,13 +68,12 @@ w.remove_group("connection", [("dc", "south")])
 ## Inspecting and rolling back
 
 ```python
-w.pending  # Pending(attributes={...}, components={...},
-#         groups={"connection": 2}, tombstones={...})
-bool(w.pending)  # whether anything is staged
+w.attributes["p_nom"]  # the edit applied, over the base's rows
+w.entity_types["Generator"]  # additions in, removals out
 w.rollback()  # discard everything staged
 ```
 
-`pending` is a derived summary computed on access — a `GROUP BY` over the staging tables, not a second place rows live ([design](../design/working-record.md#pending)). Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk ([design](../design/working-record.md#staging)).
+There is no `pending` accessor: what you staged is read back from the record itself, which satisfies `Record` and answers with the edits applied ([design](../design/working-record.md#no-pending-accessor)). Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk ([design](../design/working-record.md#staging)).
 
 ## Committing
 

@@ -136,7 +136,7 @@ Two consequences accepted deliberately:
 
 Settled: **remove it** rather than teach the staging tables to distinguish carried rows from edited ones. That distinction is a second row class in every staging table and a condition in `_collapsed_inputs`, which is more machinery than the accessor is worth.
 
-It is not free. `Pending` is public, documented in [`docs/usage/editing.md`](../../usage/editing.md), and pinned by around a dozen assertions in `test_mutable.py` — those tests assert _that an edit was staged_, which after this change is better asked of the reads (`w.attributes[attr]`) than of a counter. Pre-1.0, so this is a delete rather than a deprecation; the PR says which coverage moved where.
+**Done.** `Pending`, the `pending` property, the `datarecord.Pending` export and the API page entry are gone, and every assertion that used it now asks the reads — `w.attributes[attr]` for an edit, `w.entity_types[t]` for an addition or removal, `w.groups[g]` for a group row. Two tests went rather than moved: `test_nothing_is_pending_before_an_edit`, which the [`both` fixture](#how-to-know-it-worked) now covers as the unstaged identity, and `pending`'s own group-keying test, refiled as `test_every_declared_group_reads_its_staged_rows` since the concern (a second declared group not silently dropped) outlives the counter. `test_commit_clears_the_staging_area` had no read to fall back on and now asserts the observable thing instead: a second commit writes an empty layer.
 
 ### 2. What a non-layered base does
 
@@ -280,7 +280,7 @@ Three performance claims to check rather than assert:
 
 **A protocol in `layered/` that `mutable.py` and `directory.py` implement.** `mutable.py` currently imports from `layered` only at call time, to avoid a cycle (`_base_revision`, `commit`). A `LayerSource` satisfied structurally needs no import either way. `directory.py` already imports from `layered.resolve`, so nothing changes there. Worth checking the first stays true.
 
-**`pending` is removed**, with its documentation and its tests. The public surface loses an accessor that answered "what have I staged".
+**`pending` is removed** — done, with its documentation and its tests. The public surface loses an accessor that answered "what have I staged"; the reads answer it, and say what the record _is_ rather than how many rows were staged to get there.
 
 **Results must be declared**, which constrains a tool that attaches results for components it discovered mid-solve. [Question 3](#3-results-become-schema-declared) is the whole of that argument. What does _not_ change is discovery: `outputs` keys off what a layer holds, sorted, exactly as `attributes` does.
 
@@ -299,7 +299,7 @@ Those deletions are what make the two smaller cleanups this grew out of unnecess
 **Four sections owe an edit**, none of them optional — when behaviour changes, the page changes, not just the code. One is done:
 
 - ~~[committing](../working-record.md#committing) calls `_restated` a commit-time step.~~ **Done**: the page now describes completion as a property of how a staged layer reads, which is arguably where it belonged — it describes what the layer _is_, not what commit does to it. The scoping rule and the broadcast exclusion are stated there too, both being things a reader cannot recover from the code.
-- [`pending`](../working-record.md#pending) is a section, and the staging section's "these tables are the only place a staged row exists: `pending` counts them and the reads fold them" names it. Both go.
+- ~~`pending` was a section, and the staging section's "these tables are the only place a staged row exists" named it.~~ **Done**: replaced by [no `pending` accessor](../working-record.md#no-pending-accessor), saying why there is none — a reader who knew it needs the pointer more than silence. `docs/usage/editing.md` and the API pages lost it too.
 - [results through `kind="outputs"`](../working-record.md#results-through-kindoutputs) says a result attribute is not schema-declared, and gives the reason. Question 3 reverses that; the page keeps the membership rule and loses the declaration one.
 - [reading with pending edits](../working-record.md#reading-with-pending-edits) says the staged fold "costs what one more layer costs". True per read, and the page should say per read — a written layer pays that once and is cached forever, the staged one pays it on every read, being the only layer that can still change.
 

@@ -91,42 +91,6 @@ class Directory:
 Target = NewChild | Directory
 
 
-@dataclass(frozen=True)
-class Pending:
-    """What a `WorkingRecord` would write, without writing it.
-
-    A derived summary, not a second place rows live: a `GROUP BY` over the
-    staging tables, computed on access and discarded.
-
-    Notes
-    -----
-    - [pending](https://energy-models.github.io/datarecord/design/working-record/#pending)
-    """
-
-    attributes: Mapping[str, int] = field(default_factory=dict)
-    """Staged attribute rows, per attribute name."""
-
-    entity_types: Mapping[str, int] = field(default_factory=dict)
-    """Components staged to exist, per component type."""
-
-    groups: Mapping[str, int] = field(default_factory=dict)
-    """Group rows staged to exist, per group.
-
-    A group with nothing staged is absent rather than present-and-empty. Not
-    split by component type, which is no coordinate of a group
-    (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-    """
-
-    tombstones: Mapping[str, int] = field(default_factory=dict)
-    """Deletions staged: a component's under its type, a group row's under its group."""
-
-    def __bool__(self) -> bool:
-        """Whether anything is staged."""
-        return bool(
-            self.attributes or self.entity_types or self.groups or self.tombstones
-        )
-
-
 # -- value normalisation (https://energy-models.github.io/datarecord/design/working-record/#set) ----------------------------------------------
 
 
@@ -321,8 +285,8 @@ class WorkingRecord:
     something that only knows `Record`, without committing.
 
     Staged rows live in three connection-scoped DuckDB tables, the *only* place
-    a staged row exists: `pending` counts them and the reads fold them, neither
-    holding a copy.
+    a staged row exists: the reads fold them rather than holding a copy, so what
+    is staged is asked of the reads themselves.
 
     Notes
     -----
@@ -1857,73 +1821,7 @@ class WorkingRecord:
             group, self.schema.group_key(group), [list(key) for key in keys]
         )
 
-    # -- pending / commit / rollback (https://energy-models.github.io/datarecord/design/working-record/#pending, https://energy-models.github.io/datarecord/design/working-record/#committing) -------------------------
-
-    @property
-    def pending(self) -> Pending:
-        """Counts over the staging tables, computed on access.
-
-        Notes
-        -----
-        - [pending](https://energy-models.github.io/datarecord/design/working-record/#pending)
-        """
-
-        def counts(
-            kind: str, by: str, *, deleted: bool | None = None
-        ) -> dict[str, int]:
-            rel = self._rows(kind)
-            if rel is None:
-                return {}
-            if deleted is not None:
-                rel = rel.filter(col("deleted") if deleted else ~col("deleted"))
-            rows = rel.aggregate([col(by), fn.count_star().alias("n")]).fetchall()
-            return {r[0]: r[1] for r in rows}
-
-        def attribute_counts() -> dict[str, int]:
-            """One `count(*)` per staged table, the attribute being the table."""
-            out = {}
-            for attribute in self._staged_attributes_of("inputs"):
-                rel = self._rows("inputs", attribute)
-                if rel is None:
-                    continue
-                row = rel.aggregate([fn.count_star().alias("n")]).fetchone()
-                if row is not None:
-                    out[attribute] = row[0]
-            return out
-
-        def total(kind: str, *, deleted: bool) -> int:
-            """One group's staged rows, live or tombstoned.
-
-            No `GROUP BY`, unlike `counts`: a group's rows carry no
-            `entity_type` to count per.
-            """
-            rel = self._rows(kind)
-            if rel is None:
-                return 0
-            rel = rel.filter(col("deleted") if deleted else ~col("deleted"))
-            row = rel.aggregate([fn.count_star().alias("n")]).fetchone()
-            return 0 if row is None else row[0]
-
-        # `tombstones` spans every entity kind: a `remove_group` is a deletion
-        # like a `remove`, so counting only components would report a staged
-        # one as nothing pending (https://energy-models.github.io/datarecord/design/working-record/#pending).
-        dead = counts("entities", "entity_type", deleted=True)
-        groups = {}
-        for group in self.schema.groups:
-            removed = total(group, deleted=True)
-            if removed:
-                # Under the group's own name, its rows having no component type
-                # to attribute a deletion to.
-                dead[group] = dead.get(group, 0) + removed
-            live = total(group, deleted=False)
-            if live:
-                groups[group] = live
-        return Pending(
-            attributes=attribute_counts(),
-            entity_types=counts("entities", "entity_type", deleted=False),
-            groups=groups,
-            tombstones=dead,
-        )
+    # -- commit / rollback (https://energy-models.github.io/datarecord/design/working-record/#committing) -------------------------
 
     def rollback(self) -> None:
         """Clear every staged row without writing.

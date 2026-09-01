@@ -67,11 +67,6 @@ def test_a_mutable_record_reads_as_a_record(staged):
     assert isinstance(staged, Record)
 
 
-def test_nothing_is_pending_before_an_edit(staged):
-    p = staged.pending
-    assert (p.attributes, p.entity_types, p.groups, p.tombstones) == ({}, {}, {}, {})
-
-
 # -- value forms (https://energy-models.github.io/datarecord/design/working-record/#set) -----------------------------------------------------
 
 
@@ -164,7 +159,11 @@ def test_set_stages_without_writing(staged, root):
     """Staging is not a layer: the record reads the edit, the record does not."""
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
 
-    assert staged.pending.attributes == {"p_nom": 1}
+    rows = staged.attributes["p_nom"].collect().to_native().to_pandas()
+    assert (
+        dict(zip(rows["entity"], rows["value"], strict=True))["Manchester Wind"]
+        == 150.0
+    )
     # The record itself is untouched until commit.
     assert _static(root, "p_nom")["Manchester Wind"] != 150.0
 
@@ -225,9 +224,12 @@ def test_last_write_wins_within_the_staging_area(staged, root):
     staged.set("p_nom", 100.0, entity=["Manchester Wind"])
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
 
-    # Both are staged - `pending` counts rows, and the collapse is applied at
-    # commit rather than on every edit (https://energy-models.github.io/datarecord/design/working-record/#pending).
-    assert staged.pending.attributes == {"p_nom": 2}
+    # Read back before commit: the collapse is what the read applies too, so
+    # the second edit wins without the rows having been merged when staged.
+    rows = staged.attributes["p_nom"].collect().to_native().to_pandas()
+    mine = rows[rows["entity"] == "Manchester Wind"]
+    assert list(mine["value"]) == [150.0], "one row survives the collapse, the later"
+
     child = staged.commit(NewChild(root))
     assert _static(child, "p_nom")["Manchester Wind"] == 150.0
 
@@ -336,7 +338,11 @@ def test_an_expression_value_stages_the_whole_series(staged, root):
     mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
 
     staged.set("p_max_pu", nw.col("value") * 2, entity=["Manchester Wind"])
-    assert staged.pending.attributes == {"p_max_pu": len(mine)}
+    read = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    read = read[read["entity"] == "Manchester Wind"].sort_values("snapshot")
+    assert read["value"].tolist() == (mine["value"] * 2).tolist(), (
+        "every coordinate the expression read, not just one"
+    )
 
     child = staged.commit(NewChild(root))
     got = child.record.attributes["p_max_pu"].collect().to_native().to_pandas()
@@ -521,7 +527,8 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
             ]
         ),
     )
-    assert staged.pending.entity_types == {GEN: 1}
+    members = staged.entity_types[GEN].collect().to_native().to_pandas()
+    assert "NewSolar" in set(members["entity"]), "the addition reads back before commit"
 
     child = staged.commit(NewChild(root))
     assert "NewSolar" in set(child.node_cache.entity_map.df()["entity"])
@@ -688,7 +695,8 @@ def test_add_fills_a_column_an_earlier_add_created(staged):
 
 def test_remove_tombstones_without_enumerating_attributes(staged, root):
     staged.remove(GEN, ["Norway Gas"])
-    assert staged.pending.tombstones == {GEN: 1}
+    members = staged.entity_types[GEN].collect().to_native().to_pandas()
+    assert "Norway Gas" not in set(members["entity"]), "the removal reads back at once"
 
     child = staged.commit(NewChild(root))
     assert "Norway Gas" not in set(child.node_cache.entity_map.df()["entity"])
@@ -738,7 +746,10 @@ def test_add_group_stages_a_new_connection(staged, root):
             [{"entity": "Manchester Wind", "bus": "Norway", "role": "attached"}]
         ),
     )
-    assert staged.pending.groups == {"connection": 1}
+    staged_rows = staged.groups["connection"].collect().to_native().to_pandas()
+    assert "Norway" in set(
+        staged_rows[staged_rows["entity"] == "Manchester Wind"]["bus"]
+    ), "the new connection reads back before commit"
 
     child = staged.commit(NewChild(root))
     rows = child.node_cache.group_frame("connection").df()
@@ -754,11 +765,10 @@ def test_remove_group_stages_a_tombstone(staged, root):
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     staged.remove_group("connection", [("Norwich Converter", "Norwich")])
-    # A removal counts as a tombstone rather than as a row staged to exist
-    # (https://energy-models.github.io/datarecord/design/working-record/#pending). Keyed by the group, a group's rows
-    # having no component type to attribute a deletion to.
-    assert staged.pending.tombstones == {"connection": 1}
-    assert staged.pending.groups == {}
+    before = staged.groups["connection"].collect().to_native().to_pandas()
+    ports = set(before[before["entity"] == "Norwich Converter"]["bus"])
+    assert "Norwich" not in ports, "the removal reads back before commit"
+    assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
     child = staged.commit(NewChild(root))
     rows = child.node_cache.group_frame("connection").df()
@@ -774,17 +784,17 @@ def test_add_group_needs_every_coordinate(staged):
         staged.add_group("connection", pd.DataFrame([{"entity": "Manchester Wind"}]))
 
 
-def test_pending_counts_every_declared_group(con, base_uri, ac_dc):
-    """`pending.groups` is keyed by group, so a second one is not silently dropped.
+def test_every_declared_group_reads_its_staged_rows(con, base_uri, ac_dc):
+    """A second group is not silently dropped: the reads are keyed by group.
 
-    `connection` is one group among several, and no field of `Pending` names it:
-    one that did could count only that group, so a record declaring a `corridor`
-    would report nothing staged while holding rows to commit.
+    `connection` is the group every fixture has, so a read path naming it rather
+    than iterating the declared ones would pass everywhere except here - a
+    record declaring a `corridor` would read nothing while holding rows to
+    commit.
 
     Notes
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-    - [pending](https://energy-models.github.io/datarecord/design/working-record/#pending)
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
@@ -805,13 +815,18 @@ def test_pending_counts_every_declared_group(con, base_uri, ac_dc):
         "corridor", pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}])
     )
 
-    assert staged.pending.groups == {"connection": 1, "corridor": 1}, (
-        "both groups counted, keyed by group name"
+    connections = staged.groups["connection"].collect().to_native().to_pandas()
+    assert "Norway" in set(
+        connections[connections["entity"] == "Manchester Wind"]["bus"]
     )
-    assert bool(staged.pending), "a staged group row is something pending"
+
+    corridors = staged.groups["corridor"].collect().to_native().to_pandas()
+    assert list(zip(corridors["from"], corridors["to"], strict=True)) == [
+        ("Manchester Wind", "Norway")
+    ], "the second group reads its own rows, not the first's"
 
 
-# -- rollback (https://energy-models.github.io/datarecord/design/working-record/#pending) --------------------------------------------------------
+# -- rollback (https://energy-models.github.io/datarecord/design/working-record/#committing) --------------------------------------------------------
 
 
 def test_rollback_discards_everything_staged(staged, root):
@@ -819,18 +834,26 @@ def test_rollback_discards_everything_staged(staged, root):
     staged.remove(GEN, ["Norway Gas"])
     staged.rollback()
 
-    assert staged.pending.attributes == {}
-    assert staged.pending.tombstones == {}
-    # And the record reads the base rows again.
+    # The record reads the base rows again, edit and tombstone alike.
     rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
     assert 0.42 not in set(rows["value"])
+    members = staged.entity_types[GEN].collect().to_native().to_pandas()
+    assert "Norway Gas" in set(members["entity"]), "the tombstone went with the rest"
 
 
 def test_commit_clears_the_staging_area(staged, root):
+    """A second commit writes nothing: the edits left with the first.
+
+    Notes
+    -----
+    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+    """
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     staged.commit(NewChild(root))
 
-    assert staged.pending.attributes == {}
+    again = staged.commit(NewChild(root))
+    layer = DirectoryRecord(layer_dir(again.id), con=staged.con)
+    assert "p_nom" not in layer.attributes
 
 
 # -- commit targets (https://energy-models.github.io/datarecord/design/working-record/#committing) --------------------------------------------------
@@ -996,7 +1019,7 @@ def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(staged):
         if a not in staged.attributes
     )
     staged.set(absent, nw.col("value") * 2)
-    assert absent not in staged.pending.attributes
+    assert absent not in staged.attributes, "nothing resolved, so nothing was staged"
 
 
 # -- results through `kind="outputs"` (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/read-path/#outputs) ---------------------------
@@ -1017,7 +1040,7 @@ def test_results_stage_and_read_back_without_committing(staged):
         "Manchester Wind": 42.0
     }
     # Staged as a result, so it is not an input.
-    assert "p" not in staged.pending.attributes
+    assert "p" not in staged.attributes
 
 
 def test_results_survive_a_commit_into_the_new_layer(staged, root, con):
