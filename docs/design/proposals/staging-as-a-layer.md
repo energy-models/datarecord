@@ -151,7 +151,7 @@ Today a result attribute is not declared: [`Tool.results`](../tools.md) derives 
 
 **Declare them.** `Schema` gains result attributes beside its input ones, and three things follow:
 
-- **The last glob goes.** `all_attributes("outputs")` names its files from the schema instead of listing a directory. `output_names()` itself stays a data read — it mirrors `attribute_names`, which reads the owner map rather than the schema, because a record may declare a result no layer computed exactly as it may declare an input no layer wrote.
+- **`all_attributes("outputs")` can name its files** from the schema rather than globbing the directory, once it exists. `output_names()` stays a data read either way — it mirrors `attribute_names`, which reads the owner map rather than the schema, because a record may declare a result no layer computed exactly as it may declare an input no layer wrote. Nothing was removed here: today's `output_names` already reads `outputs/*.parquet` once with `union_by_name` rather than listing per attribute, so this is a benefit the source rewrite collects, not a glob this step deletes.
 - **`long_columns_for` stops guessing.** An undeclared attribute currently falls back to `long_columns` — "every declared dim, the widest shape" — and its docstring says only a result reaches that branch. Declared results get their own coordinates like inputs, and the branch goes with them.
 - **One vocabulary.** `Schema` stops having two classes of attribute, one it validates and one it cannot see.
 - **`value_hint` retires.** `_empty_long` types a staging table's `value` as `schema.value_type(attribute) or value_hint or String()`, where the hint is the dtype the caller's frame arrived with — "that being the only thing that knows" for an undeclared result. Once results are declared the schema knows, so the fallback is dead. Retiring it removes the parameter from `_ensure` and `_empty_long`, its three call sites, and the two helpers that compute it (`_value_dtype`, `_scalar_dtype`) — check those have no other caller first.
@@ -220,7 +220,7 @@ It is a format change: `nw.Int64()` becomes a struct in `component_columns` and 
 | what drives them         | `_fold_map` (folds one kind down an ancestry), `map_kinds` (which kinds a schema has), `_fold_kind`                |
 | what caches them         | `_table` (`.create()` per kind), `NodeCache.dims` / `.schema`, `Revision.node_cache` — all justified by write-once |
 | what builds the ancestry | `revision.py` — `Revision.node_cache`, `ancestry`; `resolve.ancestry_to_read`, which becomes source construction   |
-| where a layer's paths    | `duck.py` — `layer_dir`, `resolved_dir`; read through `try_read_parquet`. Every call site becomes a source member  |
+| where a layer's paths    | `layered/sources.py` — `LayerSource.uri`, `ParquetLayer` over `duck.py`'s `layer_dir`; `resolved_dir` still direct |
 | the axis fold            | `resolve_dims` + `duck.py` — `dims_dirs`, `fold_axis`; keyed by `schema.axis_key`, outside the owner map           |
 | the reads over the map   | `NodeCache.relation` / `component_frame` / `group_frame` / `_owned_frame` / `attributes_of`                        |
 | the directory's reads    | `directory.py` — `_read`, `_require`, `_keyed_by`                                                                  |
@@ -236,16 +236,11 @@ Note that `mutable.py` imports from `layered/` only inside function bodies, to a
 
 ## A suggested order
 
-Steps 0–2 have landed: the identity spike (it holds — an unstaged `WorkingRecord` reads identically to its base over either backing), the [`both` fixture](#how-to-know-it-worked) extended to read one record four ways, and [the completion moved out of commit](#what-makes-the-staged-source-foldable) with `pending` removed.
+Steps 0–4 have landed: the identity spike (it holds — an unstaged `WorkingRecord` reads identically to its base over either backing), the [`both` fixture](#how-to-know-it-worked) extended to read one record four ways, [the completion moved out of commit](#what-makes-the-staged-source-foldable) with `pending` removed, [results declared](#3-results-become-schema-declared) with `value_hint` retired, and `LayerSource`/`ParquetLayer` in `layered/sources.py` with every `layer_dir(uuid) + path` in the fold and the write path routed through it.
 
-3. **Declare results.** Independent of the fold, and it is what lets `all_attributes("outputs")` name its files rather than glob. `value_hint` is retired here — see [question 3](#3-results-become-schema-declared).
-4. **`LayerSource` and `ParquetLayer`**, replacing `layer_dir(uuid)` in the fold and in `NodeCache`'s reads with a source lookup. No behaviour change and no second implementation: one source doing exactly what `layer_dir` did.
-5. **Then the fold over sources**, one kind at a time: `fold_components` first, being the simplest (no flags, no broadcast, one key column), `fold_group` next, `fold_inputs` last.
-6. **Then the frozen-prefix rule**: `NodeCache` takes `sources` rather than an ancestry of UUIDs, materialises up to the last `frozen` one, and dispatches a winning `layer_uuid` through the source that carries it. With one implementation every source is frozen, so this is still no behaviour change.
-7. **Then `DirectorySource` and `StagedSource`**, and the deletions they enable.
-8. **Then [the flags aggregate](#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares)**, if it fits.
+The rest is one change in three parts, and the deletions only arrive at the end of it: 5. **Then the fold over sources**, one kind at a time: `fold_components` first, being the simplest (no flags, no broadcast, one key column), `fold_group` next, `fold_inputs` last. 6. **Then the frozen-prefix rule**: `NodeCache` takes `sources` rather than an ancestry of UUIDs, materialises up to the last `frozen` one, and dispatches a winning `layer_uuid` through the source that carries it. With one implementation every source is frozen, so this is still no behaviour change. 7. **Then `DirectorySource` and `StagedSource`**, and the deletions they enable. 8. **Then [the flags aggregate](#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares)**, if it fits.
 
-Steps 3 and 4 are independently valuable and reversible: step 3 tightens the schema, and step 4 is a refactor with one implementation. If the thing stalls after either, what landed is still an improvement.
+Steps 5–7 do not pay off individually: 5 and 6 are explicitly no behaviour change, and the deletions they exist for only land at 7. Stopping between them leaves two ways of doing one thing with no test telling them apart, so that stretch is best taken in one sitting.
 
 Three things this order deliberately does not fix, recorded so they are not mistaken for oversights:
 
