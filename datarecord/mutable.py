@@ -17,7 +17,7 @@ from collections.abc import Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal, cast
-from uuid import UUID, uuid4, uuid5
+from uuid import UUID, uuid4
 
 import duckdb
 import narwhals as nw
@@ -589,15 +589,11 @@ class WorkingRecord:
             # sources, and `source_for` dispatches a winning row by matching
             # `layer_uuid` against them - so sharing one would send every staged
             # win to the directory and read the edit back as the base's value.
-            # Derived from where the directory is, as `layer_dir` derives a
-            # layer's path from its UUID and for the same reason: a directory
-            # has no revision, but it has a location, and that is what makes it
-            # one layer rather than another. Distinct from this record's own by
-            # construction, which `source_for` needs - it tells the base from
-            # the staging area by `layer_uuid` and nothing else.
-            base = self.base.base
-            source = DirectorySource(_directory_id(base), base, self.con)
-            return NodeCache(_directory_id(base), [source], self.con)
+            # The source derives its own id from where the directory is, so
+            # there is nothing to allocate here and two readings of one
+            # directory agree on which layer they read.
+            source = DirectorySource(self.base.base, self.con)
+            return NodeCache(source.layer_id, [source], self.con)
         msg = (
             f"a `WorkingRecord` reads by folding its staged rows over the base's, "
             f"and a {type(self.base).__name__} has no layer layout to fold - only a "
@@ -2158,27 +2154,6 @@ class WorkingRecord:
         write_record(None, self.flattened(), self.con, uri=target.uri)
         self.rollback()
         return None
-
-
-def _directory_id(uri: str) -> UUID:
-    """A plain directory's layer identity, derived from where it is.
-
-    A directory is no node in a layer tree, so it has no revision to be
-    stamped with - but the fold keys a source by UUID, and two readings of one
-    directory should agree on which layer they are reading. Its location is
-    what makes it one layer rather than another, so the UUID follows from that
-    rather than being allocated per reader.
-
-    Notes
-    -----
-    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
-    """
-    return uuid5(_DIRECTORY_NAMESPACE, uri)
-
-
-# A fixed namespace, so one directory's id is the same in every process - a
-# random one would make it per-reader, which is what deriving it avoids.
-_DIRECTORY_NAMESPACE = UUID("6f3d9f4e-1c2b-4a5d-8e7f-0a1b2c3d4e5f")
 
 
 def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:

@@ -15,7 +15,7 @@ import pytest
 
 from datarecord import Revision
 from datarecord.duck import layer_dir, resolved_dir, union_all_by_name
-from datarecord.layered.sources import LayerSource, ParquetLayer
+from datarecord.layered.sources import DirectorySource, LayerSource, ParquetLayer
 from tests.fixtures import export_network, tombstone, write_input
 
 
@@ -305,3 +305,27 @@ def test_a_parquet_layer_takes_the_base_it_was_given(tmp_path):
     assert ParquetLayer(revision_id, base_uri=root).uri("dims/entity.parquet") == (
         layer_dir(revision_id, root) + "dims/entity.parquet"
     )
+
+
+def test_a_directory_source_derives_its_layer_id_from_where_it_is():
+    """A directory has no revision to be stamped with, so its location is its identity.
+
+    Derived rather than allocated, which is what makes it the *same* layer in
+    every process and every reader - the fold keys a source by UUID, and a
+    per-reader one would make two readings of one directory disagree about
+    which layer they are reading. `uuid5` is what pins that across processes; a
+    stable-per-process id would pass an in-process comparison and still be
+    wrong for a materialised map read back later.
+
+    Notes
+    -----
+    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+    """
+    a = DirectorySource("/records/one/")
+    assert a.layer_id == DirectorySource("/records/one/").layer_id, "same place"
+    assert a.layer_id != DirectorySource("/records/two/").layer_id, "different place"
+    # The literal value, so the derivation cannot drift silently: a layer id
+    # that changed between versions would orphan every materialised map naming
+    # the old one.
+    assert str(a.layer_id) == "dbc5401e-335a-506d-89db-395e6ea37662"
+    assert isinstance(a, LayerSource), "structural, with `layer_id` a property"

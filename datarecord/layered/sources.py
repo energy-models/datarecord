@@ -16,12 +16,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from uuid import UUID, uuid5
 
 from datarecord.duck import layer_dir, parquet_names, resolved_dir, try_read_parquet
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 Kind = Literal["inputs", "outputs"]
@@ -251,19 +250,33 @@ class DirectorySource(_FileLayer):
     the layout is the same, so every member is one of the directory's files and
     the fold needs no conditional path.
 
-    `layer_id` is synthetic - a directory is no node in a layer tree, so there
-    is no revision to stamp and nothing for `NewChild()` to branch from. It
-    makes such a record *readable* through the fold, not committable to a tree.
+    `layer_id` is derived rather than stored, as `ParquetLayer`'s location is
+    and for the mirrored reason: a directory has no revision to be stamped
+    with, but it has a location, and that is what makes it one layer rather
+    than another. So two readings of one directory agree on which layer they
+    read without being told, and a caller has nothing to allocate or keep.
+
+    It is no node in a layer tree either way - there is nothing for
+    `NewChild()` to branch from, so this makes such a record *readable* through
+    the fold, not committable to a tree.
 
     Notes
     -----
     - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
     """
 
-    layer_id: UUID
     base: str
     con: DuckDBPyConnection | None = None
     frozen: bool = True
 
+    @property
+    def layer_id(self) -> UUID:
+        return uuid5(_DIRECTORY_NAMESPACE, self.base)
+
     def uri(self, path: str = "") -> str:
         return self.base + path
+
+
+# A fixed namespace, so one directory's `layer_id` is the same in every process
+# - a random one would make it per-reader, which is what deriving it avoids.
+_DIRECTORY_NAMESPACE = UUID("6f3d9f4e-1c2b-4a5d-8e7f-0a1b2c3d4e5f")
