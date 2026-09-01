@@ -403,8 +403,12 @@ class WorkingRecord:
     """
 
     def __init__(self, base: Record, con: DuckDBPyConnection) -> None:
-        self.base = base
         self.con = con
+        # The base as what every use of it here actually wants: its `NodeCache`,
+        # resolved once rather than per read. The schema, one dim's axis, one
+        # attribute's rows and the revision to branch from are all members of
+        # one, so the record the caller passed is not kept.
+        self._base = _base_node_cache(base, con)
         # This record's one identity, which is the staged layer's: the fold
         # stamps it as `layer_uuid` and dispatches a winning row back through
         # the source carrying it. Synthetic, the staged layer having no revision
@@ -535,7 +539,7 @@ class WorkingRecord:
 
     @property
     def schema(self) -> Schema:
-        return self.base.schema
+        return self._base.schema
 
     @property
     def _resolved(self) -> Any:
@@ -554,52 +558,7 @@ class WorkingRecord:
         from datarecord.layered.revision import LayeredRecord
 
         staged = StagedSource(self, self._layer_id)
-        return LayeredRecord(self._base_node_cache().with_source(staged))
-
-    def _base_node_cache(self) -> Any:
-        """What the base resolves from, as a `NodeCache` the staged layer extends.
-
-        A `LayeredRecord` already has one. A `DirectoryRecord` is a parquet
-        directory in the layer layout, so it becomes a one-source cache over a
-        `DirectorySource` - which is what lets one fold serve both bases, with
-        no conditional path and no second overlay.
-
-        Raises
-        ------
-        TypeError
-            For a base that is neither. A framework object hands over narwhals
-            frames and has no layer layout behind it: `axis("entity")` wants the
-            entity axis and `Record` exposes `entity_types` keyed by type, so
-            synthesising one would be rebuilding the format from a protocol that
-            deliberately lacks it.
-
-        Notes
-        -----
-        - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
-        """
-        from datarecord.directory import DirectoryRecord
-        from datarecord.layered.resolve import NodeCache
-        from datarecord.layered.revision import LayeredRecord
-        from datarecord.layered.sources import DirectorySource
-
-        if isinstance(self.base, LayeredRecord):
-            return self.base.node_cache
-        if isinstance(self.base, DirectoryRecord):
-            # Its own id, distinct from the staged layer's: the two are separate
-            # sources, and `source_for` dispatches a winning row by matching
-            # `layer_uuid` against them - so sharing one would send every staged
-            # win to the directory and read the edit back as the base's value.
-            # The source derives its own id from where the directory is, so
-            # there is nothing to allocate here and two readings of one
-            # directory agree on which layer they read.
-            source = DirectorySource(self.base.base, self.con)
-            return NodeCache(source.layer_id, [source], self.con)
-        msg = (
-            f"a `WorkingRecord` reads by folding its staged rows over the base's, "
-            f"and a {type(self.base).__name__} has no layer layout to fold - only a "
-            f"`LayeredRecord` or a `DirectoryRecord` does"
-        )
-        raise TypeError(msg)
+        return LayeredRecord(self._base.with_source(staged))
 
     @property
     def dims(self) -> Frames:
@@ -833,7 +792,8 @@ class WorkingRecord:
             )
             supplied = {"_seq": lit(seq)}
         else:
-            if dim not in self.base.dims:
+            base_axis = self._base.dims.axes.get(dim)
+            if base_axis is None:
                 msg = (
                     f"`set({attribute!r}, <scalar>)` reaches every label the "
                     f"{dim!r} axis has, and it has none; name the labels as a "
@@ -843,7 +803,7 @@ class WorkingRecord:
             # The key alone: the axis frame may carry a sibling attribute's
             # column, and this edit states only its own - `_collapsed_axis` folds
             # the rest back per label.
-            rel = as_relation(self.base.dims[dim], self.con).project(col(dim))
+            rel = base_axis.project(col(dim))
             supplied = {attribute: lit(value), "_seq": lit(seq)}
 
         self._insert(rel, table, supplied)
@@ -1370,7 +1330,7 @@ class WorkingRecord:
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
         whole = self._owned_whole(attribute)
-        if not whole or attribute not in self.base.attributes:
+        if not whole or attribute not in self._base.attribute_names():
             return
 
         # Intersected with the attribute's own columns: a key column its file
@@ -1385,7 +1345,7 @@ class WorkingRecord:
             return
         coordinate = [*scope, *present, "breakpoint"]
         staged = self.con.table(table)
-        base = as_relation(self.base.attributes[attribute], self.con)
+        base = self._base.relation(attribute)
         # A staged row leaving a whole-owned dim NULL already covers that dim's
         # whole extent by the broadcast rule, so its key has nothing left to
         # carry and a base row there would overlap it.
@@ -1963,22 +1923,22 @@ class WorkingRecord:
 
         An outer join, since a `set` may name a label no layer has written: one
         side or the other may be missing, and both belong to the answer.
+
+        Only ever reached for a dim some edit staged - `StagedSource.axis`
+        answers `None` before calling this where no axis table exists - so
+        `staged` is never `None` here and the base's own rows are not a case.
         """
         staged = self._collapsed_axis(dim)
-        if dim not in self.base.dims:
+        assert staged is not None, "only a staged dim reaches an axis layer"
+        base = self._base.dims.axes.get(dim)
+        if base is None:
             # A `set` may introduce a label for an axis no layer has written, in
             # which case the staged rows are the whole of it.
-            assert staged is not None
             return nw.from_native(staged)
-        base = self.base.dims[dim]
-        if staged is None:
-            return base
-        present = list(base.collect_schema().names())
+        present = list(base.columns)
         edited = [a for a in staged.columns if a != dim]
-        rel = (
-            as_relation(base, self.con)
-            .set_alias("b")
-            .join(staged.set_alias("s"), null_safe("b", "s", [dim]), how="outer")
+        rel = base.set_alias("b").join(
+            staged.set_alias("s"), null_safe("b", "s", [dim]), how="outer"
         )
         # `coalesce` per column, not "staged row wins": an untouched label is
         # NULL on the staged side and would otherwise read as cleared. The label
@@ -2107,21 +2067,27 @@ class WorkingRecord:
     def _base_revision(self) -> Any:
         """The `Revision` this record's base resolves, for `NewChild()`'s default.
 
-        Only a layered base has one: a `DirectoryRecord` or a framework object
-        is not a node in the tree, so there is no parent to branch from and the
-        caller must name one.
-        """
-        from datarecord.layered.revision import LayeredRecord, Revision
+        Only a base that is a node in the tree has one, which is asked of the
+        `revisions` table rather than of the base's type: a directory's
+        `revision_id` is derived from where it is, so it names no row, and that
+        - not which class the base was - is what makes it unbranchable.
 
-        if not isinstance(self.base, LayeredRecord):
+        A missing row and a missing table are the same answer here: `connect`
+        creates the table, so a connection without one was made by hand and has
+        no tree in it either.
+        """
+        from datarecord.layered.revision import Revision
+
+        try:
+            return Revision.get(self._base.revision_id, self.con)
+        except (KeyError, duckdb.Error):
             msg = (
-                f"`NewChild()` needs a revision to branch from, and this "
-                f"`WorkingRecord`'s base is a {type(self.base).__name__} rather than a "
-                f"node in a layer tree; pass one as `NewChild(revision)`, or commit to "
-                f"a standalone record with `Directory(uri)` (https://energy-models.github.io/datarecord/design/working-record/#committing)"
+                "`NewChild()` needs a revision to branch from, and this "
+                "`WorkingRecord`'s base is no node in a layer tree; pass one as "
+                "`NewChild(revision)`, or commit to a standalone record with "
+                "`Directory(uri)` (https://energy-models.github.io/datarecord/design/working-record/#committing)"
             )
-            raise ValueError(msg)
-        return Revision.get(self.base.node_cache.revision_id, self.con)
+            raise ValueError(msg) from None
 
     def commit(self, target: Target) -> Any:
         """Write everything staged and clear it.
@@ -2154,6 +2120,54 @@ class WorkingRecord:
         write_record(None, self.flattened(), self.con, uri=target.uri)
         self.rollback()
         return None
+
+
+def _base_node_cache(base: Record, con: DuckDBPyConnection) -> Any:
+    """What `base` resolves from, as a `NodeCache` a staged layer can extend.
+
+    A `LayeredRecord` already has one. A `DirectoryRecord` is a parquet
+    directory in the layer layout, so it becomes a one-source cache over a
+    `DirectorySource` - which is what lets one fold serve both bases, with no
+    conditional path and no second overlay. Resolved once at construction, so
+    what a `WorkingRecord` holds is the cache rather than the record: every use
+    it makes of its base is a member of one.
+
+    Raises
+    ------
+    TypeError
+        For a base that is neither. A framework object hands over narwhals
+        frames and has no layer layout behind it: `axis("entity")` wants the
+        entity axis and `Record` exposes `entity_types` keyed by type, so
+        synthesising one would be rebuilding the format from a protocol that
+        deliberately lacks it.
+
+    Notes
+    -----
+    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+    """
+    from datarecord.directory import DirectoryRecord
+    from datarecord.layered.resolve import NodeCache
+    from datarecord.layered.revision import LayeredRecord
+    from datarecord.layered.sources import DirectorySource
+
+    if isinstance(base, LayeredRecord):
+        return base.node_cache
+    if isinstance(base, DirectoryRecord):
+        # Its own id, distinct from the staged layer's: the two are separate
+        # sources, and `source_for` dispatches a winning row by matching
+        # `layer_uuid` against them - so sharing one would send every staged win
+        # to the directory and read the edit back as the base's value. The
+        # source derives its own id from where the directory is, so there is
+        # nothing to allocate here and two readings of one directory agree on
+        # which layer they read.
+        source = DirectorySource(base.base, con)
+        return NodeCache(source.layer_id, [source], con)
+    msg = (
+        f"a `WorkingRecord` reads by folding its staged rows over the base's, "
+        f"and a {type(base).__name__} has no layer layout to fold - only a "
+        f"`LayeredRecord` or a `DirectoryRecord` does"
+    )
+    raise TypeError(msg)
 
 
 def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
