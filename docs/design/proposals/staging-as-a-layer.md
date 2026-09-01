@@ -127,7 +127,7 @@ It runs **per insert, not once per attribute**, because the completion is scoped
 
 A staged row leaving a whole-owned dim NULL is excluded: it already covers every label by [the broadcast rule](../record.md#the-broadcast-rule), so its key has nothing to carry and a carried row beside it would overlap.
 
-One consequence accepted deliberately: **`set` reads the base whenever it touches a completed attribute** — a fold, where a deep unmaterialised ancestry makes an expensive one, and on every insert rather than the first. The anti-join is what makes a repeat edit carry no _rows_, but running it is what costs; an attribute with no owned-whole dim never triggers it at all. [Measured](#how-to-know-it-worked) at 188 ms for a repeat against 359 ms for a first touch, twenty layers deep.
+One consequence accepted deliberately: **`set` reads the base when it touches a completed attribute** — a fold, where a deep unmaterialised ancestry makes an expensive one. Bounded by what is staged rather than by how often, the anti-join making a repeat edit carry nothing; an attribute with no owned-whole dim never triggers it at all. [Measured](#how-to-know-it-worked) at ~5 ms for a repeat, twenty layers deep.
 
 Carried rows being indistinguishable from edited ones is what removed [`pending`](#1-pending-goes): a one-value `set` on a thousand-snapshot attribute would have reported a thousand pending rows.
 
@@ -271,17 +271,20 @@ Three performance claims, now measured rather than asserted — a 20-layer unmat
 |                                     |        |
 | ----------------------------------- | ------ |
 | deep read, nothing staged           | 2.4 ms |
-| deep read, one staged edit          | 58 ms  |
-| `set`, first touch of an attribute  | 359 ms |
-| `set`, again on the same attribute  | 188 ms |
+| deep read, one staged edit          | 61 ms  |
+| `set`, first touch of an attribute  | 166 ms |
+| `set`, again on the same attribute  | 16 ms  |
+| `set`, again, no owned-whole dim     | 10 ms  |
 | directory `flags`, scanned          | ~0 ms  |
 | directory `flags`, through the fold | 12 ms  |
 
 Two of the three hold and one does not.
 
-**A read after a `set` costs one fold step, not one ancestry** — but against a base read that is _cached_, so the honest comparison is 2.4 ms to 58 ms rather than "one layer's worth". That is the price of the tail being live, and [the frozen-prefix rule](#the-cache-stops-at-the-last-frozen-source) is what bounds it to one step; [`materialise` over a staging area](#what-it-opens) is the escape hatch if a long-lived `WorkingRecord` makes it hurt.
+**A read after a `set` costs one fold step, not one ancestry** — but against a base read that is _cached_, so the honest comparison is 2.4 ms to 61 ms rather than "one layer's worth". That is the price of the tail being live, and [the frozen-prefix rule](#the-cache-stops-at-the-last-frozen-source) is what bounds it to one step; [`materialise` over a staging area](#what-it-opens) is the escape hatch if a long-lived `WorkingRecord` makes it hurt.
 
-**A second `set` does not read nothing**, which [what makes the staged source foldable](#what-makes-the-staged-source-foldable) claimed. The anti-join makes it carry no _rows_, but `_complete_owned_whole` folds the base on every insert to find that out — 188 ms against the first touch's 359 ms, not against zero. Bounded by what is staged rather than by how often, as that section says; "the anti-join making a repeat edit carry nothing" is true of the rows and false of the work.
+**A second `set` costs the completion ~5 ms**, which is the difference between a repeat on an attribute with an owned-whole dim and one without. So [what makes the staged source foldable](#what-makes-the-staged-source-foldable) holds: the base fold it runs is the *first* touch's 166 ms, and the anti-join reaching no rows afterwards is nearly free.
+
+Getting there took a fix. The first measurement put a repeat at 188 ms, which looked like the completion refolding per insert and read as the proposal being wrong. It was `set`'s _validation_: `_name_types` and `_resolved_names` assembled "what type is this name" from each type's resolved member frame — a union and a join per type, uncached under a live tail — to read two columns [the owner map](../read-path.md#owner-map) already holds. Off the map instead, a repeat `set` went from 157 ms to 10 ms.
 
 **A `WorkingRecord` over a directory folds where a bare one scans**, 12 ms against a cached scan's nothing. `DirectoryRecord` memoises `flags` per type and the fold does not, so this is the first call either way; the fold's answer is a relation, and what it buys is that one code path serves both bases.
 

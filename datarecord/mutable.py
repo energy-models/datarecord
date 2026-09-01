@@ -843,35 +843,40 @@ class WorkingRecord:
     def _resolved_names(self, ctype: str) -> list[str]:
         """Every name `ctype` currently resolves to, base plus staged.
 
-        Through narwhals rather than the native frame: a backend's column
-        yields its own scalar type (a `pyarrow.StringScalar`, say), which
-        would compare unequal to the plain strings an edit names.
+        Off the components map rather than the member frame, for the reason
+        `_name_types` gives: membership is what the map decided, and resolving
+        the type's wide rows to read one column of it is the expensive way to
+        ask. `str` because a backend's column yields its own scalar type (a
+        `pyarrow.StringScalar`, say), which would compare unequal to the plain
+        strings an edit names.
 
         Notes
         -----
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        if ctype not in self.entity_types:
-            return []
-        frame = self.entity_types[ctype].select("entity").collect()
-        return [str(n) for n in frame["entity"].to_list()]
+        rel = self._resolved.node_cache.entity_map
+        rows = rel.filter(col("entity_type") == lit(ctype)).project("entity").fetchall()
+        return [str(n) for (n,) in rows]
 
     def _name_types(self) -> nw.LazyFrame | None:
         """`(name, entity_type)` over everything this record resolves.
 
+        Straight off the components map, which is keyed by entity and carries
+        the type: what every validating caller here asks is "what type is this
+        name", and that is the map's own column. Assembling it from the member
+        frames instead would resolve each type's wide rows - a union and a join
+        per type - to read two columns the fold already decided.
+
         Notes
         -----
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        parts = [
-            self.entity_types[ctype]
-            .select("entity")
-            .with_columns(entity_type=nw.lit(ctype))
-            for ctype in self.entity_types
-        ]
-        if not parts:
+        rel = self._resolved.node_cache.entity_map.project("entity", "entity_type")
+        if rel.limit(1).fetchone() is None:
             return None
-        return nw.concat(parts, how="vertical")
+        return nw.from_native(rel).lazy()
 
     def _require_unique(self, ctype: str, lazy: nw.LazyFrame) -> None:
         """Reject an `add` whose names another type already holds.
