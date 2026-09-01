@@ -15,9 +15,10 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property, partial
+from typing import Any
 from uuid import UUID
 
 import duckdb
@@ -46,12 +47,55 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.layered.sources import LayerSource, ParquetLayer, ResolvedLayer
-from datarecord.record import Flags, flags_from_rows
+from datarecord.record import Flags
 from datarecord.schema import Schema
 
 # The owner map's `layer_uuid` column type - a layering mechanism, not
 # something a schema declares.
 LAYER_UUID_TYPE = "UUID"
+
+
+def flags_from_rows(
+    schema: Schema,
+    dims: tuple[str, ...],
+    rows: Iterable[tuple[str, Mapping[str, Any], Mapping[str, Any], Any]],
+) -> dict[str, Flags]:
+    """Fold `(attribute, varies, broadcast, breakpoints)` rows into `Flags`.
+
+    Separate from the aggregate that produces the rows because the scoping below
+    is about the *schema*, not about the map: it is the same cut whatever
+    ownership decided, and keeping it out of the SQL is what makes it readable.
+
+    Both sets are cut to the attribute's own coordinates. The relation aggregated
+    over covers every attribute, so a dim one attribute is addressed by reads
+    NULL for the rows of one that is not, and reporting that NULL as "every row
+    broadcasts over it" would tell a consumer to build a container along an axis
+    the attribute has no values on. An attribute the schema does not declare
+    keeps every dim, its shape not being the schema's to say.
+
+    Parameters
+    ----------
+    dims
+        The broadcast dims the two mappings have an entry per; a dim missing
+        from one - declared after a persisted map was written - reads as unset.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    """
+
+    def scope(attribute: str) -> tuple[str, ...]:
+        own = set(schema.coordinates_of(attribute))
+        return tuple(d for d in dims if d in own) if own else dims
+
+    return {
+        attribute: Flags(
+            frozenset(d for d in scope(attribute) if varies.get(d)),
+            frozenset(d for d in scope(attribute) if broadcast.get(d)),
+            bool(breakpoints),
+        )
+        for attribute, varies, broadcast, breakpoints in rows
+    }
 
 
 def resolve_dims(
@@ -119,15 +163,6 @@ class Dims:
 
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
-
-    def entity_match(self, alias_a: str, alias_b: str, *fixed: str) -> Expression:
-        """Match a raw entity or group row against an already-resolved key.
-
-        No broadcast arm: an entity table's key columns address a row rather
-        than expanding against an axis, so NULL-safe equality is the whole of
-        it. `input_match` differs precisely there.
-        """
-        return broadcast_match(alias_a, alias_b, fixed, ())
 
     def input_match(
         self,
