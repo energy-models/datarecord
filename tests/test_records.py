@@ -60,7 +60,7 @@ def both(written, con):
 # -- the protocol ------------------------------------------------------------
 
 
-def test_both_backings_satisfy_the_protocol(both):
+def test_every_construction_satisfies_the_protocol(both):
     """Structural conformance, so a consumer cannot tell which it holds.
 
     Notes
@@ -141,7 +141,7 @@ def test_revision_exposes_its_record(written):
     assert record.node_cache is written.node_cache
 
 
-def test_backings_agree_on_every_key_set(both):
+def test_constructions_agree_on_every_key_set(both):
     """One record, several ways of reading it: the keys must not depend on which."""
     node, *rest = both
     for other in rest:
@@ -149,8 +149,8 @@ def test_backings_agree_on_every_key_set(both):
             assert list(getattr(node, member)) == list(getattr(other, member)), member
 
 
-def test_backings_agree_on_flags(both):
-    """Owner map, file aggregate and staged union answer the same question.
+def test_constructions_agree_on_flags(both):
+    """One aggregate, whichever source list it folds over.
 
     Notes
     -----
@@ -162,14 +162,24 @@ def test_backings_agree_on_flags(both):
             assert node.flags(ctype) == other.flags(ctype), ctype
 
 
-def test_backings_agree_on_rows(both):
-    """A single-layer record resolves to the same rows every way."""
+def test_constructions_agree_on_rows(both):
+    """A single-layer record resolves to the same rows every way.
+
+    The rows themselves, not their count: this fixture is the whole evidence
+    that reading a directory needs no implementation of its own, and two
+    constructions returning the same number of different rows would satisfy a
+    count.
+    """
     node, *rest = both
     for other in rest:
         for attribute in node.attributes:
-            left = node.attributes[attribute].collect().to_native()
-            right = other.attributes[attribute].collect().to_native()
-            assert len(left) == len(right), attribute
+            left = node.attributes[attribute].collect().to_native().to_pandas()
+            right = other.attributes[attribute].collect().to_native().to_pandas()
+            columns = sorted(set(left.columns) & set(right.columns))
+            assert set(left.columns) == set(right.columns), attribute
+            left = left[columns].sort_values(columns).reset_index(drop=True)
+            right = right[columns].sort_values(columns).reset_index(drop=True)
+            assert left.equals(right), attribute
 
 
 # -- laziness (https://energy-models.github.io/datarecord/design/record/#frames, https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) ---------------------------------------------------
@@ -220,15 +230,15 @@ def test_flags_are_per_component_type(con, base_uri):
         + [{"entity": "dc", "value": 1.0}],
     )
 
-    for record in (Record(revision.node_cache), Record.at(layer, con)):
-        generator = record.flags("Generator")["p_max_pu"]
-        link = record.flags("Link")["p_max_pu"]
-        # The Generator's rows set `snapshot`; the Link's leaves it NULL. Naming
-        # the dim is what makes these two answers distinguishable at all.
-        assert "snapshot" in generator.varies
-        assert "snapshot" not in generator.broadcast
-        assert "snapshot" in link.broadcast
-        assert "snapshot" not in link.varies
+    record = revision.record
+    generator = record.flags("Generator")["p_max_pu"]
+    link = record.flags("Link")["p_max_pu"]
+    # The Generator's rows set `snapshot`; the Link's leaves it NULL. Naming
+    # the dim is what makes these two answers distinguishable at all.
+    assert "snapshot" in generator.varies
+    assert "snapshot" not in generator.broadcast
+    assert "snapshot" in link.broadcast
+    assert "snapshot" not in link.varies
 
 
 def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
@@ -299,10 +309,10 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
         + [{"entity": "gas", "value": 1.0}],
     )
 
-    for record in (Record(revision.node_cache), Record.at(layer, con)):
-        combined = record.flags("Generator")["p_max_pu"]
-        assert "snapshot" in combined.varies
-        assert "snapshot" in combined.broadcast
+    record = revision.record
+    combined = record.flags("Generator")["p_max_pu"]
+    assert "snapshot" in combined.varies
+    assert "snapshot" in combined.broadcast
 
 
 def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
@@ -340,16 +350,16 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
     write_input(layer, "p_nom", [{"entity": "wind", "value": 100.0}])
     write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
 
-    for record in (Record(revision.node_cache), Record.at(layer, con)):
-        flags = record.flags("Generator")
-        # Addressed by `entity` alone, so no axis is reportable either way.
-        assert flags["p_nom"].varies == frozenset()
-        assert flags["p_nom"].broadcast == frozenset(), (
-            "a dim `p_nom` has no column for is not one it broadcasts over"
-        )
-        # Addressed by `snapshot`, with a row leaving it NULL - that *is* a
-        # broadcast, and the two cases must not read the same.
-        assert "snapshot" in flags["p_max_pu"].broadcast
+    record = revision.record
+    flags = record.flags("Generator")
+    # Addressed by `entity` alone, so no axis is reportable either way.
+    assert flags["p_nom"].varies == frozenset()
+    assert flags["p_nom"].broadcast == frozenset(), (
+        "a dim `p_nom` has no column for is not one it broadcasts over"
+    )
+    # Addressed by `snapshot`, with a row leaving it NULL - that *is* a
+    # broadcast, and the two cases must not read the same.
+    assert "snapshot" in flags["p_max_pu"].broadcast
 
 
 def test_flags_report_a_curve(con, base_uri):
@@ -372,15 +382,15 @@ def test_flags_report_a_curve(con, base_uri):
         ],
     )
 
-    for record in (Record(revision.node_cache), Record.at(layer, con)):
-        assert record.flags("Process")["marginal_cost"].breakpoints
+    record = revision.record
+    assert record.flags("Process")["marginal_cost"].breakpoints
 
 
-# -- what only the overlay can do -------------------------------------------
+# -- more than one layer, which is where the fold stops being a scan ---------
 
 
 def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
-    """The point of two backings: one reads a layer, the other the resolution."""
+    """One layer read alone against the same layer folded onto its parent."""
     root = Revision.create(con)
     write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
     root.materialise()
@@ -428,11 +438,11 @@ def test_node_record_orders_members(con, base_uri, ac_dc):
     assert names == [*ac_dc.c["Generator"].static.index, "New Solar"]
 
 
-# -- the directory backing on its own ----------------------------------------
+# -- one layer read at its URI, with no tree around it -----------------------
 
 
-def test_directory_record_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
-    """No record, no overlay: any parquet directory blocks wrote is a `Record`."""
+def test_a_directory_at_a_uri_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
+    """No revision and no tree: any parquet directory blocks wrote is a `Record`."""
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
@@ -443,9 +453,7 @@ def test_directory_record_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
     assert record.schema.attributes
 
 
-def test_directory_record_has_no_connections_when_none_were_written(
-    con, base_uri, tmp_path
-):
+def test_a_directory_has_no_connections_when_none_were_written(con, base_uri, tmp_path):
     """A record with no `groups/connection.parquet` has no such key, not an error.
 
     Notes
@@ -460,7 +468,7 @@ def test_directory_record_has_no_connections_when_none_were_written(
     assert "connection" not in Record.at(layer, con).groups
 
 
-def test_directory_record_reads_connections_blocks_wrote(written, con):
+def test_a_directory_reads_connections_blocks_wrote(written, con):
     """A record blocks wrote has them, with the roles the collapse assigned.
 
     Notes
