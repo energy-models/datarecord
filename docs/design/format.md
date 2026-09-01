@@ -59,6 +59,7 @@ So "varying" is not "has dims" but **"has dims beyond its address"**, and one ru
 
 - **`dims/entity_type/<Type>.parquet`** — attributes addressed by `entity` alone: one column per attribute, indexed by `entity`.
   Values only: a component's _membership_ is its row on the [entity axis](#the-entity-axis), not its presence here.
+  And no `entity_type` column: the type is the file the rows are in, which the writer reads off the filename to derive the entity axis, and that axis is what carries `entity -> entity_type` for every later reader. A column repeating it would be a third copy of one fact, and the only one that could disagree with the other two.
 - **A [group](schema.md#groups)'s file** — attributes addressed by that group alone, PyPSA's `role` on a connection being one.
 - **An axis file** — attributes addressed by one dim alone. A snapshot weighting is a number per snapshot and belongs to no component, so `dims/snapshot.parquet` carries it as a declared column with a `dtype`, a `default` and a `description`.
 - **`inputs/<attr>.parquet`** — every attribute addressed by more than its own coordinate, even where a given component's value happens to be constant.

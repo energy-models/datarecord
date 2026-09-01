@@ -150,7 +150,17 @@ def write_record(
                         )
                     )
                 _write_frame(
-                    frame, f"{staging}{subdir}/{key}.parquet", con, local, schema
+                    frame,
+                    f"{staging}{subdir}/{key}.parquet",
+                    con,
+                    local,
+                    schema,
+                    # A per-type member file is indexed by `entity` and holds
+                    # one column per attribute; the type is the file it is in,
+                    # which `_write_entity_axis` reads off the filename and the
+                    # entity axis then carries for every later reader. A column
+                    # repeating it would be a third copy that can disagree.
+                    drop=("entity_type",) if kind == "entities" else (),
                 )
         _require_unique(tagged)
         _write_entity_axis(staging, schema, con)
@@ -199,8 +209,27 @@ def _reconcile_schema(schema: Schema, con: DuckDBPyConnection) -> None:
     write_schema(schema, base)
 
 
+DERIVED = ("order_key",)
+"""Columns a resolved frame carries that no layer file may.
+
+The fold's answer *about* a frame rather than data in it, so writing one would
+both put a column in a file the format does not define and read as stored order
+where the fold always re-derives it from file order.
+
+Notes
+-----
+- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+"""
+
+
 def _write_frame(
-    frame: nw.LazyFrame, uri: str, con: DuckDBPyConnection, local: bool, schema: Schema
+    frame: nw.LazyFrame,
+    uri: str,
+    con: DuckDBPyConnection,
+    local: bool,
+    schema: Schema,
+    *,
+    drop: tuple[str, ...] = (),
 ) -> None:
     """Persist one narwhals frame as parquet, through `con`.
 
@@ -209,22 +238,21 @@ def _write_frame(
     the way out, so a reader can trust them rather than re-casting an all-NULL
     column pandas typed as float.
 
-    `order_key` is dropped here rather than by each caller: it is the fold's
-    answer about a frame, not data, so a source handing over a *resolved* frame
-    - which is what committing a `WorkingRecord` to a `Directory` does - carries
-    one that must not reach the file.
+    `DERIVED` is dropped from every file, and `drop` names what is redundant in
+    *this* one - both here rather than in the callers, so a column a source
+    happens to carry cannot reach a file by a path that forgot to strip it.
 
     Notes
     -----
     - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
-    - [order_key is derived, never stored](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     """
     if local:
         Path(uri).parent.mkdir(parents=True, exist_ok=True)
     rel = as_relation(frame, con)
-    if "order_key" in rel.columns:
-        rel = rel.project(star(exclude=["order_key"]))
+    unwritable = [c for c in (*DERIVED, *drop) if c in rel.columns]
+    if unwritable:
+        rel = rel.project(star(exclude=unwritable))
     cast_declared(schema, rel).to_parquet(uri)
 
 

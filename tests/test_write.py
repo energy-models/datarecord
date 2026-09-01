@@ -204,6 +204,39 @@ def test_no_layer_file_carries_order_key(con, base_uri, ac_dc, tmp_path):
         assert "order_key" not in columns, f"{path.relative_to(out)} carries order_key"
 
 
+def test_a_per_type_member_file_does_not_repeat_its_type(con, base_uri, ac_dc):
+    """`dims/entity_type/<T>.parquet` is indexed by `entity`, one column per attribute.
+
+    The type is the file the rows are in, and it reaches a reader twice already:
+    `_write_entity_axis` takes it off the filename, and the entity axis then
+    carries `entity -> entity_type` so nobody has to glob. A column repeating it
+    would be a third copy, and the only one that can disagree with the other
+    two.
+
+    The *axis* file keeps it, and that is a different file: there `entity_type`
+    is the key, not a restatement of the path.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    - [the entity axis](https://energy-models.github.io/datarecord/design/format/#the-entity-axis)
+    """
+    revision = Revision.create(con)
+    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+    layer = Path(layer_dir(revision.id))
+
+    members = layer / "dims" / "entity_type" / "Generator.parquet"
+    columns = con.sql(f"SELECT * FROM read_parquet('{members}')").columns
+    assert "entity" in columns, "still indexed by entity"
+    assert "entity_type" not in columns, "the filename already says which type"
+
+    # Derived from those files all the same, so the type still reaches a reader.
+    axis = con.sql(f"SELECT * FROM read_parquet('{layer / 'dims' / 'entity.parquet'}')")
+    assert "entity_type" in axis.columns
+    types = {t for (t,) in axis.project("entity_type").distinct().fetchall()}
+    assert "Generator" in types, "the type survives being off the member file"
+
+
 def test_a_directory_target_carries_its_own_schema(con, base_uri, tmp_path):
     """A standalone record *is* one record, so its schema goes in the directory.
 
