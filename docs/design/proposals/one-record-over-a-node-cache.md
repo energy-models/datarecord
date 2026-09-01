@@ -8,12 +8,12 @@ Stacked on [staging as a layer](staging-as-a-layer.md), which made a staging are
 
 [read-path](../read-path.md#what-differs-between-the-implementations) says two implementations differ in four ways. Measured on one directory — `DirectoryRecord(uri)` against a `NodeCache` over `[DirectorySource(uri)]` — **all four are the same answer**:
 
-| what was compared                                         | result                     |
-| --------------------------------------------------------- | -------------------------- |
-| `dims`, `entity_types`, `groups`, `attributes`, `outputs` | identical                  |
-| `flags`, every declared type                              | identical                  |
-| member order, every declared type                         | identical                  |
-| resolved rows per attribute                               | identical                  |
+| what was compared                                         | result                        |
+| --------------------------------------------------------- | ----------------------------- |
+| `dims`, `entity_types`, `groups`, `attributes`, `outputs` | identical                     |
+| `flags`, every declared type                              | identical                     |
+| member order, every declared type                         | identical                     |
+| resolved rows per attribute                               | identical                     |
 | `flags`, first call                                       | 6.6 ms scanned, 2.9 ms folded |
 
 The table was not describing a design property. It was describing an implementation that predates the fold being able to read anything but a layer tree, and each row of it dissolves on contact:
@@ -32,7 +32,7 @@ Two fallback arguments for keeping it also fail, and both were mine:
 
 **`NodeCache` does not grow.** It is already the module the design calls relational algebra of real complexity, and the fix here is not to add the `Record` surface to it. It stays what it is: the DuckDB-shaped view over a list of sources, answering in relations.
 
-**`Record` becomes the narwhals interface over one.** One class, holding a `NodeCache` and adapting it — relations to `LazyFrames`, `order_key` sorting, the key sets. That is exactly what `LayeredRecord` already is, so this proposal is mostly *deleting `DirectoryRecord` and renaming what remains*:
+**`Record` becomes the narwhals interface over one.** One class, holding a `NodeCache` and adapting it — relations to `LazyFrames`, `order_key` sorting, the key sets. That is exactly what `LayeredRecord` already is, so this proposal is mostly _deleting `DirectoryRecord` and renaming what remains_:
 
 ```python
 @dataclass(frozen=True)
@@ -48,6 +48,10 @@ class Record:
     def at(cls, uri: str, con: DuckDBPyConnection) -> Record:
         """A plain parquet directory, read as the one layer it is."""
         return cls.over(DirectorySource(uri, con))
+
+
+class WorkingRecord(Record):
+    """A `Record` whose last source is a staging area, plus the edit surface."""
 ```
 
 The two views stay separable, which is the property worth keeping: `tools/` builds against narwhals frames and [says so explicitly](https://github.com/energy-models/datarecord/blob/main/datarecord/tools/base.py) — `to_relation` exists so a tool needing DuckDB's own SQL unwraps a frame "rather than reaching past the record to a `NodeCache`". Collapsing the two would take that seam away.
@@ -56,12 +60,25 @@ The two views stay separable, which is the property worth keeping: `tools/` buil
 
 `Record` is a `Protocol` today because several things satisfy it. That stays true and stays load-bearing — a framework object presenting itself as a record is the case [`tools`](../tools.md) is built on, and structural typing is what lets it do so without depending on this package.
 
-So the name has to split. Two options, and this proposal does not pick between them:
+So the name has to split. **Settled: `Record` is the class, `RecordLike` the protocol.** The concrete thing gets the short name because it is what a caller constructs and holds; the protocol is read at a signature, where the longer name says what it means — "anything shaped like a record", which is exactly the set a framework object joins.
 
-- **`Record` the protocol, `ResolvedRecord` the class.** Keeps the protocol's name where every consumer already reads it, at the cost of the concrete class getting the longer name despite being the only one in core.
-- **`Record` the class, `RecordLike` the protocol.** The reverse trade. Reads better at a construction site and worse at a `tools/` signature.
+The rename is smaller than it sounds: 17 annotation and `isinstance` sites across `tools/base.py`, `tools/pypsa.py`, `layered/write.py`, `mutable.py` and three test modules. Every one of them is a _consumer_ position - `write_record(record)`, `PyPSA.build(record)` - which is exactly where `RecordLike` is the honest type, because a framework object satisfies it there and always could.
 
-**This is the one thing to settle before writing code**, since it touches every module and both public exports.
+### `WorkingRecord` is a `Record`
+
+Not a wrapper around one. It already forwards every read member to a resolved record it builds internally, so as a subclass it inherits all of them and adds only what it has beyond them:
+
+```python
+class WorkingRecord(Record):
+    """A `Record` whose last source is a staging area."""
+```
+
+The `NodeCache` it holds is the base's with a `StagedSource` appended, which is [what the last proposal established](staging-as-a-layer.md) — so "a record with pending edits" is literally "a record whose last layer is unwritten", in the type as well as in the fold. The `_resolved` property and the internal `LayeredRecord` it constructs both go: `self` is the resolved record.
+
+Two constraints this puts on the base class, neither of which is an obstacle:
+
+- **`frozen=True` has to accommodate a staging area.** `_staged` is mutated per edit, and a frozen dataclass holds a mutable container fine — `DirectoryRecord._flags_cache` does it today via `object.__setattr__` in `__post_init__`. What must stay true is that the _`NodeCache`_ is fixed at construction, which it is: a staged edit changes the tables the last source reads, never which sources there are.
+- **Every read member must be inherited unchanged.** That is the property worth having and worth asserting — a member `WorkingRecord` overrides is a member where staging is not just another layer, which is the duplication [the last proposal existed to delete](staging-as-a-layer.md#what-starts-it). `outputs` is the one genuine exception, results not overlaying, and it should carry a comment saying so.
 
 ## What this deletes
 
@@ -71,7 +88,7 @@ So the name has to split. Two options, and this proposal does not pick between t
 
 ## What this does not change
 
-- **`WorkingRecord` stays a separate class.** It has an edit surface — `set`, `add`, `remove`, `commit` — that a read-only record must not grow. What it wraps is its own question, listed under [what it opens](#what-it-opens).
+- **`WorkingRecord` keeps its edit surface.** `set`, `add`, `remove` and `commit` are what it has beyond a `Record`, and a read-only record must not grow them. What changes is only that it _is_ one rather than wrapping one.
 - **`Frames` and `LazyFrames`** are untouched: the laziness contract is the interface's, not the fold's.
 - **No format change.** Nothing on disk moves, and no file is read differently. A directory that reads today reads identically after.
 
@@ -91,8 +108,10 @@ So the name has to split. Two options, and this proposal does not pick between t
 
 **`tools/` must not notice.** It builds from narwhals frames and the PyPSA round-trip is the end-to-end check, so `test_tools.py` passing unchanged is what says the seam held.
 
+**That `WorkingRecord` overrides no read member** is worth asserting directly rather than trusting. Every member it defines beyond `Record`'s should be an edit or a commit; one that is not means staging stopped being just another layer somewhere, which is the failure this whole direction exists to prevent and which no behavioural test would name. `outputs` is the allowed exception, and the assertion should list it explicitly so adding a second requires saying why.
+
 ## What it opens
 
 **Whether `Revision` still needs `record`.** If a record is a `NodeCache` plus an adapter, `Revision.record` and `Revision.node_cache` are one construction apart, and the second is what `materialise` already uses.
 
-**Whether `WorkingRecord` wraps a `NodeCache` rather than a `Record`.** Every use it makes of its base is either the schema, the parent's rows for one kind, or the revision to branch from — all `NodeCache` members. That is a smaller change than this one and does not depend on it, so it should land first.
+**Whether the edit path still needs `self.base`.** `WorkingRecord` reaches its base for the schema, for the parent's rows of one kind (`_axis_frame`, `_complete_owned_whole`), and for the revision to branch from — all `NodeCache` members. Once it _is_ a `Record`, "the base" is the same cache minus the last source, so those become a slice rather than a second object. Smaller than this change and independent of it, so it can land first.
