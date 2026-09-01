@@ -50,6 +50,7 @@ nav:
           - Groups: design/proposals/groups.md
           - Trait switches: design/proposals/trait-switches.md
           - Staging as a layer: design/proposals/staging-as-a-layer.md
+          - One Record over a NodeCache: design/proposals/one-record-over-a-node-cache.md
   - API Reference:
       - api/index.md
       - Record: api/record.md
