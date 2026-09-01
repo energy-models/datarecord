@@ -138,11 +138,11 @@ def test_a_group_over_an_undeclared_dim_is_refused():
 
 
 def test_into_must_name_a_declared_dim():
-    """The axis file is the whole of what a functional group has over a tuple set.
+    """Rejected rather than tolerated, the failure being otherwise silent.
 
-    Worth erroring rather than tolerating: a dim shadows a group of its name, so
-    an `into` naming a dim nobody declared would leave `dims: [country]` quietly
-    expanding to the coordinates instead of naming the axis it meant.
+    A dim shadows a group of its name, so an `into` naming a dim nobody declared
+    would leave `dims: [country]` quietly expanding to the coordinates instead
+    of naming the axis it meant.
     """
     with pytest.raises(ValidationError, match="`into` undeclared dim"):
         _schema(groups={"c": Group(over=["bus"], into="nope")})

@@ -501,8 +501,7 @@ def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
     # Stored bus-keyed, with a role from PyPSA's sign convention. One file for
-    # every type, so the Links are reached by their entities rather than by
-    # picking a file (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+    # every type, so the Links are reached by their entities.
     rows = con.read_parquet(layer_dir(revision.id) + "groups/connection.parquet").df()
     links = rows[rows["entity"].isin(ac_dc.c["Link"].static.index)]
     assert set(links["role"]) == {"input", "output"}

@@ -148,8 +148,7 @@ class Record(Protocol):
         is that attribute's `default`.
 
         No classification column: which buses a country holds is the group
-        `into` it, read from `groups` as a relation rather than denormalised
-        onto the axis it classifies.
+        `into` it, read from `groups`.
 
         Notes
         -----
@@ -177,10 +176,7 @@ class Record(Protocol):
         over `(entity, bus)` is the one every record with connections has, and
         it is one instance rather than a member of its own.
 
-        Not split by component type: a group's rows are keyed by its
-        coordinates, and the type is not one of them - a `corridor` between two
-        buses has no type to split on, and a `contract` between two entities has
-        two, neither of them the row's.
+        Not split by component type, which is no coordinate of a group.
 
         Notes
         -----

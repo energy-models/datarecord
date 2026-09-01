@@ -1288,8 +1288,7 @@ class _NetworkSource:
                 BUS: Dimension(dtype=nw.String(), description="A node of the network."),
                 # The kinds a component may be: the labels are PyPSA's registry,
                 # so an enum rather than a bare string, and a type outside it is
-                # rejected on write. The group below is what classifies `entity`
-                # by it.
+                # rejected on write.
                 ENTITY_TYPE: Dimension(
                     dtype=nw.Enum(sorted(carries)),
                     description="What kind of component an entity is.",
@@ -1300,8 +1299,7 @@ class _NetworkSource:
                     over={"entity": ENTITY, "bus": BUS},
                     description="A component's attachment to one bus.",
                 ),
-                # Each component carries exactly one type, which is what `into`
-                # declares - the functional group that makes `entity_type` the
+                # `into` over `entity` alone is what makes `entity_type` the
                 # entity-type axis (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
                 ENTITY_TYPE: Group(
                     over={ENTITY: ENTITY},
@@ -1348,9 +1346,8 @@ class _NetworkSource:
         Generator's one `bus` is as much a connection as a Link's `bus0`,
         and `c.ports == [""]` makes `_port_attribute` name it correctly.
 
-        The entity-type group is not here: which type each component is comes
-        from `dims/entity.parquet`, derived on write from the per-type member
-        files rather than handed over (`_write_entity_axis`).
+        The entity-type group is not here, its rows being derived on write from
+        the per-type member frames (`_write_entity_axis`).
 
         Notes
         -----
@@ -1372,8 +1369,9 @@ class _NetworkSource:
             if frames
             else pd.DataFrame(columns=["entity", "bus", "role"])
         )
-        # No `entity_type`: a connection is keyed by `(entity, bus)`, and the
-        # type follows from the entity (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        # A stochastic network repeats its connections per scenario, which
+        # collapse to one row: an attachment exists or it does not, so nothing
+        # scopes it per value of an axis (`_tagged` says the same of members).
         if SCENARIO in rows.columns:
             rows = rows.drop(columns=[SCENARIO]).drop_duplicates(
                 subset=["entity", "bus"]
@@ -1636,10 +1634,8 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
     placed before outputs, so `bus0` is the input end PyPSA's sign convention
     expects.
 
-    Scoped to `ctype` by the entities the record says are of it: one
-    `groups/connection.parquet` holds every type's rows, keyed by `(entity,
-    bus)`, so the type is reached through the entity rather than by picking a
-    file (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+    Scoped to `ctype` by that type's entities, one frame holding every type's
+    connections.
 
     Notes
     -----

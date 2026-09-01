@@ -104,16 +104,12 @@ class Pending:
     second group is counted rather than silently omitted. A group with nothing
     staged is absent rather than present-and-empty.
 
-    Not split by component type: a group's rows are keyed by its coordinates and
-    the type is not one of them (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+    Not split by component type, which is no coordinate of a group
+    (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
     """
 
     tombstones: Mapping[str, int] = field(default_factory=dict)
-    """Deletions staged, per component type for components and per group for its rows.
-
-    Keyed by whatever identifies what was deleted: a component tombstone by its
-    type, a group's by the group's name, that being all its rows are keyed by.
-    """
+    """Deletions staged: a component's under its type, a group row's under its group."""
 
     def __bool__(self) -> bool:
         """Whether anything is staged."""
@@ -525,8 +521,8 @@ class WorkingRecord:
     def groups(self) -> Frames:
         """Each declared group's rows, with pending ones applied.
 
-        Keyed by group alone: a group's rows are keyed by its coordinates, and
-        the component type is not one of them (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        Keyed by group alone, the component type being no coordinate of one
+        (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
 
         Notes
         -----
@@ -1836,8 +1832,7 @@ class WorkingRecord:
         every group is added through, `connection` being one instance rather
         than a case of its own.
 
-        No component type: a group's rows are keyed by its coordinates, and a
-        `corridor` between two buses has no type to be added under
+        No component type, which is no coordinate of a group
         (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
 
         Notes
@@ -1863,11 +1858,10 @@ class WorkingRecord:
         )
 
     def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None:
-        """Stage a tombstone per key, over one declared group's key coordinates.
+        """Stage a tombstone per key, over one declared group's `group_key`.
 
-        `disconnect` is this call for the `connection` group. A functional
-        group's `into` label is not part of a key: the tuple is what is removed,
-        whatever label it carried.
+        `disconnect` is this call for the `connection` group. An `into` label is
+        no part of a key: the tuple is removed, whatever label it carried.
 
         Notes
         -----
@@ -1932,8 +1926,8 @@ class WorkingRecord:
         def total(kind: str, *, deleted: bool) -> int:
             """One group's staged rows, live or tombstoned.
 
-            No `GROUP BY`: a group's rows carry no `entity_type` to count per
-            (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+            No `GROUP BY`, unlike `counts`: a group's rows carry no
+            `entity_type` to count per.
             """
             rel = self._rows(kind)
             if rel is None:
@@ -1950,9 +1944,8 @@ class WorkingRecord:
         for group in self.schema.groups:
             removed = total(group, deleted=True)
             if removed:
-                # Under the group's own name: its rows have no component type
-                # to attribute a deletion to, and inventing one would claim a
-                # `corridor` deletion for whichever end was looked at first.
+                # Under the group's own name, its rows having no component type
+                # to attribute a deletion to.
                 dead[group] = dead.get(group, 0) + removed
             live = total(group, deleted=False)
             if live:
@@ -2049,15 +2042,13 @@ class WorkingRecord:
         return _latest_per(rel, ("entity",))
 
     def _collapsed_group(self, group: str) -> DuckDBPyRelation | None:
-        """One group's staged rows, last-write-wins per key.
+        """One group's staged rows, last-write-wins per `group_key`.
 
-        `group_key` rather than every coordinate: a functional group's `into`
-        label follows from the key, so restating a tuple with a different label
-        is an edit to it rather than a second row.
+        Not per coordinate: restating a tuple with a different `into` label is
+        an edit to it rather than a second row.
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
         rel = self._rows(group)
@@ -2204,12 +2195,7 @@ class WorkingRecord:
         )
 
     def _staged_groups(self) -> Frames:
-        """The staged group rows, keyed by group - one frame each.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        """
+        """The staged group rows, keyed by group - one frame each."""
         staged = {
             g: rel
             for g in self.schema.groups
@@ -2247,9 +2233,8 @@ class WorkingRecord:
         looked up by) while a layer's file carries it, so it is added
         back for any type the staging area did not already rebuild.
 
-        A group needs no counterpart: its file carries no type at all, so what
-        `groups` hands over is already the shape written
-        (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        Components only: a group's file carries no type, so `groups` already
+        hands over the shape written.
 
         Notes
         -----
@@ -2435,8 +2420,8 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
     """One axis's staged columns: its key, plus the attributes it carries.
 
     The shape of `dims/{dim}.parquet` for the attributes addressed by `dim`
-    alone (`attributes_on`). A mapping's classification column is not here: it
-    lives on the axis it classifies, and no edit stages one.
+    alone (`attributes_on`). No classification column: a group `into` this axis
+    is its own file, which no edit stages here.
 
     Notes
     -----

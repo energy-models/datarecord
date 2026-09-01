@@ -91,9 +91,8 @@ def write_connections(layer: str, rows: list[dict]) -> None:
     Each row needs `entity` and `bus`; `role` describes the connection and keys
     nothing, so it is optional here.
 
-    No component type: a connection is keyed by `(entity, bus)` and the type
-    follows from the entity, so one file holds every type's rows. Appended
-    rather than replaced, since a layer may write them a call at a time.
+    No component type - one file holds every type's rows. Appended rather than
+    replaced, since a layer may write them a call at a time.
 
     Notes
     -----
@@ -423,9 +422,8 @@ def schema(
     }
     return Schema(
         groups={g: Group(over=over) for g, over in groups.items()}
-        # The functional group that makes `entity_type` the entity-type axis:
-        # each component carries exactly one type, which is what `into` declares
-        # (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
+        # `into` over `entity` alone is what makes `entity_type` the
+        # entity-type axis (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
         | {"entity_type": Group(over=["entity"], into="entity_type")},
         dimensions={
             d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))

@@ -110,9 +110,6 @@ def write_record(
         kinds = [
             ("dims", source.dims, "dims"),
             ("components", source.components, "dims/components"),
-            # One file per group, keyed by its coordinates: `groups/` rather
-            # than a `<Type>` split under `dims/`, the type not being one of
-            # them (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
             ("groups", source.groups, "groups"),
             ("attributes", source.attributes, "inputs"),
         ]
@@ -234,8 +231,9 @@ def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) ->
     landing as arrow `null` for one type and `string` for another.
 
     `entity_type` is a column of this axis and of no attribute row, which is
-    what makes `attributes_for` reachable from an entity alone. Being a mapping
-    it has an axis file of its own too, carrying the attributes addressed by the
+    what makes `attributes_for` reachable from an entity alone. This is where
+    the entity-type group's rows live, in place of a `groups/` file. The type
+    has an axis file of its own too, carrying the attributes addressed by the
     type alone - written from `source.dims` like any axis, not derived here.
 
     Notes
@@ -410,17 +408,13 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
                 f"its labels identify a point only within them (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)"
             )
             raise ValueError(msg)
-        # An attribute addressed by this axis alone is a column here and
-        # resolves to its `default` where no layer wrote one. Not required: a
-        # record may declare one before any layer sets it
-        # (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        # An attribute addressed by this axis alone is a column here, and not
+        # required: a record may declare one before any layer sets it, which
+        # resolves to its `default` (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
         #
-        # No classification column: a group `into` this axis is its own file, so
-        # a `country` column on `dims/bus.parquet` is now an extra like any
-        # other. A column no declaration accounts for is rejected, as a long
-        # frame's extras are: an axis file's payload is the schema's to state,
-        # and one riding along uninvited would be read back as data nothing
-        # knows the dtype or meaning of.
+        # A column no declaration accounts for is rejected, as a long frame's
+        # extras are: one riding along uninvited would be read back as data
+        # nothing knows the dtype or meaning of.
         known = (
             set(schema.axis_key(key))
             | set(schema.attributes_on(key))
@@ -430,11 +424,9 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
             # be a long frame written to the wrong place.
             | {"deleted", "order_key"}
         )
-        # `dims/entity.parquet` is the one axis file carrying a classification,
-        # because a component's type is what `attributes_for` is reached
-        # through: the entity-type group is derived here from the per-type
-        # member files (`_write_entity_axis`) rather than handed over, so it has
-        # no `groups/` file of its own to live in.
+        # The one classification column an axis file carries, every other group
+        # being its own file: the entity-type group's rows are derived here
+        # (`_write_entity_axis`) rather than handed over (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
         if key == "entity" and schema.entity_type_dim is not None:
             known.add(schema.entity_type_dim)
         extra = sorted(columns - known)
@@ -442,17 +434,15 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
             msg = (
                 f"dims/{key}.parquet carries columns {extra} the schema does not "
                 f"declare for the {key!r} axis; an axis file holds its key and "
-                f"the attributes addressed by it alone, a classification being "
-                f"a group's own file (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+                f"the attributes addressed by it alone (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
             )
             raise ValueError(msg)
         return
 
     if kind != "groups" or key not in schema.groups:
         return
-    # A group's row is keyed by its coordinates, so a frame lacking one would
-    # be keyed by a column that is not there. A functional group's `into` is
-    # among them, that being the label its tuples carry.
+    # A group's row is keyed by its coordinates, `into` among them, so a frame
+    # lacking one would be keyed by a column that is not there.
     missing = sorted(set(schema.group_coordinates(key)) - columns)
     if missing:
         msg = (

@@ -237,9 +237,8 @@ class LayeredRecord:
     def groups(self) -> LazyFrames:
         """Each declared group's rows, keyed by group - one frame each.
 
-        Only groups some layer wrote a row of, as `components` is only the types
-        that have members: a declared group nothing populates is absent rather
-        than present-and-empty.
+        Only groups some layer wrote a row of; a declared group nothing
+        populates is absent rather than present-and-empty.
 
         Notes
         -----

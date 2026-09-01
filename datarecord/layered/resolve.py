@@ -344,11 +344,10 @@ def _component_deleted(
 def _group_deleted(
     group: str, revision_id: UUID, keys: Dims, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """This layer's tombstoned rows of one group, keyed by its key coordinates.
+    """This layer's tombstoned rows of one group, keyed by `group_key`.
 
-    `group_key` rather than every coordinate: a functional group's `into` label
-    follows from the key, so a tombstone names the tuple being removed and not
-    the label it happened to carry.
+    Not every coordinate: a tombstone names the tuple removed, not the `into`
+    label it carried.
 
     Notes
     -----
@@ -1181,13 +1180,11 @@ class NodeCache:
     def group_frame(self, group: str) -> DuckDBPyRelation | None:
         """One group's rows, resolved from that group's owner map.
 
-        Not per type: a group's rows are keyed by its coordinates and the type
-        is not one of them (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        Not per type, which is no coordinate of a group.
 
-        Carries every non-key column of the row - `role` on a connection, say,
-        and the `into` label a functional group's tuples carry. Those describe
-        the row rather than keying it, so the fold does not track them and they
-        come straight from the owning layer's file.
+        Carries every non-key column of the row - `role` on a connection, an
+        `into` label. The fold does not track those, so they come straight from
+        the owning layer's file.
 
         Notes
         -----

@@ -280,23 +280,15 @@ class Group(BaseModel):
     rather than dims because two of them may draw on the same axis: a corridor
     between two entities is `(from, to)`, which a set of dims could not spell.
 
-    `into` is what makes a group a *mapping* in the narrow sense: each tuple of
-    `over` carries exactly one label of it. Declaring it adds the constraint and
-    the `by=` aggregation it licenses, and nothing else - the coordinates it
-    implies are folded into `coordinates` at parse, so no read path branches on
-    whether a group has one.
-
     Attributes
     ----------
     over
-        Coordinate name -> the dim it draws its labels from. A list where the
-        two coincide, which is sugar for the dict with identical keys and
-        values; a dict where they do not, as `corridor`'s `{from: bus, to: bus}`
-        needs to draw two coordinates from one dim.
+        Coordinate name -> the dim it draws its labels from. A list is sugar for
+        the dict with identical keys and values; the dict form is what lets two
+        coordinates draw on one dim, as `corridor`'s `{from: bus, to: bus}` does.
     into
         The dim each tuple of `over` carries exactly one label of, or `None` for
-        a bare tuple set. Must name a declared dim, that dim's axis file being
-        the whole of what a functional group has over a tuple set.
+        a bare tuple set. Must name a declared dim.
     description
         What the group is, in prose. Never interpreted.
 
@@ -319,16 +311,11 @@ class Group(BaseModel):
 
     @property
     def coordinates(self) -> tuple[str, ...]:
-        """The columns a row of this group is keyed by, in declaration order.
-
-        `into`'s dim is one of them: a functional group's file carries the label
-        it maps to, so `country` over `[bus]` is keyed `bus | country` exactly as
-        `connection` is keyed `entity | bus`. That is what lets every path
-        downstream read this and never consult `into`.
+        """This group's columns in declaration order, `into` last where declared.
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [into](https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)
         """
         if self.into is None:
             return tuple(self.over)
@@ -338,12 +325,11 @@ class Group(BaseModel):
     def key(self) -> tuple[str, ...]:
         """The coordinates a row is unique over: `coordinates` minus `into`.
 
-        The same thing for a group without `into`, whose rows are keyed by all
-        of them. What the uniqueness constraint `into` declares is checked on.
+        Every coordinate for a group without one.
 
         Notes
         -----
-        - [why `into` is the right field](https://energy-models.github.io/datarecord/design/schema/#why-into-is-the-right-field)
+        - [into](https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)
         """
         return tuple(self.over)
 
@@ -467,24 +453,18 @@ class Schema(BaseModel):
             raise ValueError(msg) from e
 
         # A group's coordinates draw their labels from declared dims, and so
-        # does `into`. Its name may collide with a dim's - addressing resolves
-        # the dim namespace first (https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x), so a collision is shadowing rather
-        # than an ambiguity.
+        # does `into`. No check that the name is free of the dims: a collision
+        # is shadowing rather than an ambiguity (https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x).
         for group, group_spec in self.groups.items():
             unknown = sorted(set(group_spec.over.values()) - declared)
             if unknown:
                 msg = f"group {group!r} is over undeclared dims {unknown}"
                 raise ValueError(msg)
-            # Erroring rather than tolerating, because the failure is otherwise
-            # silent: an `into` naming a dim nobody declared leaves `dims:
-            # [country]` quietly expanding to the group's coordinates instead of
-            # naming the axis it was meant to.
             if group_spec.into is not None and group_spec.into not in declared:
                 msg = (
                     f"group {group!r} is `into` undeclared dim "
                     f"{group_spec.into!r}; `into` names the axis whose labels "
-                    f"the group's tuples carry, which must be declared for it "
-                    f"to have an axis file (https://energy-models.github.io/datarecord/design/schema/#into-must-name-a-declared-dim)"
+                    f"the group's tuples carry (https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)"
                 )
                 raise ValueError(msg)
             if group_spec.into is not None and group_spec.into in group_spec.over:
@@ -495,9 +475,8 @@ class Schema(BaseModel):
                 )
                 raise ValueError(msg)
 
-        # One group may classify `entity`, or none. Two vocabularies over one
-        # axis have no resolved answer for what a component carries, and every
-        # caller of `attributes_for` asks for exactly one.
+        # One group may classify `entity`, or none: every caller of
+        # `attributes_for` asks for exactly one vocabulary.
         classifying = sorted(
             g.into
             for g in self.groups.values()
@@ -520,11 +499,6 @@ class Schema(BaseModel):
                     f"dims or groups {unknown}"
                 )
                 raise ValueError(msg)
-            # A functional group's `into` dim and the coordinates it maps from
-            # cannot both key one attribute: `into` declares the second to be
-            # determined by the first, so the row would be keyed twice over and
-            # free to disagree with the group's own file
-            # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
             for group, group_spec in self.groups.items():
                 if group_spec.into is None or group_spec.into not in attr_spec.dims:
                     continue
@@ -546,11 +520,11 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"trait {trait!r} bundles undeclared attributes {unknown}"
                 raise ValueError(msg)
-            # Only the entity-type axis may scope a trait. Any other mapping
-            # would make the vocabulary depend on data rather than on the
-            # schema - which attributes a component carries would follow from
-            # what its bus maps to, a per-entity lookup every caller of
-            # `attributes_for` treats as answerable from the schema alone.
+            # Only the entity-type axis may scope a trait. Any other
+            # classification would make the vocabulary depend on data rather
+            # than on the schema - which attributes a component carries would
+            # follow from what its bus maps to, a per-entity lookup every caller
+            # of `attributes_for` treats as answerable from the schema alone.
             for dim in trait_spec.on:
                 if dim != entity_type:
                     msg = (
@@ -622,9 +596,8 @@ class Schema(BaseModel):
           bus axis - a sparse subset only the group's table knows.
 
         A functional group's `into` dim is *not* excluded, though it is one of
-        the group's `coordinates`: `key` is what addresses a row, and `country`
-        is an ordinary axis whose NULL means "every country" exactly as any
-        other dim's does.
+        the group's `coordinates`: only `key` addresses a row, so `country`
+        broadcasts like any other axis.
 
         The complement of this is what `Schema` requires to be `partial`: a dim
         whose values are addressed individually is one a layer patches value by
@@ -651,9 +624,8 @@ class Schema(BaseModel):
         is declared, and otherwise the group of that name expanded to its
         coordinates**. So `dims={"connection", "snapshot"}` gives `("entity",
         "bus", "snapshot")` where no dim `connection` exists, and
-        `dims={"country"}` gives `("country",)` - the dim, not the group that
-        shares its name, because a value that is genuinely per-country belongs
-        on the axis rather than expanded to the buses it maps from.
+        `dims={"country"}` gives `("country",)` - the dim, where a group of that
+        name is shadowed.
 
         Per attribute rather than schema-wide: one file per attribute means one
         column set per attribute, and an all-NULL `entity` on a record-level
@@ -701,41 +673,17 @@ class Schema(BaseModel):
     def entity_type_dim(self) -> str | None:
         """The dim classifying `entity`, or `None` where none does.
 
-        The `into` of the group over `entity` alone: a functional group from
-        components to a label set is what says every component has exactly one
-        type. At most one, the schema rejecting a second since two vocabularies
-        over one axis have no resolved answer for what a component carries.
+        The `into` of the group over `entity` alone, of which the schema admits
+        at most one.
 
         Notes
         -----
         - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         return next(
             (
                 g.into
                 for g in self.groups.values()
-                if g.into is not None and tuple(g.over.values()) == ("entity",)
-            ),
-            None,
-        )
-
-    @property
-    def entity_type_group(self) -> str | None:
-        """The group whose `into` is the entity-type axis, or `None`.
-
-        The relation itself where `entity_type_dim` is the axis it maps to -
-        needed wherever the *rows* are reached rather than the labels, the
-        entity axis file being where they are stored.
-
-        Notes
-        -----
-        - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
-        """
-        return next(
-            (
-                name
-                for name, g in self.groups.items()
                 if g.into is not None and tuple(g.over.values()) == ("entity",)
             ),
             None,
@@ -880,14 +828,11 @@ class Schema(BaseModel):
         Keyed off `dims` rather than `coordinates_of`, because a group with one
         coordinate is indistinguishable there: `dims={"connection"}` over a
         single `bus` coordinate also yields `("bus",)`, and it belongs in the
-        group's table rather than on the bus axis. `dim` being a declared
-        dimension is what makes the test exact - a name shared with a group
-        resolves to the dim (`coordinates_of`), so the group never reaches here.
+        group's file rather than on the bus axis.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
         """
         if dim == "entity" or dim not in self.dimensions:
             return ()
@@ -949,13 +894,11 @@ class Schema(BaseModel):
         `connection` group - not because a separate field says so. That is
         what lets a second group exist without a second field.
 
-        A group a dim shadows is not one of them: `dims: [country]` names the
-        axis, so an attribute over it is a column of `dims/country.parquet`
-        rather than a row of the group that maps buses into it.
+        A group a dim shadows is not one of them, `dims: [country]` naming the
+        axis.
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
         """
         spec = self.attributes.get(attribute)
@@ -966,11 +909,10 @@ class Schema(BaseModel):
         )
 
     def group_coordinates(self, group: str) -> tuple[str, ...]:
-        """One group's coordinate columns, or `()` if it is not declared.
+        """One group's columns, or `()` if it is not declared.
 
-        Every column of the group's file: what a row is keyed by, plus the
-        `into` label a functional group's tuples carry. Coordinate names rather
-        than dim names, so two drawing on one axis stay two columns.
+        Every column of the group's file, `into` included. Coordinate names
+        rather than dim names, so two drawing on one axis stay two columns.
 
         Notes
         -----
@@ -982,13 +924,12 @@ class Schema(BaseModel):
     def group_key(self, group: str) -> tuple[str, ...]:
         """One group's key columns, or `()` if it is not declared.
 
-        `group_coordinates` minus `into`: what a row is unique over, which is
-        what the fold keys ownership by and what a tombstone names. The same
-        thing as `group_coordinates` for a group with no `into`.
+        `group_coordinates` minus `into` - what the fold keys ownership by and
+        what a tombstone names.
 
         Notes
         -----
-        - [why `into` is the right field](https://energy-models.github.io/datarecord/design/schema/#why-into-is-the-right-field)
+        - [into](https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         spec = self.groups.get(group)
@@ -1018,14 +959,12 @@ class Schema(BaseModel):
     def group_columns(self, group: str) -> tuple[str, ...]:
         """One group's owner-map column set: its key, plus what it carries.
 
-        No `entity_type`: a group's rows are keyed by its coordinates and the
-        type is not one of them, so leading with it privileged `entity` among
-        the coordinates and had nothing to say for a `corridor` between two
-        buses (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        No `entity_type`, unlike `component_columns`: the type is no coordinate
+        of a group.
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         return (*self.group_key(group), "layer_uuid", "order_key")
