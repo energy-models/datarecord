@@ -4,12 +4,6 @@ What `Record` (read-only) and `write_record` (a whole record at once) do not
 cover. Accumulate-then-commit: an edit costs a row in a staging table rather
 than a rewrite, and nothing touches the record until `commit()`.
 
-Every import from `layered/` is in a function body, and none of them is a
-cycle - the graph is a DAG either way. It is so that this module names the fold
-at runtime only: `StagedSource` satisfies `LayerSource` structurally rather
-than by inheriting it, which is what keeps a staging area from being something
-`layered/` has to know about.
-
 Notes
 -----
 - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)
@@ -22,7 +16,7 @@ import re
 from collections.abc import Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 from uuid import UUID, uuid4
 
 import duckdb
@@ -34,6 +28,7 @@ from duckdb import DuckDBPyRelation, Expression
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
+from datarecord.directory import DirectoryRecord
 from datarecord.duck import (
     DuckTypes,
     as_relation,
@@ -41,6 +36,10 @@ from datarecord.duck import (
     null_safe,
     union_all_by_name,
 )
+from datarecord.layered.resolve import NodeCache
+from datarecord.layered.revision import LayeredRecord, Revision
+from datarecord.layered.sources import DirectorySource
+from datarecord.layered.write import write_record
 from datarecord.record import (
     EMPTY,
     Flags,
@@ -74,7 +73,7 @@ class NewChild:
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
 
-    record: Any = None  # a Revision; typed loosely to keep this module import-free
+    record: Revision | None = None
 
 
 @dataclass(frozen=True)
@@ -548,7 +547,7 @@ class WorkingRecord:
         return self._base.schema
 
     @property
-    def _resolved(self) -> Any:
+    def _resolved(self) -> LayeredRecord:
         """This record as a `LayeredRecord` over the base plus the staged layer.
 
         Rebuilt per access rather than cached, and cheap because it is: a
@@ -561,8 +560,6 @@ class WorkingRecord:
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
         """
-        from datarecord.layered.revision import LayeredRecord
-
         staged = StagedSource(self, self._layer_id)
         return LayeredRecord(self._base.with_source(staged))
 
@@ -2070,7 +2067,7 @@ class WorkingRecord:
             outputs=self.outputs,
         )
 
-    def _base_revision(self) -> Any:
+    def _base_revision(self) -> Revision:
         """The `Revision` this record's base resolves, for `NewChild()`'s default.
 
         Only a base that is a node in the tree has one, which is asked of the
@@ -2082,8 +2079,6 @@ class WorkingRecord:
         creates the table, so a connection without one was made by hand and has
         no tree in it either.
         """
-        from datarecord.layered.revision import Revision
-
         try:
             return Revision.get(self._base.revision_id, self.con)
         except (KeyError, duckdb.Error):
@@ -2095,14 +2090,23 @@ class WorkingRecord:
             )
             raise ValueError(msg) from None
 
-    def commit(self, target: Target) -> Any:
+    @overload
+    def commit(self, target: NewChild) -> Revision: ...
+
+    @overload
+    def commit(self, target: Directory) -> None: ...
+
+    def commit(self, target: Target) -> Revision | None:
         """Write everything staged and clear it.
 
         Returns
         -------
         The new child for a `NewChild` target, so the caller can read what it
         just wrote without going back to the record table; `None` for a
-        `Directory`, which belongs to no record.
+        `Directory`, which belongs to no record. Overloaded on the target, so a
+        caller committing to a child holds a `Revision` rather than an optional
+        one - which target it passed is what decides, and it is always literal
+        at the call site.
 
         The layer lands in the *child*, never in the node that was branched
         from - layers are write-once - so it is the returned node that
@@ -2113,8 +2117,6 @@ class WorkingRecord:
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        from datarecord.layered.write import write_record
-
         if isinstance(target, NewChild):
             parent = (
                 target.record if target.record is not None else self._base_revision()
@@ -2128,7 +2130,7 @@ class WorkingRecord:
         return None
 
 
-def _base_node_cache(base: Record, con: DuckDBPyConnection) -> Any:
+def _base_node_cache(base: Record, con: DuckDBPyConnection) -> NodeCache:
     """What `base` resolves from, as a `NodeCache` a staged layer can extend.
 
     A `LayeredRecord` already has one. A `DirectoryRecord` is a parquet
@@ -2151,11 +2153,6 @@ def _base_node_cache(base: Record, con: DuckDBPyConnection) -> Any:
     -----
     - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
     """
-    from datarecord.directory import DirectoryRecord
-    from datarecord.layered.resolve import NodeCache
-    from datarecord.layered.revision import LayeredRecord
-    from datarecord.layered.sources import DirectorySource
-
     if isinstance(base, LayeredRecord):
         return base.node_cache
     if isinstance(base, DirectoryRecord):

@@ -41,8 +41,9 @@ class LayerSource(Protocol):
     stays in the fold, which is the point: an implementation computing any of it
     would be a second copy of the fold.
 
-    Structural, so an implementation needs no import from here - which is what
-    lets `mutable.py` satisfy it without importing `layered` at module level.
+    Structural, so an implementation needs no import from here: `mutable.py`'s
+    `StagedSource` satisfies it by shape alone, and a source outside this
+    package would too.
 
     Attributes
     ----------
