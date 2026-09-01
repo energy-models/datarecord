@@ -15,6 +15,7 @@ from datarecord.directory import DirectoryRecord
 from datarecord.duck import layer_dir, resolved_dir
 from datarecord.layered.revision import LayeredRecord
 from datarecord.layered.write import write_record
+from datarecord.mutable import WorkingRecord
 from datarecord.record import EMPTY, Flags, Frames, Record
 from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
@@ -33,9 +34,23 @@ def written(con, base_uri, ac_dc):
 
 @pytest.fixture
 def both(written, con):
+    """Every way of reading one record, the layered one first.
+
+    A `WorkingRecord` with nothing staged is one of them: it satisfies `Record`,
+    so it owes the same answers as the base it wraps - over a layered base and
+    over a directory base alike.
+
+    Notes
+    -----
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+    """
+    node = LayeredRecord(written.node_cache)
+    directory = DirectoryRecord(layer_dir(written.id), con)
     return (
-        LayeredRecord(written.node_cache),
-        DirectoryRecord(layer_dir(written.id), con),
+        node,
+        directory,
+        WorkingRecord(node, con),
+        WorkingRecord(directory, con),
     )
 
 
@@ -124,31 +139,34 @@ def test_revision_exposes_its_record(written):
 
 
 def test_backings_agree_on_every_key_set(both):
-    """One record, two ways of reading it: the keys must not depend on which."""
-    node, directory = both
-    for member in MEMBERS:
-        assert list(getattr(node, member)) == list(getattr(directory, member)), member
+    """One record, several ways of reading it: the keys must not depend on which."""
+    node, *rest = both
+    for other in rest:
+        for member in MEMBERS:
+            assert list(getattr(node, member)) == list(getattr(other, member)), member
 
 
 def test_backings_agree_on_flags(both):
-    """Owner map and file aggregate answer the same question.
+    """Owner map, file aggregate and staged union answer the same question.
 
     Notes
     -----
     - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
     """
-    node, directory = both
-    for ctype in sorted(node.entity_types):
-        assert node.flags(ctype) == directory.flags(ctype), ctype
+    node, *rest = both
+    for other in rest:
+        for ctype in sorted(node.entity_types):
+            assert node.flags(ctype) == other.flags(ctype), ctype
 
 
 def test_backings_agree_on_rows(both):
-    """A single-layer record resolves to the same rows either way."""
-    node, directory = both
-    for attribute in node.attributes:
-        left = node.attributes[attribute].collect().to_native()
-        right = directory.attributes[attribute].collect().to_native()
-        assert len(left) == len(right), attribute
+    """A single-layer record resolves to the same rows every way."""
+    node, *rest = both
+    for other in rest:
+        for attribute in node.attributes:
+            left = node.attributes[attribute].collect().to_native()
+            right = other.attributes[attribute].collect().to_native()
+            assert len(left) == len(right), attribute
 
 
 # -- laziness (https://energy-models.github.io/datarecord/design/record/#frames, https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations) ---------------------------------------------------
@@ -156,7 +174,7 @@ def test_backings_agree_on_rows(both):
 
 def test_frames_stay_unmaterialised(both):
     """An overlay-backed frame is a DuckDB plan, not a materialised table."""
-    node, _ = both
+    node, *_ = both
     frame = node.attributes["p_max_pu"]
     assert isinstance(frame, nw.LazyFrame)
     assert frame.implementation == nw.Implementation.DUCKDB
@@ -481,10 +499,9 @@ def test_outputs_is_an_ordinary_record_member(both, con, base_uri):
     - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
     - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
     """
-    node, directory = both
     # No separate protocol to satisfy: an unsolved record answers with an empty
     # mapping, the same way every other member answers for what it lacks.
-    for record in (node, directory):
+    for record in both:
         assert isinstance(record, Record)
         assert list(record.outputs) == []
 
