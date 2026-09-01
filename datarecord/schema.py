@@ -93,7 +93,12 @@ def _parse_dtype(value: Any) -> nw.dtypes.DType:
 STRUCTURAL_TYPES = {
     "attribute": nw.String(),
     "breakpoint": nw.Float64(),
-    "order_key": nw.Int64(),
+    # `(depth, row)`: the source's position, root first, then file order
+    # within it - a restated key keeps its introducing pair rather than being
+    # renumbered by depth-of-restatement (https://energy-models.github.io/datarecord/design/proposals/staging-as-a-layer.md#what-lands-first-and-separately).
+    # DuckDB orders structs lexicographically by field, so `ORDER BY
+    # order_key` still means "first introduced, root first".
+    "order_key": nw.Struct({"depth": nw.Int64(), "row": nw.Int64()}),
     "deleted": nw.Boolean(),
     "breakpoints": nw.Boolean(),
 }

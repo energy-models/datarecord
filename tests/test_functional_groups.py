@@ -203,7 +203,7 @@ def test_a_chain_is_a_join_over_two_group_files(con, base_uri):
     assert groups["state"].collect().to_native().to_pydict() == {
         "bus": ["north"],
         "state": ["lower"],
-        "order_key": [0],
+        "order_key": [{"depth": 0, "row": 1}],
     }
     assert dict(
         zip(
@@ -211,6 +211,46 @@ def test_a_chain_is_a_join_over_two_group_files(con, base_uri):
             groups["country"].collect().to_native()["country"].to_pylist(),
         )
     ) == {"lower": "DE"}
+
+
+def test_order_key_depth_survives_a_restate_through_a_materialised_parent(
+    con, base_uri
+):
+    """A key introduced at the root and restated in a materialised child keeps
+    its introducing `(depth, row)`, and the grandchild's own rows number from
+    the parent's deepest `depth` rather than its position in the ancestry.
+
+    Pins `order_key` as a struct rather than the arithmetic-across-layers
+    scalar it replaces (https://energy-models.github.io/datarecord/design/proposals/staging-as-a-layer.md#what-lands-first-and-separately):
+    the parent's rows pass through the anti-join with their own key intact, so
+    restating a group at depth 1 must not bump `north`'s depth away from 0.
+    """
+    schema = _budget_schema()
+    write_schema(schema)
+
+    root = Revision.create(con)
+    write_group(layer_dir(root.id), "state", [{"bus": "north", "state": "lower"}])
+
+    child = root.child()
+    write_group(layer_dir(child.id), "state", [{"bus": "south", "state": "upper"}])
+    child.materialise()
+
+    grandchild = child.child()
+    write_group(layer_dir(grandchild.id), "state", [{"bus": "east", "state": "lower"}])
+
+    rows = (
+        grandchild.record.groups["state"]
+        .sort("order_key")
+        .collect()
+        .to_native()
+        .to_pydict()
+    )
+    assert rows["bus"] == ["north", "south", "east"]
+    assert rows["order_key"] == [
+        {"depth": 0, "row": 1},
+        {"depth": 1, "row": 1},
+        {"depth": 2, "row": 1},
+    ]
 
 
 def test_an_attribute_addressed_by_the_into_dim_alone_is_a_column_of_its_axis(

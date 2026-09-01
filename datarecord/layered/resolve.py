@@ -621,10 +621,18 @@ def _fold_ordered(
                 fn.min(col("_row")).alias("_row"),
             ]
         )
+        # `depth` is one past the parent's deepest contribution - determined
+        # by the parent's own rows, never by this layer's position in the
+        # ancestry list (https://energy-models.github.io/datarecord/design/proposals/staging-as-a-layer.md#what-lands-first-and-separately).
+        # `row` is file order within this layer alone. DuckDB orders structs
+        # lexicographically by field, so `ORDER BY order_key` still means
+        # "first introduced, root first".
         own = con.sql(
             "SELECT * EXCLUDE (_row),"
-            " COALESCE((SELECT max(order_key::BIGINT) FROM parent), -1)"
-            " + row_number() OVER (ORDER BY _row) AS order_key"
+            ' struct_pack("depth" :='
+            "   COALESCE((SELECT max((order_key).depth) FROM parent), -1) + 1,"
+            '   "row" := row_number() OVER (ORDER BY _row)'
+            " ) AS order_key"
             " FROM own"
         )
     kept = parent.set_alias("p")

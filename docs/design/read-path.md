@@ -16,7 +16,7 @@ Key columns first, then what each map carries over them:
 attribute                           entity_type             entity_type
 layer_uuid                          layer_uuid                 layer_uuid
 varies      STRUCT(<dim>: BOOLEAN, ...)   order_key            order_key
-broadcast   STRUCT(<dim>: BOOLEAN, ...)
+broadcast   STRUCT(<dim>: BOOLEAN, ...)   STRUCT(depth, row)   STRUCT(depth, row)
 breakpoints BOOLEAN
 ```
 
@@ -41,11 +41,13 @@ The fold therefore aggregates the type over the group-by instead of grouping on 
 The distinction is load-bearing rather than pedantic: keying on the type would let an entity resolve to two rows, admitting at read time the collision [name uniqueness](format.md#entity-is-unique-across-types) rejects at write time.
 The same holds in the staging area, where `remove` under one type followed by `add` under another must collapse to the later edit ([committing](working-record.md#committing)).
 
-`order_key` is monotonic across the fold history, giving first-introduced order across layers ([axis order](record.md#axis-order)).
+`order_key` is a `STRUCT(depth BIGINT, row BIGINT)`, ordering lexicographically by field — DuckDB's native rule for a struct comparison — so `ORDER BY order_key` gives first-introduced order across layers ([axis order](record.md#axis-order)).
+`depth` is one past the parent map's own deepest `depth` (`-1` folding to `0` for the root), so it depends only on the parent's rows, never on this layer's position in the ancestry list; `row` is file order within that layer alone.
 It is assigned pre-union, per layer, because the fold's own output has no order of its own — a bare `row_number()` over what `UNION ALL` returns would scramble which row counts as first.
+A key introduced at one depth and restated at a deeper one keeps its introducing `(depth, row)`: the parent's rows pass an anti-join with their own key intact, and only a genuinely new row gets a fresh one.
 
 It is **derived, never stored**: no layer's parquet carries it, and [`write_record`](writing.md) writes no such column.
-The fold computes it from each layer file's own row order, so file order is the input and `order_key` the answer, persisted only where a node's maps are [materialised](layers.md#materialised-node-caches).
+The fold computes it from each layer file's own row order, so file order is the input and `order_key` the answer, persisted only where a node's maps are [materialised](layers.md#materialised-node-caches) — where a child folding onto a materialised parent reads that parent's greatest `depth` exactly as it would any unmaterialised ancestor's.
 Nothing sorts eagerly either — the maps carry it as a column, and a consumer wanting order applies `ORDER BY order_key`.
 
 `order_key` is on the components and group maps only; the axes need none, since an axis row's order comes from its file ([axis order](record.md#axis-order)).
