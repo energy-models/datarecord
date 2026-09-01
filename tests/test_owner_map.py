@@ -302,6 +302,6 @@ def test_a_parquet_layer_takes_the_base_it_was_given(tmp_path):
     """Two records on two roots locate their layers apart, as `layer_dir` does."""
     revision_id = uuid4()
     root = str(tmp_path / "elsewhere")
-    assert ParquetLayer(revision_id, root).uri("dims/entity.parquet") == (
+    assert ParquetLayer(revision_id, base_uri=root).uri("dims/entity.parquet") == (
         layer_dir(revision_id, root) + "dims/entity.parquet"
     )

@@ -63,7 +63,7 @@ def ancestry(con: DuckDBPyConnection, revision_id: UUID) -> list[UUID]:
     """Revision ids along the root->node path, root first - resolution order.
 
     The whole path. Truncating it at the nearest materialised node is the
-    reader's business (`resolve.ancestry_to_read`), since whether a node's
+    reader's business (`resolve.sources_to_read`), since whether a node's
     caches exist is a fact about the filesystem rather than about the tree.
 
     Notes
@@ -119,8 +119,8 @@ class Revision(BaseModel):
         """
         if self._node_cache is None:
             full = ancestry(self.con, self.id)
-            to_read = resolve.ancestry_to_read(full, self.con)
-            self._node_cache = NodeCache(self.id, to_read, self.con)
+            sources = resolve.sources_to_read(full, self.con)
+            self._node_cache = NodeCache(self.id, sources, self.con)
         return self._node_cache
 
     @property
@@ -184,7 +184,7 @@ class Revision(BaseModel):
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
-        resolve.materialise(self.id, self.node_cache.ancestry, self.con)
+        resolve.materialise(self.id, self.node_cache.sources, self.con)
         self._node_cache = None
 
     # -- read ---------------------------------------------------------------

@@ -475,53 +475,20 @@ class DuckTypes:
         ).limit(0)  # type: ignore[arg-type]
 
 
-def dims_dirs(ancestry: list[UUID], *, from_cache: bool) -> list[str]:
-    """`dims/`-containing directories for resolving a record's axes.
-
-    `ancestry` is root first, ending in the record being resolved and already
-    truncated at the deepest materialised ancestor (`ancestry_to_read`).
-
-    `from_cache` says whether that truncation found one: it is what
-    `ancestry_to_read` stopped *at*, so with it the first entry contributes its
-    `resolved/dims/` - the fold over everything above it, which is what makes
-    stopping there complete - and without it the walk reached the root and every
-    entry is a raw layer. Told rather than inferred, because the two cases are
-    indistinguishable from the list alone, and naming `resolved/dims/` for a
-    layer that has none would silently skip its axes - `fold_axis` reads a
-    missing file as absent - and drop every label only that layer introduced.
-
-    Every other entry is an unmaterialised intermediate layer and contributes its
-    raw `dims/`. So does the last, which is the record itself, cache or not:
-    stopping at its own cache would return that instead of resolving it.
-
-    The two live in the same record directory but stay distinct paths -
-    `layers/<id>/dims/` against `layers/<id>/resolved/dims/` - so a record read
-    as an ancestor and the same record read as itself never alias.
-
-    Notes
-    -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    """
-    last = len(ancestry) - 1
-    cached = from_cache and last > 0
-    return [
-        (resolved_dir(uid) if cached and depth == 0 else layer_dir(uid)) + "dims/"
-        for depth, uid in enumerate(ancestry)
-    ]
-
-
 def fold_axis(
-    dims_dirs: list[str], filename: str, key: tuple[str, ...], con: DuckDBPyConnection
+    axes: Sequence[DuckDBPyRelation | None],
+    key: tuple[str, ...],
+    con: DuckDBPyConnection,
 ) -> DuckDBPyRelation | None:
-    """Fold a `<dir>/<filename>` axis table over `dims_dirs`, keyed by `key`.
+    """Fold one dim's axis relation over each layer's, keyed by `key`.
 
-    `dims_dirs` is root first, each entry already resolved by the caller to that
-    ancestor's layer or its `resolved/` cache. Last-writer-wins per `key`, which
-    is `Schema.axis_key` - so a nested dim is keyed by `(*parents, dim)` and two
-    periods' identically-labelled timesteps stay distinct. Row order
-    follows the directory that first introduced the key.
+    `axes` is root first, one entry per layer - `None` where that layer has no
+    rows for the dim. Last-writer-wins per `key`, which is `Schema.axis_key`, so
+    a nested dim is keyed by `(*parents, dim)` and two periods' identically
+    labelled timesteps stay distinct. Row order follows the layer that first
+    introduced the key.
 
-    `_row` is tagged **per directory, before any union**: `UNION ALL` defines no
+    `_row` is tagged **per layer, before any union**: `UNION ALL` defines no
     order, so a bare `row_number() OVER ()` over the unioned relation would
     silently scramble which row counts as first-introduced. `_fold_ordered`
     avoids the same pitfall the same way.
@@ -533,8 +500,7 @@ def fold_axis(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     layers = []
-    for depth, dims_dir in enumerate(dims_dirs):
-        rel = try_read_parquet(f"{dims_dir}{filename}", con)
+    for depth, rel in enumerate(axes):
         if rel is None:
             continue
         layers.append(
