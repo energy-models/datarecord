@@ -32,10 +32,6 @@ from datarecord.duck import DuckTypes, ex_all, fn, struct_of, union_all_by_name
 from datarecord.record import EMPTY, Flags, Frames, LazyFrames, Record
 from datarecord.schema import LONG_TAIL, Schema
 
-# The one group `connect`/`disconnect` name: they are a connection's own API,
-# where `groups` is the general one.
-CONNECTION = "connection"
-
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
 
@@ -100,11 +96,8 @@ class Pending:
     groups: Mapping[str, int] = field(default_factory=dict)
     """Group rows staged to exist, per group.
 
-    Keyed by group rather than naming `connection`, so a record declaring a
-    second group is counted rather than silently omitted. A group with nothing
-    staged is absent rather than present-and-empty.
-
-    Not split by component type, which is no coordinate of a group
+    A group with nothing staged is absent rather than present-and-empty. Not
+    split by component type, which is no coordinate of a group
     (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
     """
 
@@ -116,16 +109,6 @@ class Pending:
         return bool(
             self.attributes or self.components or self.groups or self.tombstones
         )
-
-    @property
-    def connections(self) -> int:
-        """The `connection` group's staged rows, or 0 if it declares none.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        """
-        return self.groups.get(CONNECTION, 0)
 
 
 # -- value normalisation (https://energy-models.github.io/datarecord/design/working-record/#set) ----------------------------------------------
@@ -1689,11 +1672,10 @@ class WorkingRecord:
         # ancestors' files lack, which then reads as NULL for their rows. It
         # says so by naming the group among its `dims`, which is what replaced
         # a field of its own (https://energy-models.github.io/datarecord/design/record/#connections).
-        # Only a group `entity` itself coordinates: a wide frame adding one
-        # component can describe that component's own row of such a group
-        # (`bus`, for `connection`), but not a `corridor`, which relates two
-        # entities neither is "the" one being added here - that goes through
-        # `add_group` directly.
+        # Only a group `entity` itself keys: a wide frame adding one component
+        # can describe that component's own row of such a group (`bus`, for
+        # `connection`), but not a `corridor`, which relates two entities
+        # neither is "the" one being added here - that goes through `add_group`.
         by_group: dict[str, list[str]] = {}
         for c in columns:
             if not declared.get(c) or c in varying:
@@ -1703,31 +1685,13 @@ class WorkingRecord:
                     by_group.setdefault(group, []).append(c)
         ports = [c for cols in by_group.values() for c in cols]
         # A column the schema does not name goes to `dims/components/`
-        # unchanged, like any non-varying one. `role` rides along on the
-        # connection group rather than being a declared attribute of its own.
-        member_cols = [
-            c for c in columns if c not in varying and c not in ports and c != "role"
-        ]
+        # unchanged, like any non-varying one.
+        member_cols = [c for c in columns if c not in varying and c not in ports]
 
         rel = _as_relation(lazy, self.con)
         table = self._ensure("components")
         extra = [c for c in member_cols if c != "entity" and c not in self.schema.dims]
-        # The staging table starts with the key columns only (`_COLUMNS`); a
-        # wide frame's attribute columns are whatever the caller passed, so
-        # they are added as they are first seen rather than declared up front.
-        existing = {c.lower() for c in self.con.table(table).columns}
-        # The frame's own type where the schema declares none: `VARCHAR` would
-        # take a float column and store `'1234.5'`, which then reads back as
-        # text for every consumer of the member frame.
-        incoming = dict(zip(rel.columns, (str(t) for t in rel.types), strict=True))
-        duck_types = DuckTypes(rel)
-        for c in extra:
-            if c.lower() in existing:
-                continue
-            spec_dtype = self.schema.value_type(c)
-            dtype = duck_types(spec_dtype) if spec_dtype else incoming[c]
-            self.con.execute(f'ALTER TABLE {table} ADD COLUMN "{c}" {dtype}')
-            existing.add(c.lower())
+        self._widen(table, rel, extra)
 
         self._insert(
             rel,
@@ -1748,12 +1712,9 @@ class WorkingRecord:
                 {},
             )
         # A group's coordinates name the row itself rather than being an
-        # attribute of one, so they become that group's row; any other column
-        # the group's columns include rides along
-        # (https://energy-models.github.io/datarecord/design/record/#connections). `role` is passed through for
-        # `connection` when the caller supplies it and left NULL otherwise:
-        # what the roles of a type's ports are is a framework's vocabulary,
-        # not this layer's to invent.
+        # attribute of one, so they become that group's row; an attribute
+        # addressed by the group rides along
+        # (https://energy-models.github.io/datarecord/design/record/#connections).
         for group, group_cols in by_group.items():
             coordinates = self.schema.group_coordinates(group)
             extra = [c for c in group_cols if c not in coordinates]
@@ -1763,13 +1724,31 @@ class WorkingRecord:
                     "entity",
                     *(nw.col(c) for c in coordinates if c != "entity"),
                     *(nw.col(c) for c in extra),
-                    *(
-                        [nw.col("role")]
-                        if group == CONNECTION and "role" in columns
-                        else []
-                    ),
                 ),
             )
+
+    def _widen(self, table: str, rel: DuckDBPyRelation, columns: Sequence[str]) -> None:
+        """Add any of `columns` the staging table lacks, typed from the schema.
+
+        A staging table starts with the key columns its `_COLUMNS` entry
+        declares; what a caller passes beyond them - a component's attribute
+        values, a group's own labels - is whatever their frame carries, so the
+        columns are added as they are first seen rather than declared up front.
+
+        The frame's own type where the schema declares none: `VARCHAR` would
+        take a float column and store `'1234.5'`, which then reads back as text
+        for every consumer of the frame.
+        """
+        existing = {c.lower() for c in self.con.table(table).columns}
+        incoming = dict(zip(rel.columns, (str(t) for t in rel.types), strict=True))
+        duck_types = DuckTypes(rel)
+        for c in columns:
+            if c.lower() in existing:
+                continue
+            spec_dtype = self.schema.value_type(c)
+            dtype = duck_types(spec_dtype) if spec_dtype else incoming[c]
+            self.con.execute(f'ALTER TABLE {table} ADD COLUMN "{c}" {dtype}')
+            existing.add(c.lower())
 
     def _stage_tombstones(
         self,
@@ -1779,11 +1758,10 @@ class WorkingRecord:
     ) -> None:
         """Stage one `deleted` row per key.
 
-        Shared by `remove` and `disconnect`, which differ only in their key
-        columns - `disconnect` carries the group's coordinates where `remove`
-        carries the entity. One helper so the shape is derived from the column
-        list rather than restated per caller, which is what let the two drift
-        out of step.
+        Shared by `remove` and `remove_group`, which differ only in their key
+        columns - a group's key where `remove` carries the entity. One helper so
+        the shape is derived from the column list rather than restated per
+        caller, which is what let the two drift out of step.
 
         `keys` arrives row-oriented and is transposed to build the relation,
         columns being how every insert here crosses into DuckDB.
@@ -1828,9 +1806,8 @@ class WorkingRecord:
     def add_group(self, group: str, frame: Any) -> None:
         """Stage rows of one declared group from a frame carrying its coordinates.
 
-        `connect` is this call for the `connection` group - the general path
-        every group is added through, `connection` being one instance rather
-        than a case of its own.
+        The one path every group is added through, a record's `connection`
+        group included.
 
         No component type, which is no coordinate of a group
         (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
@@ -1849,6 +1826,7 @@ class WorkingRecord:
         _rows = lazy.to_native()  # noqa: F841 - bound by replacement scan below
         table = self._ensure(group)
         extra = [c for c in columns if c not in coordinates]
+        self._widen(table, _as_relation(lazy, self.con), extra)
         extra_sql = "".join(f', "{c}"' for c in extra)
         coordinate_sql = ", ".join(f'"{c}"' for c in coordinates)
         self.con.execute(
@@ -1860,8 +1838,8 @@ class WorkingRecord:
     def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None:
         """Stage a tombstone per key, over one declared group's `group_key`.
 
-        `disconnect` is this call for the `connection` group. An `into` label is
-        no part of a key: the tuple is removed, whatever label it carried.
+        An `into` label is no part of a key: the tuple is removed, whatever
+        label it carried.
 
         Notes
         -----
@@ -1870,24 +1848,6 @@ class WorkingRecord:
         self._stage_tombstones(
             group, self.schema.group_key(group), [list(key) for key in keys]
         )
-
-    def connect(self, frame: Any) -> None:
-        """Stage connection rows from a frame carrying `entity` and `bus`.
-
-        Notes
-        -----
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        """
-        self.add_group(CONNECTION, frame)
-
-    def disconnect(self, pairs: Sequence[tuple[str, str]]) -> None:
-        """Stage a tombstone per `(entity, bus)`.
-
-        Notes
-        -----
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        """
-        self.remove_group(CONNECTION, pairs)
 
     # -- pending / commit / rollback (https://energy-models.github.io/datarecord/design/working-record/#pending, https://energy-models.github.io/datarecord/design/working-record/#committing) -------------------------
 
@@ -1936,7 +1896,7 @@ class WorkingRecord:
             row = rel.aggregate([fn.count_star().alias("n")]).fetchone()
             return 0 if row is None else row[0]
 
-        # `tombstones` spans every entity kind: a `disconnect` is a deletion
+        # `tombstones` spans every entity kind: a `remove_group` is a deletion
         # like a `remove`, so counting only components would report a staged
         # one as nothing pending (https://energy-models.github.io/datarecord/design/working-record/#pending).
         dead = counts("components", "entity_type", deleted=True)
@@ -2395,14 +2355,14 @@ def _component_columns(schema: Schema) -> dict[str, nw.dtypes.DType]:  # noqa: A
 
 
 def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
-    """One group's staged columns: its coordinates, plus what it carries.
+    """One group's staged columns: its coordinates, and the fold's own.
 
-    No `entity_type`: a group's rows are keyed by its coordinates and the type
-    is not one of them (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+    No `entity_type`, which is no coordinate of a group
+    (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
 
-    `role` is spelled because PyPSA's connections have one and no group yet
-    declares its own non-key columns; a column a caller passes that is not
-    here is added by `ALTER TABLE` as it is first seen, like a component's.
+    The coordinates alone: a column a caller passes that is not one - an
+    attribute over the group, a framework's own label - is added by `ALTER
+    TABLE` as it is first seen, like a component's.
 
     Notes
     -----
@@ -2410,7 +2370,6 @@ def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
     """
     return {
         **{c: _column_type(schema, c) for c in schema.group_coordinates(group)},
-        "role": nw.String(),
         "deleted": nw.Boolean(),
         "_seq": nw.Int64(),
     }

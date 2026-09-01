@@ -329,8 +329,8 @@ def _component_deleted(
 ) -> DuckDBPyRelation:
     """This layer's tombstoned components: one entity per row.
 
-    Also what removes a connection, a component tombstone killing every
-    connection of it - matched on the entity the two share.
+    Also what removes a group's rows, a component tombstone killing every row
+    of a group `entity` keys - matched on the entity the two share.
 
     Notes
     -----
@@ -582,12 +582,12 @@ def _fold_ordered(
     | None = None,
     also_deleted_key: tuple[str, ...] = (),
 ) -> DuckDBPyRelation:
-    """The shared fold for the two maps that carry an `order_key`.
+    """The shared fold for the maps that carry an `order_key`.
 
-    `components` and `connections` differ only in which file they read,
-    which columns key them, and whether a second tombstone kind
-    applies - so the `order_key` assignment, which is the subtle part, lives
-    here once rather than in each.
+    `components` and a group's differ only in which file they read, which
+    columns key them, whether they carry a type, and whether a second tombstone
+    kind applies - so the `order_key` assignment, which is the subtle part,
+    lives here once rather than in each.
 
     Parameters
     ----------
@@ -890,10 +890,10 @@ class NodeCache:
     """A record's resolved view: owner map, dims, schema, and the relations over them.
 
     The cached artifacts and the reads gated by them
-    (`relation`/`outputs`/`component_frame`/`connection_frame`/
-    `attributes_of`) live together because every one of the latter is a
-    semi-join against the former. Tool-agnostic throughout: the long relations
-    here are what a tool (`datarecord.tools`) builds its own object from.
+    (`relation`/`outputs`/`component_frame`/`group_frame`/`attributes_of`) live
+    together because every one of the latter is a semi-join against the former.
+    Tool-agnostic throughout: the long relations here are what a tool
+    (`datarecord.tools`) builds its own object from.
 
     Notes
     -----
@@ -1182,9 +1182,9 @@ class NodeCache:
 
         Not per type, which is no coordinate of a group.
 
-        Carries every non-key column of the row - `role` on a connection, an
-        `into` label. The fold does not track those, so they come straight from
-        the owning layer's file.
+        Carries every non-key column of the row - an attribute over the group,
+        an `into` label. The fold does not track those, so they come straight
+        from the owning layer's file.
 
         Notes
         -----

@@ -69,7 +69,7 @@ def test_a_mutable_record_reads_as_a_record(staged):
 
 def test_nothing_is_pending_before_an_edit(staged):
     p = staged.pending
-    assert (p.attributes, p.components, p.connections, p.tombstones) == ({}, {}, 0, {})
+    assert (p.attributes, p.components, p.groups, p.tombstones) == ({}, {}, {}, {})
 
 
 # -- value forms (https://energy-models.github.io/datarecord/design/working-record/#set) -----------------------------------------------------
@@ -725,19 +725,20 @@ def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
 # -- connect and disconnect (https://energy-models.github.io/datarecord/design/working-record/#add-remove, https://energy-models.github.io/datarecord/design/record/#connections) --------------------------------------
 
 
-def test_connect_stages_a_new_connection(staged, root):
+def test_add_group_stages_a_new_connection(staged, root):
     """A connection is a row keyed by `(name, bus)`, not a positional column.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    staged.connect(
+    staged.add_group(
+        "connection",
         pd.DataFrame(
             [{"entity": "Manchester Wind", "bus": "Norway", "role": "attached"}]
-        )
+        ),
     )
-    assert staged.pending.connections == 1
+    assert staged.pending.groups == {"connection": 1}
 
     child = staged.commit(NewChild(root))
     rows = child.node_cache.group_frame("connection").df()
@@ -745,19 +746,19 @@ def test_connect_stages_a_new_connection(staged, root):
     assert "Norway" in got
 
 
-def test_disconnect_stages_a_tombstone(staged, root):
-    """One `deleted` row per `(entity, bus)`, the group's own coordinates.
+def test_remove_group_stages_a_tombstone(staged, root):
+    """One `deleted` row per `(entity, bus)`, the group's own key.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    staged.disconnect([("Norwich Converter", "Norwich")])
-    # A disconnect is a deletion, so it counts as a tombstone rather than as a
-    # connection staged to exist (https://energy-models.github.io/datarecord/design/working-record/#pending). Keyed by the group,
-    # a group's rows having no component type to attribute a deletion to.
+    staged.remove_group("connection", [("Norwich Converter", "Norwich")])
+    # A removal counts as a tombstone rather than as a row staged to exist
+    # (https://energy-models.github.io/datarecord/design/working-record/#pending). Keyed by the group, a group's rows
+    # having no component type to attribute a deletion to.
     assert staged.pending.tombstones == {"connection": 1}
-    assert staged.pending.connections == 0
+    assert staged.pending.groups == {}
 
     child = staged.commit(NewChild(root))
     rows = child.node_cache.group_frame("connection").df()
@@ -768,16 +769,16 @@ def test_disconnect_stages_a_tombstone(staged, root):
     assert "Norwich DC" in left
 
 
-def test_connect_needs_a_bus(staged):
+def test_add_group_needs_every_coordinate(staged):
     with pytest.raises(ValueError, match="'bus'"):
-        staged.connect(pd.DataFrame([{"entity": "Manchester Wind"}]))
+        staged.add_group("connection", pd.DataFrame([{"entity": "Manchester Wind"}]))
 
 
 def test_pending_counts_every_declared_group(con, base_uri, ac_dc):
     """`pending.groups` is keyed by group, so a second one is not silently dropped.
 
-    `connection` is one group among several. A `Pending` naming it as a field
-    of its own could count only that one, so a record declaring a `corridor`
+    `connection` is one group among several, and no field of `Pending` names it:
+    one that did could count only that group, so a record declaring a `corridor`
     would report nothing staged while holding rows to commit.
 
     Notes
@@ -797,7 +798,9 @@ def test_pending_counts_every_declared_group(con, base_uri, ac_dc):
     )
     staged = WorkingRecord(revision.record, con)
 
-    staged.connect(pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}]))
+    staged.add_group(
+        "connection", pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
+    )
     staged.add_group(
         "corridor", pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}])
     )
@@ -805,8 +808,6 @@ def test_pending_counts_every_declared_group(con, base_uri, ac_dc):
     assert staged.pending.groups == {"connection": 1, "corridor": 1}, (
         "both groups counted, keyed by group name"
     )
-    # The old spelling still answers for the one group it named.
-    assert staged.pending.connections == 1
     assert bool(staged.pending), "a staged group row is something pending"
 
 

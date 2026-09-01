@@ -59,7 +59,7 @@ So "varying" is not "has dims" but **"has dims beyond its address"**, and one ru
 
 - **`dims/components/<Type>.parquet`** — attributes addressed by `entity` alone: one column per attribute, indexed by `entity`.
   Values only: a component's _membership_ is its row on the [entity axis](#the-entity-axis), not its presence here.
-- **A [group](schema.md#groups)'s file** — attributes addressed by that group alone, `role` being the case.
+- **A [group](schema.md#groups)'s file** — attributes addressed by that group alone, PyPSA's `role` on a connection being one.
 - **An axis file** — attributes addressed by one dim alone. A snapshot weighting is a number per snapshot and belongs to no component, so `dims/snapshot.parquet` carries it as a declared column with a `dtype`, a `default` and a `description`.
 - **`inputs/<attr>.parquet`** — every attribute addressed by more than its own coordinate, even where a given component's value happens to be constant.
   That component is then a row with the varying dim NULL.
@@ -94,7 +94,7 @@ The fold's _key_ is uniform even though the files are not: it is [`partial_dims`
 One attribute per file, so `value` carries that attribute's dtype.
 There is **no `entity_type` column**: `entity` is unique across every type ([below](#entity-is-unique-across-types)), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by entity alone, and a reader wanting one type's rows joins `dims/components/`.
 
-A connection's `role` is not in the long schema: it is an attribute over the `connection` group, so it lives on that group's table as a column ([where a value lives](#where-a-value-lives)) rather than in `inputs/`.
+An attribute addressed by a group alone is not here either: it is a column of that group's own file ([where a value lives](#where-a-value-lives)) rather than a long row. PyPSA's `role` on a connection is the case.
 
 ## `entity` is unique across types
 

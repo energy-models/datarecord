@@ -36,7 +36,7 @@ The rest is data, and comes in two shapes.
 ```text
 dims["scenario"]                       scenario | ...   one row per axis label, in axis order
 components["Generator"]                entity | <non-varying attribute columns>
-groups["connection"]                   entity | bus | role | ...  one per attachment
+groups["connection"]                   entity | bus | <attributes over the group>
 ```
 
 `groups` is keyed by the group alone, one frame each: a group's rows are keyed by its coordinates and the component type is not one of them, so `groups/connection.parquet` holds every type's attachments ([where the rows live](format.md#where-a-value-lives)).
@@ -64,7 +64,7 @@ A consumer wanting one type's rows joins `components` on `entity` — the entity
 Some attributes belong not to a component but to one of its connections to a bus.
 
 A connection is one row of the **`connection` [group](schema.md#groups)** — `Group(over={"entity": "entity", "bus": "bus"})` — rather than a structural category of its own.
-`groups["connection"][ctype]` lists the attachments themselves, one row per `(entity, bus)`; `role` — which end of the component it is — describes the connection and identifies nothing, and is an ordinary attribute over the group rather than a column the format fixes.
+`groups["connection"]` lists the attachments themselves, one row per `(entity, bus)`, across every component type; `role` — which end of the component it is — describes the connection and identifies nothing, and is an ordinary attribute a tool declares over the group ([PyPSA does](tools.md)) rather than a column the format fixes.
 
 A connection is identified by **the bus it attaches to**, never by position.
 An attribute is a connection attribute because its `dims` name the group, so a per-connection value is otherwise an ordinary long row: `efficiency` may vary by timestep and scenario like any other attribute, and decodes by the same rules with no special case.

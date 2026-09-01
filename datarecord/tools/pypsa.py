@@ -53,6 +53,9 @@ SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
 SCENARIO_WEIGHT = "weight"
 ENTITY, BUS, CONNECTION = "entity", "bus", "connection"
 ENTITY_TYPE = "entity_type"
+# An attribute over the `connection` group, not a column the format fixes: the
+# port vocabulary below is this tool's, so the record layer never names it.
+ROLE = "role"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
 
 # PyPSA's `defaults["type"]` vocabulary, mapped to the narwhals types the long
@@ -1204,7 +1207,18 @@ class _NetworkSource:
         # series differ per scenario, so an attribute not declaring it would be
         # one the fold owns once across every scenario.
         varying_dims = (SNAPSHOT, SCENARIO) if self.n.has_scenarios else (SNAPSHOT,)
-        attributes: dict[str, AttributeSpec] = {}
+        # Which end of the component an attachment is, which PyPSA's sign
+        # convention reads off the port index (`_port_role`). Declared over the
+        # `connection` group, so it is a column of that group's file rather than
+        # a long row - and so the record layer needs no rule of its own for a
+        # word that is this tool's vocabulary (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        attributes: dict[str, AttributeSpec] = {
+            ROLE: AttributeSpec(
+                dtype=nw.String(),
+                dims=frozenset({CONNECTION}),
+                description="Which end of the component this attachment is.",
+            )
+        }
         if self.n.has_scenarios:
             # A probability per scenario, which `dims` addresses by the scenario
             # axis alone - so it is a column of `dims/scenario.parquet`, where
