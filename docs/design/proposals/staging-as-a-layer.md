@@ -1,6 +1,8 @@
 # Proposal: staging as a layer — one fold, two sources
 
-Status: **Draft** · Drafted 2026-09-01 · Revised 2026-09-01
+Status: **Implemented** · Drafted 2026-09-01 · Implemented 2026-09-01
+
+Landed in [the read path](../read-path.md#what-differs-between-the-implementations) and [`WorkingRecord`](../working-record.md#reading-with-pending-edits); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 
 [`WorkingRecord`](../working-record.md) already claims to be a layer:
 
@@ -125,7 +127,7 @@ It runs **per insert, not once per attribute**, because the completion is scoped
 
 A staged row leaving a whole-owned dim NULL is excluded: it already covers every label by [the broadcast rule](../record.md#the-broadcast-rule), so its key has nothing to carry and a carried row beside it would overlap.
 
-One consequence accepted deliberately: **`set` reads the base when it touches a completed attribute** — a fold, where a deep unmaterialised ancestry makes one. Bounded by what is staged rather than by how often, the anti-join making a repeat edit carry nothing; an attribute with no owned-whole dim never triggers it at all.
+One consequence accepted deliberately: **`set` reads the base whenever it touches a completed attribute** — a fold, where a deep unmaterialised ancestry makes an expensive one, and on every insert rather than the first. The anti-join is what makes a repeat edit carry no _rows_, but running it is what costs; an attribute with no owned-whole dim never triggers it at all. [Measured](#how-to-know-it-worked) at 188 ms for a repeat against 359 ms for a first touch, twenty layers deep.
 
 Carried rows being indistinguishable from edited ones is what removed [`pending`](#1-pending-goes): a one-value `set` on a thousand-snapshot attribute would have reported a thousand pending rows.
 
@@ -164,7 +166,7 @@ The membership check stays relaxed regardless: a result may name a component the
 
 Settled by [the frozen-prefix rule](#the-cache-stops-at-the-last-frozen-source): the staged fold is a relation, never a table, so a `set` needs no invalidation and the cached ancestry below it is reused. Two things to check rather than assume, both consequences of running that step per read:
 
-- **`_fold_ordered`'s `order_key` subquery.** It computes `(SELECT max(order_key::BIGINT) FROM parent)` inside `con.sql`, which under the current code runs once when the map is created. Uncached, it runs on every collect — a scan of the parent map per read. Measure it on a large component set; if it is not free, the offset can be hoisted to `NodeCache` construction, the frozen prefix's map being fixed. [`order_key` as `(depth, row)`](#what-lands-first-and-separately) removes the subquery outright rather than hoisting it, which is why that change is listed there.
+- **`_fold_ordered`'s `order_key` subquery.** It computes `(SELECT max(order_key::BIGINT) FROM parent)` inside `con.sql`, which under the current code runs once when the map is created. Uncached, it runs on every collect — a scan of the parent map per read. Measure it on a large component set; if it is not free, the offset can be hoisted to `NodeCache` construction, the frozen prefix's map being fixed. [`order_key` as `(depth, row)`](#what-landed-first-and-separately) removed the subquery outright rather than hoisting it, which is why that change landed there rather than here.
 - **`StagedSource`'s collapses are rebuilt per call.** Each member applies its collapse (`_latest_per`, the tombstone anti-join, `_collapsed_axis`'s per-column `max_by`) before handing the relation over. Measured on 50k staged rows over 500 entities × 20 periods: **~1.4 ms to build the plan, ~4.3 ms to execute it**. So a read of a `WorkingRecord` over a schema with inputs, components and two groups pays roughly four of each — tens of milliseconds, scaling with what is staged.
 
   It can be memoised, contrary to how the live tail might read: what must not be cached is a _stale_ answer, and `_seq` is already a monotonic per-edit counter, so the source knows exactly when its own answer changed. Key each collapse on the highest `_seq` staged; a read after a `set` misses and rebuilds, two reads with nothing between them hit. This is local to `StagedSource`, invisible to `NodeCache`, and leaves [the frozen-prefix rule](#the-cache-stops-at-the-last-frozen-source) untouched — the tail is still recomputed whenever it changed, just not when it did not. It is also the one place a generation counter is cheap, because `_seq` exists already; the owner map has no equivalent signal, which is why it is folded live instead.
@@ -196,9 +198,9 @@ def flags_aggregate(rel, members, dims, per_dim, *, attribute=None): ...
 
 With two callers rather than three the case is weaker than it was, so this is the part to drop if it does not fit cleanly: two honest aggregates beat one helper with a flag for each caller. What must not happen is attempting it _first_ — the parameter list would be shaped by three callers, one of which this change deletes.
 
-## What lands first, and separately
+## What landed first, and separately
 
-Two changes this rests on are worth their own pull requests, because both stand alone and neither should be buried in a fold rewrite.
+Three changes this rests on took their own pull requests, because each stands alone and none should have been buried in a fold rewrite. All three landed before step 5.
 
 **`components` → `entity_type`.** `entity_type` is already the column name everywhere — 78 uses across core — while `component` survives in the API surface and the `dims/components/` path, which never got carried along when the column was renamed. `component_frame`, `component_columns`, `fold_components`, `_component_deleted`, `component_types`, `Record.components`, `dims/components/` on disk, and `tools/pypsa.py`'s module docstring all say the older word for the thing `entity_type` names. Landing that first means this proposal is written in one vocabulary and keeps its "no format change" line honestly — the directory move is that PR's, not this one's.
 
@@ -236,13 +238,18 @@ Note that `mutable.py` imports from `layered/` only inside function bodies, to a
 
 ## A suggested order
 
-Steps 0–4 have landed: the identity spike (it holds — an unstaged `WorkingRecord` reads identically to its base over either backing), the [`both` fixture](#how-to-know-it-worked) extended to read one record four ways, [the completion moved out of commit](#what-makes-the-staged-source-foldable) with `pending` removed, [results declared](#3-results-become-schema-declared) with `value_hint` retired, and `LayerSource`/`ParquetLayer` in `layered/sources.py` with every `layer_dir(uuid) + path` in the fold and the write path routed through it.
+**All of it has landed.** Steps 0–4: the identity spike (it holds — an unstaged `WorkingRecord` reads identically to its base over either backing), the [`both` fixture](#how-to-know-it-worked) extended to read one record four ways, [the completion moved out of commit](#what-makes-the-staged-source-foldable) with `pending` removed, [results declared](#3-results-become-schema-declared) with `value_hint` retired, and `LayerSource`/`ParquetLayer` in `layered/sources.py`.
 
-The rest is one change in three parts, and the deletions only arrive at the end of it: 5. **Then the fold over sources**, one kind at a time: `fold_components` first, being the simplest (no flags, no broadcast, one key column), `fold_group` next, `fold_inputs` last. 6. **Then the frozen-prefix rule**: `NodeCache` takes `sources` rather than an ancestry of UUIDs, materialises up to the last `frozen` one, and dispatches a winning `layer_uuid` through the source that carries it. With one implementation every source is frozen, so this is still no behaviour change. 7. **Then `DirectorySource` and `StagedSource`**, and the deletions they enable. 8. **Then [the flags aggregate](#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares)**, if it fits.
+Steps 5–7 landed in two commits rather than three, 5 and 6 being no behaviour change and the deletions arriving only at 7: the three kind-folds take a source, `NodeCache` holds `sources` and materialises to the last `frozen` one, and `StagedSource`/`DirectorySource` replace the `mutable.py` overlay cluster.
 
-Steps 5–7 do not pay off individually: 5 and 6 are explicitly no behaviour change, and the deletions they exist for only land at 7. Stopping between them leaves two ways of doing one thing with no test telling them apart, so that stretch is best taken in one sitting.
+Two things the steps turned out to contain that the descriptions did not:
 
-Three things this order deliberately does not fix, recorded so they are not mistaken for oversights:
+- **`ResolvedLayer`**, for a materialised ancestor. `ancestry_to_read`'s truncation becoming source construction needs the node stopped at to be a source of a third kind: its folded axes and owner map come from `resolved/`, its own rows still from its layer. Reading everything from `resolved/` loses the rows the map names it the owner of — a cache holds folded keys, never the rows they resolve to.
+- **`_axis_layer` merging per column for a `partial` axis too**, which it did not. The fold is last-writer-wins per _label_ over the whole row, so a source handing over only the column its `set` named blanked the siblings on that label. It merged them already for an axis owned whole; what `partial` decides is how many labels are carried, not whether a row is whole.
+
+**Step 8 was dropped**, on the grounds [question 6](#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares) anticipated. With `_flags_arm` gone the remaining pair shares three `bool_or` lines and differs in the group-by, the column read, and whether the result is fetched — so the helper's parameter list would be longer than the body it shares. Two honest aggregates.
+
+Two things this deliberately does not fix, recorded so they are not mistaken for oversights:
 
 - **`attributes_of` re-executes under a live tail.** It aggregates the map a second time — a `bool_or` union across a type's members — and `fetchall()`s, so with the tail live that is a query per call rather than a plan. Accepted: it is bounded by the map rather than by the staging area, and the deletions are worth it.
 - **`commit` still needs a revision.** `_base_revision` requires a `LayeredRecord` base and reads `node_cache.revision_id`, so `NodeCache` keeps that field and a `DirectorySource`-backed `WorkingRecord` still cannot `NewChild()`. `DirectorySource` makes such a record _readable_ through the fold, not committable to a layer tree.
@@ -259,11 +266,26 @@ This change rewrites resolution without changing a single answer, so the whole o
 
 **A read-after-`set` test is what pins the live tail.** `set`, read, `set` again, read again: the second read must see the second edit. That is the whole content of "the staged step is not cached", and it fails loudly if anyone later caches past the frozen prefix — a `cached_property` over the tail, or a `.create()` that does not stop where `frozen` does.
 
-Three performance claims to check rather than assert:
+Three performance claims, now measured rather than asserted — a 20-layer unmaterialised ancestry over the `ac_dc` network, best of five:
 
-- **`set` on first touch** now folds the base for a completed attribute. Time it on a deep unmaterialised ancestry, and confirm a second `set` on the same attribute reads nothing.
-- **A read after a `set`** re-executes the staged fold, where a written layer's fold is cached. The claim is that it costs one layer, not one ancestry — so time a read on a deep unmaterialised ancestry with one staged edit, against the same read with none.
-- **A `WorkingRecord` over a directory** now folds where it scanned. `tests/test_scaling.py` measures peak materialisation rather than ancestry depth, so none of these is covered today.
+|                                     |        |
+| ----------------------------------- | ------ |
+| deep read, nothing staged           | 2.4 ms |
+| deep read, one staged edit          | 58 ms  |
+| `set`, first touch of an attribute  | 359 ms |
+| `set`, again on the same attribute  | 188 ms |
+| directory `flags`, scanned          | ~0 ms  |
+| directory `flags`, through the fold | 12 ms  |
+
+Two of the three hold and one does not.
+
+**A read after a `set` costs one fold step, not one ancestry** — but against a base read that is _cached_, so the honest comparison is 2.4 ms to 58 ms rather than "one layer's worth". That is the price of the tail being live, and [the frozen-prefix rule](#the-cache-stops-at-the-last-frozen-source) is what bounds it to one step; [`materialise` over a staging area](#what-it-opens) is the escape hatch if a long-lived `WorkingRecord` makes it hurt.
+
+**A second `set` does not read nothing**, which [what makes the staged source foldable](#what-makes-the-staged-source-foldable) claimed. The anti-join makes it carry no _rows_, but `_complete_owned_whole` folds the base on every insert to find that out — 188 ms against the first touch's 359 ms, not against zero. Bounded by what is staged rather than by how often, as that section says; "the anti-join making a repeat edit carry nothing" is true of the rows and false of the work.
+
+**A `WorkingRecord` over a directory folds where a bare one scans**, 12 ms against a cached scan's nothing. `DirectoryRecord` memoises `flags` per type and the fold does not, so this is the first call either way; the fold's answer is a relation, and what it buys is that one code path serves both bases.
+
+None of this is covered by `tests/test_scaling.py`, which measures peak materialisation rather than ancestry depth.
 
 **One correctness claim worth a test of its own.** Once `StagedSource` restates, a staged layer's map rows are keyed like a written layer's — but the fold's flags are computed per group, and `attributes_of` `bool_or`-unions them again across a type. That should make the grouping grain invisible to the answer. Should, not does: assert it, since it is the assumption that lets the staged and parquet paths share one aggregate.
 
@@ -285,7 +307,7 @@ Three performance claims to check rather than assert:
 
 Those deletions are what make the two smaller cleanups this grew out of unnecessary rather than pending: the [flags aggregate](#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares) is folded into the last step above, and a shared `overlay(older, newer, on)` helper for the five anti-join-then-union sites has no second caller left once four of them are gone.
 
-**No format change of its own.** The two that touch disk — [the rename and `order_key`](#what-lands-first-and-separately) — land first and separately, and nothing here adds to them: this change is entirely about who computes the overlay.
+**No format change of its own.** The two that touch disk — [the rename and `order_key`](#what-landed-first-and-separately) — landed first and separately, and nothing here added to them: this change is entirely about who computes the overlay.
 
 **Two sections still owe an edit**, neither optional — when behaviour changes, the page changes, not just the code:
 
