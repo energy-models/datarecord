@@ -274,7 +274,7 @@ Three performance claims, now measured rather than asserted — a 20-layer unmat
 | deep read, one staged edit          | 61 ms  |
 | `set`, first touch of an attribute  | 166 ms |
 | `set`, again on the same attribute  | 16 ms  |
-| `set`, again, no owned-whole dim     | 10 ms  |
+| `set`, again, no owned-whole dim    | 10 ms  |
 | directory `flags`, scanned          | ~0 ms  |
 | directory `flags`, through the fold | 12 ms  |
 
@@ -282,7 +282,7 @@ Two of the three hold and one does not.
 
 **A read after a `set` costs one fold step, not one ancestry** — but against a base read that is _cached_, so the honest comparison is 2.4 ms to 61 ms rather than "one layer's worth". That is the price of the tail being live, and [the frozen-prefix rule](#the-cache-stops-at-the-last-frozen-source) is what bounds it to one step; [`materialise` over a staging area](#what-it-opens) is the escape hatch if a long-lived `WorkingRecord` makes it hurt.
 
-**A second `set` costs the completion ~5 ms**, which is the difference between a repeat on an attribute with an owned-whole dim and one without. So [what makes the staged source foldable](#what-makes-the-staged-source-foldable) holds: the base fold it runs is the *first* touch's 166 ms, and the anti-join reaching no rows afterwards is nearly free.
+**A second `set` costs the completion ~5 ms**, which is the difference between a repeat on an attribute with an owned-whole dim and one without. So [what makes the staged source foldable](#what-makes-the-staged-source-foldable) holds: the base fold it runs is the _first_ touch's 166 ms, and the anti-join reaching no rows afterwards is nearly free.
 
 Getting there took a fix. The first measurement put a repeat at 188 ms, which looked like the completion refolding per insert and read as the proposal being wrong. It was `set`'s _validation_: `_name_types` and `_resolved_names` assembled "what type is this name" from each type's resolved member frame — a union and a join per type, uncached under a live tail — to read two columns [the owner map](../read-path.md#owner-map) already holds. Off the map instead, a repeat `set` went from 157 ms to 10 ms.
 

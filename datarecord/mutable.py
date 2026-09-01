@@ -413,8 +413,11 @@ class WorkingRecord:
         self._staged: dict[tuple[str, str | None], str] = {}
         # A layer's identity, so the fold can stamp it and dispatch a winning
         # row back through this source. Synthetic - the staged layer has no
-        # revision until `commit` writes one.
+        # revision until `commit` writes one, and a directory base is no node in
+        # a tree - and necessarily distinct, `source_for` telling the two apart
+        # by nothing else.
         self._layer_id = uuid4()
+        self._base_layer_id = uuid4()
 
     # -- staging tables -----------------------------------------------------
 
@@ -584,8 +587,12 @@ class WorkingRecord:
         if isinstance(self.base, LayeredRecord):
             return self.base.node_cache
         if isinstance(self.base, DirectoryRecord):
-            source = DirectorySource(self._layer_id, self.base.base, self.con)
-            return NodeCache(self._layer_id, [source], self.con)
+            # Its own id, distinct from the staged layer's: the two are separate
+            # sources, and `source_for` dispatches a winning row by matching
+            # `layer_uuid` against them - so sharing one would send every staged
+            # win to the directory and read the edit back as the base's value.
+            source = DirectorySource(self._base_layer_id, self.base.base, self.con)
+            return NodeCache(self._base_layer_id, [source], self.con)
         msg = (
             f"a `WorkingRecord` reads by folding its staged rows over the base's, "
             f"and a {type(self.base).__name__} has no layer layout to fold - only a "

@@ -1006,6 +1006,36 @@ def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root, co
     assert _static(root, "p_nom")["Manchester Wind"] == before
 
 
+def test_an_edit_over_a_directory_base_reads_back(con, base_uri, ac_dc):
+    """A staged edit must win over a directory base, as it does over a layered one.
+
+    The two are separate sources of one fold, and `source_for` tells them apart
+    by `layer_uuid` alone - so a base and a staging area sharing an id would
+    send every staged win to the base and read the edit back as the base's
+    value, with a correct-looking owner map above it. The unstaged fixtures
+    cannot see that: it takes an edit that is supposed to displace something.
+
+    Notes
+    -----
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    staged = WorkingRecord(DirectoryRecord(layer_dir(revision.id), con), con)
+
+    def marginal_cost() -> list[float]:
+        frame = staged.attributes["marginal_cost"].collect().to_native().to_pandas()
+        return frame[frame["entity"] == "Manchester Wind"]["value"].tolist()
+
+    before = marginal_cost()
+    staged.set("marginal_cost", 4242.0, entity=["Manchester Wind"])
+    assert marginal_cost() == [4242.0], (
+        "the staged layer owns the key, so the read takes its value"
+    )
+    assert before != [4242.0], "otherwise the assertion above proves nothing"
+
+
 def test_new_child_without_a_layered_base_says_what_to_pass(con, base_uri, tmp_path):
     """A directory is no node in a tree, so there is nothing to branch from.
 
