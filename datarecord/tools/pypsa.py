@@ -1193,7 +1193,12 @@ class _NetworkSource:
         `c.defaults` already declares what an `AttributeSpec` asks for, so this reads it
         rather than restating it. Every stored attribute, not only the varying
         ones - `dims=frozenset()` is what puts one in `dims/entity_type/`.
-        Results are excluded, belonging to `outputs/`.
+
+        Results go to `results` rather than `attributes`, read off the same
+        registry (`status` starting "Output"), so a PyPSA upgrade adding one is
+        still picked up rather than needing a list kept here. They carry no
+        trait: a trait is the input vocabulary a type is validated and split
+        against, and a result is neither.
 
         Notes
         -----
@@ -1230,6 +1235,7 @@ class _NetworkSource:
                 dims=frozenset({SCENARIO}),
                 description="How much this scenario counts in the expectation.",
             )
+        results: dict[str, AttributeSpec] = {}
         carries: dict[str, frozenset[str]] = {}
         for c in self.n.components:
             if not _exported(c):
@@ -1242,12 +1248,9 @@ class _NetworkSource:
             outputs = set(_output_attributes(c))
             carried: set[str] = set()
             for attr in defaults.index:
-                if attr in outputs or attr == "name":
+                if attr == "name":
                     continue
                 stem = per_port.get(attr, attr)
-                if stem in carried:
-                    continue
-                carried.add(stem)
                 row = defaults.loc[attr]
                 # `entity` is a dim like any other, so a component attribute
                 # declares it: `dims` is the whole address, and an attribute
@@ -1264,14 +1267,27 @@ class _NetworkSource:
                     description=_text(row.get("description")),
                 )
                 # One attribute, one spec, record-wide: two types declaring the
-                # same name must agree, since one `inputs/<attr>.parquet` with
+                # same name must agree, since one `<kind>/<attr>.parquet` with
                 # one `value` column serves both. PyPSA's registry does agree
                 # everywhere today, so the first type to declare one wins and
                 # a later disagreement is a schema error rather than a silent
                 # per-type divergence the storage could not have honoured.
+                if attr in outputs:
+                    # A result is declared but not carried: it belongs to no
+                    # trait, `attributes_for` being the input vocabulary a type
+                    # is validated and split against.
+                    results.setdefault(stem, spec)
+                    continue
+                if stem in carried:
+                    continue
+                carried.add(stem)
                 attributes.setdefault(stem, spec)
             if carried:
                 carries[c.name] = frozenset(carried)
+        # A name PyPSA registers as an output on one type and an input on
+        # another would be both here; the input declaration wins, one file
+        # holding one `value` column either way.
+        results = {a: s for a, s in results.items() if a not in attributes}
         # PyPSA's registry is per type - a `Line` has no `efficiency` - so every
         # attribute is narrowed to the types that declare it, and none is left
         # carried by all. One trait per type is the faithful translation of a
@@ -1322,6 +1338,7 @@ class _NetworkSource:
                 ),
             },
             attributes=attributes,
+            results=results,
             traits=traits,
             # `entity` and the `connection` group's coordinates are patchable
             # value by value: a layer may set one generator's `p_nom`, or one

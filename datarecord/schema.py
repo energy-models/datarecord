@@ -424,6 +424,17 @@ class Schema(BaseModel):
     version: int = 1
     dimensions: dict[str, Dimension] = Field(default_factory=dict)
     attributes: dict[str, AttributeSpec] = Field(default_factory=dict)
+    results: dict[str, AttributeSpec] = Field(default_factory=dict)
+    """What a solve computes, keyed like `attributes` and shaped the same.
+
+    Separate because the two are governed differently, not because they are
+    stored differently: a result is written to `outputs/<attr>.parquet` rather
+    than `inputs/`, never overlays a parent's, and may name a component the
+    record does not declare. Keeping it out of `attributes` is what stops it
+    reaching `attributes_for`, and so `add`'s wide-frame split and the input
+    validation, neither of which a result should meet.
+    """
+
     groups: dict[str, Group] = Field(default_factory=dict)
     traits: dict[str, Trait] = Field(default_factory=dict)
     partial: frozenset[str] | None = None
@@ -445,7 +456,7 @@ class Schema(BaseModel):
         # Attributes but no axes is a table, not a record (https://energy-models.github.io/datarecord/design/schema/#dimensions). Rejected here
         # so the owner map never needs a struct with no fields, which DuckDB has
         # no type for. A wholly empty `Schema()` stays legal: "no manifest yet".
-        if self.attributes and not declared:
+        if (self.attributes or self.results) and not declared:
             msg = (
                 "a schema declaring attributes must declare at least one dim; "
                 "attribute data varying over no axis is not a record (https://energy-models.github.io/datarecord/design/schema/#dimensions)"
@@ -509,8 +520,19 @@ class Schema(BaseModel):
             raise ValueError(msg)
         entity_type = classifying[0] if classifying else None
 
+        # One name means one file with one `value` column, so a name declared as
+        # both would have to be an input and a result at once - two files, two
+        # governing rules, one key.
+        clashing = sorted(set(self.attributes) & set(self.results))
+        if clashing:
+            msg = (
+                f"{clashing} are declared as both an attribute and a result; "
+                f"one name is one file, so it is one or the other"
+            )
+            raise ValueError(msg)
+
         addressable = declared | set(self.groups)
-        for attr, attr_spec in self.attributes.items():
+        for attr, attr_spec in (*self.attributes.items(), *self.results.items()):
             unknown = sorted(attr_spec.dims - addressable)
             if unknown:
                 msg = (
@@ -666,7 +688,7 @@ class Schema(BaseModel):
         - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
-        spec = self.attributes.get(attribute)
+        spec = self.spec_for(attribute)
         if spec is None:
             return ()
         named: set[str] = set()
@@ -677,24 +699,22 @@ class Schema(BaseModel):
         return tuple(d for d in self.dims if d in named)
 
     def long_columns_for(self, attribute: str) -> tuple[str, ...]:
-        """One attribute's full `inputs/` column set, in order.
+        """One attribute's full long column set, in order - input or result.
 
         An attribute carries the coordinates its `dims` name and no others, so a
         record-level weighting has no `entity` column and a component attribute
         has no `bus`.
 
-        An attribute the schema does not declare is `long_columns` - every
-        declared dim, the widest shape. Only a *result* reaches this: an
-        undeclared input is rejected on write, where a result is never declared
-        at all because a tool derives which attributes count as one from its own
-        registry.
+        An attribute neither vocabulary declares is `long_columns` - every
+        declared dim, the widest shape. That is a schema with no manifest yet,
+        every declared attribute having its own coordinates.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         - [results](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
         """
-        if attribute not in self.attributes:
+        if self.spec_for(attribute) is None:
             return self.long_columns
         return (*self.coordinates_of(attribute), *LONG_TAIL)
 
@@ -1043,10 +1063,26 @@ class Schema(BaseModel):
                 return spec.dtype
         return None
 
-    def value_type(self, attribute: str) -> nw.dtypes.DType | None:
-        """The `value` column's type for one attribute.
+    def spec_for(self, attribute: str) -> AttributeSpec | None:
+        """`attribute`'s spec, whether it is an input or a result.
 
-        No `ctype`: one attribute is one `inputs/<attr>.parquet` with one
+        The one lookup that spans both vocabularies, for the questions the long
+        schema asks of a stored attribute regardless of which file holds it -
+        its dtype and its coordinates. Anything governing how an attribute may
+        be *written* asks `attributes` or `results` directly, the two differing
+        exactly there.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+        """
+        return self.attributes.get(attribute) or self.results.get(attribute)
+
+    def value_type(self, attribute: str) -> nw.dtypes.DType | None:
+        """The `value` column's type for one attribute, input or result.
+
+        No `ctype`: one attribute is one `<kind>/<attr>.parquet` with one
         `value` column, so the dtype is the attribute's alone. A narwhals
         dtype, translated to DuckDB (`duck.DuckTypes`) only where a caller builds
         a column of it.
@@ -1055,7 +1091,7 @@ class Schema(BaseModel):
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
-        spec = self.attributes.get(attribute)
+        spec = self.spec_for(attribute)
         return None if spec is None else spec.dtype
 
     def types_declaring(self, attribute: str) -> frozenset[str]:
@@ -1108,21 +1144,27 @@ class Schema(BaseModel):
                     f"dim {dim!r} nesting changed; the axis key changes shape"
                 )
 
-        for attr, was_spec in other.attributes.items():
-            now_spec = self.attributes.get(attr)
-            if now_spec is None:
-                problems.append(f"attribute {attr!r} removed")
-                continue
-            if now_spec.dtype != was_spec.dtype:
-                problems.append(
-                    f"attribute {attr!r} dtype {was_spec.dtype} -> {now_spec.dtype}"
-                )
-            narrowed = was_spec.dims - now_spec.dims
-            if narrowed:
-                problems.append(
-                    f"attribute {attr!r} no longer varies over {sorted(narrowed)}; "
-                    f"rows setting those dims have no valid reading"
-                )
+        # Results version like inputs: a layer's `outputs/<attr>.parquet` is
+        # unreadable for the same reasons its `inputs/` counterpart would be.
+        for kind, mine, theirs in (
+            ("attribute", self.attributes, other.attributes),
+            ("result", self.results, other.results),
+        ):
+            for attr, was_spec in theirs.items():
+                now_spec = mine.get(attr)
+                if now_spec is None:
+                    problems.append(f"{kind} {attr!r} removed")
+                    continue
+                if now_spec.dtype != was_spec.dtype:
+                    problems.append(
+                        f"{kind} {attr!r} dtype {was_spec.dtype} -> {now_spec.dtype}"
+                    )
+                narrowed = was_spec.dims - now_spec.dims
+                if narrowed:
+                    problems.append(
+                        f"{kind} {attr!r} no longer varies over {sorted(narrowed)}; "
+                        f"rows setting those dims have no valid reading"
+                    )
 
         # A type losing an attribute is incompatible for the same reason a
         # narrowed `dims` is: its rows are still in the file, now unreadable

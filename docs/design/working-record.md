@@ -181,10 +181,10 @@ Nothing on disk is mutated, and [write-once](layers.md#a-layers-data-is-write-on
 
 Two things differ from an input edit, both following from [outputs](read-path.md#outputs):
 
-- **No schema check on the attribute name.**
-  A result attribute is not schema-declared — [`Tool.results`](tools.md) derives which attributes count as results from the framework's own registry, and [`write_record`](writing.md) persists `outputs/` without consulting the schema.
-  So an unknown attribute name is an error for an input and simply unknowable for a result.
-  The dim vocabulary is still checked for both.
+- **The name is checked against `results`, not `attributes`.**
+  A result attribute is [declared](schema.md#results) in its own vocabulary, so an unknown name is an error exactly as it is for an input — what differs is which mapping answers.
+  A tool reads its result vocabulary off the same registry it reads its inputs from, so declaring them costs it no list of its own: PyPSA's `status` field marks them, and the [tool](tools.md) forwards what it finds.
+  The dim vocabulary is checked for both, and a result's coordinates are its own rather than every declared dim.
 - **No membership check on `entity`.**
   An input value for a name no layer declares is [rejected](#validation), because it would resolve to nothing.
   A result may legitimately name a component the record never declared: PyPSA's `SubNetwork` exists only after a solve, so rejecting it would refuse a real result.

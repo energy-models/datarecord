@@ -324,12 +324,7 @@ class WorkingRecord:
         digest = sha256(attribute.encode()).hexdigest()[:16]
         return f"staged_{kind}_{digest}_{self._id}"
 
-    def _ensure(
-        self,
-        kind: str,
-        attribute: str | None = None,
-        value_hint: nw.dtypes.DType | None = None,
-    ) -> str:
+    def _ensure(self, kind: str, attribute: str | None = None) -> str:
         """The staging table for `kind`, created on first use.
 
         `kind` is one of the fixed three, or a declared group's name - a group
@@ -337,10 +332,7 @@ class WorkingRecord:
 
         A long kind takes an `attribute` and gets a table per attribute, shaped
         like the file it becomes: `long_columns_for` for the columns, and the
-        declared dtype for `value`. An undeclared result has no declared dtype,
-        so `value_hint` carries the one its frame arrived with - that being the
-        only thing that knows, and settling it here is what spares the read back
-        a cast that cannot be right for both a string and a number.
+        declared dtype for `value`.
 
         Notes
         -----
@@ -351,7 +343,7 @@ class WorkingRecord:
             return self._staged[key]
         name = self._table(kind, attribute)
         if attribute is not None:
-            shape = self._empty_long(attribute, value_hint)
+            shape = self._empty_long(attribute)
         else:
             duck_types = DuckTypes(self.con)
             columns = _COLUMNS.get(kind)
@@ -366,18 +358,16 @@ class WorkingRecord:
         self._staged[key] = name
         return name
 
-    def _empty_long(
-        self, attribute: str, value_hint: nw.dtypes.DType | None
-    ) -> DuckDBPyRelation:
+    def _empty_long(self, attribute: str) -> DuckDBPyRelation:
         """A row-less relation shaped like one attribute's long file.
 
         What the staging table is created from, so the table's shape is a
         projection rather than assembled DDL - the same expressions the inserts
         then project, which is what keeps the two from drifting.
 
-        `value` takes the attribute's declared type, or `value_hint` for an
-        undeclared result. Neither means the frame carried no `value` column at
-        all, so the table will hold no value to have a type.
+        `value` takes the attribute's declared type, results being declared
+        beside inputs. A name neither vocabulary holds falls back to a string,
+        which is the widest thing a value column can be.
 
         Notes
         -----
@@ -385,7 +375,7 @@ class WorkingRecord:
         - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
         """
         duck_types = DuckTypes(self.con)
-        value_type = self.schema.value_type(attribute) or value_hint or nw.String()
+        value_type = self.schema.value_type(attribute) or nw.String()
         types = {
             "attribute": nw.String(),
             "breakpoint": nw.Float64(),
@@ -1060,6 +1050,36 @@ class WorkingRecord:
             msg = f"the schema declares no dims {unknown}"
             raise KeyError(msg)
 
+    def _validate_result(self, attribute: str, dims: Mapping[str, Any]) -> None:
+        """A result's name and dims, against the schema's `results`.
+
+        The attribute check only - not membership, which stays relaxed for a
+        result: a solve may produce rows for a component type it derived rather
+        than read, and rejecting those would refuse a legitimate result.
+
+        Notes
+        -----
+        - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
+        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+        """
+        self._validate_dims(dims)
+        spec = self.schema.results.get(attribute)
+        if spec is None:
+            known = sorted(self.schema.results)
+            msg = (
+                f"the schema declares no result {attribute!r}; it declares "
+                f"{known or 'none'}. A result is declared like an input, so a "
+                f"tool states its vocabulary before attaching what it computed"
+            )
+            raise KeyError(msg)
+        outside = sorted(set(dims) - spec.dims)
+        if outside:
+            msg = (
+                f"result {attribute!r} does not vary over {outside}; "
+                f"it varies over {sorted(spec.dims) or 'nothing'}"
+            )
+            raise ValueError(msg)
+
     def _validate_attribute(
         self,
         ctype: str,
@@ -1070,11 +1090,10 @@ class WorkingRecord:
     ) -> None:
         """One name's attribute checks, against the spec of *its* type.
 
-        Inputs only: a result attribute is not schema-declared at all -
-        `Tool.results` derives which attributes count as results from the
-        framework's own registry, and `write_record` persists `outputs/` without
-        consulting the schema. So an unknown attribute name is an
-        error for an input and simply unknowable for a result.
+        Inputs only: a result is declared in `results` rather than per type, so
+        `_validate_result` checks its name and dims and nothing checks its
+        membership - what a solve computes need not be a component the record
+        declares.
 
         `name` is reported where known: with the type derived rather than passed, the name is what the caller can act on.
 
@@ -1179,12 +1198,15 @@ class WorkingRecord:
             if kind == "inputs":
                 self._validate_frame(lazy, attribute, dims)
             else:
-                self._validate_dims(dims)
+                self._validate_result(attribute, dims)
             self._stage_long(attribute, lazy, kind, dims)
             return
 
         if isinstance(value, nw.Expr):
-            self._validate_dims(dims)
+            if kind == "inputs":
+                self._validate_dims(dims)
+            else:
+                self._validate_result(attribute, dims)
             self._stage_derived(attribute, value, entity=entity, kind=kind, **dims)
             return
 
@@ -1205,14 +1227,16 @@ class WorkingRecord:
             keys = target
             if len(values) == 1 and len(keys) > 1:
                 values = values * len(keys)
-        self._validate_dims(dims)
         if kind == "inputs":
+            self._validate_dims(dims)
             # One lookup serves both: rejects a name with no member row, and
             # returns the type whose spec is checked (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
             for name, ctype in self._resolve_types(keys).items():
                 self._validate_attribute(ctype, attribute, dims, name=name)
+        else:
+            self._validate_result(attribute, dims)
 
-        table = self._ensure(kind, attribute, _scalar_dtype(values))
+        table = self._ensure(kind, attribute)
         self._stage_rows(attribute, table, keys, values, per_dim, dims)
 
     def _names_declaring(self, attribute: str) -> list[str]:
@@ -1503,7 +1527,7 @@ class WorkingRecord:
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        table = self._ensure(kind, attribute, _value_dtype(lazy))
+        table = self._ensure(kind, attribute)
         rel = as_relation(lazy, self.con)
         self._insert_long(
             rel, table, attribute, set(lazy.collect_schema().names()), dims
@@ -1587,7 +1611,7 @@ class WorkingRecord:
         `value` needs no cast: the table is this attribute's own, so its column
         already has the attribute's type (`_empty_long`).
         """
-        table = self._ensure(kind, attribute, _value_dtype(frame))
+        table = self._ensure(kind, attribute)
         # A coordinate the frame leaves out is one it broadcasts over, so it is
         # filled with a typed NULL rather than left to `INSERT ... BY NAME`:
         # projecting the table's full column list keeps the insert positional
@@ -2196,27 +2220,6 @@ class WorkingRecord:
         write_record(None, self.flattened(), self.con, uri=target.uri)
         self.rollback()
         return None
-
-
-def _value_dtype(frame: nw.LazyFrame) -> nw.dtypes.DType | None:
-    """A frame's `value` column type, or None if it has none.
-
-    What an undeclared result's staging column is created as, there being no
-    declaration to take it from. Narrow on purpose: `String` is the case that
-    must not become a number, and everything else lands as `Float64`, which is
-    what every numeric result the tools produce already is.
-    """
-    schema = frame.collect_schema()
-    if "value" not in schema.names():
-        return None
-    return nw.String() if schema["value"] == nw.String else nw.Float64()
-
-
-def _scalar_dtype(values: Sequence[Any]) -> nw.dtypes.DType | None:
-    """The same answer for a sequence of Python scalars."""
-    if not values:
-        return None
-    return nw.String() if any(isinstance(v, str) for v in values) else nw.Float64()
 
 
 def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:

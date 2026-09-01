@@ -1074,8 +1074,8 @@ def test_results_accept_a_component_type_the_record_never_declared(staged):
     - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
-    staged.set("carrier", "AC", entity=["1"], kind="outputs")
-    rows = staged.outputs["carrier"].collect().to_native().to_pandas()
+    staged.set("sub_network", "AC", entity=["1"], kind="outputs")
+    rows = staged.outputs["sub_network"].collect().to_native().to_pandas()
     assert rows["entity"].tolist() == ["1"]
 
     # The same name as an input is still rejected: membership governs inputs.
@@ -1083,20 +1083,51 @@ def test_results_accept_a_component_type_the_record_never_declared(staged):
         staged.set("p_nom", 1.0, entity=["NoSuchGenerator"])
 
 
-def test_an_undeclared_results_value_keeps_its_own_type(staged):
-    """A result the schema does not declare is not cast to a guessed dtype.
+def test_an_undeclared_result_is_rejected(staged):
+    """A result is declared like an input, so a typo is caught where it is typed.
 
-    Staged values are held as text, since one staging table serves every
-    attribute, and reading one back casts to its declared dtype. A result has
-    no declaration - so guessing a numeric one would `TRY_CAST` a string result
-    to NULL and lose it with nothing raised. PyPSA's `sub_network` is the real
-    case, a string-valued output no schema declares.
+    The membership rule stays relaxed either way - it is the *attribute* that
+    must be declared, not the component it names.
+
+    Notes
+    -----
+    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    """
+    with pytest.raises(KeyError, match="no result 'p_nom_optt'"):
+        staged.set("p_nom_optt", 1.0, entity=["Manchester Wind"], kind="outputs")
+
+
+def test_a_result_may_not_vary_over_a_dim_it_does_not_declare(staged):
+    """`results` carries coordinates like `attributes`, so the scope is checked.
 
     Notes
     -----
     - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
     """
-    assert "sub_network" not in staged.schema.attributes, "undeclared, as a result is"
+    assert "period" not in staged.schema.results["p_nom_opt"].dims
+    with pytest.raises(ValueError, match="does not vary over"):
+        staged.set(
+            "p_nom_opt", 1.0, entity=["Manchester Wind"], kind="outputs", period=2030
+        )
+
+
+def test_a_results_value_keeps_its_declared_type(staged):
+    """A result round-trips at the dtype `results` declares, not a guessed one.
+
+    Staged values are held as text, since one staging table serves every
+    attribute, and reading one back casts to the declared dtype. Both halves
+    have to hold at once: PyPSA's `sub_network` is a string-valued output, and
+    casting it as a number would `TRY_CAST` it to NULL and lose it with nothing
+    raised, while `p` must come back a number rather than the text it was held
+    as.
+
+    Notes
+    -----
+    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
+    """
+    assert "sub_network" in staged.schema.results, "declared as a result, not an input"
+    assert "sub_network" not in staged.schema.attributes
     staged.set("sub_network", "0", entity=["Manchester Wind"], kind="outputs")
 
     rows = staged.outputs["sub_network"].collect().to_native().to_pandas()
