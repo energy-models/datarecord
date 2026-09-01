@@ -10,7 +10,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from datarecord import Revision
+from datarecord import DirectoryRecord, Revision
+from datarecord.layered.write import write_record
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network
 
@@ -103,6 +104,13 @@ def test_roundtrip_matches_pypsa_reader(con, base_uri, single_revision, ac_dc):
 def test_roundtrip_matches_original(con, base_uri, single_revision, ac_dc):
     """Genuine data loss surfaces here even if it is shared with upstream."""
     assert_networks_equal(PyPSA.build(single_revision.record), ac_dc)
+
+
+def test_roundtrip_from_a_directory_record(con, base_uri, ac_dc):
+    """A `DirectoryRecord` builds the same network a `LayeredRecord` does."""
+    uri = str(Path(base_uri) / "standalone") + "/"
+    write_record(None, PyPSA.to_datarecord(ac_dc), con, uri=uri)
+    assert_networks_equal(PyPSA.build(DirectoryRecord(uri, con)), ac_dc)
 
 
 def test_static_series_split_preserved(con, base_uri, single_revision):
