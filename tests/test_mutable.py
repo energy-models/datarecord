@@ -853,6 +853,39 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
     assert len(_static(child, "p_nom")) > 1
 
 
+def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root, con):
+    """Owning `snapshot` whole completes the edited series, not every series.
+
+    `p_max_pu` varies over a non-partial `snapshot`, so touching one of
+    Manchester Wind's snapshots makes the layer the owner of that generator's
+    whole series and it must carry the untouched snapshots too. The scope is the
+    key the edit named: a second generator the edit never mentioned stays in the
+    parent, and a layer carrying it would claim an extent it was never given.
+
+    Notes
+    -----
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+    """
+    base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
+    one = mine.iloc[[0]][["entity", "snapshot"]].assign(value=0.123)
+    assert len(mine) > 1, "a one-snapshot series would not distinguish the two scopes"
+
+    staged.set("p_max_pu", one, entity=["Manchester Wind"])
+    child = staged.commit(NewChild(root))
+
+    layer = DirectoryRecord(layer_dir(child.id), con)
+    rows = layer.attributes["p_max_pu"].collect().to_native().to_pandas()
+    assert set(rows["entity"]) == {"Manchester Wind"}, (
+        "only the touched key's extent is carried"
+    )
+    written = rows.sort_values("snapshot")
+    assert written["value"].tolist() == [0.123, *mine.iloc[1:]["value"].tolist()], (
+        "the edit, then the rest of the series it now owns"
+    )
+
+
 def test_new_child_defaults_to_the_node_the_record_was_built_over(staged, root):
     """`NewChild()` branches from the base, which is what a caller means.
 

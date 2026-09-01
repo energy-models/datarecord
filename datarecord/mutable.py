@@ -305,6 +305,13 @@ class _Written:
 
 _SEQ = itertools.count(1)
 
+_CARRIED_SEQ = 0
+"""`_seq` for a row carried from the base, below every edit's - `_SEQ` starts at 1.
+
+A carried row is what the layer must hold, never what a caller stated, so an edit
+naming the same coordinate has to win in `_latest_per` whenever it arrives.
+"""
+
 
 class WorkingRecord:
     """A `Record` that accepts edits and materialises them on commit.
@@ -652,7 +659,8 @@ class WorkingRecord:
         Per *coordinate*, not per input key: the input key excludes the dims an
         attribute is not owned per, so keying on it alone would let one
         staged snapshot displace the base's whole series on read - reporting a
-        loss the commit path is careful not to make (`_restated`).
+        loss the staging area is careful not to make
+        (`_complete_owned_whole`).
 
         Notes
         -----
@@ -664,8 +672,8 @@ class WorkingRecord:
         # values of that dim", so it must displace the base's rows at every
         # value of it - otherwise the two overlap, which the broadcast rule forbids. A staged
         # row that *does* name a coordinate displaces only that one, which is
-        # what keeps the rest of the series (`_restated` writes it out at
-        # commit).
+        # what keeps the rest of the series (`_complete_owned_whole` stages it
+        # alongside).
         # Both sides carry this attribute's columns and no others, so the key
         # and the broadcast set are intersected with them: a dim the attribute
         # is not addressed by is absent from the file rather than NULL in it,
@@ -706,45 +714,6 @@ class WorkingRecord:
         spec = self.schema.attributes.get(attribute)
         whole = frozenset() if spec is None else spec.dims - partial
         return tuple(d for d in self.schema.dims if d in whole)
-
-    def _restated(self, attribute: str, staged: DuckDBPyRelation) -> DuckDBPyRelation:
-        """`staged` plus the base rows a non-partial axis obliges it to carry.
-
-        The one commit-time read of parent data. Note the two
-        keys below: `scope` excludes the whole-owned dims, so one touched
-        snapshot pulls in that key's others; `coordinate` adds them back, so a
-        base row is dropped only where the edit named that exact coordinate.
-
-        Notes
-        -----
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-        """
-        whole = self._owned_whole(attribute)
-        if not whole:
-            return staged
-        if attribute not in self.base.attributes:
-            return staged
-
-        # Intersected with the attribute's own columns: a key column its file
-        # does not carry is absent from both sides rather than NULL in them,
-        # and joining on it would fail to bind (`long_columns_for`).
-        columns = set(self._long_columns(attribute))
-        scope = [c for c in self.schema.input_key if c not in whole and c in columns]
-        coordinate = [*scope, *whole, "breakpoint"]
-        base = as_relation(self.base.attributes[attribute], self.con)
-        # Semi-join first to the keys this edit touched, then anti-join away the
-        # exact coordinates it named: what survives is the rest of the extent the
-        # layer now owns whole and so must carry.
-        carried = (
-            base.set_alias("b")
-            .join(staged.set_alias("s"), null_safe("b", "s", scope), how="semi")
-            .set_alias("b")
-            .join(staged.set_alias("s"), null_safe("b", "s", coordinate), how="anti")
-        )
-        return union_all_by_name([staged, carried], self.con).project(
-            *(col(c) for c in self._long_columns(attribute))
-        )
 
     @property
     def outputs(self) -> Frames:
@@ -1468,6 +1437,67 @@ class WorkingRecord:
             col("value"),
             lit(next(_SEQ)).alias("_seq"),
         ).insert_into(table)
+        self._complete_owned_whole(attribute, table)
+
+    def _complete_owned_whole(self, attribute: str, table: str) -> None:
+        """Carry the base extent a non-partial axis obliges the staged rows to hold.
+
+        Done as the rows are staged rather than at commit, so the staging table
+        *is* the layer: touching one snapshot of a series makes
+        this layer the owner of that key's whole extent along the dim, and the
+        untouched coordinates have to be carried or the commit would report a
+        loss.
+
+        Scoped by the keys already staged, not by the attribute: the semi-join
+        below reaches only the keys some edit named, so a component this record
+        never touched stays in the parent. Carried rows take a `_seq` below every
+        edit's, so a later `set` on a carried coordinate outranks it rather than
+        tying with it.
+
+        Idempotent, which is what lets it run per insert instead of once: the
+        anti-join drops any coordinate the table already holds, so a second edit
+        to the same attribute carries only what the first did not.
+
+        Notes
+        -----
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        """
+        whole = self._owned_whole(attribute)
+        if not whole or attribute not in self.base.attributes:
+            return
+
+        # Intersected with the attribute's own columns: a key column its file
+        # does not carry is absent from both sides rather than NULL in them,
+        # and joining on it would fail to bind (`long_columns_for`).
+        columns = set(self._long_columns(attribute))
+        scope = [c for c in self.schema.input_key if c not in whole and c in columns]
+        present = [d for d in whole if d in columns]
+        if not present:
+            # No column for any whole-owned dim, so the file holds one row per
+            # key and there is no extent to complete.
+            return
+        coordinate = [*scope, *present, "breakpoint"]
+        staged = self.con.table(table)
+        base = as_relation(self.base.attributes[attribute], self.con)
+        # A staged row leaving a whole-owned dim NULL already covers that dim's
+        # whole extent by the broadcast rule, so its key has nothing left to
+        # carry and a base row there would overlap it.
+        broadcast = staged.filter(
+            sql(" OR ".join(f"{col(d)} IS NULL" for d in present))
+        )
+        carried = (
+            base.set_alias("b")
+            # The keys some edit touched, minus those a broadcast already covers.
+            .join(staged.set_alias("s"), null_safe("b", "s", scope), how="semi")
+            .set_alias("b")
+            .join(broadcast.set_alias("s"), null_safe("b", "s", scope), how="anti")
+            # Then away the coordinates already staged, leaving the rest of the
+            # extent the layer now owns whole and so must carry.
+            .set_alias("b")
+            .join(staged.set_alias("s"), null_safe("b", "s", coordinate), how="anti")
+        )
+        self._insert(carried, table, {"_seq": lit(_CARRIED_SEQ)})
 
     def _values_relation(
         self,
@@ -2132,12 +2162,11 @@ class WorkingRecord:
         return LazyFrames(tuple(staged), lambda group: nw.from_native(staged[group]))
 
     def _staged_attributes(self) -> Frames:
-        """The staged rows, plus what a non-partial axis obliges them to carry.
+        """The staged rows - what a patch layer holds.
 
-        A patch layer holds only the edits - except along a dim owned
-        whole, where touching one value makes this layer the owner of the
-        attribute's entire extent along it, so `_restated` completes it from the
-        base.
+        No completion step: a dim owned whole was carried into the staging table
+        when it was created (`_seed_owned_whole`), so the rows here are already
+        the layer's full extent.
 
         Notes
         -----
@@ -2149,8 +2178,9 @@ class WorkingRecord:
             return EMPTY
 
         def frame(attr: str) -> nw.LazyFrame:
-            staged = cast("DuckDBPyRelation", self._collapsed_inputs(attr))
-            return nw.from_native(self._restated(attr, staged))
+            return nw.from_native(
+                cast("DuckDBPyRelation", self._collapsed_inputs(attr))
+            )
 
         return LazyFrames(names, frame)
 
@@ -2191,7 +2221,7 @@ class WorkingRecord:
             entity_types=self._staged_entities("entities"),
             groups=self._staged_groups(),
             attributes=self._staged_attributes(),
-            # No `_restated` counterpart: results are complete as produced, never
+            # No completion counterpart: results are complete as produced, never
             # a partial override of a parent's, so there is nothing to carry
             # forward from the base (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override, https://energy-models.github.io/datarecord/design/read-path/#outputs).
             outputs=self.outputs,

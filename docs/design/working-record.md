@@ -191,7 +191,7 @@ Two things differ from an input edit, both following from [outputs](read-path.md
   An input value for a name no layer declares is [rejected](#validation), because it would resolve to nothing.
   A result may legitimately name a component the record never declared: PyPSA's `SubNetwork` exists only after a solve, so rejecting it would refuse a real result.
   This is also what makes a result's name need no resolvable type: an input's type comes from [looking the name up](#set), and a result that declares no member has nothing to look up.
-- **No `_restated` completion at commit.**
+- **No extent completion when staged.**
   Results are complete as produced rather than [a partial override of a parent's](schema.md#partial-the-granularity-of-an-override), so there is nothing to carry forward from the base.
 
 Keeping results coherent with the inputs they were computed from is the caller's business.
@@ -333,8 +333,12 @@ Three interactions need stating, because each is where a naive append is wrong:
 - **`set` on a component this record also added**: correct as-is, since the two live in different files.
 
 The [non-`partial` rule](schema.md#partial-the-granularity-of-an-override) is the subtle one.
-Overwriting one value along a non-partial axis means the layer must carry that component's _whole_ extent along it, so such a `set` must at commit read the resolved series for that key and write it out complete.
-That is the one commit-time read of parent data.
+Overwriting one value along a non-partial axis means the layer must carry that component's _whole_ extent along it, so such a `set` reads the resolved series for that key and stages the untouched coordinates alongside the edit.
+That is the one read of parent data an edit makes, and it happens as the rows are staged rather than at commit: the staging table then already holds what the layer will write, so commit collapses and writes it without a completion step of its own.
+
+The scope is the key the edit named, never the attribute: a component no edit mentioned keeps its rows in the parent, and a layer carrying them would claim an extent it was never given.
+A staged row that leaves the axis NULL is the exception, since [the broadcast rule](record.md#the-broadcast-rule) already makes it cover every label — there is nothing left to carry, and a carried row beside it would overlap.
+Carried rows are staged below every edit's `_seq`, so a later `set` on a coordinate that was carried wins over it.
 
 ## Validation
 
