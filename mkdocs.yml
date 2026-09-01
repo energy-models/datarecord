@@ -51,6 +51,7 @@ nav:
           - Trait switches: design/proposals/trait-switches.md
           - Staging as a layer: design/proposals/staging-as-a-layer.md
           - One Record over a NodeCache: design/proposals/one-record-over-a-node-cache.md
+          - staged_only() is the staged source: design/proposals/staged-only-is-the-source.md
   - API Reference:
       - api/index.md
       - Record: api/record.md
