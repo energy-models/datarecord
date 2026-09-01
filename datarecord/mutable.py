@@ -17,7 +17,7 @@ from collections.abc import Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal, cast
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import duckdb
 import narwhals as nw
@@ -31,11 +31,8 @@ from duckdb import StarExpression as star
 from datarecord.duck import (
     DuckTypes,
     as_relation,
-    broadcast_match,
     distinct_values,
-    fn,
     null_safe,
-    struct_of,
     union_all_by_name,
 )
 from datarecord.record import (
@@ -44,7 +41,6 @@ from datarecord.record import (
     Frames,
     LazyFrames,
     Record,
-    flags_from_rows,
 )
 from datarecord.schema import LONG_TAIL, Schema
 
@@ -265,6 +261,110 @@ class _Written:
         return {}
 
 
+@dataclass(frozen=True)
+class StagedSource:
+    """A staging area as one layer's rows - the last source the fold reads.
+
+    "The layer as it would be written": each member collapses its staging table
+    last-write-wins and hands over what `write_record` would persist, so `_seq`
+    never reaches the fold and nobody can add a raw-rows member later.
+
+    Unfrozen, which is the whole of what distinguishes it: a `set` changes these
+    rows under a reader, so the fold must stay a relation past this point rather
+    than materialise. Nothing here needs invalidating in exchange - a relation
+    over a staging table reads whatever the table holds when it is collected.
+
+    Structural rather than inheriting `LayerSource`, so `mutable.py` keeps its
+    rule of importing from `layered/` only inside function bodies.
+
+    Notes
+    -----
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+    """
+
+    record: WorkingRecord
+    layer_id: UUID
+    frozen: bool = False
+
+    def axes(self) -> set[str]:
+        """The dims with staged rows, plus `entity` where a member row is staged.
+
+        `entity` is an axis file like any other, so an `add` or a `remove`
+        contributes to it - which is what puts a staged component in the
+        components map.
+        """
+        staged = set(self.record._staged_dims())
+        if self.record._rows("entities") is not None:
+            staged.add("entity")
+        return staged
+
+    def axis(self, dim: str) -> DuckDBPyRelation | None:
+        """One axis as this layer would write it - `_axis_layer`, exactly.
+
+        Which matters for the columns rather than the labels: the fold is
+        last-writer-wins per *label*, over the whole row, so a source handing
+        over only the column its `set` named would blank every sibling
+        attribute on that label. `_axis_layer` merges them per column first,
+        which is the same relation `commit` writes.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        """
+        if dim == "entity":
+            return self.record._collapsed_entities("entities")
+        if self.record._rows(f"{_AXIS_PREFIX}{dim}") is None:
+            return None
+        return self.record._axis_layer(dim)
+
+    def entity_type(self, name: str) -> DuckDBPyRelation | None:
+        """One type's staged member rows, the type filtered rather than keyed.
+
+        Notes
+        -----
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+        """
+        rel = self.record._collapsed_entities("entities")
+        if rel is None:
+            return None
+        return rel.filter(col("entity_type") == lit(name)).project(
+            star(exclude=["entity_type"])
+        )
+
+    def group(self, name: str) -> DuckDBPyRelation | None:
+        return self.record._collapsed_group(name)
+
+    def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation | None:
+        if kind == "outputs":
+            rel = self.record._rows("outputs", name)
+            # Results do not overlay, so there is nothing to collapse them
+            # against; `_seq` is dropped as it is from every other member.
+            return None if rel is None else rel.project(star(exclude=["_seq"]))
+        return self.record._collapsed_inputs(name)
+
+    def all_attributes(self, kind: str = "inputs") -> DuckDBPyRelation | None:
+        """Every staged attribute of `kind`, unioned by name and unprojected.
+
+        By name because the tables carry per-attribute column variation exactly
+        as the files do - one attribute's coordinates and no others - which is
+        what lets `fold_inputs` pad both the same way.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        """
+        arms = [
+            rel
+            for name in self.record._staged_attributes_of(kind)
+            if (rel := self.attribute(name, kind)) is not None
+        ]
+        if not arms:
+            return None
+        return union_all_by_name(arms, self.record.con)
+
+
 # -- the DuckDB-backed implementation (https://energy-models.github.io/datarecord/design/working-record/#staging) ---------------------------------
 
 _SEQ = itertools.count(1)
@@ -284,9 +384,16 @@ class WorkingRecord:
     applied* - so an edit reads back, or the record is handed to
     something that only knows `Record`, without committing.
 
-    Staged rows live in three connection-scoped DuckDB tables, the *only* place
-    a staged row exists: the reads fold them rather than holding a copy, so what
+    Staged rows live in connection-scoped DuckDB tables, the *only* place a
+    staged row exists: the reads fold them rather than holding a copy, so what
     is staged is asked of the reads themselves.
+
+    A set of pending edits **is** a layer, and the reads deliver that literally:
+    a `StagedSource` over those tables is appended to whatever the base resolves
+    from, and every read is the same fold one layer deeper. So there is no
+    staged overlay of its own to keep in step with the layered one - the
+    `Record` members below are `LayeredRecord`'s, over a `NodeCache` this record
+    extends.
 
     Notes
     -----
@@ -304,6 +411,10 @@ class WorkingRecord:
         # file it stands for: one `value` column at the attribute's own type,
         # and its own coordinates and no others.
         self._staged: dict[tuple[str, str | None], str] = {}
+        # A layer's identity, so the fold can stamp it and dispatch a winning
+        # row back through this source. Synthetic - the staged layer has no
+        # revision until `commit` writes one.
+        self._layer_id = uuid4()
 
     # -- staging tables -----------------------------------------------------
 
@@ -419,20 +530,72 @@ class WorkingRecord:
             c for c in self.schema.long_columns_for(attribute) if c not in LONG_TAIL
         )
 
-    # -- Record, over base plus pending (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits) -----------------------------
+    # -- Record, one fold deeper (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits) --------------------------------
 
     @property
     def schema(self) -> Schema:
         return self.base.schema
 
     @property
+    def _resolved(self) -> Any:
+        """This record as a `LayeredRecord` over the base plus the staged layer.
+
+        Rebuilt per access rather than cached, and cheap because it is: a
+        `NodeCache` holds relations, and the staged source being unfrozen is
+        what keeps the fold over it from being materialised - so an edit is
+        picked up with no invalidation at all.
+
+        Notes
+        -----
+        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+        """
+        from datarecord.layered.revision import LayeredRecord
+
+        staged = StagedSource(self, self._layer_id)
+        return LayeredRecord(self._base_node_cache().with_source(staged))
+
+    def _base_node_cache(self) -> Any:
+        """What the base resolves from, as a `NodeCache` the staged layer extends.
+
+        A `LayeredRecord` already has one. A `DirectoryRecord` is a parquet
+        directory in the layer layout, so it becomes a one-source cache over a
+        `DirectorySource` - which is what lets one fold serve both bases, with
+        no conditional path and no second overlay.
+
+        Raises
+        ------
+        TypeError
+            For a base that is neither. A framework object hands over narwhals
+            frames and has no layer layout behind it: `axis("entity")` wants the
+            entity axis and `Record` exposes `entity_types` keyed by type, so
+            synthesising one would be rebuilding the format from a protocol that
+            deliberately lacks it.
+
+        Notes
+        -----
+        - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+        """
+        from datarecord.directory import DirectoryRecord
+        from datarecord.layered.resolve import NodeCache
+        from datarecord.layered.revision import LayeredRecord
+        from datarecord.layered.sources import DirectorySource
+
+        if isinstance(self.base, LayeredRecord):
+            return self.base.node_cache
+        if isinstance(self.base, DirectoryRecord):
+            source = DirectorySource(self._layer_id, self.base.base, self.con)
+            return NodeCache(self._layer_id, [source], self.con)
+        msg = (
+            f"a `WorkingRecord` reads by folding its staged rows over the base's, "
+            f"and a {type(self.base).__name__} has no layer layout to fold - only a "
+            f"`LayeredRecord` or a `DirectoryRecord` does"
+        )
+        raise TypeError(msg)
+
+    @property
     def dims(self) -> Frames:
-        staged = self._staged_dims()
-        if not staged:
-            return self.base.dims
-        base = self.base.dims
-        keys = tuple(dict.fromkeys((*base, *staged)))
-        return LazyFrames(keys, self._axis_frame)
+        return self._resolved.dims
 
     @property
     def entity_types(self) -> Frames:
@@ -442,7 +605,7 @@ class WorkingRecord:
         -----
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
-        return self._entity_frames("entities")
+        return self._resolved.entity_types
 
     @property
     def groups(self) -> Frames:
@@ -456,119 +619,7 @@ class WorkingRecord:
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
-        base = self.base.groups
-        staged = tuple(g for g in self.schema.groups if self._rows(g) is not None)
-        keys = tuple(dict.fromkeys((*base, *staged)))
-        return LazyFrames(keys, self._group_frame)
-
-    def _group_frame(self, group: str) -> nw.LazyFrame:
-        """One group's rows, staged over the base ones on the group's key.
-
-        Union by name rather than a keyed overlay, as `_entity_frame` is: a
-        staged row wins on the key, and one only the base holds passes through.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        """
-        base = self.base.groups
-        staged = self._collapsed_group(group)
-        if staged is None:
-            return base[group]
-        if group not in base:
-            return nw.from_native(staged.filter(~col("deleted")))
-        key = self.schema.group_key(group)
-        frame = base[group]
-        present = set(frame.collect_schema().names())
-        on = null_safe("b", "s", [c for c in key if c in present])
-        return nw.from_native(
-            self._group_union(as_relation(frame, self.con), staged, on)
-        )
-
-    def _entity_frames(self, kind: str) -> Frames:
-        base = self.base.entity_types
-        staged = self._collapsed_entities(kind)
-        if staged is None:
-            return base
-        types = distinct_values(staged, "entity_type", order=False)
-        keys = tuple(dict.fromkeys((*base, *types)))
-        return LazyFrames(keys, lambda ctype: self._entity_frame(kind, ctype))
-
-    def _entity_frame(self, kind: str, ctype: str) -> nw.LazyFrame:
-        """One type's members, staged rows over the base ones.
-
-        Union by name rather than a keyed overlay: a staged member row carries
-        whatever columns the caller passed, and a name the base also holds is
-        an edit to it, so the staged row wins on the entity key while a name
-        only the base holds passes through.
-        """
-        base = self.base.entity_types
-        staged = self._collapsed_entities(kind)
-        assert staged is not None
-        mine = staged.filter(col("entity_type") == lit(ctype))
-        if ctype not in base:
-            return nw.from_native(mine.filter(~col("deleted")))
-
-        key = ("entity",)
-        frame = base[ctype]
-        # `collect_schema` reads names without materialising, and `_as_relation`
-        # keeps a DuckDB-backed frame as the plan it already is: the long schema
-        # promises a record hands over unmaterialised frames, and the pending-edit
-        # overlay prices a read with
-        # pending edits at what one more layer costs.
-        present = set(frame.collect_schema().names())
-        on = null_safe("b", "s", [c for c in key if c in present])
-        return nw.from_native(
-            self._entity_union(as_relation(frame, self.con), mine, on, ctype)
-        )
-
-    def _entity_union(
-        self,
-        base: DuckDBPyRelation,
-        staged: DuckDBPyRelation,
-        on: Expression,
-        ctype: str,
-    ) -> DuckDBPyRelation:
-        """`staged` over `base` on the entity key, tombstones removed.
-
-        `entity_type` and `deleted` are supplied whatever the base carried:
-        a resolved frame drops them (the type is the key it was looked up by)
-        while `write_record` needs them back, so one shape serves both.
-        """
-        drop = ("entity_type", "deleted")
-        # Filtered against `base`'s own columns, since DuckDB rejects excluding
-        # one the relation does not have: a resolved frame carries neither of
-        # these where a `write_record` source carries both. `staged` always
-        # carries them, having just been filtered on `entity_type`.
-        b = base.project(star(exclude=[c for c in drop if c in base.columns]))
-        s = staged.project(star(exclude=list(drop)), col("deleted"))
-        # The staged row wins on the entity key, so the base keeps only what the
-        # staging area does not restate; the two are then unioned by name, since
-        # a staged member row carries whatever columns the caller passed.
-        kept = b.set_alias("b").join(s.set_alias("s"), on, how="anti")
-        live = s.filter(~col("deleted")).project(star(exclude=["deleted"]))
-        return union_all_by_name([kept, live], self.con).project(
-            star(),
-            lit(ctype).alias("entity_type"),
-            lit(False).alias("deleted"),  # noqa: FBT003
-        )
-
-    def _group_union(
-        self, base: DuckDBPyRelation, staged: DuckDBPyRelation, on: Expression
-    ) -> DuckDBPyRelation:
-        """`staged` over `base` on the group's key, tombstones removed.
-
-        `_entity_union` without the type: a group's rows carry no `entity_type`
-        to restore, so `deleted` is the whole of what is supplied back.
-        """
-        b = base.project(star(exclude=[c for c in ("deleted",) if c in base.columns]))
-        s = staged.project(star(exclude=["deleted"]), col("deleted"))
-        kept = b.set_alias("b").join(s.set_alias("s"), on, how="anti")
-        live = s.filter(~col("deleted")).project(star(exclude=["deleted"]))
-        return union_all_by_name([kept, live], self.con).project(
-            star(),
-            lit(False).alias("deleted"),  # noqa: FBT003
-        )
+        return self._resolved.groups
 
     @property
     def attributes(self) -> Frames:
@@ -582,75 +633,23 @@ class WorkingRecord:
         -----
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
-        staged = self._staged_attribute_names()
-        keys = tuple(dict.fromkeys((*self.base.attributes, *staged)))
-        return LazyFrames(keys, self._attribute_frame)
+        return self._resolved.attributes
 
-    def _staged_attribute_names(self) -> tuple[str, ...]:
-        return tuple(sorted(self._staged_attributes_of("inputs")))
+    def flags(self, ctype: str) -> dict[str, Flags]:
+        """Straight off the folded owner map, staged rows included.
 
-    def _attribute_frame(self, attribute: str) -> nw.LazyFrame:
-        base = (
-            self.base.attributes[attribute]
-            if attribute in self.base.attributes
-            else None
-        )
-        staged = self._collapsed_inputs(attribute)
-        if staged is None:
-            if base is None:
-                raise KeyError(attribute)
-            return base
-        if base is None:
-            return nw.from_native(staged)
-        # The staged rows are the last layer, so they win per key (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits).
-        return nw.from_native(self._overlay(attribute, base.to_native(), staged))
-
-    def _overlay(
-        self, attribute: str, base: DuckDBPyRelation, staged: DuckDBPyRelation
-    ) -> DuckDBPyRelation:
-        """`staged` over `base`, last-writer-wins per coordinate.
-
-        Per *coordinate*, not per input key: the input key excludes the dims an
-        attribute is not owned per, so keying on it alone would let one
-        staged snapshot displace the base's whole series on read - reporting a
-        loss the staging area is careful not to make
-        (`_complete_owned_whole`).
+        Free, as it is for any layered read: the fold computes the flags in its
+        ownership `GROUP BY`, and a staged layer is one more layer.
 
         Notes
         -----
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
-        # NULL-safe on the input key and `breakpoint`; *broadcast* on the dims
-        # an attribute is not owned per. The broadcast rule says a staged NULL dim means "all
-        # values of that dim", so it must displace the base's rows at every
-        # value of it - otherwise the two overlap, which the broadcast rule forbids. A staged
-        # row that *does* name a coordinate displaces only that one, which is
-        # what keeps the rest of the series (`_complete_owned_whole` stages it
-        # alongside).
-        # Both sides carry this attribute's columns and no others, so the key
-        # and the broadcast set are intersected with them: a dim the attribute
-        # is not addressed by is absent from the file rather than NULL in it,
-        # and joining on it would fail to bind.
-        columns = set(self._long_columns(attribute))
-        fixed = (
-            *(c for c in self.schema.input_key if c in columns),
-            "breakpoint",
-        )
-        # The dims a NULL broadcasts over, minus those the key already fixes.
-        # Read off `broadcast_dims` rather than subtracted from `schema.dims`:
-        # an address coordinate is in neither, and a subtraction would put one
-        # here the moment it left the key.
-        key = set(self.schema.input_key)
-        broadcast = tuple(
-            d for d in self.schema.broadcast_dims if d not in key and d in columns
-        )
-        # The staged side broadcasts, so it is `broadcast_match`'s first alias.
-        on = broadcast_match("s", "b", dict.fromkeys(fixed), broadcast)
-        kept = base.set_alias("b").join(staged.set_alias("s"), on, how="anti")
-        return union_all_by_name([kept, staged], self.con).project(
-            *(col(c) for c in self._long_columns(attribute))
-        )
+        return self._resolved.flags(ctype)
+
+    def _staged_attribute_names(self) -> tuple[str, ...]:
+        return tuple(sorted(self._staged_attributes_of("inputs")))
 
     def _long_columns(self, attribute: str) -> tuple[str, ...]:
         return self.schema.long_columns_for(attribute)
@@ -700,100 +699,6 @@ class WorkingRecord:
             return nw.from_native(rel.project(star(exclude=["_seq"])))
 
         return LazyFrames(names, frame)
-
-    def flags(self, ctype: str) -> dict[str, Flags]:
-        """Base flags unioned with what the staged rows use.
-
-        Scoped by the names this record resolves for the type - base members plus
-        pending additions - the staged rows carrying no type.
-
-        Notes
-        -----
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-        """
-        out = dict(self.base.flags(ctype))
-        if ctype not in self.entity_types:
-            return out
-        members = as_relation(self.entity_types[ctype], self.con).project("entity")
-        arms = [
-            arm
-            for attribute in self._staged_attributes_of("inputs")
-            if (arm := self._flags_arm(attribute, members)) is not None
-        ]
-        if not arms:
-            return out
-        # The arms answer in the shape the fold's own flags do, so they scope the
-        # same way (https://energy-models.github.io/datarecord/design/read-path/#owner-map) before being unioned into the base's.
-        staged = flags_from_rows(
-            self.schema,
-            self.schema.broadcast_dims,
-            union_all_by_name(arms, self.con).fetchall(),
-        )
-        for attribute, flags in staged.items():
-            was = out.get(attribute) or Flags(frozenset(), frozenset(), False)  # noqa: FBT003
-            out[attribute] = Flags(
-                varies=was.varies | flags.varies,
-                broadcast=was.broadcast | flags.broadcast,
-                breakpoints=was.breakpoints or flags.breakpoints,
-            )
-        return out
-
-    def _flags_arm(
-        self, attribute: str, members: DuckDBPyRelation
-    ) -> DuckDBPyRelation | None:
-        """One attribute's flags as a single row, in a shape every arm shares.
-
-        `(attribute, varies, broadcast, breakpoints)`, the two middle fields
-        structs keyed by dim. The staging tables differ in columns where the
-        answer does not, so a dim this attribute has no column for is a constant
-        `false` - "no such axis" rather than "every row broadcasts over it".
-        Uniform arms are what let one union answer every attribute in a single
-        query instead of a round trip each.
-
-        None where the attribute carries no `entity` column at all: `flags` is
-        answered per component type, and an attribute addressed by an axis alone
-        belongs to the record rather than to any type's members.
-
-        Notes
-        -----
-        - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        """
-        rel = self._rows("inputs", attribute)
-        if rel is None or "entity" not in rel.columns:
-            return None
-        present = set(rel.columns)
-
-        def used(dim: str, *, broadcast: bool) -> Expression:
-            if dim not in present:
-                return lit(False)  # noqa: FBT003
-            value = col(dim).isnull() if broadcast else col(dim).isnotnull()
-            return fn.bool_or(value)
-
-        dims = self.schema.broadcast_dims
-        return (
-            rel.set_alias("i")
-            .join(members.set_alias("m"), "i.entity = m.entity", how="semi")
-            .aggregate(
-                [
-                    lit(attribute).alias("attribute"),
-                    struct_of({d: used(d, broadcast=False) for d in dims}).alias(
-                        "varies"
-                    ),
-                    struct_of({d: used(d, broadcast=True) for d in dims}).alias(
-                        "broadcast"
-                    ),
-                    fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
-                    fn.count_star().alias("_rows"),
-                ]
-            )
-            # An ungrouped aggregate answers one row whatever the filter matched,
-            # so the count is what distinguishes "this type has no rows of it" -
-            # which is absence from the mapping - from flags that are all false.
-            .filter(col("_rows") > lit(0))
-            .project(star(exclude=["_rows"]))
-        )
 
     # -- edits (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one, https://energy-models.github.io/datarecord/design/working-record/#add-remove) ----------------------------------------
 
@@ -972,7 +877,7 @@ class WorkingRecord:
         """Reject an `add` whose names another type already holds.
 
         Re-adding a name of the *same* type is an edit to that member, which
-        `_entity_union` resolves last-writer-wins - so only a cross-type clash
+        the fold resolves last-writer-wins - so only a cross-type clash
         raises.
 
         Notes
@@ -2019,15 +1924,26 @@ class WorkingRecord:
         return LazyFrames(dims, lambda dim: nw.from_native(self._axis_layer(dim)))
 
     def _axis_layer(self, dim: str) -> DuckDBPyRelation:
-        """One axis as this layer writes it, per `partial`.
+        """One axis as this layer writes it, which `partial` decides the extent of.
 
-        A `partial` axis contributes its edited labels; one owned whole
-        contributes the resolved axis entire, which is `_axis_frame` - the same
-        relation a read with pending edits answers.
+        Both arms merge the staged columns over the base's *per column*, because
+        a label is one row whichever labels the layer carries: a `set` states one
+        attribute and the row has to keep its siblings' values. What `partial`
+        decides is only how many labels are in it - the touched ones, the fold
+        resolving the rest from the parent, or every label, a dim outside
+        `partial` being one a layer owns entirely once it touches it.
+
+        Notes
+        -----
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         """
-        if dim in self.schema.partial_dims:
-            return cast("DuckDBPyRelation", self._collapsed_axis(dim))
-        return as_relation(self._axis_frame(dim), self.con)
+        merged = as_relation(self._axis_frame(dim), self.con)
+        if dim not in self.schema.partial_dims:
+            return merged
+        touched = cast("DuckDBPyRelation", self._collapsed_axis(dim)).project(col(dim))
+        return merged.set_alias("m").join(
+            touched.set_alias("t"), null_safe("m", "t", [dim]), how="semi"
+        )
 
     def _axis_frame(self, dim: str) -> nw.LazyFrame:
         """One axis, staged columns over the base's row for each label.
@@ -2035,8 +1951,13 @@ class WorkingRecord:
         An outer join, since a `set` may name a label no layer has written: one
         side or the other may be missing, and both belong to the answer.
         """
-        base = self.base.dims[dim]
         staged = self._collapsed_axis(dim)
+        if dim not in self.base.dims:
+            # A `set` may introduce a label for an axis no layer has written, in
+            # which case the staged rows are the whole of it.
+            assert staged is not None
+            return nw.from_native(staged)
+        base = self.base.dims[dim]
         if staged is None:
             return base
         present = list(base.collect_schema().names())

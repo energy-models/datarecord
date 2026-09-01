@@ -132,6 +132,8 @@ An attribute no layer wrote is absent from the map; its relation is empty, and t
 
 `flags` from a directory needs a real aggregate: parquet's footer statistics are per row group, not per component type, so a file mixing one type's series rows with another's constant says nothing about either.
 
+The table describes a `DirectoryRecord` read as itself. A [`WorkingRecord`](working-record.md) _over_ one is a different reading of the same files: it folds them as a layer with its staged rows on top, so it builds an owner map and takes every property in the right-hand column. That map belongs to the `WorkingRecord`, exactly as a `LayeredRecord`'s belongs to the node rather than to the layers it folds — the directory itself gains nothing and still scans.
+
 ## Outputs
 
 `outputs/<attr>.parquet` does not overlay.

@@ -388,6 +388,73 @@ def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     assert after.broadcast == before.broadcast
 
 
+def test_a_staged_edit_is_read_back_and_then_re_read(staged, ac_dc):
+    """Set, read, set again, read again: the second read must see the second edit.
+
+    That is the whole content of "the staged step is not cached", and it fails
+    loudly if anyone later materialises past the frozen prefix - a
+    `cached_property` over the tail, or a `.create()` that does not stop where
+    `frozen` does. The first read is what arms it: it builds the fold, so a
+    cache introduced anywhere in it would be populated before the second `set`.
+
+    Notes
+    -----
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+    """
+
+    def p_nom(name):
+        frame = staged.attributes["p_nom"].collect().to_native().to_pandas()
+        return frame[frame["entity"] == name]["value"].tolist()
+
+    staged.set("p_nom", 11.0, entity=["Manchester Wind"])
+    assert p_nom("Manchester Wind") == [11.0]
+
+    staged.set("p_nom", 22.0, entity=["Manchester Wind"])
+    assert p_nom("Manchester Wind") == [22.0], "the read re-folds the staged layer"
+
+    # A key the second edit never named, to pin that re-folding is not
+    # re-resolving from scratch and dropping what the first edit staged.
+    staged.set("p_nom", 33.0, entity=["Norway Wind"])
+    assert p_nom("Manchester Wind") == [22.0]
+    assert p_nom("Norway Wind") == [33.0]
+
+
+def test_flags_do_not_depend_on_the_maps_grouping_grain(staged, ac_dc):
+    """The fold flags per key; `flags` unions across a type. Both must agree.
+
+    The staged and parquet paths share one aggregate exactly because the
+    grouping grain is invisible to the answer: the map computes `varies` and
+    `broadcast` per owner-map key, and `attributes_of` `bool_or`-unions them
+    over a type's members. So a type whose components are staged at different
+    grains - one per-snapshot, one broadcast - must report both sets, the same
+    answer either grouping would give.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
+    staged.set(
+        "marginal_cost",
+        pd.DataFrame(
+            [
+                {
+                    "entity": "Manchester Wind",
+                    "snapshot": ac_dc.snapshots[0],
+                    "value": 7.5,
+                }
+            ]
+        ),
+        entity=["Manchester Wind"],
+    )
+    staged.set("marginal_cost", 3.0, entity=["Norway Wind"])
+
+    flags = staged.flags(GEN)["marginal_cost"]
+    assert "snapshot" in flags.varies, "one member's rows name the snapshot"
+    assert "snapshot" in flags.broadcast, "another's leave it NULL"
+
+
 # -- value dtypes (https://energy-models.github.io/datarecord/design/record/#flags, https://energy-models.github.io/datarecord/design/schema/#attributespec) -----------------------------------------------
 
 

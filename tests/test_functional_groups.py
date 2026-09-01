@@ -302,6 +302,48 @@ def test_setting_an_axis_addressed_attribute_stages_an_axis_row(con, base_uri):
     )
 
 
+def test_setting_one_axis_attribute_keeps_its_siblings_value(con, base_uri):
+    """Two attributes on one axis, one edited: the other must survive the fold.
+
+    The staged row carries only the column its `set` named, and the fold is
+    last-writer-wins per label over the whole row - so a source handing over
+    just that column would blank the sibling. `_collapsed_axis` merging per
+    column *before* the fold sees it is what makes the two calls commute, and
+    this is the assertion that fails if it stops.
+    """
+    revision = Revision.create(con)
+    write_schema(
+        _schema(
+            attributes={
+                "co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"}),
+                "population": AttributeSpec(dtype=nw.Float64(), dims={"country"}),
+            },
+            partial=frozenset({"country"}),
+        )
+    )
+    write_axis(
+        layer_dir(revision.id),
+        "country",
+        [{"country": "DE", "co2_budget": 40.0, "population": 83.0}],
+    )
+
+    staged = WorkingRecord(revision.record, con)
+    staged.set("co2_budget", {"DE": 12.0})
+
+    frame = staged.dims["country"].collect().to_native()
+    assert frame["co2_budget"].to_pylist() == [12.0], "the edited column takes the edit"
+    assert frame["population"].to_pylist() == [83.0], (
+        "an axis column no edit named keeps the base's value"
+    )
+
+    # And a second `set` on the sibling composes with the first rather than
+    # displacing it, which is the same rule one step further.
+    staged.set("population", {"DE": 84.0})
+    frame = staged.dims["country"].collect().to_native()
+    assert frame["co2_budget"].to_pylist() == [12.0], "the earlier edit survives"
+    assert frame["population"].to_pylist() == [84.0]
+
+
 def test_a_child_layer_holds_only_the_axis_labels_it_touched(con, base_uri):
     """With the axis `partial`, a patch layer's `dims/` is the edits alone.
 
