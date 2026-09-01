@@ -1035,6 +1035,12 @@ def test_an_edit_over_a_directory_base_reads_back(con, base_uri, ac_dc):
     )
     assert before != [4242.0], "otherwise the assertion above proves nothing"
 
+    # The base's id is derived from where it is rather than allocated, so two
+    # readers of one directory agree on which layer they are reading.
+    other = WorkingRecord(DirectoryRecord(layer_dir(revision.id), con), con)
+    assert other._base_node_cache().revision_id == staged._base_node_cache().revision_id
+    assert other._layer_id != staged._layer_id, "each staging area is its own layer"
+
 
 def test_new_child_without_a_layered_base_says_what_to_pass(con, base_uri, tmp_path):
     """A directory is no node in a tree, so there is nothing to branch from.

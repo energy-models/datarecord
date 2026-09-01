@@ -17,7 +17,7 @@ from collections.abc import Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal, cast
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import duckdb
 import narwhals as nw
@@ -405,19 +405,17 @@ class WorkingRecord:
     def __init__(self, base: Record, con: DuckDBPyConnection) -> None:
         self.base = base
         self.con = con
-        self._id = uuid4().hex
+        # This record's one identity, which is the staged layer's: the fold
+        # stamps it as `layer_uuid` and dispatches a winning row back through
+        # the source carrying it. Synthetic, the staged layer having no revision
+        # until `commit` writes one, and it names the staging tables too - so
+        # two `WorkingRecord`s on one connection collide in neither.
+        self._layer_id = uuid4()
         # Keyed by `(kind, attribute)`, the attribute being None for the entity
         # kinds. A long kind stages one table per attribute because that is the
         # file it stands for: one `value` column at the attribute's own type,
         # and its own coordinates and no others.
         self._staged: dict[tuple[str, str | None], str] = {}
-        # A layer's identity, so the fold can stamp it and dispatch a winning
-        # row back through this source. Synthetic - the staged layer has no
-        # revision until `commit` writes one, and a directory base is no node in
-        # a tree - and necessarily distinct, `source_for` telling the two apart
-        # by nothing else.
-        self._layer_id = uuid4()
-        self._base_layer_id = uuid4()
 
     # -- staging tables -----------------------------------------------------
 
@@ -432,11 +430,11 @@ class WorkingRecord:
             # Hashed for the same reason the attribute is: a dim name is a
             # caller's string, and this becomes an identifier.
             digest = sha256(kind[len(_AXIS_PREFIX) :].encode()).hexdigest()[:16]
-            return f"staged_axis_{digest}_{self._id}"
+            return f"staged_axis_{digest}_{self._layer_id.hex}"
         if attribute is None:
-            return f"staged_{kind}_{self._id}"
+            return f"staged_{kind}_{self._layer_id.hex}"
         digest = sha256(attribute.encode()).hexdigest()[:16]
-        return f"staged_{kind}_{digest}_{self._id}"
+        return f"staged_{kind}_{digest}_{self._layer_id.hex}"
 
     def _ensure(self, kind: str, attribute: str | None = None) -> str:
         """The staging table for `kind`, created on first use.
@@ -591,8 +589,15 @@ class WorkingRecord:
             # sources, and `source_for` dispatches a winning row by matching
             # `layer_uuid` against them - so sharing one would send every staged
             # win to the directory and read the edit back as the base's value.
-            source = DirectorySource(self._base_layer_id, self.base.base, self.con)
-            return NodeCache(self._base_layer_id, [source], self.con)
+            # Derived from where the directory is, as `layer_dir` derives a
+            # layer's path from its UUID and for the same reason: a directory
+            # has no revision, but it has a location, and that is what makes it
+            # one layer rather than another. Distinct from this record's own by
+            # construction, which `source_for` needs - it tells the base from
+            # the staging area by `layer_uuid` and nothing else.
+            base = self.base.base
+            source = DirectorySource(_directory_id(base), base, self.con)
+            return NodeCache(_directory_id(base), [source], self.con)
         msg = (
             f"a `WorkingRecord` reads by folding its staged rows over the base's, "
             f"and a {type(self.base).__name__} has no layer layout to fold - only a "
@@ -2153,6 +2158,27 @@ class WorkingRecord:
         write_record(None, self.flattened(), self.con, uri=target.uri)
         self.rollback()
         return None
+
+
+def _directory_id(uri: str) -> UUID:
+    """A plain directory's layer identity, derived from where it is.
+
+    A directory is no node in a layer tree, so it has no revision to be
+    stamped with - but the fold keys a source by UUID, and two readings of one
+    directory should agree on which layer they are reading. Its location is
+    what makes it one layer rather than another, so the UUID follows from that
+    rather than being allocated per reader.
+
+    Notes
+    -----
+    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+    """
+    return uuid5(_DIRECTORY_NAMESPACE, uri)
+
+
+# A fixed namespace, so one directory's id is the same in every process - a
+# random one would make it per-reader, which is what deriving it avoids.
+_DIRECTORY_NAMESPACE = UUID("6f3d9f4e-1c2b-4a5d-8e7f-0a1b2c3d4e5f")
 
 
 def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
