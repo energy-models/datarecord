@@ -4,6 +4,12 @@ What `Record` (read-only) and `write_record` (a whole record at once) do not
 cover. Accumulate-then-commit: an edit costs a row in a staging table rather
 than a rewrite, and nothing touches the record until `commit()`.
 
+Every import from `layered/` is in a function body, and none of them is a
+cycle - the graph is a DAG either way. It is so that this module names the fold
+at runtime only: `StagedSource` satisfies `LayerSource` structurally rather
+than by inheriting it, which is what keeps a staging area from being something
+`layered/` has to know about.
+
 Notes
 -----
 - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)
@@ -2107,7 +2113,7 @@ class WorkingRecord:
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        from datarecord.layered.write import write_record  # circular at module level
+        from datarecord.layered.write import write_record
 
         if isinstance(target, NewChild):
             parent = (
