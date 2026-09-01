@@ -115,18 +115,20 @@ The fold ends each kind by evicting the parent's matching keys:
 kept = parent.join(own, null_safe("p", "o", keys.schema.input_key), how="anti")
 ```
 
-That is correct for a written layer _because_ [`_restated`](../working-record.md#committing) has already completed the layer's extent along every non-`partial` axis. Evicting the parent's key loses nothing, since the new layer replaced all of it. A staging area has not restated, so anti-joining on `input_key` would let one staged point displace the base's whole series — the loss `_overlay`'s comment describes, and the reason the staged overlay keys by coordinate instead.
+That is correct for a written layer _because_ its extent along every non-`partial` axis has already been completed. Evicting the parent's key loses nothing, since the new layer replaced all of it. A staging area that has not completed would lose the rest of the series, so anti-joining on `input_key` would let one staged point displace the base's whole series — the loss `_overlay`'s comment describes, and the reason the staged overlay keys by coordinate instead.
 
-So the precondition, not the algebra, is what differs. **Establish the precondition and the difference is gone**: `_restated` runs on first touch of an attribute rather than at commit.
+So the precondition, not the algebra, is what differs. **Establish the precondition and the difference is gone**: the completion runs as rows are staged rather than at commit.
 
-`_ensure` is already the first-touch hook — a staging table is created exactly once per attribute, keyed in `self._staged`, and `_owned_whole(attribute)` says whether the attribute has an axis that obliges completion at all. So the rule is: when creating the staging table for an attribute with a non-empty `_owned_whole`, seed it with the base's extent for that attribute. Once. Every later `set` on it hits an already-complete series and does nothing extra.
+**Landed** as `_complete_owned_whole`, called at the end of `_insert_long`. The staging tables now already hold what gets written, so `staged_only()` is literally true rather than assembled and `_restated` has left the commit path entirely.
 
-This is the same total work commit does today, paid earlier, and it is what makes `staged_only()` literally true rather than assembled: the staging tables already hold what gets written, so `_restated` leaves the commit path entirely.
+It is not the once-per-attribute seed this proposal first described, and the difference is the whole subtlety. The plan was to hang it on `_ensure`, a staging table being created exactly once per attribute — but the completion is scoped by _which keys an edit named_ (`_restated`'s semi-join), and at table-creation time no keys are staged yet. Seeding the base's whole extent there makes a one-component edit claim ownership of every component's series. So it runs per insert, made idempotent by the anti-join against what the table already holds: a second edit carries only what the first did not.
 
-Two consequences to accept deliberately:
+A second case the commit-time version never met: a staged row leaving a whole-owned dim NULL already covers every label by [the broadcast rule](../record.md#the-broadcast-rule), so its key has nothing to carry and a carried row beside it would overlap. `_restated` never saw one because `_overlay` resolved broadcasts upstream of it; staged directly, the exclusion has to be explicit.
 
-- **`set` reads the base on first touch of a completed attribute** — a fold, where a deep unmaterialised ancestry makes one. It must not retrigger: the guard is table creation, which happens once per attribute per `WorkingRecord`, so a second `set` on the same attribute reads nothing. An attribute with no owned-whole dim never triggers it at all.
-- **`pending` counts rows the caller did not stage.** Carried rows are indistinguishable from edited ones in the staging table, so a one-value `set` on a thousand-snapshot attribute would report a thousand pending rows.
+Two consequences accepted deliberately:
+
+- **`set` reads the base when it touches a completed attribute** — a fold, where a deep unmaterialised ancestry makes one. Bounded by what is staged rather than by how often: the anti-join makes a repeat edit carry nothing. An attribute with no owned-whole dim never triggers it at all.
+- **`pending` counts rows the caller did not stage.** Carried rows are indistinguishable from edited ones in the staging table, so a one-value `set` on a thousand-snapshot attribute would report a thousand pending rows. [Question 1](#1-pending-goes) removes it rather than teaching the tables to tell the two apart.
 
 ## What has to be settled first
 
@@ -227,7 +229,7 @@ It is a format change: `nw.Int64()` becomes a struct in `component_columns` and 
 | the directory's reads    | `directory.py` — `_read`, `_require`, `_keyed_by`                                                                  |
 | the staged counterparts  | `mutable.py` — `_overlay`, `_entity_union`, `_group_union`, `_collapsed_inputs` / `_entities` / `_group` / `_axis` |
 | the staged flags         | `mutable.py` — `flags`, `_flags_arm`                                                                               |
-| first-touch hook         | `mutable.py` — `_ensure`, `_empty_long`, `_owned_whole`, `_restated`                                               |
+| the extent completion    | `mutable.py` — `_insert_long` → `_complete_owned_whole`, `_owned_whole`; `_ensure` / `_empty_long` shape the table |
 | what commit hands over   | `mutable.py` — `staged_only`, `flattened`, both building a `_Written`                                              |
 | the shared tail          | `record.py` — `flags_from_rows` (scoping), `duck.py` — `null_safe`, `broadcast_match`, `union_all_by_name`         |
 
@@ -237,9 +239,9 @@ Note that `mutable.py` imports from `layered/` only inside function bodies, to a
 
 ## A suggested order
 
-0. **Assert the identity first, as a spike.** A `WorkingRecord` with nothing staged must read identically to its base — same keys, same rows, same `flags`. Today that path goes through `_overlay` rather than delegating, so the assertion may already fail on column order, a restored `entity_type`, or `order_key`. Half an hour, and it decides whether step 1 is a fixture or a bug fix: everything below assumes the identity holds, so finding out it does not is worth knowing before any of it.
-1. **Extend the `both` fixture to a `WorkingRecord`** ([below](#how-to-know-it-worked)). The net everything after this falls into.
-2. **Move `_restated` to first touch.** Self-contained, testable against the existing commit tests, and it is what the rest depends on. `pending` goes here, with its tests.
+0. **Assert the identity first, as a spike** — done, and **it holds**. An unstaged `WorkingRecord` reads identically to its base over both a `LayeredRecord` and a `DirectoryRecord`, despite going through `_overlay` rather than delegating. So step 1 was a plain fixture addition rather than the bug fix it might have been.
+1. **Extend the `both` fixture to a `WorkingRecord`** ([below](#how-to-know-it-worked)) — done. The net everything after this falls into: it now reads one record four ways, an unstaged `WorkingRecord` over each base beside the two backings.
+2. **Move the completion out of commit** — [done](#what-makes-the-staged-source-foldable), as `_complete_owned_whole` on each staged insert rather than the once-per-attribute seed first sketched here. Self-contained, testable against the existing commit tests, and it is what the rest depends on. `pending` goes here, with its tests.
 3. **Declare results.** Independent of the fold, and it is what lets `all_attributes("outputs")` name its files rather than glob. `value_hint` is retired here — see [question 3](#3-results-become-schema-declared).
 4. **`LayerSource` and `ParquetLayer`**, replacing `layer_dir(uuid)` in the fold and in `NodeCache`'s reads with a source lookup. No behaviour change and no second implementation: one source doing exactly what `layer_dir` did.
 5. **Then the fold over sources**, one kind at a time: `fold_components` first, being the simplest (no flags, no broadcast, one key column), `fold_group` next, `fold_inputs` last.
@@ -294,9 +296,9 @@ Those deletions are what make the two smaller cleanups this grew out of unnecess
 
 **No format change of its own.** The two that touch disk — [the rename and `order_key`](#what-lands-first-and-separately) — land first and separately, and nothing here adds to them: this change is entirely about who computes the overlay.
 
-**Three design pages owe an edit**, none of them optional — when behaviour changes, the page changes, not just the code:
+**Four sections owe an edit**, none of them optional — when behaviour changes, the page changes, not just the code. One is done:
 
-- [committing](../working-record.md#committing) calls `_restated` a commit-time step. It becomes a property of how a staged layer reads, which is arguably where it belonged: it describes what the layer _is_, not what commit does to it.
+- ~~[committing](../working-record.md#committing) calls `_restated` a commit-time step.~~ **Done**: the page now describes completion as a property of how a staged layer reads, which is arguably where it belonged — it describes what the layer _is_, not what commit does to it. The scoping rule and the broadcast exclusion are stated there too, both being things a reader cannot recover from the code.
 - [`pending`](../working-record.md#pending) is a section, and the staging section's "these tables are the only place a staged row exists: `pending` counts them and the reads fold them" names it. Both go.
 - [results through `kind="outputs"`](../working-record.md#results-through-kindoutputs) says a result attribute is not schema-declared, and gives the reason. Question 3 reverses that; the page keeps the membership rule and loses the declaration one.
 - [reading with pending edits](../working-record.md#reading-with-pending-edits) says the staged fold "costs what one more layer costs". True per read, and the page should say per read — a written layer pays that once and is cached forever, the staged one pays it on every read, being the only layer that can still change.
@@ -305,6 +307,6 @@ Those deletions are what make the two smaller cleanups this grew out of unnecess
 
 **Whether `materialise` could run over a staging area.** [The frozen-prefix rule](#the-cache-stops-at-the-last-frozen-source) names this exactly: freeze the tail into the prefix. A long-lived `WorkingRecord` whose edits have settled could fold its staged step once into a `NodeCache` and read from that, at the price of having to discard it on the next `set` — which is the generation bookkeeping this proposal avoids needing, deferred to the one case that would pay for it. Nothing here needs it.
 
-**Whether the commit path collapses further.** `staged_only()` and `flattened()` build two `Record`s out of one staging area. With `_restated` moved to first touch, `staged_only()` _is_ the staged source and `flattened()` is the fold's own output — so both readings become projections of one object rather than two assembled `_Written`s.
+**Whether the commit path collapses further.** `staged_only()` and `flattened()` build two `Record`s out of one staging area. With the completion moved into staging, `staged_only()` _is_ the staged source and `flattened()` is the fold's own output — so both readings become projections of one object rather than two assembled `_Written`s.
 
 **Whether a `DirectoryRecord` gains a map when something wants one.** The fold now runs over a directory, so the option exists. It should stay unexercised: the scan is a design property, and the sentence in [read-path](../read-path.md#what-differs-between-the-implementations) is what keeps it one.
