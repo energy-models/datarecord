@@ -12,7 +12,6 @@ Notes
 - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
 """
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Self
@@ -25,7 +24,7 @@ from pydantic import BaseModel, PrivateAttr
 from datarecord.duck import default_connection
 from datarecord.layered import resolve
 from datarecord.layered.resolve import NodeCache
-from datarecord.record import Flags, Frames, LazyFrames
+from datarecord.record import Flags, LazyFrames
 from datarecord.schema import Schema
 
 _ANCESTRY = """
@@ -235,21 +234,23 @@ class LayeredRecord:
         return LazyFrames(types, self._component_frame)
 
     @cached_property
-    def groups(self) -> Mapping[str, Frames]:
-        """Each declared group's rows, keyed by group then by component type.
+    def groups(self) -> LazyFrames:
+        """Each declared group's rows, keyed by group - one frame each.
+
+        Only groups some layer wrote a row of, as `components` is only the types
+        that have members: a declared group nothing populates is absent rather
+        than present-and-empty.
 
         Notes
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        return {
-            group: self._group_frames(group) for group in self.node_cache.schema.groups
-        }
-
-    def _group_frames(self, group: str) -> LazyFrames:
-        rows = self.node_cache.group(group).project("entity_type").distinct()
-        types = tuple(sorted(r[0] for r in rows.fetchall()))
-        return LazyFrames(types, lambda ctype: self._group_frame(group, ctype))
+        groups = tuple(
+            g
+            for g in self.node_cache.schema.groups
+            if self.node_cache.group(g).limit(1).fetchone() is not None
+        )
+        return LazyFrames(groups, self._group_frame)
 
     @cached_property
     def attributes(self) -> LazyFrames:
@@ -284,20 +285,26 @@ class LayeredRecord:
     def _component_frame(self, ctype: str) -> nw.LazyFrame:
         return self._ordered(self.node_cache.component_frame(ctype), ctype)
 
-    def _group_frame(self, group: str, ctype: str) -> nw.LazyFrame:
-        return self._ordered(self.node_cache.group_frame(group, ctype), ctype)
+    def _group_frame(self, group: str) -> nw.LazyFrame:
+        return self._ordered(self.node_cache.group_frame(group), group)
 
-    def _ordered(self, rel: DuckDBPyRelation | None, ctype: str) -> nw.LazyFrame:
+    def _ordered(self, rel: DuckDBPyRelation | None, key: str) -> nw.LazyFrame:
         """`rel` in member order, which for an overlay means sorted by `order_key`.
 
         The fold's own output has no order (its union puts a layer's own
         contribution first), so the order a `Record` promises is imposed here.
         `order_key` stays in the frame rather than being projected away.
 
+        Parameters
+        ----------
+        key
+            What the frame was looked up by - a component type or a group name -
+            so a miss raises the `KeyError` the caller asked with.
+
         Notes
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         if rel is None:
-            raise KeyError(ctype)
+            raise KeyError(key)
         return nw.from_native(rel.order("order_key"))

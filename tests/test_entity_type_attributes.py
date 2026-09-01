@@ -5,10 +5,10 @@
 """An attribute addressed by the entity-type axis alone.
 
 A per-type `icon` is a value per type, keyed once, and so a column of
-`dims/entity_type.parquet` - the same treatment any mapping used as an axis in
-its own right gets. What the type axis may *not* do is key a value alongside
-`entity`, where the type is determined by the entity and the row would be keyed
-twice over.
+`dims/entity_type.parquet` - the same treatment any axis a functional group is
+`into` gets. What the type axis may *not* do is key a value alongside `entity`,
+where the type is determined by the entity and the row would be keyed twice
+over.
 
 Notes
 -----
@@ -25,7 +25,7 @@ from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import write_schema
 from datarecord.mutable import NewChild, WorkingRecord
-from datarecord.schema import AttributeSpec, Dimension, Schema
+from datarecord.schema import AttributeSpec, Dimension, Group, Schema
 from tests.fixtures import write_axis
 
 TYPES = ["Bus", "Generator"]
@@ -37,8 +37,9 @@ def typed_schema():
     return Schema(
         dimensions={
             "entity": Dimension(dtype=nw.String()),
-            "entity_type": Dimension(dtype=nw.Enum(TYPES), on={"entity"}),
+            "entity_type": Dimension(dtype=nw.Enum(TYPES)),
         },
+        groups={"entity_type": Group(over=["entity"], into="entity_type")},
         attributes={
             "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
             "icon": AttributeSpec(
@@ -164,8 +165,9 @@ def test_naming_the_type_alongside_entity_is_refused():
         Schema(
             dimensions={
                 "entity": Dimension(dtype=nw.String()),
-                "entity_type": Dimension(dtype=nw.Enum(TYPES), on={"entity"}),
+                "entity_type": Dimension(dtype=nw.Enum(TYPES)),
             },
+            groups={"entity_type": Group(over=["entity"], into="entity_type")},
             attributes={
                 "p_nom": AttributeSpec(
                     dtype=nw.Float64(), dims={"entity", "entity_type"}

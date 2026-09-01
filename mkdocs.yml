@@ -47,6 +47,7 @@ nav:
       - Open questions: design/open-questions.md
       - Proposals:
           - Dims, mappings, groups and traits: design/proposals/dims-groups-traits.md
+          - Groups: design/proposals/groups.md
   - API Reference:
       - api/index.md
       - Record: api/record.md

@@ -128,7 +128,6 @@ def test_curve_on_a_connection(con, base_uri):
     write_components(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer,
-        PROCESS,
         [
             {"entity": "steel_dri", "bus": "h2_north", "role": "input"},
             {"entity": "steel_dri", "bus": "dri", "role": "output"},

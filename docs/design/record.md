@@ -31,15 +31,15 @@ class Record(Protocol):
 `schema` is [the declaration](schema.md): which axes exist, which attributes each component type may carry, and over which axes each may vary.
 The rest is data, and comes in two shapes.
 
-`dims`, `components` and `groups` are **wide** — one row per thing, keyed by the dim, the component type, or the group and then the type:
+`dims`, `components` and `groups` are **wide** — one row per thing, keyed by the dim, the component type, or the group:
 
 ```text
 dims["scenario"]                       scenario | ...   one row per axis label, in axis order
 components["Generator"]                entity | <non-varying attribute columns>
-groups["connection"]["Link"]           entity | bus | role | ...  one per attachment
+groups["connection"]                   entity | bus | role | ...  one per attachment
 ```
 
-`groups` is keyed twice because a group is declared record-wide while its rows are stored per component type: `connection` is one group, and `dims/connection/Link.parquet` is one type's rows of it.
+`groups` is keyed by the group alone, one frame each: a group's rows are keyed by its coordinates and the component type is not one of them, so `groups/connection.parquet` holds every type's attachments ([where the rows live](format.md#where-a-value-lives)).
 
 `attributes` and `outputs` are **long** — one row per value, keyed by the attribute's name:
 

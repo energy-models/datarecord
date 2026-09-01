@@ -9,13 +9,13 @@ record/
 ├── dims/
 │   ├── entity.parquet              # which entities exist, and of what type
 │   ├── components/<Type>.parquet   # non-varying attribute columns, per type
-│   ├── <group>/<Type>.parquet      # which tuples of the group exist
 │   └── <dim>.parquet               # one axis table per declared dim
+├── groups/<group>.parquet          # which tuples of the group exist
 ├── inputs/<attr>.parquet           # one varying input attribute per file
 └── outputs/<attr>.parquet          # one result attribute per file
 ```
 
-Every file under `dims/` is named for what it holds, singular: `dims/scenario.parquet` for the `scenario` axis, as `inputs/p_nom.parquet` is for `p_nom`.
+Every file under `dims/` and `groups/` is named for what it holds, singular: `dims/scenario.parquet` for the `scenario` axis, as `inputs/p_nom.parquet` is for `p_nom`.
 A dim's file is its name and nothing else — no pluralisation, which would be English grammar applied to a declared identifier and would spell a dim named `bus` as `buss.parquet`.
 
 ## The entity axis
@@ -49,9 +49,9 @@ The rule: **an attribute naming exactly one addressing coordinate is a column on
 | `dims`                       | lands in                                                              |
 | ---------------------------- | --------------------------------------------------------------------- |
 | `{"entity"}`                 | `dims/components/<Type>.parquet` — one column per attribute, per type |
-| `{"connection"}`             | the `connection` group's table                                        |
+| `{"connection"}`             | `groups/connection.parquet` — the group's own file                    |
 | `{"scenario"}`               | `dims/scenario.parquet` — the axis file                               |
-| `{"country"}`                | `dims/country.parquet` — a mapping's own axis file                    |
+| `{"country"}`                | `dims/country.parquet` — the axis file, a dim shadowing the group     |
 | `{"entity", "snapshot"}`     | `inputs/<attr>.parquet`                                               |
 | `{"connection", "snapshot"}` | `inputs/<attr>.parquet`                                               |
 
@@ -59,15 +59,21 @@ So "varying" is not "has dims" but **"has dims beyond its address"**, and one ru
 
 - **`dims/components/<Type>.parquet`** — attributes addressed by `entity` alone: one column per attribute, indexed by `entity`.
   Values only: a component's _membership_ is its row on the [entity axis](#the-entity-axis), not its presence here.
-- **A [group](schema.md#groups)'s table** — attributes addressed by that group alone, `role` being the case.
+- **A [group](schema.md#groups)'s file** — attributes addressed by that group alone, `role` being the case.
 - **An axis file** — attributes addressed by one dim alone. A snapshot weighting is a number per snapshot and belongs to no component, so `dims/snapshot.parquet` carries it as a declared column with a `dtype`, a `default` and a `description`.
 - **`inputs/<attr>.parquet`** — every attribute addressed by more than its own coordinate, even where a given component's value happens to be constant.
   That component is then a row with the varying dim NULL.
 
 So a component type's constant frame is assembled from both: the non-varying columns, and the dim-NULL rows of the varying files.
 
-A [group](schema.md#groups)'s rows are in `dims/<group>/<Type>.parquet`, keyed by that group's coordinates and carrying their own tombstones — `dims/connection/Link.parquet` for the `connection` group over `(entity, bus)`.
-A record with no such directory has no rows of that group.
+A [group](schema.md#groups)'s rows are in `groups/<group>.parquet`, keyed by that group's coordinates and carrying their own tombstones — `groups/connection.parquet` for the `connection` group over `(entity, bus)`.
+A record with no such file has no rows of that group.
+
+**One file per group, never split by type.** A group's rows are keyed by its coordinates and `entity_type` is not one of them: splitting put `connection` rows for a `Link` and a `Line` in different files despite identical keys, forcing a union on every read and privileging `entity` among the coordinates. A `corridor` between two buses has no type to split on at all, and a `contract` between two entities has two — one per coordinate, neither of them the row's — so the split never generalised beyond the case it was written for.
+
+The [entity-type group](schema.md#entity_type-the-axis-of-kinds) is the one exception, its rows being the [entity axis file](#the-entity-axis): that file is derived by the writer from the per-type member frames rather than handed over, which is what keeps a component's type from disagreeing with the file its columns are in.
+
+A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a column of the group's file like any coordinate, so `groups/country.parquet` is `bus | country`. No column on the classified axis: `dims/bus.parquet` does not gain a `country`, the relation being the group's own file. That costs a join where a column read would have done, and buys a uniform rule — `into` decides nothing about storage, so nothing in the layout branches on it.
 
 ## The long schema
 
@@ -99,9 +105,9 @@ That is what removes `entity_type` from every attribute key.
 An `inputs/` row addresses `(entity, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
 The alternative — carrying the type in the key — makes it a _component's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
 
-**The entity axis is the mapping.** `dims/entity.parquet` carries `entity_type` as a column, so `entity -> entity_type` is one read of one file rather than a glob over every type's.
+**The entity axis carries the classification.** `dims/entity.parquet` carries `entity_type` as a column, so `entity -> entity_type` is one read of one file rather than a glob over every type's — the [entity-type group](schema.md#entity_type-the-axis-of-kinds)'s rows, stored here rather than in `groups/` because the writer derives them from the per-type member frames.
 `entity_type` is a column of that axis and of the owner map it feeds, never of the attribute rows.
-Being a [mapping](schema.md#on-a-mapping-over-another-axis) it also has an axis file of its own, `dims/entity_type.parquet`, which is where a value addressed by the type alone — a per-type icon — lives; that is a column keyed by type, not an attribute row keyed by entity, so it takes nothing back from the paragraph above.
+The type also has an axis file of its own, `dims/entity_type.parquet`, which is where a value addressed by the type alone — a per-type icon — lives; that is a column keyed by type, not an attribute row keyed by entity, so it takes nothing back from the paragraph above.
 
 So a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the components map on `entity`.
 That join is what the `entity_type` filter used to be, and it is against a relation the read path already builds.

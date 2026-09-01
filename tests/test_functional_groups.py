@@ -2,16 +2,19 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Mappings: a dim that classifies another dim's labels.
+"""Functional groups: a group declaring `into`, which classifies its coordinates.
 
-`country on bus` says every bus is in exactly one country. The classification
-is a column on the *classified* axis's file, and the mapping keeps an axis file
-of its own for its order and for attributes addressed by it.
+`country` over `[bus]` into `country` says every bus is in exactly one country.
+The relation is a file of its own, `groups/country.parquet`, and the dim it is
+`into` keeps an axis file for its order and for attributes addressed by it.
 
 Notes
 -----
-- [mappings](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#mappings)
+- [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+- [why `into` is the right field](https://energy-models.github.io/datarecord/design/schema/#why-into-is-the-right-field)
 """
+
+from typing import Any
 
 import narwhals as nw
 import pytest
@@ -20,61 +23,103 @@ from pydantic import ValidationError
 from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.mutable import NewChild, WorkingRecord
-from datarecord.schema import AttributeSpec, Dimension, Schema
-from tests.fixtures import write_axis, write_schema
+from datarecord.schema import AttributeSpec, Dimension, Group, Schema
+from tests.fixtures import write_axis, write_group, write_schema
 
 
 def _schema(**overrides) -> Schema:
     """A record classified twice over: bus -> state -> country."""
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "dimensions": {
             "bus": Dimension(dtype=nw.String()),
-            "state": Dimension(dtype=nw.String(), on={"bus"}),
-            "country": Dimension(dtype=nw.String(), on={"state"}),
+            "state": Dimension(dtype=nw.String()),
+            "country": Dimension(dtype=nw.String()),
+        },
+        "groups": {
+            "state": Group(over=["bus"], into="state"),
+            "country": Group(over=["state"], into="country"),
         },
         "partial": frozenset(),
     }
     kwargs.update(overrides)
+    # A group's key coordinates address a row rather than broadcasting, so the
+    # schema requires them `partial` - which is what the classification becoming
+    # a relation buys, and what a column on the axis hid. Added here rather than
+    # in every caller's `partial=`, which is overriding what the *record* patches
+    # by value, not restating what the groups oblige.
+    keys = {g.over[c] for g in kwargs["groups"].values() for c in g.key}
+    kwargs["partial"] = frozenset(kwargs["partial"]) | keys
     return Schema(**kwargs)
 
 
 # -- the declaration --------------------------------------------------------
 
 
-def test_a_mapping_is_a_dim():
-    """One namespace: a mapping is addressable exactly as any other axis is."""
+def test_the_dim_a_group_is_into_is_an_ordinary_dim():
+    """One namespace: the classified axis is addressable as any other is."""
     s = _schema()
     assert s.dims == ("bus", "state", "country")
-    assert s.dimensions["country"].mapping
-    assert not s.dimensions["bus"].mapping
     # Typed like any dim, so a column carrying its labels casts correctly.
     assert s.column_type("country") == nw.String()
 
 
-def test_the_column_lives_on_the_classified_axis():
-    """`country on state` puts a `country` column on `dims/state.parquet`.
+def test_into_becomes_a_coordinate_of_the_group():
+    """`into` is sugar: it folds into `coordinates` and nothing branches on it.
 
-    The side where it is single-valued: one state has one country, while a
-    country has many states and could not hold them in a column.
+    So `groups/country.parquet` is keyed `state | country` exactly as an
+    `into`-less group is keyed by its `over` alone.
     """
     s = _schema()
-    assert s.mappings_on("bus") == ("state",)
-    assert s.mappings_on("state") == ("country",)
-    assert s.mappings_on("country") == ()
+    assert s.group_coordinates("country") == ("state", "country")
+    assert s.group_coordinates("state") == ("bus", "state")
 
 
-def test_a_chain_is_not_denormalised():
-    """`dims/bus.parquet` carries `state`, never `state` and `country`.
+def test_the_key_is_the_coordinates_minus_into():
+    """What the uniqueness constraint is on: each `over` tuple carries one label."""
+    s = _schema()
+    assert s.group_key("country") == ("state",)
+    assert s.group_key("state") == ("bus",)
 
-    Two files asserting bus->country would let a layer restating
-    `dims/state.parquet` leave every bus's `country` stale, with nothing to
-    detect it. The chain is walked, not stored.
+
+def test_a_group_may_share_a_dims_name_and_the_dim_wins():
+    """Addressing resolves the dim namespace first, so the collision is shadowing.
+
+    `dims: [country]` is the axis - which is what a genuinely per-country value
+    wants - rather than the group expanded to the states it maps from.
     """
-    assert _schema().mappings_on("bus") == ("state",)
+    s = _schema(
+        attributes={"co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})},
+        partial=frozenset({"country"}),
+    )
+    assert s.coordinates_of("co2_budget") == ("country",), "the dim, not the group"
+    assert s.groups_of("co2_budget") == (), "a shadowed group addresses nothing"
 
 
-def test_a_mapping_keys_no_axis():
-    """`on` is not `within`: it classifies, so it does not scope a label.
+def test_an_into_less_group_in_dims_expands_to_its_coordinates():
+    """A group no dim shadows has no other spelling, so `dims` expands it."""
+    s = _schema(
+        groups={"connection": Group(over=["bus", "state"])},
+        attributes={"capacity": AttributeSpec(dtype=nw.Float64(), dims={"connection"})},
+    )
+    assert s.coordinates_of("capacity") == ("bus", "state"), "expanded, not the name"
+    assert s.groups_of("capacity") == ("connection",)
+
+
+def test_a_corridor_draws_two_coordinates_from_one_dim():
+    """`over`'s dict form is what a relation between two of one axis needs."""
+    s = _schema(groups={"corridor": Group(over={"from": "bus", "to": "bus"})})
+    assert s.group_coordinates("corridor") == ("from", "to")
+    assert s.group_key("corridor") == ("from", "to"), "no `into`, so all of them"
+
+
+def test_the_over_list_form_is_sugar_for_the_dict():
+    """`[bus]` is `{bus: bus}`; the dict is what a corridor needs."""
+    assert Group(over=["bus"]).over == {"bus": "bus"}
+    assert Group(over={"from": "bus", "to": "bus"}).coordinates == ("from", "to")
+
+
+def test_a_functional_group_keys_no_axis():
+    """`into` is not `within`: it classifies, so it does not scope a label.
 
     `country` labels mean the same thing everywhere, so the axis key is the
     label alone - where a nested dim's would be `(parent, label)`.
@@ -87,29 +132,25 @@ def test_a_mapping_keys_no_axis():
 # -- what the declaration rejects -------------------------------------------
 
 
-def test_a_mapping_on_an_undeclared_dim_is_refused():
-    with pytest.raises(ValidationError, match="`on` undeclared dims"):
-        _schema(
-            dimensions={
-                "country": Dimension(dtype=nw.String(), on={"nope"}),
-            }
-        )
+def test_a_group_over_an_undeclared_dim_is_refused():
+    with pytest.raises(ValidationError, match="over undeclared dims"):
+        _schema(groups={"country": Group(over=["nope"], into="country")})
 
 
-def test_a_mapping_cannot_classify_itself():
-    with pytest.raises(ValidationError, match="`on` itself"):
-        _schema(dimensions={"country": Dimension(dtype=nw.String(), on={"country"})})
+def test_into_must_name_a_declared_dim():
+    """The axis file is the whole of what a functional group has over a tuple set.
+
+    Worth erroring rather than tolerating: a dim shadows a group of its name, so
+    an `into` naming a dim nobody declared would leave `dims: [country]` quietly
+    expanding to the coordinates instead of naming the axis it meant.
+    """
+    with pytest.raises(ValidationError, match="`into` undeclared dim"):
+        _schema(groups={"c": Group(over=["bus"], into="nope")})
 
 
-def test_a_mapping_cycle_is_refused():
-    """`country on state on country` classifies nothing; it is a loop."""
-    with pytest.raises(ValidationError, match="`on` is cyclic"):
-        _schema(
-            dimensions={
-                "state": Dimension(dtype=nw.String(), on={"country"}),
-                "country": Dimension(dtype=nw.String(), on={"state"}),
-            }
-        )
+def test_a_group_cannot_map_a_coordinate_to_itself():
+    with pytest.raises(ValidationError, match="also one of its `over` coordinates"):
+        _schema(groups={"c": Group(over=["bus"], into="bus")})
 
 
 # -- through a real record --------------------------------------------------
@@ -123,29 +164,56 @@ def _budget_schema() -> Schema:
     )
 
 
-def test_a_mapping_folds_as_an_ordinary_axis(con, base_uri):
-    """The fold learns nothing new: a mapping has an axis file like any dim.
+def test_a_classified_axis_folds_as_an_ordinary_axis(con, base_uri):
+    """The fold learns nothing new: the `into` dim has an axis file like any dim.
 
     Its own file is what gives it order and a place for `co2_budget`, which no
     bus column could hold.
     """
     revision = Revision.create(con)
     write_schema(_budget_schema())
-    write_axis(layer_dir(revision.id), "bus", [{"bus": "north", "state": "lower"}])
-    write_axis(layer_dir(revision.id), "state", [{"state": "lower", "country": "DE"}])
+    write_axis(layer_dir(revision.id), "bus", [{"bus": "north"}])
+    write_axis(layer_dir(revision.id), "state", [{"state": "lower"}])
     write_axis(
         layer_dir(revision.id), "country", [{"country": "DE"}, {"country": "FR"}]
     )
 
     axes = revision.node_cache.dims.axes
     assert sorted(axes["country"].df()["country"]) == ["DE", "FR"]
-    # The classification is readable from the axis it classifies, one hop at a
-    # time: bus -> state here, state -> country next.
-    assert axes["bus"].df()["state"].tolist() == ["lower"]
-    assert axes["state"].df()["country"].tolist() == ["DE"]
+    assert axes["bus"].df()["bus"].tolist() == ["north"], (
+        "no classification column: the relation is the group's own file"
+    )
 
 
-def test_an_attribute_addressed_by_a_mapping_alone_is_a_column_of_its_axis(
+def test_a_chain_is_a_join_over_two_group_files(con, base_uri):
+    """bus -> state -> country is one file per hop, never denormalised.
+
+    Two files asserting bus->country would let a layer restating the states
+    leave every bus's country stale, with nothing to detect it. A file per group
+    gives that property for free: a layer restating a group restates one file.
+    """
+    revision = Revision.create(con)
+    write_schema(_budget_schema())
+    write_group(layer_dir(revision.id), "state", [{"bus": "north", "state": "lower"}])
+    write_group(
+        layer_dir(revision.id), "country", [{"state": "lower", "country": "DE"}]
+    )
+
+    groups = revision.record.groups
+    assert groups["state"].collect().to_native().to_pydict() == {
+        "bus": ["north"],
+        "state": ["lower"],
+        "order_key": [0],
+    }
+    assert dict(
+        zip(
+            groups["country"].collect().to_native()["state"].to_pylist(),
+            groups["country"].collect().to_native()["country"].to_pylist(),
+        )
+    ) == {"lower": "DE"}
+
+
+def test_an_attribute_addressed_by_the_into_dim_alone_is_a_column_of_its_axis(
     con, base_uri
 ):
     """`co2_budget` is a property of the country, so it rides on the axis file.
@@ -170,7 +238,7 @@ def test_an_attribute_addressed_by_a_mapping_alone_is_a_column_of_its_axis(
     )
 
 
-def test_setting_a_mapping_addressed_attribute_stages_an_axis_row(con, base_uri):
+def test_setting_an_axis_addressed_attribute_stages_an_axis_row(con, base_uri):
     """`set` states a value for a label the axis already has.
 
     The staged row carries the label and the column, so a read with pending
@@ -286,7 +354,7 @@ def test_an_axis_resolves_over_an_unmaterialised_parent(con, base_uri):
 
 
 def test_set_may_name_a_label_no_layer_has_written(con, base_uri):
-    """A mapping introduces the label, the fold keying per label rather than whole.
+    """`set` introduces the label, the fold keying per label rather than whole.
 
     So this layer's axis file gains `NO` beside the `DE` it patches, and the
     parent's `DE` row is what the fold resolves against.
@@ -305,8 +373,8 @@ def test_set_may_name_a_label_no_layer_has_written(con, base_uri):
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
 
 
-def test_a_mapping_axis_keeps_its_own_order(con, base_uri):
-    """Axis order is the file's row order, mapping or not."""
+def test_a_classified_axis_keeps_its_own_order(con, base_uri):
+    """Axis order is the file's row order, classified or not."""
     revision = Revision.create(con)
     write_schema(_schema())
     write_axis(

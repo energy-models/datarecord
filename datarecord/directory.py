@@ -11,7 +11,6 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -84,14 +83,21 @@ class DirectoryRecord:
         return self._by_type("dims/components")
 
     @cached_property
-    def groups(self) -> Mapping[str, LazyFrames]:
-        """Each declared group's rows, keyed by group then by component type.
+    def groups(self) -> LazyFrames:
+        """Each declared group's rows, keyed by group - one file each.
 
         Notes
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [where the rows live](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
-        return {g: self._by_type(f"dims/{g}") for g in self.schema.groups}
+        present = tuple(
+            g for g in self.schema.groups if self._read(f"groups/{g}.parquet")
+        )
+        return LazyFrames(
+            present,
+            lambda group: nw.from_native(self._require(f"groups/{group}.parquet")),
+        )
 
     @cached_property
     def attributes(self) -> LazyFrames:

@@ -32,11 +32,14 @@ def _schema(**overrides) -> Schema:
             "period": Dimension(dtype=nw.Int64()),
             "timestep": Dimension(dtype=nw.Datetime(), within={"period"}),
             "scenario": Dimension(dtype=nw.String()),
-            "entity_type": Dimension(
-                dtype=nw.Enum(["Generator", "Link"]), on={"entity"}
-            ),
+            "entity_type": Dimension(dtype=nw.Enum(["Generator", "Link"])),
         },
-        "groups": {"connection": Group(over={"entity": "entity", "bus": "bus"})},
+        "groups": {
+            "connection": Group(over={"entity": "entity", "bus": "bus"}),
+            # The functional group over `entity` alone is what makes
+            # `entity_type` the entity-type axis.
+            "entity_type": Group(over=["entity"], into="entity_type"),
+        },
         # Declared once, record-wide; a trait narrows one to some types.
         "attributes": {
             "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
@@ -194,22 +197,23 @@ def test_a_group_addressed_attribute_reaches_the_types_it_coordinates():
 
 
 def test_a_trait_may_only_be_scoped_by_an_entity_type_axis():
-    """Any other mapping would make the vocabulary a per-entity data lookup."""
+    """Any other classification would make the vocabulary a per-entity data lookup."""
     with pytest.raises(ValidationError, match="does not classify `entity`"):
         Schema(
             dimensions={
                 "entity": Dimension(dtype=nw.String()),
                 "bus": Dimension(dtype=nw.String()),
-                "country": Dimension(dtype=nw.String(), on={"bus"}),
+                "country": Dimension(dtype=nw.String()),
             },
+            groups={"country": Group(over=["bus"], into="country")},
             attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
             traits={"t": Trait(attributes={"p_nom"}, on={"country": {"DE"}})},
             partial=frozenset({"entity", "bus"}),
         )
 
 
-def test_a_mapping_may_not_key_an_attribute_with_the_axis_it_classifies():
-    """The mapping's label is a column of that axis, so the row is keyed twice.
+def test_a_functional_group_may_not_key_an_attribute_with_what_it_maps_from():
+    """`into` says the label follows from the key, so the row is keyed twice.
 
     Stated for the entity-type axis, which is the case the format names, but
     the rule is general - see the `country`-over-`bus` case below.
@@ -218,8 +222,9 @@ def test_a_mapping_may_not_key_an_attribute_with_the_axis_it_classifies():
         Schema(
             dimensions={
                 "entity": Dimension(dtype=nw.String()),
-                "entity_type": Dimension(dtype=nw.Enum(["Bus"]), on={"entity"}),
+                "entity_type": Dimension(dtype=nw.Enum(["Bus"])),
             },
+            groups={"entity_type": Group(over=["entity"], into="entity_type")},
             attributes={
                 "p_nom": AttributeSpec(
                     dtype=nw.Float64(), dims={"entity", "entity_type"}
@@ -229,14 +234,15 @@ def test_a_mapping_may_not_key_an_attribute_with_the_axis_it_classifies():
         )
 
 
-def test_the_redundant_addressing_rule_covers_every_mapping():
+def test_the_redundant_addressing_rule_covers_every_functional_group():
     """Not an `entity_type` special case: `country` over `bus` is the same shape."""
     with pytest.raises(ValidationError, match="keys a row twice over"):
         Schema(
             dimensions={
                 "bus": Dimension(dtype=nw.String()),
-                "country": Dimension(dtype=nw.String(), on={"bus"}),
+                "country": Dimension(dtype=nw.String()),
             },
+            groups={"in_country": Group(over=["bus"], into="country")},
             attributes={
                 "x": AttributeSpec(dtype=nw.Float64(), dims={"bus", "country"})
             },
@@ -247,16 +253,15 @@ def test_the_redundant_addressing_rule_covers_every_mapping():
 def test_an_attribute_may_be_addressed_by_the_entity_type_alone():
     """A per-type icon is a value per type, keyed once - an axis-file column.
 
-    The type axis is a mapping, and a mapping is a dim like any other; what it
-    may not do is key a row *alongside* the axis it classifies.
+    The type axis is a dim like any other; what may not key a row alongside it
+    is the `entity` the group maps into it.
     """
     s = Schema(
         dimensions={
             "entity": Dimension(dtype=nw.String()),
-            "entity_type": Dimension(
-                dtype=nw.Enum(["Bus", "Generator"]), on={"entity"}
-            ),
+            "entity_type": Dimension(dtype=nw.Enum(["Bus", "Generator"])),
         },
+        groups={"entity_type": Group(over=["entity"], into="entity_type")},
         attributes={
             "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
             "icon": AttributeSpec(dtype=nw.String(), dims={"entity_type"}),
@@ -268,14 +273,18 @@ def test_an_attribute_may_be_addressed_by_the_entity_type_alone():
     assert "icon" not in s.attributes_for("Bus"), "it belongs to no component"
 
 
-def test_only_one_dim_may_classify_entity():
+def test_only_one_group_may_classify_entity():
     """A component has one type, so two vocabularies have no resolved answer."""
     with pytest.raises(ValidationError, match="all classify `entity`"):
         Schema(
             dimensions={
                 "entity": Dimension(dtype=nw.String()),
-                "entity_type": Dimension(dtype=nw.Enum(["Bus"]), on={"entity"}),
-                "kind": Dimension(dtype=nw.Enum(["thing"]), on={"entity"}),
+                "entity_type": Dimension(dtype=nw.Enum(["Bus"])),
+                "kind": Dimension(dtype=nw.Enum(["thing"])),
+            },
+            groups={
+                "entity_type": Group(over=["entity"], into="entity_type"),
+                "kind": Group(over=["entity"], into="kind"),
             },
             attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
             partial=frozenset({"entity"}),
@@ -322,8 +331,9 @@ def test_a_string_entity_type_axis_leaves_the_labels_as_data():
     s = Schema(
         dimensions={
             "entity": Dimension(dtype=nw.String()),
-            "entity_type": Dimension(dtype=nw.String(), on={"entity"}),
+            "entity_type": Dimension(dtype=nw.String()),
         },
+        groups={"entity_type": Group(over=["entity"], into="entity_type")},
         attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
         partial=frozenset({"entity"}),
     )

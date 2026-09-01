@@ -21,9 +21,13 @@ from tests.fixtures import (
 PROCESS = "Process"
 
 
-def _connections(revision, ctype=PROCESS):
-    """`connection_frame`, asserted non-`None` for tests where a row must exist."""
-    frame = revision.node_cache.group_frame("connection", ctype)
+def _connections(revision):
+    """`group_frame`, asserted non-`None` for tests where a row must exist.
+
+    No type: one `groups/connection.parquet` holds every type's rows, and these
+    tests declare a single one.
+    """
+    frame = revision.node_cache.group_frame("connection")
     assert frame is not None
     return frame
 
@@ -43,7 +47,6 @@ def _root(con) -> Revision:
     write_components(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer,
-        PROCESS,
         [
             {"entity": "steel_dri", "bus": "h2_north", "role": "input"},
             {"entity": "steel_dri", "bus": "iron_ore", "role": "input"},
@@ -110,7 +113,6 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
     middle = root.child()
     write_connections(
         layer_dir(middle.id),
-        PROCESS,
         [{"entity": "steel_dri", "bus": "elec_north", "role": "input"}],
     )
     write_input(
@@ -192,7 +194,7 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
     write_schema(schema())
     write_components(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
-        layer, PROCESS, [{"entity": "steel_dri", "bus": "h2_north", "role": "input"}]
+        layer, [{"entity": "steel_dri", "bus": "h2_north", "role": "input"}]
     )
     write_input(
         layer,
@@ -239,7 +241,7 @@ def test_connection_tombstone_removes_one_connection(con, base_uri):
     root.materialise()
 
     child = root.child()
-    tombstone_connection(layer_dir(child.id), PROCESS, [("steel_dri", "iron_ore")])
+    tombstone_connection(layer_dir(child.id), [("steel_dri", "iron_ore")])
 
     frame = _connections(child).df()
     assert set(frame["bus"]) == {"h2_north", "dri"}
@@ -261,5 +263,5 @@ def test_component_tombstone_removes_every_connection(con, base_uri):
     child = root.child()
     tombstone(layer_dir(child.id), PROCESS, ["steel_dri"])
 
-    assert child.node_cache.group_frame("connection", PROCESS) is None
+    assert child.node_cache.group_frame("connection") is None
     assert _efficiencies(child) == {}

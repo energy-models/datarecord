@@ -64,10 +64,12 @@ Each edit maps onto exactly one part of the format:
 | set an attribute on a group | `inputs/<attr>.parquet` rows                                                                  | `(*partial dims, attribute)`                                 |
 | add components              | `dims/entity.parquet` and `dims/components/` rows, plus `inputs/` rows for varying attributes | `entity`                                                     |
 | remove components           | a `deleted = true` tombstone on the entity axis                                               | `entity`                                                     |
-| add_group / remove_group    | `dims/<group>/` rows and tombstones                                                           | the group's own coordinates                                  |
-| connect / disconnect        | `dims/connection/` rows and tombstones                                                        | `(entity, bus)` — `add_group`/`remove_group` on `connection` |
+| add_group / remove_group    | `groups/<group>.parquet` rows and tombstones                                                  | the group's own key coordinates                              |
+| connect / disconnect        | `groups/connection.parquet` rows and tombstones                                               | `(entity, bus)` — `add_group`/`remove_group` on `connection` |
 
-The inputs key is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: `partial` necessarily contains `entity` and every [group](schema.md#groups) coordinate, since neither broadcasts.
+Neither `add_group` nor `connect` names a component type: a group's rows are keyed by its coordinates and the type is not one of them, so there is nothing for it to scope ([where the rows live](format.md#where-a-value-lives)).
+
+The inputs key is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: `partial` necessarily contains `entity` and every [group](schema.md#groups) key coordinate, since neither broadcasts.
 Every key is `entity`-based, because `entity` is [what identifies a component](format.md#entity-is-unique-across-types).
 An **entity** edit still _names_ a type — `add("Generator", frame)` — because it creates the thing that has one, and the row it writes records it; but the type is a column of that row rather than part of the key it targets.
 That is what makes `remove("Generator", ["x"])` followed by `add("Bus", frame)` collapse to the later edit: one name has one answer, where a type-partitioned key would keep both and commit a record whose two types share a name.
@@ -393,7 +395,7 @@ resolved = fold(parent layers..., staged rows)
 For a layered mutable record this is exactly one more fold step over the same [owner-map machinery](read-path.md#owner-map), with the staging tables standing in for a layer directory.
 It costs what one more layer costs.
 `flags` follows: a staged edge setting a dim adds it to `varies`, one leaving it NULL adds it to `broadcast`, and a staged curve sets `breakpoints` — unioned with the underlying answer.
-It says nothing about an attribute addressed by one axis alone, being keyed per component type; `dims` is where that value is read from, staged edits included, and [`Schema.attributes_on`](schema.md#on-a-mapping-over-another-axis) is what names the columns an axis frame carries.
+It says nothing about an attribute addressed by one axis alone, being keyed per component type; `dims` is where that value is read from, staged edits included, and [`Schema.attributes_on`](format.md#where-a-value-lives) is what names the columns an axis frame carries.
 
 `dims` overlays per column rather than per row: a staged label's edited columns win, and a label the edit did not name keeps the base's whole row.
 So two `set` calls for two attributes on one axis compose instead of the later one blanking the earlier's column.

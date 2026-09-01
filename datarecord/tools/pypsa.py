@@ -29,7 +29,7 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all
-from datarecord.record import EMPTY, Flags, Frames, LazyFrames, Record
+from datarecord.record import Flags, Frames, LazyFrames, Record
 from datarecord.schema import AttributeSpec, Dimension, Group, Trait
 from datarecord.schema import Schema as RecordSchema
 from datarecord.tools.base import (
@@ -1286,12 +1286,12 @@ class _NetworkSource:
                 # ordinary dim, one coordinate of one group.
                 ENTITY: Dimension(dtype=nw.String(), description="A component."),
                 BUS: Dimension(dtype=nw.String(), description="A node of the network."),
-                # The kinds a component may be, as an axis classifying `entity`:
-                # the labels are PyPSA's registry, so an enum rather than a
-                # bare string, and a type outside it is rejected on write.
+                # The kinds a component may be: the labels are PyPSA's registry,
+                # so an enum rather than a bare string, and a type outside it is
+                # rejected on write. The group below is what classifies `entity`
+                # by it.
                 ENTITY_TYPE: Dimension(
                     dtype=nw.Enum(sorted(carries)),
-                    on=frozenset({ENTITY}),
                     description="What kind of component an entity is.",
                 ),
             },
@@ -1299,7 +1299,15 @@ class _NetworkSource:
                 CONNECTION: Group(
                     over={"entity": ENTITY, "bus": BUS},
                     description="A component's attachment to one bus.",
-                )
+                ),
+                # Each component carries exactly one type, which is what `into`
+                # declares - the functional group that makes `entity_type` the
+                # entity-type axis (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
+                ENTITY_TYPE: Group(
+                    over={ENTITY: ENTITY},
+                    into=ENTITY_TYPE,
+                    description="What kind of component each entity is.",
+                ),
             },
             attributes=attributes,
             traits=traits,
@@ -1333,19 +1341,44 @@ class _NetworkSource:
         return LazyFrames(types, self._component_frame)
 
     @property
-    def groups(self) -> dict[str, LazyFrames]:
-        """The `connection` group, which is the only one a network has.
+    def groups(self) -> LazyFrames:
+        """The `connection` group, one frame across every type.
 
         Every type with any port, single-attachment ones included: a
         Generator's one `bus` is as much a connection as a Link's `bus0`,
         and `c.ports == [""]` makes `_port_attribute` name it correctly.
 
+        The entity-type group is not here: which type each component is comes
+        from `dims/entity.parquet`, derived on write from the per-type member
+        files rather than handed over (`_write_entity_axis`).
+
         Notes
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        types = tuple(c.name for c in self.n.components if _exported(c) and c.ports)
-        return {CONNECTION: LazyFrames(types, self._connection_frame)}
+        return LazyFrames((CONNECTION,), lambda _: self._connection_frame())
+
+    def _connection_frame(self) -> nw.LazyFrame:
+        """Every type's connections in one frame, `(entity, bus, role)`.
+
+        Notes
+        -----
+        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        """
+        types = [c.name for c in self.n.components if _exported(c) and c.ports]
+        frames = [_connection_rows(self.n.c[ctype]) for ctype in types]
+        rows = (
+            pd.concat(frames, ignore_index=True)
+            if frames
+            else pd.DataFrame(columns=["entity", "bus", "role"])
+        )
+        # No `entity_type`: a connection is keyed by `(entity, bus)`, and the
+        # type follows from the entity (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        if SCENARIO in rows.columns:
+            rows = rows.drop(columns=[SCENARIO]).drop_duplicates(
+                subset=["entity", "bus"]
+            )
+        return nw.from_native(rows).lazy()
 
     @property
     def attributes(self) -> LazyFrames:
@@ -1482,16 +1515,6 @@ class _NetworkSource:
         frame = c.static[columns].reset_index().rename(columns={"name": "entity"})
         return nw.from_native(self._tagged(frame, ctype)).lazy()
 
-    def _connection_frame(self, ctype: str) -> nw.LazyFrame:
-        """One type's connections, `(name, bus, role)`.
-
-        Notes
-        -----
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        """
-        frame = _connection_rows(self.n.c[ctype])
-        return nw.from_native(self._tagged(frame, ctype)).lazy()
-
     @staticmethod
     def _tagged(frame: pd.DataFrame, ctype: str) -> pd.DataFrame:
         """A `dims/` frame with the columns the fold keys and scopes by.
@@ -1613,16 +1636,24 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
     placed before outputs, so `bus0` is the input end PyPSA's sign convention
     expects.
 
+    Scoped to `ctype` by the entities the record says are of it: one
+    `groups/connection.parquet` holds every type's rows, keyed by `(entity,
+    bus)`, so the type is reached through the entity rather than by picking a
+    file (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    frame = record.groups.get(CONNECTION, EMPTY).get(ctype)
-    if frame is None:
+    frame = record.groups.get(CONNECTION)
+    members = record.components.get(ctype)
+    if frame is None or members is None:
         return None
-    df = frame.to_native().df()
+    df = frame.collect(backend="pandas").to_native()
+    mine = set(members.select("entity").collect(backend="pandas").to_native()["entity"])
+    df = df[df["entity"].isin(mine)]
     if df.empty:
         return None
     # Per component: ports are numbered within the entity they belong to.

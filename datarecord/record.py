@@ -141,12 +141,15 @@ class Record(Protocol):
     def dims(self) -> Frames:
         """Axis frames, keyed by dim (`"scenario"` -> `dims/scenarios.parquet`).
 
-        An axis frame is its key column, the mappings classifying it
-        (`Schema.mappings_on`), and the attributes addressed by it alone
+        An axis frame is its key column and the attributes addressed by it alone
         (`Schema.attributes_on`) - so a per-country CO2 budget or a per-type icon
         is read from here rather than from `attributes`, which holds long frames
         only. A column absent from the frame is one no layer wrote, whose value
         is that attribute's `default`.
+
+        No classification column: which buses a country holds is the group
+        `into` it, read from `groups` as a relation rather than denormalised
+        onto the axis it classifies.
 
         Notes
         -----
@@ -167,17 +170,23 @@ class Record(Protocol):
         ...
 
     @property
-    def groups(self) -> Mapping[str, Frames]:
-        """Each declared group's rows, keyed by group then by component type.
+    def groups(self) -> Frames:
+        """Each declared group's rows, keyed by group - one frame each.
 
         A group declares which tuples over several dims exist - `connection`
         over `(entity, bus)` is the one every record with connections has, and
         it is one instance rather than a member of its own.
 
+        Not split by component type: a group's rows are keyed by its
+        coordinates, and the type is not one of them - a `corridor` between two
+        buses has no type to split on, and a `contract` between two entities has
+        two, neither of them the row's.
+
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [where the rows live](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
         ...
 

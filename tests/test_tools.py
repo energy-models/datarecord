@@ -8,6 +8,7 @@ Notes
 from pathlib import Path
 
 import narwhals as nw
+import pandas as pd
 import pytest
 
 from datarecord import Revision
@@ -215,7 +216,12 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     # A Generator member carrying no `bus` column at all, no connection row
     # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
     write_components(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
-    Path(layer_dir(revision.id), "dims", "connection", "Generator.parquet").unlink()
+    # One file across every type, so the Generators' rows are dropped from it
+    # rather than a per-type file being unlinked.
+    path = Path(layer_dir(revision.id), "groups", "connection.parquet")
+    rows = pd.read_parquet(path)
+    generators = set(ac_dc.c["Generator"].static.index) | {"g1"}
+    rows[~rows["entity"].isin(generators)].to_parquet(path, index=False)
     _without_default(revision, "Generator", "bus")
 
     missing = PyPSA.verify(revision.record)

@@ -8,7 +8,6 @@ class Dimension(BaseModel):
 
     dtype: str  # the axis labels' type
     within: frozenset[str] = frozenset()  # labels unique only within these dims
-    on: frozenset[str] = frozenset()  # dims I classify; a mapping over them
     unit: str | None = None  # what the labels measure, if anything
     description: str | None = None  # what the axis is, in prose
 
@@ -28,6 +27,7 @@ class Group(BaseModel):
     """Which tuples over several dims exist: a sparse subset of a dim product."""
 
     over: dict[str, str]  # coordinate name -> the dim it draws labels from
+    into: str | None = None  # each `over` tuple carries exactly one label of it
     description: str | None = None
 
 
@@ -67,8 +67,8 @@ It is stored and never interpreted, since none of it describes the dimensioned d
 
 Every dim is declared: a record with `region`, `technology` or `vintage` needs no code change, and `dtype` is the axis's own property.
 
-A `Dimension` declares the axis's shape — its type, its [nesting](#within-an-axis-inside-an-axis), [what it classifies](#on-a-mapping-over-another-axis).
-It does not declare which dims an _attribute_ varies over (that is [per attribute](#attributespec)), nor [the patch granularity](#partial-the-granularity-of-an-override), nor [order](record.md#axis-order).
+A `Dimension` declares the axis's shape — its type and its [nesting](#within-an-axis-inside-an-axis).
+It does not declare which dims an _attribute_ varies over (that is [per attribute](#attributespec)), nor [the patch granularity](#partial-the-granularity-of-an-override), nor [order](record.md#axis-order), nor what classifies it — [a group `into` it](#into-a-group-that-classifies) says that, from the relation's side.
 
 ## `AttributeSpec`
 
@@ -97,8 +97,8 @@ The nesting this replaces said an attribute _belongs to_ a component type, which
 The storage already disagreed with the nesting. `inputs/p_max_pu.parquet` holds every type's rows in one file with one `value` dtype, so two types declaring one attribute with **different dtypes** was expressible in the schema and unrepresentable on disk — a silent wrong read that nothing rejected.
 Flat declaration makes it unrepresentable instead, which is the stronger form of the same guarantee: one attribute, one spec, one file, one dtype.
 
-`dims` is the **only addressing mechanism**, and it names dims and [groups](#groups) alike.
-Whether a coordinate is the entity axis, a group, a [mapping](#on-a-mapping-over-another-axis) or a plain axis changes where the labels come from, not how the attribute is declared or stored.
+`dims` is the **only addressing mechanism**, and it names dims and [groups](#groups) alike, resolved by [one rule](#addressing-dims-x): a name is the dim of that name if one is declared, and otherwise the group of that name expanded to its coordinates.
+Whether a coordinate is the entity axis, a group or a plain axis changes where the labels come from, not how the attribute is declared or stored.
 There is no `bus` field: an attribute is a [connection](record.md#connections) attribute because its `dims` name the `connection` group, which is what lets a second group exist without a second field.
 
 `dims` is also what makes a scenario-varying `p_nom` a schema violation: a capacity is a first-stage decision, one value taken before the scenario is known, which is the point of stochastic scenarios differing only in dispatch.
@@ -112,24 +112,29 @@ An attribute naming exactly one addressing coordinate is a column on that thing'
 
 ## `entity_type` — the axis of kinds
 
-What kind of thing a component is, declared like any other classification: a dim `on` `entity`.
+What kind of thing a component is, declared like any other classification: a [group `into`](#into-a-group-that-classifies) it, over `entity` alone.
 
 ```python
 dimensions = {
     "entity": Dimension(dtype="str"),
-    "entity_type": Dimension(dtype=Enum(["Bus", "Generator", "Link"]), on={"entity"}),
+    "entity_type": Dimension(dtype=Enum(["Bus", "Generator", "Link"])),
+}
+groups = {
+    "entity_type": Group(over=["entity"], into="entity_type"),
 }
 ```
 
-It is a [mapping](#on-a-mapping-over-another-axis) and gets a mapping's treatment for free: the column lives on the classified axis, so `dims/entity.parquet` carries `entity_type` — which is [where the format already put it](format.md#entity-is-unique-across-types) before the axis was declared at all.
+`into` is what says every component carries exactly one type, and being over `entity` alone is what makes this axis _the_ entity-type axis rather than one classification among several. At most one group may be that; a second has no resolved answer for what a component carries.
 An `Enum` dtype pins the vocabulary and makes an unknown type a write-time error; a plain `str` leaves the labels as data, which is the right declaration for a record whose types are not known up front.
 
-**It may not address a value alongside the entity.** An attribute naming both `entity` and the type in its `dims` is rejected: the type is a column of the entity axis, so the second coordinate is determined by the first, the row is keyed twice over and the two are free to disagree.
-That is [why no attribute row carries the type](format.md#entity-is-unique-across-types), and it is the general rule for [a mapping and the axis it classifies](#on-a-mapping-over-another-axis) rather than anything particular to types — `country` over `bus` is rejected the same way.
+**Its rows are the entity axis file**, not a `groups/` file of its own — the one exception to [a file per group](format.md#where-a-value-lives). `dims/entity.parquet` carries `entity_type`, which is [where the format already put it](format.md#entity-is-unique-across-types), and the writer derives it from the per-type member files rather than taking it from a `Record`, so nothing can disagree with itself about which type a component is.
+
+**It may not address a value alongside the entity.** An attribute naming both `entity` and the type in its `dims` is rejected: `into` declares the type to follow from the entity, so the row is keyed twice over and the two are free to disagree.
+That is [why no attribute row carries the type](format.md#entity-is-unique-across-types), and it is the general rule for [a functional group and what it maps from](#into-a-group-that-classifies) rather than anything particular to types — `country` over `bus` is rejected the same way.
 
 **Addressed by the type alone is ordinary.** A per-type `icon` is a value per type, keyed once, and it lands where any [attribute addressed by one dim alone](format.md#where-a-value-lives) does: a column of `dims/entity_type.parquet`.
 Its axis file is owned like any other's: outside [`partial`](#partial-the-granularity-of-an-override) a layer touching one type's icon restates the type axis whole, which is what a dim owned entirely means everywhere else.
-Being a mapping buys it no exemption, and carrying an attribute is no reason to declare it `partial` — that would widen the fold's key with a column no `inputs/` row can carry.
+Being classified buys it no exemption, and carrying an attribute is no reason to declare it `partial` — that would widen the fold's key with a column no `inputs/` row can carry.
 
 **Entirely optional.** A schema declaring no such axis has components with no types, and everything addressed by `entity` reaches all of them.
 A tool that needs types requires the axis in the schema it builds — [PyPSA does](tools.md) — which is where that requirement belongs, not here.
@@ -182,13 +187,16 @@ A group declares **which tuples over several dims exist**: a sparse subset of a 
 ```python
 groups = {
     "connection": Group(over={"entity": "entity", "bus": "bus"}),
-    "corridor": Group(over={"from": "entity", "to": "entity"}),
+    "corridor": Group(over={"from": "bus", "to": "bus"}),
+    "country": Group(over=["bus"], into="country"),  # functional: one country per bus
 }
 ```
 
 Not a dim. A dim declares an axis of labels and a NULL in its column means "every value of it"; a group declares which _combinations_ are there, which no axis can say because the product is sparse — a component attaches to two buses out of a thousand.
 
-`over` maps **coordinate name → dim** rather than naming a bare set of dims, because two coordinates may draw on the same axis: a corridor between two entities is `(from, to)`, which a set could not spell.
+`over` maps **coordinate name → dim** rather than naming a bare set of dims, because two coordinates may draw on the same axis: a corridor between two nodes is `(from, to)`, which a set could not spell.
+A list is sugar for the dict with identical keys and values, so `over=["bus"]` is `over={"bus": "bus"}`.
+
 An attribute over a group carries the group's _coordinate_ names as columns, never the group's own name:
 
 ```text
@@ -198,18 +206,48 @@ inputs/flow.parquet         from | to | timestep | attribute | breakpoint | valu
 
 The group name appears only in the schema. A reader goes attribute → group → coordinates, never the reverse, so two groups may share a coordinate set without ambiguity — the attribute names which group constrains it.
 
-**A group in `dims` expands to its coordinates**, so `dims={"connection", "timestep"}` gives the columns `entity | bus | timestep`.
+**A group in `dims` expands to its coordinates** where no dim shadows it, so `dims={"connection", "timestep"}` gives the columns `entity | bus | timestep` — [addressing](#addressing-dims-x) states the full rule.
 The fold's key therefore does not vary per attribute: [`partial_dims`](#partial-the-granularity-of-an-override) is one fixed tuple, now the union of plain dims and group coordinate names.
 
 A group's table columns are **not declared here.** They are the attributes whose `dims` name exactly this group ([where a value lives](format.md#where-a-value-lives)) — `role` on a connection is `AttributeSpec(dtype="VARCHAR", dims={"connection"})`.
 Declaring them a second time on the `Group` would be two ways to say one thing, disagreeing eventually.
 
-A group's name may not collide with a declared dim: an attribute's `dims` names either, so one namespace has to answer.
-
-**A group coordinate never broadcasts.** A NULL `bus` on a connection attribute means "every connection of this entity", which is [the group's rows](record.md#the-broadcast-rule) rather than the whole bus axis — there is no axis to expand against, only a sparse subset the group's table knows.
-That is why a coordinate lands in the fold's key and must be declared `partial`, alongside `entity` and for the same reason.
+**A group's key coordinate never broadcasts.** A NULL `bus` on a connection attribute means "every connection of this entity", which is [the group's rows](record.md#the-broadcast-rule) rather than the whole bus axis — there is no axis to expand against, only a sparse subset the group's table knows.
+That is why a key coordinate lands in the fold's key and must be declared `partial`, alongside `entity` and for the same reason.
+A functional group's `into` dim is not one of these: it is an ordinary axis whose NULL means "every country" like any other dim's.
 
 **Connections are one instance**, not a structural category: `Group(over={"entity": "entity", "bus": "bus"})`, with `role` an ordinary attribute over it. `bus` is accordingly one coordinate of one group rather than a column the format fixes.
+
+### `into` — a group that classifies
+
+`into` names the dim a group is **functional into**: each tuple of `over` carries exactly one of its labels. `country` over `[bus]` into `country` says every bus is in one country.
+
+It is a declaration a bare group cannot make. A group can only _happen_ to be single-valued, which leaves a duplicate row a data error the schema has no name for; `into` names it, so the constraint is declared and checkable on write. No existing system declares it — GAMS's `map(b,c)` is a set over a tuple of sets with single-valuedness left to convention, and a duplicated `b` silently double-counts — which is the argument for the field rather than against it, a schema whose purpose is making shape checkable having no reason to inherit that gap.
+
+**`into` must name a declared dim.** That is what keeps the axis file, and the axis file is the whole of what a functional group has over a bare tuple set: `dims/country.parquet` gives `country` its [order](record.md#axis-order) and somewhere for a per-country CO2 budget to live.
+
+**`into` is sugar, resolved once at parse.** It folds into the group's coordinates, so `groups/country.parquet` is keyed `bus | country` exactly as `connection` is keyed `entity | bus`, and no read path, file layout or fold key branches on whether a group has one. The field is retained for the three things that still need it: the uniqueness constraint (the key being the coordinates minus `into`), a consumer's aggregation, and round-tripping the manifest — writing back `over: [bus, country]` where the author wrote `into:` would silently rewrite their schema.
+
+**It may not key an attribute alongside what it maps from.** `dims={"bus", "country"}` is rejected: `into` says the country follows from the bus, so the row would be keyed twice over and the two free to disagree.
+
+**Nothing assumes one coordinate.** `over: [bus, scenario]` with `into: country` — a bus whose country varies per scenario — is allowed, the constraint being per-tuple already. It costs nothing in storage because [every group is a file](format.md#where-a-value-lives).
+
+### Addressing: `dims: [X]`
+
+An attribute names a group in its `dims` exactly as it names a dim, and one rule resolves both:
+
+**`X` is the dim `X` if one is declared, and otherwise the group `X` expanded to its `over` coordinates.**
+
+```python
+"efficiency": AttributeSpec(dims={"connection", "timestep"}),  # entity | bus | timestep
+"co2_budget": AttributeSpec(dims={"country"}),  # country: the dim, not the group
+```
+
+A group with no dim of its name has no other spelling, so expanding it is the only way to declare an attribute over it, and the expansion is what keeps [the fold's key](#partial-the-granularity-of-an-override) one fixed tuple.
+
+**A group may share a dim's name**, and there the dim wins. For a functional group that is the natural spelling: the dim is the axis of labels, the group is the relation between it and `over`, and shadowing is what should happen — a value that is genuinely per-country is `dims: [country]`, the dim, which is what the axis file exists for. Expanding instead would give `dims: [bus]` written so the reader has to look up the group's `over` to see it.
+
+Nothing then justifies prohibiting the collision in the `into`-less case either: the dim namespace resolving first means a dim and a group both called `connection` is not ambiguous, and one rule covers every collision instead of a rule plus a guard. What it gives up is a schema error — a shadowed `into`-less group loses its only spelling in `dims` and no longer says so at load time. That is not worth a second rule: the collision has to be authored deliberately, both entries are visible in one file, and [a lint would recover it](open-questions.md) without also rejecting the harmless case.
 
 ## Existence does not vary along a dim
 
@@ -248,42 +286,23 @@ Distinct from `AttributeSpec.dims` despite the similar shape: `dims` names _inde
 
 The inner dim is named for the thing it indexes (`timestep`) rather than for the pair (`snapshot`), because once nesting exists the pair needs its own name: a framework consuming the record calls `(period, timestep)` a snapshot.
 
-## `on` — a mapping over another axis
+### `within` is not `into`
 
-A dim that **classifies** another: each of the classified dim's labels carries exactly one of this one's.
+Both are acyclic and both relate one dim to another. They mean opposite things:
 
-```python
-dimensions = {
-    "bus": Dimension(dtype="str"),
-    "state": Dimension(dtype="str", on={"bus"}),  # each bus is in one state
-    "country": Dimension(dtype="str", on={"state"}),  # each state, one country
-}
-```
+- **`within`** names a dim's _parents_: its label set is **scoped per parent**, so `t1` in 2015 and `t1` in 2020 are different points and the axis key is `(period, timestep)`.
+- **`into`** names the dim a _group_ classifies its coordinates by: one flat label set, each `over` tuple picking one of its labels. `country` is not scoped by `bus`; it is a partition of buses, and its axis key is `country` alone.
 
-The **column lives on the classified axis** — `dims/bus.parquet` gains a `state` column — because that is the side where it is single-valued: one bus has one state, while a state has many buses and could not hold them in a column.
+Nesting versus classification. `within` cannot express `country`, and a functional group cannot express `timestep`.
+`within` stays on `Dimension` because nesting is a property of the axis itself; `into` is on `Group` because a classification is a relation, with rows.
 
-A mapping still has an **axis file of its own**, `dims/state.parquet`. That is what gives it [order](record.md#axis-order) and a place for the attributes addressed by it alone: a per-country CO2 budget is a property of the country, and with no file it would have nowhere to go.
+A functional group is **single-valued by declaration** rather than by construction, which is the whole of what `into` adds — a many-to-many classification is an ordinary group, and expressible as one.
 
-Being a `Dimension`, a mapping **is a dim** — one namespace, addressable by `AttributeSpec.dims` like any axis, and an attribute over `country` carries a literal `country` column.
+**A chain is not denormalised.** bus→state→country is two group files, never a `country` column on `dims/bus.parquet`. Two files asserting bus→country would let a layer restating the states leave every bus's country stale with nothing to detect it, so the chain is a join over two files — which a file per group gives for free, a layer restating a group restating exactly one file.
 
-**A chain is not denormalised.** `dims/bus.parquet` carries `state`, not `state` and `country`. Two files asserting bus→country would let a layer restating `dims/state.parquet` leave every bus's `country` stale with nothing to detect it, so the chain is walked rather than stored — one hop per file, generated on read if a consumer wants it flat.
+**The record does not resolve across levels.** An attribute over `country` is handed back keyed by country; projecting it down to buses is a join through the group, and that is the consumer's work. The fold learns no new operation.
 
-**The record does not resolve across levels.** An attribute over `country` is handed back keyed by country; projecting it down to buses is a join through the mapping column, and that is the consumer's work. The fold learns no new operation.
-
-Every name in `on` must be a declared dim, and the `on` graph must be acyclic — a separate graph from `within`, pointing the other way.
-
-### Not `within`
-
-Both are dim→dim, both acyclic, both put a column on another dim's file. They mean opposite things:
-
-- **`within`** names my _parents_: my label set is **scoped per parent**, so `t1` in 2015 and `t1` in 2020 are different points and the axis key is `(period, timestep)`.
-- **`on`** names the dims I _classify_: one flat label set, each of their labels picking one of mine. `country` is not scoped by `bus`; it is a partition of buses, and its axis key is `country` alone.
-
-Nesting versus classification. `within` cannot express `country`, and a mapping cannot express `timestep`.
-
-A mapping is **single-valued by construction** — it is a column, so a row has one value. A many-to-many classification is a different thing, and not a mapping.
-
-Membership could not vary along one either, if it varied along anything: whether a component exists in Germany is already settled by its bus and that bus's country, so there would be no freedom for it to vary independently ([existence does not vary](#existence-does-not-vary-along-a-dim)).
+Membership could not vary along a classification either, if it varied along anything: whether a component exists in Germany is already settled by its bus and that bus's country, so there would be no freedom for it to vary independently ([existence does not vary](#existence-does-not-vary-along-a-dim)).
 
 ## `partial` — the granularity of an override
 
@@ -373,7 +392,7 @@ One schema outlives many layers ([above](#one-schema-per-record)), so a change t
 - a type ceasing to carry an attribute, whether by dropping it or by unsubscribing the trait that bundled it: its rows are still in the file, now with no valid reading for that type
 - adding a dim that does not broadcast, since the fold's ownership key changes shape
 
-Adding a mapping is compatible in the same sense adding a dim is: the classified axis's file gains a column, and until it is rewritten every label reads as unclassified — a NULL, which is what "no country assigned" means anyway.
+Adding a functional group is compatible in the same sense adding any group is: the record gains a file, and until some layer writes it every coordinate reads as unclassified — no row, which is what "no country assigned" means anyway.
 
 The compatible changes are those where NULL already means what the new schema needs it to mean, so [the broadcast rule](record.md#the-broadcast-rule) absorbs them without touching a row.
 

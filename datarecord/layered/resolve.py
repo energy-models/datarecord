@@ -344,7 +344,11 @@ def _component_deleted(
 def _group_deleted(
     group: str, revision_id: UUID, keys: Dims, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """This layer's tombstoned rows of one group, keyed by its coordinates.
+    """This layer's tombstoned rows of one group, keyed by its key coordinates.
+
+    `group_key` rather than every coordinate: a functional group's `into` label
+    follows from the key, so a tombstone names the tuple being removed and not
+    the label it happened to carry.
 
     Notes
     -----
@@ -355,8 +359,8 @@ def _group_deleted(
         revision_id,
         keys,
         con,
-        uri=f"{layer_dir(revision_id)}dims/{group}/*.parquet",
-        fixed=keys.schema.group_coordinates(group),
+        uri=f"{layer_dir(revision_id)}groups/{group}.parquet",
+        fixed=keys.schema.group_key(group),
     )
 
 
@@ -488,7 +492,7 @@ def fold_inputs(
         (_component_deleted, ("entity",))
     ]
     tombstones += [
-        (partial(_group_deleted, group), keys.schema.group_coordinates(group))
+        (partial(_group_deleted, group), keys.schema.group_key(group))
         for group in keys.schema.groups
     ]
     kept = parent.set_alias("p")
@@ -533,14 +537,15 @@ def fold_group(
     con: DuckDBPyConnection,
     parent: DuckDBPyRelation,
 ) -> DuckDBPyRelation:
-    """One group's map: `dims/<group>/` keys, folded over `parent`.
+    """One group's map: `groups/<group>.parquet` keys, folded over `parent`.
 
-    `fold_components` keyed by the group's coordinates rather than the entity
-    alone, and with one more tombstone where the group is over `entity`: a
-    component tombstone removes every row of it, so `parent` is anti-joined
-    against that as well as against this layer's own group tombstones.
+    `fold_components` keyed by the group's key coordinates rather than the
+    entity alone, and with one more tombstone where the group is keyed by
+    `entity`: a component tombstone removes every row of it, so `parent` is
+    anti-joined against that as well as against this layer's own group
+    tombstones.
 
-    A group not over `entity` has no such relation - `corridor` over
+    A group not keyed by `entity` has no such relation - `corridor` over
     `(from, to)` draws both from the entity axis but under names of its own,
     and which of them a tombstone should match is not this fold's to guess.
 
@@ -550,15 +555,15 @@ def fold_group(
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    coordinates = keys.schema.group_coordinates(group)
-    over_entity = "entity" in coordinates
+    key = keys.schema.group_key(group)
+    over_entity = "entity" in key
     return _fold_ordered(
         revision_id,
         keys,
         con,
         parent,
-        uri=f"{layer_dir(revision_id)}dims/{group}/*.parquet",
-        key=coordinates,
+        uri=f"{layer_dir(revision_id)}groups/{group}.parquet",
+        key=key,
         columns=keys.schema.group_columns(group),
         also_deleted=_component_deleted if over_entity else None,
         also_deleted_key=("entity",) if over_entity else (),
@@ -600,6 +605,9 @@ def _fold_ordered(
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
+    # Only the components map carries the type; a group's rows are keyed by its
+    # coordinates and `entity_type` is not one of them (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+    typed = "entity_type" in columns
     rel = try_read_parquet(uri, con, union_by_name=True)
     if rel is None:
         # No rows, so `order_key` needs no values either - just the column.
@@ -611,7 +619,7 @@ def _fold_ordered(
             rel.filter(not_deleted)
             .set_alias("i")
             .project(
-                col("i", "entity_type"),
+                *([col("i", "entity_type")] if typed else []),
                 *(col("i", c) for c in key),
                 lit(str(revision_id)).cast(LAYER_UUID_TYPE).alias("layer_uuid"),
                 sql("row_number() OVER ()").alias("_row"),
@@ -623,7 +631,11 @@ def _fold_ordered(
         own = tagged.aggregate(
             [
                 *(col(c) for c in (*key, "layer_uuid")),
-                fn.any_value(col("entity_type")).alias("entity_type"),
+                *(
+                    [fn.any_value(col("entity_type")).alias("entity_type")]
+                    if typed
+                    else []
+                ),
                 fn.min(col("_row")).alias("_row"),
             ]
         )
@@ -1166,23 +1178,26 @@ class NodeCache:
             match=("entity",),
         )
 
-    def group_frame(self, group: str, ctype: str) -> DuckDBPyRelation | None:
-        """One type's rows of one group, resolved from that group's owner map.
+    def group_frame(self, group: str) -> DuckDBPyRelation | None:
+        """One group's rows, resolved from that group's owner map.
 
-        Carries every non-key column of the row - `role` on a connection, say.
-        Those describe the row rather than keying it, so the fold does not
-        track them and they come straight from the owning layer's file.
+        Not per type: a group's rows are keyed by its coordinates and the type
+        is not one of them (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+
+        Carries every non-key column of the row - `role` on a connection, say,
+        and the `into` label a functional group's tuples carry. Those describe
+        the row rather than keying it, so the fold does not track them and they
+        come straight from the owning layer's file.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        return self._dim_frame(
-            ctype,
-            subdir=group,
-            owner_map=self.group(group),
-            match=self.schema.group_coordinates(group),
+        return self._owned_frame(
+            uri=lambda layer_uuid: f"{layer_dir(layer_uuid)}groups/{group}.parquet",
+            owned=self.group(group),
+            match=self.schema.group_key(group),
         )
 
     def _dim_frame(
@@ -1195,12 +1210,29 @@ class NodeCache:
     ) -> DuckDBPyRelation | None:
         """One type's rows from a `dims/` subdirectory, gated by its owner map.
 
-        Shared by `component_frame` and `connection_frame`: both semi-join the
-        owning layers' files to a map keyed the same way, differing only in
-        which columns match.
+        The per-type read, which is `components` alone: a group is one file
+        keyed by its coordinates and goes through `_owned_frame` directly.
+        """
+        return self._owned_frame(
+            uri=lambda uid: f"{layer_dir(uid)}dims/{subdir}/{ctype}.parquet",
+            owned=owner_map.filter(col("entity_type") == lit(ctype)),
+            match=match,
+        )
+
+    def _owned_frame(
+        self,
+        *,
+        uri: Callable[[UUID], str],
+        owned: DuckDBPyRelation,
+        match: tuple[str, ...],
+    ) -> DuckDBPyRelation | None:
+        """The owning layers' rows for one already-scoped slice of an owner map.
+
+        Shared by `component_frame` and `group_frame`: both semi-join the owning
+        layers' files to a map keyed the same way, differing only in which file
+        each layer contributes and which columns match.
         """
         con = self.con
-        owned = owner_map.filter(col("entity_type") == lit(ctype))
         owning_ids: list[UUID] = [
             layer_uuid for (layer_uuid,) in owned["layer_uuid"].distinct().fetchall()
         ]
@@ -1209,8 +1241,7 @@ class NodeCache:
 
         layers: list[DuckDBPyRelation] = []
         for layer_uuid in owning_ids:
-            uri = f"{layer_dir(layer_uuid)}dims/{subdir}/{ctype}.parquet"
-            rel = try_read_parquet(uri, con)
+            rel = try_read_parquet(uri(layer_uuid), con)
             if rel is None:
                 continue
             layers.append(rel.project(lit(layer_uuid).alias("layer_uuid"), star()))

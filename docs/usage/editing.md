@@ -47,27 +47,28 @@ w.add(
 w.remove("Generator", ["old_coal"])
 
 w.connect(
-    "Link",
     pd.DataFrame(
         {
             "entity": ["dc", "dc"],
             "bus": ["north", "south"],
             "role": ["bus0", "bus1"],
         }
-    ),
+    )
 )
-w.disconnect("Link", [("dc", "south")])
+w.disconnect([("dc", "south")])
 ```
 
 `add` takes a wide frame keyed by `entity` and splits it by the schema: columns addressed by `entity` alone stay in `dims/components/`, ones varying beyond it become `inputs/` rows ([design](../design/format.md#where-a-value-lives)). It keeps its `ctype` argument where `set` loses it — this is the call that _establishes_ what a name's type is, and where record-wide name uniqueness is enforced ([design](../design/working-record.md#add-remove)). A component exists by virtue of its member row, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
 
 `remove` stages a tombstone on the entity axis, with no dim scope — a component [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every attribute, and to every connection of the component ([design](../design/layers.md#deletion)).
 
+`connect`/`disconnect` take no type at all, unlike `add`: a connection is keyed by `(entity, bus)` and the type follows from the entity, so there is nothing for a type argument to scope. They are `add_group`/`remove_group` on the `connection` group, which every other group is reached through the same way ([design](../design/format.md#where-a-value-lives)).
+
 ## Inspecting and rolling back
 
 ```python
 w.pending  # Pending(attributes={...}, components={...},
-#         groups={"connection": {...}}, tombstones={...})
+#         groups={"connection": 2}, tombstones={...})
 w.pending.connections  # shorthand for groups["connection"]
 bool(w.pending)  # whether anything is staged
 w.rollback()  # discard everything staged
