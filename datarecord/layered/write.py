@@ -19,6 +19,7 @@ from uuid import UUID
 
 import narwhals as nw
 from duckdb import CoalesceOperator as coalesce
+from duckdb import StarExpression as star
 
 from datarecord.duck import (
     as_relation,
@@ -208,14 +209,23 @@ def _write_frame(
     the way out, so a reader can trust them rather than re-casting an all-NULL
     column pandas typed as float.
 
+    `order_key` is dropped here rather than by each caller: it is the fold's
+    answer about a frame, not data, so a source handing over a *resolved* frame
+    - which is what committing a `WorkingRecord` to a `Directory` does - carries
+    one that must not reach the file.
+
     Notes
     -----
     - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
+    - [order_key is derived, never stored](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     """
     if local:
         Path(uri).parent.mkdir(parents=True, exist_ok=True)
-    cast_declared(schema, as_relation(frame, con)).to_parquet(uri)
+    rel = as_relation(frame, con)
+    if "order_key" in rel.columns:
+        rel = rel.project(star(exclude=["order_key"]))
+    cast_declared(schema, rel).to_parquet(uri)
 
 
 def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) -> None:

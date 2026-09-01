@@ -1946,7 +1946,14 @@ class WorkingRecord(Record):
 
         A resolved frame drops `entity_type` (the type is the key it was
         looked up by) while a layer's file carries it, so it is added
-        back for any type the staging area did not already rebuild.
+        back for any type the staging area did not already rebuild. The
+        difference is real rather than an oversight: one file per type has to
+        say which type its rows are once they are unioned, and a frame looked
+        up by type does not.
+
+        The gap runs one way only. `order_key`, which a resolved frame also
+        carries, is *not* added to anything - it is the fold's answer about a
+        frame rather than data, and `_write_frame` drops it.
 
         Components only: a group's file carries no type, so `groups` already
         hands over the shape written.

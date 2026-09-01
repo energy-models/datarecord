@@ -173,6 +173,37 @@ def test_write_record_creates_a_new_layer(con, base_uri):
     assert read_schema() == _SCHEMA
 
 
+def test_no_layer_file_carries_order_key(con, base_uri, ac_dc, tmp_path):
+    """`order_key` is the fold's answer about a frame, never a column of one.
+
+    A source handing over *resolved* frames carries it - which is what
+    committing a `WorkingRecord` to a `Directory` does, `flattened()` being the
+    record's own members. Writing it would put a struct column in files the
+    format promises a foreign reader can open, and would look like stored order
+    where the fold always re-derives it from file order.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+    """
+    from datarecord.mutable import Directory, WorkingRecord
+
+    revision = Revision.create(con)
+    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+
+    staged = WorkingRecord(revision.record, con)
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
+    out = str(tmp_path / "flat")
+    staged.commit(Directory(out))
+
+    written = sorted(Path(out).rglob("*.parquet"))
+    assert written, "the commit must have written something to check"
+    for path in written:
+        columns = con.sql(f"SELECT * FROM read_parquet('{path}')").columns
+        assert "order_key" not in columns, f"{path.relative_to(out)} carries order_key"
+
+
 def test_a_directory_target_carries_its_own_schema(con, base_uri, tmp_path):
     """A standalone record *is* one record, so its schema goes in the directory.
 
