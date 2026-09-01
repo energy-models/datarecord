@@ -177,8 +177,8 @@ def test_no_layer_file_carries_order_key(con, base_uri, ac_dc, tmp_path):
     """`order_key` is the fold's answer about a frame, never a column of one.
 
     A source handing over *resolved* frames carries it - which is what
-    committing a `WorkingRecord` to a `Directory` does, `flattened()` being the
-    record's own members. Writing it would put a struct column in files the
+    committing a `WorkingRecord` to a `Directory` does, the record itself being
+    what is written. Writing it would put a struct column in files the
     format promises a foreign reader can open, and would look like stored order
     where the fold always re-derives it from file order.
 

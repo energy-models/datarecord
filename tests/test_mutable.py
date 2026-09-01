@@ -80,7 +80,6 @@ def test_a_working_record_overrides_no_read_member():
         "rollback",
         "commit",
         "staged_only",
-        "flattened",
     }
     allowed_read_override = {"outputs"}
 

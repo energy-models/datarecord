@@ -1960,27 +1960,6 @@ class WorkingRecord(Record):
             outputs=self.outputs,
         )
 
-    def flattened(self) -> _Written:
-        """The staged rows over what the record already reads.
-
-        `attributes` is this record's own, since a `WorkingRecord` already reads
-        the base with its pending edits applied - which is exactly the
-        flattened result.
-
-        Notes
-        -----
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-        """
-        return _Written(
-            schema=self.schema,
-            dims=self.dims,
-            entity_types=self.entity_types,
-            groups=self.groups,
-            attributes=self.attributes,
-            outputs=self.outputs,
-        )
-
     def _base_revision(self) -> Revision:
         """The `Revision` this record's base resolves, for `NewChild()`'s default.
 
@@ -2039,7 +2018,10 @@ class WorkingRecord(Record):
             write_record(child.id, self.staged_only(), self.con)
             self.rollback()
             return child
-        write_record(None, self.flattened(), self.con, uri=target.uri)
+        # `self`, not a projection of it: a `WorkingRecord` already reads the
+        # base with its pending edits applied, which is exactly the flattened
+        # record (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits).
+        write_record(None, self, self.con, uri=target.uri)
         self.rollback()
         return None
 
