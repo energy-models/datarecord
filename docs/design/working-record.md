@@ -54,12 +54,12 @@ Two properties follow from accumulate-then-commit, and both are the point:
 
 Each edit maps onto exactly one part of the format:
 
-| edit                        | writes                                                                                        | key it targets                  |
-| --------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------- |
-| set an attribute on a group | `inputs/<attr>.parquet` rows                                                                  | `(*partial dims, attribute)`    |
+| edit                        | writes                                                                                         | key it targets                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------- |
+| set an attribute on a group | `inputs/<attr>.parquet` rows                                                                   | `(*partial dims, attribute)`    |
 | add components              | `dims/entity.parquet` and `dims/entity_type/` rows, plus `inputs/` rows for varying attributes | `entity`                        |
-| remove components           | a `deleted = true` tombstone on the entity axis                                               | `entity`                        |
-| add_group / remove_group    | `groups/<group>.parquet` rows and tombstones                                                  | the group's own key coordinates |
+| remove components           | a `deleted = true` tombstone on the entity axis                                                | `entity`                        |
+| add_group / remove_group    | `groups/<group>.parquet` rows and tombstones                                                   | the group's own key coordinates |
 
 `add_group` names no component type: a group's rows are keyed by its coordinates and the type is not one of them, so there is nothing for it to scope ([where the rows live](format.md#where-a-value-lives)).
 Nor is there a `connect`/`disconnect` pair beside it — `connection` is one group among however many the schema declares, and a call naming it would be the record layer holding one framework's vocabulary.

@@ -242,9 +242,9 @@ def try_read_parquet(
     A local miss is answered without asking DuckDB at all. Inside a transaction
     a failed read *aborts* it, and catching the exception here does not undo
     that - every later statement on the connection would fail until a rollback,
-    which would discard whatever the transaction had staged. A missing layer is
-    ordinary (`fold_axis` reads every declared dim, most of which no layer
-    writes), so it must not depend on being outside one.
+    which would discard whatever the transaction had staged. A missing kind is
+    ordinary (an attribute a layer never wrote), so it must not depend on being
+    outside one.
     """
     if "://" not in uri and not (
         glob(uri) if any(c in uri for c in "*?[") else Path(uri).exists()
@@ -263,6 +263,19 @@ def try_read_parquet(
         if "No files found" in str(e):
             return None
         raise
+
+
+def parquet_names(dir_uri: str, con: DuckDBPyConnection) -> set[str]:
+    """Basenames of the `*.parquet` files directly under `dir_uri`.
+
+    One listing regardless of how many files exist there, local or remote -
+    what a caller otherwise probing one filename at a time (`try_read_parquet`
+    per candidate) should glob instead.
+    """
+    rows = con.sql(
+        "SELECT file FROM glob(?)", params=[f"{dir_uri}*.parquet"]
+    ).fetchall()
+    return {row[0].rsplit("/", 1)[-1] for row in rows}
 
 
 def union_all_by_name(

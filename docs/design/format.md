@@ -46,14 +46,14 @@ Decided by the attribute's [declared `dims`](schema.md#attributespec), not by a 
 
 The rule: **an attribute naming exactly one addressing coordinate is a column on that thing's own table; anything more is long rows in `inputs/`.**
 
-| `dims`                       | lands in                                                              |
-| ---------------------------- | --------------------------------------------------------------------- |
+| `dims`                       | lands in                                                               |
+| ---------------------------- | ---------------------------------------------------------------------- |
 | `{"entity"}`                 | `dims/entity_type/<Type>.parquet` — one column per attribute, per type |
-| `{"connection"}`             | `groups/connection.parquet` — the group's own file                    |
-| `{"scenario"}`               | `dims/scenario.parquet` — the axis file                               |
-| `{"country"}`                | `dims/country.parquet` — the axis file, a dim shadowing the group     |
-| `{"entity", "snapshot"}`     | `inputs/<attr>.parquet`                                               |
-| `{"connection", "snapshot"}` | `inputs/<attr>.parquet`                                               |
+| `{"connection"}`             | `groups/connection.parquet` — the group's own file                     |
+| `{"scenario"}`               | `dims/scenario.parquet` — the axis file                                |
+| `{"country"}`                | `dims/country.parquet` — the axis file, a dim shadowing the group      |
+| `{"entity", "snapshot"}`     | `inputs/<attr>.parquet`                                                |
+| `{"connection", "snapshot"}` | `inputs/<attr>.parquet`                                                |
 
 So "varying" is not "has dims" but **"has dims beyond its address"**, and one rule now covers what were three unrelated stories: a component's constant columns, a connection's `role`, and an axis's payload.
 

@@ -44,6 +44,7 @@ from datarecord.duck import (
     fold_axis,
     layer_dir,
     null_safe,
+    parquet_names,
     resolved_dir,
     schema_uri,
     struct_of,
@@ -85,12 +86,22 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
     # unmaterialised intermediate layer, or the record itself.
     from_cache = len(ancestry) > 1 and materialised(ancestry[0], con)
     dirs = dims_dirs(ancestry, from_cache=from_cache)
+    # One listing per directory rather than one probe per declared dim per
+    # directory (D x A misses, most declared dims absent from most layers):
+    # `present` says which dims that directory actually has, so `fold_axis`
+    # below is only ever asked for a dim at least one directory holds, and
+    # only passed the directories that hold it.
+    present = [parquet_names(d, con) for d in dirs]
     axes = {}
     for dim in schema.dims:
+        filename = f"{dim}.parquet"
+        holding = [d for d, names in zip(dirs, present) if filename in names]
+        if not holding:
+            continue
         # Keyed by the axis key, not the dim alone: a nested dim's labels
         # identify a point only within its parents (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis), so `(period,
         # timestep)` is what last-writer-wins applies to.
-        rel = fold_axis(dirs, f"{dim}.parquet", schema.axis_key(dim), con)
+        rel = fold_axis(holding, filename, schema.axis_key(dim), con)
         if rel is not None:
             axes[dim] = rel
     return Dims(schema=schema, axes=axes)
