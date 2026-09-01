@@ -335,34 +335,48 @@ class Group(BaseModel):
 
 
 class Trait(BaseModel):
-    """A named bundle of attributes, and which entity types carry it.
+    """A named bundle of attributes, and which entity types and components carry it.
 
     The narrowing direction: an attribute the schema declares is carried by
     every entity type it can address, and a trait is how that is cut down to
-    some of them. A trait bundling `p_max_pu` `on={"entity_type": {"Generator"}}`
-    says those attributes reach generators and nothing else.
+    some of them, and further to some of those. A trait bundling `p_max_pu`
+    `on={"entity_type": {"Generator"}}` says those attributes reach generators
+    and nothing else.
 
     Attributes
     ----------
     attributes
-        The attributes this trait bundles. Each must be declared.
+        The attributes this trait bundles. Each must be declared. Includes
+        `switch` once parsed, whatever the author wrote.
     on
         Mapping dim -> the labels of it this trait applies to. Only the
         entity-type axis may key this, since that is the axis an attribute
-        vocabulary partitions - `Schema` rejects any other. Empty means the
-        trait narrows nothing, which is a bundle for a consumer to dispatch on
-        rather than a restriction.
+        vocabulary partitions - `Schema` rejects any other. Empty means this
+        narrowing does not apply, reaching every type.
+    switch
+        The attribute deciding, per component, whether this trait applies -
+        `dims={"entity"}` exactly. `None` means this narrowing does not
+        apply, reaching every component.
     description
         What the trait is, in prose. Never interpreted.
 
     Notes
     -----
     - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
+    - [switch](https://energy-models.github.io/datarecord/design/schema/#switch-a-trait-a-component-opts-into)
     """
 
     attributes: frozenset[str] = frozenset()
     on: dict[str, frozenset[str]] = Field(default_factory=dict)
+    switch: str | None = None
     description: str | None = None
+
+    @model_validator(mode="after")
+    def _fold_switch_into_attributes(self) -> Trait:
+        """Add `switch` to `attributes`, so a caller need not name it twice."""
+        if self.switch is not None and self.switch not in self.attributes:
+            self.attributes = self.attributes | {self.switch}
+        return self
 
 
 class Schema(BaseModel):
@@ -531,6 +545,16 @@ class Schema(BaseModel):
                         f"trait {trait!r} is `on` {dim!r}, which does not classify "
                         f"`entity`; only the entity-type axis partitions an "
                         f"attribute vocabulary"
+                    )
+                    raise ValueError(msg)
+            if trait_spec.switch is not None:
+                switch_spec = self.attributes.get(trait_spec.switch)
+                if switch_spec is not None and switch_spec.dims != {"entity"}:
+                    msg = (
+                        f"trait {trait!r} is switched on {trait_spec.switch!r}, "
+                        f"which is addressed by {sorted(switch_spec.dims)}; a "
+                        f"switch decides a trait per component, so it is "
+                        f"addressed by `entity` alone"
                     )
                     raise ValueError(msg)
 

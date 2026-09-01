@@ -48,6 +48,7 @@ nav:
       - Proposals:
           - Dims, mappings, groups and traits: design/proposals/dims-groups-traits.md
           - Groups: design/proposals/groups.md
+          - Trait switches: design/proposals/trait-switches.md
   - API Reference:
       - api/index.md
       - Record: api/record.md

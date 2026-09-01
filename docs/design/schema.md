@@ -32,10 +32,11 @@ class Group(BaseModel):
 
 
 class Trait(BaseModel):
-    """A bundle of attributes, and which entity types carry it."""
+    """A bundle of attributes, and which entity types and components carry it."""
 
     attributes: frozenset[str] = frozenset()
     on: dict[str, frozenset[str]] = {}  # entity-type axis -> the labels it applies to
+    switch: str | None = None  # attribute deciding it per component; joins `attributes`
     description: str | None = None
 
 
@@ -179,6 +180,34 @@ A trait with an empty `on` narrows nothing: it is a bundle for a consumer to dis
 
 A trait may only name an attribute the schema declares: it says which attributes apply, never what they are, so a name with no spec is a typo rather than a shorthand declaration.
 Two traits bundling one attribute is fine — they resolve to a set — since [one attribute has one spec](#attributespec) and there is nothing left to conflict.
+
+### `switch` — a trait a component opts into
+
+A trait narrows two ways, and both are optional: `on` says which entity types carry it, `switch` names an attribute deciding it per component.
+
+```python
+traits = {
+    "committable": Trait(
+        attributes={"start_up_cost", "min_up_time", "ramp_limit_start_up"},
+        on={"entity_type": {"Generator", "Link"}},
+        switch="committable",
+    ),
+}
+attributes = {
+    "committable": AttributeSpec(dtype="bool", dims={"entity"}, default=False),
+}
+```
+
+The two never interact: `on` first, then `switch`. A trait with neither reaches every component of every type; one with a switch and no `on` reaches the components whose switch is true, whatever their type — which is how a record declaring no types still says that some components are committable and others are not.
+
+**The switch is an ordinary attribute**, `dims: [entity]` exactly, with a `dtype`, a `default` and a place [an attribute over `entity` alone](format.md#where-a-value-lives) already has. `bool` is the dtype the [proposal](proposals/trait-switches.md#which-dtypes) admits; an `Enum` switch selecting among several traits is deferred.
+Its default decides the unset case, and `false` keeps the bundle off every component that predates the trait.
+
+**It joins the trait's `attributes` on its own**, folded in at parse rather than listed by the author, so a consumer asking what `committable` bundles gets the switch with the rest.
+Being in the bundle it would otherwise be narrowed by its own trait, which nothing could then turn on — so it is in `attributes` for discovery and out of the narrowing.
+
+**`attributes_for` is unchanged.** A switched trait's attributes are carried by the type, because the question it answers is which attributes a generator _may_ have; the switch narrows which components carry a _value_, which is a question about data.
+So the switch is a validation and query mechanism rather than a change to the vocabulary. What it is declared for — rejecting a value set on a component whose switch is false, and asking which components a trait reaches — reads the switch column, and neither is wired up yet: the declaration lands first, the [checks that read data](proposals/trait-switches.md#what-it-costs) after. Whether `attributes_for` grows a per-entity counterpart is [open](open-questions.md).
 
 ## Groups
 

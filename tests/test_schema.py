@@ -212,6 +212,73 @@ def test_a_trait_may_only_be_scoped_by_an_entity_type_axis():
         )
 
 
+def test_a_trait_switch_is_folded_into_attributes():
+    """`switch` need not be named twice in `attributes`."""
+    t = Trait(attributes={"start_up_cost"}, switch="committable")
+    assert t.attributes == {"start_up_cost", "committable"}
+
+
+def test_a_trait_switch_narrows_neither_attributes_for_nor_the_switch_itself():
+    """`switch` is a validation and query mechanism, not a change to `attributes_for`.
+
+    The schema-level answer stays type-scoped: `committable` the attribute is
+    carried by every type `committable` the trait is `on`, whatever any
+    component's switch value - and it is not narrowed by its own trait.
+    """
+    s = _schema(
+        attributes={
+            **_schema().attributes,
+            "start_up_cost": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+            "committable": AttributeSpec(
+                dtype=nw.Boolean(), dims={"entity"}, default=False
+            ),
+        },
+        traits={
+            **_schema().traits,
+            "committable": Trait(
+                attributes={"start_up_cost"},
+                on={"entity_type": frozenset({"Generator"})},
+                switch="committable",
+            ),
+        },
+    )
+    assert "start_up_cost" in s.attributes_for("Generator")
+    assert "committable" in s.attributes_for("Generator")
+    assert "start_up_cost" not in s.attributes_for("Link")
+
+
+def test_a_switched_trait_needs_no_entity_type_axis():
+    """A switch alone narrows by component, with no type scope at all."""
+    s = Schema(
+        dimensions={"entity": Dimension(dtype=nw.String())},
+        attributes={
+            "committable": AttributeSpec(
+                dtype=nw.Boolean(), dims={"entity"}, default=False
+            ),
+        },
+        traits={"committable": Trait(switch="committable")},
+        partial=frozenset({"entity"}),
+    )
+    assert s.traits["committable"].attributes == {"committable"}
+
+
+def test_a_trait_switch_must_be_addressed_by_entity_alone():
+    """A switch narrower or wider than `entity` alone has no per-component reading."""
+    with pytest.raises(ValidationError, match="addressed by `entity` alone"):
+        _schema(
+            attributes={
+                **_schema().attributes,
+                "committable": AttributeSpec(
+                    dtype=nw.Boolean(), dims={"entity", "scenario"}, default=False
+                ),
+            },
+            traits={
+                **_schema().traits,
+                "committable": Trait(switch="committable"),
+            },
+        )
+
+
 def test_a_functional_group_may_not_key_an_attribute_with_what_it_maps_from():
     """`into` says the label follows from the key, so the row is keyed twice.
 
