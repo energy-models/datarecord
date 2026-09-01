@@ -18,7 +18,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 from uuid import UUID, uuid5
 
-from datarecord.duck import layer_dir, parquet_names, resolved_dir, try_read_parquet
+from datarecord.duck import (
+    layer_dir,
+    parquet_names,
+    resolved_dir,
+    try_read_parquet,
+)
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
@@ -247,9 +252,9 @@ class ResolvedLayer(ParquetLayer):
 class DirectorySource(_FileLayer):
     """A plain parquet directory read as one layer.
 
-    What a `WorkingRecord` over a `DirectoryRecord` folds its staged rows onto:
-    the layout is the same, so every member is one of the directory's files and
-    the fold needs no conditional path.
+    What `Record.at(uri)` folds over, and the whole of what reading a plain
+    directory takes: the layout is the same as a tree layer's, so every member
+    is one of the directory's files and the fold needs no conditional path.
 
     `layer_id` is derived rather than stored, as `ParquetLayer`'s location is
     and for the mirrored reason: a directory has no revision to be stamped
@@ -263,12 +268,20 @@ class DirectorySource(_FileLayer):
 
     Notes
     -----
-    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
 
     base: str
     con: DuckDBPyConnection | None = None
     frozen: bool = True
+
+    def __post_init__(self) -> None:
+        # A caller's directory URI, with or without the trailing slash every
+        # member path is appended to. Normalised here rather than in `uri` so
+        # `layer_id` sees it too: `/x` and `/x/` are one directory, and hashing
+        # them apart would read one location as two layers.
+        if not self.base.endswith("/"):
+            object.__setattr__(self, "base", self.base + "/")
 
     @property
     def layer_id(self) -> UUID:

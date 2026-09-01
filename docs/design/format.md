@@ -1,6 +1,6 @@
 # The record format
 
-A record's **on-disk form** is a parquet directory: [`write_record`](writing.md) produces it, `DirectoryRecord` reads it, and a foreign tool can consume it knowing nothing about this package.
+A record's **on-disk form** is a parquet directory: [`write_record`](writing.md) produces it, `Record.at(uri)` reads it, and a foreign tool can consume it knowing nothing about this package.
 A record that is never written has no directory, and answers [the protocol](record.md) all the same.
 
 ```text

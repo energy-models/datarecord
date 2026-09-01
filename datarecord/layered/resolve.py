@@ -15,13 +15,9 @@ Notes
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import cached_property, partial
-from typing import Any
-from urllib.error import HTTPError
-from urllib.request import urlopen
 from uuid import UUID
 
 import duckdb
@@ -42,6 +38,7 @@ from datarecord.duck import (
     fn,
     fold_axis,
     null_safe,
+    read_json,
     resolved_dir,
     schema_uri,
     struct_of,
@@ -855,26 +852,6 @@ def _materialise_dims(
 # -- the schema (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ---------------------------------------------
 
 
-def read_json(uri: str) -> dict[str, Any] | None:
-    """Read one JSON file, or `None` if it doesn't exist (e.g. an undeclared schema).
-
-    Only a genuine miss (local `FileNotFoundError`, remote 404/403) maps to
-    `None` - any other failure raises rather than silently reading as absent.
-    """
-    try:
-        if "://" in uri:
-            with urlopen(uri) as fh:  # noqa: S310 - record URIs are derived, not user input
-                return json.load(fh)
-        with open(uri) as fh:
-            return json.load(fh)
-    except FileNotFoundError:
-        return None
-    except HTTPError as e:
-        if e.code in (403, 404):  # 403: S3's "missing key" without ListBucket
-            return None
-        raise
-
-
 def read_schema(con: DuckDBPyConnection | None = None) -> Schema:
     """The record's one schema, read from beside the layers.
 
@@ -958,18 +935,35 @@ class NodeCache:
     revision_id: UUID
     sources: list[LayerSource]
     con: DuckDBPyConnection
+    declared: Schema | None = None
+    """This record's schema where it is not the connection root's.
+
+    A standalone record carries its own `manifest.json` and may be read through
+    a connection rooted anywhere, so `Record.at` reads it and passes it here.
+    `None` for a node of a tree, whose schema sits once beside the tree and is
+    the connection's to answer.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    """
 
     def with_source(self, source: LayerSource) -> NodeCache:
         """This cache with one more layer folded on top.
 
         What a `WorkingRecord` builds to read its staged rows: the staged source
         is the last entry, resolved over whatever the record was reading before.
+        The schema comes along unchanged - an edit is made *under* a
+        declaration, never one that redeclares.
 
         Notes
         -----
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+        - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
         """
-        return NodeCache(self.revision_id, [*self.sources, source], self.con)
+        return NodeCache(
+            self.revision_id, [*self.sources, source], self.con, self.declared
+        )
 
     def _map(self, kind: str) -> DuckDBPyRelation:
         return _table(self.revision_id, self.sources, self.con, self.schema, kind=kind)
@@ -1010,6 +1004,20 @@ class NodeCache:
         return self._map(name)
 
     @property
+    def stable(self) -> bool:
+        """Whether every source is frozen, so a fold over them cannot go stale.
+
+        What decides between caching an answer and re-folding per access - here
+        and in the `Record` over this cache, where the same question governs its
+        key sets. False exactly when the last source is a staging area.
+
+        Notes
+        -----
+        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+        """
+        return frozen_prefix(self.sources) == len(self.sources)
+
+    @property
     def dims(self) -> Dims:
         """Every declared dim's folded axis relation.
 
@@ -1021,7 +1029,7 @@ class NodeCache:
         -----
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
         """
-        if frozen_prefix(self.sources) == len(self.sources):
+        if self.stable:
             return self._cached_dims
         return resolve_dims(self.schema, self.sources, self.con)
 
@@ -1035,13 +1043,14 @@ class NodeCache:
         """This record's one manifest, read once per node.
 
         From beside *this* connection's layers, so two records on different
-        roots in one process each read their own.
+        roots in one process each read their own - unless `declared` names one,
+        which a standalone record read through a foreign connection needs.
 
         Notes
         -----
         - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
         """
-        return read_schema(self.con)
+        return self.declared if self.declared is not None else read_schema(self.con)
 
     def entity_types(self) -> set[str]:
         """Types with any live component row, straight from the owner map.
@@ -1063,7 +1072,7 @@ class NodeCache:
         -----
         - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-        - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+        - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
         """
         return list(distinct_values(self.inputs, "attribute"))
 

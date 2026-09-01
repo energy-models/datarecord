@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     import narwhals as nw
 
-    from datarecord.record import Frames, Record
+    from datarecord.record import Frames, RecordLike
 
 
 @dataclass(frozen=True)
@@ -169,7 +169,7 @@ class Attr:
             )
             raise ValueError(msg)
 
-    def resolve(self, record: Record) -> DuckDBPyRelation:
+    def resolve(self, record: RecordLike) -> DuckDBPyRelation:
         """This attribute's long relation, read through the `Record` interface.
 
         The record rather than the record, so a tool builds from any backing.
@@ -220,7 +220,7 @@ class Schema:
         """
         return self.attr(ctype, name).source
 
-    def resolve(self, record: Record, ctype: str, name: str) -> DuckDBPyRelation:
+    def resolve(self, record: RecordLike, ctype: str, name: str) -> DuckDBPyRelation:
         """`ctype`'s `name` as a long relation over `record`, mapping applied."""
         return self.attr(ctype, name).resolve(record)
 
@@ -256,7 +256,7 @@ class Tool(Protocol):
     name: str
     schema: Schema
 
-    def requires(self, record: Record) -> Requirements:
+    def requires(self, record: RecordLike) -> Requirements:
         """What this tool needs from `record` to build a model.
 
         Record-dependent, not a constant: which attributes are required
@@ -264,15 +264,15 @@ class Tool(Protocol):
         """
         ...
 
-    def verify(self, record: Record) -> Requirements:
+    def verify(self, record: RecordLike) -> Requirements:
         """What `record` fails to supply; falsy when the record is usable."""
         ...
 
-    def build(self, record: Record) -> Any:
+    def build(self, record: RecordLike) -> Any:
         """The tool's model object, built from the resolved record."""
         ...
 
-    def to_datarecord(self, model: Any) -> Record:
+    def to_datarecord(self, model: Any) -> RecordLike:
         """`model` presented as a layer `write_record` can persist.
 
         The inverse of `build`. Framework-specific: undoing a framework's own

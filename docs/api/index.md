@@ -11,13 +11,12 @@ from datarecord import (
     AttributeSpec,
     Dimension,
     Directory,
-    DirectoryRecord,
     Flags,
     Frames,
-    LayeredRecord,
     LazyFrames,
     NewChild,
     Record,
+    RecordLike,
     Revision,
     Schema,
     WorkingRecord,
@@ -27,11 +26,11 @@ from datarecord import (
 )
 ```
 
-| page                        | symbols                                     |
-| --------------------------- | ------------------------------------------- |
-| [Record](record.md)         | `Record`, `Frames`, `LazyFrames`, `Flags`   |
-| [Schema](schema.md)         | `Schema`, `Dimension`, `AttributeSpec`      |
-| [Directory](directory.md)   | `DirectoryRecord`, `connect`, `layer_dir`   |
-| [Layered](layered.md)       | `Revision`, `LayeredRecord`, `write_record` |
-| [WorkingRecord](mutable.md) | `WorkingRecord`, `NewChild`, `Directory`    |
-| [Tools](tools.md)           | `Tool`, `Requirements`, the PyPSA tool      |
+| page                               | symbols                                                 |
+| ---------------------------------- | ------------------------------------------------------- |
+| [Record](record.md)                | `Record`, `RecordLike`, `Frames`, `LazyFrames`, `Flags` |
+| [Schema](schema.md)                | `Schema`, `Dimension`, `AttributeSpec`                  |
+| [Duck](../design/module-layout.md) | `connect`, `layer_dir`                                  |
+| [Layered](layered.md)              | `Revision`, `write_record`                              |
+| [WorkingRecord](mutable.md)        | `WorkingRecord`, `NewChild`, `Directory`                |
+| [Tools](tools.md)                  | `Tool`, `Requirements`, the PyPSA tool                  |

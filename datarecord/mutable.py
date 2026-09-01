@@ -28,7 +28,6 @@ from duckdb import DuckDBPyRelation, Expression
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.directory import DirectoryRecord
 from datarecord.duck import (
     DuckTypes,
     as_relation,
@@ -37,15 +36,14 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.layered.resolve import NodeCache
-from datarecord.layered.revision import LayeredRecord, Revision
-from datarecord.layered.sources import DirectorySource
+from datarecord.layered.revision import Record, Revision
 from datarecord.layered.write import write_record
 from datarecord.record import (
     EMPTY,
     Flags,
     Frames,
     LazyFrames,
-    Record,
+    RecordLike,
 )
 from datarecord.schema import LONG_TAIL, Schema
 
@@ -382,23 +380,24 @@ naming the same coordinate has to win in `_latest_per` whenever it arrives.
 """
 
 
-class WorkingRecord:
-    """A `Record` that accepts edits and materialises them on commit.
+class WorkingRecord(Record):
+    """A `Record` whose last source is a staging area, plus the edit surface.
 
-    Satisfies `Record`, and what it reads is the data *with its pending edits
-    applied* - so an edit reads back, or the record is handed to
-    something that only knows `Record`, without committing.
+    A `Record` in the type as well as in the fold: what it reads is the data
+    *with its pending edits applied*, and it reads it by being one layer deeper
+    than its base rather than by overlaying anything of its own. Every read
+    member is inherited unchanged - `outputs` alone is overridden, results not
+    overlaying - so an edit reads back through the same code path a committed
+    layer would.
 
     Staged rows live in connection-scoped DuckDB tables, the *only* place a
     staged row exists: the reads fold them rather than holding a copy, so what
     is staged is asked of the reads themselves.
 
-    A set of pending edits **is** a layer, and the reads deliver that literally:
-    a `StagedSource` over those tables is appended to whatever the base resolves
-    from, and every read is the same fold one layer deeper. So there is no
-    staged overlay of its own to keep in step with the layered one - the
-    `Record` members below are `LayeredRecord`'s, over a `NodeCache` this record
-    extends.
+    The `NodeCache` is fixed at construction and the source list never changes;
+    a `set` changes what the last source's tables hold, not which sources there
+    are. That is what lets the inherited members stay correct - they cache a key
+    set only where the fold is stable, which a staged source makes it not.
 
     Notes
     -----
@@ -407,24 +406,33 @@ class WorkingRecord:
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
     """
 
-    def __init__(self, base: Record, con: DuckDBPyConnection) -> None:
-        self.con = con
-        # The base as what every use of it here actually wants: its `NodeCache`,
-        # resolved once rather than per read. The schema, one dim's axis, one
-        # attribute's rows and the revision to branch from are all members of
-        # one, so the record the caller passed is not kept.
-        self._base = _base_node_cache(base, con)
-        # This record's one identity, which is the staged layer's: the fold
-        # stamps it as `layer_uuid` and dispatches a winning row back through
-        # the source carrying it. Synthetic, the staged layer having no revision
-        # until `commit` writes one, and it names the staging tables too - so
-        # two `WorkingRecord`s on one connection collide in neither.
-        self._layer_id = uuid4()
-        # Keyed by `(kind, attribute)`, the attribute being None for the entity
-        # kinds. A long kind stages one table per attribute because that is the
-        # file it stands for: one `value` column at the attribute's own type,
-        # and its own coordinates and no others.
-        self._staged: dict[tuple[str, str | None], str] = {}
+    #: This record's one identity, which is the staged layer's: the fold stamps
+    #: it as `layer_uuid` and dispatches a winning row back through the source
+    #: carrying it. Synthetic, the staged layer having no revision until
+    #: `commit` writes one, and it names the staging tables too - so two
+    #: `WorkingRecord`s on one connection collide in neither.
+    _layer_id: UUID
+    #: What the base resolves from, which every use of the base here wants: the
+    #: schema, one dim's axis, one attribute's rows and the revision to branch
+    #: from are all members of one.
+    _base: NodeCache
+    #: Keyed by `(kind, attribute)`, the attribute being None for the entity
+    #: kinds. A long kind stages one table per attribute because that is the
+    #: file it stands for: one `value` column at the attribute's own type, and
+    #: its own coordinates and no others.
+    _staged: dict[tuple[str, str | None], str]
+
+    def __init__(self, base: RecordLike, con: DuckDBPyConnection) -> None:
+        # `object.__setattr__` throughout: the base is a frozen dataclass, and
+        # these are set before `super().__init__` because the `StagedSource`
+        # below reads them off `self`.
+        object.__setattr__(self, "_layer_id", uuid4())
+        object.__setattr__(self, "_staged", {})
+        base_cache = _base_node_cache(base, con)
+        object.__setattr__(self, "_base", base_cache)
+        # This record *is* the fold one layer deeper, and that layer is the
+        # staging area - so the field the base class holds is that fold.
+        super().__init__(base_cache.with_source(StagedSource(self, self._layer_id)))
 
     # -- staging tables -----------------------------------------------------
 
@@ -542,81 +550,11 @@ class WorkingRecord:
 
     # -- Record, one fold deeper (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits) --------------------------------
 
-    @property
-    def schema(self) -> Schema:
-        return self._base.schema
-
-    @property
-    def _resolved(self) -> LayeredRecord:
-        """This record as a `LayeredRecord` over the base plus the staged layer.
-
-        Rebuilt per access rather than cached, and cheap because it is: a
-        `NodeCache` holds relations, and the staged source being unfrozen is
-        what keeps the fold over it from being materialised - so an edit is
-        picked up with no invalidation at all.
-
-        Notes
-        -----
-        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
-        """
-        staged = StagedSource(self, self._layer_id)
-        return LayeredRecord(self._base.with_source(staged))
-
-    @property
-    def dims(self) -> Frames:
-        return self._resolved.dims
-
-    @property
-    def entity_types(self) -> Frames:
-        """Base members with pending additions and tombstones applied.
-
-        Notes
-        -----
-        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-        """
-        return self._resolved.entity_types
-
-    @property
-    def groups(self) -> Frames:
-        """Each declared group's rows, with pending ones applied.
-
-        Keyed by group alone, the component type being no coordinate of one
-        (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-        """
-        return self._resolved.groups
-
-    @property
-    def attributes(self) -> Frames:
-        """Base attributes with pending edits applied.
-
-        A set of pending edits *is* a layer - an unwritten one - so the reads
-        compose the same way: the staged rows are the last layer, resolved over
-        whatever the record was reading before.
-
-        Notes
-        -----
-        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-        """
-        return self._resolved.attributes
-
-    def flags(self, ctype: str) -> dict[str, Flags]:
-        """Straight off the folded owner map, staged rows included.
-
-        Free, as it is for any layered read: the fold computes the flags in its
-        ownership `GROUP BY`, and a staged layer is one more layer.
-
-        Notes
-        -----
-        - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-        """
-        return self._resolved.flags(ctype)
+    # `schema`, `dims`, `entity_types`, `groups`, `attributes` and `flags` are
+    # inherited from `Record` unchanged, which is the property this design
+    # exists to have: a staged edit is read by the same fold that reads a
+    # committed layer, so there is no second overlay to keep in step. Only
+    # `outputs` below differs, and only because results do not overlay.
 
     def _staged_attribute_names(self) -> tuple[str, ...]:
         return tuple(sorted(self._staged_attributes_of("inputs")))
@@ -826,7 +764,7 @@ class WorkingRecord:
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        rel = self._resolved.node_cache.entity_map
+        rel = self.node_cache.entity_map
         rows = rel.filter(col("entity_type") == lit(ctype)).project("entity").fetchall()
         return [str(n) for (n,) in rows]
 
@@ -844,7 +782,7 @@ class WorkingRecord:
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        rel = self._resolved.node_cache.entity_map.project("entity", "entity_type")
+        rel = self.node_cache.entity_map.project("entity", "entity_type")
         if rel.limit(1).fetchone() is None:
             return None
         return nw.from_native(rel).lazy()
@@ -2130,47 +2068,39 @@ class WorkingRecord:
         return None
 
 
-def _base_node_cache(base: Record, con: DuckDBPyConnection) -> NodeCache:
+def _base_node_cache(base: RecordLike, con: DuckDBPyConnection) -> NodeCache:
     """What `base` resolves from, as a `NodeCache` a staged layer can extend.
 
-    A `LayeredRecord` already has one. A `DirectoryRecord` is a parquet
-    directory in the layer layout, so it becomes a one-source cache over a
-    `DirectorySource` - which is what lets one fold serve both bases, with no
-    conditional path and no second overlay. Resolved once at construction, so
-    what a `WorkingRecord` holds is the cache rather than the record: every use
-    it makes of its base is a member of one.
+    A `Record` is one already - whether it came from a revision or from
+    `Record.at(uri)`, since a directory read as its one layer is a fold like
+    any other.
 
     Raises
     ------
     TypeError
-        For a base that is neither. A framework object hands over narwhals
-        frames and has no layer layout behind it: `axis("entity")` wants the
-        entity axis and `Record` exposes `entity_types` keyed by type, so
-        synthesising one would be rebuilding the format from a protocol that
-        deliberately lacks it.
-
-    Notes
-    -----
-    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+        For anything else. A framework object hands over narwhals frames and has
+        no layer layout behind it: `axis("entity")` wants the entity axis and
+        `RecordLike` exposes `entity_types` keyed by type, so synthesising one
+        would be rebuilding the format from a protocol that deliberately lacks
+        it.
+    ValueError
+        For a `Record` on another connection, which would read its rows through
+        one connection and stage them on another.
     """
-    if isinstance(base, LayeredRecord):
-        return base.node_cache
-    if isinstance(base, DirectoryRecord):
-        # Its own id, distinct from the staged layer's: the two are separate
-        # sources, and `source_for` dispatches a winning row by matching
-        # `layer_uuid` against them - so sharing one would send every staged win
-        # to the directory and read the edit back as the base's value. The
-        # source derives its own id from where the directory is, so there is
-        # nothing to allocate here and two readings of one directory agree on
-        # which layer they read.
-        source = DirectorySource(base.base, con)
-        return NodeCache(source.layer_id, [source], con)
-    msg = (
-        f"a `WorkingRecord` reads by folding its staged rows over the base's, "
-        f"and a {type(base).__name__} has no layer layout to fold - only a "
-        f"`LayeredRecord` or a `DirectoryRecord` does"
-    )
-    raise TypeError(msg)
+    if not isinstance(base, Record):
+        msg = (
+            f"a `WorkingRecord` reads by folding its staged rows over the base's, "
+            f"and a {type(base).__name__} has no layer layout to fold - pass a "
+            f"`Record`, which `Revision.record` and `Record.at(uri)` both give"
+        )
+        raise TypeError(msg)
+    if base.con is not con:
+        msg = (
+            "a `WorkingRecord` stages its rows on the connection it reads the "
+            "base through, and this base reads through another one"
+        )
+        raise ValueError(msg)
+    return base.node_cache
 
 
 def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:

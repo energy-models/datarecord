@@ -3,9 +3,11 @@
 The definition sketched in [what a data record is](index.md#what-a-data-record-is), in full. This is the contract a consumer codes against; [the record format](format.md) is how it is stored.
 It is read-only: writing is [`write_record(revision_id, record, con)`](writing.md).
 
+Two names, one shape. **`RecordLike`** is the protocol below — what a signature annotates against, and what a framework object satisfies structurally without depending on this package. **`Record`** is the class this package provides: the narwhals interface over [one fold](read-path.md#one-record-over-one-fold), which is what `Revision.record` and `Record.at(uri)` both give you. The concrete thing gets the short name because it is what a caller constructs and holds.
+
 ```python
 @runtime_checkable
-class Record(Protocol):
+class RecordLike(Protocol):
     """Dimensioned attribute data with a declared schema."""
 
     @property

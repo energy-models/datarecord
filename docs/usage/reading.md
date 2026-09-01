@@ -53,10 +53,10 @@ The two sets are **not** complements: a dim in both means this type's components
 A parquet directory is a record. Nothing about layers is involved:
 
 ```python
-from datarecord import DirectoryRecord, connect
+from datarecord import Record, connect
 
 con = connect()
-record = DirectoryRecord("s3://bucket/my-record/", con)
+record = Record.at("s3://bucket/my-record/", con)
 record.attributes["p_nom"].collect()
 ```
 

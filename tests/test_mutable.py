@@ -9,13 +9,13 @@ import narwhals as nw
 import pandas as pd
 import pytest
 
-from datarecord import Revision
-from datarecord.directory import DirectoryRecord
+from datarecord import Revision, duck
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
+from datarecord.layered.revision import Record
 from datarecord.mutable import Directory, NewChild, WorkingRecord, normalise_value
-from datarecord.record import Record
-from datarecord.schema import AttributeSpec
+from datarecord.record import RecordLike
+from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network, schema
 
@@ -36,6 +36,12 @@ def staged(root, con):
     return WorkingRecord(root.record, con)
 
 
+@pytest.fixture
+def written_directory(root):
+    """One layer's own directory, as a URI a caller could pass to `Record.at`."""
+    return layer_dir(root.id)
+
+
 def _static(revision, attribute, ctype=GEN):
     """One attribute as the built network sees it, per component name.
 
@@ -53,6 +59,41 @@ def _static(revision, attribute, ctype=GEN):
 # -- the protocol (https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit) ----------------------------------------------------
 
 
+def test_a_working_record_overrides_no_read_member():
+    """Every member it defines beyond `Record`'s is an edit, a commit, or private.
+
+    The property the whole design rests on: a staged edit is read by the same
+    fold that reads a committed layer, so a *read* member `WorkingRecord`
+    redefines is a place where staging stopped being just another layer. No
+    behavioural test would name that, because both paths would still answer -
+    they would just be two paths again.
+
+    `outputs` is the one allowed exception, results not overlaying, and it is
+    listed so that adding a second one requires editing this line.
+    """
+    edits = {
+        "set",
+        "add",
+        "remove",
+        "add_group",
+        "remove_group",
+        "rollback",
+        "commit",
+        "staged_only",
+        "flattened",
+    }
+    allowed_read_override = {"outputs"}
+
+    inherited = {n for n in vars(Record) if not n.startswith("_")}
+    defined = {n for n in vars(WorkingRecord) if not n.startswith("_")}
+    assert inherited & defined <= allowed_read_override, (
+        "a read member redefined here means staging is no longer just a layer"
+    )
+    assert defined - inherited == edits, (
+        "a public member that is neither an edit nor an inherited read"
+    )
+
+
 def test_a_mutable_record_reads_as_a_record(staged):
     """Editable *and* readable: the pending edits are a layer, so reads compose.
 
@@ -64,7 +105,7 @@ def test_a_mutable_record_reads_as_a_record(staged):
     -----
     - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)
     """
-    assert isinstance(staged, Record)
+    assert isinstance(staged, RecordLike)
 
 
 # -- value forms (https://energy-models.github.io/datarecord/design/working-record/#set) -----------------------------------------------------
@@ -549,7 +590,7 @@ def test_the_restated_series_is_in_the_layer_itself(staged, root, con):
     staged.set("p_max_pu", one, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryRecord(layer_dir(child.id), con)
+    layer = Record.at(layer_dir(child.id), con)
     rows = layer.attributes["p_max_pu"].collect().to_native().to_pandas()
     assert len(rows[rows["entity"] == "Manchester Wind"]) == len(mine)
     # Only the touched component: an axis owned whole obliges the layer to
@@ -570,7 +611,7 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryRecord(layer_dir(child.id), con)
+    layer = Record.at(layer_dir(child.id), con)
     rows = layer.attributes["p_nom"].collect().to_native().to_pandas()
     # `p_nom` varies over nothing, so there is no extent to restate: one row.
     assert len(rows) == 1
@@ -919,7 +960,7 @@ def test_commit_clears_the_staging_area(staged, root):
     staged.commit(NewChild(root))
 
     again = staged.commit(NewChild(root))
-    layer = DirectoryRecord(layer_dir(again.id), con=staged.con)
+    layer = Record.at(layer_dir(again.id), con=staged.con)
     assert "p_nom" not in layer.attributes
 
 
@@ -936,7 +977,7 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryRecord(layer_dir(child.id), con)
+    layer = Record.at(layer_dir(child.id), con)
     rows = layer.attributes["p_nom"].collect().to_native().to_pandas()
     assert list(rows["entity"]) == ["Manchester Wind"]
     # Yet the resolved record reads every generator's value.
@@ -965,7 +1006,7 @@ def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root, con
     staged.set("p_max_pu", one, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryRecord(layer_dir(child.id), con)
+    layer = Record.at(layer_dir(child.id), con)
     rows = layer.attributes["p_max_pu"].collect().to_native().to_pandas()
     assert set(rows["entity"]) == {"Manchester Wind"}, (
         "only the touched key's extent is carried"
@@ -1022,7 +1063,7 @@ def test_an_edit_over_a_directory_base_reads_back(con, base_uri, ac_dc):
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    staged = WorkingRecord(DirectoryRecord(layer_dir(revision.id), con), con)
+    staged = WorkingRecord(Record.at(layer_dir(revision.id), con), con)
 
     def marginal_cost() -> list[float]:
         frame = staged.attributes["marginal_cost"].collect().to_native().to_pandas()
@@ -1037,7 +1078,7 @@ def test_an_edit_over_a_directory_base_reads_back(con, base_uri, ac_dc):
 
     # The base's id is derived from where it is rather than allocated, so two
     # readers of one directory agree on which layer they are reading.
-    other = WorkingRecord(DirectoryRecord(layer_dir(revision.id), con), con)
+    other = WorkingRecord(Record.at(layer_dir(revision.id), con), con)
     assert other._base.revision_id == staged._base.revision_id
     assert other._layer_id != staged._layer_id, "each staging area is its own layer"
 
@@ -1051,10 +1092,63 @@ def test_new_child_without_a_layered_base_says_what_to_pass(con, base_uri, tmp_p
     """
     revision = Revision.create(con)
     write_schema(read_schema(con), base_uri)
-    over_a_directory = WorkingRecord(DirectoryRecord(layer_dir(revision.id), con), con)
+    over_a_directory = WorkingRecord(Record.at(layer_dir(revision.id), con), con)
 
     with pytest.raises(ValueError, match="needs a revision to branch from"):
         over_a_directory.commit(NewChild())
+
+
+def test_a_directory_uri_reads_the_same_with_or_without_a_trailing_slash(
+    written_directory, con
+):
+    """Every member path is appended to the URI, so the slash cannot be optional.
+
+    And `layer_id` is derived from that URI, so the two spellings have to
+    normalise to one before it is hashed - otherwise one directory reads as two
+    layers and a `WorkingRecord` over each disagrees about which it edits.
+    """
+    bare = written_directory.rstrip("/")
+    assert not bare.endswith("/"), "otherwise this asserts nothing"
+
+    with_slash = Record.at(bare + "/", con)
+    without = Record.at(bare, con)
+    assert list(without.attributes) == list(with_slash.attributes)
+    assert list(without.attributes), "the fixture must have written attributes"
+    assert without.node_cache.revision_id == with_slash.node_cache.revision_id, (
+        "one directory is one layer, however its URI was spelled"
+    )
+
+
+def test_edits_read_under_the_base_records_schema(staged, con, tmp_path):
+    """A staging area declares nothing; it edits under the base's declaration.
+
+    Which matters for a standalone base, whose schema is its own directory's
+    rather than the connection root's: the staged layer is one more source over
+    that base, so `with_source` has to carry the schema along. Reading the edit
+    back under the connection's schema instead would resolve it against
+    different dims than the rows it is overlaying.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    """
+    out = str(tmp_path / "standalone")
+    staged.commit(Directory(out))
+
+    elsewhere = duck.connect(base_uri=str(tmp_path / "unrelated"))
+    try:
+        assert read_schema(elsewhere) == Schema(), "the other root declares nothing"
+        base = Record.at(out, elsewhere)
+        assert base.schema.dims, "the standalone record carries its own schema"
+
+        editing = WorkingRecord(base, elsewhere)
+        assert editing.schema == base.schema, "an edit declares nothing of its own"
+        editing.set("p_nom", 999.0, entity=["Manchester Wind"])
+        rows = editing.attributes["p_nom"].collect().to_native().to_pandas()
+        got = dict(zip(rows["entity"], rows["value"], strict=True))
+        assert got["Manchester Wind"] == 999.0
+    finally:
+        elsewhere.close()
 
 
 def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_path):
@@ -1068,7 +1162,7 @@ def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_pat
     out = str(tmp_path / "flat")
     assert staged.commit(Directory(out)) is None
 
-    record = DirectoryRecord(out, con)
+    record = Record.at(out, con)
     rows = record.attributes["p_nom"].collect().to_native().to_pandas()
     got = dict(zip(rows["entity"], rows["value"], strict=True))
     assert got["Manchester Wind"] == 150.0
@@ -1157,7 +1251,7 @@ def test_results_survive_a_commit_into_the_new_layer(staged, root, con):
     staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryRecord(layer_dir(child.id), con)
+    layer = Record.at(layer_dir(child.id), con)
     assert "p" in layer.outputs
     rows = layer.outputs["p"].collect().to_native().to_pandas()
     assert rows["value"].tolist() == [42.0]
@@ -1272,7 +1366,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
     # And it survives the commit into the layer's own `outputs/`.
     child = staged.commit(NewChild(root))
     got = (
-        DirectoryRecord(layer_dir(child.id), con)
+        Record.at(layer_dir(child.id), con)
         .outputs["p"]
         .collect()
         .to_native()

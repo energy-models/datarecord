@@ -2,7 +2,7 @@
 
 Status: **Implemented** · Drafted 2026-09-01 · Implemented 2026-09-01
 
-Landed in [the read path](../read-path.md#what-differs-between-the-implementations) and [`WorkingRecord`](../working-record.md#reading-with-pending-edits); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
+Landed in [the read path](../read-path.md#one-record-over-one-fold) and [`WorkingRecord`](../working-record.md#reading-with-pending-edits); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 
 [`WorkingRecord`](../working-record.md) already claims to be a layer:
 
@@ -145,7 +145,7 @@ Settled by `DirectorySource`: a `DirectoryRecord` is a parquet directory in the 
 
 Nothing constructs such a `WorkingRecord` today, and `_base_revision` already refuses it with a clear message. If a caller appears, it is its own proposal.
 
-**One design note this owes.** [read-path](../read-path.md#what-differs-between-the-implementations) makes "no owner map" a property of `DirectoryRecord`, and that stays true — a bare `DirectoryRecord` still scans for `flags`. What is new is that a `WorkingRecord` _over_ one builds a map, which belongs to the `WorkingRecord` exactly as a `LayeredRecord`'s map belongs to the node rather than to the layers it folds. The page needs that sentence, or the next reader reads the map as a contradiction.
+**One design note this owes.** [read-path](../read-path.md#one-record-over-one-fold) makes "no owner map" a property of `DirectoryRecord`, and that stays true — a bare `DirectoryRecord` still scans for `flags`. What is new is that a `WorkingRecord` _over_ one builds a map, which belongs to the `WorkingRecord` exactly as a `LayeredRecord`'s map belongs to the node rather than to the layers it folds. The page needs that sentence, or the next reader reads the map as a contradiction.
 
 ### 3. Results become schema-declared
 
@@ -177,7 +177,7 @@ Yes, and it is stated in the protocol docstring: a source hands over "the layer 
 
 ### 6. What `DirectoryRecord.flags` keeps, and the aggregate it shares
 
-`DirectoryRecord` is not affected by the fold, and must not be. It deliberately pays the `GROUP BY` scan — [the table in read-path](../read-path.md#what-differs-between-the-implementations) makes that a design property, not an omission.
+`DirectoryRecord` is not affected by the fold, and must not be. It deliberately pays the `GROUP BY` scan — [the table in read-path](../read-path.md#one-record-over-one-fold) makes that a design property, not an omission.
 
 So after this change the flags aggregate exists twice: once inside `fold_inputs` reading `_raw_<dim>` columns, once in `DirectoryRecord` reading parquet columns directly. Sharing them is in scope, done **last**, once `_flags_arm` is gone and the remaining pair is what has to fit.
 
@@ -323,4 +323,4 @@ Those deletions are what make the two smaller cleanups this grew out of unnecess
 
 **Whether the commit path collapses further.** `staged_only()` and `flattened()` build two `Record`s out of one staging area. With the completion moved into staging, `staged_only()` _is_ the staged source and `flattened()` is the fold's own output — so both readings become projections of one object rather than two assembled `_Written`s.
 
-**Whether a `DirectoryRecord` gains a map when something wants one.** The fold now runs over a directory, so the option exists. It should stay unexercised: the scan is a design property, and the sentence in [read-path](../read-path.md#what-differs-between-the-implementations) is what keeps it one.
+**Whether a `DirectoryRecord` gains a map when something wants one.** The fold now runs over a directory, so the option exists. It should stay unexercised: the scan is a design property, and the sentence in [read-path](../read-path.md#one-record-over-one-fold) is what keeps it one.

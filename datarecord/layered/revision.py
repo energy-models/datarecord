@@ -12,18 +12,22 @@ Notes
 - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable
 from dataclasses import dataclass
-from functools import cached_property
-from typing import Self
+from functools import wraps
+from typing import Self, cast
 from uuid import UUID
 
 import narwhals as nw
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from pydantic import BaseModel, PrivateAttr
 
-from datarecord.duck import default_connection
+from datarecord.duck import default_connection, read_json
 from datarecord.layered import resolve
 from datarecord.layered.resolve import NodeCache
+from datarecord.layered.sources import DirectorySource, LayerSource
 from datarecord.record import Flags, LazyFrames
 from datarecord.schema import Schema
 
@@ -124,20 +128,19 @@ class Revision(BaseModel):
         return self._node_cache
 
     @property
-    def record(self) -> "LayeredRecord":
-        """This revision's resolved overlay as a `Record`.
+    def record(self) -> Record:
+        """This revision's resolved view, as a `Record`.
 
-        The framework-agnostic view of a record: the same interface a plain
-        parquet directory satisfies, so a consumer need not know the record is
-        an overlay at all. `node_cache` remains the DuckDB-shaped view, which
-        `datarecord.tools` still builds from.
+        The framework-agnostic view: narwhals frames, with no sign of how many
+        layers were folded to produce them. `node_cache` remains the
+        DuckDB-shaped view, which `datarecord.tools` still builds from.
 
         Notes
         -----
-        - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+        - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
-        return LayeredRecord(self.node_cache)
+        return Record(self.node_cache)
 
     # -- tree ---------------------------------------------------------------
 
@@ -199,21 +202,105 @@ class Revision(BaseModel):
         return ancestry(self.con, self.id)
 
 
-@dataclass(frozen=True)
-class LayeredRecord:
-    """A record's resolved overlay, as a `Record`.
+def _stable_cache(method: Callable[[Record], LazyFrames]) -> property:
+    """A `Record` member cached only while the fold behind it cannot go stale.
 
-    The protocol's shape over `NodeCache`, not a second implementation of it, so
-    a member costs what the equivalent `NodeCache` call costs - `flags` in
-    particular is free, the owner map having folded it in.
+    Every one of these answers a *key set*, which is a question about which
+    layers exist rather than about their rows - so it is cacheable exactly when
+    `NodeCache.stable` holds. Past a staging area it is not: an `add` or a `set`
+    naming a new attribute changes the answer, and a cached tuple of names would
+    hide the edit that was just made.
+
+    The same rule `NodeCache.dims` applies to the fold itself, one level up, so
+    a `WorkingRecord` inherits these unchanged rather than overriding them.
 
     Notes
     -----
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+    """
+    attr = f"_cached_{method.__name__}"
+
+    @wraps(method)
+    def get(self: Record) -> LazyFrames:
+        if not self.node_cache.stable:
+            return method(self)
+        try:
+            return cast("LazyFrames", object.__getattribute__(self, attr))
+        except AttributeError:
+            value = method(self)
+            object.__setattr__(self, attr, value)
+            return value
+
+    return property(get)
+
+
+@dataclass(frozen=True)
+class Record:
+    """A record's resolved view, as narwhals frames.
+
+    The narwhals interface over one `NodeCache`, not a second implementation of
+    it: a member costs what the equivalent `NodeCache` call costs, and `flags`
+    in particular is free, the owner map having folded it in.
+
+    One class for every backing, because a fold over one source degenerates to
+    a scan of it - so a plain parquet directory is read as the one layer it is
+    (`at`) rather than by a second code path. `RecordLike` is the protocol a
+    caller annotates against; this is the class a caller constructs.
+
+    Notes
+    -----
+    - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
     """
 
     node_cache: NodeCache
+
+    @classmethod
+    def over(
+        cls,
+        *sources: LayerSource,
+        con: DuckDBPyConnection,
+        declared: Schema | None = None,
+    ) -> Record:
+        """A record folded over `sources`, root first.
+
+        The last source's `layer_id` names the record, which for a layer tree is
+        the revision being resolved. `con` is explicit because a source is only
+        obliged to hand over rows - where it reads them is its own business, and
+        the protocol carries no connection. `declared` likewise: a source hands
+        over rows, not a schema.
+        """
+        if not sources:
+            msg = "a `Record` needs at least one source to fold"
+            raise ValueError(msg)
+        return cls(NodeCache(sources[-1].layer_id, list(sources), con, declared))
+
+    @classmethod
+    def at(cls, uri: str, con: DuckDBPyConnection | None = None) -> Record:
+        """A plain parquet directory, read as the one layer it is.
+
+        Any directory in the layer layout - a single layer of a tree, or a
+        standalone record `write_record` produced. It needs no `revisions` row
+        and no tree: being a layer layout is what the fold requires, and that is
+        what a record directory is. Over one source the fold degenerates to a
+        scan, so this costs a scan and not a resolution.
+
+        A **standalone** record carries its own `manifest.json`, being one whole
+        record rather than a layer of one, and that is what it is read under -
+        so such a directory reads the same through any connection. A single
+        layer directory has none, and is read under the connection's root.
+
+        Notes
+        -----
+        - [the record format](https://energy-models.github.io/datarecord/design/format/)
+        - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+        """
+        con = con or default_connection()
+        source = DirectorySource(uri, con)
+        raw = read_json(source.uri("manifest.json"))
+        declared = None if raw is None else Schema.model_validate(raw)
+        return cls.over(source, con=con, declared=declared)
 
     @property
     def schema(self) -> Schema:
@@ -223,17 +310,17 @@ class LayeredRecord:
     def con(self) -> DuckDBPyConnection:
         return self.node_cache.con
 
-    @cached_property
+    @_stable_cache
     def dims(self) -> LazyFrames:
         axes = self.node_cache.dims.axes
         return LazyFrames(tuple(axes), lambda dim: nw.from_native(axes[dim]))
 
-    @cached_property
+    @_stable_cache
     def entity_types(self) -> LazyFrames:
         types = tuple(sorted(self.node_cache.entity_types()))
         return LazyFrames(types, self._entity_type_frame)
 
-    @cached_property
+    @_stable_cache
     def groups(self) -> LazyFrames:
         """Each declared group's rows, keyed by group - one frame each.
 
@@ -251,14 +338,14 @@ class LayeredRecord:
         )
         return LazyFrames(groups, self._group_frame)
 
-    @cached_property
+    @_stable_cache
     def attributes(self) -> LazyFrames:
         names = tuple(self.node_cache.attribute_names())
         return LazyFrames(
             names, lambda attr: nw.from_native(self.node_cache.relation(attr))
         )
 
-    @cached_property
+    @_stable_cache
     def outputs(self) -> LazyFrames:
         names = tuple(self.node_cache.output_names())
         return LazyFrames(
@@ -274,7 +361,7 @@ class LayeredRecord:
         """
         return self.node_cache.attributes_of(ctype)
 
-    # -- frames, ordered by the map's `order_key` (https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations) ---------------------
+    # -- frames, ordered by the map's `order_key` (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) ---------------------
 
     def _entity_type_frame(self, ctype: str) -> nw.LazyFrame:
         return self._ordered(self.node_cache.entity_type_frame(ctype), ctype)

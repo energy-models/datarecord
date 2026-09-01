@@ -92,7 +92,7 @@ The layer lands in the **child**, never in the node you branched from — layers
 new.record.attributes["p_nom"].collect()
 ```
 
-`NewChild()` branches from whichever node the `WorkingRecord` was built over, which is what a caller means every time. Pass one explicitly — `NewChild(other_revision)` — only to re-parent the edits elsewhere; a `WorkingRecord` over a base that is not a node in a layer tree (a `DirectoryRecord`, a framework object) has nothing to default to and must supply one.
+`NewChild()` branches from whichever node the `WorkingRecord` was built over, which is what a caller means every time. Pass one explicitly — `NewChild(other_revision)` — only to re-parent the edits elsewhere; a `WorkingRecord` over a base that is not a node in a layer tree — a `Record.at(uri)` over a plain directory — has nothing to default to and must supply one.
 
 Staged rows are appended, never updated, so the same coordinate may be staged repeatedly; commit collapses to last-write-wins per coordinate. A `remove` after a `set` wins regardless of order — a deleted component has no attributes — and an `add` after a `remove` brings the component back.
 

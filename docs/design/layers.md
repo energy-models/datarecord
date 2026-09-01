@@ -1,6 +1,6 @@
 # Layered resolution
 
-A `LayeredRecord` resolves a tree of layers.
+A `Record` resolves a tree of layers.
 Each node adds one layer; a node's data is its layer resolved over its ancestors', last-writer-wins.
 
 ```python

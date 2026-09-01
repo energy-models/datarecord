@@ -12,11 +12,12 @@ import pandas as pd
 import pytest
 
 from datarecord import Revision
-from datarecord.directory import DirectoryRecord
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema
+from datarecord.layered.revision import Record
 from datarecord.layered.write import write_record
-from datarecord.record import EMPTY, LazyFrames, Record
+from datarecord.record import EMPTY, LazyFrames, RecordLike
+from datarecord.schema import Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network, relation, schema
 
@@ -183,7 +184,19 @@ def test_a_directory_target_carries_its_own_schema(con, base_uri, tmp_path):
     write_record(None, _Source(_SCHEMA, attributes={"p_nom": _long()}), con, uri=out)
 
     assert (Path(out) / "manifest.json").exists()
-    assert DirectoryRecord(out, con).schema == _SCHEMA
+    assert Record.at(out, con).schema == _SCHEMA
+
+    # And it is that file answering, not the connection's root: a standalone
+    # record is one whole record, so it must read the same through a connection
+    # rooted somewhere with no manifest at all.
+    from datarecord import duck
+
+    elsewhere = duck.connect(base_uri=str(tmp_path / "unrelated"))
+    try:
+        assert read_schema(elsewhere) == Schema(), "the other root declares nothing"
+        assert Record.at(out, elsewhere).schema == _SCHEMA
+    finally:
+        elsewhere.close()
 
 
 def test_write_record_refuses_an_existing_layer(con, base_uri):
@@ -448,7 +461,7 @@ def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
     """Key sets come off the network and its registry, so listing is cheap."""
     source = PyPSA.to_datarecord(ac_dc)
 
-    assert isinstance(source, Record)
+    assert isinstance(source, RecordLike)
     assert "Generator" in source.entity_types
     assert "connection" in source.groups
     assert "p_max_pu" in source.attributes

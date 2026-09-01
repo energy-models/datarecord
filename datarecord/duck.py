@@ -17,12 +17,15 @@ Notes
 - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
 """
 
+import json
 import os
 from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
 from functools import partial, reduce
 from glob import glob
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
+from urllib.request import urlopen
 from uuid import UUID
 from weakref import WeakKeyDictionary
 
@@ -536,3 +539,23 @@ def fold_axis(
         .order("_first")
         .project(star(exclude=["_depth", "_rank", "_row", "_first"]))
     )
+
+
+def read_json(uri: str) -> dict[str, Any] | None:
+    """Read one JSON file, or `None` if it doesn't exist (e.g. an undeclared schema).
+
+    Only a genuine miss (local `FileNotFoundError`, remote 404/403) maps to
+    `None` - any other failure raises rather than silently reading as absent.
+    """
+    try:
+        if "://" in uri:
+            with urlopen(uri) as fh:  # noqa: S310 - record URIs are derived, not user input
+                return json.load(fh)
+        with open(uri) as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return None
+    except HTTPError as e:
+        if e.code in (403, 404):  # 403: S3's "missing key" without ListBucket
+            return None
+        raise

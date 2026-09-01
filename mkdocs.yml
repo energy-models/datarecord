@@ -55,7 +55,6 @@ nav:
       - api/index.md
       - Record: api/record.md
       - Schema: api/schema.md
-      - Directory: api/directory.md
       - Layered: api/layered.md
       - WorkingRecord: api/mutable.md
       - Tools: api/tools.md

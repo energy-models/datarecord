@@ -1,12 +1,14 @@
 # Proposal: one `Record`, over a `NodeCache`
 
-Status: **Draft** · Drafted 2026-09-01
+Status: **Implemented** · Drafted 2026-09-01 · Landed 2026-09-01
+
+The design is [the read path](../read-path.md#one-record-over-one-fold) and [the Record protocol](../record.md); this page is the argument for the change rather than the current description, and those pages are authoritative where the two disagree.
 
 Stacked on [staging as a layer](staging-as-a-layer.md), which made a staging area a source of one fold. This is the same observation one level up: a plain directory is a source too, so `DirectoryRecord` is a second reading of what the fold already does.
 
 ## What starts it
 
-[read-path](../read-path.md#what-differs-between-the-implementations) says two implementations differ in four ways. Measured on one directory — `DirectoryRecord(uri)` against a `NodeCache` over `[DirectorySource(uri)]` — **all four are the same answer**:
+[read-path](../read-path.md#one-record-over-one-fold) says two implementations differ in four ways. Measured on one directory — `DirectoryRecord(uri)` against a `NodeCache` over `[DirectorySource(uri)]` — **all four are the same answer**:
 
 | what was compared                                         | result                        |
 | --------------------------------------------------------- | ----------------------------- |
@@ -42,12 +44,13 @@ class Record:
     node_cache: NodeCache
 
     @classmethod
-    def over(cls, *sources: LayerSource) -> Record: ...
+    def over(cls, *sources: LayerSource, con: DuckDBPyConnection) -> Record: ...
 
     @classmethod
-    def at(cls, uri: str, con: DuckDBPyConnection) -> Record:
+    def at(cls, uri: str, con: DuckDBPyConnection | None = None) -> Record:
         """A plain parquet directory, read as the one layer it is."""
-        return cls.over(DirectorySource(uri, con))
+        con = con or default_connection()
+        return cls.over(DirectorySource(uri, con), con=con)
 
 
 class WorkingRecord(Record):
@@ -79,6 +82,16 @@ Two constraints this puts on the base class, neither of which is an obstacle:
 
 - **`frozen=True` has to accommodate a staging area.** `_staged` is mutated per edit, and a frozen dataclass holds a mutable container fine — `DirectoryRecord._flags_cache` does it today via `object.__setattr__` in `__post_init__`. What must stay true is that the _`NodeCache`_ is fixed at construction, which it is: a staged edit changes the tables the last source reads, never which sources there are.
 - **Every read member must be inherited unchanged.** That is the property worth having and worth asserting — a member `WorkingRecord` overrides is a member where staging is not just another layer, which is the duplication [the last proposal existed to delete](staging-as-a-layer.md#what-starts-it). `outputs` is the one genuine exception, results not overlaying, and it should carry a comment saying so.
+
+### What the implementation had to add
+
+Two things this page did not see, both found by writing it:
+
+**The `cached_property` members were the real obstacle, not `frozen=True`.** `dims`, `entity_types`, `groups` and `attributes` each cache a **key set**, and a `set` naming a new attribute changes that set — so inheriting them unchanged would have made a staged addition invisible, the exact bug this direction exists to prevent. The fix is not to override them in `WorkingRecord`, which would have cost the inheritance property above; it is to cache them only where the fold is stable, which is [the rule `NodeCache.dims` already applied](../layers.md#a-layers-data-is-write-once) one level down. `NodeCache.stable` names it once and `Record._stable_cache` applies it, so the concept appears twice rather than as a special case — and `WorkingRecord` inherits all four.
+
+**`over` takes its connection explicitly.** A `LayerSource` is only obliged to hand over rows; where it reads them is its own business, and the protocol carries no `con`. So the sketch's `over(*sources)` could not derive one, and it is `over(*sources, con=...)`.
+
+**A standalone record's own schema had to come with it.** `DirectoryRecord.schema` read the directory's `manifest.json` before falling back to the connection root's, and nothing in this page noticed. It matters for exactly one case, which is the case that motivates the manifest existing: a [standalone record](../schema.md#one-schema-per-record) is one whole record and may be read through a connection rooted anywhere. So `Record.at` reads it and `NodeCache` carries it as `declared`, and `with_source` passes it along — a `WorkingRecord` over such a base reads under its schema, an edit being a layer and a layer declaring nothing. The first attempt put an `own_schema` member on `LayerSource` and had the fold ask every source; that invents a question with one possible answer, since a fold holds at most one directory and it is always the root.
 
 ## What this deletes
 

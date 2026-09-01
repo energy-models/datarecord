@@ -29,7 +29,7 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all
-from datarecord.record import Flags, Frames, LazyFrames, Record
+from datarecord.record import Flags, Frames, LazyFrames, RecordLike
 from datarecord.schema import AttributeSpec, Dimension, Group, Trait
 from datarecord.schema import Schema as RecordSchema
 from datarecord.tools.base import (
@@ -165,7 +165,7 @@ class NetworkShape:
         return [SCENARIO, "entity"] if self.stochastic else ["entity"]
 
 
-def _connection(record: Record) -> DuckDBPyConnection:
+def _connection(record: RecordLike) -> DuckDBPyConnection:
     """The DuckDB connection `record`'s frames belong to.
 
     Off the concrete backing, since the protocol stays backend-agnostic.
@@ -919,7 +919,7 @@ class PyPSATool(Tool):
 
         return frozenset(c.name for c in all_components.values())
 
-    def requires(self, record: Record) -> Requirements:
+    def requires(self, record: RecordLike) -> Requirements:
         """PyPSA's axes, the record's own component types, and their required attributes.
 
         The attribute half is record-dependent: only types the record
@@ -942,7 +942,7 @@ class PyPSATool(Tool):
             ),
         )
 
-    def verify(self, record: Record) -> Requirements:
+    def verify(self, record: RecordLike) -> Requirements:
         """What this record fails to supply for a PyPSA build; falsy if it is usable.
 
         Checks what a build needs: the schema declares PyPSA's axes, its key dims are ones this tool can honour, every component
@@ -1014,7 +1014,7 @@ class PyPSATool(Tool):
             unsupported_values=frozenset(unsupported_values),
         )
 
-    def _unsupported_keys(self, record: Record) -> set[tuple[str, str]]:
+    def _unsupported_keys(self, record: RecordLike) -> set[tuple[str, str]]:
         """`(key, dim)` pairs this tool cannot honour: `snapshot`, as any key.
 
         PyPSA's static/series split needs a component's whole series to come
@@ -1030,7 +1030,7 @@ class PyPSATool(Tool):
         defs = record.schema
         return {("input_key", SNAPSHOT)} if SNAPSHOT in defs.partial_dims else set()
 
-    def build(self, record: Record) -> pypsa.Network:
+    def build(self, record: RecordLike) -> pypsa.Network:
         """The resolved network, one component type at a time.
 
         Raises
@@ -1141,7 +1141,7 @@ class PyPSATool(Tool):
             for attr, frames in per_attribute.items()
         }
 
-    def to_datarecord(self, model: pypsa.Network) -> Record:
+    def to_datarecord(self, model: pypsa.Network) -> RecordLike:
         """Present a `Network` as the `Record` `write_record` persists.
 
         The inverse of `build`, and the only place PyPSA's shape is undone:
@@ -1655,7 +1655,7 @@ def _required_attributes(ctype: str) -> frozenset[str]:
     return frozenset(required) - {"name"}
 
 
-def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
+def _ordered_connections(record: RecordLike, ctype: str) -> pd.DataFrame | None:
     """One type's connections with a port index assigned per component.
 
     The positional collapse: connections come in member order (an
@@ -1671,7 +1671,7 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+    - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     frame = record.groups.get(CONNECTION)
@@ -1699,7 +1699,7 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
     return df
 
 
-def _connection_attributes(record: Record, ctype: str) -> frozenset[str]:
+def _connection_attributes(record: RecordLike, ctype: str) -> frozenset[str]:
     """Port attribute names this type's connection rows can supply.
 
     `bus0`/`bus1`/... for the ports that actually exist, so `verify` knows a
@@ -1716,7 +1716,7 @@ def _connection_attributes(record: Record, ctype: str) -> frozenset[str]:
 
 
 def _collapse_connections(
-    static: DuckDBPyRelation, record: Record, ctype: str, con: DuckDBPyConnection
+    static: DuckDBPyRelation, record: RecordLike, ctype: str, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
     """Add `bus0`/`bus1`/... columns to a static frame from its connection rows.
 
@@ -1752,7 +1752,7 @@ def _collapse_connections(
     )
 
 
-def _static_columns(record: Record, ctype: str) -> frozenset[str]:
+def _static_columns(record: RecordLike, ctype: str) -> frozenset[str]:
     """Columns `dims/entity_type/<ctype>.parquet` supplies for this record.
 
     The non-varying half of the static frame: an attribute present here

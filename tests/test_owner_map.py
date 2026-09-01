@@ -97,7 +97,7 @@ def test_materialise_writes_the_map_under_resolved(con, parent):
     # plain parquet directory: every glob into a layer is single-level, so nothing
     # under `resolved/` is reachable by one (https://energy-models.github.io/datarecord/design/layers/#deletion).
     assert not Path(layer_dir(parent.id), "owner_map").exists()
-    # The globs the fold and `DirectoryRecord` actually use must not reach a
+    # The globs the fold and `Record.at` actually use must not reach a
     # cached file.
     layer = Path(layer_dir(parent.id))
     reachable = {
@@ -319,7 +319,7 @@ def test_a_directory_source_derives_its_layer_id_from_where_it_is():
 
     Notes
     -----
-    - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
+    - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
     """
     a = DirectorySource("/records/one/")
     assert a.layer_id == DirectorySource("/records/one/").layer_id, "same place"

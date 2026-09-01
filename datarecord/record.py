@@ -1,13 +1,13 @@
-"""The `Record` protocol: what a record answers, however it is backed.
+"""The `RecordLike` protocol: what a record answers, however it is backed.
 
-Backings: `layered.revision.LayeredRecord` (a resolved overlay) and
-`directory.DirectoryRecord` (a plain directory).
+`layered.revision.Record` is the class this package provides; a framework
+object presenting itself as a record satisfies the protocol structurally,
+which is what `tools/` is built on.
 
 Notes
 -----
 - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
 - [the protocol names no engine](https://energy-models.github.io/datarecord/design/record/#the-protocol-names-no-engine)
-- [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
 """
 
 from __future__ import annotations
@@ -179,7 +179,7 @@ def collision_detail(rows: Iterable[tuple[Any, Any]]) -> str:
 
 
 @runtime_checkable
-class Record(Protocol):
+class RecordLike(Protocol):
     """What a record answers, however it is backed.
 
     Read-only: writing is `write_record(revision_id, source, con)`.

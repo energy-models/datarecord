@@ -121,18 +121,17 @@ Non-key dims pass through unchanged, because within one key-dim combination the 
 
 An attribute no layer wrote is absent from the map; its relation is empty, and the consumer applies [the schema's `default`](schema.md#attributespec).
 
-## What differs between the implementations
+## One record over one fold
 
-|                  | `DirectoryRecord`              | `LayeredRecord`                             |
-| ---------------- | ------------------------------ | ------------------------------------------- |
-| resolution       | none — one record              | owner-map fold along ancestry               |
-| `flags`          | `GROUP BY` scan over `inputs/` | free, folded with ownership                 |
-| member order     | file order                     | `order_key`, first-introduced across layers |
-| `schema.partial` | absent                         | the granularity of every patch              |
+There is one `Record`, and it is the narwhals interface over a [`NodeCache`](#owner-map). A plain parquet directory is not a second implementation of it: `Record.at(uri)` folds over a single [`DirectorySource`](format.md), and over one source the fold degenerates to a scan of it — there is one layer, so every key is owned by it and the anti-join has nothing to evict.
 
-`flags` from a directory needs a real aggregate: parquet's footer statistics are per row group, not per component type, so a file mixing one type's series rows with another's constant says nothing about either.
+So a directory takes the same properties as a tree node, rather than its own column of exceptions:
 
-The table describes a `DirectoryRecord` read as itself. A [`WorkingRecord`](working-record.md) _over_ one is a different reading of the same files: it folds them as a layer with its staged rows on top, so it builds an owner map and takes every property in the right-hand column. That map belongs to the `WorkingRecord`, exactly as a `LayeredRecord`'s belongs to the node rather than to the layers it folds — the directory itself gains nothing and still scans.
+- **`flags`** are computed in the ownership `GROUP BY`, one scan rather than the second one a separate aggregate would cost. They need a real aggregate either way: parquet's footer statistics are per row group, not per component type, so a file mixing one type's series rows with another's constant says nothing about either.
+- **Member order** is `order_key`, which over one source is `(0, file order)` — file order, arrived at by the general rule.
+- **`schema.partial`** is the granularity of a patch, and one layer patches nothing, so it is inert rather than absent.
+
+Being a node in a layer tree is not what the fold requires; being a layer _layout_ is, and that is what a record directory is. A directory copied out of any tree, with no `revisions` row, reads identically.
 
 ## Outputs
 

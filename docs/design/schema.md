@@ -417,6 +417,10 @@ That is the right trade: a new attribute is a schema change, and one buried seve
 
 A layer directory therefore holds only data, which is what keeps it a plain parquet directory readable by a tool that knows nothing about layering.
 
+Which of the two a directory is decides what it is read under. A **standalone** record carries its own `manifest.json`, so `Record.at(uri)` reads that file and the record answers the same through any connection — it is one whole record, and may well be opened from somewhere that knows nothing about it. A single **layer** directory carries none, so it is read under the connection's root, which is the tree it belongs to.
+
+An edit changes neither. A [`WorkingRecord`](working-record.md) is one more layer over its base, and a layer declares nothing — so it reads under whatever its base's schema is, standalone or not. A staging area that could redeclare would be the layered-schema case above, arriving by a different door.
+
 ## Versioning
 
 One schema outlives many layers ([above](#one-schema-per-record)), so a change to it meets data written under the previous one.

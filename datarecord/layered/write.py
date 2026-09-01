@@ -30,7 +30,7 @@ from datarecord.duck import (
 )
 from datarecord.layered.resolve import cast_declared, read_schema, write_schema
 from datarecord.layered.sources import ParquetLayer
-from datarecord.record import Record, collision_detail
+from datarecord.record import RecordLike, collision_detail
 from datarecord.schema import Schema
 
 if TYPE_CHECKING:
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 def write_record(
     revision_id: UUID | None,
-    source: Record,
+    source: RecordLike,
     con: DuckDBPyConnection,
     *,
     uri: str | None = None,

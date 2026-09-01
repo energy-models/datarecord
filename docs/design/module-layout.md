@@ -6,9 +6,8 @@ The target, once the split below is done:
 datarecord/                     # the standalone concept
 ├── schema.py                   # Dimension, AttributeSpec, Schema
 ├── record.py                   # Record, Frames, LazyFrames, Flags
-├── directory.py                # DirectoryRecord
 ├── mutable.py                  # WorkingRecord, the edit/commit path
-├── layered/                    # LayeredRecord and its resolution
+├── layered/                    # Record and its resolution
 │   ├── revision.py             # Revision, the node tree
 │   ├── resolve.py              # owner-map fold
 │   ├── sources.py              # LayerSource: where a layer's files are
