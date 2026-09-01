@@ -73,7 +73,7 @@ w.entity_types["Generator"]  # additions in, removals out
 w.rollback()  # discard everything staged
 ```
 
-There is no `pending` accessor: what you staged is read back from the record itself, which satisfies `Record` and answers with the edits applied ([design](../design/working-record.md#no-pending-accessor)). Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk ([design](../design/working-record.md#staging)).
+What you staged is read back from the record itself, which satisfies `Record` and answers with the edits applied ([design](../design/working-record.md#reading-with-pending-edits)). Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk ([design](../design/working-record.md#staging)).
 
 ## Committing
 

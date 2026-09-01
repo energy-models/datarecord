@@ -258,18 +258,6 @@ The one staging path every declared [group](schema.md#groups) writes through. Th
 `add`'s own port-splitting calls `add_group` too, but only for a group whose **key** includes `entity` — the case where a row describes one of the component's own group memberships (`bus`, for `connection`).
 A group like `corridor`, relating two entities neither of which is "the" one being added, has no such row to derive from a single component's wide frame and is staged through `add_group` directly.
 
-## No `pending` accessor
-
-There was one: a `Pending` dataclass of row counts per attribute, component type, group and tombstone, aggregated over [the staging tables](#staging) on access.
-It is **removed**, and the question it answered — "what have I staged?" — is asked of [the reads](#reading-with-pending-edits) instead: `w.attributes[attr]` shows the edit applied, `w.entity_types[t]` the addition or removal.
-
-What removed it is [completing a non-partial axis when staging](#committing).
-A staging table now holds rows the caller never stated — the rest of a series the layer came to own by touching one of its values — and those are indistinguishable from edited ones.
-So a one-value `set` on a thousand-snapshot attribute would report a thousand pending rows, which is not what a counter called `pending` promises.
-Teaching the tables to tell the two apart means a second row class in every one of them and a condition in every collapse, which is more machinery than the accessor was worth.
-
-The reads are also the better answer to the question: they say what the record _is_, where a count said only how many rows were staged to get there.
-
 ## Committing
 
 ```python
@@ -358,7 +346,7 @@ One staging table per declared [group](schema.md#groups), mirroring [the maps th
 
 The staged rows are [the format's own rows](#the-shape-of-an-edit), so a staged long table loses `entity_type` exactly as `inputs/` does, and the entity tables keep it.
 
-These tables are the **only** place a staged row exists: [the reads](#reading-with-pending-edits) fold them rather than holding a copy, which is why they are also [where "what have I staged?" is asked](#no-pending-accessor).
+These tables are the **only** place a staged row exists: [the reads](#reading-with-pending-edits) fold them rather than holding a copy.
 
 DuckDB rather than in-memory objects, for three reasons that all matter: the reads are already a fold, so staging elsewhere would mean marshalling every edit into a relation on every read; a large edit is a bulk insert rather than ten thousand Python objects; and commit becomes one window-function query whose result `write_record` consumes unmaterialised.
 
