@@ -13,13 +13,13 @@ import pandas as pd
 from datarecord.layered.resolve import write_schema as record_write_schema
 from datarecord.schema import (
     AttributeSpec,
-    ComponentType,
     Dimension,
     Group,
     Schema,
+    Trait,
 )
 
-# No `component_type`: an attribute row is keyed by `name`, unique across every type
+# No `entity_type`: an attribute row is keyed by `name`, unique across every type
 # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
 LONG_COLUMNS = [
     "entity",
@@ -66,18 +66,40 @@ def write_input(
     df[LONG_COLUMNS].to_parquet(target / f"{attribute}.parquet", index=False)
 
 
-def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
-    """Write `dims/connection/<ctype>.parquet`, including the `deleted` tombstone.
+def write_group(layer: str, group: str, rows: list[dict]) -> None:
+    """Write `groups/<group>.parquet` from plain rows, whatever columns they carry.
 
-    Each row needs `name` and `bus`; `role` describes the connection and keys
+    The generic form of `write_connections`: one file per group, keyed by its
+    coordinates, with `deleted` supplied where a row does not carry it.
+
+    Notes
+    -----
+    - [where the rows live](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    df = pd.DataFrame(rows)
+    if "deleted" not in df:
+        df["deleted"] = False
+    df["deleted"] = df["deleted"].fillna(False).astype(bool)
+    target = Path(layer, "groups")
+    target.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(target / f"{group}.parquet", index=False)
+
+
+def write_connections(layer: str, rows: list[dict]) -> None:
+    """Write `groups/connection.parquet`, including the `deleted` tombstone.
+
+    Each row needs `entity` and `bus`; `role` describes the connection and keys
     nothing, so it is optional here.
+
+    No component type - one file holds every type's rows. Appended rather than
+    replaced, since a layer may write them a call at a time.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [where the rows live](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     df = pd.DataFrame(rows)
-    df["component_type"] = ctype
     for col in ("scenario", "role"):
         if col not in df:
             df[col] = None
@@ -86,14 +108,18 @@ def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["component_type", "entity", "bus", "role", "scenario", "deleted"]
+    lead = ["entity", "bus", "role", "scenario", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
-    target = Path(layer, "dims", "connection")
+    target = Path(layer, "groups")
     target.mkdir(parents=True, exist_ok=True)
-    df[ordered].to_parquet(target / f"{ctype}.parquet", index=False)
+    path = target / "connection.parquet"
+    out = df[ordered]
+    if path.exists():
+        out = pd.concat([pd.read_parquet(path), out], ignore_index=True)
+    out.to_parquet(path, index=False)
 
 
-def tombstone_connection(layer: str, ctype: str, pairs: list[tuple[str, str]]) -> None:
+def tombstone_connection(layer: str, pairs: list[tuple[str, str]]) -> None:
     """Mark connections deleted in this layer, by `(entity, bus)`.
 
     Notes
@@ -102,7 +128,6 @@ def tombstone_connection(layer: str, ctype: str, pairs: list[tuple[str, str]]) -
     """
     write_connections(
         layer,
-        ctype,
         [{"entity": name, "bus": bus, "deleted": True} for name, bus in pairs],
     )
 
@@ -119,12 +144,12 @@ def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
     df = pd.DataFrame(rows)
-    df["component_type"] = ctype
+    df["entity_type"] = ctype
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["component_type", "entity", "deleted"]
+    lead = ["entity_type", "entity", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
     target = Path(layer, "dims", "components")
     target.mkdir(parents=True, exist_ok=True)
@@ -133,7 +158,7 @@ def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
     # Appended rather than replaced: several types land in one entity axis, and
     # a layer may write them one call at a time.
     axis = Path(layer, "dims", "entity.parquet")
-    entities = df[["entity", "component_type", "deleted"]]
+    entities = df[["entity", "entity_type", "deleted"]]
     if axis.exists():
         entities = pd.concat([pd.read_parquet(axis), entities], ignore_index=True)
     entities.to_parquet(axis, index=False)
@@ -308,10 +333,15 @@ def _default_attributes(
     widest shape and so the one that accepts any row a test writes.
     `efficiency` is the exception, being over the `connection` group where one
     is declared: that is what puts a `bus` column on its file.
+
+    `weight` is the other, addressed by `scenario` alone - so it is a column of
+    `dims/scenario.parquet` rather than a long row, and it is declared because
+    `write_scenarios` writes that column and an axis file rejects one no
+    declaration accounts for.
     """
     varying = {"entity", *dims}
     connection = "connection" if "connection" in groups else "entity"
-    return {
+    declared = {
         "p_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
         "e_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
         "p_max_pu": AttributeSpec(dtype=nw.Float64(), dims=varying),
@@ -321,6 +351,13 @@ def _default_attributes(
         ),
         "efficiency": AttributeSpec(dtype=nw.Float64(), dims={connection, *dims}),
     }
+    if "scenario" in dims:
+        declared["weight"] = AttributeSpec(
+            dtype=nw.Float64(),
+            dims={"scenario"},
+            description="How much this scenario counts in the expectation.",
+        )
+    return declared
 
 
 def schema(
@@ -358,14 +395,17 @@ def schema(
     """
     nesting = within or {}
     # Callers declare per type, which is how a modelling framework thinks; the
-    # schema stores one spec per attribute, record-wide. Flattening here keeps
-    # the tests readable and is exactly what a tool does on the way in.
+    # schema stores one spec per attribute, record-wide, and a trait per type
+    # narrows it back. Flattening here keeps the tests readable and is exactly
+    # what a tool does on the way in.
     flat: dict[str, AttributeSpec] = {}
-    subscriptions: dict[str, ComponentType] = {}
+    traits: dict[str, Trait] = {}
     for ctype, attrs in (attributes or {}).items():
         for attr, spec in attrs.items():
             flat.setdefault(attr, spec)
-        subscriptions[ctype] = ComponentType(attributes=frozenset(attrs))
+        traits[ctype] = Trait(
+            attributes=frozenset(attrs), on={"entity_type": frozenset({ctype})}
+        )
     # Declared whether or not a caller named them: a test writing `p_max_pu`
     # needs it declared, and one passing `attributes=` is narrowing what a type
     # *carries* rather than shortening the record's vocabulary.
@@ -381,13 +421,20 @@ def schema(
         **dims,
     }
     return Schema(
-        groups={g: Group(over=over) for g, over in groups.items()},
+        groups={g: Group(over=over) for g, over in groups.items()}
+        # `into` over `entity` alone is what makes `entity_type` the
+        # entity-type axis (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
+        | {"entity_type": Group(over=["entity"], into="entity_type")},
         dimensions={
             d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))
             for d, t in declared.items()
-        },
+        }
+        # A plain string rather than an enum: the tests name types freely, and
+        # pinning the categories here would make every fixture that adds one
+        # declare it twice (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
+        | {"entity_type": Dimension(dtype=nw.String())},
         attributes=flat,
-        component_types=subscriptions,
+        traits=traits,
         partial=frozenset(partial) | {"entity", *coordinates},
     )
 

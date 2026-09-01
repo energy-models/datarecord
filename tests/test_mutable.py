@@ -69,58 +69,92 @@ def test_a_mutable_record_reads_as_a_record(staged):
 
 def test_nothing_is_pending_before_an_edit(staged):
     p = staged.pending
-    assert (p.attributes, p.components, p.connections, p.tombstones) == ({}, {}, {}, {})
+    assert (p.attributes, p.components, p.groups, p.tombstones) == ({}, {}, {}, {})
 
 
 # -- value forms (https://energy-models.github.io/datarecord/design/working-record/#set) -----------------------------------------------------
 
 
 def test_scalar_applies_to_every_name():
-    names, values, dims = normalise_value(150.0, ["wind1", "wind2"], {})
+    names, values, dims = normalise_value(150.0, ["wind1", "wind2"])
     assert (names, values, dims) == (["wind1", "wind2"], [150.0, 150.0], {})
 
 
 def test_a_sequence_is_positional():
-    names, values, _ = normalise_value([150.0, 80.0], ["wind1", "wind2"], {})
+    names, values, _ = normalise_value([150.0, 80.0], ["wind1", "wind2"])
     assert names is not None
     assert dict(zip(names, values, strict=True)) == {"wind1": 150.0, "wind2": 80.0}
 
 
 def test_a_mapping_supplies_its_own_names():
-    names, values, _ = normalise_value({"wind1": 150.0, "wind2": 80.0}, None, {})
+    names, values, _ = normalise_value({"wind1": 150.0, "wind2": 80.0}, None)
     assert names is not None
     assert dict(zip(names, values, strict=True)) == {"wind1": 150.0, "wind2": 80.0}
 
 
 def test_a_series_indexed_by_names_is_per_name():
     series = pd.Series({"wind1": 1.0, "wind2": 2.0})
-    names, values, dims = normalise_value(series, ["wind1", "wind2"], {})
+    names, values, dims = normalise_value(series, ["wind1", "wind2"])
     assert names is not None
     assert dict(zip(names, values, strict=True)) == {"wind1": 1.0, "wind2": 2.0}
     assert dims == {}
 
 
 def test_a_series_indexed_by_an_axis_is_per_coordinate():
-    """The same type, read as a dim series - which axis labels it carries decides."""
+    """The same type read as a dim series - the caller says which, never the labels."""
     series = pd.Series({"2030-01-01": 0.4, "2030-01-02": 0.6})
-    names, values, dims = normalise_value(
-        series, None, {"snapshot": ["2030-01-01", "2030-01-02"]}
-    )
+    names, values, dims = normalise_value(series, None, indexed_by="snapshot")
     assert names is None
     assert values == [0.4, 0.6]
-    assert list(dims) == ["snapshot"]
+    assert dims == {"snapshot": ["2030-01-01", "2030-01-02"]}
 
 
 def test_a_sequence_of_the_wrong_length_is_rejected():
     with pytest.raises(ValueError, match="2 names"):
-        normalise_value([1.0, 2.0, 3.0], ["wind1", "wind2"], {})
+        normalise_value([1.0, 2.0, 3.0], ["wind1", "wind2"])
 
 
-def test_an_ambiguous_index_is_rejected():
-    """Matching both names and an axis has no single reading, so it is an error."""
+def test_an_index_that_could_be_either_is_read_as_names(staged):
+    """No membership test, so a label colliding with a name is not an ambiguity.
+
+    `scenario` here has a label spelled like a component; with nothing said, the
+    index is names - a call's meaning is its own, not the record's data's.
+    """
     series = pd.Series({"wind1": 1.0})
-    with pytest.raises(ValueError, match="matches both"):
-        normalise_value(series, ["wind1"], {"scenario": ["wind1"]})
+    names, _, dims = normalise_value(series, ["wind1"])
+    assert names == ["wind1"]
+    assert dims == {}, "no axis claimed it"
+
+
+def test_indexed_by_names_the_axis_a_series_index_holds(staged):
+    """Said outright, since nothing about the labels themselves could say it."""
+    series = pd.Series({pd.Timestamp("2015-01-01"): 0.4})
+    staged.set("p_max_pu", series, entity=["Manchester Wind"], indexed_by="snapshot")
+    assert "p_max_pu" in staged.attributes
+
+
+def test_an_unnamed_series_index_holds_names(staged):
+    """Not inferred from the labels, so an index saying nothing is names.
+
+    Which then fails the member check rather than silently landing on an axis -
+    a timestamp is no component.
+    """
+    series = pd.Series({"2030-01-01": 0.4})
+    with pytest.raises(KeyError, match="no member row"):
+        staged.set("p_max_pu", series, entity=["Manchester Wind"])
+
+
+def test_the_series_index_name_says_what_it_holds(staged):
+    """A caller who named the index has already said it; `indexed_by=` is spare."""
+    index = pd.Index([pd.Timestamp("2015-01-01")], name="snapshot")
+    staged.set("p_max_pu", pd.Series([0.4], index=index), entity=["Manchester Wind"])
+    assert "p_max_pu" in staged.attributes
+
+
+def test_indexed_by_must_be_a_coordinate_of_the_attribute(staged):
+    series = pd.Series({"a": 1.0})
+    with pytest.raises(ValueError, match="no coordinate of"):
+        staged.set("p_nom", series, entity=["Manchester Wind"], indexed_by="snapshot")
 
 
 # -- set (https://energy-models.github.io/datarecord/design/working-record/#set) -------------------------------------------------------------
@@ -556,7 +590,7 @@ def test_resolve_types_rejects_a_name_no_layer_declares(staged):
 def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
     """`remove` then `add` under another type collapses to the later op.
 
-    The staged entity rows are keyed without `component_type`, so one name has
+    The staged entity rows are keyed without `entity_type`, so one name has
     one answer. Partitioning on the type as well would keep both the Generator
     tombstone and the Bus member row, and commit would write a record whose two
     types share a name - the collision `write_record` rejects.
@@ -626,6 +660,32 @@ def test_add_keeps_an_undeclared_columns_own_type(staged):
     assert capex.tolist() == [1234.5], "the float survives, rather than becoming text"
 
 
+def test_add_fills_a_column_an_earlier_add_created(staged):
+    """A frame omitting a column another `add` introduced stages it as NULL.
+
+    The staging table gains a column as it is first seen, so a later `add` of
+    a different type meets columns its own frame never carried - and an
+    earlier one meets those the later `add` introduces. Both are NULL rather
+    than an error, which is what the column list being the *table's* rather
+    than the frame's has to mean.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "capex": 1234.5}]))
+    # No `capex`, and an `opex` the first frame had no column for.
+    staged.add(GEN, pd.DataFrame([{"entity": "NewWind", "opex": 7.0}]))
+
+    members = (
+        staged.components[GEN].collect().to_native().to_pandas().set_index("entity")
+    )
+    assert pd.isna(members.loc["NewWind", "capex"]), "not carried, so NULL"
+    assert pd.isna(members.loc["NewSolar", "opex"]), "column created after it was added"
+    assert members.loc["NewSolar", "capex"] == 1234.5
+    assert members.loc["NewWind", "opex"] == 7.0
+
+
 def test_remove_tombstones_without_enumerating_attributes(staged, root):
     staged.remove(GEN, ["Norway Gas"])
     assert staged.pending.tombstones == {GEN: 1}
@@ -665,42 +725,43 @@ def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
 # -- connect and disconnect (https://energy-models.github.io/datarecord/design/working-record/#add-remove, https://energy-models.github.io/datarecord/design/record/#connections) --------------------------------------
 
 
-def test_connect_stages_a_new_connection(staged, root):
+def test_add_group_stages_a_new_connection(staged, root):
     """A connection is a row keyed by `(name, bus)`, not a positional column.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    staged.connect(
-        "Generator",
+    staged.add_group(
+        "connection",
         pd.DataFrame(
             [{"entity": "Manchester Wind", "bus": "Norway", "role": "attached"}]
         ),
     )
-    assert staged.pending.connections == {"Generator": 1}
+    assert staged.pending.groups == {"connection": 1}
 
     child = staged.commit(NewChild(root))
-    rows = child.node_cache.group_frame("connection", "Generator").df()
+    rows = child.node_cache.group_frame("connection").df()
     got = set(rows[rows["entity"] == "Manchester Wind"]["bus"])
     assert "Norway" in got
 
 
-def test_disconnect_stages_a_tombstone(staged, root):
-    """One `deleted` row per `(entity, bus)`, the group's own coordinates.
+def test_remove_group_stages_a_tombstone(staged, root):
+    """One `deleted` row per `(entity, bus)`, the group's own key.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    staged.disconnect("Link", [("Norwich Converter", "Norwich")])
-    # A disconnect is a deletion, so it counts as a tombstone rather than as a
-    # connection staged to exist (https://energy-models.github.io/datarecord/design/working-record/#pending).
-    assert staged.pending.tombstones == {"Link": 1}
-    assert staged.pending.connections == {}
+    staged.remove_group("connection", [("Norwich Converter", "Norwich")])
+    # A removal counts as a tombstone rather than as a row staged to exist
+    # (https://energy-models.github.io/datarecord/design/working-record/#pending). Keyed by the group, a group's rows
+    # having no component type to attribute a deletion to.
+    assert staged.pending.tombstones == {"connection": 1}
+    assert staged.pending.groups == {}
 
     child = staged.commit(NewChild(root))
-    rows = child.node_cache.group_frame("connection", "Link").df()
+    rows = child.node_cache.group_frame("connection").df()
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     # The component's other port survives: deletion is per connection, not per
@@ -708,16 +769,16 @@ def test_disconnect_stages_a_tombstone(staged, root):
     assert "Norwich DC" in left
 
 
-def test_connect_needs_a_bus(staged):
+def test_add_group_needs_every_coordinate(staged):
     with pytest.raises(ValueError, match="'bus'"):
-        staged.connect("Generator", pd.DataFrame([{"entity": "Manchester Wind"}]))
+        staged.add_group("connection", pd.DataFrame([{"entity": "Manchester Wind"}]))
 
 
 def test_pending_counts_every_declared_group(con, base_uri, ac_dc):
     """`pending.groups` is keyed by group, so a second one is not silently dropped.
 
-    `connection` is one group among several. A `Pending` naming it as a field
-    of its own could count only that one, so a record declaring a `corridor`
+    `connection` is one group among several, and no field of `Pending` names it:
+    one that did could count only that group, so a record declaring a `corridor`
     would report nothing staged while holding rows to commit.
 
     Notes
@@ -737,21 +798,16 @@ def test_pending_counts_every_declared_group(con, base_uri, ac_dc):
     )
     staged = WorkingRecord(revision.record, con)
 
-    staged.connect(
-        "Generator", pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
+    staged.add_group(
+        "connection", pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
     )
     staged.add_group(
-        "corridor",
-        "Line",
-        pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}]),
+        "corridor", pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}])
     )
 
-    assert staged.pending.groups == {
-        "connection": {"Generator": 1},
-        "corridor": {"Line": 1},
-    }, "both groups counted, keyed by group name"
-    # The old spelling still answers for the one group it named.
-    assert staged.pending.connections == {"Generator": 1}
+    assert staged.pending.groups == {"connection": 1, "corridor": 1}, (
+        "both groups counted, keyed by group name"
+    )
     assert bool(staged.pending), "a staged group row is something pending"
 
 
@@ -1001,7 +1057,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
     """One frame spanning types is one call, keyed by name alone.
 
     `Tool.results` hands over one frame per attribute carrying every type's rows; with names unique there is no type to stamp, so the frame needs no
-    `component_type` and nothing can be silently relabelled.
+    `entity_type` and nothing can be silently relabelled.
 
     Notes
     -----
@@ -1033,7 +1089,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
         .to_pandas()
     )
     assert set(got["entity"]) == {"Manchester Wind", "0"}
-    assert "component_type" not in got.columns
+    assert "entity_type" not in got.columns
 
 
 def test_a_frame_carrying_component_type_is_rejected(staged):
@@ -1044,9 +1100,9 @@ def test_a_frame_carrying_component_type_is_rejected(staged):
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
     frame = pd.DataFrame(
-        [{"component_type": GEN, "entity": "Manchester Wind", "value": 1.0}]
+        [{"entity_type": GEN, "entity": "Manchester Wind", "value": 1.0}]
     )
-    with pytest.raises(ValueError, match="component_type"):
+    with pytest.raises(ValueError, match="entity_type"):
         staged.set("p_max_pu", frame)
 
 

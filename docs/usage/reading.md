@@ -8,7 +8,7 @@ Everything a consumer codes against. It is read-only, and structural — a plain
 record.schema  # what may exist: the axes, the attributes
 record.dims["scenario"]  # axis frames, keyed by dim
 record.components["Generator"]  # wide member rows, keyed by component type
-record.groups["connection"]["Link"]  # group rows, keyed by group then type
+record.groups["connection"]  # group rows, keyed by group — one frame each
 record.attributes["p_max_pu"]  # long input frames, keyed by attribute
 record.outputs["p"]  # long result frames, keyed by attribute
 record.flags("Generator")  # which axes each attribute actually uses
@@ -30,9 +30,9 @@ gens = record.components["Generator"].collect().to_pandas()
 
 The coordinates are the attribute's own, from its declared `dims` — `entity` for `p_max_pu`, `entity | bus` for a connection attribute like `efficiency`, and no entity column at all for one addressed by an axis alone ([design](../design/format.md#the-long-schema)).
 
-A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). Two coordinates are the exception and never broadcast — `entity`, and a group's coordinate such as `bus`, where a NULL means "every connection of this entity" rather than every bus. `breakpoint` carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's `default` from the schema.
+A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). Two coordinates are the exception and never broadcast — `entity`, and a group's key coordinate such as `bus`, where a NULL means "every connection of this entity" rather than every bus. `breakpoint` carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's `default` from the schema.
 
-There is no `component_type` column, and none in the mapping's key either — `attributes["p_max_pu"]` holds every type's rows together. An `entity` identifies one component **across every type**, so the type is something the record knows about a name rather than part of its address ([design](../design/format.md#entity-is-unique-across-types)). To scope to one type, join `components` on `entity`.
+There is no `entity_type` column, in an attribute's key or a group's — `attributes["p_max_pu"]` and `groups["connection"]` each hold every type's rows together. An `entity` identifies one component **across every type**, so the type is something the record knows about a name rather than part of its address ([design](../design/format.md#entity-is-unique-across-types)). To scope to one type, join `components` on `entity`.
 
 ## `flags`
 

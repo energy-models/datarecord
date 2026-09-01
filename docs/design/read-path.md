@@ -13,7 +13,7 @@ Key columns first, then what each map carries over them:
   entity     -- never NULL          --                         --
   <group coordinates>               --                         --
   <owned_per dims>                  --                         --
-attribute                           component_type             component_type
+attribute                           entity_type             entity_type
 layer_uuid                          layer_uuid                 layer_uuid
 varies      STRUCT(<dim>: BOOLEAN, ...)   order_key            order_key
 broadcast   STRUCT(<dim>: BOOLEAN, ...)
@@ -31,11 +31,11 @@ Each group folds the same way — keys, tombstones, an `order_key` — differing
 The **inputs key is schema-derived**, not spelled: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`, where `partial` necessarily contains `entity` and every group coordinate because [neither broadcasts](record.md#the-broadcast-rule).
 A coordinate an attribute's own file does not carry reads as NULL, which is what keeps the key one fixed tuple across attributes whose columns differ.
 
-`component_type` is on the **entity** maps only, never on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the components map is what says which type an entity is.
+`entity_type` is on the **entity** maps only, never on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the components map is what says which type an entity is.
 So that map is the entity mapping every type-scoped question goes through — [`flags(ctype)`](record.md#flags) joins it, as does a consumer wanting one type's frame.
 
 Where it is present it is a **column, not part of the key.**
-Every map is keyed on its own coordinates — `entity` for components, the group's for a group, `partial_dims` plus `attribute` for inputs; the components map carries `component_type` because it is the table that answers "what type is this entity", and that answer is functionally determined by the key rather than keying alongside it.
+Every map is keyed on its own coordinates — `entity` for components, the group's for a group, `partial_dims` plus `attribute` for inputs; the components map carries `entity_type` because it is the table that answers "what type is this entity", and that answer is functionally determined by the key rather than keying alongside it.
 The fold therefore aggregates the type over the group-by instead of grouping on it.
 
 The distinction is load-bearing rather than pedantic.

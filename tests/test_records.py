@@ -71,11 +71,11 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     """
     members = nw.from_native(
         con.sql(
-            "SELECT 'Generator' AS component_type, 'wind' AS entity,"
+            "SELECT 'Generator' AS entity_type, 'wind' AS entity,"
             " NULL::VARCHAR AS scenario"
         )
     )
-    # `p_nom`'s own coordinates and no others: no `component_type` in a long
+    # `p_nom`'s own coordinates and no others: no `entity_type` in a long
     # row, and no `bus`, which is the connection group's coordinate rather than
     # a column every attribute carries.
     long = nw.from_native(
@@ -425,7 +425,7 @@ def test_directory_record_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
 def test_directory_record_has_no_connections_when_none_were_written(
     con, base_uri, tmp_path
 ):
-    """A record with no `dims/connection/` reads as having none, not as an error.
+    """A record with no `groups/connection.parquet` has no such key, not an error.
 
     Notes
     -----
@@ -436,7 +436,7 @@ def test_directory_record_has_no_connections_when_none_were_written(
     write_schema(schema())
     write_components(layer, "Generator", [{"entity": "wind"}])
 
-    assert list(DirectoryRecord(layer, con).groups["connection"]) == []
+    assert "connection" not in DirectoryRecord(layer, con).groups
 
 
 def test_directory_record_reads_connections_blocks_wrote(written, con):
@@ -447,10 +447,12 @@ def test_directory_record_reads_connections_blocks_wrote(written, con):
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     record = DirectoryRecord(layer_dir(written.id), con)
-    assert "Link" in record.groups["connection"]
+    assert "connection" in record.groups
 
-    rows = record.groups["connection"]["Link"].collect().to_native().to_pandas()
-    assert set(rows["role"]) == {"input", "output"}
+    rows = record.groups["connection"].collect().to_native().to_pandas()
+    assert set(rows["role"]) == {"input", "output", "attached"}, (
+        "one file across every type, so a Generator's role rides beside a Link's"
+    )
 
 
 def test_missing_key_raises(both):

@@ -62,7 +62,8 @@ class _Source:
 
     @property
     def groups(self):
-        return {"connection": self._frames(self._connections, "connection")}
+        """Keyed by group, one frame each - the type is no coordinate of a group."""
+        return self._frames(self._connections, "groups")
 
     @property
     def attributes(self):
@@ -293,12 +294,12 @@ def test_write_record_rejects_a_group_frame_missing_a_coordinate(con, base_uri):
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
-        connections={"Process": pd.DataFrame({"entity": ["steel_dri"]})},  # no `bus`
+        connections={"connection": pd.DataFrame({"entity": ["steel_dri"]})},  # no `bus`
     )
 
     with pytest.raises(ValueError, match="coordinates.*bus"):
@@ -395,6 +396,51 @@ def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
     assert not Path(layer_dir(revision.id)).exists()
 
 
+def test_write_record_rejects_an_undeclared_axis_column(con, base_uri):
+    """An axis file's payload is the schema's to state, like a long frame's.
+
+    A column no declaration accounts for would be read back with no dtype and
+    no meaning, so it is refused rather than carried along.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    revision = Revision.create(con)
+    source = _Source(
+        schema(),
+        dims={"scenario": pd.DataFrame({"scenario": ["high"], "nonsense": [1.0]})},
+    )
+
+    with pytest.raises(ValueError, match="does not declare for the 'scenario' axis"):
+        write_record(revision.id, source, con)
+    assert not Path(layer_dir(revision.id)).exists()
+
+
+def test_an_axis_carries_the_attributes_addressed_by_it_alone(con, base_uri):
+    """`weight` over `scenario` alone is a column of that axis's file.
+
+    Declared, so it round-trips with a dtype - which is what distinguishes it
+    from the undeclared column above.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    revision = Revision.create(con)
+    declared = schema()
+    assert "weight" in declared.attributes_on("scenario")
+
+    source = _Source(
+        declared,
+        dims={"scenario": pd.DataFrame({"scenario": ["high"], "weight": [0.4]})},
+    )
+    write_record(revision.id, source, con)
+
+    axis = revision.node_cache.dims.axes["scenario"].df()
+    assert dict(zip(axis["scenario"], axis["weight"])) == {"high": 0.4}
+
+
 # -- the PyPSA source (https://energy-models.github.io/datarecord/design/format/) ------------------------------------------------
 
 
@@ -404,7 +450,7 @@ def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
 
     assert isinstance(source, Record)
     assert "Generator" in source.components
-    assert "Link" in source.groups["connection"]
+    assert "connection" in source.groups
     assert "p_max_pu" in source.attributes
     # Non-varying attributes belong to `dims/components/`, not `inputs/` (https://energy-models.github.io/datarecord/design/record/).
     assert "v_nom" not in source.attributes
@@ -454,12 +500,12 @@ def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
-    # Stored bus-keyed, with a role from PyPSA's sign convention.
-    rows = con.read_parquet(
-        layer_dir(revision.id) + "dims/connection/Link.parquet"
-    ).df()
-    assert set(rows["role"]) == {"input", "output"}
-    assert set(rows["bus"]) >= set(ac_dc.c["Link"].static["bus0"])
+    # Stored bus-keyed, with a role from PyPSA's sign convention. One file for
+    # every type, so the Links are reached by their entities.
+    rows = con.read_parquet(layer_dir(revision.id) + "groups/connection.parquet").df()
+    links = rows[rows["entity"].isin(ac_dc.c["Link"].static.index)]
+    assert set(links["role"]) == {"input", "output"}
+    assert set(links["bus"]) >= set(ac_dc.c["Link"].static["bus0"])
 
     back = PyPSA.build(revision.record)
     assert list(back.c["Link"].static["bus0"]) == list(ac_dc.c["Link"].static["bus0"])
@@ -476,10 +522,9 @@ def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
     revision = Revision.create(con)
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
-    rows = con.read_parquet(
-        layer_dir(revision.id) + "dims/connection/Generator.parquet"
-    ).df()
-    assert set(rows["role"]) == {"attached"}
+    rows = con.read_parquet(layer_dir(revision.id) + "groups/connection.parquet").df()
+    mine = rows[rows["entity"].isin(ac_dc.c["Generator"].static.index)]
+    assert set(mine["role"]) == {"attached"}
 
     back = PyPSA.build(revision.record)
     assert list(back.c["Generator"].static["bus"]) == list(

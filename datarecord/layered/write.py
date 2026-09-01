@@ -110,10 +110,7 @@ def write_record(
         kinds = [
             ("dims", source.dims, "dims"),
             ("components", source.components, "dims/components"),
-            *(
-                (group, frames, f"dims/{group}")
-                for group, frames in source.groups.items()
-            ),
+            ("groups", source.groups, "groups"),
             ("attributes", source.attributes, "inputs"),
         ]
         # `outputs/` only for a source carrying results, so a record with none
@@ -141,7 +138,7 @@ def write_record(
                         # compares arrow schemas.
                         .select(
                             nw.col("entity").cast(nw.String()),
-                            component_type=nw.lit(key).cast(nw.String()),
+                            entity_type=nw.lit(key).cast(nw.String()),
                         )
                     )
                 _write_frame(
@@ -233,8 +230,11 @@ def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) ->
     declares - where the frames themselves may disagree, an all-NULL `scenario`
     landing as arrow `null` for one type and `string` for another.
 
-    `component_type` is a column of this axis and of nothing else, which is
-    what makes `attributes_for` reachable from an entity alone.
+    `entity_type` is a column of this axis and of no attribute row, which is
+    what makes `attributes_for` reachable from an entity alone. This is where
+    the entity-type group's rows live, in place of a `groups/` file. The type
+    has an axis file of its own too, carrying the attributes addressed by the
+    type alone - written from `source.dims` like any axis, not derived here.
 
     Notes
     -----
@@ -259,7 +259,7 @@ def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) ->
         else lit(False)  # noqa: FBT003
     )
     rel.project(
-        col("entity"), ctype.alias("component_type"), deleted.alias("deleted")
+        col("entity"), ctype.alias("entity_type"), deleted.alias("deleted")
     ).to_parquet(f"{staging}dims/entity.parquet")
 
 
@@ -273,7 +273,7 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
     Parameters
     ----------
     tagged
-        One frame per component type, each `(name, component_type)`, on a common
+        One frame per component type, each `(name, entity_type)`, on a common
         backend so `nw.concat` accepts them.
 
     Raises
@@ -287,17 +287,17 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
     """
     if len(tagged) < 2:  # nothing to collide with
         return
-    pairs = nw.concat(tagged, how="vertical").unique(["entity", "component_type"])
+    pairs = nw.concat(tagged, how="vertical").unique(["entity", "entity_type"])
     clashing = (
         pairs.join(
             pairs.group_by("entity")
-            .agg(nw.col("component_type").n_unique().alias("_types"))
+            .agg(nw.col("entity_type").n_unique().alias("_types"))
             .filter(nw.col("_types") > 1)
             .select("entity"),
             on="entity",
             how="inner",
         )
-        .select("entity", "component_type")  # the order `iter_rows` unpacks
+        .select("entity", "entity_type")  # the order `iter_rows` unpacks
         .collect()
     )
     if not clashing.is_empty():
@@ -408,21 +408,45 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
                 f"its labels identify a point only within them (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)"
             )
             raise ValueError(msg)
-        # A mapping's column lives on the axis it classifies, so that file is
-        # where the classification is stored and where its absence shows.
-        # Not required, only checked for type: a record may declare `country`
-        # before any bus is assigned one, and a NULL is "unclassified".
+        # An attribute addressed by this axis alone is a column here, and not
+        # required: a record may declare one before any layer sets it, which
+        # resolves to its `default` (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        #
+        # A column no declaration accounts for is rejected, as a long frame's
+        # extras are: one riding along uninvited would be read back as data
+        # nothing knows the dtype or meaning of.
+        known = (
+            set(schema.axis_key(key))
+            | set(schema.attributes_on(key))
+            # The structural columns an axis file may carry: a tombstone, and an
+            # explicit order key. Not every name in `STRUCTURAL_TYPES` - most of
+            # those are a long row's, and `attribute` or `breakpoint` here would
+            # be a long frame written to the wrong place.
+            | {"deleted", "order_key"}
+        )
+        # The one classification column an axis file carries, every other group
+        # being its own file: the entity-type group's rows are derived here
+        # (`_write_entity_axis`) rather than handed over (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        if key == "entity" and schema.entity_type_dim is not None:
+            known.add(schema.entity_type_dim)
+        extra = sorted(columns - known)
+        if extra:
+            msg = (
+                f"dims/{key}.parquet carries columns {extra} the schema does not "
+                f"declare for the {key!r} axis; an axis file holds its key and "
+                f"the attributes addressed by it alone (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+            )
+            raise ValueError(msg)
         return
 
-    if kind not in schema.groups:
+    if kind != "groups" or key not in schema.groups:
         return
-    # A group's row is keyed by its coordinates, so a frame lacking one would
-    # be keyed by a column that is not there.
-    missing = sorted(set(schema.group_coordinates(kind)) - columns)
+    # A group's row is keyed by its coordinates, `into` among them, so a frame
+    # lacking one would be keyed by a column that is not there.
+    missing = sorted(set(schema.group_coordinates(key)) - columns)
     if missing:
         msg = (
-            f"dims/{kind}/{key}.parquet is missing the {kind!r} group's "
-            f"coordinates {missing}; the fold would key by a column that is "
-            f"not there (https://energy-models.github.io/datarecord/design/schema/#groups)"
+            f"groups/{key}.parquet is missing the group's coordinates "
+            f"{missing}; the fold would key by a column that is not there (https://energy-models.github.io/datarecord/design/schema/#groups)"
         )
         raise ValueError(msg)

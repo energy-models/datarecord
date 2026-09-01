@@ -8,13 +8,14 @@ Notes
 from pathlib import Path
 
 import narwhals as nw
+import pandas as pd
 import pytest
 
 from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
-from datarecord.tools.pypsa import PyPSA, _colliding_names
+from datarecord.tools.pypsa import ENTITY_TYPE, PyPSA, _colliding_names
 from tests.fixtures import (
     export_network,
     relation,
@@ -100,18 +101,35 @@ def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
 def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     """A type outside PyPSA's registry is reported by `verify`, not raised in the fold.
 
-    The record layer stores `component_type` as a plain `VARCHAR` - the
-    vocabulary belongs to a framework, and the record layer knows none - so an
-    unknown type reads back fine and it is this tool's business that it cannot
-    be built. `Requirements.component_types` is what carries it.
+    The type must be one the *schema* declares - the entity-type axis is an
+    `Enum` and that vocabulary is upheld everywhere, so a record cannot hold a
+    type its own schema excludes. What it can hold is a type this tool has no
+    registry entry for, which reads back fine and is this tool's business rather
+    than the record layer's. `Requirements.component_types` is what carries it.
 
     Notes
     -----
-    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+    - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
+    # Declared alongside PyPSA's own types, since the axis pins the vocabulary.
+    declared = read_schema(con)
+    axis = declared.dimensions[ENTITY_TYPE]
+    assert isinstance(axis.dtype, nw.Enum), "PyPSA declares its types as an enum"
+    write_schema(
+        declared.model_copy(
+            update={
+                "dimensions": {
+                    **declared.dimensions,
+                    ENTITY_TYPE: axis.model_copy(
+                        update={"dtype": nw.Enum([*axis.dtype.categories, "Widget"])}
+                    ),
+                }
+            }
+        )
+    )
     write_components(layer_dir(revision.id), "Widget", [{"entity": "w1"}])
 
     missing = PyPSA.verify(revision.record)
@@ -158,7 +176,7 @@ def _with_schema(revision, **kwargs) -> None:
         update={
             "attributes": was.attributes,
             "groups": was.groups,
-            "component_types": was.component_types,
+            "traits": was.traits,
             "meta": was.meta,
         }
     )
@@ -198,7 +216,12 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     # A Generator member carrying no `bus` column at all, no connection row
     # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
     write_components(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
-    Path(layer_dir(revision.id), "dims", "connection", "Generator.parquet").unlink()
+    # One file across every type, so the Generators' rows are dropped from it
+    # rather than a per-type file being unlinked.
+    path = Path(layer_dir(revision.id), "groups", "connection.parquet")
+    rows = pd.read_parquet(path)
+    generators = set(ac_dc.c["Generator"].static.index) | {"g1"}
+    rows[~rows["entity"].isin(generators)].to_parquet(path, index=False)
     _without_default(revision, "Generator", "bus")
 
     missing = PyPSA.verify(revision.record)
@@ -373,9 +396,9 @@ def test_results_extracts_long_form_outputs(single_revision):
     assert isinstance(results["p"], nw.LazyFrame)
     p = results["p"].collect()
     # The long schema's columns (https://energy-models.github.io/datarecord/design/record/), so the write path can persist it as-is -
-    # and no `component_type`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+    # and no `entity_type`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
     assert {"entity", "snapshot", "scenario", "period", "value"} <= set(p.columns)
-    assert "component_type" not in p.columns
+    assert "entity_type" not in p.columns
     assert set(p["attribute"].to_list()) == {"p"}
     # Series output: one row per (name, snapshot), for the Generator rows -
     # selected by name, since the frame no longer carries the type.
