@@ -19,7 +19,7 @@ A record exposes seven things:
 ```text
 record.schema        what may exist: the axes, the attributes
 record.dims          the axes themselves, keyed by dim
-record.components    members, keyed by component type
+record.entity_types  members, keyed by entity type
 record.groups        which tuples exist, keyed by group then component type
 record.attributes    the values, keyed by attribute name
 record.outputs       results, keyed by attribute name

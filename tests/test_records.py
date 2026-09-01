@@ -18,9 +18,9 @@ from datarecord.layered.write import write_record
 from datarecord.record import EMPTY, Flags, Frames, Record
 from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import schema, write_components, write_input, write_schema
+from tests.fixtures import schema, write_entity_type, write_input, write_schema
 
-MEMBERS = ("dims", "components", "attributes")
+MEMBERS = ("dims", "entity_types", "attributes")
 
 
 @pytest.fixture
@@ -91,7 +91,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     class DictRecord:
         schema: Schema
         dims: Frames
-        components: Frames
+        entity_types: Frames
         groups: dict[str, Frames]
         attributes: Frames
         outputs: Frames
@@ -138,7 +138,7 @@ def test_backings_agree_on_flags(both):
     - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
     """
     node, directory = both
-    for ctype in sorted(node.components):
+    for ctype in sorted(node.entity_types):
         assert node.flags(ctype) == directory.flags(ctype), ctype
 
 
@@ -186,8 +186,8 @@ def test_flags_are_per_component_type(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Generator", [{"entity": "wind"}])
-    write_components(layer, "Link", [{"entity": "dc"}])
+    write_entity_type(layer, "Generator", [{"entity": "wind"}])
+    write_entity_type(layer, "Link", [{"entity": "dc"}])
     write_input(
         layer,
         "p_max_pu",
@@ -228,7 +228,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema(dims=narrow, partial=set()))
-    write_components(layer, "Generator", [{"entity": "wind"}])
+    write_entity_type(layer, "Generator", [{"entity": "wind"}])
     write_input(
         layer,
         "p_max_pu",
@@ -267,7 +267,7 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
+    write_entity_type(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
     write_input(
         layer,
         "p_max_pu",
@@ -315,7 +315,7 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
             }
         )
     )
-    write_components(layer, "Generator", [{"entity": "wind"}])
+    write_entity_type(layer, "Generator", [{"entity": "wind"}])
     write_input(layer, "p_nom", [{"entity": "wind", "value": 100.0}])
     write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
 
@@ -341,7 +341,7 @@ def test_flags_report_a_curve(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Process", [{"entity": "steel"}])
+    write_entity_type(layer, "Process", [{"entity": "steel"}])
     write_input(
         layer,
         "marginal_cost",
@@ -394,11 +394,11 @@ def test_node_record_orders_members(con, base_uri, ac_dc):
     root.materialise()
 
     child = root.child()
-    write_components(layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
+    write_entity_type(layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
     names = list(
         LayeredRecord(child.node_cache)
-        .components["Generator"]
+        .entity_types["Generator"]
         .collect()
         .to_native()
         .to_pandas()["entity"]
@@ -417,7 +417,7 @@ def test_directory_record_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
 
     record = DirectoryRecord(layer_dir(revision.id), con)
     assert isinstance(record, Record)
-    assert "Generator" in record.components
+    assert "Generator" in record.entity_types
     assert "p_max_pu" in record.attributes
     assert record.schema.attributes
 
@@ -434,7 +434,7 @@ def test_directory_record_has_no_connections_when_none_were_written(
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Generator", [{"entity": "wind"}])
+    write_entity_type(layer, "Generator", [{"entity": "wind"}])
 
     assert "connection" not in DirectoryRecord(layer, con).groups
 
@@ -505,7 +505,7 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
 
         schema = solved.schema
         dims = solved.dims
-        components = solved.components
+        entity_types = solved.entity_types
         groups = solved.groups
         attributes = solved.attributes
         outputs = EMPTY

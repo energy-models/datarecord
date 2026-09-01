@@ -57,7 +57,7 @@ Each edit maps onto exactly one part of the format:
 | edit                        | writes                                                                                        | key it targets                  |
 | --------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------- |
 | set an attribute on a group | `inputs/<attr>.parquet` rows                                                                  | `(*partial dims, attribute)`    |
-| add components              | `dims/entity.parquet` and `dims/components/` rows, plus `inputs/` rows for varying attributes | `entity`                        |
+| add components              | `dims/entity.parquet` and `dims/entity_type/` rows, plus `inputs/` rows for varying attributes | `entity`                        |
 | remove components           | a `deleted = true` tombstone on the entity axis                                               | `entity`                        |
 | add_group / remove_group    | `groups/<group>.parquet` rows and tombstones                                                  | the group's own key coordinates |
 
@@ -225,19 +225,19 @@ Omitting `entity` is how "all" is spelled.
 ## `add` / `remove`
 
 ```python
-record.add("Generator", frame)  # wide, in dims/components/ shape
+record.add("Generator", frame)  # wide, in dims/entity_type/ shape
 record.remove("Generator", ["old_coal"])
 ```
 
-`add` takes a wide frame and splits it: attributes addressed by `entity` alone stay in `dims/components/`, ones varying beyond it become `inputs/` rows, and ones addressed by a [group](schema.md#groups) go to that group's table — per [where a value lives](format.md#where-a-value-lives).
+`add` takes a wide frame and splits it: attributes addressed by `entity` alone stay in `dims/entity_type/`, ones varying beyond it become `inputs/` rows, and ones addressed by a [group](schema.md#groups) go to that group's table — per [where a value lives](format.md#where-a-value-lives).
 Which is which comes from the schema, so `add` needs no framework registry.
-A column the schema does not name is written to `dims/components/` unchanged.
+A column the schema does not name is written to `dims/entity_type/` unchanged.
 
 `add` keeps its `ctype` argument where `set` loses it: this is the call that _establishes_ what a name's type is, so there is nothing yet to [look it up in](format.md#entity-is-unique-across-types).
 It is also where uniqueness is enforced — a name the record already resolves, under this type or any other, is rejected here rather than at commit, so the collision is [reported at the line that introduces it](#validation).
 
 It is **not** a sequence of `set` calls, even though the varying columns it stages take the same path a `set` would.
-`set` writes `inputs/` rows only, and a component exists by virtue of its `dims/components/` row: staging attribute values for a name no layer declares is precisely what [validation](#validation) rejects.
+`set` writes `inputs/` rows only, and a component exists by virtue of its `dims/entity_type/` row: staging attribute values for a name no layer declares is precisely what [validation](#validation) rejects.
 Adding a bus with no attributes makes the point — nothing to `set`, yet the bus must exist.
 Membership is not reducible to attribute values.
 

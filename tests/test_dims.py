@@ -79,8 +79,8 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     child = revision.child()
     tombstone(layer_dir(child.id), "Generator", ["Manchester Wind"])
 
-    components = child.node_cache.components.df()
-    assert "Manchester Wind" not in set(components["entity"])
+    entity_types = child.node_cache.entity_map.df()
+    assert "Manchester Wind" not in set(entity_types["entity"])
 
 
 def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
@@ -225,7 +225,7 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     """`entity` names the component in every frame the protocol hands back.
 
     The one axis the format knows by name, because it is the axis the component
-    types partition: `entity_type` hangs off it and `dims/components/` is
+    types partition: `entity_type` hangs off it and `dims/entity_type/` is
     keyed by it. Every other dim is declared.
 
     Notes
@@ -236,10 +236,10 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     export_network(ac_dc, revision, con)
 
     record = revision.record
-    assert "entity" in record.components["Generator"].collect_schema().names()
+    assert "entity" in record.entity_types["Generator"].collect_schema().names()
     assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
     # And in the owner map the fold builds over them.
-    assert "entity" in revision.node_cache.components.df().columns
+    assert "entity" in revision.node_cache.entity_map.df().columns
 
 
 def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
@@ -247,7 +247,7 @@ def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
 
     Derived by the writer from the per-type frames rather than handed over, so
     a record cannot disagree with itself about it. The components map folds
-    from this one file, where it used to glob `dims/components/` and take the
+    from this one file, where it used to glob `dims/entity_type/` and take the
     type from the filename.
 
     Notes
@@ -263,5 +263,5 @@ def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
     assert "Generator" in set(axis["entity_type"])
 
     # And it is what the fold reads: the map's entities are the axis's.
-    mapped = revision.node_cache.components.df()
+    mapped = revision.node_cache.entity_map.df()
     assert set(mapped["entity"]) == set(axis.loc[~axis["deleted"], "entity"])

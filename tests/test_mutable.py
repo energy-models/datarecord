@@ -40,7 +40,7 @@ def _static(revision, attribute, ctype=GEN):
     """One attribute as the built network sees it, per component name.
 
     Through the build rather than `relation()`: a non-varying attribute like
-    `p_nom` lives in `dims/components/`, so `inputs/` alone would not
+    `p_nom` lives in `dims/entity_type/`, so `inputs/` alone would not
     show what the record resolves to.
 
     Notes
@@ -69,7 +69,7 @@ def test_a_mutable_record_reads_as_a_record(staged):
 
 def test_nothing_is_pending_before_an_edit(staged):
     p = staged.pending
-    assert (p.attributes, p.components, p.groups, p.tombstones) == ({}, {}, {}, {})
+    assert (p.attributes, p.entity_types, p.groups, p.tombstones) == ({}, {}, {}, {})
 
 
 # -- value forms (https://energy-models.github.io/datarecord/design/working-record/#set) -----------------------------------------------------
@@ -521,10 +521,10 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
             ]
         ),
     )
-    assert staged.pending.components == {GEN: 1}
+    assert staged.pending.entity_types == {GEN: 1}
 
     child = staged.commit(NewChild(root))
-    assert "NewSolar" in set(child.node_cache.components.df()["entity"])
+    assert "NewSolar" in set(child.node_cache.entity_map.df()["entity"])
 
     static = PyPSA.build(child.record).c[GEN].static
     assert static.loc["NewSolar", "p_nom"] == 42.0
@@ -566,7 +566,7 @@ def test_a_name_lookup_stays_a_query_until_it_is_filtered(staged):
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
     names = ["Manchester Wind", "Norway Wind"]
-    total = sum(len(staged._resolved_names(ct)) for ct in staged.components)
+    total = sum(len(staged._resolved_names(ct)) for ct in staged.entity_types)
     assert total > len(names), "fixture too small for the assertion to mean anything"
 
     assert isinstance(staged._name_types(), nw.LazyFrame)
@@ -605,7 +605,7 @@ def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
 
     rows = [
         r
-        for r in staged._collapsed_entities("components").fetchall()
+        for r in staged._collapsed_entities("entities").fetchall()
         if r[1] == "Manchester Wind"
     ]
     assert len(rows) == 1
@@ -619,7 +619,7 @@ def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
 def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     """`bus` keys a connection rather than being a member column.
 
-    Putting it in `dims/components/` would introduce a column the ancestors'
+    Putting it in `dims/entity_type/` would introduce a column the ancestors'
     files lack, which then reads as NULL for their rows - so every existing
     component would lose its bus.
 
@@ -655,7 +655,7 @@ def test_add_keeps_an_undeclared_columns_own_type(staged):
     assert "capex" not in staged.schema.attributes, "undeclared, which is the case here"
     staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "capex": 1234.5}]))
 
-    members = staged.components[GEN].collect().to_native().to_pandas()
+    members = staged.entity_types[GEN].collect().to_native().to_pandas()
     capex = members.loc[members["entity"] == "NewSolar", "capex"]
     assert capex.tolist() == [1234.5], "the float survives, rather than becoming text"
 
@@ -678,7 +678,7 @@ def test_add_fills_a_column_an_earlier_add_created(staged):
     staged.add(GEN, pd.DataFrame([{"entity": "NewWind", "opex": 7.0}]))
 
     members = (
-        staged.components[GEN].collect().to_native().to_pandas().set_index("entity")
+        staged.entity_types[GEN].collect().to_native().to_pandas().set_index("entity")
     )
     assert pd.isna(members.loc["NewWind", "capex"]), "not carried, so NULL"
     assert pd.isna(members.loc["NewSolar", "opex"]), "column created after it was added"
@@ -691,7 +691,7 @@ def test_remove_tombstones_without_enumerating_attributes(staged, root):
     assert staged.pending.tombstones == {GEN: 1}
 
     child = staged.commit(NewChild(root))
-    assert "Norway Gas" not in set(child.node_cache.components.df()["entity"])
+    assert "Norway Gas" not in set(child.node_cache.entity_map.df()["entity"])
 
 
 def test_add_after_remove_leaves_the_component_alive(staged, root):
@@ -705,7 +705,7 @@ def test_add_after_remove_leaves_the_component_alive(staged, root):
     staged.add(GEN, pd.DataFrame([{"entity": "Norway Gas", "carrier": "gas"}]))
 
     child = staged.commit(NewChild(root))
-    assert "Norway Gas" in set(child.node_cache.components.df()["entity"])
+    assert "Norway Gas" in set(child.node_cache.entity_map.df()["entity"])
 
 
 def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
@@ -914,7 +914,7 @@ def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_pat
     got = dict(zip(rows["entity"], rows["value"], strict=True))
     assert got["Manchester Wind"] == 150.0
     # Flattened: every component is present, not left to a parent to supply.
-    members = record.components[GEN].collect().to_native().to_pandas()
+    members = record.entity_types[GEN].collect().to_native().to_pandas()
     assert len(members) == 6
 
 

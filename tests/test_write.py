@@ -28,7 +28,7 @@ class _Source:
         self,
         schema,
         attributes=None,
-        components=None,
+        entity_types=None,
         connections=None,
         outputs=None,
         dims=None,
@@ -36,7 +36,7 @@ class _Source:
         self._schema = schema
         self.built: list[str] = []
         self._attributes = attributes or {}
-        self._components = components or {}
+        self._entity_types = entity_types or {}
         self._connections = connections or {}
         self._outputs = outputs or {}
         self._dims = dims or {}
@@ -57,8 +57,8 @@ class _Source:
         return self._frames(self._dims, "dims") if self._dims else EMPTY
 
     @property
-    def components(self):
-        return self._frames(self._components, "components")
+    def entity_types(self):
+        return self._frames(self._entity_types, "entity_types")
 
     @property
     def groups(self):
@@ -135,7 +135,7 @@ def test_write_record_builds_each_key_once(con, base_uri):
     source = _Source(
         _SCHEMA,
         attributes={"p_nom": _long(), "e_nom": _long(attribute="e_nom")},
-        components={
+        entity_types={
             "Process": pd.DataFrame({"entity": ["steel_dri"], "scenario": [None]})
         },
     )
@@ -144,7 +144,7 @@ def test_write_record_builds_each_key_once(con, base_uri):
     assert sorted(source.built) == [
         "attributes:e_nom",
         "attributes:p_nom",
-        "components:Process",
+        "entity_types:Process",
     ]
 
 
@@ -320,7 +320,7 @@ def test_write_record_rejects_a_name_two_types_share(con, base_uri):
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
-        components={
+        entity_types={
             "Process": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
             "Widget": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
         },
@@ -338,7 +338,7 @@ def test_write_record_accepts_one_name_per_type(con, base_uri):
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
-        components={
+        entity_types={
             "Process": pd.DataFrame({"entity": ["a"], "scenario": [None]}),
             "Widget": pd.DataFrame({"entity": ["b"], "scenario": [None]}),
         },
@@ -362,7 +362,7 @@ def test_the_uniqueness_check_spans_backends(con, base_uri):
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
-        components={
+        entity_types={
             # DuckDB-backed, and pandas-backed, colliding on `shared`.
             "Process": con.sql("SELECT 'shared' AS entity, NULL AS scenario"),
             "Widget": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
@@ -449,10 +449,10 @@ def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
     source = PyPSA.to_datarecord(ac_dc)
 
     assert isinstance(source, Record)
-    assert "Generator" in source.components
+    assert "Generator" in source.entity_types
     assert "connection" in source.groups
     assert "p_max_pu" in source.attributes
-    # Non-varying attributes belong to `dims/components/`, not `inputs/` (https://energy-models.github.io/datarecord/design/record/).
+    # Non-varying attributes belong to `dims/entity_type/`, not `inputs/` (https://energy-models.github.io/datarecord/design/record/).
     assert "v_nom" not in source.attributes
     # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/design/record/#connections).
     assert "efficiency" in source.attributes

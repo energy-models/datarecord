@@ -79,8 +79,8 @@ class DirectoryRecord:
         )
 
     @cached_property
-    def components(self) -> LazyFrames:
-        return self._keyed_by("dims/components", "entity_type")
+    def entity_types(self) -> LazyFrames:
+        return self._keyed_by("dims/entity_type", "entity_type")
 
     @cached_property
     def groups(self) -> LazyFrames:
@@ -130,7 +130,7 @@ class DirectoryRecord:
             return cache[ctype]
 
         rel = self._read("inputs/*.parquet", union_by_name=True)
-        members = self._read(f"dims/components/{ctype}.parquet")
+        members = self._read(f"dims/entity_type/{ctype}.parquet")
         result: dict[str, Flags] = {}
         if rel is not None and members is not None:
             # Only the dims a NULL broadcasts over, as the fold's flags are:
@@ -184,7 +184,7 @@ class DirectoryRecord:
 
         Read from a column rather than by listing filenames, so one code path
         serves a local directory and a remote prefix alike: `entity_type` names
-        the per-type files under `dims/components/`, `attribute` the per-attribute
+        the per-type files under `dims/entity_type/`, `attribute` the per-attribute
         ones under `inputs/` and `outputs/`.
         """
         rel = self._read(f"{subdir}/*.parquet", union_by_name=True)

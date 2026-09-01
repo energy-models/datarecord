@@ -221,7 +221,7 @@ class Record(Protocol):
         ...
 
     @property
-    def components(self) -> Frames:
+    def entity_types(self) -> Frames:
         """Wide member frames, keyed by component type, in member order.
 
         Notes
@@ -255,7 +255,7 @@ class Record(Protocol):
 
         Not by component type: one `inputs/p_max_pu.parquet` holds every type's
         rows, keyed by `entity` alone. A row carries no `entity_type` - entities
-        are unique across every type - so a reader wanting one type joins `components`
+        are unique across every type - so a reader wanting one type joins `entity_types`
         on `name`.
 
         Notes

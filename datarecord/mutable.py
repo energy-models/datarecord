@@ -106,7 +106,7 @@ class Pending:
     attributes: Mapping[str, int] = field(default_factory=dict)
     """Staged attribute rows, per attribute name."""
 
-    components: Mapping[str, int] = field(default_factory=dict)
+    entity_types: Mapping[str, int] = field(default_factory=dict)
     """Components staged to exist, per component type."""
 
     groups: Mapping[str, int] = field(default_factory=dict)
@@ -123,7 +123,7 @@ class Pending:
     def __bool__(self) -> bool:
         """Whether anything is staged."""
         return bool(
-            self.attributes or self.components or self.groups or self.tombstones
+            self.attributes or self.entity_types or self.groups or self.tombstones
         )
 
 
@@ -284,7 +284,7 @@ class _Written:
 
     schema: Schema
     dims: Frames
-    components: Frames
+    entity_types: Frames
     groups: Frames
     attributes: Frames
     # `default_factory` because `EMPTY` is a `LazyFrames` instance, which
@@ -474,14 +474,14 @@ class WorkingRecord:
         return LazyFrames(keys, self._axis_frame)
 
     @property
-    def components(self) -> Frames:
+    def entity_types(self) -> Frames:
         """Base members with pending additions and tombstones applied.
 
         Notes
         -----
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
-        return self._entity_frames("components")
+        return self._entity_frames("entities")
 
     @property
     def groups(self) -> Frames:
@@ -525,7 +525,7 @@ class WorkingRecord:
         )
 
     def _entity_frames(self, kind: str) -> Frames:
-        base = self.base.components
+        base = self.base.entity_types
         staged = self._collapsed_entities(kind)
         if staged is None:
             return base
@@ -541,7 +541,7 @@ class WorkingRecord:
         an edit to it, so the staged row wins on the entity key while a name
         only the base holds passes through.
         """
-        base = self.base.components
+        base = self.base.entity_types
         staged = self._collapsed_entities(kind)
         assert staged is not None
         mine = staged.filter(col("entity_type") == lit(ctype))
@@ -790,9 +790,9 @@ class WorkingRecord:
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
         out = dict(self.base.flags(ctype))
-        if ctype not in self.components:
+        if ctype not in self.entity_types:
             return out
-        members = as_relation(self.components[ctype], self.con).project("entity")
+        members = as_relation(self.entity_types[ctype], self.con).project("entity")
         arms = [
             arm
             for attribute in self._staged_attributes_of("inputs")
@@ -1023,9 +1023,9 @@ class WorkingRecord:
         -----
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
-        if ctype not in self.components:
+        if ctype not in self.entity_types:
             return []
-        frame = self.components[ctype].select("entity").collect()
+        frame = self.entity_types[ctype].select("entity").collect()
         return [str(n) for n in frame["entity"].to_list()]
 
     def _name_types(self) -> nw.LazyFrame | None:
@@ -1036,10 +1036,10 @@ class WorkingRecord:
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         parts = [
-            self.components[ctype]
+            self.entity_types[ctype]
             .select("entity")
             .with_columns(entity_type=nw.lit(ctype))
-            for ctype in self.components
+            for ctype in self.entity_types
         ]
         if not parts:
             return None
@@ -1297,12 +1297,14 @@ class WorkingRecord:
         declared = self.schema.types_declaring(attribute)
         if not self.schema.entity_types:
             declared = frozenset(
-                c for c in self.components if attribute in self.schema.attributes_for(c)
+                c
+                for c in self.entity_types
+                if attribute in self.schema.attributes_for(c)
             )
         return [
             name
             for ctype in sorted(declared)
-            if ctype in self.components
+            if ctype in self.entity_types
             for name in self._resolved_names(ctype)
         ]
 
@@ -1617,7 +1619,7 @@ class WorkingRecord:
     def add(self, ctype: str, frame: Any) -> None:
         """Stage new components from a wide frame.
 
-        Splits it: attributes addressed by `entity` alone stay in `dims/components/`,
+        Splits it: attributes addressed by `entity` alone stay in `dims/entity_type/`,
         varying ones become `inputs/` rows. Which is which comes from the
         schema, so this needs no framework registry.
 
@@ -1660,12 +1662,12 @@ class WorkingRecord:
                 if "entity" in self.schema.group_key(group):
                     by_group.setdefault(group, []).append(c)
         ports = [c for cols in by_group.values() for c in cols]
-        # A column the schema does not name goes to `dims/components/`
+        # A column the schema does not name goes to `dims/entity_type/`
         # unchanged, like any non-varying one.
         member_cols = [c for c in columns if c not in varying and c not in ports]
 
         rel = as_relation(lazy, self.con)
-        table = self._ensure("components")
+        table = self._ensure("entities")
         extra = [c for c in member_cols if c != "entity" and c not in self.schema.dims]
         self._widen(table, rel, extra)
 
@@ -1774,7 +1776,7 @@ class WorkingRecord:
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
         self._stage_tombstones(
-            "components",
+            "entities",
             ("entity_type", "entity"),
             [[ctype, name] for name in names],
         )
@@ -1875,7 +1877,7 @@ class WorkingRecord:
         # `tombstones` spans every entity kind: a `remove_group` is a deletion
         # like a `remove`, so counting only components would report a staged
         # one as nothing pending (https://energy-models.github.io/datarecord/design/working-record/#pending).
-        dead = counts("components", "entity_type", deleted=True)
+        dead = counts("entities", "entity_type", deleted=True)
         groups = {}
         for group in self.schema.groups:
             removed = total(group, deleted=True)
@@ -1888,7 +1890,7 @@ class WorkingRecord:
                 groups[group] = live
         return Pending(
             attributes=attribute_counts(),
-            components=counts("components", "entity_type", deleted=False),
+            entity_types=counts("entities", "entity_type", deleted=False),
             groups=groups,
             tombstones=dead,
         )
@@ -1949,7 +1951,7 @@ class WorkingRecord:
         -----
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        rel = self._rows("components")
+        rel = self._rows("entities")
         if rel is None:
             return None
         cols = ("entity",)
@@ -2152,7 +2154,7 @@ class WorkingRecord:
 
         return LazyFrames(names, frame)
 
-    def _writable_components(self) -> Frames:
+    def _writable_entity_types(self) -> Frames:
         """The resolved member frames, in the shape `write_record` persists.
 
         A resolved frame drops `entity_type` (the type is the key it was
@@ -2166,7 +2168,7 @@ class WorkingRecord:
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        frames = self.components
+        frames = self.entity_types
 
         def build(ctype: str) -> nw.LazyFrame:
             frame = frames[ctype]
@@ -2186,7 +2188,7 @@ class WorkingRecord:
         return _Written(
             schema=self.schema,
             dims=self._staged_axes(),
-            components=self._staged_entities("components"),
+            entity_types=self._staged_entities("entities"),
             groups=self._staged_groups(),
             attributes=self._staged_attributes(),
             # No `_restated` counterpart: results are complete as produced, never
@@ -2210,7 +2212,7 @@ class WorkingRecord:
         return _Written(
             schema=self.schema,
             dims=self.dims,
-            components=self._writable_components(),
+            entity_types=self._writable_entity_types(),
             groups=self.groups,
             attributes=self.attributes,
             outputs=self.outputs,
@@ -2311,7 +2313,7 @@ def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
     return dtype
 
 
-def _component_columns(schema: Schema) -> dict[str, nw.dtypes.DType]:  # noqa: ARG001 - shape is fixed
+def _entity_columns(schema: Schema) -> dict[str, nw.dtypes.DType]:  # noqa: ARG001 - shape is fixed
     return {
         "entity_type": nw.String(),
         "entity": nw.String(),
@@ -2366,7 +2368,7 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
 # An axis kind is staged per dim rather than per attribute, since one axis file
 # carries every attribute addressed by that dim alone.
 _COLUMNS = {
-    "components": _component_columns,
+    "entities": _entity_columns,
 }
 
 # A staging kind, so it becomes part of a table name: no punctuation a SQL

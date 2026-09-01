@@ -52,7 +52,9 @@ class LayerSource(Protocol):
     def axis(self, dim: str) -> DuckDBPyRelation | None: ...
     def entity_type(self, name: str) -> DuckDBPyRelation | None: ...
     def group(self, name: str) -> DuckDBPyRelation | None: ...
-    def attribute(self, name: str, kind: Kind = "inputs") -> DuckDBPyRelation | None: ...
+    def attribute(
+        self, name: str, kind: Kind = "inputs"
+    ) -> DuckDBPyRelation | None: ...
     def all_attributes(self, kind: Kind = "inputs") -> DuckDBPyRelation | None: ...
 ```
 
@@ -62,11 +64,11 @@ Two asymmetries, both the format's rather than the protocol's:
 
 **`entity` is a dim like any other.** `dims/entity.parquet` is an axis file, so it is `axis("entity")`; there is no separate `entities` member. What differs is only what the fold does with it — the entity axis is folded into the components map, with `order_key` and tombstones, where `period.parquet` is folded by `resolve_dims` on `axis_key`. Same file accessor, two consumers. `entity_type(name)` is a different thing entirely: one type's wide member rows, read after the map named a winner.
 
-**Only `inputs/` has a plural.** `all_attributes` exists because `fold_inputs` decides ownership across every attribute in one `GROUP BY` — the files share `input_key`, so one scan answers for all of them. Nothing else does: each axis folds on its own `axis_key(dim)`, each group on its own `group_key`, so a combined read would have no key to fold on and `union_by_name` across them would be meaningless. `attribute(name)` is not the singular of it in disguise — it is the *owned* read, one file with its own exact columns, which `relation()` needs because a padded column is ambiguous against [the broadcast rule](../record.md#the-broadcast-rule).
+**Only `inputs/` has a plural.** `all_attributes` exists because `fold_inputs` decides ownership across every attribute in one `GROUP BY` — the files share `input_key`, so one scan answers for all of them. Nothing else does: each axis folds on its own `axis_key(dim)`, each group on its own `group_key`, so a combined read would have no key to fold on and `union_by_name` across them would be meaningless. `attribute(name)` is not the singular of it in disguise — it is the _owned_ read, one file with its own exact columns, which `relation()` needs because a padded column is ambiguous against [the broadcast rule](../record.md#the-broadcast-rule).
 
 `all_attributes` returns the union **unprojected**. `fold_inputs` keeps its `with_columns` padding to `long_columns`, and `StagedSource` gets that for free: its staging tables carry the same per-attribute column variation as the files do, so one call fixes both.
 
-`axes()` is the one discovery member, and it earns its place: `resolve_dims` today probes `{dim}.parquet` for every *declared* dim in every ancestry directory, and [`fold_axis`'s own docstring](https://github.com/energy-models/datarecord/blob/main/datarecord/duck.py) notes most of those miss. One `glob` per directory replaces D probes with one listing — D × A probes become A listings, which remotely is the difference between forty HEADs and five LISTs. `ParquetLayer` globs; `StagedSource` reads `self._staged`.
+`axes()` is the one discovery member, and it earns its place: `resolve_dims` today probes `{dim}.parquet` for every _declared_ dim in every ancestry directory, and [`fold_axis`'s own docstring](https://github.com/energy-models/datarecord/blob/main/datarecord/duck.py) notes most of those miss. One `glob` per directory replaces D probes with one listing — D × A probes become A listings, which remotely is the difference between forty HEADs and five LISTs. `ParquetLayer` globs; `StagedSource` reads `self._staged`.
 
 Two implementations, plus a third under [question 2](#2-what-a-non-layered-base-does):
 
@@ -101,7 +103,7 @@ Nothing needs invalidating, because nothing past the prefix is materialised: a D
 
 What re-executes per read is one anti-join, one union and the ownership `GROUP BY` over the staging tables, against an already-materialised parent map. The ancestry does not. That is [what the design already promises](../working-record.md#reading-with-pending-edits) — "exactly one more fold step over the same owner-map machinery … it costs what one more layer costs" — with the qualifier that page leaves implicit, that a written layer pays that cost once while the staged one pays it per read, being the one layer that can still change.
 
-Two things fall out of stating it as a property of the sources rather than a mode of the cache. A second staged layer, or a frozen one under an unfrozen one, needs no new code — the prefix is wherever `frozen` stops being true. And `ancestry_to_read`'s truncation at the deepest materialised ancestor becomes *source construction*: fewer sources rather than a shorter list of UUIDs, with `materialised()` unchanged, being a question about a revision.
+Two things fall out of stating it as a property of the sources rather than a mode of the cache. A second staged layer, or a frozen one under an unfrozen one, needs no new code — the prefix is wherever `frozen` stops being true. And `ancestry_to_read`'s truncation at the deepest materialised ancestor becomes _source construction_: fewer sources rather than a shorter list of UUIDs, with `materialised()` unchanged, being a question about a revision.
 
 The one wart: `dims` cannot stay a `cached_property` where the tail is live. It becomes a plain property that caches the frozen prefix's axes and re-folds the rest — the same rule as `_map`, so it is one concept applied twice rather than a special case. `schema` is unaffected: [one schema per record](../schema.md#one-schema-per-record), not layered data, so no source contributes to it.
 
@@ -113,7 +115,7 @@ The fold ends each kind by evicting the parent's matching keys:
 kept = parent.join(own, null_safe("p", "o", keys.schema.input_key), how="anti")
 ```
 
-That is correct for a written layer *because* [`_restated`](../working-record.md#committing) has already completed the layer's extent along every non-`partial` axis. Evicting the parent's key loses nothing, since the new layer replaced all of it. A staging area has not restated, so anti-joining on `input_key` would let one staged point displace the base's whole series — the loss `_overlay`'s comment describes, and the reason the staged overlay keys by coordinate instead.
+That is correct for a written layer _because_ [`_restated`](../working-record.md#committing) has already completed the layer's extent along every non-`partial` axis. Evicting the parent's key loses nothing, since the new layer replaced all of it. A staging area has not restated, so anti-joining on `input_key` would let one staged point displace the base's whole series — the loss `_overlay`'s comment describes, and the reason the staged overlay keys by coordinate instead.
 
 So the precondition, not the algebra, is what differs. **Establish the precondition and the difference is gone**: `_restated` runs on first touch of an attribute rather than at commit.
 
@@ -132,7 +134,7 @@ Two consequences to accept deliberately:
 
 Settled: **remove it** rather than teach the staging tables to distinguish carried rows from edited ones. That distinction is a second row class in every staging table and a condition in `_collapsed_inputs`, which is more machinery than the accessor is worth.
 
-It is not free. `Pending` is public, documented in [`docs/usage/editing.md`](../../usage/editing.md), and pinned by around a dozen assertions in `test_mutable.py` — those tests assert *that an edit was staged*, which after this change is better asked of the reads (`w.attributes[attr]`) than of a counter. Pre-1.0, so this is a delete rather than a deprecation; the PR says which coverage moved where.
+It is not free. `Pending` is public, documented in [`docs/usage/editing.md`](../../usage/editing.md), and pinned by around a dozen assertions in `test_mutable.py` — those tests assert _that an edit was staged_, which after this change is better asked of the reads (`w.attributes[attr]`) than of a counter. Pre-1.0, so this is a delete rather than a deprecation; the PR says which coverage moved where.
 
 ### 2. What a non-layered base does
 
@@ -142,11 +144,11 @@ Settled by `DirectorySource`: a `DirectoryRecord` is a parquet directory in the 
 
 Nothing constructs such a `WorkingRecord` today, and `_base_revision` already refuses it with a clear message. If a caller appears, it is its own proposal.
 
-**One design note this owes.** [read-path](../read-path.md#what-differs-between-the-implementations) makes "no owner map" a property of `DirectoryRecord`, and that stays true — a bare `DirectoryRecord` still scans for `flags`. What is new is that a `WorkingRecord` *over* one builds a map, which belongs to the `WorkingRecord` exactly as a `LayeredRecord`'s map belongs to the node rather than to the layers it folds. The page needs that sentence, or the next reader reads the map as a contradiction.
+**One design note this owes.** [read-path](../read-path.md#what-differs-between-the-implementations) makes "no owner map" a property of `DirectoryRecord`, and that stays true — a bare `DirectoryRecord` still scans for `flags`. What is new is that a `WorkingRecord` _over_ one builds a map, which belongs to the `WorkingRecord` exactly as a `LayeredRecord`'s map belongs to the node rather than to the layers it folds. The page needs that sentence, or the next reader reads the map as a contradiction.
 
 ### 3. Results become schema-declared
 
-Today a result attribute is not declared: [`Tool.results`](../tools.md) derives which attributes count as results from the framework's own registry, and `write_record` persists `outputs/` without consulting the schema. So `set(..., kind="outputs")` accepts any name, and `output_names()` has to *discover* what is there by globbing.
+Today a result attribute is not declared: [`Tool.results`](../tools.md) derives which attributes count as results from the framework's own registry, and `write_record` persists `outputs/` without consulting the schema. So `set(..., kind="outputs")` accepts any name, and `output_names()` has to _discover_ what is there by globbing.
 
 **Declare them.** `Schema` gains result attributes beside its input ones, and three things follow:
 
@@ -155,9 +157,9 @@ Today a result attribute is not declared: [`Tool.results`](../tools.md) derives 
 - **One vocabulary.** `Schema` stops having two classes of attribute, one it validates and one it cannot see.
 - **`value_hint` retires.** `_empty_long` types a staging table's `value` as `schema.value_type(attribute) or value_hint or String()`, where the hint is the dtype the caller's frame arrived with — "that being the only thing that knows" for an undeclared result. Once results are declared the schema knows, so the fallback is dead. Retiring it removes the parameter from `_ensure` and `_empty_long`, its three call sites, and the two helpers that compute it (`_value_dtype`, `_scalar_dtype`) — check those have no other caller first.
 
-The cost is real and lands outside this repo. A tool must declare a result before attaching it, where today it may attach anything its registry produced — and PyPSA's `SubNetwork` exists only *after* a solve, which is exactly the case [results through `kind="outputs"`](../working-record.md#results-through-kindoutputs) cites for not requiring declaration. So a tool either declares its full result vocabulary up front, or amends the schema at solve time, and [`Schema.compatible_with`](../schema.md#versioning) is what says whether existing layers survive the amendment.
+The cost is real and lands outside this repo. A tool must declare a result before attaching it, where today it may attach anything its registry produced — and PyPSA's `SubNetwork` exists only _after_ a solve, which is exactly the case [results through `kind="outputs"`](../working-record.md#results-through-kindoutputs) cites for not requiring declaration. So a tool either declares its full result vocabulary up front, or amends the schema at solve time, and [`Schema.compatible_with`](../schema.md#versioning) is what says whether existing layers survive the amendment.
 
-The membership check stays relaxed regardless: a result may name a component the record never declared, which is a separate rule from whether the *attribute* is declared and is not changed here.
+The membership check stays relaxed regardless: a result may name a component the record never declared, which is a separate rule from whether the _attribute_ is declared and is not changed here.
 
 ### 4. What the staged step re-executes
 
@@ -166,7 +168,7 @@ Settled by [the frozen-prefix rule](#the-cache-stops-at-the-last-frozen-source):
 - **`_fold_ordered`'s `order_key` subquery.** It computes `(SELECT max(order_key::BIGINT) FROM parent)` inside `con.sql`, which under the current code runs once when the map is created. Uncached, it runs on every collect — a scan of the parent map per read. Measure it on a large component set; if it is not free, the offset can be hoisted to `NodeCache` construction, the frozen prefix's map being fixed. [`order_key` as `(depth, row)`](#what-lands-first-and-separately) removes the subquery outright rather than hoisting it, which is why that change is listed there.
 - **`StagedSource`'s collapses are rebuilt per call.** Each member applies its collapse (`_latest_per`, the tombstone anti-join, `_collapsed_axis`'s per-column `max_by`) before handing the relation over. Measured on 50k staged rows over 500 entities × 20 periods: **~1.4 ms to build the plan, ~4.3 ms to execute it**. So a read of a `WorkingRecord` over a schema with inputs, components and two groups pays roughly four of each — tens of milliseconds, scaling with what is staged.
 
-  It can be memoised, contrary to how the live tail might read: what must not be cached is a *stale* answer, and `_seq` is already a monotonic per-edit counter, so the source knows exactly when its own answer changed. Key each collapse on the highest `_seq` staged; a read after a `set` misses and rebuilds, two reads with nothing between them hit. This is local to `StagedSource`, invisible to `NodeCache`, and leaves [the frozen-prefix rule](#the-cache-stops-at-the-last-frozen-source) untouched — the tail is still recomputed whenever it changed, just not when it did not. It is also the one place a generation counter is cheap, because `_seq` exists already; the owner map has no equivalent signal, which is why it is folded live instead.
+  It can be memoised, contrary to how the live tail might read: what must not be cached is a _stale_ answer, and `_seq` is already a monotonic per-edit counter, so the source knows exactly when its own answer changed. Key each collapse on the highest `_seq` staged; a read after a `set` misses and rebuilds, two reads with nothing between them hit. This is local to `StagedSource`, invisible to `NodeCache`, and leaves [the frozen-prefix rule](#the-cache-stops-at-the-last-frozen-source) untouched — the tail is still recomputed whenever it changed, just not when it did not. It is also the one place a generation counter is cheap, because `_seq` exists already; the owner map has no equivalent signal, which is why it is folded live instead.
 
 ### 5. Whether `_seq` collapsing belongs to the source
 
@@ -209,25 +211,25 @@ A struct says the same thing directly — `depth` is the source's position, `row
 
 Why it belongs with this proposal rather than in it: the subquery it deletes is exactly the one [question 4](#4-what-the-staged-step-re-executes) flags as re-running per read once the tail is live. With a tuple there is nothing to hoist — a source's contribution becomes computable from the source and its index alone, which is what "one fold over a list of sources" ought to mean, and the fold stops reaching into its parent's data to number rows.
 
-It is a format change: `nw.Int64()` becomes a struct in `component_columns` and every `group_columns`, and materialised maps change shape. Pre-1.0, so that is a cost rather than a blocker, but it is why this is its own pull request. The case to test is the restated key above, and a child folding onto a *materialised* parent, whose depths are the fold's result rather than a position in any list — its `max(order_key.depth) + 1` is the same arithmetic one level up.
+It is a format change: `nw.Int64()` becomes a struct in `component_columns` and every `group_columns`, and materialised maps change shape. Pre-1.0, so that is a cost rather than a blocker, but it is why this is its own pull request. The case to test is the restated key above, and a child folding onto a _materialised_ parent, whose depths are the fold's result rather than a position in any list — its `max(order_key.depth) + 1` is the same arithmetic one level up.
 
 ## Where the code is
 
-| what                    | where                                                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| the three kind-folds    | `layered/resolve.py` — `fold_inputs`, `fold_components`, `fold_group`, sharing `_fold_ordered`                     |
-| what drives them        | `_fold_map` (folds one kind down an ancestry), `map_kinds` (which kinds a schema has), `_fold_kind`                |
-| what caches them        | `_table` (`.create()` per kind), `NodeCache.dims` / `.schema`, `Revision.node_cache` — all justified by write-once |
-| what builds the ancestry | `revision.py` — `Revision.node_cache`, `ancestry`; `resolve.ancestry_to_read`, which becomes source construction |
-| where a layer's paths   | `duck.py` — `layer_dir`, `resolved_dir`; read through `try_read_parquet`. Every call site becomes a source member  |
-| the axis fold           | `resolve_dims` + `duck.py` — `dims_dirs`, `fold_axis`; keyed by `schema.axis_key`, outside the owner map           |
-| the reads over the map  | `NodeCache.relation` / `component_frame` / `group_frame` / `_owned_frame` / `attributes_of`                        |
-| the directory's reads   | `directory.py` — `_read`, `_require`, `_keyed_by`                                                                  |
-| the staged counterparts | `mutable.py` — `_overlay`, `_entity_union`, `_group_union`, `_collapsed_inputs` / `_entities` / `_group` / `_axis` |
-| the staged flags        | `mutable.py` — `flags`, `_flags_arm`                                                                               |
-| first-touch hook        | `mutable.py` — `_ensure`, `_empty_long`, `_owned_whole`, `_restated`                                              |
-| what commit hands over  | `mutable.py` — `staged_only`, `flattened`, both building a `_Written`                                              |
-| the shared tail         | `record.py` — `flags_from_rows` (scoping), `duck.py` — `null_safe`, `broadcast_match`, `union_all_by_name`         |
+| what                     | where                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| the three kind-folds     | `layered/resolve.py` — `fold_inputs`, `fold_components`, `fold_group`, sharing `_fold_ordered`                     |
+| what drives them         | `_fold_map` (folds one kind down an ancestry), `map_kinds` (which kinds a schema has), `_fold_kind`                |
+| what caches them         | `_table` (`.create()` per kind), `NodeCache.dims` / `.schema`, `Revision.node_cache` — all justified by write-once |
+| what builds the ancestry | `revision.py` — `Revision.node_cache`, `ancestry`; `resolve.ancestry_to_read`, which becomes source construction   |
+| where a layer's paths    | `duck.py` — `layer_dir`, `resolved_dir`; read through `try_read_parquet`. Every call site becomes a source member  |
+| the axis fold            | `resolve_dims` + `duck.py` — `dims_dirs`, `fold_axis`; keyed by `schema.axis_key`, outside the owner map           |
+| the reads over the map   | `NodeCache.relation` / `component_frame` / `group_frame` / `_owned_frame` / `attributes_of`                        |
+| the directory's reads    | `directory.py` — `_read`, `_require`, `_keyed_by`                                                                  |
+| the staged counterparts  | `mutable.py` — `_overlay`, `_entity_union`, `_group_union`, `_collapsed_inputs` / `_entities` / `_group` / `_axis` |
+| the staged flags         | `mutable.py` — `flags`, `_flags_arm`                                                                               |
+| first-touch hook         | `mutable.py` — `_ensure`, `_empty_long`, `_owned_whole`, `_restated`                                               |
+| what commit hands over   | `mutable.py` — `staged_only`, `flattened`, both building a `_Written`                                              |
+| the shared tail          | `record.py` — `flags_from_rows` (scoping), `duck.py` — `null_safe`, `broadcast_match`, `union_all_by_name`         |
 
 `_fold_ordered` is worth reading first: `fold_components` and `fold_group` already differ only in file, key columns, whether a type is carried and whether a second tombstone applies — so the source is a further parameter of a shape that already exists, not a new idea.
 
@@ -250,7 +252,7 @@ Steps 0–4 are independently valuable and reversible: step 0 is information eit
 Three things this order deliberately does not fix, recorded so they are not mistaken for oversights:
 
 - **`attributes_of` re-executes under a live tail.** It aggregates the map a second time — a `bool_or` union across a type's members — and `fetchall()`s, so with the tail live that is a query per call rather than a plan. Accepted: it is bounded by the map rather than by the staging area, and the deletions are worth it.
-- **`commit` still needs a revision.** `_base_revision` requires a `LayeredRecord` base and reads `node_cache.revision_id`, so `NodeCache` keeps that field and a `DirectorySource`-backed `WorkingRecord` still cannot `NewChild()`. `DirectorySource` makes such a record *readable* through the fold, not committable to a layer tree.
+- **`commit` still needs a revision.** `_base_revision` requires a `LayeredRecord` base and reads `node_cache.revision_id`, so `NodeCache` keeps that field and a `DirectorySource`-backed `WorkingRecord` still cannot `NewChild()`. `DirectorySource` makes such a record _readable_ through the fold, not committable to a layer tree.
 
 ## How to know it worked
 
@@ -258,7 +260,7 @@ This change rewrites resolution without changing a single answer, so the whole o
 
 **`tests/test_records.py` is the harness.** Its `both` fixture writes one record and reads it back as a `LayeredRecord` and a `DirectoryRecord`, then asserts the two agree on every key set, on `flags` per type, and on the resolved rows per attribute. That is exactly the invariant a fold rewrite can break, and it already runs. `test_backings_agree_on_flags` is the one to extend: it asks two backings to agree, and the duplicated aggregate is exactly what a third would catch.
 
-**The gap: a `WorkingRecord` is not in that fixture.** It satisfies `Record`, so it can be — a `WorkingRecord` with nothing staged must read identically to its base, and one with staged edits must read identically to the record its `commit` produces. Both over a layered base *and* over a directory base, which is what pins step 7. Adding those before touching the fold is the cheapest way to make this change verifiable.
+**The gap: a `WorkingRecord` is not in that fixture.** It satisfies `Record`, so it can be — a `WorkingRecord` with nothing staged must read identically to its base, and one with staged edits must read identically to the record its `commit` produces. Both over a layered base _and_ over a directory base, which is what pins step 7. Adding those before touching the fold is the cheapest way to make this change verifiable.
 
 **`test_mutable.py:362-380` pins the flags union across a staged edit** (`before`/`after` around a `set`), which is the behaviour step 5 must preserve when `_flags_arm` goes.
 
@@ -278,7 +280,7 @@ Three performance claims to check rather than assert:
 
 **`pending` is removed**, with its documentation and its tests. The public surface loses an accessor that answered "what have I staged".
 
-**Results must be declared**, which constrains a tool that attaches results for components it discovered mid-solve. [Question 3](#3-results-become-schema-declared) is the whole of that argument. What does *not* change is discovery: `outputs` keys off what a layer holds, sorted, exactly as `attributes` does.
+**Results must be declared**, which constrains a tool that attaches results for components it discovered mid-solve. [Question 3](#3-results-become-schema-declared) is the whole of that argument. What does _not_ change is discovery: `outputs` keys off what a layer holds, sorted, exactly as `attributes` does.
 
 **`set` grows a first-touch base read** for attributes with a non-`partial` axis. Bounded by what is staged, not by how often it is staged.
 
@@ -294,7 +296,7 @@ Those deletions are what make the two smaller cleanups this grew out of unnecess
 
 **Three design pages owe an edit**, none of them optional — when behaviour changes, the page changes, not just the code:
 
-- [committing](../working-record.md#committing) calls `_restated` a commit-time step. It becomes a property of how a staged layer reads, which is arguably where it belonged: it describes what the layer *is*, not what commit does to it.
+- [committing](../working-record.md#committing) calls `_restated` a commit-time step. It becomes a property of how a staged layer reads, which is arguably where it belonged: it describes what the layer _is_, not what commit does to it.
 - [`pending`](../working-record.md#pending) is a section, and the staging section's "these tables are the only place a staged row exists: `pending` counts them and the reads fold them" names it. Both go.
 - [results through `kind="outputs"`](../working-record.md#results-through-kindoutputs) says a result attribute is not schema-declared, and gives the reason. Question 3 reverses that; the page keeps the membership rule and loses the declaration one.
 - [reading with pending edits](../working-record.md#reading-with-pending-edits) says the staged fold "costs what one more layer costs". True per read, and the page should say per read — a written layer pays that once and is cached forever, the staged one pays it on every read, being the only layer that can still change.
@@ -303,6 +305,6 @@ Those deletions are what make the two smaller cleanups this grew out of unnecess
 
 **Whether `materialise` could run over a staging area.** [The frozen-prefix rule](#the-cache-stops-at-the-last-frozen-source) names this exactly: freeze the tail into the prefix. A long-lived `WorkingRecord` whose edits have settled could fold its staged step once into a `NodeCache` and read from that, at the price of having to discard it on the next `set` — which is the generation bookkeeping this proposal avoids needing, deferred to the one case that would pay for it. Nothing here needs it.
 
-**Whether the commit path collapses further.** `staged_only()` and `flattened()` build two `Record`s out of one staging area. With `_restated` moved to first touch, `staged_only()` *is* the staged source and `flattened()` is the fold's own output — so both readings become projections of one object rather than two assembled `_Written`s.
+**Whether the commit path collapses further.** `staged_only()` and `flattened()` build two `Record`s out of one staging area. With `_restated` moved to first touch, `staged_only()` _is_ the staged source and `flattened()` is the fold's own output — so both readings become projections of one object rather than two assembled `_Written`s.
 
 **Whether a `DirectoryRecord` gains a map when something wants one.** The fold now runs over a directory, so the option exists. It should stay unexercised: the scan is a design property, and the sentence in [read-path](../read-path.md#what-differs-between-the-implementations) is what keeps it one.

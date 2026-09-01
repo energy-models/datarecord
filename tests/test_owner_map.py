@@ -69,15 +69,15 @@ def keys(revision, con):
     return {(r["entity"], str(r.attribute)) for _, r in df.iterrows()}
 
 
-def component_names(revision):
-    return set(revision.node_cache.components.df()["entity"])
+def entity_names(revision):
+    return set(revision.node_cache.entity_map.df()["entity"])
 
 
 def test_root_map_is_its_own_layer(con, parent):
     """Every key of a root's map points at the root itself."""
     om = parent.node_cache
     assert set(om.inputs.df()["layer_uuid"]) == {parent.id}
-    assert set(om.components.df()["layer_uuid"]) == {parent.id}
+    assert set(om.entity_map.df()["layer_uuid"]) == {parent.id}
     assert ("Manchester Wind", "p_max_pu") in keys(parent, con)
 
 
@@ -89,7 +89,7 @@ def test_materialise_writes_the_map_under_resolved(con, parent):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     assert Path(resolved_dir(parent.id), "owner_map", "inputs.parquet").exists()
-    assert Path(resolved_dir(parent.id), "owner_map", "components.parquet").exists()
+    assert Path(resolved_dir(parent.id), "owner_map", "entities.parquet").exists()
     # The cache shares the record's directory but stays out of the layer's own
     # namespace, so a reader that knows nothing about layering still sees a
     # plain parquet directory: every glob into a layer is single-level, so nothing
@@ -141,12 +141,12 @@ def test_tombstone_removes_all_attributes(con, parent):
     """
     before = {k for k in keys(parent, con) if k[0] == "Norway Gas"}
     assert len(before) > 1
-    assert "Norway Gas" in component_names(parent)
+    assert "Norway Gas" in entity_names(parent)
 
     child = parent.child()
     tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
     assert not {k for k in keys(child, con) if k[0] == "Norway Gas"}
-    assert "Norway Gas" not in component_names(child)
+    assert "Norway Gas" not in entity_names(child)
 
 
 def test_live_fold_is_cached_per_connection(con, parent):
@@ -163,10 +163,10 @@ def test_live_fold_is_cached_per_connection(con, parent):
     child = parent.child()
     om = child.node_cache
     om.inputs.fetchall()
-    om.components.fetchall()
+    om.entity_map.fetchall()
     for table in (
         f"owner_map_inputs_{child.id.hex}",
-        f"owner_map_components_{child.id.hex}",
+        f"owner_map_entities_{child.id.hex}",
     ):
         assert con.execute(
             "SELECT 1 FROM duckdb_tables() WHERE table_name = ?", [table]

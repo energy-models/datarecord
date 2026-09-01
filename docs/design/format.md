@@ -28,13 +28,13 @@ entity | entity_type | <component key dims> | deleted
 
 It is **derived, not declared**. [`write_record`](writing.md) builds it from the per-type frames it has just written — the type from the file a row landed in — so a `Record` never hands it over and cannot disagree with itself about it.
 
-Three things live here that were previously spread across `dims/components/`:
+Three things live here that were previously spread across `dims/entity_type/`:
 
 - **Membership.** A component exists because it has a row here, not because some type's file mentions it.
 - **Its type.** `entity_type` is a column, so `entity -> entity_type` is one read rather than a glob across every type's file with the type taken from the filename.
 - **Its tombstone.** Deleting a component is deleting its entity row.
 
-What remains in `dims/components/<Type>.parquet` is only [what is addressed by `entity` alone](#where-a-value-lives) — the non-varying attribute values, partitioned by type because that is the one thing genuinely per type: every type has a different column set.
+What remains in `dims/entity_type/<Type>.parquet` is only [what is addressed by `entity` alone](#where-a-value-lives) — the non-varying attribute values, partitioned by type because that is the one thing genuinely per type: every type has a different column set.
 
 The components [owner map](read-path.md#owner-map) folds from this file, and so do component tombstones. Both must read the same source: membership from one and deletions from another would resolve a deletion the map never saw.
 
@@ -48,7 +48,7 @@ The rule: **an attribute naming exactly one addressing coordinate is a column on
 
 | `dims`                       | lands in                                                              |
 | ---------------------------- | --------------------------------------------------------------------- |
-| `{"entity"}`                 | `dims/components/<Type>.parquet` — one column per attribute, per type |
+| `{"entity"}`                 | `dims/entity_type/<Type>.parquet` — one column per attribute, per type |
 | `{"connection"}`             | `groups/connection.parquet` — the group's own file                    |
 | `{"scenario"}`               | `dims/scenario.parquet` — the axis file                               |
 | `{"country"}`                | `dims/country.parquet` — the axis file, a dim shadowing the group     |
@@ -57,7 +57,7 @@ The rule: **an attribute naming exactly one addressing coordinate is a column on
 
 So "varying" is not "has dims" but **"has dims beyond its address"**, and one rule now covers what were three unrelated stories: a component's constant columns, a connection's `role`, and an axis's payload.
 
-- **`dims/components/<Type>.parquet`** — attributes addressed by `entity` alone: one column per attribute, indexed by `entity`.
+- **`dims/entity_type/<Type>.parquet`** — attributes addressed by `entity` alone: one column per attribute, indexed by `entity`.
   Values only: a component's _membership_ is its row on the [entity axis](#the-entity-axis), not its presence here.
 - **A [group](schema.md#groups)'s file** — attributes addressed by that group alone, PyPSA's `role` on a connection being one.
 - **An axis file** — attributes addressed by one dim alone. A snapshot weighting is a number per snapshot and belongs to no component, so `dims/snapshot.parquet` carries it as a declared column with a `dtype`, a `default` and a `description`.
@@ -92,7 +92,7 @@ That the shapes differ costs nothing, because `UNION ALL BY NAME` supplies NULL 
 The fold's _key_ is uniform even though the files are not: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`, one fixed tuple over every attribute, and a coordinate an attribute does not carry reads as NULL there.
 
 One attribute per file, so `value` carries that attribute's dtype.
-There is **no `entity_type` column**: `entity` is unique across every type ([below](#entity-is-unique-across-types)), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by entity alone, and a reader wanting one type's rows joins `dims/components/`.
+There is **no `entity_type` column**: `entity` is unique across every type ([below](#entity-is-unique-across-types)), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by entity alone, and a reader wanting one type's rows joins `dims/entity_type/`.
 
 An attribute addressed by a group alone is not here either: it is a column of that group's own file ([where a value lives](#where-a-value-lives)) rather than a long row. PyPSA's `role` on a connection is the case.
 

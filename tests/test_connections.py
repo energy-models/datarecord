@@ -12,8 +12,8 @@ from tests.fixtures import (
     schema,
     tombstone,
     tombstone_connection,
-    write_components,
     write_connections,
+    write_entity_type,
     write_input,
     write_schema,
 )
@@ -32,9 +32,9 @@ def _connections(revision):
     return frame
 
 
-def _components(revision, ctype=PROCESS):
-    """`component_frame`, asserted non-`None` for tests where a row must exist."""
-    frame = revision.node_cache.component_frame(ctype)
+def _entity_type_frame(revision, ctype=PROCESS):
+    """`entity_type_frame`, asserted non-`None` for tests where a row must exist."""
+    frame = revision.node_cache.entity_type_frame(ctype)
     assert frame is not None
     return frame
 
@@ -44,7 +44,7 @@ def _root(con) -> Revision:
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer,
         [
@@ -192,7 +192,7 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer, [{"entity": "steel_dri", "bus": "h2_north", "role": "input"}]
     )

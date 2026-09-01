@@ -33,7 +33,7 @@ class Requirements:
     ----------
     dims : frozenset of str
         Dims the tool cannot build a model without.
-    component_types : frozenset of str
+    entity_types : frozenset of str
         Component types the tool requires the record to define members for.
     attributes : frozenset of tuple of (str, str)
         `(component_type, attribute)` pairs the tool requires a value for.
@@ -61,7 +61,7 @@ class Requirements:
     """
 
     dims: frozenset[str] = frozenset()
-    component_types: frozenset[str] = frozenset()
+    entity_types: frozenset[str] = frozenset()
     attributes: frozenset[tuple[str, str]] = frozenset()
     unsupported_keys: frozenset[tuple[str, str]] = frozenset()
     unsupported_values: frozenset[tuple[str, str]] = frozenset()
@@ -71,7 +71,7 @@ class Requirements:
         """Whether anything is required (or, for a `verify` result, missing)."""
         return bool(
             self.dims
-            or self.component_types
+            or self.entity_types
             or self.attributes
             or self.unsupported_keys
             or self.unsupported_values
@@ -83,8 +83,8 @@ class Requirements:
         parts = []
         if self.dims:
             parts.append(f"dims {sorted(self.dims)}")
-        if self.component_types:
-            parts.append(f"component types {sorted(self.component_types)}")
+        if self.entity_types:
+            parts.append(f"component types {sorted(self.entity_types)}")
         if self.attributes:
             parts.append(f"attributes {sorted(self.attributes)}")
         if self.unsupported_keys:

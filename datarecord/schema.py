@@ -184,7 +184,7 @@ class AttributeSpec(BaseModel):
         column of it is built.
     dims
         Dims this attribute may vary over; a subset of those declared. Varying
-        over nothing is what puts it in `dims/components/<Type>.parquet` rather
+        over nothing is what puts it in `dims/entity_type/<Type>.parquet` rather
         than `inputs/`, so the schema decides the file split.
     default
         The value a coordinate no row covers takes.
@@ -842,11 +842,11 @@ class Schema(BaseModel):
         An attribute addressed by `dim` alone: a per-country CO2 budget, a
         snapshot weighting, a per-type icon. `AttributeSpec.varying` is False
         for exactly these, and this is the axis-side counterpart of
-        `addresses_entity` - what `dims/components/<Type>.parquet` is to a
+        `addresses_entity` - what `dims/entity_type/<Type>.parquet` is to a
         component's constant columns, the axis file is to these.
 
         Never `entity`, whose sole-coordinate attributes are the *component*
-        frame's columns - `dims/components/<Type>.parquet`, one file per type,
+        frame's columns - `dims/entity_type/<Type>.parquet`, one file per type,
         which is a different destination with a different key.
 
         Keyed off `dims` rather than `coordinates_of`, because a group with one
@@ -970,7 +970,7 @@ class Schema(BaseModel):
         return (*self.input_key, "layer_uuid", *FLAG_COLUMNS)
 
     @property
-    def component_columns(self) -> tuple[str, ...]:
+    def entity_columns(self) -> tuple[str, ...]:
         """The components map's full column set; the type is carried, not keyed.
 
         Notes
@@ -983,7 +983,7 @@ class Schema(BaseModel):
     def group_columns(self, group: str) -> tuple[str, ...]:
         """One group's owner-map column set: its key, plus what it carries.
 
-        No `entity_type`, unlike `component_columns`: the type is no coordinate
+        No `entity_type`, unlike `entity_columns`: the type is no coordinate
         of a group.
 
         Notes

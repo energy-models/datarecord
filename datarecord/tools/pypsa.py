@@ -3,7 +3,7 @@
 The only module that knows PyPSA's network shape - that its axes are
 `snapshot`/`period`/`scenario`, that a stochastic network is indexed by
 `(scenario, name)`, and how its static/series split maps onto the record's
-`dims/components` + `inputs/` split.
+`dims/entity_type` + `inputs/` split.
 
 Notes
 -----
@@ -930,10 +930,10 @@ class PyPSATool(Tool):
         computed one names what the record must actually supply.
         """
         known = self.component_types()
-        ctypes = {ct for ct in record.components if ct in known}
+        ctypes = {ct for ct in record.entity_types if ct in known}
         return Requirements(
             dims=REQUIRED_DIMS,
-            component_types=frozenset(ctypes),
+            entity_types=frozenset(ctypes),
             attributes=frozenset(
                 (ct, src)
                 for ct in ctypes
@@ -948,7 +948,7 @@ class PyPSATool(Tool):
         Checks what a build needs: the schema declares PyPSA's axes, its key dims are ones this tool can honour, every component
         type it names is one PyPSA knows, and each type's required attributes
         are resolvable - either owned by some layer (the owner map), supplied
-        by the `dims/components` frame, or carrying a declared default. A renamed or computed attribute is checked against its sources
+        by the `dims/entity_type` frame, or carrying a declared default. A renamed or computed attribute is checked against its sources
         (`Schema.sources`), which is also how it is reported.
 
         The key checks come first and return early: the owner-map fold keys
@@ -967,20 +967,20 @@ class PyPSATool(Tool):
                 dims=frozenset(dims), unsupported_keys=frozenset(unsupported_keys)
             )
 
-        component_types: set[str] = set()
+        entity_types: set[str] = set()
         attributes: set[tuple[str, str]] = set()
         unsupported_values: set[tuple[str, str]] = set()
 
         known = self.component_types()
         declared = record.schema
-        for ctype in sorted(record.components):
+        for ctype in sorted(record.entity_types):
             # A type PyPSA has no registry entry for, though the record's own
             # schema declares it. Reported rather than raised: the record layer
             # upholds its schema's vocabulary and knows no framework's, so this
             # reads back fine and it is this tool's business that it cannot be
             # built.
             if ctype not in known:
-                component_types.add(ctype)
+                entity_types.add(ctype)
                 continue
             resolved = record.flags(ctype)
             owned = set(resolved)
@@ -1009,7 +1009,7 @@ class PyPSATool(Tool):
                     attributes.add((ctype, src))
         return Requirements(
             dims=frozenset(dims),
-            component_types=frozenset(component_types),
+            entity_types=frozenset(entity_types),
             attributes=frozenset(attributes),
             unsupported_values=frozenset(unsupported_values),
         )
@@ -1052,8 +1052,8 @@ class PyPSATool(Tool):
         shape = NetworkShape(record.dims)
         n = _new_network(schema, shape)
 
-        for ctype in sorted(record.components):
-            static = to_relation(record.components[ctype])
+        for ctype in sorted(record.entity_types):
+            static = to_relation(record.entity_types[ctype])
             if not shape.stochastic and SCENARIO in static.columns:
                 static = static.project(star(exclude=[SCENARIO]))
             # Connections back to the positional columns PyPSA expects (https://energy-models.github.io/datarecord/design/tools/).
@@ -1192,7 +1192,7 @@ class _NetworkSource:
 
         `c.defaults` already declares what an `AttributeSpec` asks for, so this reads it
         rather than restating it. Every stored attribute, not only the varying
-        ones - `dims=frozenset()` is what puts one in `dims/components/`.
+        ones - `dims=frozenset()` is what puts one in `dims/entity_type/`.
         Results are excluded, belonging to `outputs/`.
 
         Notes
@@ -1348,9 +1348,9 @@ class _NetworkSource:
         return LazyFrames(present, lambda dim: nw.from_native(axes[dim]()).lazy())
 
     @property
-    def components(self) -> LazyFrames:
+    def entity_types(self) -> LazyFrames:
         types = tuple(c.name for c in self.n.components if _exported(c))
-        return LazyFrames(types, self._component_frame)
+        return LazyFrames(types, self._entity_type_frame)
 
     @property
     def groups(self) -> LazyFrames:
@@ -1491,7 +1491,7 @@ class _NetworkSource:
 
     # -- frames -------------------------------------------------------------
 
-    def _component_frame(self, ctype: str) -> nw.LazyFrame:
+    def _entity_type_frame(self, ctype: str) -> nw.LazyFrame:
         """Wide members of one type: the non-varying, non-port static columns.
 
         Notes
@@ -1658,7 +1658,7 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     frame = record.groups.get(CONNECTION)
-    members = record.components.get(ctype)
+    members = record.entity_types.get(ctype)
     if frame is None or members is None:
         return None
     df = frame.collect(backend="pandas").to_native()
@@ -1736,7 +1736,7 @@ def _collapse_connections(
 
 
 def _static_columns(record: Record, ctype: str) -> frozenset[str]:
-    """Columns `dims/components/<ctype>.parquet` supplies for this record.
+    """Columns `dims/entity_type/<ctype>.parquet` supplies for this record.
 
     The non-varying half of the static frame: an attribute present here
     needs no `inputs/` row to be resolvable.
@@ -1745,7 +1745,7 @@ def _static_columns(record: Record, ctype: str) -> frozenset[str]:
     -----
     - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
     """
-    frame = record.components.get(ctype)
+    frame = record.entity_types.get(ctype)
     return (
         frozenset(frame.collect_schema().names()) if frame is not None else frozenset()
     )

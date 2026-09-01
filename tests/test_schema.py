@@ -116,7 +116,7 @@ def test_partial_dims_is_the_union_over_attributes():
 
 
 def test_file_split_follows_dims():
-    """Varying over nothing is what puts an attribute in `dims/components/`.
+    """Varying over nothing is what puts an attribute in `dims/entity_type/`.
 
     Notes
     -----

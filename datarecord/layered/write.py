@@ -116,7 +116,7 @@ def write_record(
                 fh.write(schema.model_dump_json())
         kinds = [
             ("dims", source.dims, "dims"),
-            ("components", source.components, "dims/components"),
+            ("entities", source.entity_types, "dims/entity_type"),
             ("groups", source.groups, "groups"),
             ("attributes", source.attributes, "inputs"),
         ]
@@ -135,7 +135,7 @@ def write_record(
                     key
                 ]  # looked up exactly once (https://energy-models.github.io/datarecord/design/writing/)
                 _validate_frame(frame, kind, key, schema)
-                if kind == "components":
+                if kind == "entities":
                     tagged.append(
                         frame.select("entity")
                         .collect(backend="pyarrow")
@@ -243,7 +243,7 @@ def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) ->
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
     rel = try_read_parquet(
-        f"{staging}dims/components/*.parquet",
+        f"{staging}dims/entity_type/*.parquet",
         con,
         union_by_name=True,
         filename=True,

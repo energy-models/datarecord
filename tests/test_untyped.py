@@ -76,8 +76,8 @@ def test_every_entity_addressed_attribute_is_carried(untyped_schema):
 
 def test_a_component_round_trips_without_a_type(root):
     """`add` and commit work with a label the schema never declared."""
-    assert list(root.record.components) == [KIND]
-    frame = root.record.components[KIND].collect().to_native().to_pandas()
+    assert list(root.record.entity_types) == [KIND]
+    frame = root.record.entity_types[KIND].collect().to_native().to_pandas()
     assert dict(zip(frame["entity"], frame["p_nom"], strict=True)) == {
         "a": 1.0,
         "b": 2.0,
@@ -117,4 +117,4 @@ def test_an_unknown_label_is_accepted(root, con):
     staged = WorkingRecord(root.record, con)
     staged.add("other", pd.DataFrame([{"entity": "c", "p_nom": 3.0}]))
     child = staged.commit(NewChild(root))
-    assert set(child.record.components) == {KIND, "other"}
+    assert set(child.record.entity_types) == {KIND, "other"}

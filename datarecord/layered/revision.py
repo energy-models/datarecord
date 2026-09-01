@@ -229,9 +229,9 @@ class LayeredRecord:
         return LazyFrames(tuple(axes), lambda dim: nw.from_native(axes[dim]))
 
     @cached_property
-    def components(self) -> LazyFrames:
+    def entity_types(self) -> LazyFrames:
         types = tuple(sorted(self.node_cache.entity_types()))
-        return LazyFrames(types, self._component_frame)
+        return LazyFrames(types, self._entity_type_frame)
 
     @cached_property
     def groups(self) -> LazyFrames:
@@ -276,8 +276,8 @@ class LayeredRecord:
 
     # -- frames, ordered by the map's `order_key` (https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations) ---------------------
 
-    def _component_frame(self, ctype: str) -> nw.LazyFrame:
-        return self._ordered(self.node_cache.component_frame(ctype), ctype)
+    def _entity_type_frame(self, ctype: str) -> nw.LazyFrame:
+        return self._ordered(self.node_cache.entity_type_frame(ctype), ctype)
 
     def _group_frame(self, group: str) -> nw.LazyFrame:
         return self._ordered(self.node_cache.group_frame(group), group)
