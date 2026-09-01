@@ -1542,14 +1542,15 @@ class _NetworkSource:
         # left is the same in every scenario and collapses to one entity row.
         columns = [x for x in columns if x not in _scenario_varying(c, columns)]
         frame = c.static[columns].reset_index().rename(columns={"name": "entity"})
-        return nw.from_native(self._tagged(frame, ctype)).lazy()
+        return nw.from_native(self._tagged(frame)).lazy()
 
     @staticmethod
-    def _tagged(frame: pd.DataFrame, ctype: str) -> pd.DataFrame:
-        """A `dims/` frame with the columns the fold keys and scopes by.
+    def _tagged(frame: pd.DataFrame) -> pd.DataFrame:
+        """A `dims/` frame with the tombstone column the fold scopes by.
 
-        `entity_type` because one owner map covers every type; `deleted`
-        because the fold reads the tombstone column from the same file.
+        `deleted` because the fold reads it from this same file. Not the type -
+        a per-type member file is the file its rows are in, and the writer
+        derives the entity axis from that.
 
         No `scenario`: an entity exists or it does not, so nothing scopes
         membership per value of an axis. A stochastic network repeats its
@@ -1560,11 +1561,10 @@ class _NetworkSource:
         Notes
         -----
         - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [the record format](https://energy-models.github.io/datarecord/design/format/)
         """
         if SCENARIO in frame.columns:
             frame = frame.drop(columns=[SCENARIO]).drop_duplicates(subset=["entity"])
-        frame = frame.assign(entity_type=ctype)
         if "deleted" not in frame.columns:
             frame["deleted"] = False
         return frame
