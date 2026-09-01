@@ -11,6 +11,7 @@ datarecord/                     # the standalone concept
 ├── layered/                    # LayeredRecord and its resolution
 │   ├── revision.py             # Revision, the node tree
 │   ├── resolve.py              # owner-map fold
+│   ├── sources.py              # LayerSource: where a layer's files are
 │   └── write.py                # write_record
 └── duck.py                     # connection setup, path derivation
 ```

@@ -42,7 +42,6 @@ from datarecord.duck import (
     ensure_local_dir,
     fn,
     fold_axis,
-    layer_dir,
     null_safe,
     parquet_names,
     resolved_dir,
@@ -51,6 +50,7 @@ from datarecord.duck import (
     try_read_parquet,
     union_all_by_name,
 )
+from datarecord.layered.sources import ParquetLayer
 from datarecord.record import Flags, flags_from_rows
 from datarecord.schema import Schema
 
@@ -326,7 +326,7 @@ def _entity_deleted(
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     return _deleted_relation(
-        revision_id, keys, con, uri=layer_dir(revision_id) + "dims/entity.parquet"
+        revision_id, keys, con, uri=ParquetLayer(revision_id).uri("dims/entity.parquet")
     )
 
 
@@ -347,7 +347,7 @@ def _group_deleted(
         revision_id,
         keys,
         con,
-        uri=f"{layer_dir(revision_id)}groups/{group}.parquet",
+        uri=ParquetLayer(revision_id).uri(f"groups/{group}.parquet"),
         fixed=keys.schema.group_key(group),
     )
 
@@ -417,7 +417,7 @@ def fold_inputs(
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     rel = try_read_parquet(
-        layer_dir(revision_id) + "inputs/*.parquet", con, union_by_name=True
+        ParquetLayer(revision_id).uri("inputs/*.parquet"), con, union_by_name=True
     )
     if rel is None:
         own = _empty_relation(keys.schema, con, *keys.schema.input_columns)
@@ -506,7 +506,7 @@ def fold_entities(
         keys,
         con,
         parent,
-        uri=layer_dir(revision_id) + "dims/entity.parquet",
+        uri=ParquetLayer(revision_id).uri("dims/entity.parquet"),
         key=("entity",),
         columns=keys.schema.entity_columns,
     )
@@ -544,7 +544,7 @@ def fold_group(
         keys,
         con,
         parent,
-        uri=f"{layer_dir(revision_id)}groups/{group}.parquet",
+        uri=ParquetLayer(revision_id).uri(f"groups/{group}.parquet"),
         key=key,
         columns=keys.schema.group_columns(group),
         also_deleted=_entity_deleted if over_entity else None,
@@ -974,7 +974,7 @@ class NodeCache:
         -----
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
-        uri = f"{layer_dir(self.revision_id)}outputs/*.parquet"
+        uri = ParquetLayer(self.revision_id).uri("outputs/*.parquet")
         rel = try_read_parquet(uri, self.con, union_by_name=True)
         if rel is None:
             return []
@@ -1074,7 +1074,9 @@ class NodeCache:
         layers = [
             with_columns(
                 keys.schema,
-                con.read_parquet(f"{layer_dir(layer_uuid)}inputs/{attribute}.parquet"),
+                con.read_parquet(
+                    ParquetLayer(layer_uuid).uri(f"inputs/{attribute}.parquet")
+                ),
                 *columns,
             ).project(lit(layer_uuid).alias("layer_uuid"), col("*"))
             for (layer_uuid,) in om["layer_uuid"].distinct().fetchall()
@@ -1109,7 +1111,7 @@ class NodeCache:
         -----
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
-        uri = f"{layer_dir(self.revision_id)}outputs/{attribute}.parquet"
+        uri = ParquetLayer(self.revision_id).uri(f"outputs/{attribute}.parquet")
         rel = try_read_parquet(uri, self.con)
         if rel is not None:
             return rel
@@ -1123,7 +1125,7 @@ class NodeCache:
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
         return self._owned_frame(
-            uri=lambda uid: f"{layer_dir(uid)}dims/entity_type/{ctype}.parquet",
+            uri=lambda uid: ParquetLayer(uid).uri(f"dims/entity_type/{ctype}.parquet"),
             owned=self.entity_map.filter(col("entity_type") == lit(ctype)),
             match=("entity",),
         )
@@ -1143,7 +1145,9 @@ class NodeCache:
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         return self._owned_frame(
-            uri=lambda layer_uuid: f"{layer_dir(layer_uuid)}groups/{group}.parquet",
+            uri=lambda layer_uuid: ParquetLayer(layer_uuid).uri(
+                f"groups/{group}.parquet"
+            ),
             owned=self.group(group),
             match=self.schema.group_key(group),
         )

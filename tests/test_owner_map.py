@@ -9,11 +9,13 @@ Notes
 
 import shutil
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 from datarecord import Revision
 from datarecord.duck import layer_dir, resolved_dir, union_all_by_name
+from datarecord.layered.sources import LayerSource, ParquetLayer
 from tests.fixtures import export_network, tombstone, write_input
 
 
@@ -269,3 +271,37 @@ def test_a_record_with_no_manifest_folds(con, base_uri):
     inputs = revision.node_cache.inputs
     assert "varies" in inputs.columns
     assert inputs.fetchall() == []
+
+
+def test_a_parquet_layer_locates_a_layers_files(base_uri):
+    """The fold names files and the source says where they are.
+
+    `layer_dir` is what a `ParquetLayer` derives from, so this pins the seam
+    rather than the layout: a reader asks for `inputs/p_nom.parquet` and never
+    builds the path itself.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    """
+    revision_id = uuid4()
+    source = ParquetLayer(revision_id)
+    assert isinstance(source, LayerSource), (
+        "structural, so no import is needed to be one"
+    )
+
+    assert source.uri() == layer_dir(revision_id), "empty is the layer root"
+    assert source.uri("inputs/p_nom.parquet") == (
+        layer_dir(revision_id) + "inputs/p_nom.parquet"
+    )
+    # A glob is a path like any other: the source neither parses nor validates.
+    assert source.uri("inputs/*.parquet").endswith("inputs/*.parquet")
+
+
+def test_a_parquet_layer_takes_the_base_it_was_given(tmp_path):
+    """Two records on two roots locate their layers apart, as `layer_dir` does."""
+    revision_id = uuid4()
+    root = str(tmp_path / "elsewhere")
+    assert ParquetLayer(revision_id, root).uri("dims/entity.parquet") == (
+        layer_dir(revision_id, root) + "dims/entity.parquet"
+    )

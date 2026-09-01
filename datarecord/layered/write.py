@@ -25,11 +25,11 @@ from datarecord.duck import (
     base_uri_of,
     col,
     fn,
-    layer_dir,
     lit,
     try_read_parquet,
 )
 from datarecord.layered.resolve import cast_declared, read_schema, write_schema
+from datarecord.layered.sources import ParquetLayer
 from datarecord.record import Record, collision_detail
 from datarecord.schema import Schema
 
@@ -55,11 +55,11 @@ def write_record(
     Parameters
     ----------
     revision_id
-        The record whose layer this is; `layer_dir` derives the path.
+        The record whose layer this is; its `ParquetLayer` derives the path.
         `None` only together with `uri`, for a standalone record that belongs
         to no record.
     uri
-        Write here instead of at `layer_dir(revision_id)` - how a `Directory`
+        Write here instead of at the revision's own layer - how a `Directory`
         commit target produces a record outside the layer tree.
     source
         The layer's contents. Validated against its own schema before
@@ -86,7 +86,7 @@ def write_record(
         if revision_id is None:
             msg = "write_record needs a revision_id or a uri"
             raise ValueError(msg)
-        base = layer_dir(revision_id)
+        base = ParquetLayer(revision_id).uri()
     else:
         base = uri if uri.endswith("/") else uri + "/"
     local = "://" not in base
