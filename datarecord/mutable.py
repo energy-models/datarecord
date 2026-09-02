@@ -11,9 +11,8 @@ Notes
 
 from __future__ import annotations
 
-import itertools
 import re
-from collections.abc import Container, Iterable, Mapping, Sequence
+from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
@@ -21,12 +20,10 @@ from uuid import UUID, uuid4
 
 import duckdb
 import narwhals as nw
-from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, Expression
 from duckdb import SQLExpression as sql
-from duckdb import StarExpression as star
 
 from datarecord.duck import (
     DuckTypes,
@@ -103,28 +100,6 @@ def _incoming(frame: Any, con: DuckDBPyConnection) -> nw.LazyFrame:
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     return nw.from_native(as_relation(nw.from_native(frame).lazy(), con)).lazy()
-
-
-def _latest_per(rel: DuckDBPyRelation, key: Iterable[str]) -> DuckDBPyRelation:
-    """`rel`'s newest row per `key`, by `_seq` - last write wins.
-
-    The three staging tables collapse the same way and differ only in what keys
-    them, so the window lives here once. `_seq` and the ranking column are
-    projected away, since a collapsed relation is read as data rather than as
-    staging bookkeeping.
-
-    Notes
-    -----
-    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-    """
-    partition = ", ".join(str(col(c)) for c in key)
-    ranked = rel.project(
-        star(),
-        sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _seq DESC)").alias(
-            "_rn"
-        ),
-    )
-    return ranked.filter(col("_rn") == lit(1)).project(star(exclude=["_rn", "_seq"]))
 
 
 def _is_frame(value: Any) -> bool:
@@ -267,9 +242,10 @@ class _Written:
 class StagedSource:
     """A staging area as one layer's rows - the last source the fold reads.
 
-    "The layer as it would be written": each member collapses its staging table
-    last-write-wins and hands over what `write_record` would persist, so `_seq`
-    never reaches the fold and nobody can add a raw-rows member later.
+    "The layer as it would be written": each member reads its staging table,
+    which an edit replaces by key rather than appending to (`_replace`), so the
+    table is already one row per key and what `write_record` would persist -
+    the entity axis apart, whose tombstone anti-join reaches another file.
 
     Unfrozen, which is the whole of what distinguishes it: a `set` changes these
     rows under a reader, so the fold must stay a relation past this point rather
@@ -304,11 +280,12 @@ class StagedSource:
         Which matters for the columns rather than the labels: the fold is
         last-writer-wins per *label*, over the whole row, so a source handing
         over only the column its `set` named would blank every sibling
-        attribute on that label. `_axis_layer` merges them per column first,
-        which is the same relation `commit` writes.
+        attribute on that label. A `set` on an axis carries the siblings into
+        the staged row when it patches it (`_patch_axis`), so the table is
+        already the row `commit` writes.
 
         `entity` included, staged as an axis like the rest - what differs is
-        only how `_axis_layer` collapses it.
+        only the extent `_axis_layer` gives it.
 
         Notes
         -----
@@ -333,10 +310,9 @@ class StagedSource:
 
     def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation | None:
         if kind == "outputs":
-            rel = self.record._rows("outputs", name)
-            # Results do not overlay, so there is nothing to collapse them
-            # against; `_seq` is dropped as it is from every other member.
-            return None if rel is None else rel.project(star(exclude=["_seq"]))
+            # Results do not overlay, so the table is already what is written -
+            # one row per coordinate (`_replace`) and no fold to apply.
+            return self.record._rows("outputs", name)
         return self.record._collapsed_inputs(name)
 
     def all_attributes(self, kind: str = "inputs") -> DuckDBPyRelation | None:
@@ -361,15 +337,6 @@ class StagedSource:
 
 
 # -- the DuckDB-backed implementation (https://energy-models.github.io/datarecord/design/working-record/#staging) ---------------------------------
-
-_SEQ = itertools.count(1)
-
-_CARRIED_SEQ = 0
-"""`_seq` for a row carried from the base, below every edit's - `_SEQ` starts at 1.
-
-A carried row is what the layer must hold, never what a caller stated, so an edit
-naming the same coordinate has to win in `_latest_per` whenever it arrives.
-"""
 
 
 class WorkingRecord(Record):
@@ -512,7 +479,7 @@ class WorkingRecord(Record):
             c: types.get(c) or self._column_type(c)
             for c in self.schema.long_columns_for(attribute)
         }
-        return duck_types.empty_relation(**shaped, _seq=nw.Int64())
+        return duck_types.empty_relation(**shaped)
 
     def _rows(self, kind: str, attribute: str | None = None) -> DuckDBPyRelation | None:
         name = self._staged.get((kind, attribute))
@@ -593,10 +560,9 @@ class WorkingRecord(Record):
 
         def frame(attr: str) -> nw.LazyFrame:
             rel = cast("DuckDBPyRelation", self._rows("outputs", attr))
-            # `_seq` is staging bookkeeping, not data. Results are otherwise
-            # read as staged: they do not overlay, so there is nothing to
-            # collapse them against (https://energy-models.github.io/datarecord/design/read-path/#outputs).
-            return nw.from_native(rel.project(star(exclude=["_seq"])))
+            # The table is already the shape of the file: results do not overlay,
+            # so there is nothing to collapse them against (https://energy-models.github.io/datarecord/design/read-path/#outputs).
+            return nw.from_native(rel)
 
         return LazyFrames(names, frame)
 
@@ -679,9 +645,10 @@ class WorkingRecord(Record):
         which becomes a row of this layer's axis file - the fold keys per label,
         so introducing one displaces nothing.
 
-        One row per label carrying this attribute's column alone, so a second
-        `set` on the same axis adds its own and `_collapsed_axis` folds the two
-        together per label.
+        One *complete* row per label: this edit's column over the label's
+        current row - the one already staged where there is one, else the base's
+        - so a second `set` on the same axis replaces the row rather than adding
+        beside it and losing the first's column.
 
         Notes
         -----
@@ -711,19 +678,17 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
 
-        seq = next(_SEQ)
         table = self._ensure(f"{_AXIS_PREFIX}{dim}", None)
         if isinstance(value, Mapping):
             if not value:
                 return
-            rel = self._values_relation(
+            edit = self._values_relation(
                 {dim: list(value), attribute: list(value.values())},
                 {
                     dim: self._column_type(dim),
                     attribute: self.schema.value_type(attribute),
                 },
             )
-            supplied = {"_seq": lit(seq)}
         else:
             base_axis = self._base.dims.axes.get(dim)
             if base_axis is None:
@@ -733,13 +698,64 @@ class WorkingRecord(Record):
                     f"mapping, or write the axis file first"
                 )
                 raise ValueError(msg)
-            # The key alone: the axis frame may carry a sibling attribute's
-            # column, and this edit states only its own - `_collapsed_axis` folds
-            # the rest back per label.
-            rel = base_axis.project(col(dim))
-            supplied = {attribute: lit(value), "_seq": lit(seq)}
+            edit = base_axis.project(col(dim), lit(value).alias(attribute))
 
-        self._insert(rel, table, supplied)
+        self._patch_axis(dim, attribute, table, edit)
+
+    def _patch_axis(
+        self, dim: str, attribute: str, table: str, edit: DuckDBPyRelation
+    ) -> None:
+        """Set `attribute` on each label `edit` names, in place.
+
+        An axis row's columns are independently editable, so this patches the one
+        column rather than replacing the row - a sibling a `set` did not name is
+        never read and so cannot be lost. A label falls to one of two statements
+        by whether a prior `set` already staged it:
+
+        - **INSERT** a label not yet staged, taking its siblings from the base row
+          where the base has one and the edited column from `edit`. Its siblings
+          have to travel with it: the fold is whole-row last-writer-wins per label
+          (`fold_axis`), so a staged patch carrying only its own column would win
+          the label and blank the rest - the resolved row is the layer's, not one
+          the read rebuilds column by column. A label the base also lacks is new,
+          and the edit is the whole of its row.
+        - **UPDATE** a label already staged, patching the one column in place so
+          the siblings an earlier edit carried stay put.
+
+        `partial` decides only the label *extent* the layer carries, which is
+        `_axis_layer`'s business, not this.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        """
+        staged = self.con.table(table)
+        base = self._base.dims.axes.get(dim)
+        # Raw SQL because `UPDATE ... FROM` is a join-update, which the relational
+        # `update` cannot express (https://duckdb.org/docs/stable/clients/python/relational_api).
+        self.con.execute(
+            f"UPDATE {table} AS t SET {col(attribute)} = {col('e', attribute)} "
+            f"FROM edit e "
+            f"WHERE {col('t', dim)} IS NOT DISTINCT FROM {col('e', dim)}"
+        )
+        fresh = edit.set_alias("e").join(
+            staged.set_alias("s"), null_safe("e", "s", [dim]), how="anti"
+        )
+        if base is None:
+            rows = fresh.set_alias("e").select(col(dim), col(attribute))
+        else:
+            # A left join, since a fresh label the base also lacks has no row.
+            siblings = [c for c in base.columns if c not in (dim, attribute)]
+            rows = (
+                fresh.set_alias("e")
+                .join(base.set_alias("b"), null_safe("e", "b", [dim]), how="left")
+                .select(
+                    col("e", dim), col("e", attribute), *(col("b", c) for c in siblings)
+                )
+            )
+        self._insert(rows, table, {})
 
     def _resolved_names(self, ctype: str) -> list[str]:
         """Every name `ctype` currently resolves to, base plus staged.
@@ -1151,7 +1167,11 @@ class WorkingRecord(Record):
         self._insert_long(rel, table, attribute, present, dims)
 
     def _insert(
-        self, rel: DuckDBPyRelation, table: str, supplied: Mapping[str, Expression]
+        self,
+        rel: DuckDBPyRelation,
+        table: str,
+        supplied: Mapping[str, Expression],
+        key: Sequence[str] | None = None,
     ) -> None:
         """Project `rel` into `table`'s column order and insert it.
 
@@ -1161,6 +1181,19 @@ class WorkingRecord(Record):
         `supplied` does not name is taken from `rel` where it carries one, and is
         otherwise a NULL typed from the table, which is what spares the insert a
         coercion.
+
+        `key` given, the rows `rel` names by it are deleted first, so the table
+        holds one row per key and *is* the file it becomes - no fold on the way
+        out. The match is `null_safe` so a broadcast coordinate's NULL replaces
+        the same NULL rather than sitting beside it (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
+        `rel` is a whole-row edit built from the caller's frame, never from the
+        staged table, so the delete cannot change what the insert then reads -
+        the one path that patches columns in place (`_patch_axis`) does not pass
+        a `key`.
+
+        Notes
+        -----
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
         staging = self.con.table(table)
         carried = {c.lower() for c in rel.columns}
@@ -1178,6 +1211,10 @@ class WorkingRecord(Record):
                 for c, t in zip(staging.columns, staging.types, strict=True)
             )
         )
+        if key is not None:
+            # `null_safe`, not `IN`/`=`: those never match a broadcast row's NULL.
+            on = null_safe(table, "p", key)
+            self.con.execute(f"DELETE FROM {table} USING projected p WHERE {on}")
         try:
             projected.insert_into(table)
         except duckdb.ConversionException as exc:
@@ -1224,7 +1261,7 @@ class WorkingRecord(Record):
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         """
         duck_types = DuckTypes(rel)
-        rel.project(
+        shaped = rel.project(
             *(
                 col(d)
                 if d in present
@@ -1234,9 +1271,27 @@ class WorkingRecord(Record):
             lit(attribute).alias("attribute"),
             duck_types.null(nw.Float64()).alias("breakpoint"),
             col("value"),
-            lit(next(_SEQ)).alias("_seq"),
-        ).insert_into(table)
+        )
+        self._insert(shaped, table, {}, key=self._long_key(attribute))
         self._complete_owned_whole(attribute, table)
+
+    def _long_key(self, attribute: str) -> tuple[str, ...]:
+        """The coordinate columns one long table is keyed on - what an edit replaces.
+
+        The fold partitions on these too (`_collapsed_inputs` before this change),
+        so replacing them per edit removes exactly what it would have discarded.
+
+        Notes
+        -----
+        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        """
+        columns = set(self.schema.long_columns_for(attribute))
+        return tuple(
+            c
+            for c in (*self.schema.input_key, *self.schema.dims, "breakpoint")
+            if c in columns
+        )
 
     def _complete_owned_whole(self, attribute: str, table: str) -> None:
         """Carry the base extent a non-partial axis obliges the staged rows to hold.
@@ -1249,13 +1304,15 @@ class WorkingRecord(Record):
 
         Scoped by the keys already staged, not by the attribute: the semi-join
         below reaches only the keys some edit named, so a component this record
-        never touched stays in the parent. Carried rows take a `_seq` below every
-        edit's, so a later `set` on a carried coordinate outranks it rather than
-        tying with it.
+        never touched stays in the parent.
 
         Idempotent, which is what lets it run per insert instead of once: the
         anti-join drops any coordinate the table already holds, so a second edit
-        to the same attribute carries only what the first did not.
+        to the same attribute carries only what the first did not. That
+        anti-join is also the whole of what keeps a fill off an edited
+        coordinate - it keys on `_long_key`, the same coordinate a later `set`
+        deletes on (`_replace`), so the fill it excludes and the row that
+        replaces one are one key, and no ordering column is needed to rank them.
 
         Notes
         -----
@@ -1276,7 +1333,7 @@ class WorkingRecord(Record):
             # No column for any whole-owned dim, so the file holds one row per
             # key and there is no extent to complete.
             return
-        coordinate = [*scope, *present, "breakpoint"]
+        coordinate = self._long_key(attribute)
         staged = self.con.table(table)
         base = self._base.relation(attribute)
         # A staged row leaving a whole-owned dim NULL already covers that dim's
@@ -1296,7 +1353,7 @@ class WorkingRecord(Record):
             .set_alias("b")
             .join(staged.set_alias("s"), null_safe("b", "s", coordinate), how="anti")
         )
-        self._insert(carried, table, {"_seq": lit(_CARRIED_SEQ)})
+        self._insert(carried, table, {})
 
     def _values_relation(
         self,
@@ -1440,10 +1497,14 @@ class WorkingRecord(Record):
             dtype = nw.Float64() if c == "breakpoint" else self._column_type(c)
             return duck_types.null(dtype).alias(c)
 
-        rel.project(
-            *(column(c) for c in self.schema.long_columns_for(attribute)),
-            lit(next(_SEQ)).alias("_seq"),
-        ).insert_into(table)
+        shaped = rel.project(
+            *(column(c) for c in self.schema.long_columns_for(attribute))
+        )
+        # Keyed the same whether input or result: a repeat coordinate is the
+        # caller restating one, and replacing it is the answer folding it gave.
+        # No `_complete_owned_whole`: the derived frame resolved the current
+        # value, so it already carries the extent an edit would have to.
+        self._insert(shaped, table, {}, key=self._long_key(attribute))
 
     def add(self, ctype: str, frame: Any) -> None:
         """Stage new components from a wide frame.
@@ -1499,25 +1560,24 @@ class WorkingRecord(Record):
 
         self._release_from_other_types(ctype, rel)
 
-        # One `_seq` for both rows: they are one edit, and a membership row that
-        # outranked its own attributes would resolve against the wrong `add`.
-        seq = next(_SEQ)
+        # Two rows for one component, each replacing any this record already
+        # staged for the name: the axis says it exists and of what type, the
+        # member table says what it is. `add` after `remove` of the same name is
+        # thus one row - the tombstone is deleted, not left to be outranked.
         self._insert(
             rel,
             self._ensure(_ENTITY_AXIS),
             {
                 "entity_type": lit(ctype),
                 "deleted": lit(False),  # noqa: FBT003
-                "_seq": lit(seq),
             },
+            key=("entity",),
         )
         self._insert(
             rel,
             members,
-            {
-                "deleted": lit(False),  # noqa: FBT003
-                "_seq": lit(seq),
-            },
+            {"deleted": lit(False)},  # noqa: FBT003
+            key=("entity",),
         )
         for attribute in varying:
             # Always `inputs`: `add` declares components, and a component's
@@ -1602,7 +1662,7 @@ class WorkingRecord(Record):
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
         """
-        known = [c for c in self.con.table(table).columns if c != "_seq"]
+        known = list(self.con.table(table).columns)
         allowed = {c.lower() for c in known}
         extra = sorted(c for c in columns if c.lower() not in allowed)
         if not extra:
@@ -1619,14 +1679,20 @@ class WorkingRecord(Record):
         kind: str,
         fixed: tuple[str, ...],
         keys: list[list[Any]],
+        key: tuple[str, ...],
         attribute: str | None = None,
     ) -> None:
-        """Stage one `deleted` row per key.
+        """Replace one `deleted` row per key.
 
-        Shared by `remove` and `remove_group`, which differ only in their key
+        Shared by `remove` and `remove_group`, which differ only in their
         columns - a group's key where `remove` carries the entity. One helper so
         the shape is derived from the column list rather than restated per
         caller, which is what let the two drift out of step.
+
+        `fixed` are the columns the tombstone carries; `key` is the subset an
+        edit replaces on, which is `entity` alone even where the entity axis
+        also carries the type - so a tombstone deletes an `add` row whatever type
+        it named.
 
         `keys` arrives row-oriented and is transposed to build the relation,
         columns being how every insert here crosses into DuckDB.
@@ -1639,16 +1705,13 @@ class WorkingRecord(Record):
         table = self._ensure(kind, attribute)
         if not keys:
             return
-        seq = next(_SEQ)
         by_column = dict(zip(fixed, zip(*keys, strict=True), strict=True))
         rel = self._values_relation(by_column, {c: self._column_type(c) for c in fixed})
         self._insert(
             rel,
             table,
-            {
-                "deleted": lit(True),  # noqa: FBT003
-                "_seq": lit(seq),
-            },
+            {"deleted": lit(True)},  # noqa: FBT003
+            key=key,
         )
 
     def remove(self, ctype: str, names: Sequence[str]) -> None:
@@ -1670,8 +1733,11 @@ class WorkingRecord(Record):
             _ENTITY_AXIS,
             ("entity_type", "entity"),
             [[ctype, name] for name in names],
+            ("entity",),
         )
-        self._stage_tombstones(_MEMBERS, ("entity",), [[name] for name in names], ctype)
+        self._stage_tombstones(
+            _MEMBERS, ("entity",), [[name] for name in names], ("entity",), ctype
+        )
 
     def add_group(self, group: str, frame: Any) -> None:
         """Stage rows of one declared group from a frame carrying its coordinates.
@@ -1693,16 +1759,14 @@ class WorkingRecord(Record):
             if required not in columns:
                 msg = f"`add_group({group!r}, ...)` needs a {required!r} column"
                 raise ValueError(msg)
-        _rows = lazy.to_native()  # noqa: F841 - bound by replacement scan below
         table = self._ensure(group)
         extra = [c for c in columns if c not in coordinates]
         self._reject_undeclared(f"add_group({group!r}, ...)", table, extra)
-        extra_sql = "".join(f', "{c}"' for c in extra)
-        coordinate_sql = ", ".join(f'"{c}"' for c in coordinates)
-        self.con.execute(
-            f"INSERT INTO {table} BY NAME "
-            f"SELECT {coordinate_sql}{extra_sql}, "
-            f"false AS deleted, {next(_SEQ)} AS _seq FROM _rows"
+        self._insert(
+            as_relation(lazy, self.con),
+            table,
+            {"deleted": lit(False)},  # noqa: FBT003
+            key=self.schema.group_key(group),
         )
 
     def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None:
@@ -1715,9 +1779,8 @@ class WorkingRecord(Record):
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        self._stage_tombstones(
-            group, self.schema.group_key(group), [list(key) for key in keys]
-        )
+        group_key = self.schema.group_key(group)
+        self._stage_tombstones(group, group_key, [list(key) for key in keys], group_key)
 
     # -- commit / rollback (https://energy-models.github.io/datarecord/design/working-record/#committing) -------------------------
 
@@ -1733,7 +1796,13 @@ class WorkingRecord(Record):
         self._staged.clear()
 
     def _collapsed_inputs(self, attribute: str) -> DuckDBPyRelation | None:
-        """One attribute's staged rows, last-write-wins per key, tombstones applied.
+        """One attribute's staged rows, tombstones applied.
+
+        The rows are already one per coordinate - an edit replaced its key rather
+        than appending beside it (`_replace`) - so this is the table scan minus
+        the coordinates a component tombstone reaches. That anti-join stays, being
+        a cross-table fact rather than an ordering one: a `remove` on the entity
+        axis has to clear this attribute's rows for the name too.
 
         None where nothing is staged for it, which is what says the base's rows
         stand alone.
@@ -1745,33 +1814,23 @@ class WorkingRecord(Record):
         rel = self._rows("inputs", attribute)
         if rel is None:
             return None
-        # Per coordinate, not per input key: the input key excludes the dims an
-        # attribute is not owned per (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override), so partitioning on it alone would
-        # collapse a whole staged series to one row - two `set` calls at
-        # different snapshots are not two writes to the same key.
-        #
-        # Intersected with the table's own columns: it carries this attribute's
-        # coordinates and no others (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
-        columns = set(self.schema.long_columns_for(attribute))
-        key = dict.fromkeys(
-            c
-            for c in (*self.schema.input_key, *self.schema.dims, "breakpoint")
-            if c in columns
-        )
-        live = _latest_per(rel, key)
         dead = self._tombstoned()
         if dead is None:
-            return live
-        # A deleted component has no attributes, so the tombstone wins over a
-        # staged value regardless of sequence (https://energy-models.github.io/datarecord/design/working-record/#committing).
+            return rel
+        # A deleted component has no attributes, so the tombstone drops a staged
+        # value for its name (https://energy-models.github.io/datarecord/design/working-record/#committing).
         #
         # Matched on `name` alone: the tombstone carries a type and a staged
         # input row does not (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
         on = null_safe("l", "d", ("entity",))
-        return live.set_alias("l").join(dead.set_alias("d"), on, how="anti")
+        return rel.set_alias("l").join(dead.set_alias("d"), on, how="anti")
 
     def _tombstoned(self) -> DuckDBPyRelation | None:
-        """Component keys whose latest staged member row is a tombstone.
+        """Component keys whose staged entity-axis row is a tombstone.
+
+        One row per name in the table already (`_replace` on `entity`), so an
+        `add` after a `remove` has replaced the tombstone rather than sitting
+        above it - the scan is the answer.
 
         Notes
         -----
@@ -1780,41 +1839,25 @@ class WorkingRecord(Record):
         rel = self._rows(_ENTITY_AXIS)
         if rel is None:
             return None
-        cols = ("entity",)
-        # An `add` after a `remove` means the component exists again, so only
-        # the latest row per key counts (https://energy-models.github.io/datarecord/design/working-record/#committing).
-        return (
-            _latest_per(rel, cols)
-            .filter(col("deleted"))
-            .project(*(col(c) for c in cols))
-        )
+        return rel.filter(col("deleted")).project(col("entity"))
 
     def _collapsed_entities(self) -> DuckDBPyRelation | None:
         """The staged entity axis: which names exist, of what type, dead or live.
 
-        Whole-row last-write-wins, where every other axis folds per column
-        (`_collapsed_axis`). Both halves of that matter here:
-
-        - **Partitioned by `entity` alone**, `entity_type` carried rather than
-          keyed, so a `remove` under one type and an `add` under another resolve
-          to one row - two would commit a name shared across types.
-        - **Not per column**, because the columns of the losing row are not
-          wanted: a per-column fold would take `deleted` from the tombstone and
-          the type from the `add`, giving a member that is both a `Bus` and
-          deleted. A retype is one row replacing another, not a merge.
+        A table scan: one row per name, keyed by `entity` alone with the type
+        carried (`_replace`), so a `remove` under one type and an `add` under
+        another are already one row - a retype replaced the row rather than
+        merging into a member that is both a `Bus` and deleted.
 
         Notes
         -----
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        rel = self._rows(_ENTITY_AXIS)
-        if rel is None:
-            return None
-        return _latest_per(rel, ("entity",))
+        return self._rows(_ENTITY_AXIS)
 
     def _collapsed_members(self, ctype: str) -> DuckDBPyRelation | None:
-        """One type's staged member rows, last-write-wins per entity.
+        """One type's staged member rows - a table scan, one per entity.
 
         A tombstone stays, as it does in the file: the fold reads `deleted` from
         this file too, so a removal that left no row here would read as a member
@@ -1831,55 +1874,20 @@ class WorkingRecord(Record):
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        rel = self._rows(_MEMBERS, ctype)
-        if rel is None:
-            return None
-        return _latest_per(rel, ("entity",))
+        return self._rows(_MEMBERS, ctype)
 
     def _collapsed_group(self, group: str) -> DuckDBPyRelation | None:
-        """One group's staged rows, last-write-wins per `group_key`.
+        """One group's staged rows - a table scan, one per `group_key`.
 
-        Not per coordinate: restating a tuple with a different `into` label is
-        an edit to it rather than a second row.
-
-        Notes
-        -----
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-        """
-        rel = self._rows(group)
-        if rel is None:
-            return None
-        return _latest_per(rel, self.schema.group_key(group))
-
-    def _collapsed_axis(self, dim: str) -> DuckDBPyRelation | None:
-        """Staged rows for one axis, last-write-wins per label *per column*.
-
-        Not `_latest_per`, which picks a whole row: two `set` calls for two
-        attributes on one axis each stage rows carrying only their own column,
-        so the newest whole row would drop the other attribute's value. A
-        `max_by` per column keeps each attribute's own latest, which is what
-        makes the two calls commute.
+        Restating a tuple replaced its row (`_replace` on `group_key`), so the
+        table already holds one per key; a different `into` label is that edit,
+        not a second row.
 
         Notes
         -----
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        rel = self._rows(f"{_AXIS_PREFIX}{dim}")
-        if rel is None:
-            return None
-        staged = [a for a in self.schema.attributes_on(dim) if a in rel.columns]
-        return rel.aggregate(
-            [
-                col(dim),
-                # The FILTER is what keeps a sibling attribute's row, which
-                # leaves this column NULL, from winning it.
-                *(
-                    sql(f"max_by({a}, _seq) FILTER (WHERE {a} IS NOT NULL)").alias(a)
-                    for a in staged
-                ),
-            ],
-            str(col(dim)),
-        )
+        return self._rows(group)
 
     # -- what commit writes (https://energy-models.github.io/datarecord/design/working-record/#committing) -----------------------------------------
 
@@ -1936,17 +1944,19 @@ class WorkingRecord(Record):
     def _axis_layer(self, dim: str) -> DuckDBPyRelation:
         """One axis as this layer writes it, which `partial` decides the extent of.
 
-        Both arms merge the staged columns over the base's *per column*, because
-        a label is one row whichever labels the layer carries: a `set` states one
-        attribute and the row has to keep its siblings' values. What `partial`
-        decides is only how many labels are in it - the touched ones, the fold
-        resolving the rest from the parent, or every label, a dim outside
-        `partial` being one a layer owns entirely once it touches it.
+        The staged table already holds one complete row per label an edit touched
+        (`_patch_axis`), so there is nothing to merge on the way out - what
+        `partial` decides is only how many labels are in it:
 
-        `entity` is the exception: membership is whole-row last-write-wins, so a
-        `remove` then an `add` under another type must resolve to one row rather
-        than merge the two per column. It is also never completed from the base -
-        a layer names the components it touched, and the fold resolves the rest.
+        - **`partial`** - the touched labels alone, the fold resolving the rest
+          from the parent. The staged table is exactly that.
+        - **not `partial`** - a dim a layer owns whole once it touches it, so the
+          untouched labels are carried from the base, unioned by name so a base
+          row lacking a newly-added column reads NULL there.
+
+        `entity` is a table scan either way: membership is one row per name
+        already (`_collapsed_entities`), never completed from the base - a layer
+        names the components it touched and the fold resolves the rest.
 
         Notes
         -----
@@ -1954,53 +1964,21 @@ class WorkingRecord(Record):
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         if dim == "entity":
-            return cast("DuckDBPyRelation", self._collapsed_entities())
-        merged = as_relation(self._axis_frame(dim), self.con)
-        if dim not in self.schema.partial_dims:
-            return merged
-        touched = cast("DuckDBPyRelation", self._collapsed_axis(dim)).project(col(dim))
-        return merged.set_alias("m").join(
-            touched.set_alias("t"), null_safe("m", "t", [dim]), how="semi"
-        )
-
-    def _axis_frame(self, dim: str) -> nw.LazyFrame:
-        """One axis, staged columns over the base's row for each label.
-
-        An outer join, since a `set` may name a label no layer has written: one
-        side or the other may be missing, and both belong to the answer.
-
-        Only ever reached for a dim some edit staged - `StagedSource.axis`
-        answers `None` before calling this where no axis table exists - so
-        `staged` is never `None` here and the base's own rows are not a case.
-        """
-        staged = self._collapsed_axis(dim)
+            entities = self._collapsed_entities()
+            assert entities is not None, "only a staged dim reaches an axis layer"
+            return entities
+        staged = self._rows(f"{_AXIS_PREFIX}{dim}")
         assert staged is not None, "only a staged dim reaches an axis layer"
         base = self._base.dims.axes.get(dim)
-        if base is None:
-            # A `set` may introduce a label for an axis no layer has written, in
-            # which case the staged rows are the whole of it.
-            return nw.from_native(staged)
-        present = list(base.columns)
-        edited = [a for a in staged.columns if a != dim]
-        rel = base.set_alias("b").join(
-            staged.set_alias("s"), null_safe("b", "s", [dim]), how="outer"
+        if base is None or dim in self.schema.partial_dims:
+            return staged
+        # The untouched labels the layer owns whole and so must carry, taken from
+        # the base with their whole rows - unioned by name, the staged side
+        # carrying any column the base lacks and the base side the reverse.
+        untouched = base.set_alias("b").join(
+            staged.set_alias("s"), null_safe("b", "s", [dim]), how="anti"
         )
-        # `coalesce` per column, not "staged row wins": an untouched label is
-        # NULL on the staged side and would otherwise read as cleared. The label
-        # itself coalesces the other way round, a staged-only row having no base.
-        return nw.from_native(
-            rel.project(
-                *(
-                    coalesce(col("s", dim), col("b", dim)).alias(dim)
-                    if c == dim
-                    else coalesce(col("s", c), col("b", c)).alias(c)
-                    if c in edited
-                    else col("b", c).alias(c)
-                    for c in present
-                ),
-                *(col("s", c).alias(c) for c in edited if c not in present),
-            )
-        )
+        return union_all_by_name([staged, untouched], self.con)
 
     def _staged_entities(self) -> Frames:
         """The staged member rows, keyed by component type - one table each.
@@ -2040,8 +2018,8 @@ class WorkingRecord(Record):
         """The staged rows - what a patch layer holds.
 
         No completion step: a dim owned whole was carried into the staging table
-        when it was created (`_seed_owned_whole`), so the rows here are already
-        the layer's full extent.
+        as the rows were staged (`_complete_owned_whole`), so the rows here are
+        already the layer's full extent.
 
         Notes
         -----
@@ -2227,7 +2205,6 @@ def _member_columns(schema: Schema, ctype: str) -> dict[str, nw.dtypes.DType]:
     return {
         "entity": _column_type(schema, "entity"),
         "deleted": nw.Boolean(),
-        "_seq": nw.Int64(),
         **own,
     }
 
@@ -2256,7 +2233,6 @@ def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
     return {
         **{c: _column_type(schema, c) for c in schema.group_coordinates(group)},
         "deleted": nw.Boolean(),
-        "_seq": nw.Int64(),
         **over,
     }
 
@@ -2299,7 +2275,6 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
         **classifying,
         "deleted": nw.Boolean(),
         **{a: schema.value_type(a) or nw.String() for a in schema.attributes_on(dim)},
-        "_seq": nw.Int64(),
     }
 
 
@@ -2312,10 +2287,10 @@ _ENTITY_AXIS = f"{_AXIS_PREFIX}entity"
 """The entity axis's staging kind - an axis like any other, named like one.
 
 `dims/entity.parquet` is a file a layer holds, so staging it as an axis is what
-makes the staged layer the same shape as every other. What differs is only the
-collapse: membership is whole-row last-write-wins, so a `remove` then an `add`
-under another type resolves to one row (`_collapsed_entities`), where an
-ordinary axis folds per column.
+makes the staged layer the same shape as every other. What differs is only how an
+edit keys it: membership replaces on `entity` alone, so a `remove` then an `add`
+under another type resolves to one row, where an ordinary axis patches a column
+in place (`_patch_axis`) and keeps its siblings.
 """
 
 _MEMBERS = "members"

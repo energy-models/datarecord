@@ -1,6 +1,12 @@
 # Proposal: staging without `_seq`
 
-Status: **Draft** · Drafted 2026-09-02
+Status: **Implemented** · Drafted 2026-09-02 · Implemented 2026-09-02
+
+Landed in [staging](../working-record.md#staging) and [committing](../working-record.md#committing); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
+
+Two departures from the sketch below are worth naming. An axis edit is not delete-then-insert: an axis row's columns are independently editable, so a `set` there **patches its one column in place** (`UPDATE ... FROM`, plus an `INSERT` for a label no row yet holds), which is what keeps a sibling attribute without a completion step — `_complete_axis` was drafted and then dropped for it. And `_axis_layer` stays, reduced to a scan for a `partial` axis and a union with the untouched base labels for one owned whole, rather than going entirely.
+
+The residual risk the argument below flags — `_complete_owned_whole`'s anti-join key and the long-row replace key _agreeing_ rather than being one derivation — was retired as it suggested: both now read `_long_key`, so the fill an anti-join excludes and the row a later `set` replaces are one key by construction, not two that happen to match.
 
 Every staging table carries a `_seq`, and every read folds on it. Make each edit replace the rows it names — delete then insert — and the column goes from all four kinds, along with the four folds that read it. A staging table then _is_ what the layer will write, and reading one is a table scan.
 

@@ -37,9 +37,9 @@ class LayerSource(Protocol):
     """One layer's own rows, however they are stored.
 
     "The layer as it would be written", not "the rows as stored": a source
-    hands over what `write_record` would persist, so a staging area's `_seq`
-    collapsing happens behind it and the fold never learns about it. `None`
-    means this layer wrote nothing of that kind.
+    hands over what `write_record` would persist, so however a staging area
+    reaches one row per key happens behind it and the fold never learns about it.
+    `None` means this layer wrote nothing of that kind.
 
     Rows only. Everything the fold does to them - padding to the long schema,
     expanding broadcasts against an axis, the ownership aggregate, `order_key` -

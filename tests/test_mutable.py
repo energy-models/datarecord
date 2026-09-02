@@ -597,6 +597,43 @@ def test_the_restated_series_is_in_the_layer_itself(staged, root, con):
     assert set(rows["entity"]) == {"Manchester Wind"}
 
 
+def test_two_edits_on_one_whole_owned_series_both_land(staged, root, con):
+    """A second `set` replaces its own fill without disturbing the first edit's.
+
+    The case `staging-without-seq` leans on hardest: a `set` on a whole-owned
+    axis stages the touched value plus the untouched coordinates as fills, and a
+    second `set` at another coordinate must replace only the fill on *its* key -
+    the first edit's value and its fills have to survive. Idempotence of
+    `_complete_owned_whole` and replace-by-coordinate are what make it hold with
+    no ordering column to rank a fill below an edit.
+
+    Notes
+    -----
+    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    """
+    base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
+    assert len(mine) > 2, "the series needs an untouched middle to keep"
+
+    first = mine.iloc[[0]][["entity", "snapshot"]].assign(value=0.111)
+    second = mine.iloc[[1]][["entity", "snapshot"]].assign(value=0.222)
+    staged.set("p_max_pu", first, entity=["Manchester Wind"])
+    staged.set("p_max_pu", second, entity=["Manchester Wind"])
+
+    child = staged.commit(NewChild(root))
+    layer = Record.at(layer_dir(child.id), con)
+    rows = layer.attributes["p_max_pu"].collect().to_native().to_pandas()
+    got = rows[rows["entity"] == "Manchester Wind"].sort_values("snapshot")
+
+    assert len(got) == len(mine), "the whole extent is carried, once per snapshot"
+    assert got.iloc[0]["value"] == 0.111, "the first edit survives the second"
+    assert got.iloc[1]["value"] == 0.222, "the second edit replaced its own fill"
+    assert got.iloc[2:]["value"].tolist() == mine.iloc[2:]["value"].tolist(), (
+        "every untouched snapshot keeps the base value"
+    )
+
+
 def test_a_partial_axis_stays_a_patch(staged, root, con):
     """`scenario` *is* partial, so one value may be patched alone.
 

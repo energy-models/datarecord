@@ -294,18 +294,19 @@ An edit changes the inputs a result was computed from, so a parent's `outputs/` 
 What a commit does carry is results **staged into this record** through [`set(..., kind="outputs")`](#results-through-kindoutputs).
 Those were computed against these pending inputs, so they describe exactly the layer being written, and both readings write them: a `NewChild` layer holds its edits and the results computed from them together.
 
-Staged rows are appended, never updated, so the same coordinate may be staged repeatedly.
-Commit collapses to last-write-wins per coordinate, which is what `ROW_NUMBER() OVER (PARTITION BY <coordinate> ORDER BY _seq DESC) = 1` gives when every staged row carries a monotonic `_seq`.
+An edit **replaces the rows it names** rather than appending beside them: it deletes the rows at the coordinate it writes and inserts the new ones, so a staging table holds one row per coordinate and no fold is needed to read it.
+The key it replaces on is the coordinate — the same one a read would have collapsed — so the delete removes exactly what a last-writer-wins fold would have discarded.
+An axis is the exception in mechanism, not in effect: an axis row's columns are independently editable, so a `set` there patches its one column in place (`UPDATE`) rather than replacing the row, which is what keeps a sibling attribute a different `set` wrote.
 
-Per **coordinate**, not per ownership key: the ownership key excludes the dims an attribute is [not owned per](schema.md#partial-the-granularity-of-an-override), so partitioning on it would collapse a whole staged series into one row — two edits at different snapshots are two coordinates, not two writes to the same place.
+Per **coordinate**, not per ownership key: the ownership key excludes the dims an attribute is [not owned per](schema.md#partial-the-granularity-of-an-override), so replacing on it would drop a whole staged series to one row — two edits at different snapshots are two coordinates, not two writes to the same place.
 The same distinction governs [the read overlay](#reading-with-pending-edits) and the restate below, and it is the one thing easy to get wrong here.
 
-Three interactions need stating, because each is where a naive append is wrong:
+Three interactions need stating, because each is where replacing by coordinate alone is not the whole story:
 
-- **`remove` after `set`** on the same component: the tombstone wins regardless of sequence, since a deleted component has no attributes.
-  Commit drops staged attribute rows for tombstoned keys.
+- **`remove` after `set`** on the same component: the tombstone wins, since a deleted component has no attributes.
+  A component tombstone reaches another file's rows, so it stays an anti-join at read and commit rather than a replace — the attribute rows are keyed by coordinate, the tombstone by name.
 - **`add` after `remove`** of the same name: the component exists again.
-  Commit must not write both a member row and a tombstone — the later operation wins.
+  The entity axis replaces on `entity` alone, so the `add` row displaces the tombstone by construction — no member row and tombstone both.
 - **`set` on a component this record also added**: correct as-is, since the two live in different files.
 
 The [non-`partial` rule](schema.md#partial-the-granularity-of-an-override) is the subtle one.
@@ -314,7 +315,7 @@ That is the one read of parent data an edit makes, and it happens as the rows ar
 
 The scope is the key the edit named, never the attribute: a component no edit mentioned keeps its rows in the parent, and a layer carrying them would claim an extent it was never given.
 A staged row that leaves the axis NULL is the exception, since [the broadcast rule](record.md#the-broadcast-rule) already makes it cover every label — there is nothing left to carry, and a carried row beside it would overlap.
-Carried rows are staged below every edit's `_seq`, so a later `set` on a coordinate that was carried wins over it.
+Carried rows go in only where no edit already holds the coordinate, so a later `set` on a carried coordinate replaces the fill rather than tying with it — the anti-join that keeps a fill off an occupied coordinate is the whole of what orders the two.
 
 ## Validation
 
@@ -330,11 +331,11 @@ The membership read this needs is the one [`set`](#set) already performs, so der
 Staged rows live in DuckDB tables on the record's own connection:
 
 ```sql
-CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>, _seq BIGINT);  -- no entity_type
-CREATE TABLE staged_outputs_<attr>_<id>  (<that attribute's long columns>, _seq BIGINT);
-CREATE TABLE staged_axis_<dim>_<id>      (<the axis key>, ..., deleted BOOLEAN, _seq BIGINT);
-CREATE TABLE staged_members_<Type>_<id>  (entity, deleted BOOLEAN, _seq BIGINT, <that type's columns>);
-CREATE TABLE staged_<group>_<id>         (<group coordinates>, ..., deleted BOOLEAN, _seq BIGINT);
+CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>);  -- no entity_type
+CREATE TABLE staged_outputs_<attr>_<id>  (<that attribute's long columns>);
+CREATE TABLE staged_axis_<dim>_<id>      (<the axis key>, ..., deleted BOOLEAN);
+CREATE TABLE staged_members_<Type>_<id>  (entity, deleted BOOLEAN, <that type's columns>);
+CREATE TABLE staged_<group>_<id>         (<group coordinates>, ..., deleted BOOLEAN);
 ```
 
 **Every table is shaped like the file it becomes**, which is the rule the rest of this section is consequences of. So there is no table whose columns are a union over things the format keeps apart, and a column the schema does not declare has nowhere to go — [`add`](#add-remove) rejects one rather than widening a table to fit it, there being no declared dtype to give it.
@@ -349,20 +350,20 @@ One staging table per declared [group](schema.md#groups), mirroring [the maps th
 
 **One table per entity type, and one more for the axis**, mirroring the two files the format keeps apart: `dims/entity_type/<Type>.parquet` holds a type's own columns, and [`dims/entity.parquet`](format.md#the-entity-axis) holds membership. A single table for every type would have to carry the union of their columns, so a `Bus` frame would land a `Generator`'s `p_nom` as a NULL column of the `Bus` file — the same reason the format partitions them.
 
-So `add` writes two rows for one component, and `remove` two tombstones: the axis says a name exists and of what type, the member table says what it is. They share one `_seq`, being one edit.
+So `add` writes two rows for one component, and `remove` two tombstones: the axis says a name exists and of what type, the member table says what it is. Both replace on `entity`, being one edit, so re-adding or removing a name displaces its earlier row rather than stacking beside it.
 
-The **entity axis is staged as an axis**, `staged_axis_entity_<id>` like any other dim, and reaches [the fold](read-path.md) as `axis("entity")` with no special case. What differs is only how it collapses: an ordinary axis folds per column, so two `set` calls on one label commute; membership folds whole-row, so a `remove` under one type and an `add` under another resolve to one row rather than merging into a component that is both a `Bus` and deleted.
+The **entity axis is staged as an axis**, `staged_axis_entity_<id>` like any other dim, and reaches [the fold](read-path.md) as `axis("entity")` with no special case. What differs is only how an edit keys it: an ordinary axis patches a column in place, so two `set` calls on one label commute; membership replaces on `entity` alone, so a `remove` under one type and an `add` under another resolve to one row rather than merging into a component that is both a `Bus` and deleted.
 
 The staged rows are [the format's own rows](#the-shape-of-an-edit), so a staged long table loses `entity_type` exactly as `inputs/` does, and the entity axis keeps it.
 
-These tables are the **only** place a staged row exists: [the reads](#reading-with-pending-edits) fold them rather than holding a copy.
+These tables are the **only** place a staged row exists: [the reads](#reading-with-pending-edits) read them rather than holding a copy.
 
-DuckDB rather than in-memory objects, for three reasons that all matter: the reads are already a fold, so staging elsewhere would mean marshalling every edit into a relation on every read; a large edit is a bulk insert rather than ten thousand Python objects; and commit becomes one window-function query whose result `write_record` consumes unmaterialised.
+DuckDB rather than in-memory objects, for three reasons that all matter: the reads are already a fold, so staging elsewhere would mean marshalling every edit into a relation on every read; a large edit is a bulk insert rather than ten thousand Python objects; and commit hands each table to `write_record` as the file it already is, no collapse in between.
 
 Connection-scoped, like the owner-map cache, so they vanish with the connection and never appear on disk.
 A record whose edits must survive a process boundary should commit.
 
-`_seq` is assigned per edit call, not per row, so an edit's rows collapse together and edit order is what last-write-wins means.
+An edit **replaces** what it names rather than appending, so a table holds one row per key and reading it is a scan — no ordering column, and edit order is just which edit ran last.
 
 ## Reading with pending edits
 
