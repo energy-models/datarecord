@@ -78,7 +78,17 @@ One property, and the five readers follow from it:
 - **`_fold_ordered`'s `typed` arm** is skipped. This is the state the flag was written to express: `typed = "entity_type" in columns` already reads the column set rather than assuming, so it needs no edit at all once `entity_columns` is conditional.
 - **`_empty_relation`** builds from the same tuple, so it follows for free.
 
-**The materialised map is the consequence to be deliberate about.** `resolved/owner_map/entities.parquet` is written from this column set, so the cache of a record with no declared type axis stops carrying `entity_type` — and a cache written before the change has it. [Materialised node caches](../layers.md#materialised-node-caches) are derived data that can be rebuilt, so this is a rebuild rather than a migration; but a stale cache read against the new column set is the failure mode to check for, and it argues for the cache carrying a schema version or being invalidated on schema change. This proposal does not settle that, and it is the second thing to look at after `ResolvedLayer`.
+**The materialised map is the consequence to be deliberate about.** `resolved/owner_map/entities.parquet` is written from this column set, so the cache of a record with no declared type axis stops carrying `entity_type` — and a cache written before the change has it. [Materialised node caches](../layers.md#materialised-node-caches) are derived data that can be rebuilt, so this is a rebuild rather than a migration; but a stale cache read against the new column set is the failure mode to check for, and it argues for the cache carrying a schema version or being invalidated on schema change. This proposal does not settle that, and it is the second thing to look at after the `ResolvedLayer` prerequisite.
+
+### `deleted` belongs to the axis alone
+
+A member file carries `deleted` today, and the fold reads it from there as well as from the entity axis. That is the same duplication the axis exists to remove: [membership is the axis's](../format.md#the-entity-axis) — "a component exists because it has a row here, not because some type's file mentions it" — and a tombstone is a statement about membership.
+
+It shows up as a coupling in the staging area. `remove` has to write twice, once to the axis and once to the type's member table, because a removal that left no member row would read as a member the layer never mentioned. Two writes to say one thing, kept in step by hand.
+
+So this proposal also takes `deleted` off the member file: a member file holds `entity` and that type's columns, nothing else. `remove` then writes one row, on the axis, and the fold reads tombstones from one place.
+
+The two changes belong together because they are the same claim about that file — a member file holds _values_, and everything about a component's existence is the axis's. Separately each looks like a detail; together they leave the member file with no column that is not an attribute.
 
 ### What a schema declaring the axis does, unchanged
 
@@ -92,18 +102,38 @@ The layout is one thing; what each implementation of it must do is another, and 
 | -------------------------------- | ------------------------------------------------- | -------------------------------- |
 | `_FileLayer` (shared)            | `dims/entity.parquet`, now with attribute columns | `None` — no such directory       |
 | `ParquetLayer`                   | inherited                                         | inherited                        |
-| `ResolvedLayer`                  | `resolved/dims/entity.parquet` — **see below**    | inherited, from `layers/<id>/`   |
+| `ResolvedLayer`                  | `layers/<id>/dims/entity.parquet` — **see below** | inherited, from `layers/<id>/`   |
 | `DirectorySource`                | inherited                                         | inherited                        |
 | `StagedSource` / `WorkingRecord` | `_ENTITY_AXIS` table, now with attribute columns  | `None` — no member tables staged |
 | `PyPSA` (tool)                   | `dims["entity"]`, its member frames merged in     | `entity_types` empty             |
 
 Three of the four sources need no code change at all: `_FileLayer` reads whatever columns the file has, and `ParquetLayer` and `DirectorySource` inherit it. `entity_type(name)` answering `None` follows from the directory being absent, which `try_read_parquet` already handles. That is the test of whether the layout is right — a file-backed source should not have to know which configuration it is reading.
 
-**`ResolvedLayer` is the one that does not fall out.** It overrides `axis` to read `resolved/dims/`, the _folded_ axis standing for everything above this node, while `entity_type` stays inherited and reads this layer's own `layers/<id>/dims/entity_type/`. Today those carry different things — membership versus attributes — so the split is invisible. Under this proposal the attribute columns are _on the axis_, so a resolved node would serve them from the fold while the rows they replaced came from the layer alone. That is a scope change, not a relocation: `entity_type_frame` semi-joins the owner map to this node's own rows, and folded columns would widen what it returns.
-
-Resolving it is part of the work, not a footnote. Either the materialised `resolved/dims/entity.parquet` keeps carrying folded attribute columns and `entity_type_frame` learns that a resolved node's member columns are already folded, or the cache stores membership only and the attributes are read from the layer — in which case `ResolvedLayer` needs an `axis` that splits the two, which is the first place in this design where one file's columns come from two locations.
-
 **The `PyPSA` tool** currently supplies `entity_types` per type and, since the entity axis became a supplied member, `dims["entity"]` from `_entity_axis_frame`. Under this proposal an untyped export merges the member columns into that frame and stops supplying `entity_types` — but PyPSA always has types (`n.components`), so it is unaffected in practice. It matters as a statement about the protocol rather than about this tool: a producer with no types has one axis frame to fill and no `entity_types` mapping, which is exactly what the `Record` protocol should let it say.
+
+### The prerequisite: `axis` means one thing on every source
+
+`ResolvedLayer` overrides `axis` and `axes` to read `resolved/dims/` — the _folded_ answer, standing for everything above this node — so `axis(dim)` means something different on it than on every other source, where it means "this layer's own rows".
+
+That is invisible today because all three of its callers want the folded answer wherever a `ResolvedLayer` can reach them:
+
+| caller                               | role      | folded is correct because                       |
+| ------------------------------------ | --------- | ----------------------------------------------- |
+| `resolve_dims` (`axes`, `axis`)      | fold seed | the sources above this node are not in the list |
+| `_component_deleted_for_connections` | fold step | same                                            |
+| `fold_entities`                      | fold step | same                                            |
+
+This proposal adds a fourth caller in a **second** role: `_owned_frame` reads the rows behind a key the map says a layer owns, and for a `ResolvedLayer` that row is in `layers/<id>/`, not in the cache beside it — which [its own docstring already states](../layers.md#materialised-node-caches). Today `_owned_frame` reaches member rows through `entity_type(name)`, which is inherited and layer-local, so the two roles never meet. Move those columns onto the axis and they do.
+
+The fix is not to teach `_owned_frame` about folded columns. It is that **`axis` should mean the same thing on every source**, and the folded read belongs to the seed path that wants it:
+
+- `ResolvedLayer.axis`/`axes` become layer-local, inherited like every other member.
+- The cache read moves to `resolved_axis(dim)`/`resolved_axes()`, beside the `map_uri` that is already there for exactly this purpose.
+- `resolve_dims` calls those for a `ResolvedLayer`, as `_fold_map` already calls `head.map_uri(kind)` for the seeded owner map — the same pattern, one member over.
+
+Then `_owned_frame` needs no change, and this section reduces to "nothing to do".
+
+**Worth doing regardless of this proposal.** `axes()` on a `ResolvedLayer` reports its whole ancestry's axis set, where `StagedSource.axes()` reports one layer's — two meanings for one protocol member, currently unexercised because `resolve_dims` is its only caller. `StagedSource` shows the intended shape here: a source that is not simply its own layer's rows says so with a flag (`frozen = False`) rather than by redefining what a member returns.
 
 ## What this buys
 
@@ -119,21 +149,11 @@ Resolving it is part of the work, not a footnote. Either the materialised `resol
 
 **A second layout for one construct.** The entity axis carries attribute columns in one configuration and not the other, which is a branch in `_axis_columns`, in `_validate_frame`'s `known` set, and in whatever `add` uses to route a wide frame. Against that: the branch replaces the `entity_type`-column special case rather than adding to it, and it is keyed on one schema property.
 
-**`ResolvedLayer` splits one file across two locations.** The case above is the sharpest cost, and it is the one to settle before writing any code — it is the only place where the proposal makes a source's two members disagree about scope, and both ways out have a price: teaching `entity_type_frame` about folded member columns, or giving `ResolvedLayer` an `axis` that reads membership from the cache and attributes from the layer.
+**A prerequisite in `ResolvedLayer`.** Its `axis`/`axes` must become layer-local first, with the folded read moved to the seed path (above). That is a small change and a defect fix in its own right, but it lands before this proposal rather than with it, and it touches `resolve_dims` - the one place the fold reads axes across sources.
 
 **`attributes_on("entity")` changes meaning.** Its early return is load-bearing in more places than the writer — worth auditing every caller before moving it, since "never `entity`" is currently an invariant a reader may lean on.
 
 **Migration.** A record written under the old layout has `dims/entity_type/thing.parquet` and an `entity_type` column; one written under the new has neither. Pre-1.0 and [breaking changes are free](https://github.com/energy-models/datarecord/blob/main/AGENTS.md), so this is a re-export rather than a compatibility path — but it is a re-export of every existing record whose schema declares no type axis, not a no-op.
-
-### `deleted` belongs to the axis alone
-
-A member file carries `deleted` today, and the fold reads it from there as well as from the entity axis. That is the same duplication the axis exists to remove: [membership is the axis's](../format.md#the-entity-axis) — "a component exists because it has a row here, not because some type's file mentions it" — and a tombstone is a statement about membership.
-
-It shows up as a coupling in the staging area. `remove` has to write twice, once to the axis and once to the type's member table, because a removal that left no member row would read as a member the layer never mentioned. Two writes to say one thing, kept in step by hand.
-
-So this proposal also takes `deleted` off the member file: a member file holds `entity` and that type's columns, nothing else. `remove` then writes one row, on the axis, and the fold reads tombstones from one place.
-
-The two changes belong together because they are the same claim about that file — a member file holds _values_, and everything about a component's existence is the axis's. Separately each looks like a detail; together they leave the member file with no column that is not an attribute.
 
 ## What it opens rather than settles
 
@@ -151,6 +171,6 @@ The two changes belong together because they are the same claim about that file 
 
 **`sources.py` is untouched, `ResolvedLayer` aside.** The strongest signal that the layout is right rather than merely different: if `_FileLayer`, `ParquetLayer` and `DirectorySource` need no edit, then a file-backed source genuinely does not have to know which configuration it reads. A diff that adds a branch to any of them means the layout is being carried by the readers instead of by the format.
 
-**A resolved record with no declared types reads the same as an unresolved one.** Materialise a node of such a record and read a component's value through both; they must agree. This is the assertion the `ResolvedLayer` cost above will break first, so it belongs in the suite before the change rather than after.
+**A resolved record with no declared types reads the same as an unresolved one.** Materialise a node of such a record and read a component's value through both; they must agree. This is the assertion the `ResolvedLayer` prerequisite above exists to protect, so it belongs in the suite before either change rather than after.
 
 **The owner map has no `entity_type` column where the schema declares no type axis** — asserted on the relation's columns, and on the materialised `resolved/owner_map/entities.parquet` for a node that was materialised. Today both carry it, filled with NULLs, which is the state that makes `entity_types()` answer `{None}`; a test that only checks `entity_types() == set()` would pass with the column still there and still NULL.
