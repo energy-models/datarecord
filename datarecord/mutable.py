@@ -2275,7 +2275,7 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
     `dims/entity_type/<Type>.parquet` a component's non-varying attributes are
     in, so a record without it could not reach its own member rows.
 
-    That a record with no declared types still has typed member files is the
+    That a schema declaring no such axis still produces typed member files is the
     asymmetry a proposal argues should go
     (https://energy-models.github.io/datarecord/design/proposals/a-member-file-holds-values.md);
     until it does, the column is unconditional.

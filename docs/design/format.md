@@ -34,7 +34,7 @@ Three things live here that were previously spread across `dims/entity_type/`:
 - **Its type.** `entity_type` is a column, so `entity -> entity_type` is one read rather than a glob across every type's file with the type taken from the filename.
 - **Its tombstone.** Deleting a component is deleting its entity row.
 
-The type column is here whether or not the schema [declares an entity-type axis](schema.md#entity_type-the-axis-of-kinds). Undeclared, the labels are data rather than a vocabulary — but they still name the `dims/entity_type/<Type>.parquet` a component's non-varying values are in, so a record without the column could not reach its own member rows. That a record with no declared types nonetheless has typed member files is an asymmetry [a proposal](proposals/a-member-file-holds-values.md) argues should go.
+The type column is here whether or not the schema [declares an entity-type axis](schema.md#entity_type-the-axis-of-kinds). Undeclared, the labels are data rather than a vocabulary — but they still name the `dims/entity_type/<Type>.parquet` a component's non-varying values are in, so a record without the column could not reach its own member rows. That a schema declaring no such axis nonetheless produces typed member files is an asymmetry [a proposal](proposals/a-member-file-holds-values.md) argues should go.
 
 What remains in `dims/entity_type/<Type>.parquet` is only [what is addressed by `entity` alone](#where-a-value-lives) — the non-varying attribute values, partitioned by type because that is the one thing genuinely per type: every type has a different column set.
 

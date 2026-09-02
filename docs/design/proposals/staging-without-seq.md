@@ -2,7 +2,7 @@
 
 Status: **Draft** · Drafted 2026-09-02
 
-Every staging table carries a `_seq`, and every read folds on it. Make each edit replace the rows it names — delete then insert — and the column goes from all four kinds, along with the four folds that read it. A staging table then *is* what the layer will write, and reading one is a table scan.
+Every staging table carries a `_seq`, and every read folds on it. Make each edit replace the rows it names — delete then insert — and the column goes from all four kinds, along with the four folds that read it. A staging table then _is_ what the layer will write, and reading one is a table scan.
 
 ## What starts it
 
@@ -10,13 +10,13 @@ Every staging table carries a `_seq`, and every read folds on it. Make each edit
 
 `_seq` serves four purposes, and they are not the same problem:
 
-| kind | what `_seq` does | folded by |
-| ---------------- | ------------------------------------------------- | ---------------------- |
-| axis | orders two **partial** rows for one label | `_collapsed_axis` |
-| entity axis | orders two whole rows for one name | `_collapsed_entities` |
-| `inputs`/`outputs` | orders two rows for one coordinate | `_collapsed_inputs` |
-| groups | orders two rows for one `group_key` | `_collapsed_group` |
-| — | `_CARRIED_SEQ`: marks a row a **fill**, not an edit | (see below) |
+| kind               | what `_seq` does                                    | folded by             |
+| ------------------ | --------------------------------------------------- | --------------------- |
+| axis               | orders two **partial** rows for one label           | `_collapsed_axis`     |
+| entity axis        | orders two whole rows for one name                  | `_collapsed_entities` |
+| `inputs`/`outputs` | orders two rows for one coordinate                  | `_collapsed_inputs`   |
+| groups             | orders two rows for one `group_key`                 | `_collapsed_group`    |
+| —                  | `_CARRIED_SEQ`: marks a row a **fill**, not an edit | (see below)           |
 
 The last is a different thing wearing the same column, and it is the one that decides whether `_seq` can go entirely.
 
@@ -35,7 +35,7 @@ The key is per kind, and in each case it is the one the fold already partitions 
 
 ### Axis rows must also become complete
 
-Delete-then-insert alone is not enough for an axis, because there the *rows* are partial, not merely duplicated. One `set` stages a row carrying that attribute's column and NULL for its siblings; replacing the row would clear them.
+Delete-then-insert alone is not enough for an axis, because there the _rows_ are partial, not merely duplicated. One `set` stages a row carrying that attribute's column and NULL for its siblings; replacing the row would clear them.
 
 So a `set` on an axis attribute stages **the complete row for each label it touches**: the previously staged row where one exists, otherwise the base's, with this edit's column replaced. Where a label has no base row, the staged columns are the whole of it, as today.
 
@@ -53,7 +53,7 @@ It never fires. The method's third anti-join drops any coordinate the table alre
 
 So the priority class is redundant: the anti-join keeps fills out of occupied coordinates, and under this proposal a later `set` on a filled coordinate deletes the fill before inserting. Two mechanisms, one of which was already sufficient.
 
-**Worth being exact about the residual risk.** The two key sets *agree* rather than being *derived from one place* — `_complete_owned_whole` builds `[*scope, *present, "breakpoint"]` and `_collapsed_inputs` builds its own. They match today for every shape the suite exercises, and a schema where they diverge would already be a bug (a fill surviving beside an edit, resolved only by `_CARRIED_SEQ`). Landing this should make them one derivation rather than two that agree, which is a small refactor and the honest way to retire the guard.
+**Worth being exact about the residual risk.** The two key sets _agree_ rather than being _derived from one place_ — `_complete_owned_whole` builds `[*scope, *present, "breakpoint"]` and `_collapsed_inputs` builds its own. They match today for every shape the suite exercises, and a schema where they diverge would already be a bug (a fill surviving beside an edit, resolved only by `_CARRIED_SEQ`). Landing this should make them one derivation rather than two that agree, which is a small refactor and the honest way to retire the guard.
 
 ### The entity axis joins, and the two collapse modes go with it
 

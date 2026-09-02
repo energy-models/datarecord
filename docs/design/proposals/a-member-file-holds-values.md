@@ -2,11 +2,11 @@
 
 Status: **Draft** · Drafted 2026-09-02
 
-Two claims about `dims/entity_type/<Type>.parquet`, which are one claim: that file holds a type's attribute values, and everything about a component's *existence* belongs to the [entity axis](../format.md#the-entity-axis).
+Two claims about `dims/entity_type/<Type>.parquet`, which are one claim: that file holds a type's attribute values, and everything about a component's _existence_ belongs to the [entity axis](../format.md#the-entity-axis).
 
 Today it holds more. A record whose schema declares no entity-type axis still writes one member file per type — types that are not declared, not validated and not constrainable, yet decide which file a value is in, so a reader must know them to reach it. And every member file carries `deleted`, which the fold reads as a tombstone alongside the axis's own, so a removal is written twice to say one thing.
 
-This proposal puts an undeclared record's values on `dims/entity.parquet`, and takes `deleted` off the member file in every record. What is left in a member file is `entity` and one column per attribute.
+This proposal puts those values on `dims/entity.parquet` where the schema declares no entity-type axis, takes `deleted` off the member file in every record, and makes `entity_type` conditional in the [owner map](../read-path.md#owner-map) as well as in the file — the map's shape being where the column is currently asserted rather than derived. What is left in a member file is `entity` and one column per attribute.
 
 ## What starts it
 
@@ -16,7 +16,7 @@ This proposal puts an undeclared record's values on `dims/entity.parquet`, and t
 
 `tests/test_untyped.py` exercises that: a schema with two attributes over `entity` and no classifying group, components added under `thing` and `other`, and both round-trip. So far so good.
 
-The problem is where their values land. `p_nom` is `dims={"entity"}` and non-varying, and the format gives that exactly one home — [`dims/entity_type/<Type>.parquet`](../format.md#where-a-value-lives). It cannot be a column of `dims/entity.parquet`, because `attributes_on("entity")` returns `()` by explicit early return; it cannot be an `inputs/` row, because it does not vary. So an undeclared label becomes a filename:
+The problem is where their values land. `p_nom` is `dims={"entity"}` and non-varying, and the format gives that exactly one home — [`dims/entity_type/<Type>.parquet`](../format.md#where-a-value-lives). It cannot be a column of `dims/entity.parquet`, because `attributes_on("entity")` returns `()` by explicit early return; it cannot be an `inputs/` row, because it does not vary. So a label the schema never declared becomes a filename:
 
 ```
 dims/entity.parquet             entity, entity_type, deleted
@@ -28,19 +28,21 @@ dims/entity_type/other.parquet  entity, p_nom
 
 ## Why it cannot simply be dropped
 
-The obvious move — no declared axis, no `entity_type` column — was tried and does not close. Three readers need the label:
+The obvious move — no declared axis, no `entity_type` column — was tried and does not close. The label is in the components [owner map](../read-path.md#owner-map), and five things read it there:
 
-| reader | what it does with it |
-| ------------------------------- | ------------------------------------------------- |
-| `NodeCache.entity_types()` | `distinct_values(entity_map, "entity_type")` |
-| `NodeCache.entity_type_frame` | filters the map to one type, then reads its file |
-| `_fold_ordered`'s `typed` arm | carries it through the components `GROUP BY` |
+| reader                        | what it does with it                                      |
+| ----------------------------- | --------------------------------------------------------- |
+| `NodeCache.entity_types()`    | `distinct_values(entity_map, "entity_type")`              |
+| `NodeCache.entity_type_frame` | filters the map to one type, then reads its file          |
+| `NodeCache.attributes_of`     | filters the map to one type, to scope the flags           |
+| `_fold_ordered`'s `typed` arm | projects it, then `any_value` in the components aggregate |
+| `schema.entity_columns`       | hardcodes it into the map's column set                    |
 
-And `schema.entity_columns` hardcodes `entity_type` into the owner map's column set, so the map has the column whether or not anything fills it. Gate the axis and `entity_types()` yields `{None}` rather than `{thing, other}`.
+`entity_columns` is the one that makes this structural rather than local. It is the map's declared shape, used in three places — the fold, `_empty_relation` for a record with no rows, and the **materialised map on disk** (`resolved/owner_map/entities.parquet`). So the column exists whether or not anything fills it, and gating only the axis file leaves `entity_types()` yielding `{None}` rather than `{thing, other}`.
 
 Deriving the label from the filenames instead works, but costs a `LayerSource.entity_types()` listing member and a per-layer `LIST` on the read path — which is what [the entity axis exists to avoid](../format.md#the-entity-axis). Trading a stored string for a directory listing per layer per fold is the wrong direction.
 
-So the label is load-bearing *given the current layout*. The layout is what this proposal changes.
+So the label is load-bearing _given the current layout_. The layout is what this proposal changes.
 
 ## The construct
 
@@ -50,30 +52,54 @@ So the label is load-bearing *given the current layout*. The layout is what this
 dims/entity.parquet   entity, deleted, p_nom, ...
 ```
 
-Which is what the entity axis already is for every other purpose: the file keyed by `entity` that carries what is true of a component. `attributes_on`'s early return — "Never `entity`, whose sole-coordinate attributes are the *component* frame's columns" — becomes conditional on a type axis existing, which is the one line of schema that decides the whole layout.
+Which is what the entity axis already is for every other purpose: the file keyed by `entity` that carries what is true of a component. `attributes_on`'s early return — "Never `entity`, whose sole-coordinate attributes are the _component_ frame's columns" — becomes conditional on a type axis existing, which is the one line of schema that decides the whole layout.
 
-The three readers above then need no label: `entity_types()` is empty, `entity_type_frame` has no type to be asked for, and `_fold_ordered`'s `typed` arm is skipped — the state the `typed` flag was already written to express.
+### The column leaves the owner map too
 
-### What a declared record does, unchanged
+The layout change is not enough on its own: the map's shape is `schema.entity_columns`, so **that** is where the column has to become conditional.
 
-A schema declaring the axis keeps today's layout exactly: `dims/entity_type/<Type>.parquet` per type, `entity_type` on the entity axis, typed by the declared `Dimension`. This proposal adds no case there; it removes one from the undeclared side.
+```python
+# today
+return ("entity_type", "entity", "layer_uuid", "order_key")
+# proposed
+return (
+    *(("entity_type",) if self.entity_type_dim else ()),
+    "entity",
+    "layer_uuid",
+    "order_key",
+)
+```
+
+One property, and the five readers follow from it:
+
+- **`entity_types()`** returns the empty set — `distinct_values` is not called, rather than called on a column of NULLs.
+- **`entity_type_frame(ctype)`** has no type to be asked for. `Record.entity_types` iterates an empty mapping, so nothing reaches it; a direct call is a caller error, and should say so rather than filter on a missing column.
+- **`attributes_of(ctype)`** scopes the flags by type, which is meaningless without types. Its semi-join to `of_type` becomes the whole map — every component, which is what "no types" means for a per-type question.
+- **`_fold_ordered`'s `typed` arm** is skipped. This is the state the flag was written to express: `typed = "entity_type" in columns` already reads the column set rather than assuming, so it needs no edit at all once `entity_columns` is conditional.
+- **`_empty_relation`** builds from the same tuple, so it follows for free.
+
+**The materialised map is the consequence to be deliberate about.** `resolved/owner_map/entities.parquet` is written from this column set, so the cache of a record with no declared type axis stops carrying `entity_type` — and a cache written before the change has it. [Materialised node caches](../layers.md#materialised-node-caches) are derived data that can be rebuilt, so this is a rebuild rather than a migration; but a stale cache read against the new column set is the failure mode to check for, and it argues for the cache carrying a schema version or being invalidated on schema change. This proposal does not settle that, and it is the second thing to look at after `ResolvedLayer`.
+
+### What a schema declaring the axis does, unchanged
+
+A schema declaring the axis keeps today's layout exactly: `dims/entity_type/<Type>.parquet` per type, `entity_type` on the entity axis, typed by the declared `Dimension`. This proposal adds no case there; it removes one from the side where nothing declares the axis.
 
 ### Every source and every producer
 
 The layout is one thing; what each implementation of it must do is another, and the change is only coherent if all of them agree. There are four `LayerSource`s and two record-side producers.
 
-| implementation | `axis("entity")` under this proposal | `entity_type(name)` |
-| -------------------------------- | ---------------------------------------------------- | ------------------------------------- |
-| `_FileLayer` (shared) | `dims/entity.parquet`, now with attribute columns | `None` — no such directory |
-| `ParquetLayer` | inherited | inherited |
-| `ResolvedLayer` | `resolved/dims/entity.parquet` — **see below** | inherited, from `layers/<id>/` |
-| `DirectorySource` | inherited | inherited |
-| `StagedSource` / `WorkingRecord` | `_ENTITY_AXIS` table, now with attribute columns | `None` — no member tables staged |
-| `PyPSA` (tool) | `dims["entity"]`, its member frames merged in | `entity_types` empty |
+| implementation                   | `axis("entity")` under this proposal              | `entity_type(name)`              |
+| -------------------------------- | ------------------------------------------------- | -------------------------------- |
+| `_FileLayer` (shared)            | `dims/entity.parquet`, now with attribute columns | `None` — no such directory       |
+| `ParquetLayer`                   | inherited                                         | inherited                        |
+| `ResolvedLayer`                  | `resolved/dims/entity.parquet` — **see below**    | inherited, from `layers/<id>/`   |
+| `DirectorySource`                | inherited                                         | inherited                        |
+| `StagedSource` / `WorkingRecord` | `_ENTITY_AXIS` table, now with attribute columns  | `None` — no member tables staged |
+| `PyPSA` (tool)                   | `dims["entity"]`, its member frames merged in     | `entity_types` empty             |
 
 Three of the four sources need no code change at all: `_FileLayer` reads whatever columns the file has, and `ParquetLayer` and `DirectorySource` inherit it. `entity_type(name)` answering `None` follows from the directory being absent, which `try_read_parquet` already handles. That is the test of whether the layout is right — a file-backed source should not have to know which configuration it is reading.
 
-**`ResolvedLayer` is the one that does not fall out.** It overrides `axis` to read `resolved/dims/`, the *folded* axis standing for everything above this node, while `entity_type` stays inherited and reads this layer's own `layers/<id>/dims/entity_type/`. Today those carry different things — membership versus attributes — so the split is invisible. Under this proposal the attribute columns are *on the axis*, so a resolved node would serve them from the fold while the rows they replaced came from the layer alone. That is a scope change, not a relocation: `entity_type_frame` semi-joins the owner map to this node's own rows, and folded columns would widen what it returns.
+**`ResolvedLayer` is the one that does not fall out.** It overrides `axis` to read `resolved/dims/`, the _folded_ axis standing for everything above this node, while `entity_type` stays inherited and reads this layer's own `layers/<id>/dims/entity_type/`. Today those carry different things — membership versus attributes — so the split is invisible. Under this proposal the attribute columns are _on the axis_, so a resolved node would serve them from the fold while the rows they replaced came from the layer alone. That is a scope change, not a relocation: `entity_type_frame` semi-joins the owner map to this node's own rows, and folded columns would widen what it returns.
 
 Resolving it is part of the work, not a footnote. Either the materialised `resolved/dims/entity.parquet` keeps carrying folded attribute columns and `entity_type_frame` learns that a resolved node's member columns are already folded, or the cache stores membership only and the attributes are read from the layer — in which case `ResolvedLayer` needs an `axis` that splits the two, which is the first place in this design where one file's columns come from two locations.
 
@@ -81,11 +107,13 @@ Resolving it is part of the work, not a footnote. Either the materialised `resol
 
 ## What this buys
 
-**Every column of the format answers to a declaration.** `entity_type` stops being the exception admitted by a special case, because it appears only where a group declares the axis — which is also when it has a dtype. The `_validate_frame` special case and the `_axis_columns` `String` fallback both go.
+**Every column of the format answers to a declaration.** `entity_type` stops being the exception admitted by a special case, because it appears only where a group declares the axis — which is also when it has a dtype. The `_validate_frame` special case and the `_axis_columns` `String` fallback both go, and so does the `nw.String()` fallback that types a column no `Dimension` describes.
 
-**A record with no types has one member file, not N.** Today `add("thing", …)` and `add("other", …)` write two files that no declaration distinguishes, and a reader must enumerate them to find a component. One axis file is the honest shape of "these components have no kinds".
+**The owner map's shape follows the schema.** `entity_columns` is currently the one place a column is asserted rather than derived, and the map carries it — on disk, in a materialised cache — for records that have no types. Making it conditional is one line, and the five readers of that column all resolve to "there are no types" rather than to "the type is NULL".
 
-**`Record.entity_types` stops lying.** It currently returns `{thing, other}` for a record whose schema says it has no entity types — reporting filenames as a vocabulary. Empty is the true answer, and `entity_types` being empty is already what `schema.entity_types` says.
+**A record whose schema declares no type axis has one member file, not N.** Today `add("thing", …)` and `add("other", …)` write two files that no declaration distinguishes, and a reader must enumerate them to find a component. One axis file is the honest shape of "these components have no kinds".
+
+**`Record.entity_types` stops lying.** It currently returns `{thing, other}` where the schema declares no entity-type axis — reporting filenames as a vocabulary. Empty is the true answer, and `entity_types` being empty is already what `schema.entity_types` says.
 
 ## What it costs
 
@@ -95,7 +123,7 @@ Resolving it is part of the work, not a footnote. Either the materialised `resol
 
 **`attributes_on("entity")` changes meaning.** Its early return is load-bearing in more places than the writer — worth auditing every caller before moving it, since "never `entity`" is currently an invariant a reader may lean on.
 
-**Migration.** A record written under the old layout has `dims/entity_type/thing.parquet` and an `entity_type` column; one written under the new has neither. Pre-1.0 and [breaking changes are free](https://github.com/energy-models/datarecord/blob/main/AGENTS.md), so this is a re-export rather than a compatibility path — but it is a re-export of existing untyped records, not a no-op.
+**Migration.** A record written under the old layout has `dims/entity_type/thing.parquet` and an `entity_type` column; one written under the new has neither. Pre-1.0 and [breaking changes are free](https://github.com/energy-models/datarecord/blob/main/AGENTS.md), so this is a re-export rather than a compatibility path — but it is a re-export of every existing record whose schema declares no type axis, not a no-op.
 
 ### `deleted` belongs to the axis alone
 
@@ -105,11 +133,11 @@ It shows up as a coupling in the staging area. `remove` has to write twice, once
 
 So this proposal also takes `deleted` off the member file: a member file holds `entity` and that type's columns, nothing else. `remove` then writes one row, on the axis, and the fold reads tombstones from one place.
 
-The two changes belong together because they are the same claim about that file — a member file holds *values*, and everything about a component's existence is the axis's. Separately each looks like a detail; together they leave the member file with no column that is not an attribute.
+The two changes belong together because they are the same claim about that file — a member file holds _values_, and everything about a component's existence is the axis's. Separately each looks like a detail; together they leave the member file with no column that is not an attribute.
 
 ## What it opens rather than settles
 
-**Whether a declared axis with no `Enum` is the same case.** `schema.entity_types` is empty for a `String`-typed entity-type dim too — the labels are data there as well, yet a group declares the axis, so the type is a real dim with a dtype. This proposal keys on `entity_type_dim is None`, not on whether the labels are enumerable, and the two differ for exactly that schema. Which side it belongs on is a question about what declaring the axis *means*, and this page does not answer it.
+**Whether a declared axis with no `Enum` is the same case.** `schema.entity_types` is empty for a `String`-typed entity-type dim too — the labels are data there as well, yet a group declares the axis, so the type is a real dim with a dtype. This proposal keys on `entity_type_dim is None`, not on whether the labels are enumerable, and the two differ for exactly that schema. Which side it belongs on is a question about what declaring the axis _means_, and this page does not answer it.
 
 **Whether `attributes_for` should narrow at all without types.** It currently returns every entity-addressed attribute for any label. If there are no types, "which attributes does type X carry" has no meaning, and the method's contract could say so rather than accepting any string.
 
@@ -119,8 +147,10 @@ The two changes belong together because they are the same claim about that file 
 
 **A written untyped layer has no `dims/entity_type/` at all.** The clearest single assertion: the directory does not exist, where today it holds one file per label an `add` happened to use.
 
-**The `_validate_frame` special case is gone.** Asserting that an `entity_type` column on an untyped record's entity axis is now *rejected* is what says the exception was removed rather than relocated.
+**The `_validate_frame` special case is gone.** Asserting that an `entity_type` column on the entity axis of a record with no declared type axis is now _rejected_ is what says the exception was removed rather than relocated.
 
 **`sources.py` is untouched, `ResolvedLayer` aside.** The strongest signal that the layout is right rather than merely different: if `_FileLayer`, `ParquetLayer` and `DirectorySource` need no edit, then a file-backed source genuinely does not have to know which configuration it reads. A diff that adds a branch to any of them means the layout is being carried by the readers instead of by the format.
 
-**A resolved untyped record reads the same as an unresolved one.** Materialise a node of an untyped record and read a component's value through both; they must agree. This is the assertion the `ResolvedLayer` cost above will break first, so it belongs in the suite before the change rather than after.
+**A resolved record with no declared types reads the same as an unresolved one.** Materialise a node of such a record and read a component's value through both; they must agree. This is the assertion the `ResolvedLayer` cost above will break first, so it belongs in the suite before the change rather than after.
+
+**The owner map has no `entity_type` column where the schema declares no type axis** — asserted on the relation's columns, and on the materialised `resolved/owner_map/entities.parquet` for a node that was materialised. Today both carry it, filled with NULLs, which is the state that makes `entity_types()` answer `{None}`; a test that only checks `entity_types() == set()` would pass with the column still there and still NULL.
