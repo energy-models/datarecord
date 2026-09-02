@@ -52,6 +52,7 @@ nav:
           - Staging as a layer: design/proposals/staging-as-a-layer.md
           - One Record over a NodeCache: design/proposals/one-record-over-a-node-cache.md
           - A member file holds values: design/proposals/a-member-file-holds-values.md
+          - A staged axis row is complete: design/proposals/a-staged-axis-row-is-complete.md
   - API Reference:
       - api/index.md
       - Record: api/record.md
