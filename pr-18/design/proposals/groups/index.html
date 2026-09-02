@@ -1,0 +1,1869 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-18/design/proposals/groups/">
+      
+      
+        <link rel="prev" href="../dims-groups-traits/">
+      
+      
+        <link rel="next" href="../trait-switches/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Groups - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#proposal-groups-one-construct-for-classification-and-sparsity" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Groups
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../usage/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../record/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Record protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The record format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../layers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layered resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../read-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The DuckDB read path
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../writing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing a record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../working-record/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WorkingRecord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consuming a record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../module-layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../open-questions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_12" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_12" id="__nav_3_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proposals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Proposals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dims-groups-traits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dims, mappings, groups and traits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Groups
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-starts-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What starts it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-construct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The construct
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The construct">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-into-is-the-right-field" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why into is the right field
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#into-must-name-a-declared-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        into must name a declared dim
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#into-over-several-coordinates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        into over several coordinates
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#addressing-dims-x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Addressing: dims: [X]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attributes-on-a-relation-between-two-entities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attributes on a relation between two entities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-rows-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the rows live
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aggregation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aggregation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-sketch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation sketch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-does-not-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does not change
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it costs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-opens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it opens
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trait-switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trait switches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../staging-as-a-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Staging as a layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../one-record-over-a-node-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    One Record over a NodeCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../a-member-file-holds-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A member file holds values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../staging-without-seq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Staging without _seq
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../api/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-starts-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What starts it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-construct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The construct
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The construct">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-into-is-the-right-field" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why into is the right field
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#into-must-name-a-declared-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        into must name a declared dim
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#into-over-several-coordinates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        into over several coordinates
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#addressing-dims-x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Addressing: dims: [X]
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attributes-on-a-relation-between-two-entities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attributes on a relation between two entities
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-rows-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the rows live
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aggregation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Aggregation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-sketch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation sketch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-does-not-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does not change
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it costs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-opens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it opens
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="proposal-groups-one-construct-for-classification-and-sparsity">Proposal: groups — one construct for classification and sparsity<a class="headerlink" href="#proposal-groups-one-construct-for-classification-and-sparsity" title="Permanent link">&para;</a></h1>
+<p>Status: <strong>Accepted</strong> · Drafted 2026-08-27 · Implemented 2026-09-01</p>
+<p>Landed in <a href="../../schema/#groups">the schema</a> and <a href="../../format/#where-a-value-lives">the record format</a>; this page is kept as the argument for the change rather than as the current description.</p>
+<p>Supersedes the split between <a href="../../schema/#groups">groups</a> and <a href="../dims-groups-traits/#mappings"><code>on</code></a> that <a href="../dims-groups-traits/">dims, mappings, groups and traits</a> landed.
+Those two are one mechanism with one field's difference, and the field is worth having where the two models are not.</p>
+<h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
+<p>The schema declares two things that are both "which tuples over dims exist".</p>
+<p>A <code>Group</code> says it directly — <code>over={"entity": "entity", "bus": "bus"}</code>, a sparse subset of a product.
+A mapping says it sideways — <code>Dimension(on={"bus"})</code> for <code>country</code>, which is the same statement narrowed to the case where each <code>bus</code> appears once.
+They are stored differently, addressed differently, aggregated differently, and validated by different code, on the strength of a distinction that is one uniqueness constraint.</p>
+<p>The cost shows up when a consumer writes math. Aggregating along a mapping is dim aggregation (<code>GROUP BY country</code>); aggregating along a group needs to say which coordinate survives. Two spellings for one operation, and a modeller has to know which kind of thing they are holding before they can write the sum. No framework we looked at splits them: GAMS declares both as a set over a tuple of sets, Calliope reaches for a lookup array either way, PyPSA carries a bus column — so the split is ours rather than the domain's.</p>
+<p>The narrow observation is that <code>on</code> is a group whose codomain happens to be a declared axis.
+The wider one is that the axis is the <em>only</em> thing it adds, and that a field naming it collapses the two models without losing what either declares.</p>
+<h2 id="the-construct">The construct<a class="headerlink" href="#the-construct" title="Permanent link">&para;</a></h2>
+<p>One section, <code>groups</code>, absorbing <code>Dimension.on</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">dimensions</span><span class="p">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">entity</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> dtype</span><span class="p">:</span><span class="w"> </span><span class="nv">string</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">bus</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> dtype</span><span class="p">:</span><span class="w"> </span><span class="nv">string</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">country</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> dtype</span><span class="p">:</span><span class="w"> </span><span class="nv">string</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">timestep</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> dtype</span><span class="p">:</span><span class="w"> </span><span class="nv">date</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="nt">groups</span><span class="p">:</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">country</span><span class="p">:</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">over</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">bus</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">into</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">country</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">connection</span><span class="p">:</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="nt">over</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">entity</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">bus</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="nt">corridor</span><span class="p">:</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="nt">over</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> from</span><span class="p">:</span><span class="w"> </span><span class="nv">bus</span><span class="p p-Indicator">,</span><span class="nt"> to</span><span class="p">:</span><span class="w"> </span><span class="nv">bus</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p><code>over</code> declares the coordinates. <code>into</code> names the dim a group is functional into, and is what makes it a mapping in the narrow sense: <strong>each tuple of <code>over</code> carries exactly one label of <code>into</code></strong>.</p>
+<ul>
+<li><strong><code>into</code> present</strong> — single-valued. The group <code>country</code> partitions buses into the dim <code>country</code>, sharing its name; <code>dims/country.parquet</code> exists and the dim is addressable, while the group is the relation and declares a uniqueness constraint on <code>over</code>.</li>
+<li><strong><code>into</code> absent</strong> — a sparse tuple set and nothing more. <code>connection</code> has no label set of its own, is not a dim, and never appears as a column.</li>
+</ul>
+<p><code>over</code> accepts a list where coordinate names equal dim names, and a dict where they do not — <code>corridor</code>, a transmission path between two nodes, needs <code>{from, to}</code> over one <code>bus</code> dim, which a list cannot spell.
+The list form is sugar for the dict form with identical keys and values.</p>
+<p><code>group</code> stays the word, and is true of the functional case too — <code>country</code> groups buses, in the direction <code>into</code> names.
+It is overloaded in the surrounding tooling, though — <code>GROUP BY</code>, PyPSA's <code>group_constraints</code>, Calliope's <code>group</code> — so prose about <a href="#aggregation">aggregation</a> has to say which is meant.</p>
+<h3 id="why-into-is-the-right-field">Why <code>into</code> is the right field<a class="headerlink" href="#why-into-is-the-right-field" title="Permanent link">&para;</a></h3>
+<p>It is the declaration that was missing rather than a label on an existing distinction.</p>
+<p>A group cannot say "single-valued"; it can only happen to be, which leaves a duplicate row a data error the schema has no name for.
+<code>into</code> names it, so the constraint is declared and checkable, and the two cases stop being two models: <code>groups/country.parquet</code> with <code>into</code> and <code>groups/connection.parquet</code> without differ in what the schema promises about their rows, not in what kind of object they are.</p>
+<p><strong>No existing system declares it, and that is the argument for <code>into</code> rather than against it.</strong>
+GAMS gets the one-construct half right — <code>map(b,c)</code> and <code>conn(e,b)</code> are both a set over a tuple of sets, and <code>Alias</code> gives two coordinates over one set distinct names, which is what <code>over</code>'s dict form does locally instead of globally.
+But GAMS has no way to say <code>map</code> is functional: single-valuedness is a convention the modeller maintains, and breaking it yields a wrong answer with no error, because a duplicated <code>b</code> silently double-counts in every <code>sum(b$map(b,c), ...)</code>.
+Calliope is the same, one step further along — <code>select_from_lookup_arrays</code> presumes a functional lookup and its <code>where</code> gating cannot express the presumption.</p>
+<p>A schema whose purpose is to make the shape of data checkable should not inherit that gap. <code>into</code> is the declaration neither has, and closing it is a choice this proposal makes rather than a precedent it follows.</p>
+<h3 id="into-must-name-a-declared-dim"><code>into</code> must name a declared dim<a class="headerlink" href="#into-must-name-a-declared-dim" title="Permanent link">&para;</a></h3>
+<p>Not a name the group invents.</p>
+<p>That is what keeps the axis file, and the axis file is the whole of what a functional group has over a bare tuple set: <code>dims/country.parquet</code> gives <code>country</code> its <a href="../../record/#axis-order">order</a> and somewhere for a per-country CO2 budget to live.
+A group whose <code>into</code> named nothing would be a tuple set with a labelled column — expressible, and it loses the axis, which is <a href="../dims-groups-traits/#mappings">the argument the superseded page makes</a> and which survives this refactor unchanged.</p>
+<p><strong>A group may share its name with a dim</strong>, and the <a href="../../schema/#groups">existing prohibition</a> on the two colliding is dropped rather than narrowed.</p>
+<p>For a group with <code>into</code> the sharing is the natural spelling: the dim is the axis of labels, the group is the relation between it and <code>over</code>, and they are reached by different syntax — <a href="#addressing-dims-x"><code>dims: [country]</code></a> finds the dim, <a href="#aggregation"><code>by=country</code></a> finds the group. Keeping the prohibition would cost a name (<code>country_map</code>) invented only to satisfy it.</p>
+<p>Nothing then justifies the prohibition in the <code>into</code>-less case either. <a href="#addressing-dims-x">Addressing</a> resolves the dim namespace first, so a dim and a group both called <code>connection</code> is not ambiguous — <code>dims: [connection]</code> is the dim — and one rule covers every collision instead of a rule plus a guard.</p>
+<p>What it gives up is a schema error. A shadowed <code>into</code>-less group loses its only spelling in <code>dims</code>, and no longer says so at load time; a shadowed functional group loses a spelling it had no use for.
+That asymmetry is the argument for keeping the prohibition, and it is not worth a second rule: the collision has to be authored deliberately, both entries are visible in one file, and a lint naming the shadowed group is a better answer than a prohibition that also rejects the harmless case.</p>
+<h3 id="into-over-several-coordinates"><code>into</code> over several coordinates<a class="headerlink" href="#into-over-several-coordinates" title="Permanent link">&para;</a></h3>
+<p><code>over: [bus, scenario]</code> with <code>into: country</code> — a bus whose country varies per scenario — is allowed.</p>
+<p>Nothing about <code>into</code> assumes one coordinate. The constraint it declares is already per-tuple — each tuple of <code>over</code> carries exactly one label of <code>into</code> — so over two coordinates it is a uniqueness constraint on <code>(bus, scenario)</code>, and <a href="#aggregation"><code>by=</code></a> still keeps <code>into</code> and collapses all of <code>over</code>.</p>
+<p>It costs nothing in storage because <a href="#where-the-rows-live">every group is a file</a>: <code>groups/country.parquet</code> is <code>bus | scenario | country</code>, keyed like any other group.
+The restriction would only be needed if a single-coordinate functional group were stored as a column on its coordinate's axis file — a column asserting bus→country has nowhere to live once the key is <code>(bus, scenario)</code> — and that form is not kept.</p>
+<h2 id="addressing-dims-x">Addressing: <code>dims: [X]</code><a class="headerlink" href="#addressing-dims-x" title="Permanent link">&para;</a></h2>
+<p>An attribute names a group in its <code>dims</code> exactly as it names a dim, and one rule resolves both:</p>
+<p><strong><code>X</code> is the dim <code>X</code> if one is declared, and otherwise the group <code>X</code> expanded to its <code>over</code> coordinates.</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">efficiency</span><span class="p">:</span><span class="w"> </span><span class="c1"># no dim `connection`  -&gt; the group, expanded</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">connection</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">timestep</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1">#   entity | bus | timestep</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">co2_budget</span><span class="p">:</span><span class="w"> </span><span class="c1"># `country` is a dim   -&gt; the dim</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">country</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1">#   country</span>
+</code></pre></div>
+<p>A group with no dim of its name has no other spelling — <code>connection</code> is not addressable as anything else — so expanding it is the only way to declare an attribute over it, and the expansion is what keeps <a href="../../schema/#partial-the-granularity-of-an-override">the fold's key</a> one fixed tuple.</p>
+<p>A group sharing a dim's name is shadowed here, which for a functional group is what should happen: a value that is genuinely per-country is <code>dims: [country]</code>, the dim, which is what <a href="#into-must-name-a-declared-dim">the axis file</a> exists for, and expanding instead would give <code>dims: [bus]</code> written so the reader has to look up the group's <code>over</code> to see it.</p>
+<p>So <code>dims</code> names dims, plus groups that no dim shadows as sugar for their coordinates — and <code>into</code> is not consulted, because it decides nothing here.
+Where it does decide something is <a href="#aggregation">aggregation</a>: <code>over=</code> and <code>by=</code> resolve on the group, and <code>by=country</code> keeps country while collapsing buses. There is no spelling of <code>dims</code> that means "the buses of a country".</p>
+<h2 id="attributes-on-a-relation-between-two-entities">Attributes on a relation between two entities<a class="headerlink" href="#attributes-on-a-relation-between-two-entities" title="Permanent link">&para;</a></h2>
+<p>A group's coordinates may both draw on <code>entity</code>, so a relation between two components carries attributes like anything else.</p>
+<p>A power purchase agreement is the case: a contract between a generator and an offtaker, with a volume and a strike price that are properties of neither party alone.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">groups</span><span class="p">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">contract</span><span class="p">:</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">over</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> seller</span><span class="p">:</span><span class="w"> </span><span class="nv">entity</span><span class="p p-Indicator">,</span><span class="nt"> buyer</span><span class="p">:</span><span class="w"> </span><span class="nv">entity</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="nt">attributes</span><span class="p">:</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">contracted_volume</span><span class="p">:</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">float64</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">contract</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">timestep</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1"># seller | buyer | timestep</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="nt">strike_price</span><span class="p">:</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">float64</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">    </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">contract</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1"># seller | buyer</span>
+</code></pre></div>
+<p>The declaration is <a href="../../schema/#groups">already possible</a> and this proposal does not introduce it — <code>over</code>'s dict form is what lets two coordinates draw on one dim, and <a href="#addressing-dims-x">addressing</a> expands <code>contract</code> to <code>seller | buyer</code> as it always did.
+What changes is that the shape stops being second-class:</p>
+<ul>
+<li><strong>It has a file of its own.</strong> <code>groups/contract.parquet</code>, keyed <code>(seller, buyer)</code>. The <a href="#where-the-rows-live"><code>&lt;Type&gt;</code> split</a> had no type to split on here — a contract is not a component and has no <code>entity_type</code> — so it never described this case at all, which is what shows the split was wrong rather than merely awkward.</li>
+<li><strong>It has an aggregation spelling.</strong> <code>over=contract[buyer]</code> gives a generator's total contracted volume across offtakers, <code>over=contract[seller]</code> an offtaker's total procurement, and neither had a way to be written before.</li>
+<li><strong>It may be declared functional.</strong> <code>over: [entity], into: parent</code> with <code>parent</code> a dim of entities is a hierarchy — each component under one other — which the <a href="#why-into-is-the-right-field">uniqueness constraint</a> checks and <code>by=parent</code> aggregates up. <code>Dimension.on</code> could not express a mapping from entities to entities at all, so this case is new rather than merely better served.</li>
+</ul>
+<p>Nothing about <code>entity</code> is privileged in any of this. <code>corridor</code> between two buses, a contract between two components, a relation between a bus and a country are one declaration, and the record neither knows nor needs to know which coordinates happen to name components.</p>
+<h2 id="where-the-rows-live">Where the rows live<a class="headerlink" href="#where-the-rows-live" title="Permanent link">&para;</a></h2>
+<p><code>groups/&lt;name&gt;.parquet</code>, one file per group, always — one rule for <a href="../../format/#where-a-value-lives">the format page</a> to state, with no case left for the declaration to imply.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>groups/country.parquet      bus | country
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>groups/connection.parquet   entity | bus | role
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>groups/corridor.parquet     from | to
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>groups/contract.parquet     seller | buyer | strike_price
+</code></pre></div>
+<p>Two departures from what shipped, both deliberate.</p>
+<p><strong>No <code>&lt;Type&gt;</code> split.</strong> <code>dims/&lt;group&gt;/&lt;Type&gt;.parquet</code> is gone.
+A group's rows are keyed by its coordinates, and <code>entity_type</code> is not one of them — the split puts <code>connection</code> rows for a <code>Link</code> and a <code>Line</code> in different files despite identical keys, forcing a union on every read and privileging <code>entity</code> among the coordinates.
+<code>corridor</code> has no type to split on at all, and <a href="#attributes-on-a-relation-between-two-entities"><code>contract</code></a> has two — one per coordinate, neither of them the row's — so the split never generalised beyond the case it was written for.
+<code>Schema.group_columns</code> leads with <code>entity_type</code> today and stops doing so.</p>
+<p><strong>No column on the classified axis.</strong> <code>dims/bus.parquet</code> does not gain a <code>country</code> column; <code>groups/country.parquet</code> carries <code>(bus, country)</code>.</p>
+<p>The column form is what forces the <a href="../dims-groups-traits/#mappings">no-denormalisation argument</a> — <code>bus → state → country</code> as one hop per file, because two files asserting bus→country would let a layer restating states leave every bus's country stale.
+A file per group gives that property for free: the chain is a join over two files either way, and a layer restating a group restates exactly one file.
+The cost is that reading a bus's country is a join rather than a column read, which is cheap and buys a uniform rule — <code>into</code> no longer decides storage, so nothing about the file layout branches on it.</p>
+<h2 id="aggregation">Aggregation<a class="headerlink" href="#aggregation" title="Permanent link">&para;</a></h2>
+<p>The operation both cases wanted, spelled once.</p>
+<p>For a consumer's math language, <code>over=&lt;group&gt;[coords]</code> collapses the bracketed coordinates and keeps the rest:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>sum(x, over=connection[entity])      # collapse entity, keep bus
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>sum(x, over=corridor[from])          # keep to
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>sum(x, over=contract[buyer])         # keep seller: volume sold per generator
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>sum(x, over=country[bus])            # collapse bus, keep country
+</code></pre></div>
+<p><code>over=</code> always names what goes, never what stays — the sense it already carries where it takes a plain dim.</p>
+<p>lowering to a group-by over a join:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">bus</span><span class="p">,</span><span class="w"> </span><span class="n">timestep</span><span class="p">,</span><span class="w"> </span><span class="k">SUM</span><span class="p">(...)</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="k">connection</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="k">USING</span><span class="w"> </span><span class="p">(</span><span class="n">entity</span><span class="p">)</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">bus</span><span class="p">,</span><span class="w"> </span><span class="n">timestep</span>
+</code></pre></div>
+<p><strong><code>by=&lt;group&gt;</code> is the other direction, and takes a second keyword because it means the opposite thing.</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>sum(x, by=country)                   # keep country, collapse the rest
+</code></pre></div>
+<p><code>by=</code> names what survives, and is what <code>GROUP BY country</code> says.
+Overloading <code>over=</code> for it — a bare <code>over=country</code> reading as "keep country" — would give one keyword two senses, and the bare form would be the one that names a coordinate the expression never mentions while collapsing one it does.</p>
+<p><code>by=</code> is available only where <code>into</code> is declared, because only then is there a survivor to name: <code>by=g</code> keeps <code>g</code>'s <code>into</code> dim and collapses all of <code>over</code>.
+That is the whole of what <code>into</code> buys a consumer beyond the uniqueness constraint, and it is a licence rather than a hint — the aggregation is well-defined because the dependency is declared, not because the record guessed which way a modeller meant to sum.</p>
+<p>The two coincide on a single-coordinate functional group, where <code>by=country</code> and <code>over=country[bus]</code> are one query written two ways, which is no worse than <code>GROUP BY</code> and "sum over" both being idiomatic English for it.</p>
+<p><strong>The bracket is mandatory on every <code>over=</code> naming a multi-coordinate group</strong>, including where it could be inferred.
+A functional group needs it whenever a coordinate must survive that <code>by=</code> would collapse: <code>over=country[bus]</code> on <code>over: [bus, scenario]</code> keeps <code>(scenario, country)</code>, a per-scenario country total that <code>by=country</code> cannot spell.
+Inference from the enclosing scope fails under nesting: <code>sum(sum(x, over=connection), over=siting)</code> over <code>(bus, site)</code> would have the inner sum collapse both of its coordinates, because neither is bound outside it, destroying the <code>bus</code> the outer sum needs — silently, with the right shape and the wrong number.
+Stating the collapse set makes a sub-expression mean the same thing wherever it appears, and resolution one inside-out pass with the constraint's index set as a check rather than an input.</p>
+<p><code>over=</code> is then the same statement along a functional group and along a bare tuple set, which is the point: a modeller collapses a coordinate without first knowing which kind of thing they hold.
+<code>into</code> adds <code>by=</code> on top of that rather than changing it, so the two constructs stay one where it matters and differ only where a declared dependency makes a second operation possible.</p>
+<h2 id="implementation-sketch">Implementation sketch<a class="headerlink" href="#implementation-sketch" title="Permanent link">&para;</a></h2>
+<p><strong><code>into</code> is sugar, resolved once at parse.</strong> A group declaring it normalises to the coordinates it implies, and everything downstream sees one kind of group:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;bus&quot;</span><span class="p">],</span> <span class="n">into</span><span class="o">=</span><span class="s2">&quot;country&quot;</span><span class="p">)</span>     <span class="c1"># what the author writes</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;bus&quot;</span><span class="p">,</span> <span class="s2">&quot;country&quot;</span><span class="p">],</span> <span class="o">...</span><span class="p">)</span>     <span class="c1"># what `coordinates` returns</span>
+</code></pre></div>
+<p>So <code>group_coordinates</code>, <code>group_columns</code>, the <a href="#where-the-rows-live">file layout</a>, the fold's key and <a href="#addressing-dims-x"><code>dims:</code> expansion</a> read <code>coordinates</code> and never branch on <code>into</code>.
+<code>groups/country.parquet</code> carrying <code>bus | country</code> is not a rule about functional groups — it is the same rule that gives <code>connection</code> its <code>entity | bus</code>, applied to coordinates that happen to come from sugar.</p>
+<p><code>into</code> is retained on the model rather than discarded, because three things still need it:</p>
+<ul>
+<li><strong>the uniqueness constraint</strong> — the key is <code>coordinates</code> minus <code>into</code>, which is what makes the group functional and is checkable on write;</li>
+<li><strong><a href="#aggregation"><code>by=</code></a></strong> — a consumer needs to know which coordinate survives;</li>
+<li><strong>round-tripping the manifest</strong> — writing back <code>over: [bus, country]</code> where the author wrote <code>into:</code> would silently rewrite their schema.</li>
+</ul>
+<p>Each is a leaf: no traversal, no read path and no layer resolution consults <code>into</code>.</p>
+<p><strong><code>into</code> must name a declared dim, checked beside the existing <code>over</code>-names-declared-dims validator.</strong> The field is retained, so the check reads it directly and does not care whether the coordinates have been flattened yet.</p>
+<p>It is worth erroring rather than tolerating, because the failure is otherwise silent: a dim shadows a group of its name, so an <code>into</code> naming a dim nobody declared leaves <code>dims: [country]</code> quietly expanding to <code>bus | country</code> instead of naming the axis it was meant to.
+The <a href="#into-must-name-a-declared-dim">collision check</a> in the same validator goes, being what this proposal drops.</p>
+<h2 id="what-does-not-change">What does not change<a class="headerlink" href="#what-does-not-change" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>A coordinate never broadcasts.</strong> A NULL <code>bus</code> on a connection attribute is <a href="../../record/#the-broadcast-rule">the group's rows</a>, not the bus axis — there is no axis to expand against.</li>
+<li><strong>A group in <code>dims</code> expands to its coordinates</strong> where it is not itself a dim (<a href="#addressing-dims-x">addressing</a>), so the fold's key stays one fixed tuple.</li>
+<li><strong>The record does not resolve across levels.</strong> An attribute over <code>country</code> comes back keyed by country; projecting to buses is the consumer's join.</li>
+<li><strong><code>within</code> is untouched</strong> and stays distinct: it scopes a label per parent, where <code>into</code> partitions one axis by another.</li>
+<li><strong>Traits are untouched.</strong></li>
+<li>Names live in one namespace, now <a href="#into-must-name-a-declared-dim">resolved rather than policed</a>: a dim wins, a group is what is left.</li>
+</ul>
+<h2 id="what-it-costs">What it costs<a class="headerlink" href="#what-it-costs" title="Permanent link">&para;</a></h2>
+<p><strong>A rename across the tree.</strong> <code>Dimension.on</code> and <code>Dimension.mapping</code> go, <code>Schema.mappings_on</code> with them, and <code>WorkingRecord</code>'s <code>kind=</code> and the <code>CONNECTION</code> constant in <code>mutable.py</code> stop naming one group specially.
+<code>group_coordinates</code>, <code>group_columns</code> and <code>groups_of</code> keep both their names and their bodies, since <a href="#implementation-sketch">desugaring</a> hands them coordinates like any other group's.
+Breaking changes are free here, so this is work rather than risk.
+Keeping <code>groups</code> as the word is what holds the rename to the parts that change meaning.</p>
+<p><strong>A format migration.</strong> <code>dims/&lt;group&gt;/&lt;Type&gt;.parquet</code> → <code>groups/&lt;name&gt;.parquet</code>, and a <code>country</code> column on an axis file → its own file. No reader keeps both layouts.</p>
+<p><strong>A join where there was a column.</strong> Bus → country is a file read and a join. Uniform, and slower than the column it replaces.</p>
+<h2 id="what-it-opens">What it opens<a class="headerlink" href="#what-it-opens" title="Permanent link">&para;</a></h2>
+<p><strong>Whether a shadowed group warrants a warning.</strong> Dropping the collision prohibition makes an <code>into</code>-less group that shares a dim's name unreachable in <code>dims</code> without saying so. A lint at load naming the shadowed group would recover what the prohibition caught, without also rejecting the functional case it was never about.</p>
+<p><strong>Whether a group's rows are validated against its coordinate dims' labels.</strong> GAMS domain-checks a relation at compile time and treats it as the primary error the construct exists to catch; nothing here does, before or after this change.</p>
+<p><strong>Whether a consumer needs more than the dependency.</strong> <code>into</code> declares a functional dependency, which is a record-level fact and checkable as one; <a href="#aggregation"><code>by=</code></a> is a consumer's operation that the dependency licenses.
+Keeping those separate is what stops the record from storing hints for someone else's <code>sum</code> — the record says what is true of the data, and the math language decides what that makes possible.
+Whether every consumer-side aggregation factors that cleanly is untested against a second consumer.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../dims-groups-traits/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Dims, mappings, groups and traits">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Dims, mappings, groups and traits
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../trait-switches/" class="md-footer__link md-footer__link--next" aria-label="Next: Trait switches">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Trait switches
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

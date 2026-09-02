@@ -1,0 +1,2081 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-18/design/proposals/staging-as-a-layer/">
+      
+      
+        <link rel="prev" href="../trait-switches/">
+      
+      
+        <link rel="next" href="../one-record-over-a-node-cache/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Staging as a layer - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#proposal-staging-as-a-layer-one-fold-two-sources" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Staging as a layer
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../usage/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../record/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Record protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The record format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../layers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layered resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../read-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The DuckDB read path
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../writing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing a record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../working-record/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WorkingRecord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consuming a record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../module-layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../open-questions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_12" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_12" id="__nav_3_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proposals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Proposals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dims-groups-traits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dims, mappings, groups and traits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trait-switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trait switches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Staging as a layer
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Staging as a layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-starts-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What starts it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-construct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The construct
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The construct">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-cache-stops-at-the-last-frozen-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The cache stops at the last frozen source
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-makes-the-staged-source-foldable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What makes the staged source foldable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-has-to-be-settled-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What has to be settled first
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What has to be settled first">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-pending-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. pending goes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-what-a-non-layered-base-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. What a non-layered base does
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-results-become-schema-declared" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Results become schema-declared
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-what-the-staged-step-re-executes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. What the staged step re-executes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-whether-_seq-collapsing-belongs-to-the-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Whether _seq collapsing belongs to the source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. What DirectoryRecord.flags keeps, and the aggregate it shares
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-landed-first-and-separately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What landed first, and separately
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-code-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the code is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-suggested-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A suggested order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-know-it-worked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to know it worked
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it costs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-opens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it opens
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../one-record-over-a-node-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    One Record over a NodeCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../a-member-file-holds-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A member file holds values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../staging-without-seq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Staging without _seq
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../api/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-starts-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What starts it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-construct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The construct
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The construct">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-cache-stops-at-the-last-frozen-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The cache stops at the last frozen source
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-makes-the-staged-source-foldable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What makes the staged source foldable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-has-to-be-settled-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What has to be settled first
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What has to be settled first">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-pending-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. pending goes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-what-a-non-layered-base-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. What a non-layered base does
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-results-become-schema-declared" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Results become schema-declared
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-what-the-staged-step-re-executes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. What the staged step re-executes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-whether-_seq-collapsing-belongs-to-the-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Whether _seq collapsing belongs to the source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. What DirectoryRecord.flags keeps, and the aggregate it shares
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-landed-first-and-separately" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What landed first, and separately
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-code-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the code is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-suggested-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A suggested order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-know-it-worked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to know it worked
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it costs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-opens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it opens
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="proposal-staging-as-a-layer-one-fold-two-sources">Proposal: staging as a layer — one fold, two sources<a class="headerlink" href="#proposal-staging-as-a-layer-one-fold-two-sources" title="Permanent link">&para;</a></h1>
+<p>Status: <strong>Implemented</strong> · Drafted 2026-09-01 · Implemented 2026-09-01</p>
+<p>Landed in <a href="../../read-path/#one-record-over-one-fold">the read path</a> and <a href="../../working-record/#reading-with-pending-edits"><code>WorkingRecord</code></a>; this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.</p>
+<p><a href="../../working-record/"><code>WorkingRecord</code></a> already claims to be a layer:</p>
+<blockquote>
+<p>A set of pending edits <strong>is</strong> a layer — an unwritten one. So the reads compose the same way: the staged rows are the last layer, resolved over whatever the record was reading before. (<a href="../../working-record/#reading-with-pending-edits">reading with pending edits</a>)</p>
+</blockquote>
+<p>The code does not deliver that. <code>mutable.py</code> reimplements the overlay in its own terms — an anti-join and a union per kind, a <code>_collapsed_*</code> per kind, its own flags aggregate — while <code>layered/resolve.py</code> folds. This proposal makes the sentence true: one fold, reading parquet layers, a plain directory or a staging area, differing in where a layer's rows come from and nothing else.</p>
+<h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
+<p>Three pieces of the same algebra exist twice, and the duplication is not incidental — each pair was written from the same design paragraph and drifted anyway.</p>
+<p><strong>The overlay.</strong> <code>fold_inputs</code> anti-joins the parent on <code>input_key</code> and unions the layer's own rows (<a href="https://github.com/energy-models/datarecord/blob/main/datarecord/layered/resolve.py">resolve.py</a>); <code>_overlay</code>, <code>_entity_union</code> and <code>_group_union</code> do the same against staged rows. Five sites, one rule.</p>
+<p><strong>The flags.</strong> The fold computes <code>varies</code>/<code>broadcast</code>/<code>breakpoints</code> in its ownership <code>GROUP BY</code>, so <code>LayeredRecord.flags</code> is free. <code>WorkingRecord._flags_arm</code> computes the identical two structs over the staging tables, one arm per attribute, then unions them into the base's answer. <code>flags_from_rows</code> is shared, so the coordinate scoping <a href="../../record/#flags"><code>flags</code> depends on</a> is written once; the aggregate feeding it is not.</p>
+<p><strong>The collapse.</strong> <code>_latest_per</code> collapses staged rows last-write-wins per coordinate; the fold does the same across layers by depth. Different mechanisms (<code>_seq</code> versus layer order) for one rule.</p>
+<h2 id="the-construct">The construct<a class="headerlink" href="#the-construct" title="Permanent link">&para;</a></h2>
+<p>The fold's three kind-folds are hardcoded to read one layer's parquet:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">fold_inputs</span><span class="p">(</span><span class="n">revision_id</span><span class="p">,</span> <span class="n">keys</span><span class="p">,</span> <span class="n">con</span><span class="p">,</span> <span class="n">parent</span><span class="p">):</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="n">try_read_parquet</span><span class="p">(</span><span class="n">layer_dir</span><span class="p">(</span><span class="n">revision_id</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;inputs/*.parquet&quot;</span><span class="p">,</span> <span class="n">con</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+</code></pre></div>
+<p><code>revision_id</code> is used for exactly two things: deriving those paths, and stamping <code>layer_uuid</code>. Replace it with a <strong>source</strong> that answers the same questions:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">LayerSource</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;One layer&#39;s own rows, however they are stored.</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="sd">    &quot;The layer as it would be written&quot;, not &quot;the rows as stored&quot;: a source</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="sd">    hands over what `write_record` would persist, so `_seq` collapsing and</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="sd">    tombstone application happen behind it and the fold never learns about</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="sd">    either. `None` means this layer wrote nothing of that kind.</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="sd">    Rows only. Everything the fold does to them - padding to the long</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="sd">    schema, expanding broadcasts against an axis, the ownership aggregate,</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="sd">    `order_key` - stays in the fold, which is the point: an implementation</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="sd">    that computed any of it would be the second copy this proposal exists</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="sd">    to delete.</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="n">layer_id</span><span class="p">:</span> <span class="n">UUID</span>  <span class="c1"># what the fold stamps as `layer_uuid`</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="n">frozen</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># False for a staging area, which changes under the reader</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">axes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">axis</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">entity_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attribute</span><span class="p">(</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">kind</span><span class="p">:</span> <span class="n">Kind</span> <span class="o">=</span> <span class="s2">&quot;inputs&quot;</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">all_attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kind</span><span class="p">:</span> <span class="n">Kind</span> <span class="o">=</span> <span class="s2">&quot;inputs&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>Each member is one file, addressed by what keys it — <code>dims/&lt;dim&gt;.parquet</code>, <code>dims/entity_types/&lt;name&gt;.parquet</code>, <code>groups/&lt;name&gt;.parquet</code>, <code>inputs|outputs/&lt;name&gt;.parquet</code>. <code>Kind</code> is <code>Literal["inputs", "outputs"]</code> — the same alias <a href="../../working-record/#set"><code>set</code></a> already takes, kept a literal rather than promoted to an enum so the two signatures stay one vocabulary.</p>
+<p>Two asymmetries, both the format's rather than the protocol's:</p>
+<p><strong><code>entity</code> is a dim like any other.</strong> <code>dims/entity.parquet</code> is an axis file, so it is <code>axis("entity")</code>; there is no separate <code>entities</code> member. What differs is only what the fold does with it — the entity axis is folded into the components map, with <code>order_key</code> and tombstones, where <code>period.parquet</code> is folded by <code>resolve_dims</code> on <code>axis_key</code>. Same file accessor, two consumers. <code>entity_type(name)</code> is a different thing entirely: one type's wide member rows, read after the map named a winner.</p>
+<p><strong>Only <code>inputs/</code> has a plural.</strong> <code>all_attributes</code> exists because <code>fold_inputs</code> decides ownership across every attribute in one <code>GROUP BY</code> — the files share <code>input_key</code>, so one scan answers for all of them. Nothing else does: each axis folds on its own <code>axis_key(dim)</code>, each group on its own <code>group_key</code>, so a combined read would have no key to fold on and <code>union_by_name</code> across them would be meaningless. <code>attribute(name)</code> is not the singular of it in disguise — it is the <em>owned</em> read, one file with its own exact columns, which <code>relation()</code> needs because a padded column is ambiguous against <a href="../../record/#the-broadcast-rule">the broadcast rule</a>.</p>
+<p><code>all_attributes</code> returns the union <strong>unprojected</strong>. <code>fold_inputs</code> keeps its <code>with_columns</code> padding to <code>long_columns</code>, and <code>StagedSource</code> gets that for free: its staging tables carry the same per-attribute column variation as the files do, so one call fixes both.</p>
+<p><code>axes()</code> is the one discovery member, and it earns its place: <code>resolve_dims</code> today probes <code>{dim}.parquet</code> for every <em>declared</em> dim in every ancestry directory, and <a href="https://github.com/energy-models/datarecord/blob/main/datarecord/duck.py"><code>fold_axis</code>'s own docstring</a> notes most of those miss. One <code>glob</code> per directory replaces D probes with one listing — D × A probes become A listings, which remotely is the difference between forty HEADs and five LISTs. <code>ParquetLayer</code> globs; <code>StagedSource</code> reads <code>self._staged</code>.</p>
+<p>Two implementations, plus a third under <a href="#2-what-a-non-layered-base-does">question 2</a>:</p>
+<ul>
+<li><strong><code>ParquetLayer(revision_id)</code></strong> — what exists today, each member a <code>try_read_parquet</code> under <code>layer_dir(revision_id)</code>.</li>
+<li><strong><code>StagedSource(working_record)</code></strong> — the collapsed staging tables under a synthetic <code>layer_id</code>: <code>_collapsed_inputs</code> behind <code>attribute</code>, <code>_collapsed_entities</code> behind <code>axis("entity")</code>, <code>_collapsed_group</code> behind <code>group</code>, <code>_collapsed_axis</code> behind <code>axis</code>.</li>
+</ul>
+<p><code>flags</code> then falls out of the ownership group-by for every backing, and <code>_flags_arm</code>, <code>_overlay</code>, <code>_entity_union</code> and <code>_group_union</code> are deleted rather than parametrised.</p>
+<h3 id="the-cache-stops-at-the-last-frozen-source">The cache stops at the last frozen source<a class="headerlink" href="#the-cache-stops-at-the-last-frozen-source" title="Permanent link">&para;</a></h3>
+<p><code>NodeCache</code> folds a list of sources rather than a list of UUIDs:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">NodeCache</span><span class="p">:</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">revision_id</span><span class="p">:</span> <span class="n">UUID</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">sources</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">LayerSource</span><span class="p">]</span>  <span class="c1"># root first, ending in this node&#39;s own layer</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span>
+</code></pre></div>
+<p>A <code>WorkingRecord</code> is then <code>sources + [StagedSource(self)]</code>. No second class and no mode flag: the staged layer is the last entry, which is what "staging is a layer" was supposed to mean.</p>
+<p>What that list has to carry is the caching rule, because the sources differ in exactly one respect that matters. <code>_table</code> materialises a folded map with <code>.create(name)</code> and never invalidates it; <code>dims</code> and <code>schema</code> are <code>cached_property</code>; the class docstring says outright that nothing an instance caches can go stale. All of that rests on <a href="../../layers/#a-layers-data-is-write-once">layers being write-once</a> — which a staging area is not, since every <code>set</code> changes its rows under the reader.</p>
+<p>Hence <code>frozen</code> on the protocol, and one rule over it:</p>
+<blockquote>
+<p><strong>The fold is materialised up to the last frozen source; everything after it stays a relation.</strong></p>
+</blockquote>
+<p>So <code>_map(kind)</code> folds the frozen prefix and <code>.create()</code>s it exactly as today, then folds the remaining sources on top and hands back the relation. <code>dims</code> is the same rule applied to the other fold: <code>resolve_dims</code> folds each axis over <code>dims_dirs</code> on <code>schema.axis_key(dim)</code>, outside the owner map entirely, so the frozen prefix's axes cache and a staged <code>axis(dim)</code> folds over them per access. That is what carries a staged axis edit into the reads, and where <code>_collapsed_axis</code>'s per-column <code>max_by</code> has to survive: two <code>set</code> calls for two attributes on one axis each stage only their own column, so a whole-row last-writer-wins would blank the earlier one.</p>
+<p>Nothing needs invalidating, because nothing past the prefix is materialised: a DuckDB relation over a staging table reads whatever the table holds when it is collected, so a <code>set</code> is picked up with no bookkeeping at all — no generation counter, no cache key, no drop-and-rebuild.</p>
+<p>What re-executes per read is one anti-join, one union and the ownership <code>GROUP BY</code> over the staging tables, against an already-materialised parent map. The ancestry does not. That is <a href="../../working-record/#reading-with-pending-edits">what the design already promises</a> — "exactly one more fold step over the same owner-map machinery … it costs what one more layer costs" — with the qualifier that page leaves implicit, that a written layer pays that cost once while the staged one pays it per read, being the one layer that can still change.</p>
+<p>Two things fall out of stating it as a property of the sources rather than a mode of the cache. A second staged layer, or a frozen one under an unfrozen one, needs no new code — the prefix is wherever <code>frozen</code> stops being true. And <code>ancestry_to_read</code>'s truncation at the deepest materialised ancestor becomes <em>source construction</em>: fewer sources rather than a shorter list of UUIDs, with <code>materialised()</code> unchanged, being a question about a revision.</p>
+<p>The one wart: <code>dims</code> cannot stay a <code>cached_property</code> where the tail is live. It becomes a plain property that caches the frozen prefix's axes and re-folds the rest — the same rule as <code>_map</code>, so it is one concept applied twice rather than a special case. <code>schema</code> is unaffected: <a href="../../schema/#one-schema-per-record">one schema per record</a>, not layered data, so no source contributes to it.</p>
+<h2 id="what-makes-the-staged-source-foldable">What makes the staged source foldable<a class="headerlink" href="#what-makes-the-staged-source-foldable" title="Permanent link">&para;</a></h2>
+<p>The fold ends each kind by evicting the parent's matching keys:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">kept</span> <span class="o">=</span> <span class="n">parent</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">own</span><span class="p">,</span> <span class="n">null_safe</span><span class="p">(</span><span class="s2">&quot;p&quot;</span><span class="p">,</span> <span class="s2">&quot;o&quot;</span><span class="p">,</span> <span class="n">keys</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">input_key</span><span class="p">),</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;anti&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>That is correct for a written layer <em>because</em> its extent along every non-<code>partial</code> axis has already been completed. Evicting the parent's key loses nothing, since the new layer replaced all of it. A staging area that has not completed would lose the rest of the series, so anti-joining on <code>input_key</code> would let one staged point displace the base's whole series — the loss <code>_overlay</code>'s comment describes, and the reason the staged overlay keys by coordinate instead.</p>
+<p>So the precondition, not the algebra, is what differs. <strong>Establish the precondition and the difference is gone</strong>: the completion runs as rows are staged rather than at commit.</p>
+<p><strong>Landed</strong> as <code>_complete_owned_whole</code>, called at the end of <code>_insert_long</code>. The staging tables now already hold what gets written, so <code>staged_only()</code> is literally true rather than assembled and the commit path has no completion step of its own.</p>
+<p>It runs <strong>per insert, not once per attribute</strong>, because the completion is scoped by <em>which keys an edit named</em>: a component no edit mentioned keeps its rows in the parent, and carrying them would claim an extent the layer was never given. Table creation cannot be the hook, since no keys are staged yet when the table is made. The anti-join against what the table already holds makes it idempotent, so a second edit carries only what the first did not.</p>
+<p>A staged row leaving a whole-owned dim NULL is excluded: it already covers every label by <a href="../../record/#the-broadcast-rule">the broadcast rule</a>, so its key has nothing to carry and a carried row beside it would overlap.</p>
+<p>One consequence accepted deliberately: <strong><code>set</code> reads the base when it touches a completed attribute</strong> — a fold, where a deep unmaterialised ancestry makes an expensive one. Bounded by what is staged rather than by how often, the anti-join making a repeat edit carry nothing; an attribute with no owned-whole dim never triggers it at all. <a href="#how-to-know-it-worked">Measured</a> at ~5 ms for a repeat, twenty layers deep.</p>
+<p>Carried rows being indistinguishable from edited ones is what removed <a href="#1-pending-goes"><code>pending</code></a>: a one-value <code>set</code> on a thousand-snapshot attribute would have reported a thousand pending rows.</p>
+<h2 id="what-has-to-be-settled-first">What has to be settled first<a class="headerlink" href="#what-has-to-be-settled-first" title="Permanent link">&para;</a></h2>
+<h3 id="1-pending-goes">1. <code>pending</code> goes<a class="headerlink" href="#1-pending-goes" title="Permanent link">&para;</a></h3>
+<p>Settled: <strong>remove it</strong> rather than teach the staging tables to distinguish carried rows from edited ones. That distinction is a second row class in every staging table and a condition in <code>_collapsed_inputs</code>, which is more machinery than the accessor is worth. The question it answered is asked of the reads, which say what the record <em>is</em> rather than how many rows were staged to get there.</p>
+<h3 id="2-what-a-non-layered-base-does">2. What a non-layered base does<a class="headerlink" href="#2-what-a-non-layered-base-does" title="Permanent link">&para;</a></h3>
+<p>Settled by <code>DirectorySource</code>: a <code>DirectoryRecord</code> is a parquet directory in the layer layout, so every member of the protocol is one of its <code>_read</code> calls and a <code>WorkingRecord</code> over one folds <code>[DirectorySource(base), StagedSource(self)]</code>. No conditional path, and the <code>_overlay</code> cluster goes for every base.</p>
+<p><strong>A base that is neither is out of scope</strong>, deliberately. A framework object satisfying <code>Record</code> hands over narwhals frames, and <code>as_relation</code> would turn those into relations — but the protocol has no <code>Record</code> accessor behind it: <code>axis("entity")</code> wants the entity axis, and <code>Record</code> exposes <code>components</code> keyed by type with the wide rows, not the axis. Synthesising one means unioning every type's frame and projecting <code>(entity, entity_type)</code>, which is reconstructing the layer format from a protocol that deliberately does not have it. <code>all_attributes</code> is worse — it would materialise the whole record per read.</p>
+<p>Nothing constructs such a <code>WorkingRecord</code> today, and <code>_base_revision</code> already refuses it with a clear message. If a caller appears, it is its own proposal.</p>
+<p><strong>One design note this owes.</strong> <a href="../../read-path/#one-record-over-one-fold">read-path</a> makes "no owner map" a property of <code>DirectoryRecord</code>, and that stays true — a bare <code>DirectoryRecord</code> still scans for <code>flags</code>. What is new is that a <code>WorkingRecord</code> <em>over</em> one builds a map, which belongs to the <code>WorkingRecord</code> exactly as a <code>LayeredRecord</code>'s map belongs to the node rather than to the layers it folds. The page needs that sentence, or the next reader reads the map as a contradiction.</p>
+<h3 id="3-results-become-schema-declared">3. Results become schema-declared<a class="headerlink" href="#3-results-become-schema-declared" title="Permanent link">&para;</a></h3>
+<p>Today a result attribute is not declared: <a href="../../tools/"><code>Tool.results</code></a> derives which attributes count as results from the framework's own registry, and <code>write_record</code> persists <code>outputs/</code> without consulting the schema. So <code>set(..., kind="outputs")</code> accepts any name, and <code>output_names()</code> has to <em>discover</em> what is there by globbing.</p>
+<p><strong>Declare them.</strong> <code>Schema</code> gains result attributes beside its input ones, and three things follow:</p>
+<ul>
+<li><strong><code>all_attributes("outputs")</code> can name its files</strong> from the schema rather than globbing the directory, once it exists. <code>output_names()</code> stays a data read either way — it mirrors <code>attribute_names</code>, which reads the owner map rather than the schema, because a record may declare a result no layer computed exactly as it may declare an input no layer wrote. Nothing was removed here: today's <code>output_names</code> already reads <code>outputs/*.parquet</code> once with <code>union_by_name</code> rather than listing per attribute, so this is a benefit the source rewrite collects, not a glob this step deletes.</li>
+<li><strong><code>long_columns_for</code> stops guessing.</strong> An undeclared attribute currently falls back to <code>long_columns</code> — "every declared dim, the widest shape" — and its docstring says only a result reaches that branch. Declared results get their own coordinates like inputs, and the branch goes with them.</li>
+<li><strong>One vocabulary.</strong> <code>Schema</code> stops having two classes of attribute, one it validates and one it cannot see.</li>
+<li><strong><code>value_hint</code> retires.</strong> <code>_empty_long</code> types a staging table's <code>value</code> as <code>schema.value_type(attribute) or value_hint or String()</code>, where the hint is the dtype the caller's frame arrived with — "that being the only thing that knows" for an undeclared result. Once results are declared the schema knows, so the fallback is dead. Retiring it removes the parameter from <code>_ensure</code> and <code>_empty_long</code>, its three call sites, and the two helpers that compute it (<code>_value_dtype</code>, <code>_scalar_dtype</code>) — check those have no other caller first.</li>
+</ul>
+<p>The cost is real and lands outside this repo. A tool must declare a result before attaching it, where today it may attach anything its registry produced — and PyPSA's <code>SubNetwork</code> exists only <em>after</em> a solve, which is exactly the case <a href="../../working-record/#results-through-kindoutputs">results through <code>kind="outputs"</code></a> cites for not requiring declaration. So a tool either declares its full result vocabulary up front, or amends the schema at solve time, and <a href="../../schema/#versioning"><code>Schema.compatible_with</code></a> is what says whether existing layers survive the amendment.</p>
+<p>The membership check stays relaxed regardless: a result may name a component the record never declared, which is a separate rule from whether the <em>attribute</em> is declared and is not changed here.</p>
+<h3 id="4-what-the-staged-step-re-executes">4. What the staged step re-executes<a class="headerlink" href="#4-what-the-staged-step-re-executes" title="Permanent link">&para;</a></h3>
+<p>Settled by <a href="#the-cache-stops-at-the-last-frozen-source">the frozen-prefix rule</a>: the staged fold is a relation, never a table, so a <code>set</code> needs no invalidation and the cached ancestry below it is reused. Two things to check rather than assume, both consequences of running that step per read:</p>
+<ul>
+<li><strong><code>_fold_ordered</code>'s <code>order_key</code> subquery.</strong> It computes <code>(SELECT max(order_key::BIGINT) FROM parent)</code> inside <code>con.sql</code>, which under the current code runs once when the map is created. Uncached, it runs on every collect — a scan of the parent map per read. Measure it on a large component set; if it is not free, the offset can be hoisted to <code>NodeCache</code> construction, the frozen prefix's map being fixed. <a href="#what-landed-first-and-separately"><code>order_key</code> as <code>(depth, row)</code></a> removed the subquery outright rather than hoisting it, which is why that change landed there rather than here.</li>
+<li><strong><code>StagedSource</code>'s collapses are rebuilt per call.</strong> Each member applies its collapse (<code>_latest_per</code>, the tombstone anti-join, <code>_collapsed_axis</code>'s per-column <code>max_by</code>) before handing the relation over. Measured on 50k staged rows over 500 entities × 20 periods: <strong>~1.4 ms to build the plan, ~4.3 ms to execute it</strong>. So a read of a <code>WorkingRecord</code> over a schema with inputs, components and two groups pays roughly four of each — tens of milliseconds, scaling with what is staged.</li>
+</ul>
+<p>It can be memoised, contrary to how the live tail might read: what must not be cached is a <em>stale</em> answer, and <code>_seq</code> is already a monotonic per-edit counter, so the source knows exactly when its own answer changed. Key each collapse on the highest <code>_seq</code> staged; a read after a <code>set</code> misses and rebuilds, two reads with nothing between them hit. This is local to <code>StagedSource</code>, invisible to <code>NodeCache</code>, and leaves <a href="#the-cache-stops-at-the-last-frozen-source">the frozen-prefix rule</a> untouched — the tail is still recomputed whenever it changed, just not when it did not. It is also the one place a generation counter is cheap, because <code>_seq</code> exists already; the owner map has no equivalent signal, which is why it is folded live instead.</p>
+<h3 id="5-whether-_seq-collapsing-belongs-to-the-source">5. Whether <code>_seq</code> collapsing belongs to the source<a class="headerlink" href="#5-whether-_seq-collapsing-belongs-to-the-source" title="Permanent link">&para;</a></h3>
+<p>Yes, and it is stated in the protocol docstring: a source hands over "the layer as it would be written". <code>_seq</code> is staging bookkeeping, so the fold must never see it, and nobody should add a raw-rows member later.</p>
+<h3 id="6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares">6. What <code>DirectoryRecord.flags</code> keeps, and the aggregate it shares<a class="headerlink" href="#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares" title="Permanent link">&para;</a></h3>
+<p><code>DirectoryRecord</code> is not affected by the fold, and must not be. It deliberately pays the <code>GROUP BY</code> scan — <a href="../../read-path/#one-record-over-one-fold">the table in read-path</a> makes that a design property, not an omission.</p>
+<p>So after this change the flags aggregate exists twice: once inside <code>fold_inputs</code> reading <code>_raw_&lt;dim&gt;</code> columns, once in <code>DirectoryRecord</code> reading parquet columns directly. Sharing them is in scope, done <strong>last</strong>, once <code>_flags_arm</code> is gone and the remaining pair is what has to fit.</p>
+<p>The two differ only in what the per-dim <code>bool_or</code> reads, so the shared aggregate takes that as its one parameter:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">flags_aggregate</span><span class="p">(</span><span class="n">rel</span><span class="p">,</span> <span class="n">members</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">per_dim</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">attribute</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span> <span class="o">...</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># per_dim: (dim) -&gt; (varies_expr, broadcast_expr)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1">#   fold       bool_or(col(&quot;_raw_&lt;d&gt;&quot;).isnotnull())  /  ...isnull()</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1">#   directory  bool_or(col(d).isnotnull())           /  ...isnull()</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1"># attribute: a literal where the caller aggregates one attribute&#39;s own table,</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="c1">#   `None` where it groups by an `attribute` column.</span>
+</code></pre></div>
+<p><code>flags_from_rows</code> already shares the tail — the coordinate scoping — and stays as it is.</p>
+<p>With two callers rather than three the case is weaker than it was, so this is the part to drop if it does not fit cleanly: two honest aggregates beat one helper with a flag for each caller. What must not happen is attempting it <em>first</em> — the parameter list would be shaped by three callers, one of which this change deletes.</p>
+<h2 id="what-landed-first-and-separately">What landed first, and separately<a class="headerlink" href="#what-landed-first-and-separately" title="Permanent link">&para;</a></h2>
+<p>Three changes this rests on took their own pull requests, because each stands alone and none should have been buried in a fold rewrite. All three landed before step 5.</p>
+<p><strong><code>components</code> → <code>entity_type</code>.</strong> <code>entity_type</code> is already the column name everywhere — 78 uses across core — while <code>component</code> survives in the API surface and the <code>dims/components/</code> path, which never got carried along when the column was renamed. <code>component_frame</code>, <code>component_columns</code>, <code>fold_components</code>, <code>_component_deleted</code>, <code>component_types</code>, <code>Record.components</code>, <code>dims/components/</code> on disk, and <code>tools/pypsa.py</code>'s module docstring all say the older word for the thing <code>entity_type</code> names. Landing that first means this proposal is written in one vocabulary and keeps its "no format change" line honestly — the directory move is that PR's, not this one's.</p>
+<p><strong>Glob-based axis discovery.</strong> <code>axes()</code> above is the protocol's shape for it, but the underlying fix is to <code>resolve_dims</code>/<code>fold_axis</code> and is worth having with or without this change: stop probing every declared dim in every ancestry directory, list each directory once instead.</p>
+<p><strong><code>order_key</code> as <code>(depth, row)</code>.</strong> Today it is a scalar <code>BIGINT</code>, assigned as <code>COALESCE((SELECT max(order_key) FROM parent), -1) + row_number() OVER (ORDER BY _row)</code>. That expresses "later layers come after earlier ones" arithmetically, and the flattening costs one thing: <strong>a layer's numbering depends on its parent's values</strong>, so the fold step has to read the parent's map to number its own rows.</p>
+<p>A struct says the same thing directly — <code>depth</code> is the source's position, <code>row</code> its file order within that layer — and DuckDB orders structs lexicographically by field, so <code>ORDER BY order_key</code> keeps working unchanged at <code>_ordered</code>, <code>tools/pypsa.py</code> and the tests, and <code>max(order_key)</code> still means what it means. First-introduced order is preserved by construction: a key introduced at depth 2 and restated at depth 5 keeps <code>(2, n)</code>, because the parent's rows pass through the anti-join with their own key intact.</p>
+<p>Why it belongs with this proposal rather than in it: the subquery it deletes is exactly the one <a href="#4-what-the-staged-step-re-executes">question 4</a> flags as re-running per read once the tail is live. With a tuple there is nothing to hoist — a source's contribution becomes computable from the source and its index alone, which is what "one fold over a list of sources" ought to mean, and the fold stops reaching into its parent's data to number rows.</p>
+<p>It is a format change: <code>nw.Int64()</code> becomes a struct in <code>component_columns</code> and every <code>group_columns</code>, and materialised maps change shape. Pre-1.0, so that is a cost rather than a blocker, but it is why this is its own pull request. The case to test is the restated key above, and a child folding onto a <em>materialised</em> parent, whose depths are the fold's result rather than a position in any list — its <code>max(order_key.depth) + 1</code> is the same arithmetic one level up.</p>
+<h2 id="where-the-code-is">Where the code is<a class="headerlink" href="#where-the-code-is" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>what</th>
+<th>where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the three kind-folds</td>
+<td><code>layered/resolve.py</code> — <code>fold_inputs</code>, <code>fold_components</code>, <code>fold_group</code>, sharing <code>_fold_ordered</code></td>
+</tr>
+<tr>
+<td>what drives them</td>
+<td><code>_fold_map</code> (folds one kind down an ancestry), <code>map_kinds</code> (which kinds a schema has), <code>_fold_kind</code></td>
+</tr>
+<tr>
+<td>what caches them</td>
+<td><code>_table</code> (<code>.create()</code> per kind), <code>NodeCache.dims</code> / <code>.schema</code>, <code>Revision.node_cache</code> — all justified by write-once</td>
+</tr>
+<tr>
+<td>what builds the ancestry</td>
+<td><code>revision.py</code> — <code>Revision.node_cache</code>, <code>ancestry</code>; <code>resolve.ancestry_to_read</code>, which becomes source construction</td>
+</tr>
+<tr>
+<td>where a layer's paths</td>
+<td><code>layered/sources.py</code> — <code>LayerSource.uri</code>, <code>ParquetLayer</code> over <code>duck.py</code>'s <code>layer_dir</code>; <code>resolved_dir</code> still direct</td>
+</tr>
+<tr>
+<td>the axis fold</td>
+<td><code>resolve_dims</code> + <code>duck.py</code> — <code>dims_dirs</code>, <code>fold_axis</code>; keyed by <code>schema.axis_key</code>, outside the owner map</td>
+</tr>
+<tr>
+<td>the reads over the map</td>
+<td><code>NodeCache.relation</code> / <code>component_frame</code> / <code>group_frame</code> / <code>_owned_frame</code> / <code>attributes_of</code></td>
+</tr>
+<tr>
+<td>the directory's reads</td>
+<td><code>directory.py</code> — <code>_read</code>, <code>_require</code>, <code>_keyed_by</code></td>
+</tr>
+<tr>
+<td>the staged counterparts</td>
+<td><code>mutable.py</code> — <code>_overlay</code>, <code>_entity_union</code>, <code>_group_union</code>, <code>_collapsed_inputs</code> / <code>_entities</code> / <code>_group</code> / <code>_axis</code></td>
+</tr>
+<tr>
+<td>the staged flags</td>
+<td><code>mutable.py</code> — <code>flags</code>, <code>_flags_arm</code></td>
+</tr>
+<tr>
+<td>the extent completion</td>
+<td><code>mutable.py</code> — <code>_insert_long</code> → <code>_complete_owned_whole</code>, <code>_owned_whole</code>; <code>_ensure</code> / <code>_empty_long</code> shape the table</td>
+</tr>
+<tr>
+<td>what commit hands over</td>
+<td><code>mutable.py</code> — <code>staged_only</code>, <code>flattened</code>, both building a <code>_Written</code></td>
+</tr>
+<tr>
+<td>the shared tail</td>
+<td><code>record.py</code> — <code>flags_from_rows</code> (scoping), <code>duck.py</code> — <code>null_safe</code>, <code>broadcast_match</code>, <code>union_all_by_name</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>_fold_ordered</code> is worth reading first: <code>fold_components</code> and <code>fold_group</code> already differ only in file, key columns, whether a type is carried and whether a second tombstone applies — so the source is a further parameter of a shape that already exists, not a new idea.</p>
+<p>Note that <code>mutable.py</code> imports from <code>layered/</code> only inside function bodies, to avoid a cycle (<code>_base_revision</code>, <code>commit</code>). Keep it that way.</p>
+<h2 id="a-suggested-order">A suggested order<a class="headerlink" href="#a-suggested-order" title="Permanent link">&para;</a></h2>
+<p><strong>All of it has landed.</strong> Steps 0–4: the identity spike (it holds — an unstaged <code>WorkingRecord</code> reads identically to its base over either backing), the <a href="#how-to-know-it-worked"><code>both</code> fixture</a> extended to read one record four ways, <a href="#what-makes-the-staged-source-foldable">the completion moved out of commit</a> with <code>pending</code> removed, <a href="#3-results-become-schema-declared">results declared</a> with <code>value_hint</code> retired, and <code>LayerSource</code>/<code>ParquetLayer</code> in <code>layered/sources.py</code>.</p>
+<p>Steps 5–7 landed in two commits rather than three, 5 and 6 being no behaviour change and the deletions arriving only at 7: the three kind-folds take a source, <code>NodeCache</code> holds <code>sources</code> and materialises to the last <code>frozen</code> one, and <code>StagedSource</code>/<code>DirectorySource</code> replace the <code>mutable.py</code> overlay cluster.</p>
+<p>Two things the steps turned out to contain that the descriptions did not:</p>
+<ul>
+<li><strong><code>ResolvedLayer</code></strong>, for a materialised ancestor. <code>ancestry_to_read</code>'s truncation becoming source construction needs the node stopped at to be a source of a third kind: its folded axes and owner map come from <code>resolved/</code>, its own rows still from its layer. Reading everything from <code>resolved/</code> loses the rows the map names it the owner of — a cache holds folded keys, never the rows they resolve to.</li>
+<li><strong><code>_axis_layer</code> merging per column for a <code>partial</code> axis too</strong>, which it did not. The fold is last-writer-wins per <em>label</em> over the whole row, so a source handing over only the column its <code>set</code> named blanked the siblings on that label. It merged them already for an axis owned whole; what <code>partial</code> decides is how many labels are carried, not whether a row is whole.</li>
+</ul>
+<p><strong>Step 8 was dropped</strong>, on the grounds <a href="#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares">question 6</a> anticipated. With <code>_flags_arm</code> gone the remaining pair shares three <code>bool_or</code> lines and differs in the group-by, the column read, and whether the result is fetched — so the helper's parameter list would be longer than the body it shares. Two honest aggregates.</p>
+<p>Two things this deliberately does not fix, recorded so they are not mistaken for oversights:</p>
+<ul>
+<li><strong><code>attributes_of</code> re-executes under a live tail.</strong> It aggregates the map a second time — a <code>bool_or</code> union across a type's members — and <code>fetchall()</code>s, so with the tail live that is a query per call rather than a plan. Accepted: it is bounded by the map rather than by the staging area, and the deletions are worth it.</li>
+<li><strong><code>commit</code> still needs a revision.</strong> <code>_base_revision</code> requires a <code>LayeredRecord</code> base and reads <code>node_cache.revision_id</code>, so <code>NodeCache</code> keeps that field and a <code>DirectorySource</code>-backed <code>WorkingRecord</code> still cannot <code>NewChild()</code>. <code>DirectorySource</code> makes such a record <em>readable</em> through the fold, not committable to a layer tree.</li>
+</ul>
+<h2 id="how-to-know-it-worked">How to know it worked<a class="headerlink" href="#how-to-know-it-worked" title="Permanent link">&para;</a></h2>
+<p>This change rewrites resolution without changing a single answer, so the whole of its correctness is "nothing moved". Three things pin that, and they exist already.</p>
+<p><strong><code>tests/test_records.py</code> is the harness.</strong> Its <code>both</code> fixture writes one record and reads it back as a <code>LayeredRecord</code> and a <code>DirectoryRecord</code>, then asserts the two agree on every key set, on <code>flags</code> per type, and on the resolved rows per attribute. That is exactly the invariant a fold rewrite can break, and it already runs. <code>test_backings_agree_on_flags</code> is the one to extend: it asks two backings to agree, and the duplicated aggregate is exactly what a third would catch.</p>
+<p><strong>The gap: a <code>WorkingRecord</code> is not in that fixture.</strong> It satisfies <code>Record</code>, so it can be — a <code>WorkingRecord</code> with nothing staged must read identically to its base, and one with staged edits must read identically to the record its <code>commit</code> produces. Both over a layered base <em>and</em> over a directory base, which is what pins step 7. Adding those before touching the fold is the cheapest way to make this change verifiable.</p>
+<p><strong><code>test_mutable.py:362-380</code> pins the flags union across a staged edit</strong> (<code>before</code>/<code>after</code> around a <code>set</code>), which is the behaviour step 5 must preserve when <code>_flags_arm</code> goes.</p>
+<p><strong>A read-after-<code>set</code> test is what pins the live tail.</strong> <code>set</code>, read, <code>set</code> again, read again: the second read must see the second edit. That is the whole content of "the staged step is not cached", and it fails loudly if anyone later caches past the frozen prefix — a <code>cached_property</code> over the tail, or a <code>.create()</code> that does not stop where <code>frozen</code> does.</p>
+<p>Three performance claims, now measured rather than asserted — a 20-layer unmaterialised ancestry over the <code>ac_dc</code> network, best of five:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>deep read, nothing staged</td>
+<td>2.4 ms</td>
+</tr>
+<tr>
+<td>deep read, one staged edit</td>
+<td>61 ms</td>
+</tr>
+<tr>
+<td><code>set</code>, first touch of an attribute</td>
+<td>166 ms</td>
+</tr>
+<tr>
+<td><code>set</code>, again on the same attribute</td>
+<td>16 ms</td>
+</tr>
+<tr>
+<td><code>set</code>, again, no owned-whole dim</td>
+<td>10 ms</td>
+</tr>
+<tr>
+<td>directory <code>flags</code>, scanned</td>
+<td>~0 ms</td>
+</tr>
+<tr>
+<td>directory <code>flags</code>, through the fold</td>
+<td>12 ms</td>
+</tr>
+</tbody>
+</table>
+<p>Two of the three hold and one does not.</p>
+<p><strong>A read after a <code>set</code> costs one fold step, not one ancestry</strong> — but against a base read that is <em>cached</em>, so the honest comparison is 2.4 ms to 61 ms rather than "one layer's worth". That is the price of the tail being live, and <a href="#the-cache-stops-at-the-last-frozen-source">the frozen-prefix rule</a> is what bounds it to one step; <a href="#what-it-opens"><code>materialise</code> over a staging area</a> is the escape hatch if a long-lived <code>WorkingRecord</code> makes it hurt.</p>
+<p><strong>A second <code>set</code> costs the completion ~5 ms</strong>, which is the difference between a repeat on an attribute with an owned-whole dim and one without. So <a href="#what-makes-the-staged-source-foldable">what makes the staged source foldable</a> holds: the base fold it runs is the <em>first</em> touch's 166 ms, and the anti-join reaching no rows afterwards is nearly free.</p>
+<p>Getting there took a fix. The first measurement put a repeat at 188 ms, which looked like the completion refolding per insert and read as the proposal being wrong. It was <code>set</code>'s <em>validation</em>: <code>_name_types</code> and <code>_resolved_names</code> assembled "what type is this name" from each type's resolved member frame — a union and a join per type, uncached under a live tail — to read two columns <a href="../../read-path/#owner-map">the owner map</a> already holds. Off the map instead, a repeat <code>set</code> went from 157 ms to 10 ms.</p>
+<p><strong>A <code>WorkingRecord</code> over a directory folds where a bare one scans</strong>, 12 ms against a cached scan's nothing. <code>DirectoryRecord</code> memoises <code>flags</code> per type and the fold does not, so this is the first call either way; the fold's answer is a relation, and what it buys is that one code path serves both bases.</p>
+<p>None of this is covered by <code>tests/test_scaling.py</code>, which measures peak materialisation rather than ancestry depth.</p>
+<p><strong>One correctness claim worth a test of its own.</strong> Once <code>StagedSource</code> restates, a staged layer's map rows are keyed like a written layer's — but the fold's flags are computed per group, and <code>attributes_of</code> <code>bool_or</code>-unions them again across a type. That should make the grouping grain invisible to the answer. Should, not does: assert it, since it is the assumption that lets the staged and parquet paths share one aggregate.</p>
+<h2 id="what-it-costs">What it costs<a class="headerlink" href="#what-it-costs" title="Permanent link">&para;</a></h2>
+<p><strong>A protocol in <code>layered/</code> that <code>mutable.py</code> and <code>directory.py</code> implement.</strong> <code>mutable.py</code> currently imports from <code>layered</code> only at call time, to avoid a cycle (<code>_base_revision</code>, <code>commit</code>). A <code>LayerSource</code> satisfied structurally needs no import either way. <code>directory.py</code> already imports from <code>layered.resolve</code>, so nothing changes there. Worth checking the first stays true.</p>
+<p><strong><code>pending</code> is removed</strong>, with its documentation and its tests. The public surface loses an accessor that answered "what have I staged"; the reads answer it, and say what the record <em>is</em> rather than how many rows were staged to get there.</p>
+<p><strong>Results must be declared</strong>, which constrains a tool that attaches results for components it discovered mid-solve. <a href="#3-results-become-schema-declared">Question 3</a> is the whole of that argument. What does <em>not</em> change is discovery: <code>outputs</code> keys off what a layer holds, sorted, exactly as <code>attributes</code> does.</p>
+<p><strong><code>set</code> grows a first-touch base read</strong> for attributes with a non-<code>partial</code> axis. Bounded by what is staged, not by how often it is staged.</p>
+<p><strong>A read with pending edits re-folds the staged step every time.</strong> Today <code>_collapsed_inputs</code> rebuilds per attribute read, so this is the same bill at a coarser grain: the whole map rather than one attribute. It buys the deletions and the shared flags, and <a href="#what-it-opens"><code>materialise</code> over a staging area</a> is the escape hatch if a long-lived <code>WorkingRecord</code> ever makes it hurt.</p>
+<p><strong><code>NodeCache</code> gains a rule its docstring must carry.</strong> "Nothing an instance caches can go stale" becomes "nothing up to the last <code>frozen</code> source can", and <code>dims</code> stops being a <code>cached_property</code>. The invariant is no weaker — it is derived from the sources rather than assumed of them — but it is one more thing to hold while reading the module the design calls "relational algebra of real complexity".</p>
+<p><strong>Roughly 250 lines deleted from <code>mutable.py</code></strong> — <code>_overlay</code>, <code>_entity_union</code>, <code>_group_union</code>, <code>_flags_arm</code>, and the per-kind frame assembly (<code>_attribute_frame</code>, <code>_entity_frame</code>, <code>_group_frame</code>, <code>_axis_frame</code>) they serve — plus <code>_restated</code>'s move out of the commit path. The <code>_collapsed_*</code> cluster is not deleted but moved: it becomes <code>StagedSource</code>'s member bodies, which is where "the layer as it would be written" was always being computed.</p>
+<p>Those deletions are what make the two smaller cleanups this grew out of unnecessary rather than pending: the <a href="#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares">flags aggregate</a> is folded into the last step above, and a shared <code>overlay(older, newer, on)</code> helper for the five anti-join-then-union sites has no second caller left once four of them are gone.</p>
+<p><strong>No format change of its own.</strong> The two that touch disk — <a href="#what-landed-first-and-separately">the rename and <code>order_key</code></a> — landed first and separately, and nothing here added to them: this change is entirely about who computes the overlay.</p>
+<p><strong>Two sections still owe an edit</strong>, neither optional — when behaviour changes, the page changes, not just the code:</p>
+<ul>
+<li><a href="../../working-record/#results-through-kindoutputs">results through <code>kind="outputs"</code></a> says a result attribute is not schema-declared, and gives the reason. Question 3 reverses that; the page keeps the membership rule and loses the declaration one.</li>
+<li><a href="../../working-record/#reading-with-pending-edits">reading with pending edits</a> says the staged fold "costs what one more layer costs". True per read, and the page should say per read — a written layer pays that once and is cached forever, the staged one pays it on every read, being the only layer that can still change.</li>
+</ul>
+<h2 id="what-it-opens">What it opens<a class="headerlink" href="#what-it-opens" title="Permanent link">&para;</a></h2>
+<p><strong>Whether <code>materialise</code> could run over a staging area.</strong> <a href="#the-cache-stops-at-the-last-frozen-source">The frozen-prefix rule</a> names this exactly: freeze the tail into the prefix. A long-lived <code>WorkingRecord</code> whose edits have settled could fold its staged step once into a <code>NodeCache</code> and read from that, at the price of having to discard it on the next <code>set</code> — which is the generation bookkeeping this proposal avoids needing, deferred to the one case that would pay for it. Nothing here needs it.</p>
+<p><strong>Whether the commit path collapses further.</strong> <code>staged_only()</code> and <code>flattened()</code> build two <code>Record</code>s out of one staging area. With the completion moved into staging, <code>staged_only()</code> <em>is</em> the staged source and <code>flattened()</code> is the fold's own output — so both readings become projections of one object rather than two assembled <code>_Written</code>s.</p>
+<p>Half of this landed with <a href="../one-record-over-a-node-cache/">one <code>Record</code> over a <code>NodeCache</code></a>, which made <code>WorkingRecord</code> a <code>Record</code>: <code>flattened()</code> is now <code>self</code> in every field but one, and that one is not redundancy — a resolved member frame drops <code>entity_type</code>, which the file carries, so <code>_writable_entity_types</code> adds it back.</p>
+<p><code>staged_only()</code> is the half still open. Its four builders each call the same <code>_collapsed_*</code> helper the matching <code>StagedSource</code> member calls, so the rows are shared already and the remaining overlap is the key sets — which a source can now answer for three of the four kinds without a new protocol member, the rows carrying their own key. Whether that is worth an adapter is unsettled: measured against the four builders it deletes about as much as it adds, and its case rests on a second caller — reading a committed <code>ParquetLayer</code> as a record, for a copy or a diff — that does not exist yet.</p>
+<p><strong>Whether a <code>DirectoryRecord</code> gains a map when something wants one.</strong> ~~It should stay unexercised: the scan is a design property.~~ <strong>Resolved the other way.</strong> <a href="../one-record-over-a-node-cache/">One <code>Record</code> over a <code>NodeCache</code></a> deleted <code>DirectoryRecord</code>, so a directory reads through the fold and does get a map — and it is <em>cheaper</em>, the flags falling out of the ownership <code>GROUP BY</code> that a separate scan paid for twice. The "design property" this bullet leant on was a description of an implementation, not a decision, and the sentence in read-path that was supposed to keep it one is the sentence that argument replaced.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../trait-switches/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Trait switches">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Trait switches
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../one-record-over-a-node-cache/" class="md-footer__link md-footer__link--next" aria-label="Next: One Record over a NodeCache">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                One Record over a NodeCache
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
