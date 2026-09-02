@@ -26,13 +26,15 @@ A dim's file is its name and nothing else — no pluralisation, which would be E
 entity | entity_type | <component key dims> | deleted
 ```
 
-It is **derived, not declared**. [`write_record`](writing.md) builds it from the per-type frames it has just written — the type from the file a row landed in — so a `Record` never hands it over and cannot disagree with itself about it.
+It is **an axis file like any other**: a `Record` hands it over as `dims["entity"]` and [`write_record`](writing.md) writes it, with no derivation step of its own. A producer that knows its components knows their types — `PyPSA` builds this frame from the same per-type frames it supplies as `entity_types` — so asking it for one file is cheaper than reconstructing it from the others, and it makes the writer a thing that writes frames rather than one that also computes one.
 
 Three things live here that were previously spread across `dims/entity_type/`:
 
 - **Membership.** A component exists because it has a row here, not because some type's file mentions it.
 - **Its type.** `entity_type` is a column, so `entity -> entity_type` is one read rather than a glob across every type's file with the type taken from the filename.
 - **Its tombstone.** Deleting a component is deleting its entity row.
+
+The type column is here whether or not the schema [declares an entity-type axis](schema.md#entity_type-the-axis-of-kinds). Undeclared, the labels are data rather than a vocabulary — but they still name the `dims/entity_type/<Type>.parquet` a component's non-varying values are in, so a record without the column could not reach its own member rows. That a record with no declared types nonetheless has typed member files is an asymmetry [a proposal](proposals/a-member-file-holds-values.md) argues should go.
 
 What remains in `dims/entity_type/<Type>.parquet` is only [what is addressed by `entity` alone](#where-a-value-lives) — the non-varying attribute values, partitioned by type because that is the one thing genuinely per type: every type has a different column set.
 
@@ -59,7 +61,7 @@ So "varying" is not "has dims" but **"has dims beyond its address"**, and one ru
 
 - **`dims/entity_type/<Type>.parquet`** — attributes addressed by `entity` alone: one column per attribute, indexed by `entity`.
   Values only: a component's _membership_ is its row on the [entity axis](#the-entity-axis), not its presence here.
-  And no `entity_type` column: the type is the file the rows are in, which the writer reads off the filename to derive the entity axis, and that axis is what carries `entity -> entity_type` for every later reader. A column repeating it would be a third copy of one fact, and the only one that could disagree with the other two.
+  And no `entity_type` column: the type is the file the rows are in, and the [entity axis](#the-entity-axis) is what carries `entity -> entity_type` for every later reader. A column repeating it would be a second copy of one fact, and the one that could disagree with the other.
 - **A [group](schema.md#groups)'s file** — attributes addressed by that group alone, PyPSA's `role` on a connection being one.
 - **An axis file** — attributes addressed by one dim alone. A snapshot weighting is a number per snapshot and belongs to no component, so `dims/snapshot.parquet` carries it as a declared column with a `dtype`, a `default` and a `description`.
 - **`inputs/<attr>.parquet`** — every attribute addressed by more than its own coordinate, even where a given component's value happens to be constant.
@@ -72,7 +74,7 @@ A record with no such file has no rows of that group.
 
 **One file per group, never split by type.** A group's rows are keyed by its coordinates and `entity_type` is not one of them: splitting put `connection` rows for a `Link` and a `Line` in different files despite identical keys, forcing a union on every read and privileging `entity` among the coordinates. A `corridor` between two buses has no type to split on at all, and a `contract` between two entities has two — one per coordinate, neither of them the row's — so the split never generalised beyond the case it was written for.
 
-The [entity-type group](schema.md#entity_type-the-axis-of-kinds) is the one exception, its rows being the [entity axis file](#the-entity-axis): that file is derived by the writer from the per-type member frames rather than handed over, which is what keeps a component's type from disagreeing with the file its columns are in.
+The [entity-type group](schema.md#entity_type-the-axis-of-kinds) is the one exception, its rows being the [entity axis file](#the-entity-axis) rather than a `groups/` file of their own: a component's type is what its identity already states, so storing it twice is what would let the two disagree.
 
 A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a column of the group's file like any coordinate, so `groups/country.parquet` is `bus | country`. No column on the classified axis: `dims/bus.parquet` does not gain a `country`, the relation being the group's own file. That costs a join where a column read would have done, and buys a uniform rule — `into` decides nothing about storage, so nothing in the layout branches on it.
 
@@ -106,7 +108,7 @@ That is what removes `entity_type` from every attribute key.
 An `inputs/` row addresses `(entity, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
 The alternative — carrying the type in the key — makes it a _component's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
 
-**The entity axis carries the classification.** `dims/entity.parquet` carries `entity_type` as a column, so `entity -> entity_type` is one read of one file rather than a glob over every type's — the [entity-type group](schema.md#entity_type-the-axis-of-kinds)'s rows, stored here rather than in `groups/` because the writer derives them from the per-type member frames.
+**The entity axis carries the classification.** `dims/entity.parquet` carries `entity_type` as a column, so `entity -> entity_type` is one read of one file rather than a glob over every type's — the [entity-type group](schema.md#entity_type-the-axis-of-kinds)'s rows, stored here rather than in `groups/` because a component's type is part of the identity this file already states.
 `entity_type` is a column of that axis and of the owner map it feeds, never of the attribute rows.
 The type also has an axis file of its own, `dims/entity_type.parquet`, which is where a value addressed by the type alone — a per-type icon — lives; that is a column keyed by type, not an attribute row keyed by entity, so it takes nothing back from the paragraph above.
 

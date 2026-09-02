@@ -1354,6 +1354,16 @@ class _NetworkSource:
 
     @property
     def dims(self) -> LazyFrames:
+        """Every axis this network holds, `entity` among them.
+
+        `entity` is an axis like the others rather than something the writer
+        works out: a record supplies its own membership, so nothing downstream
+        has to reconstruct it from the per-type files.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        """
         axes = {
             SNAPSHOT: lambda: self.n.snapshots.to_frame(index=False),
             PERIOD: lambda: self.n.investment_periods.to_frame(index=False),
@@ -1362,7 +1372,33 @@ class _NetworkSource:
             SCENARIO: lambda: self.n.scenario_weightings.reset_index(),
         }
         present = tuple(d for d in self._DIMS if len(axes[d]()) > 0)
-        return LazyFrames(present, lambda dim: nw.from_native(axes[dim]()).lazy())
+        axes[ENTITY] = self._entity_axis_frame
+        return LazyFrames(
+            (*present, ENTITY), lambda dim: nw.from_native(axes[dim]()).lazy()
+        )
+
+    def _entity_axis_frame(self) -> pd.DataFrame:
+        """`(entity, entity_type, deleted)` over every exported type.
+
+        The type is a column here and in no member file: one file per type is
+        what says a row's type there, and this axis is what carries it for every
+        later reader.
+
+        Notes
+        -----
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+        """
+        frames = [
+            self._entity_type_frame(ctype)
+            .select(ENTITY, "deleted")
+            .with_columns(**{ENTITY_TYPE: nw.lit(ctype)})
+            .collect(backend="pandas")
+            .to_native()
+            for ctype in self.entity_types
+        ]
+        if not frames:
+            return pd.DataFrame(columns=[ENTITY, ENTITY_TYPE, "deleted"])
+        return pd.concat(frames, ignore_index=True)
 
     @property
     def entity_types(self) -> LazyFrames:
@@ -1377,8 +1413,8 @@ class _NetworkSource:
         Generator's one `bus` is as much a connection as a Link's `bus0`,
         and `c.ports == [""]` makes `_port_attribute` name it correctly.
 
-        The entity-type group is not here, its rows being derived on write from
-        the per-type member frames (`_write_entity_axis`).
+        The entity-type group is not here, its rows being the entity axis's -
+        `dims["entity"]`, which this record supplies like any other axis.
 
         Notes
         -----
@@ -1549,8 +1585,8 @@ class _NetworkSource:
         """A `dims/` frame with the tombstone column the fold scopes by.
 
         `deleted` because the fold reads it from this same file. Not the type -
-        a per-type member file is the file its rows are in, and the writer
-        derives the entity axis from that.
+        a per-type member file is the file its rows are in, and the entity axis
+        (`_entity_axis_frame`) is what states it.
 
         No `scenario`: an entity exists or it does not, so nothing scopes
         membership per value of an axis. A stochastic network repeats its

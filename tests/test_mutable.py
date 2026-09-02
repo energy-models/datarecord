@@ -717,13 +717,10 @@ def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
     staged.remove(GEN, ["Manchester Wind"])
     staged.add("Bus", pd.DataFrame([{"entity": "Manchester Wind"}]))
 
-    rows = [
-        r
-        for r in staged._collapsed_entities("entities").fetchall()
-        if r[1] == "Manchester Wind"
-    ]
-    assert len(rows) == 1
-    assert rows[0][0] == "Bus"
+    axis = staged._collapsed_entities().df()
+    rows = axis[axis["entity"] == "Manchester Wind"]
+    assert len(rows) == 1, "one name, one row - the type is not part of the key"
+    assert list(rows["entity_type"]) == ["Bus"], "the later op wins"
 
     # And it commits: a record with two rows for the name would be rejected.
     child = staged.commit(NewChild(root))
@@ -753,51 +750,45 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     assert buses["Manchester Wind"] == "Manchester"
 
 
-def test_add_keeps_an_undeclared_columns_own_type(staged):
-    """A member column the schema does not declare stays the type it arrived as.
+def test_add_rejects_a_column_the_schema_does_not_declare(staged):
+    """A member column no declaration accounts for is an error, not a new column.
 
-    The staging table starts with the key columns and gains an attribute column
-    as it is first seen, so the type has to come from somewhere. Defaulting to
-    `VARCHAR` stored a float as `'1234.5'`, and every consumer of the member
-    frame then read text - silently, since a wide member column is never cast
-    back the way a staged `value` is.
+    A staging table is shaped like the file it becomes, from the schema, so an
+    undeclared column has no dtype to be given it - widening to fit would have
+    to guess one from the caller's frame, and a float guessed as `VARCHAR`
+    stored `'1234.5'` for every later reader. A tool that grows a column
+    declares it first.
 
     Notes
     -----
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     assert "capex" not in staged.schema.attributes, "undeclared, which is the case here"
-    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "capex": 1234.5}]))
-
-    members = staged.entity_types[GEN].collect().to_native().to_pandas()
-    capex = members.loc[members["entity"] == "NewSolar", "capex"]
-    assert capex.tolist() == [1234.5], "the float survives, rather than becoming text"
+    with pytest.raises(ValueError, match="capex"):
+        staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "capex": 1234.5}]))
 
 
-def test_add_fills_a_column_an_earlier_add_created(staged):
-    """A frame omitting a column another `add` introduced stages it as NULL.
+def test_add_fills_a_declared_column_another_add_omitted(staged):
+    """A frame omitting a declared column stages it as NULL rather than failing.
 
-    The staging table gains a column as it is first seen, so a later `add` of
-    a different type meets columns its own frame never carried - and an
-    earlier one meets those the later `add` introduces. Both are NULL rather
-    than an error, which is what the column list being the *table's* rather
-    than the frame's has to mean.
+    The table's columns are the schema's, not any one frame's, so an `add`
+    naming a subset of them is ordinary: what it did not carry is NULL, and an
+    earlier `add` is unaffected by a later one naming more.
 
     Notes
     -----
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
     """
-    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "capex": 1234.5}]))
-    # No `capex`, and an `opex` the first frame had no column for.
-    staged.add(GEN, pd.DataFrame([{"entity": "NewWind", "opex": 7.0}]))
+    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "p_nom": 1234.5}]))
+    # No `p_nom`, so it is NULL for this one alone.
+    staged.add(GEN, pd.DataFrame([{"entity": "NewWind"}]))
 
     members = (
         staged.entity_types[GEN].collect().to_native().to_pandas().set_index("entity")
     )
-    assert pd.isna(members.loc["NewWind", "capex"]), "not carried, so NULL"
-    assert pd.isna(members.loc["NewSolar", "opex"]), "column created after it was added"
-    assert members.loc["NewSolar", "capex"] == 1234.5
-    assert members.loc["NewWind", "opex"] == 7.0
+    assert pd.isna(members.loc["NewWind", "p_nom"]), "not carried, so NULL"
+    assert members.loc["NewSolar", "p_nom"] == 1234.5, "unaffected by the later add"
 
 
 def test_remove_tombstones_without_enumerating_attributes(staged, root):
@@ -981,6 +972,26 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
     assert list(rows["entity"]) == ["Manchester Wind"]
     # Yet the resolved record reads every generator's value.
     assert len(_static(child, "p_nom")) > 1
+
+
+def test_a_staged_member_frame_does_not_repeat_its_type(staged):
+    """The type is the key a member frame is filed under, never a column in it.
+
+    `write_record` drops `entity_type` from a member file anyway, so this holds
+    on disk either way; asserted on the frame because relying on the writer to
+    strip it makes `staged_only()` disagree with the file it describes, and the
+    next reader of that frame need not be the writer.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "carrier": "solar"}]))
+
+    frame = staged.staged_only().entity_types[GEN]
+    columns = frame.collect_schema().names()
+    assert "entity_type" not in columns, "the file it is written to names the type"
+    assert "entity" in columns, "the member key is still there"
 
 
 def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root, con):

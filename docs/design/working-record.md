@@ -229,7 +229,7 @@ record.remove("Generator", ["old_coal"])
 
 `add` takes a wide frame and splits it: attributes addressed by `entity` alone stay in `dims/entity_type/`, ones varying beyond it become `inputs/` rows, and ones addressed by a [group](schema.md#groups) go to that group's table — per [where a value lives](format.md#where-a-value-lives).
 Which is which comes from the schema, so `add` needs no framework registry.
-A column the schema does not name is written to `dims/entity_type/` unchanged.
+A column the schema does not name is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column and no reader that would know what it means. A tool that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
 
 `add` keeps its `ctype` argument where `set` loses it: this is the call that _establishes_ what a name's type is, so there is nothing yet to [look it up in](format.md#entity-is-unique-across-types).
 It is also where uniqueness is enforced — a name the record already resolves, under this type or any other, is rejected here rather than at commit, so the collision is [reported at the line that introduces it](#validation).
@@ -332,9 +332,12 @@ Staged rows live in DuckDB tables on the record's own connection:
 ```sql
 CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>, _seq BIGINT);  -- no entity_type
 CREATE TABLE staged_outputs_<attr>_<id>  (<that attribute's long columns>, _seq BIGINT);
-CREATE TABLE staged_components_<id>      (<component columns>, deleted BOOLEAN, _seq BIGINT);
+CREATE TABLE staged_axis_<dim>_<id>      (<the axis key>, ..., deleted BOOLEAN, _seq BIGINT);
+CREATE TABLE staged_members_<Type>_<id>  (entity, deleted BOOLEAN, _seq BIGINT, <that type's columns>);
 CREATE TABLE staged_<group>_<id>         (<group coordinates>, ..., deleted BOOLEAN, _seq BIGINT);
 ```
+
+**Every table is shaped like the file it becomes**, which is the rule the rest of this section is consequences of. So there is no table whose columns are a union over things the format keeps apart, and a column the schema does not declare has nowhere to go — [`add`](#add-remove) rejects one rather than widening a table to fit it, there being no declared dtype to give it.
 
 **One table per staged attribute**, because that is the file it becomes: its columns are [the attribute's own coordinates](format.md#the-long-schema) and `value` has the attribute's declared type.
 A shared table would have to widen `value` to text and carry every declared dim, which costs twice: the value needs casting back on the way out, and a NULL in a dim column becomes ambiguous between "this attribute has no such axis" and [the broadcast rule](record.md#the-broadcast-rule)'s "every value of it".
@@ -344,7 +347,13 @@ A result the schema never declares has no declared type to take; the table recor
 
 One staging table per declared [group](schema.md#groups), mirroring [the maps the fold builds](read-path.md#owner-map): `connection` is one instance, so a record declaring a second group stages it through the same path rather than a second method.
 
-The staged rows are [the format's own rows](#the-shape-of-an-edit), so a staged long table loses `entity_type` exactly as `inputs/` does, and the entity tables keep it.
+**One table per entity type, and one more for the axis**, mirroring the two files the format keeps apart: `dims/entity_type/<Type>.parquet` holds a type's own columns, and [`dims/entity.parquet`](format.md#the-entity-axis) holds membership. A single table for every type would have to carry the union of their columns, so a `Bus` frame would land a `Generator`'s `p_nom` as a NULL column of the `Bus` file — the same reason the format partitions them.
+
+So `add` writes two rows for one component, and `remove` two tombstones: the axis says a name exists and of what type, the member table says what it is. They share one `_seq`, being one edit.
+
+The **entity axis is staged as an axis**, `staged_axis_entity_<id>` like any other dim, and reaches [the fold](read-path.md) as `axis("entity")` with no special case. What differs is only how it collapses: an ordinary axis folds per column, so two `set` calls on one label commute; membership folds whole-row, so a `remove` under one type and an `add` under another resolve to one row rather than merging into a component that is both a `Bus` and deleted.
+
+The staged rows are [the format's own rows](#the-shape-of-an-edit), so a staged long table loses `entity_type` exactly as `inputs/` does, and the entity axis keeps it.
 
 These tables are the **only** place a staged row exists: [the reads](#reading-with-pending-edits) fold them rather than holding a copy.
 

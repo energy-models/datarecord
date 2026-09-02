@@ -18,16 +18,11 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import narwhals as nw
-from duckdb import CoalesceOperator as coalesce
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
     as_relation,
     base_uri_of,
-    col,
-    fn,
-    lit,
-    try_read_parquet,
 )
 from datarecord.layered.resolve import cast_declared, read_schema, write_schema
 from datarecord.layered.sources import ParquetLayer
@@ -157,13 +152,12 @@ def write_record(
                     schema,
                     # A per-type member file is indexed by `entity` and holds
                     # one column per attribute; the type is the file it is in,
-                    # which `_write_entity_axis` reads off the filename and the
-                    # entity axis then carries for every later reader. A column
-                    # repeating it would be a third copy that can disagree.
+                    # and `dims/entity.parquet` is what carries it for every
+                    # later reader. A column repeating it here would be a third
+                    # copy that can disagree.
                     drop=("entity_type",) if kind == "entities" else (),
                 )
         _require_unique(tagged)
-        _write_entity_axis(staging, schema, con)
     except BaseException:
         if local:
             shutil.rmtree(staging, ignore_errors=True)
@@ -254,52 +248,6 @@ def _write_frame(
     if unwritable:
         rel = rel.project(star(exclude=unwritable))
     cast_declared(schema, rel).to_parquet(uri)
-
-
-def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) -> None:
-    """Write `dims/entity.parquet`: one row per component, with its type.
-
-    The entity axis is what a component's identity *is* - which entities the
-    layer names, what type each is, and which are tombstoned. Derived rather
-    than handed over: the per-type frames just written say all three, so a
-    `Record` never has to produce it and cannot disagree with itself about it.
-
-    Read back through DuckDB rather than unioned from the source frames,
-    because `_write_frame` has already cast every column to what the schema
-    declares - where the frames themselves may disagree, an all-NULL `scenario`
-    landing as arrow `null` for one type and `string` for another.
-
-    `entity_type` is a column of this axis and of no attribute row, which is
-    what makes `attributes_for` reachable from an entity alone. This is where
-    the entity-type group's rows live, in place of a `groups/` file. The type
-    has an axis file of its own too, carrying the attributes addressed by the
-    type alone - written from `source.dims` like any axis, not derived here.
-
-    Notes
-    -----
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-    - [the record format](https://energy-models.github.io/datarecord/design/format/)
-    """
-    rel = try_read_parquet(
-        f"{staging}dims/entity_type/*.parquet",
-        con,
-        union_by_name=True,
-        filename=True,
-    )
-    if rel is None:
-        return
-    # The type is the file a row is in, so it comes from the filename rather
-    # than a column - which is exactly the glob-and-derive this axis exists to
-    # replace for every later reader.
-    ctype = fn.regexp_extract(col("filename"), lit(r"([^/]+)\.parquet$"), lit(1))
-    deleted = (
-        coalesce(col("deleted"), lit(False))  # noqa: FBT003
-        if "deleted" in rel.columns
-        else lit(False)  # noqa: FBT003
-    )
-    rel.project(
-        col("entity"), ctype.alias("entity_type"), deleted.alias("deleted")
-    ).to_parquet(f"{staging}dims/entity.parquet")
 
 
 def _require_unique(tagged: list[nw.LazyFrame]) -> None:
@@ -456,10 +404,14 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
             | {"deleted", "order_key"}
         )
         # The one classification column an axis file carries, every other group
-        # being its own file: the entity-type group's rows are derived here
-        # (`_write_entity_axis`) rather than handed over (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-        if key == "entity" and schema.entity_type_dim is not None:
-            known.add(schema.entity_type_dim)
+        # being its own file. Admitted whether or not a group declares the axis:
+        # the label says which `dims/entity_type/<Type>.parquet` a component's
+        # non-varying attributes are in, so a record has it either way and a
+        # declaration only constrains its values. Named `entity_type` whatever
+        # the dim is called, that being the name this file carries it under
+        # (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        if key == "entity":
+            known.add("entity_type")
         extra = sorted(columns - known)
         if extra:
             msg = (

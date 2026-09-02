@@ -31,7 +31,6 @@ from duckdb import StarExpression as star
 from datarecord.duck import (
     DuckTypes,
     as_relation,
-    distinct_values,
     null_safe,
     union_all_by_name,
 )
@@ -291,16 +290,13 @@ class StagedSource:
     frozen: bool = False
 
     def axes(self) -> set[str]:
-        """The dims with staged rows, plus `entity` where a member row is staged.
+        """The dims with staged rows, `entity` among them.
 
-        `entity` is an axis file like any other, so an `add` or a `remove`
-        contributes to it - which is what puts a staged component in the
-        components map.
+        `entity` is an axis file like any other to a reader, so an `add` or a
+        `remove` contributes to it - which is what puts a staged component in
+        the components map.
         """
-        staged = set(self.record._staged_dims())
-        if self.record._rows("entities") is not None:
-            staged.add("entity")
-        return staged
+        return set(self.record._staged_dims())
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """One axis as this layer would write it - `_axis_layer`, exactly.
@@ -311,30 +307,26 @@ class StagedSource:
         attribute on that label. `_axis_layer` merges them per column first,
         which is the same relation `commit` writes.
 
+        `entity` included, staged as an axis like the rest - what differs is
+        only how `_axis_layer` collapses it.
+
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         """
-        if dim == "entity":
-            return self.record._collapsed_entities("entities")
         if self.record._rows(f"{_AXIS_PREFIX}{dim}") is None:
             return None
         return self.record._axis_layer(dim)
 
     def entity_type(self, name: str) -> DuckDBPyRelation | None:
-        """One type's staged member rows, the type filtered rather than keyed.
+        """One type's staged member rows, from that type's own table.
 
         Notes
         -----
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
-        rel = self.record._collapsed_entities("entities")
-        if rel is None:
-            return None
-        return rel.filter(col("entity_type") == lit(name)).project(
-            star(exclude=["entity_type"])
-        )
+        return self.record._collapsed_members(name)
 
     def group(self, name: str) -> DuckDBPyRelation | None:
         return self.record._collapsed_group(name)
@@ -461,7 +453,8 @@ class WorkingRecord(Record):
 
         A long kind takes an `attribute` and gets a table per attribute, shaped
         like the file it becomes: `long_columns_for` for the columns, and the
-        declared dtype for `value`.
+        declared dtype for `value`. `_MEMBERS` takes an entity *type* in the
+        same slot and is shaped the same way, one table per per-type file.
 
         Notes
         -----
@@ -471,21 +464,26 @@ class WorkingRecord(Record):
         if key in self._staged:
             return self._staged[key]
         name = self._table(kind, attribute)
-        if attribute is not None:
-            shape = self._empty_long(attribute)
-        else:
-            duck_types = DuckTypes(self.con)
-            columns = _COLUMNS.get(kind)
-            if columns is not None:
-                shaped = columns(self.schema)
-            elif kind.startswith(_AXIS_PREFIX):
-                shaped = _axis_columns(self.schema, kind[len(_AXIS_PREFIX) :])
-            else:
-                shaped = _group_columns(self.schema, kind)
-            shape = duck_types.empty_relation(**shaped)
-        shape.create(name)
+        self._shape(kind, attribute).create(name)
         self._staged[key] = name
         return name
+
+    def _shape(self, kind: str, attribute: str | None) -> DuckDBPyRelation:
+        """A row-less relation shaped like the file `kind` becomes.
+
+        The one place a staging table's columns are decided, so a new kind is a
+        branch here rather than a second dispatch beside it.
+        """
+        if attribute is not None and kind != _MEMBERS:
+            return self._empty_long(attribute)
+        if kind == _MEMBERS:
+            assert attribute is not None, "a member table is per entity type"
+            columns = _member_columns(self.schema, attribute)
+        elif kind.startswith(_AXIS_PREFIX):
+            columns = _axis_columns(self.schema, kind[len(_AXIS_PREFIX) :])
+        else:
+            columns = _group_columns(self.schema, kind)
+        return DuckTypes(self.con).empty_relation(**columns)
 
     def _empty_long(self, attribute: str) -> DuckDBPyRelation:
         """A row-less relation shaped like one attribute's long file.
@@ -555,12 +553,6 @@ class WorkingRecord(Record):
     # exists to have: a staged edit is read by the same fold that reads a
     # committed layer, so there is no second overlay to keep in step. Only
     # `outputs` below differs, and only because results do not overlay.
-
-    def _staged_attribute_names(self) -> tuple[str, ...]:
-        return tuple(sorted(self._staged_attributes_of("inputs")))
-
-    def _long_columns(self, attribute: str) -> tuple[str, ...]:
-        return self.schema.long_columns_for(attribute)
 
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
         """`AttributeSpec.dims` minus `Schema.partial`, for every type declaring
@@ -1277,7 +1269,7 @@ class WorkingRecord(Record):
         # Intersected with the attribute's own columns: a key column its file
         # does not carry is absent from both sides rather than NULL in them,
         # and joining on it would fail to bind (`long_columns_for`).
-        columns = set(self._long_columns(attribute))
+        columns = set(self.schema.long_columns_for(attribute))
         scope = [c for c in self.schema.input_key if c not in whole and c in columns]
         present = [d for d in whole if d in columns]
         if not present:
@@ -1499,22 +1491,32 @@ class WorkingRecord(Record):
                 if "entity" in self.schema.group_key(group):
                     by_group.setdefault(group, []).append(c)
         ports = [c for cols in by_group.values() for c in cols]
-        # A column the schema does not name goes to `dims/entity_type/`
-        # unchanged, like any non-varying one.
         member_cols = [c for c in columns if c not in varying and c not in ports]
 
         rel = as_relation(lazy, self.con)
-        table = self._ensure("entities")
-        extra = [c for c in member_cols if c != "entity" and c not in self.schema.dims]
-        self._widen(table, rel, extra)
+        members = self._ensure(_MEMBERS, ctype)
+        self._reject_undeclared(f"add({ctype!r}, ...)", members, member_cols)
 
+        self._release_from_other_types(ctype, rel)
+
+        # One `_seq` for both rows: they are one edit, and a membership row that
+        # outranked its own attributes would resolve against the wrong `add`.
+        seq = next(_SEQ)
         self._insert(
             rel,
-            table,
+            self._ensure(_ENTITY_AXIS),
             {
                 "entity_type": lit(ctype),
                 "deleted": lit(False),  # noqa: FBT003
-                "_seq": lit(next(_SEQ)),
+                "_seq": lit(seq),
+            },
+        )
+        self._insert(
+            rel,
+            members,
+            {
+                "deleted": lit(False),  # noqa: FBT003
+                "_seq": lit(seq),
             },
         )
         for attribute in varying:
@@ -1542,34 +1544,82 @@ class WorkingRecord(Record):
                 ),
             )
 
-    def _widen(self, table: str, rel: DuckDBPyRelation, columns: Sequence[str]) -> None:
-        """Add any of `columns` the staging table lacks, typed from the schema.
+    def _release_from_other_types(self, ctype: str, rel: DuckDBPyRelation) -> None:
+        """Drop `rel`'s names from every *other* type's staged member table.
 
-        A staging table starts with the key columns its `_COLUMNS` entry
-        declares; what a caller passes beyond them - a component's attribute
-        values, a group's own labels - is whatever their frame carries, so the
-        columns are added as they are first seen rather than declared up front.
+        A name belongs to one type, so claiming it for `ctype` is what ends any
+        other type's claim - and the rows behind that claim are in a table
+        `ctype`'s own collapse cannot see. Left there, a `remove` under one type
+        and an `add` under another would write the name into two member files,
+        which `write_record` rejects as a collision.
 
-        The frame's own type where the schema declares none: `VARCHAR` would
-        take a float column and store `'1234.5'`, which then reads back as text
-        for every consumer of the frame.
+        Deleted rather than tombstoned, and here rather than filtered on every
+        read: the staged rows are what the layer *will* write, so a row no
+        longer true of the layer has no reason to be in them.
+
+        Only the staged tables. A name held by an ancestor is released by this
+        layer's own axis row naming the new type, which is the fold's job and
+        needs nothing removed.
+
+        Notes
+        -----
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+        - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
-        existing = {c.lower() for c in self.con.table(table).columns}
-        incoming = dict(zip(rel.columns, (str(t) for t in rel.types), strict=True))
-        duck_types = DuckTypes(rel)
-        for c in columns:
-            if c.lower() in existing:
-                continue
-            spec_dtype = self.schema.value_type(c)
-            dtype = duck_types(spec_dtype) if spec_dtype else incoming[c]
-            self.con.execute(f'ALTER TABLE {table} ADD COLUMN "{c}" {dtype}')
-            existing.add(c.lower())
+        others = [t for t in self._staged_types() if t != ctype]
+        if not others:
+            return
+        names = rel.project(col("entity")).distinct()
+        for other in others:
+            table = self._staged[(_MEMBERS, other)]
+            # `IN` over the incoming names, which DuckDB reads off the relation
+            # by replacement scan - the same crossing every insert here makes.
+            _names = names  # noqa: F841 - bound by the scan below
+            self.con.execute(
+                f"DELETE FROM {table} WHERE entity IN (SELECT entity FROM _names)"
+            )
+
+    def _reject_undeclared(self, call: str, table: str, columns: Sequence[str]) -> None:
+        """Refuse a column the staging table's file has no place for.
+
+        A staging table is shaped from the schema, like the file it becomes, so
+        a column outside that shape has no declared dtype and no reader that
+        knows what it means - the same thing `_validate_frame` refuses of an
+        axis file, at the edit rather than at the write. Widening the table to
+        fit instead would have to guess the dtype from the caller's frame.
+
+        A tool that grows a column changes its schema first, which
+        `_reconcile_schema` accepts as a widening; there is no path here that
+        needs a column the record cannot describe.
+
+        Raises
+        ------
+        ValueError
+            Naming the columns and what the file does hold.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+        """
+        known = [c for c in self.con.table(table).columns if c != "_seq"]
+        allowed = {c.lower() for c in known}
+        extra = sorted(c for c in columns if c.lower() not in allowed)
+        if not extra:
+            return
+        msg = (
+            f"`{call}` was given columns {extra} the schema does not declare "
+            f"there; it holds {sorted(known)}. An attribute's `dims` are what "
+            f"put it in a file, so declare it before writing it (https://energy-models.github.io/datarecord/design/schema/#versioning)"
+        )
+        raise ValueError(msg)
 
     def _stage_tombstones(
         self,
         kind: str,
         fixed: tuple[str, ...],
         keys: list[list[Any]],
+        attribute: str | None = None,
     ) -> None:
         """Stage one `deleted` row per key.
 
@@ -1586,7 +1636,7 @@ class WorkingRecord(Record):
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
-        table = self._ensure(kind)
+        table = self._ensure(kind, attribute)
         if not keys:
             return
         seq = next(_SEQ)
@@ -1608,15 +1658,20 @@ class WorkingRecord(Record):
         applies it to every attribute. Nor scope it - a component exists or it
         does not, so a deletion removes it whole.
 
+        Staged twice, as `add` writes twice: once on the entity axis, which is
+        what the fold reads, and once in the type's member table, which is what
+        the *writer* derives that axis from when the layer is committed.
+
         Notes
         -----
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
         self._stage_tombstones(
-            "entities",
+            _ENTITY_AXIS,
             ("entity_type", "entity"),
             [[ctype, name] for name in names],
         )
+        self._stage_tombstones(_MEMBERS, ("entity",), [[name] for name in names], ctype)
 
     def add_group(self, group: str, frame: Any) -> None:
         """Stage rows of one declared group from a frame carrying its coordinates.
@@ -1641,7 +1696,7 @@ class WorkingRecord(Record):
         _rows = lazy.to_native()  # noqa: F841 - bound by replacement scan below
         table = self._ensure(group)
         extra = [c for c in columns if c not in coordinates]
-        self._widen(table, as_relation(lazy, self.con), extra)
+        self._reject_undeclared(f"add_group({group!r}, ...)", table, extra)
         extra_sql = "".join(f', "{c}"' for c in extra)
         coordinate_sql = ", ".join(f'"{c}"' for c in coordinates)
         self.con.execute(
@@ -1697,7 +1752,7 @@ class WorkingRecord(Record):
         #
         # Intersected with the table's own columns: it carries this attribute's
         # coordinates and no others (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
-        columns = set(self._long_columns(attribute))
+        columns = set(self.schema.long_columns_for(attribute))
         key = dict.fromkeys(
             c
             for c in (*self.schema.input_key, *self.schema.dims, "breakpoint")
@@ -1722,7 +1777,7 @@ class WorkingRecord(Record):
         -----
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        rel = self._rows("entities")
+        rel = self._rows(_ENTITY_AXIS)
         if rel is None:
             return None
         cols = ("entity",)
@@ -1734,18 +1789,49 @@ class WorkingRecord(Record):
             .project(*(col(c) for c in cols))
         )
 
-    def _collapsed_entities(self, kind: str) -> DuckDBPyRelation | None:
-        """Staged member rows, last-write-wins per entity.
+    def _collapsed_entities(self) -> DuckDBPyRelation | None:
+        """The staged entity axis: which names exist, of what type, dead or live.
 
-        The entity key, so no `entity_type` - partitioning on it too
-        would keep both a tombstone and a later `add` under a different type.
+        Whole-row last-write-wins, where every other axis folds per column
+        (`_collapsed_axis`). Both halves of that matter here:
+
+        - **Partitioned by `entity` alone**, `entity_type` carried rather than
+          keyed, so a `remove` under one type and an `add` under another resolve
+          to one row - two would commit a name shared across types.
+        - **Not per column**, because the columns of the losing row are not
+          wanted: a per-column fold would take `deleted` from the tombstone and
+          the type from the `add`, giving a member that is both a `Bus` and
+          deleted. A retype is one row replacing another, not a merge.
 
         Notes
         -----
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        rel = self._rows(kind)
+        rel = self._rows(_ENTITY_AXIS)
+        if rel is None:
+            return None
+        return _latest_per(rel, ("entity",))
+
+    def _collapsed_members(self, ctype: str) -> DuckDBPyRelation | None:
+        """One type's staged member rows, last-write-wins per entity.
+
+        A tombstone stays, as it does in the file: the fold reads `deleted` from
+        this file too, so a removal that left no row here would read as a member
+        the layer never mentioned.
+
+        No cross-type filter. A name this layer gave to another type is not in
+        this table at all, `add` having released it (`_release_from_other_types`)
+        - so one table's rows are already only its own, and the type never has to
+        be resolved on the way out.
+
+        Notes
+        -----
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        """
+        rel = self._rows(_MEMBERS, ctype)
         if rel is None:
             return None
         return _latest_per(rel, ("entity",))
@@ -1803,6 +1889,16 @@ class WorkingRecord(Record):
         Rows rather than tables: `_ensure` creates the table before the label
         checks run, so a rejected `set` leaves an empty one behind and a table
         that exists is not yet an edit.
+
+        `entity` is one of them, staged as `_ENTITY_AXIS` like any other dim -
+        so both the fold's `axes()` and what `commit` writes come from here,
+        rather than one of them special-casing it. `Schema` declares `entity`
+        like any dim, so `schema.dims` names it and no arm is needed for it.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [the schema](https://energy-models.github.io/datarecord/design/schema/)
         """
         staged = {
             k[len(_AXIS_PREFIX) :]
@@ -1847,10 +1943,18 @@ class WorkingRecord(Record):
         resolving the rest from the parent, or every label, a dim outside
         `partial` being one a layer owns entirely once it touches it.
 
+        `entity` is the exception: membership is whole-row last-write-wins, so a
+        `remove` then an `add` under another type must resolve to one row rather
+        than merge the two per column. It is also never completed from the base -
+        a layer names the components it touched, and the fold resolves the rest.
+
         Notes
         -----
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
+        if dim == "entity":
+            return cast("DuckDBPyRelation", self._collapsed_entities())
         merged = as_relation(self._axis_frame(dim), self.con)
         if dim not in self.schema.partial_dims:
             return merged
@@ -1898,16 +2002,30 @@ class WorkingRecord(Record):
             )
         )
 
-    def _staged_entities(self, kind: str) -> Frames:
-        """The staged member rows, keyed by component type."""
-        rel = self._collapsed_entities(kind)
-        if rel is None:
+    def _staged_entities(self) -> Frames:
+        """The staged member rows, keyed by component type - one table each.
+
+        No projection: a member table is already shaped like the file it becomes,
+        so what it holds is what is written. The type is the key rather than a
+        column, and `deleted` belongs to the entity axis.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        """
+        types = tuple(sorted(self._staged_types()))
+        if not types:
             return EMPTY
-        types = distinct_values(rel, "entity_type")
         return LazyFrames(
             types,
-            lambda ctype: nw.from_native(rel.filter(col("entity_type") == lit(ctype))),
+            lambda ctype: nw.from_native(
+                cast("DuckDBPyRelation", self._collapsed_members(ctype))
+            ),
         )
+
+    def _staged_types(self) -> tuple[str, ...]:
+        """Which entity types have a staged member table, in insertion order."""
+        return tuple(t for (k, t), _ in self._staged.items() if k == _MEMBERS and t)
 
     def _staged_groups(self) -> Frames:
         """The staged group rows, keyed by group - one frame each."""
@@ -1930,7 +2048,7 @@ class WorkingRecord(Record):
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        names = self._staged_attribute_names()
+        names = tuple(sorted(self._staged_attributes_of("inputs")))
         if not names:
             return EMPTY
 
@@ -1951,7 +2069,7 @@ class WorkingRecord(Record):
         return _Written(
             schema=self.schema,
             dims=self._staged_axes(),
-            entity_types=self._staged_entities("entities"),
+            entity_types=self._staged_entities(),
             groups=self._staged_groups(),
             attributes=self._staged_attributes(),
             # No completion counterpart: results are complete as produced, never
@@ -2083,12 +2201,34 @@ def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
     return dtype
 
 
-def _entity_columns(schema: Schema) -> dict[str, nw.dtypes.DType]:  # noqa: ARG001 - shape is fixed
+def _member_columns(schema: Schema, ctype: str) -> dict[str, nw.dtypes.DType]:
+    """One type's member columns: the key, and the attributes it alone carries.
+
+    The shape of `dims/entity_type/{ctype}.parquet`. No `entity_type`, which is
+    the file's name and would be a second copy of it. `deleted` stays: the
+    writer derives the entity axis by globbing these files, so a tombstone
+    reaches `dims/entity.parquet` only by being in one of them.
+
+    Non-varying and not addressed by a group: a varying attribute is a long row
+    and a group's is that group's file, so neither is a column here. That is the
+    same split `add` makes of an incoming frame, read off the schema instead of
+    off the columns a caller passed.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
+    """
+    own = {
+        name: schema.value_type(name) or nw.String()
+        for name, spec in schema.attributes_for(ctype).items()
+        if not spec.varying and not schema.groups_of(name)
+    }
     return {
-        "entity_type": nw.String(),
-        "entity": nw.String(),
+        "entity": _column_type(schema, "entity"),
         "deleted": nw.Boolean(),
         "_seq": nw.Int64(),
+        **own,
     }
 
 
@@ -2098,50 +2238,90 @@ def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
     No `entity_type`, which is no coordinate of a group
     (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
 
-    The coordinates alone: a column a caller passes that is not one - an
-    attribute over the group, a framework's own label - is added by `ALTER
-    TABLE` as it is first seen, like a component's.
+    An attribute over the group is a column of the group's file, so it is
+    declared here too. `role` on a connection reads as a framework's own label,
+    but the framework declaring it is what puts it in the schema - and an
+    undeclared one has no dtype to give the column.
 
     Notes
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
+    over = {
+        name: schema.value_type(name) or nw.String()
+        for name, spec in schema.attributes.items()
+        if not spec.varying and group in schema.groups_of(name)
+    }
     return {
         **{c: _column_type(schema, c) for c in schema.group_coordinates(group)},
         "deleted": nw.Boolean(),
         "_seq": nw.Int64(),
+        **over,
     }
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
-    """One axis's staged columns: its key, plus the attributes it carries.
+    """One axis's staged columns: its key, its tombstone, the attributes it carries.
 
     The shape of `dims/{dim}.parquet` for the attributes addressed by `dim`
-    alone (`attributes_on`). No classification column: a group `into` this axis
-    is its own file, which no edit stages here.
+    alone (`attributes_on`), plus the structural columns an axis file may hold:
+    `deleted`, which `_validate_frame` admits on any axis, and `entity_type` on
+    the entity axis.
+
+    `entity_type` on the entity axis whether or not a group declares the axis.
+    Undeclared it is a plain string, because the label is then data rather than
+    a declaration - and it is still the only thing that says which
+    `dims/entity_type/<Type>.parquet` a component's non-varying attributes are
+    in, so a record without it could not reach its own member rows.
+
+    That a record with no declared types still has typed member files is the
+    asymmetry a proposal argues should go
+    (https://energy-models.github.io/datarecord/design/proposals/a-member-file-holds-values.md);
+    until it does, the column is unconditional.
 
     Notes
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
     """
+    into = schema.entity_type_dim
+    classifying = (
+        # The column is `entity_type` whatever the dim is called, that being the
+        # name `dims/entity.parquet` carries it under; a declaration types it,
+        # and its absence leaves it a string rather than removing it.
+        {"entity_type": _column_type(schema, into) if into else nw.String()}
+        if dim == "entity"
+        else {}
+    )
     return {
         **{c: _column_type(schema, c) for c in schema.axis_key(dim)},
+        **classifying,
+        "deleted": nw.Boolean(),
         **{a: schema.value_type(a) or nw.String() for a in schema.attributes_on(dim)},
         "_seq": nw.Int64(),
     }
 
 
-# The entity kinds only. A long kind is staged per attribute, so its columns
-# take the attribute and come from `_empty_long` instead; `outputs/` shares
-# that shape with `inputs/`, differing only in not overlaying, which is a
-# read-path property rather than a shape one (https://energy-models.github.io/datarecord/design/read-path/#outputs).
-# An axis kind is staged per dim rather than per attribute, since one axis file
-# carries every attribute addressed by that dim alone.
-_COLUMNS = {
-    "entities": _entity_columns,
-}
-
 # A staging kind, so it becomes part of a table name: no punctuation a SQL
 # identifier would need quoting for, and no collision with a group's name,
 # which `Schema` already rejects for colliding with a declared dim.
 _AXIS_PREFIX = "axis_of_"
+
+_ENTITY_AXIS = f"{_AXIS_PREFIX}entity"
+"""The entity axis's staging kind - an axis like any other, named like one.
+
+`dims/entity.parquet` is a file a layer holds, so staging it as an axis is what
+makes the staged layer the same shape as every other. What differs is only the
+collapse: membership is whole-row last-write-wins, so a `remove` then an `add`
+under another type resolves to one row (`_collapsed_entities`), where an
+ordinary axis folds per column.
+"""
+
+_MEMBERS = "members"
+"""The kind whose second slot is an entity type rather than an attribute.
+
+One table per type, shaped like `dims/entity_type/<Type>.parquet`. Separate from
+`entities`, which holds membership alone: sharing one table made every type's
+columns every other type's, so a `Bus` frame carried a `Generator`'s.
+"""
