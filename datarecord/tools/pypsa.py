@@ -379,6 +379,25 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
     return frozenset(clashing)
 
 
+def _normalized_snapshots(model: pypsa.Network) -> pypsa.Network:
+    """A copy of `model` with PyPSA's placeholder `now` snapshot as a timestamp.
+
+    `now` will not cast to the record's `TIMESTAMP` axis; a network with real
+    snapshots is returned unchanged.
+    """
+    if list(model.snapshots) != ["now"]:
+        return model
+    model = model.copy()
+    ts = pd.DatetimeIndex([pd.Timestamp("1970-01-01")], name=model.snapshots.name)
+    # set_snapshots reindexes by label and would drop every `now` row.
+    for c in model.components:
+        for df in c.dynamic.values():
+            if not df.empty:
+                df.index = ts
+    model.set_snapshots(ts)
+    return model
+
+
 # TODO(pypsa): every function below, up to `_new_network`, ports a method that
 # only exists on PyPSA's unreleased data-records branch (https://energy-models.github.io/datarecord/design/tools/). Delete the
 # ported copy and call the real method once a PyPSA release carries it.
@@ -1082,6 +1101,9 @@ class PyPSATool(Tool):
         become connection rows carrying a `role`. Key sets are read off the
         network, so listing unpivots nothing and a lookup only what is asked for.
 
+        A network still on PyPSA's default `now` snapshot is given a
+        timestamp axis first.
+
         Raises
         ------
         UnsupportedRecordError
@@ -1098,7 +1120,7 @@ class PyPSATool(Tool):
         clashing = _colliding_names(model)
         if clashing:
             raise UnsupportedRecordError(self.name, Requirements(names=clashing))
-        return _NetworkSource(model)
+        return _NetworkSource(_normalized_snapshots(model))
 
 
 @dataclass(frozen=True)
