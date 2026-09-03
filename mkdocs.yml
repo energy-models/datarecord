@@ -53,6 +53,7 @@ nav:
           - One Record over a NodeCache: design/proposals/one-record-over-a-node-cache.md
           - A member file holds values: design/proposals/a-member-file-holds-values.md
           - Staging without _seq: design/proposals/staging-without-seq.md
+          - One interface, source and fold: design/proposals/one-interface-source-and-fold.md
   - API Reference:
       - api/index.md
       - Record: api/record.md
