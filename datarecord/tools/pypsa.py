@@ -1197,7 +1197,7 @@ class _NetworkSource:
 
     n: pypsa.Network
 
-    # The dims a PyPSA network has axes for; `Dims` stays generic, this tool
+    # The dims a PyPSA network has axes for; `Coords` stays generic, this tool
     # decides these three are what a network is shaped by (https://energy-models.github.io/datarecord/design/tools/).
     _DIMS = (SNAPSHOT, PERIOD, SCENARIO)
 

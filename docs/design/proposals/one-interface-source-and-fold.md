@@ -165,7 +165,7 @@ This is why `frozen` and `materialised` are two questions, not one. **`frozen`**
 This lands as three tested-green commits:
 
 1. **Read-path split** ✅ **done** — kill the masquerade: `source.materialised(con) -> Fold | None`, `Resolver.fold` takes its base from the deepest materialised source, `sources` is plain `ParquetLayer`s, `ResolvedLayer` deleted, `NodeCache -> Resolver` rename (and `.stable` -> `.frozen`). This is the piece `a-member-file-holds-values` is blocked on.
-2. **`Fold` object** — extract `coords` + `owner_map` and the reads (`owners`, `flags(entity_type=None)`, `attributes`, per-type/group frames) into `Fold`; `Resolver` routes into it. Orthogonal to (1); a clean second diff.
+2. **`Fold` object** ✅ **done** — extract `coords` + `owner_map` and the reads (`owners`, `flags(entity_type=None)`, `attributes`, per-type/group frames) into `Fold`; `Resolver` routes into it. Orthogonal to (1); a clean second diff.
 3. **`LayerData` + write path** — define `LayerData`, make `Resolver` and `LayerSource` both satisfy it (source gains `entity_types`/`groups`/`attributes` enumerators), rename the fold-named readers to the shared vocabulary, `write_record` takes a `LayerData`, `_Written`/`staged_only()` deleted, both commit callers pass the object they hold.
 
 > [!NOTE]
@@ -175,6 +175,13 @@ This lands as three tested-green commits:
 > - **`_base_and_above(sources, con)`** in `resolve.py` is the split helper: it scans `sources[:-1]` deepest-first for the first `materialised(con)` and returns `(base_fold, sources_above)`. **The last source is never the base** — a node resolves from its own layer, never its own cache — which is also what stops `materialise` (which writes `owner_map` before `dims`) from reading its own half-written cache back as a base.
 > - The base seeds the fold as **depth 0** of each `fold_axis`/`fold_inputs` call (its resolved, tombstone-free relation prepended), so a layer above still wins per key and its tombstones still evict a base key — behaviourally identical to the old `ResolvedLayer`-as-first-source seed. This touches `resolve_dims`, `resolve_groups`, `_fold_map`, `entity_type_frame`, and `_materialise_dims`.
 > - The invariant guard `test_resolved_reads_same_as_unresolved` (in `test_overlay.py`) landed **first**, green before and after: it folds one node through the base and one from the root (via an `_Unmaterialised` `ParquetLayer` subclass forcing `materialised() -> None`) and asserts they agree on the owner map, entity axis, and every attribute relation.
+>
+> **Commit 2 as landed** (the `Fold` object):
+>
+> - **`Fold` grew into the real object in `fold.py`**: `schema` + `axes`/`groups`/`entity_types` dicts + `owner_map`, plus the map reads `attributes()` (was `attribute_names`), `owners(attribute)`, and `flags(entity_type=None)` (was `attributes_of`, now whole-record when `None`). `flags_from_rows` moved to `fold.py` beside its only caller.
+> - **`Fold.compute` is a resolve.py concern, not a `Fold` classmethod.** The folding that builds a live `Fold` needs `Coords`' broadcast algebra and the DuckDB expression machinery, both in `resolve.py`; relocating them into the light `fold.py` would invert the layering. So `Resolver.fold` assembles a live `Fold` from `dims` (the folded `Coords`) and `_map("inputs")` (the folded owner map) — both of which keep their own frozen-scoped connection cache, so `fold` re-wraps rather than re-folds and no cache moved. `Fold.read` (the base tense) stays a `Fold` classmethod.
+> - The live `Fold` carries `entity_types={}`: it is never another fold's base, and its reads never touch the per-type frames (those go through `Resolver.entity_type_frame`, which folds per call). `Coords` is unchanged — `Dims` renamed, holding axes+groups+the broadcast algebra.
+> - **`materialised(con, schema)`** gained the schema argument, since `Fold.read` needs it to cast the read-back map; every implementation and `_base_and_above` thread it through.
 
 ### The interface `Resolver` and a layer share
 

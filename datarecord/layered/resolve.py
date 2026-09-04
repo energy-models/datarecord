@@ -15,10 +15,9 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Any
 from uuid import UUID
 
 import duckdb
@@ -56,51 +55,8 @@ from datarecord.schema import Schema
 LAYER_UUID_TYPE = "UUID"
 
 
-def flags_from_rows(
-    schema: Schema,
-    dims: tuple[str, ...],
-    rows: Iterable[tuple[str, Mapping[str, Any], Mapping[str, Any], Any]],
-) -> dict[str, Flags]:
-    """Fold `(attribute, varies, broadcast, breakpoints)` rows into `Flags`.
-
-    Separate from the aggregate that produces the rows because the scoping below
-    is about the *schema*, not about the map: it is the same cut whatever
-    ownership decided, and keeping it out of the SQL is what makes it readable.
-
-    Both sets are cut to the attribute's own coordinates. The relation aggregated
-    over covers every attribute, so a dim one attribute is addressed by reads
-    NULL for the rows of one that is not, and reporting that NULL as "every row
-    broadcasts over it" would tell a consumer to build a container along an axis
-    the attribute has no values on. An attribute the schema does not declare
-    keeps every dim, its shape not being the schema's to say.
-
-    Parameters
-    ----------
-    dims
-        The broadcast dims the two mappings have an entry per; a dim missing
-        from one - declared after a persisted map was written - reads as unset.
-
-    Notes
-    -----
-    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-    """
-
-    def scope(attribute: str) -> tuple[str, ...]:
-        own = set(schema.coordinates_of(attribute))
-        return tuple(d for d in dims if d in own) if own else dims
-
-    return {
-        attribute: Flags(
-            frozenset(d for d in scope(attribute) if varies.get(d)),
-            frozenset(d for d in scope(attribute) if broadcast.get(d)),
-            bool(breakpoints),
-        )
-        for attribute, varies, broadcast, breakpoints in rows
-    }
-
-
 def _base_and_above(
-    sources: Sequence[LayerSource], con: DuckDBPyConnection
+    sources: Sequence[LayerSource], con: DuckDBPyConnection, schema: Schema
 ) -> tuple[Fold | None, list[LayerSource]]:
     """Split `sources` at the deepest materialised one: its `Fold`, then the rest.
 
@@ -115,15 +71,15 @@ def _base_and_above(
     top - the same reason `sources_to_read` truncates only at proper ancestors.
     """
     for i in range(len(sources) - 2, -1, -1):
-        base = sources[i].materialised(con)
+        base = sources[i].materialised(con, schema)
         if base is not None:
             return base, list(sources[i + 1 :])
     return None, list(sources)
 
 
-def resolve_dims(
+def resolve_coords(
     schema: Schema, sources: Sequence[LayerSource], con: DuckDBPyConnection
-) -> Dims:
+) -> Coords:
     """Fold every dim `schema` declares to its axis relation.
 
     Parameters
@@ -136,7 +92,7 @@ def resolve_dims(
 
     Returns
     -------
-    Dims
+    Coords
 
     Notes
     -----
@@ -147,7 +103,7 @@ def resolve_dims(
     # which dims that source actually has, so `fold_axis` below is only ever
     # asked for a dim at least one source holds, and only passed the sources
     # that hold it.
-    base, above = _base_and_above(sources, con)
+    base, above = _base_and_above(sources, con, schema)
     present = [source.axes() for source in above]
     axes = {}
     for dim in schema.dims:
@@ -166,7 +122,7 @@ def resolve_dims(
         )
         if rel is not None:
             axes[dim] = rel
-    return Dims(
+    return Coords(
         schema=schema,
         axes=axes,
         groups=resolve_groups(schema, base, above, con),
@@ -207,7 +163,7 @@ def resolve_groups(
 
 
 @dataclass(frozen=True)
-class Dims:
+class Coords:
     """A record's schema, plus each declared dim's folded axis relation.
 
     They travel together because the fold needs both wherever it broadcasts a
@@ -380,7 +336,7 @@ def _table_name(revision_id: UUID, kind: str) -> str:
 
 def _deleted_relation(
     rel: DuckDBPyRelation | None,
-    keys: Dims,
+    keys: Coords,
     con: DuckDBPyConnection,
     *,
     fixed: tuple[str, ...],
@@ -469,7 +425,7 @@ def with_columns(
 
 
 def fold_inputs(
-    source: LayerSource, keys: Dims, con: DuckDBPyConnection, parent: DuckDBPyRelation
+    source: LayerSource, keys: Coords, con: DuckDBPyConnection, parent: DuckDBPyRelation
 ) -> DuckDBPyRelation:
     """This layer's inputs map: its `inputs/` keys, folded over `parent`.
 
@@ -561,15 +517,15 @@ def _fold_map(
     schema: Schema,
     *,
     kind: str,
-    columns: Callable[[Dims], tuple[str, ...]],
+    columns: Callable[[Coords], tuple[str, ...]],
     fold: Callable[
-        [LayerSource, Dims, DuckDBPyConnection, DuckDBPyRelation], DuckDBPyRelation
+        [LayerSource, Coords, DuckDBPyConnection, DuckDBPyRelation], DuckDBPyRelation
     ],
 ) -> DuckDBPyRelation:
     """A record's owner map of one kind, folded down over `sources`.
 
     Only `inputs` remains a kind; the axes fold to a resolved copy instead
-    (`resolve_dims`). The deepest materialised source's `Fold` is the fold's
+    (`resolve_coords`). The deepest materialised source's `Fold` is the fold's
     *seed* rather than a step of it: its `owner_map` is already folded over
     everything at or below it, so it is read as the starting relation and only
     the sources above it are folded on top.
@@ -580,8 +536,8 @@ def _fold_map(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    keys = resolve_dims(schema, sources, con)
-    base, above = _base_and_above(sources, con)
+    keys = resolve_coords(schema, sources, con)
+    base, above = _base_and_above(sources, con, schema)
 
     rel = _empty_relation(keys.schema, con, *columns(keys))
     if base is not None:
@@ -594,12 +550,12 @@ def _fold_map(
 
 def map_kinds(
     schema: Schema,
-) -> dict[str, tuple[Callable[[Dims], tuple[str, ...]], Callable]]:
+) -> dict[str, tuple[Callable[[Coords], tuple[str, ...]], Callable]]:
     """This schema's owner maps, each a `kind` -> (column set, fold) pair.
 
     One kind: `inputs`, the only relation with a genuine key/row split - an
     attribute's ownership spans every `inputs/<attr>.parquet`. Every axis is a
-    single keyed file resolved inline (`resolve_dims`), so none needs a map.
+    single keyed file resolved inline (`resolve_coords`), so none needs a map.
 
     Notes
     -----
@@ -667,7 +623,7 @@ def _table(
     if prefix == len(sources):
         return rel
 
-    keys = resolve_dims(schema, sources, con)
+    keys = resolve_coords(schema, sources, con)
     _, fold = map_kinds(schema)[kind]
     for source in sources[prefix:]:
         rel = fold(source, keys, con, rel)
@@ -695,7 +651,7 @@ def _frozen_table(
         # Nothing frozen to fold, which is a `WorkingRecord` over a base that is
         # itself unfrozen; the tail folds onto an empty map.
         columns, _ = map_kinds(schema)[kind]
-        return _empty_relation(schema, con, *columns(Dims(schema=schema, axes={})))
+        return _empty_relation(schema, con, *columns(Coords(schema=schema, axes={})))
 
     name = _table_name(revision_id, kind)
     try:
@@ -742,7 +698,7 @@ def _materialise_dims(
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    dims = resolve_dims(schema, sources, con)
+    dims = resolve_coords(schema, sources, con)
     base = resolved_dir(revision_id) + "dims/"
     ensure_local_dir(base)
     for dim, rel in dims.axes.items():
@@ -763,7 +719,7 @@ def _materialise_dims(
         if axis is None
         else set(distinct_values(axis, "entity_type", order=False))
     )
-    seed_base, above = _base_and_above(sources, con)
+    seed_base, above = _base_and_above(sources, con, schema)
     for ctype in live:
         seed = None if seed_base is None else seed_base.entity_types.get(ctype)
         wide = fold_axis(
@@ -911,6 +867,26 @@ class Resolver:
         return ParquetLayer(layer_uuid, self.con)
 
     @property
+    def fold(self) -> Fold:
+        """This node's resolved view as one `Fold`: the folded coords and map.
+
+        Assembled from `dims` (the folded axes and groups) and `_map("inputs")`
+        (the folded owner map), both of which carry their own frozen-scoped
+        cache, so `fold` re-wraps rather than re-folds. `entity_types` is left
+        empty: a live fold is never another fold's base, and the map reads it
+        exposes (`owners`, `attributes`, `flags`) never touch the per-type frames
+        - those are read through `entity_type_frame`, which folds them per call.
+        """
+        coords = self.dims
+        return Fold(
+            schema=self.schema,
+            axes=coords.axes,
+            groups=coords.groups,
+            entity_types={},
+            owner_map=self._map("inputs"),
+        )
+
+    @property
     def inputs(self) -> DuckDBPyRelation:
         """The resolved inputs owner map: which layer owns each attribute key.
 
@@ -923,7 +899,7 @@ class Resolver:
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return self._map("inputs")
+        return self.fold.owner_map
 
     @property
     def entity_axis(self) -> DuckDBPyRelation | None:
@@ -967,7 +943,7 @@ class Resolver:
         return frozen_prefix(self.sources) == len(self.sources)
 
     @property
-    def dims(self) -> Dims:
+    def dims(self) -> Coords:
         """Every declared dim's folded axis relation.
 
         A plain property rather than a `cached_property`: the fold is only
@@ -980,12 +956,12 @@ class Resolver:
         """
         if self.frozen:
             return self._cached_dims
-        return resolve_dims(self.schema, self.sources, self.con)
+        return resolve_coords(self.schema, self.sources, self.con)
 
     @cached_property
-    def _cached_dims(self) -> Dims:
+    def _cached_dims(self) -> Coords:
         """`dims` where every source is frozen, so the fold cannot go stale."""
-        return resolve_dims(self.schema, self.sources, self.con)
+        return resolve_coords(self.schema, self.sources, self.con)
 
     @cached_property
     def schema(self) -> Schema:
@@ -1016,17 +992,12 @@ class Resolver:
     def attribute_names(self) -> list[str]:
         """Every input attribute any layer owns a row for, from the owner map.
 
-        Across component types, matching the file layout: one
-        `inputs/<attr>.parquet` holds every type's rows. Ordered, so a
-        `Record` over this has a stable key order.
-
         Notes
         -----
         - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-        - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
         """
-        return list(distinct_values(self.inputs, "attribute"))
+        return self.fold.attributes()
 
     def output_names(self) -> list[str]:
         """Every result attribute this record's own layer holds.
@@ -1046,47 +1017,11 @@ class Resolver:
     def attributes_of(self, ctype: str) -> dict[str, Flags]:
         """Per attribute of `ctype`, which dims its rows use.
 
-        The map computes the flags per key, so per component; this unions them
-        over the names of one type, which is the granularity a consumer assigns
-        containers at. A type whose components disagree yields a dim in both
-        sets - the instruction to use both containers, each taking the rows it
-        matches. The union stops at the type boundary: across types it
-        would describe neither.
-
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
         """
-        # The flags have a field per *broadcast* dim: an address coordinate
-        # never broadcasts, so "did a row set it" is not a question about it.
-        dims = self.schema.broadcast_dims
-        # Scoped by a semi-join to the resolved entity axis, the table saying
-        # what type a name is (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-        axis = self.entity_axis
-        if axis is None:
-            return {}
-        of_type = axis.filter(col("entity_type") == lit(ctype)).project("entity")
-        rows = (
-            self.inputs.set_alias("i")
-            .join(of_type.distinct().set_alias("e"), "i.entity = e.entity", how="semi")
-            .aggregate(
-                [
-                    col("attribute"),
-                    struct_of({d: fn.bool_or(col("varies", d)) for d in dims}).alias(
-                        "varies"
-                    ),
-                    struct_of({d: fn.bool_or(col("broadcast", d)) for d in dims}).alias(
-                        "broadcast"
-                    ),
-                    fn.bool_or(col("breakpoints")).alias("breakpoints"),
-                ]
-            )
-            .fetchall()
-        )
-
-        # The structs come back as dicts keyed by dim, so each set is a filter by
-        # name rather than a positional slice.
-        return flags_from_rows(self.schema, dims, rows)
+        return self.fold.flags(ctype)
 
     def relation(self, attribute: str) -> DuckDBPyRelation:
         """The resolved long relation for one input attribute.
@@ -1197,7 +1132,7 @@ class Resolver:
         axis = self.entity_axis
         if axis is None:
             return None
-        base, above = _base_and_above(self.sources, self.con)
+        base, above = _base_and_above(self.sources, self.con, self.schema)
         seed = None if base is None else base.entity_types.get(ctype)
         wide = fold_axis(
             [seed, *(source.entity_type(ctype) for source in above)],

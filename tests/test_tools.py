@@ -502,7 +502,7 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
 
 
 def test_schema_dims_stay_generic(con, base_uri, ac_dc):
-    """`Dims` carries a dim PyPSA knows nothing about; axis names live in the tool.
+    """`Coords` carries a dim PyPSA knows nothing about; axis names live in the tool.
 
     Declared but not `partial`, so the record's files need no column for it.
     Keying it would be a different matter, reported by the tool against the

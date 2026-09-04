@@ -28,6 +28,8 @@ from datarecord.layered.fold import Fold
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
+    from datarecord.schema import Schema
+
 Kind = Literal["inputs", "outputs"]
 """Which long directory an attribute lives in - the alias `set` takes."""
 
@@ -74,7 +76,7 @@ class LayerSource(Protocol):
     @property
     def frozen(self) -> bool: ...
 
-    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
+    def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """This layer's resolved `Fold` if it is materialised, else `None`.
 
         A filesystem fact, distinct from `frozen`: `frozen` says the rows cannot
@@ -88,7 +90,7 @@ class LayerSource(Protocol):
     def axes(self) -> set[str]:
         """Which dims this layer has an axis file for.
 
-        One listing rather than a probe per declared dim: `resolve_dims` asks
+        One listing rather than a probe per declared dim: `resolve_coords` asks
         each source once and folds only the dims some source holds.
         """
         ...
@@ -98,7 +100,7 @@ class LayerSource(Protocol):
 
         `entity` is a dim like any other, so the entity axis is `axis("entity")`;
         what differs is only that the fold takes it as the components map,
-        with `order_key` and tombstones, where `resolve_dims` folds the rest.
+        with `order_key` and tombstones, where `resolve_coords` folds the rest.
         """
         ...
 
@@ -193,7 +195,7 @@ class _FileLayer:
     def all_attributes(self, kind: Kind = "inputs") -> DuckDBPyRelation | None:
         return self._read(f"{kind}/*.parquet", union_by_name=True)
 
-    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
+    def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """No cache by default: only a `ParquetLayer` has a revision to key one by."""
         return None
 
@@ -222,9 +224,9 @@ class ParquetLayer(_FileLayer):
     def uri(self, path: str = "") -> str:
         return layer_dir(self.revision_id, self.base_uri) + path
 
-    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
+    def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
-        return Fold.read(self.revision_id, con, self.base_uri)
+        return Fold.read(self.revision_id, con, schema, self.base_uri)
 
 
 @dataclass(frozen=True)

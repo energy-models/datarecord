@@ -216,7 +216,7 @@ def test_resolved_reads_same_as_unresolved(con, parent):
     # materialised. `_Unmaterialised` forces `materialised()` to `None` so the
     # fold cannot take a base and must re-derive what the base would carry.
     class _Unmaterialised(ParquetLayer):
-        def materialised(self, con):  # noqa: ARG002
+        def materialised(self, con, schema):  # noqa: ARG002
             return None
 
     full = ancestry(con, grandchild.id)

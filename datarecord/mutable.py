@@ -266,7 +266,7 @@ class StagedSource:
     layer_id: UUID
     frozen: bool = False
 
-    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
+    def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """A staging area has no `resolved/` cache: it is never a fold's base."""
         return None
 
