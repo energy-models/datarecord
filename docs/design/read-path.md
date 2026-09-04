@@ -109,7 +109,7 @@ An attribute no layer wrote is absent from the map; its relation is empty, and t
 
 ## One record over one fold
 
-There is one `Record`, and it is the narwhals interface over a [`NodeCache`](#owner-map). A plain parquet directory is not a second implementation of it: `Record.at(uri)` folds over a single [`DirectorySource`](format.md), and over one source the fold degenerates to a scan of it — there is one layer, so every key is owned by it and the anti-join has nothing to evict.
+There is one `Record`, and it is the narwhals interface over a [`Resolver`](#owner-map). A plain parquet directory is not a second implementation of it: `Record.at(uri)` folds over a single [`DirectorySource`](format.md), and over one source the fold degenerates to a scan of it — there is one layer, so every key is owned by it and the anti-join has nothing to evict.
 
 So a directory takes the same properties as a tree node, rather than its own column of exceptions:
 

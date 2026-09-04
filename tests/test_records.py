@@ -48,7 +48,7 @@ def both(written, con):
     -----
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
     """
-    node = Record(written.node_cache)
+    node = Record(written.resolver)
     directory = Record.at(layer_dir(written.id), con)
     return (
         node,
@@ -147,11 +147,11 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
 
 
 def test_revision_exposes_its_record(written):
-    """`revision.record` is the entry point; `node_cache` stays the DuckDB view."""
+    """`revision.record` is the entry point; `resolver` stays the DuckDB view."""
     record = written.record
     assert isinstance(record, RecordLike), "the protocol, structurally"
     assert isinstance(record, Record), "and the class this package provides"
-    assert record.node_cache is written.node_cache
+    assert record.resolver is written.resolver
 
 
 def test_constructions_agree_on_every_key_set(both):
@@ -291,7 +291,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     # The dim arrives after the map is on disk.
     write_schema(schema(dims={**narrow, "scenario": nw.String()}, partial=set()))
     child = revision.child()
-    flags = Record(child.node_cache).flags("Generator")["p_max_pu"]
+    flags = Record(child.resolver).flags("Generator")["p_max_pu"]
     assert "snapshot" in flags.varies
     assert "scenario" not in flags.varies
     assert "scenario" not in flags.broadcast
@@ -415,7 +415,7 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
         [{"entity": "Manchester Gas", "value": 0.1}],
     )
 
-    overlay = Record(child.node_cache)
+    overlay = Record(child.resolver)
     # The single-layer view is the raw file, read through the `LayerSource`: the
     # folding resolver (`Record.at`) is the whole-tree lens, wrong for "what does
     # this one patch hold".
@@ -444,7 +444,7 @@ def test_node_record_orders_members(con, base_uri, ac_dc):
     write_entity_type(layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
     names = list(
-        Record(child.node_cache)
+        Record(child.resolver)
         .entity_types["Generator"]
         .collect()
         .to_native()

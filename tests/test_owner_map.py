@@ -72,12 +72,12 @@ def keys(revision, con):
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    df = revision.node_cache.inputs.df()
+    df = revision.resolver.inputs.df()
     return {(r["entity"], str(r.attribute)) for _, r in df.iterrows()}
 
 
 def entity_names(revision):
-    return set(revision.node_cache.entity_axis.df()["entity"])
+    return set(revision.resolver.entity_axis.df()["entity"])
 
 
 def test_root_map_is_its_own_layer(con, parent):
@@ -86,7 +86,7 @@ def test_root_map_is_its_own_layer(con, parent):
     The entity axis has no `layer_uuid` - it folds like an axis, its winning row
     the whole row in one file (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
     """
-    om = parent.node_cache
+    om = parent.resolver
     assert set(om.inputs.df()["layer_uuid"]) == {parent.id}
     assert "layer_uuid" not in om.entity_axis.columns
     assert ("Manchester Wind", "p_max_pu") in keys(parent, con)
@@ -135,7 +135,7 @@ def test_last_writer_wins_per_key(con, parent):
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
-    df = child.node_cache.inputs.df()
+    df = child.resolver.inputs.df()
 
     def owner_of(name, attr):
         sel = df[(df["entity"] == name) & (df["attribute"].astype(str) == attr)]
@@ -175,7 +175,7 @@ def test_live_fold_is_cached_per_connection(con, parent):
     - [open questions](https://energy-models.github.io/datarecord/design/open-questions/)
     """
     child = parent.child()
-    om = child.node_cache
+    om = child.resolver
     om.inputs.fetchall()
     # Only `inputs` keeps an owner-map table; the entity axis folds like an axis.
     assert con.execute(
@@ -227,6 +227,37 @@ def test_a_removed_cache_falls_back_to_the_fold(con, parent):
     assert keys(fresh, con) == expected
 
 
+def test_a_materialised_node_reads_the_same_as_an_unmaterialised_one(con, parent):
+    """The invariant the base/source split protects: a value read through a
+    materialised ancestor equals the same value re-folded from the own layers.
+
+    `parent` is materialised, so the child's fold seeds from `resolved/`. Removing
+    that cache forces the fold to walk the parent's own layer instead - a
+    different code path to the same answer, which is the whole point of the seed
+    standing for the fold above it.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
+    """
+    child = parent.child()
+    write_input(
+        layer_dir(child.id),
+        "p_max_pu",
+        [{"entity": "Manchester Wind", "value": 0.42}],
+    )
+
+    def read() -> list[str]:
+        rel = Revision.get(child.id, con).resolver.relation("p_max_pu")
+        return sorted(repr(r) for r in rel.df().itertuples(index=False))
+
+    seeded = read()
+    shutil.rmtree(Path(resolved_dir(parent.id)))
+    refolded = read()
+    assert refolded == seeded, "the seed carries the fold above it"
+
+
 def test_any_node_may_be_a_parent(con, parent):
     """A layer is write-once, so no node needs preparing to branch from.
 
@@ -243,7 +274,7 @@ def test_any_node_may_be_a_parent(con, parent):
     grandchild = child.child()
     # The child was never materialised, yet its layer resolves for the
     # grandchild all the same.
-    df = grandchild.node_cache.inputs.df()
+    df = grandchild.resolver.inputs.df()
     row = df[(df["entity"] == "Manchester Wind") & (df["attribute"] == "p_max_pu")]
     assert set(row["layer_uuid"]) == {child.id}
 
@@ -277,7 +308,7 @@ def test_a_record_with_no_manifest_folds(con, base_uri):
     revision = Revision.create(con)
     assert revision.record.schema.dims == ()
 
-    inputs = revision.node_cache.inputs
+    inputs = revision.resolver.inputs
     assert "varies" in inputs.columns
     assert inputs.fetchall() == []
 

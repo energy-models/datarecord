@@ -174,7 +174,7 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(con, base_uri):
         layer_dir(revision.id), "country", [{"country": "DE"}, {"country": "FR"}]
     )
 
-    axes = revision.node_cache.dims.axes
+    axes = revision.resolver.dims.axes
     assert sorted(axes["country"].df()["country"]) == ["DE", "FR"]
     assert axes["bus"].df()["bus"].tolist() == ["north"], (
         "no classification column: the relation is the group's own file"
@@ -252,7 +252,7 @@ def test_an_attribute_addressed_by_the_into_dim_alone_is_a_column_of_its_axis(
     )
 
     assert schema.attributes_on("country") == ("co2_budget",)
-    axis = revision.node_cache.dims.axes["country"].df()
+    axis = revision.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 40.0, "FR": 55.0}
     assert "co2_budget" not in revision.record.attributes, (
         "an axis-file column is no long frame"
@@ -348,7 +348,7 @@ def test_a_child_layer_holds_only_the_axis_labels_it_touched(con, base_uri):
     assert patch["country"].to_pylist() == ["DE"], "only the touched label"
 
     child = staged.commit(NewChild(revision))
-    axis = child.node_cache.dims.axes["country"].df()
+    axis = child.resolver.dims.axes["country"].df()
     resolved = dict(zip(axis["country"], axis["co2_budget"]))
     assert resolved == {"DE": 12.0, "FR": 55.0}, "last writer wins per label"
     assert axis["country"].tolist() == ["DE", "FR"], (
@@ -388,7 +388,7 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(con, base_uri):
     )
 
     child = staged.commit(NewChild(revision))
-    axis = child.node_cache.dims.axes["country"].df()
+    axis = child.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "FR": 55.0}, (
         "FR survives because this layer carried it"
     )
@@ -410,7 +410,7 @@ def test_an_axis_resolves_over_an_unmaterialised_parent(con, base_uri):
     child = revision.child()
     write_axis(layer_dir(child.id), "country", [{"country": "NO"}])
 
-    labels = child.node_cache.dims.axes["country"].df()["country"].tolist()
+    labels = child.resolver.dims.axes["country"].df()["country"].tolist()
     assert labels == ["DE", "FR", "NO"], (
         "the parent's labels survive, in the order it introduced them"
     )
@@ -432,7 +432,7 @@ def test_set_may_name_a_label_no_layer_has_written(con, base_uri):
     staged.set("co2_budget", {"DE": 12.0, "NO": 3.0})
 
     child = staged.commit(NewChild(revision))
-    axis = child.node_cache.dims.axes["country"].df()
+    axis = child.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
 
 
@@ -446,7 +446,7 @@ def test_a_classified_axis_keeps_its_own_order(con, base_uri):
         [{"country": "NO"}, {"country": "DE"}, {"country": "FR"}],
     )
 
-    assert revision.node_cache.dims.axes["country"].df()["country"].tolist() == [
+    assert revision.resolver.dims.axes["country"].df()["country"].tolist() == [
         "NO",
         "DE",
         "FR",

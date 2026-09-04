@@ -47,7 +47,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
         ],
     )
 
-    df = child.node_cache.inputs.df()
+    df = child.resolver.inputs.df()
     wind = df[
         (df["entity"] == "Manchester Wind")
         & (df["attribute"].astype(str) == "p_max_pu")
@@ -96,7 +96,7 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(
     wind = rel[rel["entity"] == "Manchester Wind"]
     assert set(wind["period"]) == {2020}, "the deleted coordinate's row is gone"
 
-    keys = child.node_cache.inputs.df()
+    keys = child.resolver.inputs.df()
     keyed = keys[keys["entity"] == "Manchester Wind"]
     assert set(keyed["period"]) == {2020}, "and the map no longer owns its key"
 
@@ -120,7 +120,7 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     child = revision.child()
     tombstone(layer_dir(child.id), "Generator", ["Manchester Wind"])
 
-    axis_rel = child.node_cache.entity_axis
+    axis_rel = child.resolver.entity_axis
     assert axis_rel is not None
     entity_types = axis_rel.df()
     assert "Manchester Wind" not in set(entity_types["entity"])
@@ -169,7 +169,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
         ],
     )
 
-    df = child.node_cache.inputs.df()
+    df = child.resolver.inputs.df()
     wind = df[(df["entity"] == "Manchester Wind") & (df["layer_uuid"] == child.id)]
     assert wind["scenario"].tolist() == ["high"]
     assert wind["period"].tolist() == [2030]
@@ -208,7 +208,7 @@ def test_a_nested_axis_keeps_a_label_per_parent(con, base_uri):
         ],
     )
 
-    axis = revision.node_cache.dims.axes["snapshot"].df()
+    axis = revision.resolver.dims.axes["snapshot"].df()
     assert len(axis) == 4
     assert sorted(axis["period"].tolist()) == [2020, 2020, 2030, 2030]
 
@@ -236,7 +236,7 @@ def test_a_child_overrides_one_nested_point(con, base_uri):
         [{"snapshot": "2020-01-01 00:00", "period": 2030, "weight": 7.0}],
     )
 
-    axis = child.node_cache.dims.axes["snapshot"].df()
+    axis = child.resolver.dims.axes["snapshot"].df()
     weights = dict(zip(axis["period"], axis["weight"], strict=True))
     assert weights == {2020: 1.0, 2030: 7.0}
 
@@ -260,7 +260,7 @@ def test_a_dim_names_its_own_file(con, base_uri):
         target / "bus.parquet", index=False
     )
 
-    axis = revision.node_cache.dims.axes["bus"].df()
+    axis = revision.resolver.dims.axes["bus"].df()
     assert sorted(axis["bus"].tolist()) == ["north", "south"]
 
 
@@ -282,7 +282,7 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     assert "entity" in record.entity_types["Generator"].collect_schema().names()
     assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
     # And in the owner map the fold builds over them.
-    ea = revision.node_cache.entity_axis
+    ea = revision.resolver.entity_axis
     assert ea is not None
     assert "entity" in ea.df().columns
 
@@ -308,7 +308,7 @@ def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
     assert "Generator" in set(axis["entity_type"])
 
     # And it is what the fold reads: the map's entities are the axis's.
-    ea2 = revision.node_cache.entity_axis
+    ea2 = revision.resolver.entity_axis
     assert ea2 is not None
     mapped = ea2.df()
     assert set(mapped["entity"]) == set(axis.loc[~axis["deleted"], "entity"])

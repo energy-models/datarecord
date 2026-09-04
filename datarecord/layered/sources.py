@@ -21,9 +21,9 @@ from uuid import UUID, uuid5
 from datarecord.duck import (
     layer_dir,
     parquet_names,
-    resolved_dir,
     try_read_parquet,
 )
+from datarecord.layered.fold import Fold
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
@@ -73,6 +73,17 @@ class LayerSource(Protocol):
 
     @property
     def frozen(self) -> bool: ...
+
+    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
+        """This layer's resolved `Fold` if it is materialised, else `None`.
+
+        A filesystem fact, distinct from `frozen`: `frozen` says the rows cannot
+        change under a reader, `materialised` says a `resolved/` cache exists on
+        disk. The deepest materialised source in a fold's list is its base - the
+        prior fold it starts from rather than re-folds. Only a `ParquetLayer`
+        ever answers non-`None`; a directory or a staging area has no cache.
+        """
+        ...
 
     def axes(self) -> set[str]:
         """Which dims this layer has an axis file for.
@@ -182,6 +193,10 @@ class _FileLayer:
     def all_attributes(self, kind: Kind = "inputs") -> DuckDBPyRelation | None:
         return self._read(f"{kind}/*.parquet", union_by_name=True)
 
+    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
+        """No cache by default: only a `ParquetLayer` has a revision to key one by."""
+        return None
+
 
 @dataclass(frozen=True)
 class ParquetLayer(_FileLayer):
@@ -207,62 +222,9 @@ class ParquetLayer(_FileLayer):
     def uri(self, path: str = "") -> str:
         return layer_dir(self.revision_id, self.base_uri) + path
 
-
-@dataclass(frozen=True)
-class ResolvedLayer(ParquetLayer):
-    """A materialised ancestor: the fold stops here, so it stands for everything above.
-
-    `sources_to_read` stops *at* such a node, and what it stops at is the fold
-    over everything above it. So the two folded members come from its node cache
-    rather than from its layer - `axis` from `resolved/dims/`, and the owner map
-    from `resolved/owner_map/`, which `_fold_map` reads as the seed instead of
-    folding this source at all.
-
-    Everything else stays the layer's own. A materialised map still names *this*
-    node as a key's owner where it wrote one, and that row is in
-    `layers/<id>/`, not in the cache beside it - the cache holds folded keys,
-    never the rows they resolve to.
-
-    Notes
-    -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    """
-
-    def resolved_uri(self, path: str = "") -> str:
-        """`path` under this node's cache, beside the layer rather than in it."""
-        return resolved_dir(self.revision_id, self.base_uri) + path
-
-    def map_uri(self, kind: str) -> str:
-        """Where this node's `kind` owner map was materialised."""
-        return self.resolved_uri(f"owner_map/{kind}.parquet")
-
-    def axes(self) -> set[str]:
-        return {
-            name.removesuffix(".parquet")
-            for name in parquet_names(self.resolved_uri("dims/"), self._con)
-        }
-
-    def axis(self, dim: str) -> DuckDBPyRelation | None:
-        return try_read_parquet(
-            self.resolved_uri(f"dims/{dim}.parquet"), self._con, union_by_name=True
-        )
-
-    def group(self, name: str) -> DuckDBPyRelation | None:
-        # The resolved group, folded over everything above this node, in member
-        # order and tombstone-free: the group fold reads it as its seed.
-        return try_read_parquet(
-            self.resolved_uri(f"groups/{name}.parquet"), self._con, union_by_name=True
-        )
-
-    def entity_type(self, name: str) -> DuckDBPyRelation | None:
-        # The resolved per-type wide frame, folded over everything above this
-        # node - a component's wide columns live off the axis, so the fold seeds
-        # from this rather than this node's (possibly empty) own layer.
-        return try_read_parquet(
-            self.resolved_uri(f"dims/entity_type/{name}.parquet"),
-            self._con,
-            union_by_name=True,
-        )
+    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
+        """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
+        return Fold.read(self.revision_id, con, self.base_uri)
 
 
 @dataclass(frozen=True)

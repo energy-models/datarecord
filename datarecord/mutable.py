@@ -31,7 +31,8 @@ from datarecord.duck import (
     null_safe,
     union_all_by_name,
 )
-from datarecord.layered.resolve import NodeCache
+from datarecord.layered.fold import Fold
+from datarecord.layered.resolve import Resolver
 from datarecord.layered.revision import Record, Revision
 from datarecord.layered.write import write_record
 from datarecord.record import (
@@ -265,6 +266,10 @@ class StagedSource:
     layer_id: UUID
     frozen: bool = False
 
+    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
+        """A staging area has no `resolved/` cache: it is never a fold's base."""
+        return None
+
     def axes(self) -> set[str]:
         """The dims with staged rows, `entity` among them.
 
@@ -353,7 +358,7 @@ class WorkingRecord(Record):
     staged row exists: the reads fold them rather than holding a copy, so what
     is staged is asked of the reads themselves.
 
-    The `NodeCache` is fixed at construction and the source list never changes;
+    The `Resolver` is fixed at construction and the source list never changes;
     a `set` changes what the last source's tables hold, not which sources there
     are. That is what lets the inherited members stay correct - they cache a key
     set only where the fold is stable, which a staged source makes it not.
@@ -374,7 +379,7 @@ class WorkingRecord(Record):
     #: What the base resolves from, which every use of the base here wants: the
     #: schema, one dim's axis, one attribute's rows and the revision to branch
     #: from are all members of one.
-    _base: NodeCache
+    _base: Resolver
     #: Keyed by `(kind, attribute)`, the attribute being None for the entity
     #: kinds. A long kind stages one table per attribute because that is the
     #: file it stands for: one `value` column at the attribute's own type, and
@@ -387,7 +392,7 @@ class WorkingRecord(Record):
         # below reads them off `self`.
         object.__setattr__(self, "_layer_id", uuid4())
         object.__setattr__(self, "_staged", {})
-        base_cache = _base_node_cache(base, con)
+        base_cache = _base_resolver(base, con)
         object.__setattr__(self, "_base", base_cache)
         # This record *is* the fold one layer deeper, and that layer is the
         # staging area - so the field the base class holds is that fold.
@@ -778,7 +783,7 @@ class WorkingRecord(Record):
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        axis = self.node_cache.entity_axis
+        axis = self.resolver.entity_axis
         if axis is None:
             return []
         rows = (
@@ -800,7 +805,7 @@ class WorkingRecord(Record):
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         """
-        axis = self.node_cache.entity_axis
+        axis = self.resolver.entity_axis
         if axis is None:
             return None
         rel = axis.project("entity", "entity_type")
@@ -2135,8 +2140,8 @@ class WorkingRecord(Record):
         return None
 
 
-def _base_node_cache(base: RecordLike, con: DuckDBPyConnection) -> NodeCache:
-    """What `base` resolves from, as a `NodeCache` a staged layer can extend.
+def _base_resolver(base: RecordLike, con: DuckDBPyConnection) -> Resolver:
+    """What `base` resolves from, as a `Resolver` a staged layer can extend.
 
     A `Record` is one already - whether it came from a revision or from
     `Record.at(uri)`, since a directory read as its one layer is a fold like
@@ -2167,7 +2172,7 @@ def _base_node_cache(base: RecordLike, con: DuckDBPyConnection) -> NodeCache:
             "base through, and this base reads through another one"
         )
         raise ValueError(msg)
-    return base.node_cache
+    return base.resolver
 
 
 def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:

@@ -1,6 +1,6 @@
 """The owner map, and the resolved reads gated by it.
 
-The map answers which layer owns each key; `NodeCache` exposes the reads over
+The map answers which layer owns each key; `Resolver` exposes the reads over
 it - one long relation per attribute, a type's member frame, this
 layer's own outputs. Tool-agnostic: turning these into a framework's
 object is `datarecord.tools`.
@@ -46,7 +46,8 @@ from datarecord.duck import (
     try_read_parquet,
     union_all_by_name,
 )
-from datarecord.layered.sources import LayerSource, ParquetLayer, ResolvedLayer
+from datarecord.layered.fold import Fold
+from datarecord.layered.sources import LayerSource, ParquetLayer
 from datarecord.record import Flags
 from datarecord.schema import Schema
 
@@ -98,6 +99,28 @@ def flags_from_rows(
     }
 
 
+def _base_and_above(
+    sources: Sequence[LayerSource], con: DuckDBPyConnection
+) -> tuple[Fold | None, list[LayerSource]]:
+    """Split `sources` at the deepest materialised one: its `Fold`, then the rest.
+
+    The deepest materialised source's `Fold` is the fold's base - already folded
+    over everything at or below it - and only the sources above it are folded on
+    top. No materialised source means no base and the whole list folds from the
+    root.
+
+    The last source is never the base: a node resolves from its own layer, never
+    from its own cache. Reading a node through its own materialised `Fold` would
+    return the cached answer instead of resolving it, and folding *nothing* on
+    top - the same reason `sources_to_read` truncates only at proper ancestors.
+    """
+    for i in range(len(sources) - 2, -1, -1):
+        base = sources[i].materialised(con)
+        if base is not None:
+            return base, list(sources[i + 1 :])
+    return None, list(sources)
+
+
 def resolve_dims(
     schema: Schema, sources: Sequence[LayerSource], con: DuckDBPyConnection
 ) -> Dims:
@@ -124,30 +147,45 @@ def resolve_dims(
     # which dims that source actually has, so `fold_axis` below is only ever
     # asked for a dim at least one source holds, and only passed the sources
     # that hold it.
-    present = [source.axes() for source in sources]
+    base, above = _base_and_above(sources, con)
+    present = [source.axes() for source in above]
     axes = {}
     for dim in schema.dims:
-        holding = [s for s, names in zip(sources, present) if dim in names]
-        if not holding:
+        # The base's resolved axis is depth 0 - already folded and tombstone-
+        # free - so a layer above it still wins per key and its tombstones still
+        # remove a base key, exactly as folding from the root would.
+        seed = None if base is None else base.axes.get(dim)
+        holding = [s for s, names in zip(above, present) if dim in names]
+        if seed is None and not holding:
             continue
         # Keyed by the axis key, not the dim alone: a nested dim's labels
         # identify a point only within its parents (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis), so `(period,
         # timestep)` is what last-writer-wins applies to.
-        rel = fold_axis([s.axis(dim) for s in holding], schema.axis_key(dim), con)
+        rel = fold_axis(
+            [seed, *(s.axis(dim) for s in holding)], schema.axis_key(dim), con
+        )
         if rel is not None:
             axes[dim] = rel
-    return Dims(schema=schema, axes=axes, groups=resolve_groups(schema, sources, con))
+    return Dims(
+        schema=schema,
+        axes=axes,
+        groups=resolve_groups(schema, base, above, con),
+    )
 
 
 def resolve_groups(
-    schema: Schema, sources: Sequence[LayerSource], con: DuckDBPyConnection
+    schema: Schema,
+    base: Fold | None,
+    above: Sequence[LayerSource],
+    con: DuckDBPyConnection,
 ) -> dict[str, DuckDBPyRelation]:
     """Fold every declared group to its resolved relation, keyed by `group_key`.
 
     A group folds through `fold_axis` like any axis with a composite key: last-
     writer-wins per `group_key`, static columns (`into`, group-attributes) on the
     winning row, its own tombstones honoured, member order the file's row order.
-    Absent from the result where no layer wrote a row.
+    The base `Fold`'s resolved group seeds depth 0. Absent from the result where
+    no layer wrote a row.
 
     Notes
     -----
@@ -158,7 +196,8 @@ def resolve_groups(
     groups = {}
     for group in schema.groups:
         key = schema.group_key(group)
-        rows = [source.group(group) for source in sources]
+        seed = None if base is None else base.groups.get(group)
+        rows = [seed, *(source.group(group) for source in above)]
         if not key or all(rel is None for rel in rows):
             continue
         rel = fold_axis(rows, key, con)
@@ -275,7 +314,7 @@ def _map_uri(revision_id: UUID, kind: str) -> str:
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    return ResolvedLayer(revision_id).map_uri(kind)
+    return resolved_dir(revision_id) + f"owner_map/{kind}.parquet"
 
 
 def materialised(revision_id: UUID, con: DuckDBPyConnection) -> bool:
@@ -303,9 +342,9 @@ def sources_to_read(ancestry: list[UUID], con: DuckDBPyConnection) -> list[Layer
 
     A materialised owner map is already folded over everything above it, so
     nothing further up need be read: the truncation is *fewer sources* rather
-    than a shorter list of UUIDs, and the node stopped at becomes a
-    `ResolvedLayer` - standing for everything above it where every other entry
-    stands for its own layer alone.
+    than a shorter list of UUIDs. The node stopped at stays a plain
+    `ParquetLayer`; its `materialised(con)` yields the base `Fold` the live fold
+    starts from, so the fold folds only the layers below it.
 
     Only proper ancestors count: the node being resolved is always read from its
     own layer, since stopping *at* it would return its cached answer instead of
@@ -328,10 +367,7 @@ def sources_to_read(ancestry: list[UUID], con: DuckDBPyConnection) -> list[Layer
     """
     for depth in range(len(ancestry) - 2, -1, -1):
         if materialised(ancestry[depth], con):
-            return [
-                ResolvedLayer(ancestry[depth], con),
-                *(ParquetLayer(uid, con) for uid in ancestry[depth + 1 :]),
-            ]
+            return [ParquetLayer(uid, con) for uid in ancestry[depth:]]
     return [ParquetLayer(uid, con) for uid in ancestry]
 
 
@@ -533,9 +569,10 @@ def _fold_map(
     """A record's owner map of one kind, folded down over `sources`.
 
     Only `inputs` remains a kind; the axes fold to a resolved copy instead
-    (`resolve_dims`). A leading `ResolvedLayer` is the fold's *seed* rather than a
-    step of it: its materialised map is already folded over everything above it,
-    so it is read as the starting relation and never folded again.
+    (`resolve_dims`). The deepest materialised source's `Fold` is the fold's
+    *seed* rather than a step of it: its `owner_map` is already folded over
+    everything at or below it, so it is read as the starting relation and only
+    the sources above it are folded on top.
 
     Notes
     -----
@@ -544,17 +581,13 @@ def _fold_map(
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     keys = resolve_dims(schema, sources, con)
+    base, above = _base_and_above(sources, con)
 
     rel = _empty_relation(keys.schema, con, *columns(keys))
-    head, *rest = sources
-    if isinstance(head, ResolvedLayer):
-        seed = try_read_parquet(head.map_uri(kind), con)
-        if seed is not None:
-            rel = cast_declared(keys.schema, seed)
-    else:
-        rest = list(sources)
+    if base is not None:
+        rel = cast_declared(keys.schema, base.owner_map)
 
-    for source in rest:
+    for source in above:
         rel = fold(source, keys, con, rel)
     return rel
 
@@ -591,7 +624,7 @@ def frozen_prefix(sources: Sequence[LayerSource]) -> int:
 
     The one rule the source list has to carry: **the fold is materialised up to
     the last frozen source; everything after it stays a relation.** Everything a
-    `NodeCache` caches rests on layers being write-once, which a staging area is
+    `Resolver` caches rests on layers being write-once, which a staging area is
     not - so a staged source ends the prefix, and a frozen one under it stays
     outside without either needing to know about the other.
 
@@ -730,9 +763,11 @@ def _materialise_dims(
         if axis is None
         else set(distinct_values(axis, "entity_type", order=False))
     )
+    seed_base, above = _base_and_above(sources, con)
     for ctype in live:
+        seed = None if seed_base is None else seed_base.entity_types.get(ctype)
         wide = fold_axis(
-            [source.entity_type(ctype) for source in sources], ("entity",), con
+            [seed, *(source.entity_type(ctype) for source in above)], ("entity",), con
         )
         if wide is not None:
             wide.to_parquet(f"{types}{ctype}.parquet")
@@ -789,7 +824,7 @@ def write_schema(schema: Schema, base_uri: str | None = None) -> None:
 
 
 @dataclass(frozen=True)
-class NodeCache:
+class Resolver:
     """A record's resolved view: owner map, dims, schema, and the relations over them.
 
     The cached artifacts and the reads gated by them
@@ -837,7 +872,7 @@ class NodeCache:
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
 
-    def with_source(self, source: LayerSource) -> NodeCache:
+    def with_source(self, source: LayerSource) -> Resolver:
         """This cache with one more layer folded on top.
 
         What a `WorkingRecord` builds to read its staged rows: the staged source
@@ -850,7 +885,7 @@ class NodeCache:
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
         """
-        return NodeCache(
+        return Resolver(
             self.revision_id, [*self.sources, source], self.con, self.declared
         )
 
@@ -916,12 +951,14 @@ class NodeCache:
         return self.dims.groups.get(name)
 
     @property
-    def stable(self) -> bool:
+    def frozen(self) -> bool:
         """Whether every source is frozen, so a fold over them cannot go stale.
 
         What decides between caching an answer and re-folding per access - here
-        and in the `Record` over this cache, where the same question governs its
-        key sets. False exactly when the last source is a staging area.
+        and in the `Record` over this resolver, where the same question governs
+        its key sets. False exactly when the last source is a staging area.
+        `all(s.frozen for s in sources)`, distinct from `frozen_prefix`, which
+        counts how far the leading run is frozen to decide materialisation.
 
         Notes
         -----
@@ -941,7 +978,7 @@ class NodeCache:
         -----
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
         """
-        if self.stable:
+        if self.frozen:
             return self._cached_dims
         return resolve_dims(self.schema, self.sources, self.con)
 
@@ -1160,8 +1197,10 @@ class NodeCache:
         axis = self.entity_axis
         if axis is None:
             return None
+        base, above = _base_and_above(self.sources, self.con)
+        seed = None if base is None else base.entity_types.get(ctype)
         wide = fold_axis(
-            [source.entity_type(ctype) for source in self.sources],
+            [seed, *(source.entity_type(ctype) for source in above)],
             ("entity",),
             self.con,
         )

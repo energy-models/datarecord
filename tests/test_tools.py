@@ -511,7 +511,7 @@ def test_schema_dims_stay_generic(con, base_uri, ac_dc):
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     _with_schema(revision, dims={**_DIMS, "vintage": nw.String()})
-    dims = revision.node_cache.dims
+    dims = revision.resolver.dims
     assert "vintage" in dims.schema.dims
     # No axis rows anywhere, so the dim is absent from the mapping rather than
     # present-and-empty (https://energy-models.github.io/datarecord/design/record/#frames).

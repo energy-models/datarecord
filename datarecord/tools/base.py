@@ -109,7 +109,7 @@ def to_relation(frame: nw.LazyFrame) -> DuckDBPyRelation:
 
     Unwrapping costs nothing and the plan stays lazy. For a tool needing
     DuckDB's own SQL - `PIVOT`, which narwhals has no expression for - rather
-    than reaching past the record to a `NodeCache`.
+    than reaching past the record to a `Resolver`.
 
     Raises
     ------

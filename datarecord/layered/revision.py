@@ -26,7 +26,7 @@ from pydantic import BaseModel, PrivateAttr
 
 from datarecord.duck import default_connection, read_json
 from datarecord.layered import resolve
-from datarecord.layered.resolve import NodeCache
+from datarecord.layered.resolve import Resolver
 from datarecord.layered.sources import DirectorySource, LayerSource
 from datarecord.record import Flags, LazyFrames
 from datarecord.schema import Schema
@@ -99,7 +99,7 @@ class Revision(BaseModel):
     parent: UUID | None = None
 
     _con: DuckDBPyConnection | None = PrivateAttr(default=None)
-    _node_cache: NodeCache | None = PrivateAttr(default=None)
+    _resolver: Resolver | None = PrivateAttr(default=None)
 
     @property
     def con(self) -> DuckDBPyConnection:
@@ -108,8 +108,8 @@ class Revision(BaseModel):
         return self._con
 
     @property
-    def node_cache(self) -> NodeCache:
-        """This record's `NodeCache`, built once from its ancestry.
+    def resolver(self) -> Resolver:
+        """This record's `Resolver`, built once from its ancestry.
 
         The ancestry is truncated at the deepest materialised ancestor, so a
         deep tree resolves from few entries. Cached rather than rebuilt per
@@ -121,18 +121,18 @@ class Revision(BaseModel):
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
-        if self._node_cache is None:
+        if self._resolver is None:
             full = ancestry(self.con, self.id)
             sources = resolve.sources_to_read(full, self.con)
-            self._node_cache = NodeCache(self.id, sources, self.con)
-        return self._node_cache
+            self._resolver = Resolver(self.id, sources, self.con)
+        return self._resolver
 
     @property
     def record(self) -> Record:
         """This revision's resolved view, as a `Record`.
 
         The framework-agnostic view: narwhals frames, with no sign of how many
-        layers were folded to produce them. `node_cache` remains the
+        layers were folded to produce them. `resolver` remains the
         DuckDB-shaped view, which `datarecord.tools` still builds from.
 
         Notes
@@ -140,7 +140,7 @@ class Revision(BaseModel):
         - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
-        return Record(self.node_cache)
+        return Record(self.resolver)
 
     # -- tree ---------------------------------------------------------------
 
@@ -187,8 +187,8 @@ class Revision(BaseModel):
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
-        resolve.materialise(self.id, self.node_cache.sources, self.con)
-        self._node_cache = None
+        resolve.materialise(self.id, self.resolver.sources, self.con)
+        self._resolver = None
 
     # -- read ---------------------------------------------------------------
 
@@ -207,11 +207,11 @@ def _stable_cache(method: Callable[[Record], LazyFrames]) -> property:
 
     Every one of these answers a *key set*, which is a question about which
     layers exist rather than about their rows - so it is cacheable exactly when
-    `NodeCache.stable` holds. Past a staging area it is not: an `add` or a `set`
+    `Resolver.frozen` holds. Past a staging area it is not: an `add` or a `set`
     naming a new attribute changes the answer, and a cached tuple of names would
     hide the edit that was just made.
 
-    The same rule `NodeCache.dims` applies to the fold itself, one level up, so
+    The same rule `Resolver.dims` applies to the fold itself, one level up, so
     a `WorkingRecord` inherits these unchanged rather than overriding them.
 
     Notes
@@ -223,7 +223,7 @@ def _stable_cache(method: Callable[[Record], LazyFrames]) -> property:
 
     @wraps(method)
     def get(self: Record) -> LazyFrames:
-        if not self.node_cache.stable:
+        if not self.resolver.frozen:
             return method(self)
         try:
             return cast("LazyFrames", object.__getattribute__(self, attr))
@@ -239,8 +239,8 @@ def _stable_cache(method: Callable[[Record], LazyFrames]) -> property:
 class Record:
     """A record's resolved view, as narwhals frames.
 
-    The narwhals interface over one `NodeCache`, not a second implementation of
-    it: a member costs what the equivalent `NodeCache` call costs, and `flags`
+    The narwhals interface over one `Resolver`, not a second implementation of
+    it: a member costs what the equivalent `Resolver` call costs, and `flags`
     in particular is free, the owner map having folded it in.
 
     One class for every backing, because a fold over one source degenerates to
@@ -254,7 +254,7 @@ class Record:
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
 
-    node_cache: NodeCache
+    resolver: Resolver
 
     @classmethod
     def over(
@@ -274,7 +274,7 @@ class Record:
         if not sources:
             msg = "a `Record` needs at least one source to fold"
             raise ValueError(msg)
-        return cls(NodeCache(sources[-1].layer_id, list(sources), con, declared))
+        return cls(Resolver(sources[-1].layer_id, list(sources), con, declared))
 
     @classmethod
     def at(cls, uri: str, con: DuckDBPyConnection | None = None) -> Record:
@@ -304,20 +304,20 @@ class Record:
 
     @property
     def schema(self) -> Schema:
-        return self.node_cache.schema
+        return self.resolver.schema
 
     @property
     def con(self) -> DuckDBPyConnection:
-        return self.node_cache.con
+        return self.resolver.con
 
     @_stable_cache
     def dims(self) -> LazyFrames:
-        axes = self.node_cache.dims.axes
+        axes = self.resolver.dims.axes
         return LazyFrames(tuple(axes), lambda dim: nw.from_native(axes[dim]))
 
     @_stable_cache
     def entity_types(self) -> LazyFrames:
-        types = tuple(sorted(self.node_cache.entity_types()))
+        types = tuple(sorted(self.resolver.entity_types()))
         return LazyFrames(types, self._entity_type_frame)
 
     @_stable_cache
@@ -332,24 +332,22 @@ class Record:
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         groups = tuple(
-            g
-            for g in self.node_cache.schema.groups
-            if self.node_cache.group(g) is not None
+            g for g in self.resolver.schema.groups if self.resolver.group(g) is not None
         )
         return LazyFrames(groups, self._group_frame)
 
     @_stable_cache
     def attributes(self) -> LazyFrames:
-        names = tuple(self.node_cache.attribute_names())
+        names = tuple(self.resolver.attribute_names())
         return LazyFrames(
-            names, lambda attr: nw.from_native(self.node_cache.relation(attr))
+            names, lambda attr: nw.from_native(self.resolver.relation(attr))
         )
 
     @_stable_cache
     def outputs(self) -> LazyFrames:
-        names = tuple(self.node_cache.output_names())
+        names = tuple(self.resolver.output_names())
         return LazyFrames(
-            names, lambda attr: nw.from_native(self.node_cache.outputs(attr))
+            names, lambda attr: nw.from_native(self.resolver.outputs(attr))
         )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
@@ -359,15 +357,15 @@ class Record:
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return self.node_cache.attributes_of(ctype)
+        return self.resolver.attributes_of(ctype)
 
     # -- frames, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) --
 
     def _entity_type_frame(self, ctype: str) -> nw.LazyFrame:
-        return self._frame(self.node_cache.entity_type_frame(ctype), ctype)
+        return self._frame(self.resolver.entity_type_frame(ctype), ctype)
 
     def _group_frame(self, group: str) -> nw.LazyFrame:
-        return self._frame(self.node_cache.group_frame(group), group)
+        return self._frame(self.resolver.group_frame(group), group)
 
     def _frame(self, rel: DuckDBPyRelation | None, key: str) -> nw.LazyFrame:
         """`rel` as a frame; it already carries member order as its row order.

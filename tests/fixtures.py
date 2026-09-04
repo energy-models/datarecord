@@ -451,7 +451,7 @@ def relation(revision, attribute: str):
     a relation on the revision against a `Frames` mapping on the record. Tests
     want relations because they assert on `.df()`, so the affordance lives here.
     """
-    return revision.node_cache.relation(attribute)
+    return revision.resolver.relation(attribute)
 
 
 def outputs(revision, attribute: str):
@@ -461,4 +461,4 @@ def outputs(revision, attribute: str):
     -----
     - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
     """
-    return revision.node_cache.outputs(attribute)
+    return revision.resolver.outputs(attribute)

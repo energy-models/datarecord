@@ -513,7 +513,7 @@ def test_an_axis_carries_the_attributes_addressed_by_it_alone(con, base_uri):
     )
     write_record(revision.id, source, con)
 
-    axis = revision.node_cache.dims.axes["scenario"].df()
+    axis = revision.resolver.dims.axes["scenario"].df()
     assert dict(zip(axis["scenario"], axis["weight"])) == {"high": 0.4}
 
 

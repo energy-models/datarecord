@@ -27,14 +27,14 @@ def _connections(revision):
     No type: one `groups/connection.parquet` holds every type's rows, and these
     tests declare a single one.
     """
-    frame = revision.node_cache.group_frame("connection")
+    frame = revision.resolver.group_frame("connection")
     assert frame is not None
     return frame
 
 
 def _entity_type_frame(revision, ctype=PROCESS):
     """`entity_type_frame`, asserted non-`None` for tests where a row must exist."""
-    frame = revision.node_cache.entity_type_frame(ctype)
+    frame = revision.resolver.entity_type_frame(ctype)
     assert frame is not None
     return frame
 
@@ -268,7 +268,7 @@ def test_component_tombstone_does_not_cascade_to_its_connections(con, base_uri):
     # The component alone: its connections survive, dangling.
     child = root.child()
     tombstone(layer_dir(child.id), PROCESS, ["steel_dri"])
-    assert child.node_cache.group_frame("connection") is not None
+    assert child.resolver.group_frame("connection") is not None
 
     # The connections too: now both are gone.
     both = root.child()
@@ -277,4 +277,4 @@ def test_component_tombstone_does_not_cascade_to_its_connections(con, base_uri):
         layer_dir(both.id),
         [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
     )
-    assert both.node_cache.group_frame("connection") is None
+    assert both.resolver.group_frame("connection") is None

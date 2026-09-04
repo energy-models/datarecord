@@ -685,7 +685,7 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
     assert "NewSolar" in set(members["entity"]), "the addition reads back before commit"
 
     child = staged.commit(NewChild(root))
-    assert "NewSolar" in set(child.node_cache.entity_axis.df()["entity"])
+    assert "NewSolar" in set(child.resolver.entity_axis.df()["entity"])
 
     static = PyPSA.build(child.record).c[GEN].static
     assert static.loc["NewSolar", "p_nom"] == 42.0
@@ -844,7 +844,7 @@ def test_remove_tombstones_without_enumerating_attributes(staged, root):
     assert "Norway Gas" not in set(members["entity"]), "the removal reads back at once"
 
     child = staged.commit(NewChild(root))
-    assert "Norway Gas" not in set(child.node_cache.entity_axis.df()["entity"])
+    assert "Norway Gas" not in set(child.resolver.entity_axis.df()["entity"])
 
 
 def test_add_after_remove_leaves_the_component_alive(staged, root):
@@ -858,7 +858,7 @@ def test_add_after_remove_leaves_the_component_alive(staged, root):
     staged.add(GEN, pd.DataFrame([{"entity": "Norway Gas", "carrier": "gas"}]))
 
     child = staged.commit(NewChild(root))
-    assert "Norway Gas" in set(child.node_cache.entity_axis.df()["entity"])
+    assert "Norway Gas" in set(child.resolver.entity_axis.df()["entity"])
 
 
 def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
@@ -897,7 +897,7 @@ def test_add_group_stages_a_new_connection(staged, root):
     ), "the new connection reads back before commit"
 
     child = staged.commit(NewChild(root))
-    rows = child.node_cache.group_frame("connection").df()
+    rows = child.resolver.group_frame("connection").df()
     got = set(rows[rows["entity"] == "Manchester Wind"]["bus"])
     assert "Norway" in got
 
@@ -916,7 +916,7 @@ def test_remove_group_stages_a_tombstone(staged, root):
     assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
     child = staged.commit(NewChild(root))
-    rows = child.node_cache.group_frame("connection").df()
+    rows = child.resolver.group_frame("connection").df()
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     # The component's other port survives: deletion is per connection, not per
@@ -1169,7 +1169,7 @@ def test_a_directory_uri_reads_the_same_with_or_without_a_trailing_slash(
     without = Record.at(bare, con)
     assert list(without.attributes) == list(with_slash.attributes)
     assert list(without.attributes), "the fixture must have written attributes"
-    assert without.node_cache.revision_id == with_slash.node_cache.revision_id, (
+    assert without.resolver.revision_id == with_slash.resolver.revision_id, (
         "one directory is one layer, however its URI was spelled"
     )
 
