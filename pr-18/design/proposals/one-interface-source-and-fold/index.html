@@ -1,0 +1,2193 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-18/design/proposals/one-interface-source-and-fold/">
+      
+      
+        <link rel="prev" href="../staging-without-seq/">
+      
+      
+        <link rel="next" href="../../../api/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>One interface, source and fold - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#proposal-one-interface-two-objects-a-source-is-its-own-rows-a-fold-is-the-resolution" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              One interface, source and fold
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../usage/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../record/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Record protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The record format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../layers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layered resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../read-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The DuckDB read path
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../writing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing a record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../working-record/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WorkingRecord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consuming a record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../module-layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Module layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../open-questions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_12" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_12" id="__nav_3_12_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proposals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Proposals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dims-groups-traits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dims, mappings, groups and traits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../trait-switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Trait switches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../staging-as-a-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Staging as a layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../one-record-over-a-node-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    One Record over a NodeCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../a-member-file-holds-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    A member file holds values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../staging-without-seq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Staging without _seq
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    One interface, source and fold
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    One interface, source and fold
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-starts-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What starts it
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What starts it">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resolvedlayer-is-a-nodecache-persisted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ResolvedLayer is a NodeCache, persisted
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-masquerade-shows-as-a-dual-role" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The masquerade shows as a dual role
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workingrecord-is-the-model-and-has-the-latent-version-of-the-same-seam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WorkingRecord is the model, and has the latent version of the same seam
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-construct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The construct
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The construct">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-fold-machinery-is-a-fold-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fold machinery is a Fold object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nodecache-becomes-resolver-layerdata-routing-into-its-fold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NodeCache becomes Resolver, LayerData routing into its Fold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-base-is-a-fold-discovered-from-the-sources-not-stored" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The base is a Fold, discovered from the sources, not stored
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sequenced-commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequenced commits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-interface-resolver-and-a-layer-share" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The interface Resolver and a layer share
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema-governs-which-pairs-are-live-it-is-not-a-peer-of-them" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        schema governs which pairs are live, it is not a peer of them
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#axis-is-layer-local-on-every-layersource-no-exception" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        axis is layer-local on every LayerSource, no exception
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-writer-takes-a-layerdata-and-_written-disappears" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The writer takes a LayerData, and _Written disappears
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-buys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this buys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it costs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-settles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it settles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-opens-rather-than-settles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it opens rather than settles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What it opens rather than settles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#all_attributes-is-source-only-for-now" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        all_attributes is source-only, for now
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-know-it-worked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to know it worked
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../api/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-starts-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What starts it
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What starts it">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resolvedlayer-is-a-nodecache-persisted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ResolvedLayer is a NodeCache, persisted
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-masquerade-shows-as-a-dual-role" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The masquerade shows as a dual role
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workingrecord-is-the-model-and-has-the-latent-version-of-the-same-seam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WorkingRecord is the model, and has the latent version of the same seam
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-construct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The construct
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The construct">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-fold-machinery-is-a-fold-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fold machinery is a Fold object
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nodecache-becomes-resolver-layerdata-routing-into-its-fold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NodeCache becomes Resolver, LayerData routing into its Fold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-base-is-a-fold-discovered-from-the-sources-not-stored" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The base is a Fold, discovered from the sources, not stored
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sequenced-commits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequenced commits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-interface-resolver-and-a-layer-share" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The interface Resolver and a layer share
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#schema-governs-which-pairs-are-live-it-is-not-a-peer-of-them" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        schema governs which pairs are live, it is not a peer of them
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#axis-is-layer-local-on-every-layersource-no-exception" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        axis is layer-local on every LayerSource, no exception
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-writer-takes-a-layerdata-and-_written-disappears" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The writer takes a LayerData, and _Written disappears
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-buys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this buys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it costs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-settles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it settles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-opens-rather-than-settles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it opens rather than settles
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What it opens rather than settles">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#all_attributes-is-source-only-for-now" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        all_attributes is source-only, for now
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-know-it-worked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to know it worked
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="proposal-one-interface-two-objects-a-source-is-its-own-rows-a-fold-is-the-resolution">Proposal: one interface, two objects — a source is its own rows, a fold is the resolution<a class="headerlink" href="#proposal-one-interface-two-objects-a-source-is-its-own-rows-a-fold-is-the-resolution" title="Permanent link">&para;</a></h1>
+<p>Status: <strong>Landed</strong> · Drafted 2026-09-02 · Landed 2026-09-04</p>
+<blockquote>
+<p>All three commits below landed on <code>refactor/staging-as-a-layer</code> (<code>cd2ce92</code>,
+<code>006c159</code>, <code>7f244a9</code>). The authoritative account is <a href="../../read-path/#one-record-over-one-fold">the read
+path</a>, <a href="../../record/">the Record
+protocol</a> — including <a href="../../record/#layerdata"><code>LayerData</code></a> —
+<a href="../../writing/">writing</a> and <a href="../../module-layout/">the module layout</a>; this
+page is kept as the argument that led there, and those pages are authoritative
+where the two disagree. <code>NodeCache</code> landed as <code>Resolver</code>, <code>ResolvedLayer</code> is
+deleted, the base is a <code>Fold</code> (<code>datarecord/layered/fold.py</code>) discovered from
+the sources, and <code>write_record</code> takes a <code>LayerData</code>. The untyped-enumerator
+<code>∅</code>-not-<code>{None}</code> half is the subject of its now-landed successor,
+<a href="../a-member-file-holds-values/"><code>a-member-file-holds-values</code></a>. The "Commit N as
+landed" notes below record where the implementation departed from this sketch.</p>
+</blockquote>
+<p>One claim: <strong><code>axis(dim)</code> should mean the same thing wherever it is written — "the rows of the thing I am holding".</strong> You pick "one layer's contribution" versus "the resolved answer to here" by <em>which object you hold</em>, not by a <code>resolved_</code> prefix on a method nor by a mode flag. A <a href="../../read-path/#owner-map"><code>LayerSource</code></a> answers for its own layer; a fold answers for everything folded into it; both answer under the same names.</p>
+<p>The codebase is already most of the way there and inconsistent about the last step. <a href="../../working-record/"><code>WorkingRecord</code></a> does it the clean way — the fold and the staged-layer's-own-rows are <em>two objects</em> (<code>WorkingRecord</code> the <a href="../../record/"><code>Record</code></a> over a <code>NodeCache</code>, <code>StagedSource</code> the source). <code>ResolvedLayer</code> does it the muddy way — <em>one object</em> that is a fold (a persisted <code>NodeCache</code>) but is typed as a source and put in the fold's own input list, so it answers for its own layer through some methods and for the fold-to-here through others.</p>
+<p>This is the prerequisite <a href="../a-member-file-holds-values/"><code>a-member-file-holds-values</code></a> names, taken at its root rather than at the symptom. That page proposes adding <code>resolved_axis</code>/<code>resolved_axes</code> beside <code>map_uri</code> — a third folded-answer method under a distinct name, papering the dual role. The root cause is that a fold-result (<code>ResolvedLayer</code>, a persisted <code>NodeCache</code>) is masquerading as a fold-input (a <code>LayerSource</code>); untangle <em>that</em> and no new method name is needed.</p>
+<h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
+<p>Three abstractions, each with a one-line contract the code states explicitly:</p>
+<ul>
+<li><strong><code>LayerSource</code></strong> — "One layer's own rows, however they are stored" (the <code>sources.py</code> protocol docstring). <code>axis</code> "means 'this layer's own rows'". Every implementation obeys it: <code>ParquetLayer</code>, <code>DirectorySource</code>, <code>StagedSource</code>.</li>
+<li><strong><code>NodeCache</code></strong> — "A record's resolved view: owner map, dims, schema, and the relations over them" (<code>resolve.py</code>). It holds a <code>sources</code> list and <em>folds</em> it: the <code>inputs</code> owner map, <code>dims</code> (the entity axis and groups among them), and every <code>relation</code>/<code>entity_type_frame</code>/<code>group_frame</code> are computed from those sources.</li>
+<li><strong><code>Record</code>/<code>RecordLike</code></strong> — "the narwhals interface over one fold" (<a href="../../record/"><code>record.md</code></a>). A <code>Record</code> wraps exactly one <code>NodeCache</code> and presents its fold as narwhals frames.</li>
+</ul>
+<p>So <code>NodeCache</code> <em>is</em> the fold, and a <code>Record</code> is its public face. The line between "own rows" (<code>LayerSource</code>) and "the fold" (<code>NodeCache</code>) is clean until one object straddles it.</p>
+<h3 id="resolvedlayer-is-a-nodecache-persisted"><code>ResolvedLayer</code> <em>is</em> a <code>NodeCache</code>, persisted<a class="headerlink" href="#resolvedlayer-is-a-nodecache-persisted" title="Permanent link">&para;</a></h3>
+<p>This is the fact the rest of the page turns on. <code>Revision.materialise()</code> folds a node's sources and writes the result to <code>resolved/</code> — <code>_fold_kind</code> for the <code>inputs</code> owner map, <code>resolve_coords</code> for the axes (the entity axis and groups among them) (<a href="../../layers/#materialised-node-caches"><code>materialise</code></a>). That is <em>exactly</em> what a <code>NodeCache</code> computes in memory; materialising is persisting a <code>NodeCache</code>'s output. <code>ResolvedLayer</code> is the handle that reads it back, and <code>NodeCache</code> seeds from it to skip the re-fold:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">NodeCache</span><span class="o">.</span><span class="n">_fold_map</span><span class="p">:</span> <span class="n">seed</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">head</span><span class="o">.</span><span class="n">map_uri</span><span class="p">(</span><span class="n">kind</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span>  <span class="c1"># a ResolvedLayer&#39;s stored owner map</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">NodeCache</span><span class="o">.</span><span class="n">resolve_dims</span><span class="p">:</span> <span class="n">seed</span> <span class="o">=</span> <span class="n">head</span><span class="o">.</span><span class="n">resolved_axes</span><span class="p">()</span>  <span class="c1"># a ResolvedLayer&#39;s stored dims</span>
+</code></pre></div>
+<p>So <code>ResolvedLayer</code> and <code>NodeCache</code> are <strong>the same thing — the fold to a node — in two tenses</strong>: <code>NodeCache</code> computed live, <code>ResolvedLayer</code> computed earlier and read from <code>resolved/</code>. A <code>NodeCache</code> reads a <code>ResolvedLayer</code> as its own prior incarnation, which is the whole point of <code>sources_to_read</code> stopping at a materialised ancestor: its <code>ResolvedLayer</code> already carries what re-folding from the root would recompute.</p>
+<p>The defect is that this persisted fold is typed as a <strong><code>LayerSource</code></strong> and put in the <code>sources</code> list — a list of <em>own-layer</em> things. <strong>A fold-result is masquerading as a fold-input.</strong> Everything below follows from untangling that one type error.</p>
+<h3 id="the-masquerade-shows-as-a-dual-role">The masquerade shows as a dual role<a class="headerlink" href="#the-masquerade-shows-as-a-dual-role" title="Permanent link">&para;</a></h3>
+<p>Because the persisted fold sits in the <code>sources</code> list, the head is asked two different questions by two different consumers of the <em>same list</em> — the fold-input question and the fold-result question it should never have had to answer at once:</p>
+<table>
+<thead>
+<tr>
+<th>consumer</th>
+<th>holds the head as</th>
+<th>wants</th>
+<th>reads</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>resolve_dims</code> seed</td>
+<td>fold seed</td>
+<td>resolved axes to here</td>
+<td><code>resolved/dims/</code></td>
+</tr>
+<tr>
+<td><code>_fold_map</code> seed</td>
+<td>fold seed</td>
+<td>resolved <code>inputs</code> map to here</td>
+<td><code>resolved/owner_map/</code></td>
+</tr>
+<tr>
+<td><code>source_for</code> → <code>relation</code></td>
+<td>a source</td>
+<td>the head layer's <em>own</em> winning rows</td>
+<td><code>layers/&lt;id&gt;/</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>source_for(layer_uuid)</code> returns the head <code>ResolvedLayer</code> for a key the head owns, then reads its member with <code>source.attribute(...)</code> — the <em>own-rows</em> accessor. The seed paths read the <em>folded</em> answer. One object, both roles, and the only thing keeping them apart is that the folded answer hides under <code>map_uri</code> (and, in <code>a-member-file-holds-values</code>'s sketch, would hide under <code>resolved_axis</code>).</p>
+<p><code>relation</code> already shows the intended shape by accident: for a layer the map names but the truncated source list does not hold, <code>source_for</code> fabricates <code>ParquetLayer(layer_uuid, con)</code> — a plain own-rows source. It <em>wants a source</em>, and where the list does not give it one it builds one. The head is the case where the list gives it a source that is secretly also a fold.</p>
+<h3 id="workingrecord-is-the-model-and-has-the-latent-version-of-the-same-seam"><code>WorkingRecord</code> is the model, and has the latent version of the same seam<a class="headerlink" href="#workingrecord-is-the-model-and-has-the-latent-version-of-the-same-seam" title="Permanent link">&para;</a></h3>
+<p><code>WorkingRecord</code> keeps the two views as two objects:</p>
+<ul>
+<li>The <strong>resolved view</strong> (base + staged) is <code>WorkingRecord</code> itself, a <code>Record</code>, built as <code>base_cache.with_source(StagedSource(self, ...))</code> and answered by the inherited fold.</li>
+<li>The <strong>own-layer view</strong> (staged rows alone, for commit) is <code>StagedSource</code> the source, and <code>staged_only()</code> → <code>_Written</code>, built from the <code>_staged_*</code> helpers.</li>
+</ul>
+<p>That is the shape this proposal generalises. But the seam is present here too, quieter: <code>staged_only()</code> returns a <code>_Written</code>, a <em>third</em> type, rather than handing over the <code>StagedSource</code> that already <em>is</em> the staged layer's rows. <code>_Written</code> and <code>StagedSource</code> are two spellings of "the staged layer's own rows" — one shaped for the writer, one for the fold — because <code>write_record</code>'s input is spelled as neither the source interface nor the interface a fold answers, but wants what both can give. The write-path half below closes that by naming the interface the two share. Left alone, <code>_Written</code> is the next <code>ResolvedLayer</code> waiting to happen.</p>
+<h2 id="the-construct">The construct<a class="headerlink" href="#the-construct" title="Permanent link">&para;</a></h2>
+<p><strong>A fold and a source answer the same interface; the object decides the meaning.</strong> Concretely, four moves: a <code>Fold</code> object holding the fold machinery, a <code>Resolver</code> that is <code>LayerData</code> routing into its <code>Fold</code>, a base discovered from the sources rather than stored, and the write path taking <code>LayerData</code>.</p>
+<h3 id="the-fold-machinery-is-a-fold-object">The fold machinery is a <code>Fold</code> object<a class="headerlink" href="#the-fold-machinery-is-a-fold-object" title="Permanent link">&para;</a></h3>
+<p>Everything the fold <em>produces</em> and the reads gated by it move into one object, the counterpart to <code>Coords</code> (today's <code>Dims</code>, renamed — it holds axes <em>and</em> groups plus the broadcast/match algebra, which "dims" undersold):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Fold</span><span class="p">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A node&#39;s resolved view: the folded axes and owner map, and the reads over them.&quot;&quot;&quot;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">schema</span><span class="p">:</span> <span class="n">Schema</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">coords</span><span class="p">:</span> <span class="p">(</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>        <span class="n">Coords</span>  <span class="c1"># the folded axes and groups (entity among them) + expand/match helpers</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="p">)</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">owner_map</span><span class="p">:</span> <span class="p">(</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>        <span class="n">DuckDBPyRelation</span>  <span class="c1"># folded (input_key, layer_uuid, varies/broadcast/breakpoints)</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="p">)</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="c1"># pure-map reads</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attributes</span><span class="p">(</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>  <span class="c1"># distinct `attribute` (was `attribute_names`)</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">owners</span><span class="p">(</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">attribute</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># map rows for one attribute</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="c1"># map x axis read — here because a Fold has both halves</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">entity_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span> <span class="o">...</span>  <span class="c1"># was `attributes_of`</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">read</span><span class="p">(</span>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>        <span class="bp">cls</span><span class="p">,</span> <span class="n">revision_id</span><span class="p">,</span> <span class="n">con</span>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Fold</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># from resolved/, folds nothing; None if unmaterialised</span>
+<a id="__codelineno-1-29" name="__codelineno-1-29" href="#__codelineno-1-29"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-1-30" name="__codelineno-1-30" href="#__codelineno-1-30"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">compute</span><span class="p">(</span>
+<a id="__codelineno-1-31" name="__codelineno-1-31" href="#__codelineno-1-31"></a>        <span class="bp">cls</span><span class="p">,</span> <span class="n">sources</span><span class="p">,</span> <span class="n">con</span><span class="p">,</span> <span class="n">schema</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">base</span><span class="p">:</span> <span class="n">Fold</span> <span class="o">|</span> <span class="kc">None</span>
+<a id="__codelineno-1-32" name="__codelineno-1-32" href="#__codelineno-1-32"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Fold</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># fold sources over the base</span>
+</code></pre></div>
+<p><code>flags</code> takes <code>entity_type=None</code> — whole-record when <code>None</code>, a type when named. The type-scoping (semi-join the map to that type's entities) needs the entity axis, which a <code>Fold</code> has via <code>coords.axes["entity"]</code>; so <code>flags</code> belongs on <code>Fold</code>, the one object holding both the map and the axes, rather than on a map-only <code>OwnerMap</code> that would have to be handed an entities relation from outside. <code>owners(attribute)</code> is the map-only read <code>relation</code> joins against; <code>attributes()</code> is the map-only enumerator. <code>flags_from_rows</code> stays a module function <code>flags</code> calls — it is schema logic, not map logic.</p>
+<p><code>Fold.read</code> and <code>Fold.compute</code> are the two tenses: a materialised node's <code>resolved/</code> read back, versus a fold computed over sources. The same object shape either way, which is what makes a computed fold able to start from a read one as its base.</p>
+<h3 id="nodecache-becomes-resolver-layerdata-routing-into-its-fold"><code>NodeCache</code> becomes <code>Resolver</code>, <code>LayerData</code> routing into its <code>Fold</code><a class="headerlink" href="#nodecache-becomes-resolver-layerdata-routing-into-its-fold" title="Permanent link">&para;</a></h3>
+<p>The rename says what the class is: it <em>resolves</em> a node's layers into the answer a <code>Record</code> presents. "Cache" named an implementation detail (the frozen-prefix materialisation) as if it were the identity; "resolver" names the job.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Resolver</span><span class="p">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">revision_id</span><span class="p">:</span> <span class="n">UUID</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">sources</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">LayerSource</span><span class="p">]</span>    <span class="c1"># the whole (frozen-truncated) ancestry as sources; no `base` field</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">schema</span><span class="p">:</span> <span class="n">Schema</span>                <span class="c1"># a plain field (see below), resolved by the caller</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="nd">@cached_property</span>              <span class="c1"># stable-gated as `coords` is today</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">fold</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Fold</span><span class="p">:</span> <span class="o">...</span>   <span class="c1"># base = deepest materialised source; compute the rest over it</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="c1"># LayerData surface — routes into `fold`</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">axes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> <span class="o">...</span>           <span class="c1"># set(fold.coords.axes)</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">axis</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">):</span> <span class="o">...</span>      <span class="c1"># fold.coords.axes.get(dim)</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kind</span><span class="p">):</span> <span class="o">...</span>    <span class="c1"># fold.attributes() for inputs; own-layer listing for outputs</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attribute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">kind</span><span class="p">):</span> <span class="o">...</span>   <span class="c1"># relation(name)/outputs(name), via fold.owners + source_for</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">entity_types</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">/</span> <span class="n">entity_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ct</span><span class="p">):</span> <span class="o">...</span>   <span class="c1"># was entity_types / entity_type_frame</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">groups</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">/</span> <span class="n">group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">g</span><span class="p">):</span> <span class="o">...</span>                <span class="c1"># was (from schema) / group_frame</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    <span class="c1"># routing reads that need the fold&#39;s members by name</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">owners</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attribute</span><span class="p">):</span> <span class="o">...</span>   <span class="c1"># fold.owners(attribute)</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entity_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span> <span class="o">...</span>   <span class="c1"># fold.flags(entity_type)  (was attributes_of)</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>    <span class="c1"># extras a single fold-product cannot answer</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">source_for</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">layer_uuid</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LayerSource</span><span class="p">:</span> <span class="o">...</span>   <span class="c1"># dispatch a winning key to its layer</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">with_source</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Resolver</span><span class="p">:</span> <span class="o">...</span>         <span class="c1"># append one more layer (staging)</span>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>    <span class="nd">@property</span>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">frozen</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>   <span class="c1"># all(s.frozen for s in sources)   (was `stable`)</span>
+</code></pre></div>
+<p><code>inputs</code> (the raw map relation) and <code>entity_axis</code> stay as thin routing properties — <code>fold.owner_map</code> and <code>axis("entity")</code> — because white-box tests and <code>mutable.py</code> read them by those names; they are <code>owners</code> and <code>axis("entity")</code> without the argument.</p>
+<p><code>Resolver.frozen</code> (the <code>LayerData</code> member) is today's <code>NodeCache.stable</code>: <code>all(s.frozen for s in sources)</code>, whether the whole source list is write-once. Distinct from <code>frozen_prefix</code>, which counts how far the leading run is frozen to decide the in-memory cache boundary.</p>
+<p><strong><code>schema</code> becomes a plain field</strong> (deferred to its own commit): today it is a property returning <code>declared</code> if set else <code>read_schema(con)</code>, threaded through <code>with_source</code>. Every fold reads the schema, both construction sites already hold it (the tree node reads the root schema, <code>Record.over</code> has the manifest), and the resolver is lazy, so the fallback buys nothing. Moving <code>read_schema(con)</code> to the one tree-node construction site makes <code>schema</code> a plain field, deletes <code>declared</code> and the property, and lets <code>with_source</code> pass <code>self.schema</code> already resolved.</p>
+<h3 id="the-base-is-a-fold-discovered-from-the-sources-not-stored">The base is a <code>Fold</code>, discovered from the sources, not stored<a class="headerlink" href="#the-base-is-a-fold-discovered-from-the-sources-not-stored" title="Permanent link">&para;</a></h3>
+<p>The base is not a stored field. <code>sources</code> is the whole ancestry (frozen-truncated for the in-memory cache, unrelated to materialisation) as plain <code>LayerSource</code>s, and the fold discovers its base from among them:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">materialised</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">con</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Fold</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># on LayerSource</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># ParquetLayer: Fold.read(self.revision_id, con)   — a resolved/ dir, or None</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># DirectorySource / StagedSource: None</span>
+</code></pre></div>
+<p><code>Resolver.fold</code> walks <code>sources</code> from the deepest, asks each <code>source.materialised(con)</code>, and the first hit is the base: everything at or below it is skipped, everything above folds on top via <code>Fold.compute(above, con, schema, base=hit)</code>. No materialised ancestor → <code>base=None</code>, fold the whole list.</p>
+<p>This is why <code>frozen</code> and <code>materialised</code> are two questions, not one. <strong><code>frozen</code></strong> = "these rows cannot change under a reader" — a source-type flag (<code>False</code> only for <code>StagedSource</code>) gating the <em>in-memory, connection-scoped</em> fold cache (<code>frozen_prefix</code>/<code>_frozen_table</code>). <strong><code>materialised</code></strong> = "this node has a <code>resolved/</code> directory on disk" — a filesystem fact, set only by an explicit <code>.materialise()</code>, gating the <em>fold-shortening base</em>. Every materialised node is frozen; almost no frozen node is materialised. So the base comes from the deepest <em>materialised</em> source, which the walk finds by testing <code>source.materialised(con)</code>, never from "the last frozen source".</p>
+<p><code>ResolvedLayer</code> is deleted. Its fold-role becomes the base <code>Fold.read(...)</code> a source offers via <code>materialised(con)</code>; its own-rows role, where <code>source_for</code> reaches a winning layer's rows, becomes a plain <code>ParquetLayer</code>. <code>source_for</code> resolves an owner id to a source and never to the base. The fold-result stops being an entry in the fold-input list.</p>
+<h3 id="sequenced-commits">Sequenced commits<a class="headerlink" href="#sequenced-commits" title="Permanent link">&para;</a></h3>
+<p>This lands as three tested-green commits:</p>
+<ol>
+<li><strong>Read-path split</strong> ✅ <strong>done</strong> — kill the masquerade: <code>source.materialised(con) -&gt; Fold | None</code>, <code>Resolver.fold</code> takes its base from the deepest materialised source, <code>sources</code> is plain <code>ParquetLayer</code>s, <code>ResolvedLayer</code> deleted, <code>NodeCache -&gt; Resolver</code> rename (and <code>.stable</code> -&gt; <code>.frozen</code>). This is the piece <code>a-member-file-holds-values</code> is blocked on.</li>
+<li><strong><code>Fold</code> object</strong> ✅ <strong>done</strong> — extract <code>coords</code> + <code>owner_map</code> and the reads (<code>owners</code>, <code>flags(entity_type=None)</code>, <code>attributes</code>, per-type/group frames) into <code>Fold</code>; <code>Resolver</code> routes into it. Orthogonal to (1); a clean second diff.</li>
+<li><strong><code>LayerData</code> + write path</strong> ✅ <strong>done</strong> — define <code>LayerData</code>, make <code>Resolver</code> and <code>LayerSource</code> both satisfy it (source gains <code>entity_types</code>/<code>groups</code>/<code>attributes</code> enumerators), rename the fold-named readers to the shared vocabulary, <code>write_record</code> takes a <code>LayerData</code>, <code>_Written</code>/<code>staged_only()</code> deleted, both commit callers pass the object they hold.</li>
+</ol>
+<blockquote>
+<p>[!NOTE]
+<strong>Commit 1 as landed</strong> (departures from the sketch above, and facts for commits 2–3):</p>
+<ul>
+<li><strong><code>Fold</code> lives in its own module <code>datarecord/layered/fold.py</code></strong>, not in <code>resolve.py</code>, to break the import cycle a <code>source.materialised() -&gt; Fold</code> return would otherwise create (<code>resolve.py</code> imports <code>sources.py</code>; a source returning a <code>Fold</code> from <code>resolve.py</code> would close the loop). In commit 1 it is a minimal seed struct — <code>axes</code>/<code>groups</code>/<code>entity_types</code> dicts + <code>owner_map</code>, and <code>Fold.read</code> — depending only on <code>duck</code>. Commit 2 moves the reads (<code>owners</code>/<code>flags</code>/<code>attributes</code>) onto it and folds the four dicts into <code>coords: Coords</code>.</li>
+<li><strong><code>_base_and_above(sources, con)</code></strong> in <code>resolve.py</code> is the split helper: it scans <code>sources[:-1]</code> deepest-first for the first <code>materialised(con)</code> and returns <code>(base_fold, sources_above)</code>. <strong>The last source is never the base</strong> — a node resolves from its own layer, never its own cache — which is also what stops <code>materialise</code> (which writes <code>owner_map</code> before <code>dims</code>) from reading its own half-written cache back as a base.</li>
+<li>The base seeds the fold as <strong>depth 0</strong> of each <code>fold_axis</code>/<code>fold_inputs</code> call (its resolved, tombstone-free relation prepended), so a layer above still wins per key and its tombstones still evict a base key — behaviourally identical to the old <code>ResolvedLayer</code>-as-first-source seed. This touches <code>resolve_dims</code>, <code>resolve_groups</code>, <code>_fold_map</code>, <code>entity_type_frame</code>, and <code>_materialise_dims</code>.</li>
+<li>The invariant guard <code>test_resolved_reads_same_as_unresolved</code> (in <code>test_overlay.py</code>) landed <strong>first</strong>, green before and after: it folds one node through the base and one from the root (via an <code>_Unmaterialised</code> <code>ParquetLayer</code> subclass forcing <code>materialised() -&gt; None</code>) and asserts they agree on the owner map, entity axis, and every attribute relation.</li>
+</ul>
+<p><strong>Commit 2 as landed</strong> (the <code>Fold</code> object):</p>
+<ul>
+<li><strong><code>Fold</code> grew into the real object in <code>fold.py</code></strong>: <code>schema</code> + <code>axes</code>/<code>groups</code>/<code>entity_types</code> dicts + <code>owner_map</code>, plus the map reads <code>attributes()</code> (was <code>attribute_names</code>), <code>owners(attribute)</code>, and <code>flags(entity_type=None)</code> (was <code>attributes_of</code>, now whole-record when <code>None</code>). <code>flags_from_rows</code> moved to <code>fold.py</code> beside its only caller.</li>
+<li><strong><code>Fold.compute</code> is a resolve.py concern, not a <code>Fold</code> classmethod.</strong> The folding that builds a live <code>Fold</code> needs <code>Coords</code>' broadcast algebra and the DuckDB expression machinery, both in <code>resolve.py</code>; relocating them into the light <code>fold.py</code> would invert the layering. So <code>Resolver.fold</code> assembles a live <code>Fold</code> from <code>dims</code> (the folded <code>Coords</code>) and <code>_map("inputs")</code> (the folded owner map) — both of which keep their own frozen-scoped connection cache, so <code>fold</code> re-wraps rather than re-folds and no cache moved. <code>Fold.read</code> (the base tense) stays a <code>Fold</code> classmethod.</li>
+<li>The live <code>Fold</code> carries <code>entity_types={}</code>: it is never another fold's base, and its reads never touch the per-type frames (those go through <code>Resolver.entity_type_frame</code>, which folds per call). <code>Coords</code> is unchanged — <code>Dims</code> renamed, holding axes+groups+the broadcast algebra.</li>
+<li><strong><code>materialised(con, schema)</code></strong> gained the schema argument, since <code>Fold.read</code> needs it to cast the read-back map; every implementation and <code>_base_and_above</code> thread it through.</li>
+</ul>
+<p><strong>Commit 3 as landed</strong> (<code>LayerData</code> + the write path):</p>
+<ul>
+<li><strong><code>LayerData</code> lives in <code>record.py</code></strong> beside <code>RecordLike</code>, the neutral protocol module both the write path and <code>mutable.py</code> already import. Its enumerators return <code>Iterable[str]</code>, not <code>set[str]</code> — a <code>Resolver.attributes</code> orders its keys (a <code>Record</code> over it needs a stable order) while a source's are a <code>set</code>, and <code>Iterable</code> is the covariant type both satisfy without either re-wrapping.</li>
+<li><strong>Every source carries a <code>schema</code> reference, so a <code>LayerSource</code> <em>is</em> a <code>LayerData</code>.</strong> The reference is passed in at construction — <code>sources_to_read</code>, <code>source_for</code>, <code>Record.over</code>/<code>Record.at</code> and <code>WorkingRecord</code> all thread the one schema they already hold down into each <code>ParquetLayer</code>/<code>DirectorySource</code>/<code>StagedSource</code> — never re-read from disk. This is the "<code>schema</code> becomes a plain field" step the commit-2 note deferred: <code>Resolver.schema</code> stops being a lazy <code>declared or read_schema(con)</code> property and becomes a required field resolved by the caller, and the same reference sits on every source in the fold. A file layer's schema is never <em>read</em> by anything (the writer only ever gets a <code>StagedSource</code> or <code>Resolver</code>), but carrying it is what lets <code>commit</code> hand <code>self.resolver.sources[-1]</code> straight to <code>write_record</code> with no cast.</li>
+<li><strong>A <code>LayerSource</code>'s new enumerators take no <code>schema</code> argument</strong> and do not filter by declaration — <code>entity_types</code>/<code>groups</code>/<code>attributes</code> are plain directory listings, as <code>axes()</code> already is. The <code>∅</code>-not-<code>{None}</code> schema-governance the proposal makes an acceptance test of is a property of the objects <code>write_record</code> actually receives (<code>StagedSource</code>, <code>Resolver</code>), whose staged/folded state is already declaration-scoped.</li>
+<li><strong><code>Resolver</code> keeps <code>relation</code>/<code>outputs</code> as private <code>_relation</code>/<code>_outputs</code></strong> behind the shared <code>attribute(name, kind)</code>, and returns a non-<code>None</code> relation (an empty one where no layer wrote the attribute) — a valid narrowing of <code>LayerData.attribute</code>'s <code>| None</code>. <strong><code>group_frame</code> and <code>entity_type</code> differ</strong>: <code>entity_type_frame</code> renamed to <code>entity_type</code> (the shared name, no collision), but <code>group_frame</code> stayed, being the <code>Record</code>-presentational read (member order, empty→<code>None</code>) that <code>Record._group_frame</code> alone uses; the shared <code>group(name)</code> is the raw fold <code>Resolver</code> already had.</li>
+<li><strong><code>isinstance(x, LayerData)</code> decides the adapter</strong>, and <code>@runtime_checkable</code> checks only member <em>names</em>. A <code>RecordLike</code> producer (<code>_NetworkSource</code>) has <code>dims</code>/<code>entity_types</code> where <code>LayerData</code> wants <code>axes</code>/<code>axis</code>/<code>entity_type</code>/<code>frozen</code>, so it correctly fails the check and routes through <strong><code>_RecordLikeAsLayerData</code></strong> in <code>write.py</code> — a thin adapter reading its <code>Frames</code> mappings through the enumerate-and-read pairs (<code>as_relation</code> for the one non-DuckDB backend boundary). <code>write_record</code> takes <code>LayerData | RecordLike</code>.</li>
+<li><strong><code>commit</code> hands the fold's last source straight over</strong>: <code>self.resolver.sources[-1]</code> (the <code>StagedSource</code>) for <code>NewChild</code>, <code>self.resolver</code> for <code>Directory</code>, both already a <code>LayerData</code> with no cast needed. <code>_Written</code>, <code>staged_only()</code>, and the <code>_staged_axes</code>/<code>_staged_entities</code>/<code>_staged_attributes</code> <code>Frames</code> builders are deleted; <code>_staged_groups</code> stays for <code>StagedSource.groups()</code>'s key set.</li>
+<li><strong><code>write.py</code> is raw-relation throughout</strong>: <code>_validate_frame</code>/<code>_write_frame</code>/<code>_require_unique</code> take <code>DuckDBPyRelation</code>, <code>nw.concat</code>/<code>.unique</code>/<code>.group_by</code> became <code>union_all_by_name</code> + a self-join count, and <code>as_relation</code> is reached only inside the <code>RecordLike</code> adapter.</li>
+</ul>
+</blockquote>
+<h3 id="the-interface-resolver-and-a-layer-share">The interface <code>Resolver</code> and a layer share<a class="headerlink" href="#the-interface-resolver-and-a-layer-share" title="Permanent link">&para;</a></h3>
+<p>A <code>Resolver</code> and a <code>LayerSource</code> answer the <em>same questions</em> — "the keys of kind X" and "the rows for one key of kind X" — one over a fold, one over a single layer. That is a shared read protocol; call it <code>LayerData</code>. Each is that protocol plus its own extras.</p>
+<table>
+<thead>
+<tr>
+<th>the shared question</th>
+<th><code>LayerData</code> member</th>
+<th>a layer answers (own rows)</th>
+<th>a <code>Resolver</code> answers (folded)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the schema in force</td>
+<td><code>schema</code></td>
+<td>— the writer supplies it</td>
+<td><code>schema</code></td>
+</tr>
+<tr>
+<td>which axes exist</td>
+<td><code>axes()</code></td>
+<td><code>axes()</code> ✓</td>
+<td>keys of <code>coords.axes</code></td>
+</tr>
+<tr>
+<td>one axis's rows</td>
+<td><code>axis(dim)</code></td>
+<td><code>axis(dim)</code> ✓</td>
+<td><code>coords.axes[dim]</code></td>
+</tr>
+<tr>
+<td>which types exist</td>
+<td><code>entity_types()</code></td>
+<td><em>new: list member files; <code>∅</code> if the schema declares no type axis</em></td>
+<td><code>entity_types()</code> ✓</td>
+</tr>
+<tr>
+<td>one type's rows</td>
+<td><code>entity_type(name)</code></td>
+<td><code>entity_type(name)</code> ✓</td>
+<td><code>entity_type_frame</code> → renamed</td>
+</tr>
+<tr>
+<td>which groups exist</td>
+<td><code>groups()</code></td>
+<td><em>new: list group files; only what the schema declares</em></td>
+<td><em>from schema</em> → made explicit</td>
+</tr>
+<tr>
+<td>one group's rows</td>
+<td><code>group(name)</code></td>
+<td><code>group(name)</code> ✓</td>
+<td><code>group_frame</code> → renamed</td>
+</tr>
+<tr>
+<td>which attributes exist</td>
+<td><code>attributes(kind)</code></td>
+<td><em>new: list attr files</em></td>
+<td><code>attribute_names</code>/<code>output_names</code> → renamed</td>
+</tr>
+<tr>
+<td>one attribute's rows</td>
+<td><code>attribute(name, kind)</code></td>
+<td><code>attribute(name, kind)</code> ✓</td>
+<td><code>relation</code>/<code>outputs</code> → renamed</td>
+</tr>
+</tbody>
+</table>
+<p><code>schema</code> heads the table but governs it: which of the pairs below it are populated depends on what the schema declares — see <a href="#schema-governs-which-pairs-are-live-it-is-not-a-peer-of-them"><code>schema</code> governs which pairs are live</a>.</p>
+<p>So <code>LayerData</code> is: <code>schema</code>, <code>frozen</code>, <code>axes</code>/<code>axis</code>, <code>entity_types</code>/<code>entity_type</code>, <code>groups</code>/<code>group</code>, <code>attributes</code>/<code>attribute</code> — the enumerate-and-read pairs (each an <code>enumerate() -&gt; set[str]</code> and a <code>read(key) -&gt; Rel | None</code>) plus the two members that mean the same over a layer and a fold. <code>all_attributes</code> stays source-only (see <a href="#all_attributes-is-source-only-for-now"><code>all_attributes</code> is source-only</a>). A <code>LayerSource</code> gains the three enumerators it lacks (<code>entity_types</code>, <code>groups</code>, <code>attributes</code> — directory listing for a <code>_FileLayer</code> as <code>axes()</code> already is, the staging tables for <code>StagedSource</code>); a <code>Resolver</code> renames its fold-named readers (<code>entity_type_frame</code> → <code>entity_type</code>, <code>relation</code> → <code>attribute</code>, and the <code>coords.axes</code> keys become <code>axes()</code>) so the two answer under one vocabulary.</p>
+<p><code>frozen</code> is on <code>LayerData</code>; <code>all_attributes(kind)</code> is not (source-only, <a href="#all_attributes-is-source-only-for-now">below</a>). <code>frozen</code> is a real property of a fold, not a convention-constant: a <code>Resolver</code> can hold a <code>StagedSource</code> (this is what <code>WorkingRecord</code> is), so it is over a mix of frozen and unfrozen sources, and its <code>frozen</code> is <code>all(s.frozen for s in sources)</code> — whether its whole source list is write-once. (Distinct from <code>frozen_prefix</code>, which counts how far the leading run is frozen to decide materialisation, not whether all of it is.)</p>
+<p>Beyond the shared protocol, each keeps what only it has:</p>
+<ul>
+<li><strong><code>LayerSource</code> also has</strong> <code>layer_id</code> — the per-source key <code>source_for</code> dispatches a winning <code>layer_uuid</code> back through — and <code>uri</code> on the file-backed ones. <code>layer_id</code> stays source-only because a fold has no single one: it spans many layers, keyed by <code>revision_id</code> and routed by the owner map, so "the last layer's <code>layer_id</code>" is not a value <code>source_for</code> could dispatch on.</li>
+<li><strong><code>Resolver</code> also has</strong> the fold machinery a single layer has no answer for, held in its <a href="#the-fold-machinery-is-a-fold-object"><code>Fold</code> object</a>: <code>with_source</code>, <code>source_for</code>, <code>owners</code> (over the one owner map), <code>flags</code>, <code>fold</code>/<code>coords</code>/<code>entity_axis</code> (the folded state), and <code>revision_id</code> in place of a <code>layer_id</code>. (<code>stable</code> is now <code>frozen</code> on the shared protocol; the base is a <code>Fold</code> discovered from the sources, not a stored field.)</li>
+</ul>
+<p><code>Resolver</code> fulfils <code>LayerData</code>; so does <code>LayerSource</code>. <code>write_record</code> takes a <code>LayerData</code> — a single <code>StagedSource</code> for the <code>NewChild</code> commit, a <code>Resolver</code> for the <code>Directory</code> commit — and <code>_Written</code> is deleted, being the adapter that filled the gap <code>LayerData</code> now closes.</p>
+<p>The discipline that keeps this from becoming "one protocol for two unlike things": <code>LayerData</code> holds <em>only</em> the enumerate-and-read members that mean the same for a layer and a fold. A method only one has — <code>all_attributes</code> on a source, <code>with_source</code> on a <code>Resolver</code> — stays off the shared protocol. The shared names are for the shared idea; the rest are each type saying it is not the other.</p>
+<h3 id="schema-governs-which-pairs-are-live-it-is-not-a-peer-of-them"><code>schema</code> governs which pairs are live, it is not a peer of them<a class="headerlink" href="#schema-governs-which-pairs-are-live-it-is-not-a-peer-of-them" title="Permanent link">&para;</a></h3>
+<p>The table above lists <code>schema</code> as one shared member among the enumerate-and-read pairs, but it is not their peer — it is what decides <em>which of them exist</em>. <a href="../a-member-file-holds-values/#what-starts-it"><code>a-member-file-holds-values</code></a> establishes that the <a href="../../schema/#entity_type-the-axis-of-kinds">entity-type axis is optional</a>: where a schema declares no type axis (<code>entity_type_dim is None</code>), there are no member files, no <code>entity_type</code> column, and a component's attribute values live on <code>dims/entity.parquet</code> directly. So the <code>entity_types()</code>/<code>entity_type(name)</code> pair is not universal — it is populated exactly when the schema declares the axis, and <code>groups()</code> reflects only the groups the schema declares.</p>
+<p><code>LayerData</code> therefore reads <em>through</em> <code>schema</code>, not alongside it: <code>schema</code> is the one member the other pairs are conditional on, and a <code>LayerData</code> for an untyped record is a first-class shape, not the typed shape with types nulled out. The new source enumerators inherit <code>a-member-file-holds-values</code>'s own acceptance test on this — the failure mode is an enumerator answering <code>{None}</code> rather than <code>∅</code>:</p>
+<ul>
+<li><code>entity_types()</code> on a source whose schema declares no type axis returns the <strong>empty set</strong>, not <code>{None}</code>. <code>entity_type(name)</code> is then never a valid question — a direct call is a caller error, mirroring <code>Resolver.entity_type_frame</code> on the same record.</li>
+<li><code>groups()</code> returns only the groups the schema declares, and no more.</li>
+</ul>
+<p>This is the point where the two proposals are the same work at two altitudes. <code>a-member-file-holds-values</code> is the read/write-path consequence of <code>entity_type</code> being optional, and it names the <code>ResolvedLayer</code> <code>axis</code>-means-one-thing fix as its <strong>prerequisite</strong> — which is <a href="#the-base-is-a-fold-discovered-from-the-sources-not-stored">the base/source split</a> above. The two land together: this note gives <code>LayerData</code> the enumerators, and the untyped case is where those enumerators must answer <code>∅</code> rather than carry a phantom type.</p>
+<h3 id="axis-is-layer-local-on-every-layersource-no-exception"><code>axis</code> is layer-local on every <code>LayerSource</code>, no exception<a class="headerlink" href="#axis-is-layer-local-on-every-layersource-no-exception" title="Permanent link">&para;</a></h3>
+<p><code>ResolvedLayer</code>'s <code>axis</code>/<code>axes</code> overrides go; it is deleted, and every source inherits the layer-local <code>_FileLayer</code> ones. The folded read moves to the base <code>Fold</code> a source offers via <code>materialised(con)</code>, which is not a <code>LayerSource</code>. The test of correctness is <a href="../a-member-file-holds-values/#how-to-know-it-worked"><code>a-member-file-holds-values</code>'s own</a>: <code>sources.py</code> needs no branch, because a file-backed source no longer has to know whether it is being read as a layer or as a fold.</p>
+<h3 id="the-writer-takes-a-layerdata-and-_written-disappears">The writer takes a <code>LayerData</code>, and <code>_Written</code> disappears<a class="headerlink" href="#the-writer-takes-a-layerdata-and-_written-disappears" title="Permanent link">&para;</a></h3>
+<p><code>_Written</code> is not a second shape of <code>StagedSource</code> — it is a <code>RecordLike</code>, because <code>write_record(source: RecordLike)</code> speaks the record dialect and <code>StagedSource</code> speaks the source dialect. <code>_Written</code> is the <em>adapter</em>: <code>staged_only()</code> rebuilds the staged layer's rows as per-kind <code>Frames</code> so the writer can eat what the fold already reads as a source. It exists only because the writer's input was spelled as neither of the two things that can supply it.</p>
+<p>But the writer needs exactly <code>LayerData</code>. It uses <code>schema</code> and, per kind, enumerates the keys this thing holds and reads each — which is the enumerate-and-read protocol above, no more. (It never touches <code>flags</code>, and <code>outputs</code> is <code>attributes(kind="outputs")</code>.) So <code>write_record</code> takes a <code>LayerData</code>: the <code>NewChild</code> commit hands it the <code>StagedSource</code>, the <code>Directory</code> commit hands it the <code>Resolver</code>, each the object it already is. <code>_Written</code> is deleted, not collapsed — it was the adapter for a gap <code>LayerData</code> closes.</p>
+<p>This is why <code>LayerData</code> earns its three new enumerators. The <em>reader</em> never needs them — the fold learns which keys exist from the schema and the owner map, so a <code>LayerSource</code> was point-accessor. The <em>writer</em> must enumerate what a layer actually holds, where the schema over-declares. Adding <code>entity_types</code>/<code>groups</code>/<code>attributes</code> to the source is what lets the reader's interface serve the writer too.</p>
+<p>The <code>Directory</code> case proves the interface rather than excepting it. It writes the <em>resolved</em> record — base and staged flattened — which is not one layer's rows, so it cannot be a <code>StagedSource</code>; but "enumerate what I hold, hand each over" is exactly what a fold answers, where "what I hold" means every folded key. That is this proposal's thesis on the write path: <a href="#the-construct">one interface</a>, the object deciding whether it means a layer or a fold.</p>
+<p>This is the larger of the two halves and the most safely deferred, since it moves <code>write_record</code>'s contract and reconciles names across the fold and the source. It belongs to the same idea: <code>_Written</code> is the write-path twin of a <code>resolved_axis</code> prefix — a third spelling of a thing the common interface should already carry.</p>
+<h2 id="what-this-buys">What this buys<a class="headerlink" href="#what-this-buys" title="Permanent link">&para;</a></h2>
+<p><strong>No object answers <code>axis</code> two ways.</strong> The overload that <code>a-member-file-holds-values</code> has to route around disappears at the source, so that proposal's prerequisite section reduces to "already true".</p>
+<p><strong>A file-backed source needs no branch.</strong> <code>_FileLayer</code>/<code>ParquetLayer</code>/<code>DirectorySource</code> read whichever columns a file has and never learn which configuration they are in — the strongest single signal the layout is carried by the format, not by the readers.</p>
+<p><strong>One vocabulary for "the rows of this thing".</strong> <code>axis</code>, <code>entity_type</code>, <code>attribute</code>, <code>group</code> mean "the rows of the object I hold", whether that object is a single layer or a fold. A reader learns the interface once.</p>
+<p><strong>The <code>WorkingRecord</code> and resolved-node mechanisms become one pattern.</strong> Both are "a fold-object over sources, with a distinguished own-rows source for the layer that is also the fold's boundary". Today they rhyme; after, they are the same construct.</p>
+<p><strong>The writer takes <code>LayerData</code>, the interface a source and a <code>Resolver</code> share.</strong> <code>write_record</code>'s input is the enumerate-and-read surface both fulfil, so both commit callers pass the object they already hold and <code>_Written</code>, the adapter that existed only because the input was spelled as neither, is deleted.</p>
+<h2 id="what-it-costs">What it costs<a class="headerlink" href="#what-it-costs" title="Permanent link">&para;</a></h2>
+<p><strong>It reshapes the <code>Resolver</code>'s (<code>NodeCache</code>'s) source list.</strong> The head stops being a <code>LayerSource</code> that is secretly a fold; the base becomes a <code>Fold</code> the deepest materialised source offers via <code>materialised(con)</code>, and <code>source_for</code> stops returning it. <code>sources_to_read</code>, the fold construction (now <code>Fold.compute</code>), <code>resolve_coords</code>, and <code>source_for</code> all move together. This is the change <code>a-member-file-holds-values</code> deferred as a prerequisite, taken at its root — the masquerade — rather than papered with a <code>resolved_</code> prefix.</p>
+<p><strong>A shared interface across a source and a fold invites <code>isinstance</code> where a method belongs.</strong> The discipline that keeps it honest: if the fold-object needs a method a source does not have (a map has no <code>entity_type</code>; a source has no <code>map</code>), that is the interface telling you they are <em>not</em> the same type — the shared members are the ones that mean "my rows", and the rest stay apart. This proposal is not "one protocol for both"; it is "the same names for the same idea where the idea is shared".</p>
+<p><strong>Teaching the writer to take <code>LayerData</code> touches its contract.</strong> <code>write_record</code> moves from <code>RecordLike</code> to <code>LayerData</code>, <code>LayerSource</code> gains the three enumerators, and <code>_Written</code> and its <code>staged_only()</code> builder go. <code>_Written</code> has callers in the tests and one in <code>commit</code>, and the <code>Directory</code> path hands over a <code>Resolver</code> under the new contract rather than the record it built. A real change to the write path, not only a read-path cleanup, and the part most safely deferred.</p>
+<h2 id="what-it-settles">What it settles<a class="headerlink" href="#what-it-settles" title="Permanent link">&para;</a></h2>
+<p><strong>The base is a <code>Fold</code>, discovered from the sources.</strong> It is not a stored field. <code>Fold.read(revision_id, con)</code> reads <code>resolved/</code> and folds nothing; a source offers it via <code>materialised(con)</code>, and <code>Resolver.fold</code> takes the deepest materialised source's <code>Fold</code> as the base for <code>Fold.compute</code>. Same object shape either tense — read or computed — which is what lets a computed fold start from a read one.</p>
+<p><strong><code>LayerData</code> is a <code>Protocol</code> both types satisfy structurally, with <code>layer_id</code> the sole source-only member.</strong> <code>LayerSource</code> is <code>LayerData</code> plus <code>layer_id</code> (and <code>uri</code> on file-backed ones) and <code>all_attributes</code> (source-only); <code>Resolver</code> is <code>LayerData</code> plus the fold machinery and <code>revision_id</code>. <code>frozen</code> is on <code>LayerData</code>, not source-only (above). Neither type inherits from <code>LayerData</code> — each <code>satisfies</code> it by shape, as <code>LayerSource</code> implementations already satisfy that protocol.</p>
+<p><strong>The untyped case keys on <code>entity_type_dim is None</code>, enum or not.</strong> An enumerator answers <code>∅</code> exactly when the schema declares no entity-type axis — not when <code>schema.entity_types</code> is empty, which is also true for a declared <code>String</code>-typed axis whose labels are data. A declared-but-non-enum axis is still a declared axis: its member files exist and <code>entity_types()</code> lists them. <code>a-member-file-holds-values</code> <a href="../a-member-file-holds-values/#what-it-opens-rather-than-settles">leaves whether those two cases should ever converge open</a>; this note does not, keying only on declaration.</p>
+<h2 id="what-it-opens-rather-than-settles">What it opens rather than settles<a class="headerlink" href="#what-it-opens-rather-than-settles" title="Permanent link">&para;</a></h2>
+<p><strong>How far the name reconciliation reaches.</strong> The write-path half already reconciles the <em>rows</em> interface a fold and a source share (<code>entity_type_frame</code>/<code>entity_type</code>, <code>relation</code>/<code>attribute</code>, <code>dims</code>/<code>axes</code> become one vocabulary the writer reads). Left open is whether <code>Record</code>'s <em>public narwhals</em> surface joins it — <code>Record.dims</code> returns <code>Frames</code>, not the relation a source's <code>axis</code> does, so it is a presentation over the same idea rather than the idea itself. Whether the resolved-and-own pair should share the outward name too, or only the internal rows interface does, is the larger claim this page does not force.</p>
+<h3 id="all_attributes-is-source-only-for-now"><code>all_attributes</code> is source-only, for now<a class="headerlink" href="#all_attributes-is-source-only-for-now" title="Permanent link">&para;</a></h3>
+<p><code>all_attributes(kind)</code> — a source's <code>&lt;kind&gt;/*.parquet</code> unioned by name, unfolded, values intact — stays a <code>LayerSource</code> member and off <code>LayerData</code>. It reads like the fold's owner map's raw input, and the temptation is to give a <code>Resolver</code> a folded <code>all_attributes</code> so the pair <code>attributes</code>/<code>all_attributes</code> is complete on both. Two facts hold it back:</p>
+<ul>
+<li><strong>No fold-side caller.</strong> Both callers read it on a <em>source</em>: <code>fold_inputs</code> on each source to build the map, and the <code>outputs</code> bulk read on the last layer (<code>sources[-1].all_attributes("outputs")</code>). Nothing asks a <code>Resolver</code> for its own <code>all_attributes</code>, so a fold-side one would be a method with no reader.</li>
+<li><strong>The per-layer aggregate that <em>looks</em> separable is not layer-local.</strong> A layer's contribution to the owner map (aggregate <code>all_attributes</code> to <code>(input_key, layer_uuid, varies/broadcast/breakpoints)</code>) needs <code>expand_dims</code> against the <em>resolved</em> axes to fan a broadcast NULL out to every value on its axis — a record-wide fact a single layer's files cannot supply. So the clean fault line is <code>all_attributes</code> (raw rows, coords-free, source) | expand+aggregate+recurse (coords, fold), not one row higher where a <code>source.owner_map(coords)</code> would sit.</li>
+</ul>
+<p>Whether a later <code>Store</code>-shaped refactor makes a <code>Resolver.owner_map(kind)</code> and an <code>all_attributes</code> folded read worth having — so the two are the same enumerate-and-read pair on both types — is reopened then, not settled here.</p>
+<h2 id="how-to-know-it-worked">How to know it worked<a class="headerlink" href="#how-to-know-it-worked" title="Permanent link">&para;</a></h2>
+<p><strong><code>ResolvedLayer</code> is gone; the base is a <code>Fold</code>.</strong> The single assertion the resolved-node half is downstream of: the persisted fold is a <code>Fold.read(...)</code> the live fold starts from, not a source in its input list. <code>def axis</code> in <code>sources.py</code> is found only on <code>_FileLayer</code>, and nothing folded-answer-shaped is typed as a source.</p>
+<p><strong>A resolved record reads the same as an unresolved one.</strong> Materialise a node, read a component's value through the resolved node and through the same node read from its own layers unmaterialised; they agree. This is the invariant the whole split protects, and it belongs in the suite <em>before</em> the change, not after — it is what says the base carries the fold correctly once <code>axis</code> stops doing so.</p>
+<p><strong><code>Resolver.sources</code> holds only <code>LayerSource</code>s, and the base is a <code>Fold</code>.</strong> The masquerade is over exactly when no <code>ResolvedLayer</code> appears in a <code>sources</code> list — every entry is a plain <code>ParquetLayer</code>, and the fold-to-here the head stood for is the <code>Fold</code> the deepest materialised source offers. <code>source_for</code> then always hands back an own-rows source, never the base. Assertable on the source types and on what <code>source_for</code> returns.</p>
+<p><strong><code>sources.py</code> is untouched but for deletion.</strong> As in <code>a-member-file-holds-values</code>: if the file-backed sources need no <em>added</em> branch, the layout is carried by the format. A diff that adds a conditional to <code>_FileLayer</code> means the fold is leaking into the source again.</p>
+<p><strong>A source's new enumerators answer <code>∅</code>, not <code>{None}</code>, for an untyped record.</strong> <code>entity_types()</code> on a <code>LayerSource</code> whose schema declares no type axis returns the empty set, and <code>groups()</code> only the declared groups — the same <code>∅</code>-not-<code>{None}</code> check <code>a-member-file-holds-values</code> makes on the owner map. A test that materialises an untyped node and asserts <code>entity_types() == set()</code> on both the base <code>Fold</code> and a <code>ParquetLayer</code> of the head is what says <code>schema</code> governs the pairs rather than the pairs carrying a phantom type.</p>
+<p><strong><code>_Written</code> is gone and <code>write_record</code> took the <code>StagedSource</code> directly</strong> — once that half lands. The <code>NewChild</code> commit passes the staged source to the writer, the <code>Directory</code> commit passes the resolved record, and both satisfy one input contract. Until it lands, <code>_Written</code> standing unchanged is the marker that this is the deferred part, not a regression.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../staging-without-seq/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Staging without _seq">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Staging without _seq
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../../api/" class="md-footer__link md-footer__link--next" aria-label="Next: API Reference">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                API Reference
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

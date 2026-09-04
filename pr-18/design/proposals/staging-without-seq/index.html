@@ -16,7 +16,7 @@
         <link rel="prev" href="../a-member-file-holds-values/">
       
       
-        <link rel="next" href="../../../api/">
+        <link rel="next" href="../one-interface-source-and-fold/">
       
       
         
@@ -850,6 +850,8 @@
       
         
       
+        
+      
     
     
     
@@ -1243,6 +1245,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../one-interface-source-and-fold/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    One interface, source and fold
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1477,7 +1507,10 @@
 
 
 <h1 id="proposal-staging-without-_seq">Proposal: staging without <code>_seq</code><a class="headerlink" href="#proposal-staging-without-_seq" title="Permanent link">&para;</a></h1>
-<p>Status: <strong>Draft</strong> · Drafted 2026-09-02</p>
+<p>Status: <strong>Implemented</strong> · Drafted 2026-09-02 · Implemented 2026-09-02</p>
+<p>Landed in <a href="../../working-record/#staging">staging</a> and <a href="../../working-record/#committing">committing</a>; this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.</p>
+<p>Two departures from the sketch below are worth naming. An axis edit is not delete-then-insert: an axis row's columns are independently editable, so a <code>set</code> there <strong>patches its one column in place</strong> (<code>UPDATE ... FROM</code>, plus an <code>INSERT</code> for a label no row yet holds), which is what keeps a sibling attribute without a completion step — <code>_complete_axis</code> was drafted and then dropped for it. And <code>_axis_layer</code> stays, reduced to a scan for a <code>partial</code> axis and a union with the untouched base labels for one owned whole, rather than going entirely.</p>
+<p>The residual risk the argument below flags — <code>_complete_owned_whole</code>'s anti-join key and the long-row replace key <em>agreeing</em> rather than being one derivation — was retired as it suggested: both now read <code>_long_key</code>, so the fill an anti-join excludes and the row a later <code>set</code> replaces are one key by construction, not two that happen to match.</p>
 <p>Every staging table carries a <code>_seq</code>, and every read folds on it. Make each edit replace the rows it names — delete then insert — and the column goes from all four kinds, along with the four folds that read it. A staging table then <em>is</em> what the layer will write, and reading one is a table scan.</p>
 <h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
 <p><a href="../../working-record/#staging">Staging</a> holds the rule this proposal finishes: <strong>every table is shaped like the file it becomes.</strong> No table satisfies it, because every one carries a <code>_seq</code> no file has, and three of the four need a fold to mean anything.</p>
@@ -1616,13 +1649,13 @@
         
         
           
-          <a href="../../../api/" class="md-footer__link md-footer__link--next" aria-label="Next: API Reference">
+          <a href="../one-interface-source-and-fold/" class="md-footer__link md-footer__link--next" aria-label="Next: One interface, source and fold">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                API Reference
+                One interface, source and fold
               </div>
             </div>
             <div class="md-footer__button md-icon">

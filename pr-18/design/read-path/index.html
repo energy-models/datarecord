@@ -735,6 +735,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#one-fold-for-every-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One fold for every axis
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#resolving-a-relation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -939,6 +950,8 @@
       
         
       
+        
+      
     
     
     
@@ -1096,6 +1109,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#one-fold-for-every-axis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One fold for every axis
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#resolving-a-relation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1151,53 +1175,42 @@
 <h1 id="the-duckdb-read-path">The DuckDB read path<a class="headerlink" href="#the-duckdb-read-path" title="Permanent link">&para;</a></h1>
 <h2 id="owner-map">Owner map<a class="headerlink" href="#owner-map" title="Permanent link">&para;</a></h2>
 <p>The owner map answers, for a node, which layer owns each key.
-Several maps, not one: <code>inputs</code>, <code>components</code>, and <strong>one per declared <a href="../schema/#groups">group</a></strong>.</p>
-<p>Key columns first, then what each map carries over them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a># inputs                            # components               # &lt;group&gt;
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>&lt;partial dims&gt;                      entity                     &lt;group coordinates&gt;
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  entity     -- never NULL          --                         --
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  &lt;group coordinates&gt;               --                         --
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  &lt;owned_per dims&gt;                  --                         --
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>attribute                           entity_type             entity_type
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>layer_uuid                          layer_uuid                 layer_uuid
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>varies      STRUCT(&lt;dim&gt;: BOOLEAN, ...)   order_key            order_key
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>broadcast   STRUCT(&lt;dim&gt;: BOOLEAN, ...)   STRUCT(depth, row)   STRUCT(depth, row)
+<strong>One map: <code>inputs</code>.</strong> It is the only relation whose winning <em>key</em> and winning row's <em>values</em> live in different files — an attribute's ownership spans every <code>inputs/&lt;attr&gt;.parquet</code>, so the map names the owning layer per key and a read then goes to that layer's file for the value.
+Every axis — a <a href="../schema/#partial-the-granularity-of-an-override">dim</a>'s coordinates, the entity axis, a <a href="../schema/#groups">group</a> — is a single keyed file whose winning row <em>is</em> the whole row, so none needs a map; each folds to a <a href="#one-fold-for-every-axis">resolved relation</a> read inline.</p>
+<p>The inputs map's columns, keys first:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a># inputs
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>&lt;partial dims&gt;          -- the fold key: membership keys + partial value dims
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>  entity     -- never NULL
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>  &lt;group coordinates&gt;
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>  &lt;owned_per value dims&gt;
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>attribute
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>layer_uuid              -- the owning layer
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>varies      STRUCT(&lt;dim&gt;: BOOLEAN, ...)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>broadcast   STRUCT(&lt;dim&gt;: BOOLEAN, ...)
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>breakpoints BOOLEAN
 </code></pre></div>
-<p>All of them map to the owning <code>layer_uuid</code>, with deletions already applied.
-None carries <code>value</code>, a varying dim's value, or <code>breakpoint</code>, so all stay small regardless of the series data or the size of a curve.</p>
-<p>Splitting them keeps each row shape honest — <code>attribute</code> and the flags are meaningless for a component or a group row — and lets each persist as its own file.</p>
-<p><strong>One kind per group rather than a <code>connections</code> map</strong>, because a group is not a structural category: <code>connection</code> is one instance, <code>corridor</code> another, and a fold that named the first in its own code would have nothing to do with the second.
-Each group folds the same way — keys, tombstones, an <code>order_key</code> — differing only in which columns key it, which is <code>Group.over</code>'s coordinate names.</p>
-<p>The <strong>inputs key is schema-derived</strong>, not spelled: it is <a href="../schema/#partial-the-granularity-of-an-override"><code>partial_dims</code></a> plus <code>attribute</code>, where <code>partial</code> necessarily contains <code>entity</code> and every group coordinate because <a href="../record/#the-broadcast-rule">neither broadcasts</a>.
+<p>It maps each key to the owning <code>layer_uuid</code>, with deletions already applied.
+It carries no <code>value</code>, no varying dim's value, and no <code>breakpoint</code>, so it stays small regardless of the series data or the size of a curve.</p>
+<p>The <strong>inputs key is schema-derived</strong>, not spelled: it is <a href="../schema/#partial-the-granularity-of-an-override"><code>partial_dims</code></a> plus <code>attribute</code>.
+<code>partial_dims</code> is the <em>membership keys</em> — <code>entity</code> and every group coordinate, which <a href="../record/#the-broadcast-rule">address a row rather than broadcasting</a> — plus the broadcast value dims a layer may patch per value (<code>partial</code>).
 A coordinate an attribute's own file does not carry reads as NULL, which is what keeps the key one fixed tuple across attributes whose columns differ.</p>
-<p><code>entity_type</code> is on the <strong>entity</strong> maps only, never on <code>inputs</code>: an attribute row is addressed by <code>entity</code> alone (<a href="../format/#entity-is-unique-across-types">entity is unique across types</a>), and the components map is what says which type an entity is.
-So that map is the entity mapping every type-scoped question goes through — <a href="../record/#flags"><code>flags(ctype)</code></a> joins it, as does a consumer wanting one type's frame.</p>
-<p>Where it is present it is a <strong>column, not part of the key.</strong>
-Every map is keyed on its own coordinates — <code>entity</code> for components, the group's for a group, <code>partial_dims</code> plus <code>attribute</code> for inputs; the components map carries <code>entity_type</code> because it is the table that answers "what type is this entity", and that answer is functionally determined by the key rather than keying alongside it.
-The fold therefore aggregates the type over the group-by instead of grouping on it.</p>
-<p>The distinction is load-bearing rather than pedantic: keying on the type would let an entity resolve to two rows, admitting at read time the collision <a href="../format/#entity-is-unique-across-types">name uniqueness</a> rejects at write time.
-The same holds in the staging area, where <code>remove</code> under one type followed by <code>add</code> under another must collapse to the later edit (<a href="../working-record/#committing">committing</a>).</p>
-<p><code>order_key</code> is a <code>STRUCT(depth BIGINT, row BIGINT)</code>, ordering lexicographically by field — DuckDB's native rule for a struct comparison — so <code>ORDER BY order_key</code> gives first-introduced order across layers (<a href="../record/#axis-order">axis order</a>).
-<code>depth</code> is one past the parent map's own deepest <code>depth</code> (<code>-1</code> folding to <code>0</code> for the root), so it depends only on the parent's rows, never on this layer's position in the ancestry list; <code>row</code> is file order within that layer alone.
-It is assigned pre-union, per layer, because the fold's own output has no order of its own — a bare <code>row_number()</code> over what <code>UNION ALL</code> returns would scramble which row counts as first.
-A key introduced at one depth and restated at a deeper one keeps its introducing <code>(depth, row)</code>: the parent's rows pass an anti-join with their own key intact, and only a genuinely new row gets a fresh one.</p>
-<p>It is <strong>derived, never stored</strong>: no layer's parquet carries it, and <a href="../writing/"><code>write_record</code></a> writes no such column.
-The fold computes it from each layer file's own row order, so file order is the input and <code>order_key</code> the answer, persisted only where a node's maps are <a href="../layers/#materialised-node-caches">materialised</a> — where a child folding onto a materialised parent reads that parent's greatest <code>depth</code> exactly as it would any unmaterialised ancestor's.
-Nothing sorts eagerly either — the maps carry it as a column, and a consumer wanting order applies <code>ORDER BY order_key</code>.</p>
-<p><code>order_key</code> is on the components and group maps only; the axes need none, since an axis row's order comes from its file (<a href="../record/#axis-order">axis order</a>).
-The two kinds carry it for different reasons, and only one is a correctness requirement.</p>
-<p>For a <strong>group</strong> it is load-bearing.
-A framework wanting positional ports numbers a component's connections by this order, so a patch layer adding a third connection appends rather than renumbering.
-Without it the port index would follow whatever order the fold happened to emit, and adding a connection could silently move an existing one's attributes to a different port — the positional-keying failure <a href="../record/#connections">connections</a> exists to prevent, reappearing at the point where position is reconstructed.</p>
-<p>For <strong>components</strong> it is a stability guarantee rather than a correctness one: nothing resolves differently, since a component's rows are keyed the same way whatever order they come back in.
-What it buys is that member order is deterministic across reads and recognisable — a record round-tripped through the write path comes back in the order it was authored, with additions appended, rather than reshuffled.</p>
-<p>Each map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
-A node whose maps are <a href="../layers/#materialised-node-caches">materialised</a> persists every one of them, so a read needs only the ancestry <strong>back to the nearest materialised node</strong> — the key scalability property.
-They are written together, so the presence of one answers for all: <code>inputs</code> is the probe, being the kind every schema has whatever groups it declares.</p>
-<p><strong>A component tombstone reaches a group's rows</strong> where that group is over <code>entity</code>: deleting a component deletes every connection of it, so the group's fold anti-joins the parent against component tombstones as well as its own.
-A group not over <code>entity</code> gets no such treatment — <code>corridor</code> over <code>(from, to)</code> draws both coordinates from the entity axis under names of its own, and which of them a tombstone should match is not the fold's to guess.
-Elsewhere the fold runs live over that node's persisted maps, cached per connection; since <a href="../layers/#a-layers-data-is-write-once">layers are write-once</a>, such a cache never needs invalidating.</p>
+<p><code>entity_type</code> is <strong>not</strong> on <code>inputs</code>: an attribute row is addressed by <code>entity</code> alone (<a href="../format/#entity-is-unique-across-types">entity is unique across types</a>), and the resolved entity axis is what says which type an entity is.
+That axis is the entity mapping every type-scoped question goes through — <a href="../record/#flags"><code>flags(ctype)</code></a> joins it, as does a consumer wanting one type's frame — and it carries <code>entity_type</code> as a column, functionally determined by <code>entity</code> rather than keyed alongside it.
+Keying on the type would let an entity resolve to two rows, admitting at read time the collision <a href="../format/#entity-is-unique-across-types">name uniqueness</a> rejects at write time; so the fold aggregates the type over the group-by instead of grouping on it, and the staging area collapses a <code>remove</code> under one type followed by an <code>add</code> under another to the later edit (<a href="../working-record/#committing">committing</a>).</p>
+<p>The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
+A node whose caches are <a href="../layers/#materialised-node-caches">materialised</a> persists it (and the resolved axes beside it), so a read needs only the ancestry <strong>back to the nearest materialised node</strong> — the key scalability property.
+Every membership's tombstones reach this map in the fold: <code>fold_inputs</code> anti-joins the parent against the deleted rows of the entity axis, of each group, and of each partial dim — read from the same file that membership folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
+This is not a cascade: each membership honours only its <em>own</em> tombstones, so deleting a component drops the component's own row but not its connection tuples — those stay until deleted in turn.
+The coordinate a membership keys on <a href="../record/#the-broadcast-rule">never broadcasts</a>, so a row not addressed by one carries NULL there and its NULL-safe anti-join never takes it; only a row naming a dead coordinate is dropped.</p>
+<h2 id="one-fold-for-every-axis">One fold for every axis<a class="headerlink" href="#one-fold-for-every-axis" title="Permanent link">&para;</a></h2>
+<p>A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer patches per key.
+They fold by one path — last-writer-wins per key, <a href="../layers/#deletion"><code>deleted</code> honoured</a>, static columns carried on the winning row (<code>weight</code> on <code>dims/scenario.parquet</code>, <code>entity_type</code> on the entity axis, <code>into</code> on a group) — producing one <strong>resolved relation</strong> with no <code>deleted</code> column and no <code>layer_uuid</code>.</p>
+<p>The resolved relation is returned <strong>in first-introduced member order</strong> — root first, then file order within a layer — and a node's caches persist it <em>in that order</em>, so a reader recovers member order from the resolved file's own row number.
+There is no persisted <code>order_key</code> column: member order is the file's row order.
+A consumer wanting positional ports numbers a component's connections by this order, so a patch layer adding a connection appends rather than renumbering — the <a href="../record/#connections">positional-keying failure</a> that order exists to prevent.
+Across a materialised parent it still holds: the resolved seed is read in its own row order and a descendant's new rows number after it.</p>
+<p>A component's wide static columns are the one axis value that lives in another file — per type, in <code>dims/entity_type/&lt;ctype&gt;.parquet</code>, not on the entity axis — so a node materialises the resolved per-type frames beside the axis, and <a href="#resolving-a-relation"><code>entity_type</code></a> reads them and gates against the resolved entity axis.</p>
+<p>The fold runs live over an unmaterialised tail, cached per connection; since <a href="../layers/#a-layers-data-is-write-once">layers are write-once</a>, such a cache never needs invalidating.</p>
 <p>The <a href="../record/#flags">flags</a> are folded in alongside the ownership group-by, so they cost nothing beyond it.
 They are computed <strong>per key</strong>, so per component: whether <em>this</em> component's <code>p_max_pu</code> sets <code>timestep</code> is a different question from whether any does.</p>
 <p>The structs have a field per <strong>broadcast</strong> dim rather than per declared dim: an address coordinate <a href="../record/#the-broadcast-rule">never broadcasts</a>, so "did a row set it" is not a question about it — <code>entity</code> and a group's coordinate are always set, by construction.</p>
@@ -1230,13 +1243,15 @@ The join's address columns follow from the same place, so the query shape is der
 <p>The map already names the winning layer per key, so resolution reads only the owning layers' files.
 There is no per-read <code>MAX</code>/group-by and no tombstone filter — deletions are already absent from the map.</p>
 <p>Each owned-per dim's arm is <strong>NULL-aware</strong>: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.</p>
-<p>A <strong>group coordinate</strong> like <code>bus</code> is joined <strong>NULL-safely</strong> rather than NULL-aware, being <a href="../record/#the-broadcast-rule">an address rather than a broadcast dim</a>.
-It is that group's own map that decides which of its rows exist at all; a row whose connection was tombstoned is gone because that tombstone removed its <code>inputs</code> keys from the map, not by a filter here.</p>
+<p>A <strong>group coordinate</strong> like <code>bus</code> is joined <strong>NULL-safely</strong> rather than NULL-aware against the map, being <a href="../record/#the-broadcast-rule">an address rather than a broadcast dim</a>.
+There is no membership gate at read: an attribute row is keyed by every membership its coordinates name — the entity, each group tuple, each dim coordinate — and each of those is <a href="#one-fold-for-every-axis">tombstone-pruned in the fold</a>, so a row whose entity, connection tuple or dim coordinate was deleted is already gone from the map.
+The fold anti-joins each membership against its own <code>deleted</code> rows, read from the same file that membership folds from; it is not a cascade — deleting a component does not delete its connections, only the component's own row.
+Because the coordinate a membership keys on <a href="../record/#the-broadcast-rule">never broadcasts</a>, a row not addressed by a membership carries NULL there and its NULL-safe anti-join never takes it — only a row naming a dead coordinate is dropped.</p>
 <p><code>breakpoint</code> is projected but not joined on, being no part of the key: a curve is owned whole (<a href="../record/#wide-and-long-rows">wide and long rows</a>), so every breakpoint of a key comes from the winning layer.</p>
 <p>Non-key dims pass through unchanged, because within one key-dim combination the rows come from one layer.</p>
 <p>An attribute no layer wrote is absent from the map; its relation is empty, and the consumer applies <a href="../schema/#attributespec">the schema's <code>default</code></a>.</p>
 <h2 id="one-record-over-one-fold">One record over one fold<a class="headerlink" href="#one-record-over-one-fold" title="Permanent link">&para;</a></h2>
-<p>There is one <code>Record</code>, and it is the narwhals interface over a <a href="#owner-map"><code>NodeCache</code></a>. A plain parquet directory is not a second implementation of it: <code>Record.at(uri)</code> folds over a single <a href="../format/"><code>DirectorySource</code></a>, and over one source the fold degenerates to a scan of it — there is one layer, so every key is owned by it and the anti-join has nothing to evict.</p>
+<p>There is one <code>Record</code>, and it is the narwhals interface over a <a href="#owner-map"><code>Resolver</code></a>. A plain parquet directory is not a second implementation of it: <code>Record.at(uri)</code> folds over a single <a href="../format/"><code>DirectorySource</code></a>, and over one source the fold degenerates to a scan of it — there is one layer, so every key is owned by it and the anti-join has nothing to evict.</p>
 <p>So a directory takes the same properties as a tree node, rather than its own column of exceptions:</p>
 <ul>
 <li><strong><code>flags</code></strong> are computed in the ownership <code>GROUP BY</code>, one scan rather than the second one a separate aggregate would cost. They need a real aggregate either way: parquet's footer statistics are per row group, not per component type, so a file mixing one type's series rows with another's constant says nothing about either.</li>

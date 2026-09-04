@@ -858,6 +858,8 @@
       
         
       
+        
+      
     
     
     
@@ -1017,7 +1019,7 @@
 
 <h1 id="writing-a-whole-record">Writing a whole record<a class="headerlink" href="#writing-a-whole-record" title="Permanent link">&para;</a></h1>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">write_record</span><span class="p">(</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">revision_id</span><span class="p">:</span> <span class="n">UUID</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="n">Record</span><span class="p">,</span> <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">revision_id</span><span class="p">:</span> <span class="n">UUID</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="n">LayerData</span><span class="p">,</span> <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 </code></pre></div>
 <p>Writes <code>source</code> as a new layer.
@@ -1034,7 +1036,9 @@ A <strong>result is exempt</strong> — <a href="../tools/"><code>Tool.results</
 <p>A frame carrying a column its attribute is <strong>not</strong> addressed by is rejected too, rather than narrowed on the way out.
 The read path projects an attribute's own coordinates, so such a column would be written and never read — and a source emitting one means something different by the attribute than the schema does, which is worth reporting rather than absorbing.
 A result is exempt from both checks: its shape is a framework's business, and a name it shares with an input says nothing about which coordinates the result varies over.</p>
-<p>Because a <a href="../record/"><code>Record</code></a> is the input, anything satisfying the protocol can be written — including a framework object presenting itself as one, which is what puts read and write on a single seam.</p>
+<p>The input is a <a href="../record/#layerdata"><code>LayerData</code></a>: "the rows of one thing, enumerated and read" — the same interface a <a href="../read-path/#owner-map"><code>LayerSource</code></a> answers for its own layer and a <code>Resolver</code> answers for a whole fold, so <code>write_record</code> cannot tell which it was handed and does not need to.
+A staged layer's own rows and a resolved record are both a <code>LayerData</code>, which is what lets <code>commit</code> write either without a third shape adapting one to the other.</p>
+<p>A framework object exposing narwhals frames — <a href="../record/"><code>Record</code></a> rather than <code>LayerData</code> — is not itself one: <code>write_record</code> wraps it in a thin adapter that reads its <code>Frames</code> mappings as the enumerate-and-read pairs <code>LayerData</code> declares, so a tool stays narwhals-facing and the layered write path stays raw-relation throughout.</p>
 
 
 

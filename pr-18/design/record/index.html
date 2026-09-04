@@ -612,6 +612,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#layerdata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LayerData
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#wide-and-long-rows" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -972,6 +983,8 @@
       
         
       
+        
+      
     
     
     
@@ -1118,6 +1131,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#layerdata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LayerData
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#wide-and-long-rows" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1216,7 +1240,7 @@
 
 <h1 id="the-record-protocol">The <code>Record</code> protocol<a class="headerlink" href="#the-record-protocol" title="Permanent link">&para;</a></h1>
 <p>The definition sketched in <a href="../#what-a-data-record-is">what a data record is</a>, in full. This is the contract a consumer codes against; <a href="../format/">the record format</a> is how it is stored.
-It is read-only: writing is <a href="../writing/"><code>write_record(revision_id, record, con)</code></a>.</p>
+It is read-only: writing is <a href="../writing/"><code>write_record(revision_id, source, con)</code></a>.</p>
 <p>Two names, one shape. <strong><code>RecordLike</code></strong> is the protocol below — what a signature annotates against, and what a framework object satisfies structurally without depending on this package. <strong><code>Record</code></strong> is the class this package provides: the narwhals interface over <a href="../read-path/#one-record-over-one-fold">one fold</a>, which is what <code>Revision.record</code> and <code>Record.at(uri)</code> both give you. The concrete thing gets the short name because it is what a caller constructs and holds.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nd">@runtime_checkable</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">RecordLike</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
@@ -1239,18 +1263,44 @@ It is read-only: writing is <a href="../writing/"><code>write_record(revision_id
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ctype</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span> <span class="o">...</span>
 </code></pre></div>
+<h2 id="layerdata"><code>LayerData</code><a class="headerlink" href="#layerdata" title="Permanent link">&para;</a></h2>
+<p><code>RecordLike</code> is what a caller reads; <code>write_record</code> writes a different, narrower protocol — <strong><code>LayerData</code></strong>, "the rows of one thing, enumerated and read":</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nd">@runtime_checkable</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">LayerData</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="nd">@property</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">schema</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Schema</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="nd">@property</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">frozen</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">axes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">axis</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">entity_types</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">entity_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">groups</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kind</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;inputs&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterable</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attribute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">kind</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;inputs&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>Each pair is an enumerator — the keys of that kind — and a read for one key.
+The enumerators return <code>Iterable[str]</code> rather than <code>set[str]</code> so a <code>Resolver</code>, whose keys carry a stable order a <code>Record</code> over it relies on, can return a <code>list</code> where a source returns a <code>set</code>; the meaning is the same set of keys either way.</p>
+<p>One object, two meanings: a <a href="../read-path/#owner-map"><code>LayerSource</code></a> answers <code>axis</code>/<code>entity_type</code>/<code>group</code>/<code>attribute</code> for its own layer's rows; a <code>Resolver</code> answers the same names for everything folded into it.
+<code>write_record</code> cannot tell which it holds and does not need to — a staged layer's own rows (<code>NewChild</code>) and a resolved whole record (<code>Directory</code>) are both a <code>LayerData</code>, so <a href="../working-record/#committing">committing</a> writes either without a third shape adapting one to the other.</p>
+<p><code>schema</code> governs which of the other pairs are populated, rather than standing beside them as a peer: <code>entity_types</code>/<code>entity_type</code> answer only where the schema declares the entity-type axis, and <code>groups</code>/<code>group</code> only for the groups it declares.
+An enumerator answers the <strong>empty set</strong>, never a phantom key, where the schema declares nothing of that kind.</p>
+<p>Rows are raw <code>DuckDBPyRelation</code>s, not narwhals frames — the write path stays one engine throughout.
+A framework object satisfying <code>RecordLike</code> instead (narwhals <code>Frames</code>, as <a href="../tools/"><code>Tool.to_datarecord</code></a> returns) is not itself a <code>LayerData</code>; <code>write_record</code> wraps it in a thin adapter that reads its <code>Frames</code> mappings through the same enumerate-and-read pairs, so a tool stays narwhals-facing without <code>write_record</code> growing a second code path.</p>
 <h2 id="wide-and-long-rows">Wide and long rows<a class="headerlink" href="#wide-and-long-rows" title="Permanent link">&para;</a></h2>
 <p><code>schema</code> is <a href="../schema/">the declaration</a>: which axes exist, which attributes each component type may carry, and over which axes each may vary.
 The rest is data, and comes in two shapes.</p>
 <p><code>dims</code>, <code>components</code> and <code>groups</code> are <strong>wide</strong> — one row per thing, keyed by the dim, the component type, or the group:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>dims[&quot;scenario&quot;]                       scenario | ...   one row per axis label, in axis order
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>components[&quot;Generator&quot;]                entity | &lt;non-varying attribute columns&gt;
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>groups[&quot;connection&quot;]                   entity | bus | &lt;attributes over the group&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>dims[&quot;scenario&quot;]                       scenario | ...   one row per axis label, in axis order
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>components[&quot;Generator&quot;]                entity | &lt;non-varying attribute columns&gt;
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>groups[&quot;connection&quot;]                   entity | bus | &lt;attributes over the group&gt;
 </code></pre></div>
 <p><code>groups</code> is keyed by the group alone, one frame each: a group's rows are keyed by its coordinates and the component type is not one of them, so <code>groups/connection.parquet</code> holds every type's attachments (<a href="../format/#where-a-value-lives">where the rows live</a>).</p>
 <p><code>attributes</code> and <code>outputs</code> are <strong>long</strong> — one row per value, keyed by the attribute's name:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>attributes[&quot;p_max_pu&quot;]     entity | &lt;one column per coordinate&gt; | attribute | breakpoint | value
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>attributes[&quot;efficiency&quot;]   entity | bus | &lt;...&gt; | attribute | breakpoint | value
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>attributes[&quot;p_max_pu&quot;]     entity | &lt;one column per coordinate&gt; | attribute | breakpoint | value
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>attributes[&quot;efficiency&quot;]   entity | bus | &lt;...&gt; | attribute | breakpoint | value
 </code></pre></div>
 <p>A row names what the value belongs to, the coordinate it sits at, and the value there.</p>
 <p><strong>The columns are the attribute's own</strong>, not a fixed set every file carries: an attribute's coordinates are what its <a href="../schema/#attributespec"><code>dims</code></a> declare, with a <a href="../schema/#groups">group</a> expanding to its coordinate names.
@@ -1285,7 +1335,7 @@ A coordinate no row covers — including an attribute with no rows at all — ta
 Order is never a stored column, there as here: a file's row order is the input, and <code>order_key</code> is what the fold derives from it to answer "first introduced" across layers.</p>
 <p>The distinction is <strong>whether a table gains rows across layers.</strong> A group does, so its map keeps <code>order_key</code>; an axis does not, since an axis is <a href="../schema/#partial-the-granularity-of-an-override">not partial</a> and a layer restating it restates it whole, leaving file order intact.</p>
 <h2 id="frames"><code>Frames</code><a class="headerlink" href="#frames" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">Frames</span> <span class="o">=</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">nw</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">Frames</span> <span class="o">=</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">nw</span><span class="o">.</span><span class="n">LazyFrame</span><span class="p">]</span>
 </code></pre></div>
 <p>narwhals is the boundary type because it is a <em>protocol over dataframes</em> rather than a dataframe: a record may hand back a DuckDB relation, a polars plan or a pandas frame and the consumer's code is the same.</p>
 <p><code>LazyFrames</code> is the lazily-building implementation, used where constructing a frame is itself I/O: <code>read_parquet</code> reads the parquet footer to bind the schema, so it opens the file.
@@ -1294,11 +1344,11 @@ Locally that is a page-cache hit; against a remote record it is a round trip per
 The expense is <code>collect</code>, which is the consumer's call either way.</p>
 <h2 id="flags"><code>Flags</code><a class="headerlink" href="#flags" title="Permanent link">&para;</a></h2>
 <p>Which axes an attribute's rows actually use, for one component type — so a consumer can plan its reads without opening a file.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">Flags</span><span class="p">:</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="n">varies</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>  <span class="c1"># dims some row of this attribute sets</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="n">broadcast</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>  <span class="c1"># dims some row leaves NULL, i.e. &quot;all values&quot;</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">breakpoints</span><span class="p">:</span> <span class="nb">bool</span>  <span class="c1"># any row carries a breakpoint</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">Flags</span><span class="p">:</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">varies</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>  <span class="c1"># dims some row of this attribute sets</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">broadcast</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>  <span class="c1"># dims some row leaves NULL, i.e. &quot;all values&quot;</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">breakpoints</span><span class="p">:</span> <span class="nb">bool</span>  <span class="c1"># any row carries a breakpoint</span>
 </code></pre></div>
 <p><code>flags(ctype)</code> answers for a whole type in one query, keyed by attribute.
 Only attributes with rows are present, so <code>set(record.flags(ctype))</code> also answers which attributes this type has at all.</p>

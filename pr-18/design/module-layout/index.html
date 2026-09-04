@@ -858,6 +858,8 @@
       
         
       
+        
+      
     
     
     
@@ -1029,7 +1031,7 @@
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>└── duck.py                     # connection setup, path derivation
 </code></pre></div>
 <p>"<a href="../#what-a-data-record-is">Depends on <code>duckdb</code>, <code>narwhals</code> and <code>pydantic</code>, and on nothing else</a>" is achieved at this layer — <code>datarecord/tools/</code> is where a framework-specific tool lives instead (below), and nothing under it is imported by the package's own <code>__init__.py</code>.</p>
-<p>The protocol lives with its implementations rather than with any one consumer, because there are several: <a href="../writing/"><code>write_record</code></a> consumes a <code>Record</code>, <a href="../tools/">a tool</a> both implements and consumes one, and <a href="../working-record/"><code>WorkingRecord</code></a> satisfies it.</p>
+<p>The protocols live with their implementations rather than with any one consumer, because there are several: a <a href="../tools/">tool</a> both implements and consumes <code>RecordLike</code>, <a href="../working-record/"><code>WorkingRecord</code></a> satisfies it, and <a href="../writing/"><code>write_record</code></a> takes a <a href="../record/#layerdata"><code>LayerData</code></a> — the write-side protocol a source and a resolver share — wrapping a <code>RecordLike</code> in an adapter where a tool hands one over instead.</p>
 <p>A tool lives outside this core, under <code>datarecord/tools/&lt;name&gt;.py</code> — one module per modelling framework, imported explicitly (<code>from datarecord.tools.pypsa import PyPSA</code>) rather than through <code>datarecord.tools</code> itself, which imports none of them.
 What decides the side is one question: <strong>does it name a modelling framework?</strong> Nothing in <code>datarecord</code>'s core may.
 The dependency runs strictly one way, so importing the record layer pulls in no framework, and importing one tool pulls in no other.</p>

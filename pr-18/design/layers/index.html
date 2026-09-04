@@ -928,6 +928,8 @@
       
         
       
+        
+      
     
     
     
@@ -1164,7 +1166,9 @@ It is purely additive, writing files under <code>resolved/</code> and changing n
 <h2 id="deletion">Deletion<a class="headerlink" href="#deletion" title="Permanent link">&para;</a></h2>
 <p>A <code>deleted = true</code> row on <a href="../format/#the-entity-axis">the entity axis</a> tombstones a component from every attribute, and from every value of every dim — <a href="../schema/#existence-does-not-vary-along-a-dim">existence does not vary along one</a>, so there is nothing to scope a deletion by.
 A <code>deleted = true</code> row in <code>groups/&lt;group&gt;.parquet</code> tombstones one row of that group — the row itself and its <code>inputs/</code> rows — leaving the component and its other rows intact, so a connection is removed without touching the component it attached.</p>
-<p>When <a href="../read-path/#owner-map">the owner map</a> is folded, a tombstone removes that key's entries from the map, so a deleted component is absent from the resolved map rather than filtered at read time.
+<p>A tombstone is honoured by the <a href="../read-path/#one-fold-for-every-axis">one fold</a> that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
+An <em>attribute's</em> orphaned rows stop surfacing the same way, for every membership: an attribute row is keyed by the entity, group tuple and dim coordinates its <code>dims</code> name, and <a href="../read-path/#owner-map"><code>fold_inputs</code></a> anti-joins the map against each membership's <code>deleted</code> rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map, not filtered at read.
+Each membership honours only its <strong>own</strong> tombstones, read from the same file it folds from: deletion is never a cascade, so deleting a component drops its own row but leaves its connection tuples until they are deleted in turn.
 A tombstone only affects the branch that carries it; sibling branches keep the component.</p>
 <p>The fold treats an absent <code>deleted</code> column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.
 Every derived cache lives under <code>resolved/</code> for the same reason: every glob the read path issues into a layer is single-level — <code>inputs/*.parquet</code>, <code>dims/*.parquet</code>, <code>dims/*/*.parquet</code> — so nothing under <code>resolved/</code> is reachable by one.

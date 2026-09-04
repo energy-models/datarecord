@@ -850,6 +850,8 @@
       
         
       
+        
+      
     
     
     
@@ -1136,10 +1138,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#the-column-leaves-the-owner-map-too" class="md-nav__link">
+  <a href="#the-column-leaves-the-entity-axis-too" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The column leaves the owner map too
+        The column leaves the entity axis too
       
     </span>
   </a>
@@ -1263,6 +1265,34 @@
     
   
     Staging without _seq
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../one-interface-source-and-fold/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    One interface, source and fold
   
 
     
@@ -1419,10 +1449,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#the-column-leaves-the-owner-map-too" class="md-nav__link">
+  <a href="#the-column-leaves-the-entity-axis-too" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The column leaves the owner map too
+        The column leaves the entity axis too
       
     </span>
   </a>
@@ -1543,10 +1573,24 @@
 
 
 <h1 id="proposal-a-member-file-holds-values-and-nothing-else">Proposal: a member file holds values, and nothing else<a class="headerlink" href="#proposal-a-member-file-holds-values-and-nothing-else" title="Permanent link">&para;</a></h1>
-<p>Status: <strong>Draft</strong> · Drafted 2026-09-02</p>
+<p>Status: <strong>Landed</strong> · Drafted 2026-09-02 · Landed 2026-09-04</p>
+<blockquote>
+<p>The construct below is now the behaviour. The authoritative account is <a href="../../format/#the-entity-axis">the
+entity axis</a>, <a href="../../format/#where-a-value-lives">where a value
+lives</a> and <a href="../../schema/#entity_type-the-axis-of-kinds">the entity-type
+axis</a>; this page is kept as the
+argument that led there. It keys on <code>entity_type_dim is None</code> (no group over
+<code>entity</code> alone), leaving a <code>String</code>-typed <strong>declared</strong> axis on today's per-type
+layout — the <a href="#what-it-opens-rather-than-settles">open question</a> below was
+resolved that way. <code>entity_type(ctype)</code> <strong>raises</strong> where no type axis is
+declared rather than answering <code>None</code>. Cache invalidation on schema change is
+still not settled: a materialised cache written under the old layout is a
+rebuild, <a href="#the-column-leaves-the-entity-axis-too">as noted below</a>.</p>
+</blockquote>
 <p>Two claims about <code>dims/entity_type/&lt;Type&gt;.parquet</code>, which are one claim: that file holds a type's attribute values, and everything about a component's <em>existence</em> belongs to the <a href="../../format/#the-entity-axis">entity axis</a>.</p>
 <p>Today it holds more. A record whose schema declares no entity-type axis still writes one member file per type — types that are not declared, not validated and not constrainable, yet decide which file a value is in, so a reader must know them to reach it. And every member file carries <code>deleted</code>, which the fold reads as a tombstone alongside the axis's own, so a removal is written twice to say one thing.</p>
-<p>This proposal puts those values on <code>dims/entity.parquet</code> where the schema declares no entity-type axis, takes <code>deleted</code> off the member file in every record, and makes <code>entity_type</code> conditional in the <a href="../../read-path/#owner-map">owner map</a> as well as in the file — the map's shape being where the column is currently asserted rather than derived. What is left in a member file is <code>entity</code> and one column per attribute.</p>
+<p>This proposal puts those values on <code>dims/entity.parquet</code> where the schema declares no entity-type axis, and takes <code>deleted</code> off the member file in every record. What is left in a member file is <code>entity</code> and one column per attribute.</p>
+<p>The related concern — <code>entity_type</code> asserted rather than derived in the read path — is already settled: the <a href="../../read-path/#one-fold-for-every-axis">entity axis folds like any dim</a> rather than through an owner map, so <code>entity_types()</code> reads the resolved axis directly and there is no map column set to make conditional. What remains is the member file itself.</p>
 <h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
 <p><a href="../../schema/#entity_type-the-axis-of-kinds">The schema</a> is explicit that the axis is optional, and that omitting it makes the labels data:</p>
 <blockquote>
@@ -1558,9 +1602,9 @@
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>dims/entity_type/thing.parquet  entity, p_nom
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>dims/entity_type/other.parquet  entity, p_nom
 </code></pre></div>
-<p><strong><code>entity_type</code> there is a column no declaration accounts for.</strong> Every other column of an axis file answers to something: its key comes from <code>axis_key</code>, its attribute columns from <code>attributes_on</code>, <code>deleted</code> and <code>order_key</code> are structural. This one is admitted by a special case in <code>_validate_frame</code> and typed as a plain <code>String</code> by a fallback in <code>_axis_columns</code>, because there is no <code>Dimension</code> to read a dtype from. It is the one column in the format whose presence is not derivable from the schema.</p>
+<p><strong><code>entity_type</code> there is a column no declaration accounts for.</strong> Every other column of an axis file answers to something: its key comes from <code>axis_key</code>, its attribute columns from <code>attributes_on</code>, <code>deleted</code> is structural. This one is admitted by a special case in <code>_validate_frame</code> and typed as a plain <code>String</code> by a fallback in <code>_axis_columns</code>, because there is no <code>Dimension</code> to read a dtype from. It is the one column in the format whose presence is not derivable from the schema.</p>
 <h2 id="why-it-cannot-simply-be-dropped">Why it cannot simply be dropped<a class="headerlink" href="#why-it-cannot-simply-be-dropped" title="Permanent link">&para;</a></h2>
-<p>The obvious move — no declared axis, no <code>entity_type</code> column — was tried and does not close. The label is in the components <a href="../../read-path/#owner-map">owner map</a>, and five things read it there:</p>
+<p>The obvious move — no declared axis, no <code>entity_type</code> column — does not close, because the label carries the type wherever a per-type question is asked:</p>
 <table>
 <thead>
 <tr>
@@ -1571,55 +1615,35 @@
 <tbody>
 <tr>
 <td><code>NodeCache.entity_types()</code></td>
-<td><code>distinct_values(entity_map, "entity_type")</code></td>
+<td><code>distinct_values(entity_axis, "entity_type")</code></td>
 </tr>
 <tr>
 <td><code>NodeCache.entity_type_frame</code></td>
-<td>filters the map to one type, then reads its file</td>
+<td>scopes to one type, then reads its file</td>
 </tr>
 <tr>
 <td><code>NodeCache.attributes_of</code></td>
-<td>filters the map to one type, to scope the flags</td>
-</tr>
-<tr>
-<td><code>_fold_ordered</code>'s <code>typed</code> arm</td>
-<td>projects it, then <code>any_value</code> in the components aggregate</td>
-</tr>
-<tr>
-<td><code>schema.entity_columns</code></td>
-<td>hardcodes it into the map's column set</td>
+<td>scopes the flags to one type</td>
 </tr>
 </tbody>
 </table>
-<p><code>entity_columns</code> is the one that makes this structural rather than local. It is the map's declared shape, used in three places — the fold, <code>_empty_relation</code> for a record with no rows, and the <strong>materialised map on disk</strong> (<code>resolved/owner_map/entities.parquet</code>). So the column exists whether or not anything fills it, and gating only the axis file leaves <code>entity_types()</code> yielding <code>{None}</code> rather than <code>{thing, other}</code>.</p>
-<p>Deriving the label from the filenames instead works, but costs a <code>LayerSource.entity_types()</code> listing member and a per-layer <code>LIST</code> on the read path — which is what <a href="../../format/#the-entity-axis">the entity axis exists to avoid</a>. Trading a stored string for a directory listing per layer per fold is the wrong direction.</p>
+<p>The label lives on the <a href="../../read-path/#one-fold-for-every-axis">resolved entity axis</a>, carried on the winning row like <code>weight</code> on <code>dims/scenario.parquet</code> — not in an owner map, since the entity axis folds like every other dim. So gating only the member file, and leaving <code>entity_type</code> on the axis filled with NULLs, leaves <code>entity_types()</code> yielding <code>{None}</code> rather than <code>{thing, other}</code>.</p>
+<p>Deriving the label from the filenames instead works, but costs a <code>LayerSource.entity_types()</code> listing member files and a per-layer <code>LIST</code> on the read path — which is what <a href="../../format/#the-entity-axis">the entity axis exists to avoid</a>. Trading a stored string for a directory listing per layer per fold is the wrong direction.</p>
 <p>So the label is load-bearing <em>given the current layout</em>. The layout is what this proposal changes.</p>
 <h2 id="the-construct">The construct<a class="headerlink" href="#the-construct" title="Permanent link">&para;</a></h2>
 <p><strong>Where a schema declares no entity-type axis, a non-varying attribute over <code>entity</code> is a column of <code>dims/entity.parquet</code>.</strong> No <code>dims/entity_type/</code> directory, no per-type files, and <code>entity_type</code> is then genuinely absent — nothing classifies, so there is nothing to classify into.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>dims/entity.parquet   entity, deleted, p_nom, ...
 </code></pre></div>
 <p>Which is what the entity axis already is for every other purpose: the file keyed by <code>entity</code> that carries what is true of a component. <code>attributes_on</code>'s early return — "Never <code>entity</code>, whose sole-coordinate attributes are the <em>component</em> frame's columns" — becomes conditional on a type axis existing, which is the one line of schema that decides the whole layout.</p>
-<h3 id="the-column-leaves-the-owner-map-too">The column leaves the owner map too<a class="headerlink" href="#the-column-leaves-the-owner-map-too" title="Permanent link">&para;</a></h3>
-<p>The layout change is not enough on its own: the map's shape is <code>schema.entity_columns</code>, so <strong>that</strong> is where the column has to become conditional.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># today</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">return</span> <span class="p">(</span><span class="s2">&quot;entity_type&quot;</span><span class="p">,</span> <span class="s2">&quot;entity&quot;</span><span class="p">,</span> <span class="s2">&quot;layer_uuid&quot;</span><span class="p">,</span> <span class="s2">&quot;order_key&quot;</span><span class="p">)</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># proposed</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="k">return</span> <span class="p">(</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="o">*</span><span class="p">((</span><span class="s2">&quot;entity_type&quot;</span><span class="p">,)</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">entity_type_dim</span> <span class="k">else</span> <span class="p">()),</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="s2">&quot;entity&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="s2">&quot;layer_uuid&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="s2">&quot;order_key&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="p">)</span>
-</code></pre></div>
-<p>One property, and the five readers follow from it:</p>
+<h3 id="the-column-leaves-the-entity-axis-too">The column leaves the entity axis too<a class="headerlink" href="#the-column-leaves-the-entity-axis-too" title="Permanent link">&para;</a></h3>
+<p>The layout change is not enough on its own: the resolved entity axis carries <code>entity_type</code> on its winning row, so <strong>that</strong> is where the column has to become conditional. The axis frame a source supplies is <code>(entity, entity_type, deleted)</code>; where the schema declares no type axis it is <code>(entity, deleted, *attrs)</code> instead — no <code>entity_type</code>, the attribute columns in its place.</p>
+<p>The readers follow from the column's absence:</p>
 <ul>
-<li><strong><code>entity_types()</code></strong> returns the empty set — <code>distinct_values</code> is not called, rather than called on a column of NULLs.</li>
+<li><strong><code>entity_types()</code></strong> returns the empty set — <code>distinct_values</code> is not called on the axis, rather than called on a column of NULLs.</li>
 <li><strong><code>entity_type_frame(ctype)</code></strong> has no type to be asked for. <code>Record.entity_types</code> iterates an empty mapping, so nothing reaches it; a direct call is a caller error, and should say so rather than filter on a missing column.</li>
-<li><strong><code>attributes_of(ctype)</code></strong> scopes the flags by type, which is meaningless without types. Its semi-join to <code>of_type</code> becomes the whole map — every component, which is what "no types" means for a per-type question.</li>
-<li><strong><code>_fold_ordered</code>'s <code>typed</code> arm</strong> is skipped. This is the state the flag was written to express: <code>typed = "entity_type" in columns</code> already reads the column set rather than assuming, so it needs no edit at all once <code>entity_columns</code> is conditional.</li>
-<li><strong><code>_empty_relation</code></strong> builds from the same tuple, so it follows for free.</li>
+<li><strong><code>attributes_of(ctype)</code></strong> scopes the flags by type, which is meaningless without types. Its semi-join to <code>of_type</code> becomes the whole axis — every component, which is what "no types" means for a per-type question.</li>
 </ul>
-<p><strong>The materialised map is the consequence to be deliberate about.</strong> <code>resolved/owner_map/entities.parquet</code> is written from this column set, so the cache of a record with no declared type axis stops carrying <code>entity_type</code> — and a cache written before the change has it. <a href="../../layers/#materialised-node-caches">Materialised node caches</a> are derived data that can be rebuilt, so this is a rebuild rather than a migration; but a stale cache read against the new column set is the failure mode to check for, and it argues for the cache carrying a schema version or being invalidated on schema change. This proposal does not settle that, and it is the second thing to look at after the <code>ResolvedLayer</code> prerequisite.</p>
+<p><strong>The materialised axis is the consequence to be deliberate about.</strong> <code>resolved/dims/entity.parquet</code> is written from the folded axis, so the cache of a record with no declared type axis stops carrying <code>entity_type</code> — and a cache written before the change has it. <a href="../../layers/#materialised-node-caches">Materialised node caches</a> are derived data that can be rebuilt, so this is a rebuild rather than a migration; but a stale cache read against the new column set is the failure mode to check for, and it argues for the cache carrying a schema version or being invalidated on schema change. This proposal does not settle that.</p>
 <h3 id="deleted-belongs-to-the-axis-alone"><code>deleted</code> belongs to the axis alone<a class="headerlink" href="#deleted-belongs-to-the-axis-alone" title="Permanent link">&para;</a></h3>
 <p>A member file carries <code>deleted</code> today, and the fold reads it from there as well as from the entity axis. That is the same duplication the axis exists to remove: <a href="../../format/#the-entity-axis">membership is the axis's</a> — "a component exists because it has a row here, not because some type's file mentions it" — and a tombstone is a statement about membership.</p>
 <p>It shows up as a coupling in the staging area. <code>remove</code> has to write twice, once to the axis and once to the type's member table, because a removal that left no member row would read as a member the layer never mentioned. Two writes to say one thing, kept in step by hand.</p>
@@ -1673,46 +1697,11 @@
 <p>Three of the four sources need no code change at all: <code>_FileLayer</code> reads whatever columns the file has, and <code>ParquetLayer</code> and <code>DirectorySource</code> inherit it. <code>entity_type(name)</code> answering <code>None</code> follows from the directory being absent, which <code>try_read_parquet</code> already handles. That is the test of whether the layout is right — a file-backed source should not have to know which configuration it is reading.</p>
 <p><strong>The <code>PyPSA</code> tool</strong> currently supplies <code>entity_types</code> per type and, since the entity axis became a supplied member, <code>dims["entity"]</code> from <code>_entity_axis_frame</code>. Under this proposal an untyped export merges the member columns into that frame and stops supplying <code>entity_types</code> — but PyPSA always has types (<code>n.components</code>), so it is unaffected in practice. It matters as a statement about the protocol rather than about this tool: a producer with no types has one axis frame to fill and no <code>entity_types</code> mapping, which is exactly what the <code>Record</code> protocol should let it say.</p>
 <h3 id="the-prerequisite-axis-means-one-thing-on-every-source">The prerequisite: <code>axis</code> means one thing on every source<a class="headerlink" href="#the-prerequisite-axis-means-one-thing-on-every-source" title="Permanent link">&para;</a></h3>
-<p><code>ResolvedLayer</code> overrides <code>axis</code> and <code>axes</code> to read <code>resolved/dims/</code> — the <em>folded</em> answer, standing for everything above this node — so <code>axis(dim)</code> means something different on it than on every other source, where it means "this layer's own rows".</p>
-<p>That is invisible today because all three of its callers want the folded answer wherever a <code>ResolvedLayer</code> can reach them:</p>
-<table>
-<thead>
-<tr>
-<th>caller</th>
-<th>role</th>
-<th>folded is correct because</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>resolve_dims</code> (<code>axes</code>, <code>axis</code>)</td>
-<td>fold seed</td>
-<td>the sources above this node are not in the list</td>
-</tr>
-<tr>
-<td><code>_component_deleted_for_connections</code></td>
-<td>fold step</td>
-<td>same</td>
-</tr>
-<tr>
-<td><code>fold_entities</code></td>
-<td>fold step</td>
-<td>same</td>
-</tr>
-</tbody>
-</table>
-<p>This proposal adds a fourth caller in a <strong>second</strong> role: <code>_owned_frame</code> reads the rows behind a key the map says a layer owns, and for a <code>ResolvedLayer</code> that row is in <code>layers/&lt;id&gt;/</code>, not in the cache beside it — which <a href="../../layers/#materialised-node-caches">its own docstring already states</a>. Today <code>_owned_frame</code> reaches member rows through <code>entity_type(name)</code>, which is inherited and layer-local, so the two roles never meet. Move those columns onto the axis and they do.</p>
-<p>The fix is not to teach <code>_owned_frame</code> about folded columns. It is that <strong><code>axis</code> should mean the same thing on every source</strong>, and the folded read belongs to the seed path that wants it:</p>
-<ul>
-<li><code>ResolvedLayer.axis</code>/<code>axes</code> become layer-local, inherited like every other member.</li>
-<li>The cache read moves to <code>resolved_axis(dim)</code>/<code>resolved_axes()</code>, beside the <code>map_uri</code> that is already there for exactly this purpose.</li>
-<li><code>resolve_dims</code> calls those for a <code>ResolvedLayer</code>, as <code>_fold_map</code> already calls <code>head.map_uri(kind)</code> for the seeded owner map — the same pattern, one member over.</li>
-</ul>
-<p>Then <code>_owned_frame</code> needs no change, and this section reduces to "nothing to do".</p>
-<p><strong>Worth doing regardless of this proposal.</strong> <code>axes()</code> on a <code>ResolvedLayer</code> reports its whole ancestry's axis set, where <code>StagedSource.axes()</code> reports one layer's — two meanings for one protocol member, currently unexercised because <code>resolve_dims</code> is its only caller. <code>StagedSource</code> shows the intended shape here: a source that is not simply its own layer's rows says so with a flag (<code>frozen = False</code>) rather than by redefining what a member returns.</p>
+<p><code>ResolvedLayer</code> overrides <code>axis</code> and <code>axes</code> to read <code>resolved/dims/</code> — the <em>folded</em> answer, standing for everything above this node — so <code>axis(dim)</code> means something different on it than on every other source, where it means "this layer's own rows". Moving a component's attribute columns onto the entity axis brings them into the reach of a source read that expects layer-local rows, so the override has to go first.</p>
+<p>That untangling is <a href="../one-interface-source-and-fold/"><code>one-interface-source-and-fold</code></a>'s subject in full: the <code>ResolvedLayer</code> masquerade — a persisted fold typed as a source — is the root, and once the base is a <code>Resolver</code> and the head a plain <code>ParquetLayer</code>, <code>axis</code> is layer-local on every source with no exception. This proposal depends on that split; it adds no new argument to it.</p>
 <h2 id="what-this-buys">What this buys<a class="headerlink" href="#what-this-buys" title="Permanent link">&para;</a></h2>
 <p><strong>Every column of the format answers to a declaration.</strong> <code>entity_type</code> stops being the exception admitted by a special case, because it appears only where a group declares the axis — which is also when it has a dtype. The <code>_validate_frame</code> special case and the <code>_axis_columns</code> <code>String</code> fallback both go, and so does the <code>nw.String()</code> fallback that types a column no <code>Dimension</code> describes.</p>
-<p><strong>The owner map's shape follows the schema.</strong> <code>entity_columns</code> is currently the one place a column is asserted rather than derived, and the map carries it — on disk, in a materialised cache — for records that have no types. Making it conditional is one line, and the five readers of that column all resolve to "there are no types" rather than to "the type is NULL".</p>
+<p><strong>The entity axis's shape follows the schema.</strong> Where a schema declares no type axis, the folded entity axis stops carrying <code>entity_type</code> — on disk in a materialised cache too — rather than carrying it filled with NULLs. The three per-type readers then all resolve to "there are no types" rather than to "the type is NULL".</p>
 <p><strong>A record whose schema declares no type axis has one member file, not N.</strong> Today <code>add("thing", …)</code> and <code>add("other", …)</code> write two files that no declaration distinguishes, and a reader must enumerate them to find a component. One axis file is the honest shape of "these components have no kinds".</p>
 <p><strong><code>Record.entity_types</code> stops lying.</strong> It currently returns <code>{thing, other}</code> where the schema declares no entity-type axis — reporting filenames as a vocabulary. Empty is the true answer, and <code>entity_types</code> being empty is already what <code>schema.entity_types</code> says.</p>
 <h2 id="what-it-costs">What it costs<a class="headerlink" href="#what-it-costs" title="Permanent link">&para;</a></h2>
@@ -1729,7 +1718,7 @@
 <p><strong>The <code>_validate_frame</code> special case is gone.</strong> Asserting that an <code>entity_type</code> column on the entity axis of a record with no declared type axis is now <em>rejected</em> is what says the exception was removed rather than relocated.</p>
 <p><strong><code>sources.py</code> is untouched, <code>ResolvedLayer</code> aside.</strong> The strongest signal that the layout is right rather than merely different: if <code>_FileLayer</code>, <code>ParquetLayer</code> and <code>DirectorySource</code> need no edit, then a file-backed source genuinely does not have to know which configuration it reads. A diff that adds a branch to any of them means the layout is being carried by the readers instead of by the format.</p>
 <p><strong>A resolved record with no declared types reads the same as an unresolved one.</strong> Materialise a node of such a record and read a component's value through both; they must agree. This is the assertion the <code>ResolvedLayer</code> prerequisite above exists to protect, so it belongs in the suite before either change rather than after.</p>
-<p><strong>The owner map has no <code>entity_type</code> column where the schema declares no type axis</strong> — asserted on the relation's columns, and on the materialised <code>resolved/owner_map/entities.parquet</code> for a node that was materialised. Today both carry it, filled with NULLs, which is the state that makes <code>entity_types()</code> answer <code>{None}</code>; a test that only checks <code>entity_types() == set()</code> would pass with the column still there and still NULL.</p>
+<p><strong>The resolved entity axis has no <code>entity_type</code> column where the schema declares no type axis</strong> — asserted on the relation's columns, and on the materialised <code>resolved/dims/entity.parquet</code> for a node that was materialised. Today both carry it, filled with NULLs, which is the state that makes <code>entity_types()</code> answer <code>{None}</code>; a test that only checks <code>entity_types() == set()</code> would pass with the column still there and still NULL.</p>
 
 
 

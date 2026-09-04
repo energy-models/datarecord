@@ -939,6 +939,8 @@
       
         
       
+        
+      
     
     
     
@@ -1165,18 +1167,19 @@ A record that is never written has no directory, and answers <a href="../record/
 A dim's file is its name and nothing else — no pluralisation, which would be English grammar applied to a declared identifier and would spell a dim named <code>bus</code> as <code>buss.parquet</code>.</p>
 <h2 id="the-entity-axis">The entity axis<a class="headerlink" href="#the-entity-axis" title="Permanent link">&para;</a></h2>
 <p><code>dims/entity.parquet</code> is what a component's identity <strong>is</strong>: which entities the layer names, what type each is, and which are tombstoned.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>entity | entity_type | &lt;component key dims&gt; | deleted
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>entity | entity_type | &lt;component key dims&gt; | deleted     -- a schema declaring the type axis
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>entity | &lt;component key dims&gt; | deleted | &lt;attr&gt; ...       -- a schema declaring none
 </code></pre></div>
 <p>It is <strong>an axis file like any other</strong>: a <code>Record</code> hands it over as <code>dims["entity"]</code> and <a href="../writing/"><code>write_record</code></a> writes it, with no derivation step of its own. A producer that knows its components knows their types — <code>PyPSA</code> builds this frame from the same per-type frames it supplies as <code>entity_types</code> — so asking it for one file is cheaper than reconstructing it from the others, and it makes the writer a thing that writes frames rather than one that also computes one.</p>
-<p>Three things live here that were previously spread across <code>dims/entity_type/</code>:</p>
+<p>Two things live here in every record, and — where the schema declares no type axis — a third:</p>
 <ul>
 <li><strong>Membership.</strong> A component exists because it has a row here, not because some type's file mentions it.</li>
-<li><strong>Its type.</strong> <code>entity_type</code> is a column, so <code>entity -&gt; entity_type</code> is one read rather than a glob across every type's file with the type taken from the filename.</li>
-<li><strong>Its tombstone.</strong> Deleting a component is deleting its entity row.</li>
+<li><strong>Its tombstone.</strong> Deleting a component is deleting its entity row. A member file carries no <code>deleted</code>; membership is this file's alone, so the fold reads every tombstone here.</li>
+<li><strong>Its type</strong>, where a group <a href="../schema/#entity_type-the-axis-of-kinds">declares the axis</a>. <code>entity_type</code> is then a column, so <code>entity -&gt; entity_type</code> is one read rather than a glob across every type's file with the type taken from the filename.</li>
 </ul>
-<p>The type column is here whether or not the schema <a href="../schema/#entity_type-the-axis-of-kinds">declares an entity-type axis</a>. Undeclared, the labels are data rather than a vocabulary — but they still name the <code>dims/entity_type/&lt;Type&gt;.parquet</code> a component's non-varying values are in, so a record without the column could not reach its own member rows. That a schema declaring no such axis nonetheless produces typed member files is an asymmetry <a href="../proposals/a-member-file-holds-values/">a proposal</a> argues should go.</p>
-<p>What remains in <code>dims/entity_type/&lt;Type&gt;.parquet</code> is only <a href="#where-a-value-lives">what is addressed by <code>entity</code> alone</a> — the non-varying attribute values, partitioned by type because that is the one thing genuinely per type: every type has a different column set.</p>
-<p>The components <a href="../read-path/#owner-map">owner map</a> folds from this file, and so do component tombstones. Both must read the same source: membership from one and deletions from another would resolve a deletion the map never saw.</p>
+<p><strong>Where the schema declares no type axis there is no <code>entity_type</code> column</strong> — nothing classifies a component, so there is nothing to classify into — and a component's non-varying attribute values are columns of this file rather than a per-type member file. A record with two labels then has one <code>dims/entity.parquet</code> and no <code>dims/entity_type/</code> at all, which is the honest shape of "these components have no kinds"; <a href="../record/"><code>entity_types()</code></a> is empty, matching what the schema says.</p>
+<p>Where a group <strong>does</strong> declare the axis, <code>entity_type</code> is a column and the non-varying values are partitioned into <code>dims/entity_type/&lt;Type&gt;.parquet</code> per type — that being the one thing genuinely per type: every type has a different column set. What remains in a member file is then only <a href="#where-a-value-lives">what is addressed by <code>entity</code> alone</a>.</p>
+<p>The <a href="#the-entity-axis">entity axis</a> folds from <code>dims/entity.parquet</code>, and so do component tombstones. Both must read the same source: membership from one and deletions from another would resolve a deletion the fold never saw. The wide static columns here are read after the fold names a live entity, resolved <a href="../read-path/#one-fold-for-every-axis">inline</a> rather than through a map.</p>
 <p><code>entity</code> is the one dim the format knows by name, and not merely because it is an axis — it is the axis the component types partition. No other dim decides an attribute vocabulary.</p>
 <h2 id="where-a-value-lives">Where a value lives<a class="headerlink" href="#where-a-value-lives" title="Permanent link">&para;</a></h2>
 <p>Decided by the attribute's <a href="../schema/#attributespec">declared <code>dims</code></a>, not by a particular value.</p>
@@ -1190,8 +1193,12 @@ A dim's file is its name and nothing else — no pluralisation, which would be E
 </thead>
 <tbody>
 <tr>
-<td><code>{"entity"}</code></td>
+<td><code>{"entity"}</code>, type axis</td>
 <td><code>dims/entity_type/&lt;Type&gt;.parquet</code> — one column per attribute, per type</td>
+</tr>
+<tr>
+<td><code>{"entity"}</code>, no type axis</td>
+<td><code>dims/entity.parquet</code> — a column of the entity axis itself</td>
 </tr>
 <tr>
 <td><code>{"connection"}</code></td>
@@ -1217,9 +1224,10 @@ A dim's file is its name and nothing else — no pluralisation, which would be E
 </table>
 <p>So "varying" is not "has dims" but <strong>"has dims beyond its address"</strong>, and one rule now covers what were three unrelated stories: a component's constant columns, a connection's <code>role</code>, and an axis's payload.</p>
 <ul>
-<li><strong><code>dims/entity_type/&lt;Type&gt;.parquet</code></strong> — attributes addressed by <code>entity</code> alone: one column per attribute, indexed by <code>entity</code>.
-  Values only: a component's <em>membership</em> is its row on the <a href="#the-entity-axis">entity axis</a>, not its presence here.
-  And no <code>entity_type</code> column: the type is the file the rows are in, and the <a href="#the-entity-axis">entity axis</a> is what carries <code>entity -&gt; entity_type</code> for every later reader. A column repeating it would be a second copy of one fact, and the one that could disagree with the other.</li>
+<li><strong><code>dims/entity_type/&lt;Type&gt;.parquet</code></strong> (where a group <a href="../schema/#entity_type-the-axis-of-kinds">declares the type axis</a>) — attributes addressed by <code>entity</code> alone: one column per attribute, indexed by <code>entity</code>.
+  <strong>Values only</strong>: a member file holds <code>entity</code> and one column per attribute, nothing else. A component's <em>membership</em> is its row on the <a href="#the-entity-axis">entity axis</a>, not its presence here, and its <em>tombstone</em> is there too — a member file carries no <code>deleted</code>, so a removal is one row on the axis rather than two kept in step.
+  And no <code>entity_type</code> column: the type is the file the rows are in, and the <a href="#the-entity-axis">entity axis</a> is what carries <code>entity -&gt; entity_type</code> for every later reader. A column repeating it would be a second copy of one fact, and the one that could disagree with the other.
+  Where the schema declares <strong>no</strong> type axis there is no member file at all: these columns are on <code>dims/entity.parquet</code> itself, which is <a href="#the-entity-axis">the entity axis</a> for every other purpose.</li>
 <li><strong>A <a href="../schema/#groups">group</a>'s file</strong> — attributes addressed by that group alone, PyPSA's <code>role</code> on a connection being one.</li>
 <li><strong>An axis file</strong> — attributes addressed by one dim alone. A snapshot weighting is a number per snapshot and belongs to no component, so <code>dims/snapshot.parquet</code> carries it as a declared column with a <code>dtype</code>, a <code>default</code> and a <code>description</code>.</li>
 <li><strong><code>inputs/&lt;attr&gt;.parquet</code></strong> — every attribute addressed by more than its own coordinate, even where a given component's value happens to be constant.
@@ -1249,10 +1257,10 @@ Two types may not share one: a <code>Bus</code> and a <code>Generator</code> bot
 <p>That is what removes <code>entity_type</code> from every attribute key.
 An <code>inputs/</code> row addresses <code>(entity, bus, …, attribute)</code>, and the type it belongs to is recoverable but not part of the address.
 The alternative — carrying the type in the key — makes it a <em>component's</em> identity in one place and a <em>row's</em> in another, and every join then has to agree about which.</p>
-<p><strong>The entity axis carries the classification.</strong> <code>dims/entity.parquet</code> carries <code>entity_type</code> as a column, so <code>entity -&gt; entity_type</code> is one read of one file rather than a glob over every type's — the <a href="../schema/#entity_type-the-axis-of-kinds">entity-type group</a>'s rows, stored here rather than in <code>groups/</code> because a component's type is part of the identity this file already states.
-<code>entity_type</code> is a column of that axis and of the owner map it feeds, never of the attribute rows.
+<p><strong>The entity axis carries the classification</strong>, where a group <a href="../schema/#entity_type-the-axis-of-kinds">declares one</a>. <code>dims/entity.parquet</code> carries <code>entity_type</code> as a column, so <code>entity -&gt; entity_type</code> is one read of one file rather than a glob over every type's — the <a href="../schema/#entity_type-the-axis-of-kinds">entity-type group</a>'s rows, stored here rather than in <code>groups/</code> because a component's type is part of the identity this file already states. A schema declaring no type axis has no such column and no types to recover; the rest of this section is the typed case.
+<code>entity_type</code> is a column of that axis, carried on its resolved row, never of the attribute rows.
 The type also has an axis file of its own, <code>dims/entity_type.parquet</code>, which is where a value addressed by the type alone — a per-type icon — lives; that is a column keyed by type, not an attribute row keyed by entity, so it takes nothing back from the paragraph above.</p>
-<p>So a consumer wanting one type's <code>p_max_pu</code> joins the resolved attribute frame to the components map on <code>entity</code>.
+<p>So a consumer wanting one type's <code>p_max_pu</code> joins the resolved attribute frame to the resolved entity axis on <code>entity</code>.
 That join is what the <code>entity_type</code> filter used to be, and it is against a relation the read path already builds.</p>
 <p>Two things follow, and they are the reason to want this.
 An attribute row is addressed the way a component is, so <code>set("p_nom", 150.0, entity=["wind1"])</code> needs no type: the entity determines it (<a href="../working-record/#set">set</a>).

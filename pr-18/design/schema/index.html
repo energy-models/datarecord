@@ -1089,6 +1089,8 @@
       
         
       
+        
+      
     
     
     
@@ -1566,13 +1568,14 @@ That is what keeps declaration from becoming a maintenance burden on the tool: t
 </code></pre></div>
 <p><code>into</code> is what says every component carries exactly one type, and being over <code>entity</code> alone is what makes this axis <em>the</em> entity-type axis rather than one classification among several. At most one group may be that; a second has no resolved answer for what a component carries.
 An <code>Enum</code> dtype pins the vocabulary and makes an unknown type a write-time error; a plain <code>str</code> leaves the labels as data, which is the right declaration for a record whose types are not known up front.</p>
-<p><strong>Its rows are the entity axis file</strong>, not a <code>groups/</code> file of its own — the one exception to <a href="../format/#where-a-value-lives">a file per group</a>. <code>dims/entity.parquet</code> carries <code>entity_type</code>, which is <a href="../format/#entity-is-unique-across-types">where the format already put it</a>, and the writer derives it from the per-type member files rather than taking it from a <code>Record</code>, so nothing can disagree with itself about which type a component is.</p>
+<p><strong>Its rows are the entity axis file</strong>, not a <code>groups/</code> file of its own — the one exception to <a href="../format/#where-a-value-lives">a file per group</a>. <code>dims/entity.parquet</code> carries <code>entity_type</code>, which is <a href="../format/#entity-is-unique-across-types">where the format already put it</a>: the axis file a source hands over carries the column, so <code>entity -&gt; entity_type</code> is one fact in one place and nothing can disagree with itself about which type a component is.</p>
 <p><strong>It may not address a value alongside the entity.</strong> An attribute naming both <code>entity</code> and the type in its <code>dims</code> is rejected: <code>into</code> declares the type to follow from the entity, so the row is keyed twice over and the two are free to disagree.
 That is <a href="../format/#entity-is-unique-across-types">why no attribute row carries the type</a>, and it is the general rule for <a href="#into-a-group-that-classifies">a functional group and what it maps from</a> rather than anything particular to types — <code>country</code> over <code>bus</code> is rejected the same way.</p>
 <p><strong>Addressed by the type alone is ordinary.</strong> A per-type <code>icon</code> is a value per type, keyed once, and it lands where any <a href="../format/#where-a-value-lives">attribute addressed by one dim alone</a> does: a column of <code>dims/entity_type.parquet</code>.
 Its axis file is owned like any other's: outside <a href="#partial-the-granularity-of-an-override"><code>partial</code></a> a layer touching one type's icon restates the type axis whole, which is what a dim owned entirely means everywhere else.
 Being classified buys it no exemption, and carrying an attribute is no reason to declare it <code>partial</code> — that would widen the fold's key with a column no <code>inputs/</code> row can carry.</p>
 <p><strong>Entirely optional.</strong> A schema declaring no such axis has components with no types, and everything addressed by <code>entity</code> reaches all of them.
+There is then no <code>entity_type</code> column on the entity axis and no <code>dims/entity_type/</code> at all: a component's non-varying values are columns of <code>dims/entity.parquet</code> itself (<a href="../format/#where-a-value-lives">where a value lives</a>), which is the honest shape of "these components have no kinds" — one file, not one per label an <code>add</code> happened to use. <a href="../record/"><code>Record.entity_types</code></a> is empty, matching <code>schema.entity_types</code>.
 A tool that needs types requires the axis in the schema it builds — <a href="../tools/">PyPSA does</a> — which is where that requirement belongs, not here.</p>
 <p><strong>At most one.</strong> A second dim <code>on</code> <code>entity</code> is rejected: a component has one type, and two vocabularies over one axis leave <code>attributes_for</code> with no resolved answer for what it carries.</p>
 <h2 id="traits">Traits<a class="headerlink" href="#traits" title="Permanent link">&para;</a></h2>
@@ -1642,8 +1645,9 @@ A list is sugar for the dict with identical keys and values, so <code>over=["bus
 The fold's key therefore does not vary per attribute: <a href="#partial-the-granularity-of-an-override"><code>partial_dims</code></a> is one fixed tuple, now the union of plain dims and group coordinate names.</p>
 <p>A group's file columns are <strong>not declared here.</strong> They are the attributes whose <code>dims</code> name exactly this group (<a href="../format/#where-a-value-lives">where a value lives</a>) — PyPSA's <code>role</code> on a connection is <code>AttributeSpec(dtype="VARCHAR", dims={"connection"})</code>, declared by <a href="../tools/">the tool</a> whose vocabulary the word is.
 Declaring them a second time on the <code>Group</code> would be two ways to say one thing, disagreeing eventually.</p>
-<p><strong>A group's key coordinate <a href="../record/#the-broadcast-rule">never broadcasts</a></strong>, so it lands in the fold's key and must be declared <code>partial</code>, alongside <code>entity</code> and for the same reason.
-A functional group's <code>into</code> dim is not one of these: it is an ordinary axis whose NULL means "every country" like any other dim's.</p>
+<p><strong>A group's key coordinate <a href="../record/#the-broadcast-rule">never broadcasts</a></strong>, so it is a <em>membership key</em>: it lands in the fold's key by being membership, not by being declared <code>partial</code>.
+<code>partial</code> is for value dims a layer patches per value (see <a href="#partial-the-granularity-of-an-override"><code>partial</code></a>); a membership key — <code>entity</code>, a group's coordinate — is patched per row by every layer already, so naming it <code>partial</code> is a category error the schema rejects.
+A functional group's <code>into</code> dim is not a membership key: it is an ordinary axis whose NULL means "every country" like any other dim's.</p>
 <p><strong>Connections are one instance</strong>, not a structural category: <code>Group(over={"entity": "entity", "bus": "bus"})</code>, with <code>role</code> an ordinary attribute over it. <code>bus</code> is accordingly one coordinate of one group rather than a column the format fixes, and neither word appears in the record layer — <code>connection</code> is whatever a schema calls it, and <code>role</code> is <a href="../tools/">a tool's declaration</a>.</p>
 <h3 id="into-a-group-that-classifies"><code>into</code> — a group that classifies<a class="headerlink" href="#into-a-group-that-classifies" title="Permanent link">&para;</a></h3>
 <p><code>into</code> names the dim a group is <strong>functional into</strong>: each tuple of <code>over</code> carries exactly one of its labels. <code>country</code> over <code>[bus]</code> into <code>country</code> says every bus is in one country.</p>
@@ -1713,10 +1717,12 @@ The remaining question is at what granularity along each axis, and it splits fro
 </code></pre></div>
 <p>A dim outside <code>partial</code> is one a layer owns entirely once it touches it: overriding one timestep of <code>p_max_pu</code> means carrying that component's <em>entire</em> series, because a partial series would resolve across two layers and produce a curve with a hole.
 The reason is a consumer's rather than the format's — a framework that splits constant from varying data cannot receive half a series — which is why it belongs to the axis: it is true of every attribute varying over it.</p>
-<p>The dims a layer owns an attribute per follow from the two declarations:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>owned_per(attribute) = attribute.dims ∩ schema.partial
+<p>The dims a layer owns an attribute per follow from the declarations:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>owned_per(attribute) = attribute.dims ∩ partial_dims
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>partial_dims         = membership_keys ∪ (broadcast dims ∩ schema.partial)
 </code></pre></div>
-<p>So <code>p_max_pu</code> is owned per scenario — <code>timestep</code> is not partial, so a patch to one hour restates that scenario's whole series; <code>marginal_cost</code> per scenario; <code>p_nom</code> and <code>carrier</code> once, across everything.</p>
+<p><code>partial_dims</code> is the fold key: the membership keys (<code>entity</code>, group coordinates — patched per row by every layer) plus the broadcast value dims declared <code>partial</code>.
+So <code>p_max_pu</code> is owned per entity and per scenario — <code>timestep</code> is not partial, so a patch to one hour restates that entity-scenario's whole series; <code>marginal_cost</code> per entity and scenario; <code>p_nom</code> and <code>carrier</code> per entity, once across everything else.</p>
 <p>Two things this buys.
 The schema can distinguish <code>p_max_pu</code> from <code>p_nom</code>, which a dim-level flag cannot: that would say every attribute is owned per scenario, including those a scenario must not change.
 And a <code>p_nom</code> row carrying a non-NULL <code>scenario</code> becomes a write-time violation rather than something the NULL-broadcast rule absorbs — a first-stage decision quietly turned into a per-scenario one is the error worth catching.</p>
@@ -1725,10 +1731,11 @@ So the declarations constrain and validate; they do not make the key vary per ro
 <p><strong>An axis file is owned the same way</strong>, and the <a href="../format/#where-a-value-lives">attributes it carries</a> do not argue for adding it.
 Outside <code>partial</code>, a layer touching an axis restates it whole — every label, with the static attributes attached to them — because a layer holding one label is not saying the others are unchanged but that they are not there: the fold keys by the axis key, so what this layer carries is what the axis has here.
 That is the same "no half-owned extent" rule a series obeys, applied to a set of labels rather than a curve.</p>
-<p><strong>Keep it small.</strong> <code>partial</code> is the fold's key, so every entry widens the owner map and the resolution it keys, for every read of every attribute.
-The cost of leaving an axis out is paid once per edit and bounded by the axis; the cost of putting it in is paid by every read forever.
-So it stays what it is for <code>entity</code> and a group's coordinate — the dims a layer genuinely patches value by value — rather than growing to cover whatever an axis happens to hold.</p>
-<p>The <a href="#entity_type-the-axis-of-kinds">entity-type axis</a> is the case that tests this: it carries an attribute and is exempt from <code>partial</code>, and it still restates whole rather than earning an exception.</p>
+<p><strong>Keep it small.</strong> Every <code>partial</code> value dim widens the fold key, and the key is paid for by every read of every attribute.
+The cost of leaving a value dim out is paid once per edit and bounded by the axis; the cost of putting it in is paid by every read forever.
+So <code>partial</code> names only the broadcast value dims a layer genuinely patches value by value — <code>scenario</code>, not <code>timestep</code>.
+The membership keys are in the key already, by being membership; <code>partial</code> neither adds nor may name them.</p>
+<p>The <a href="#entity_type-the-axis-of-kinds">entity-type axis</a> carries an attribute yet is neither <code>partial</code> nor a membership key: its labels are a column of <code>dims/entity.parquet</code>, not an addressable coordinate, so it restates whole like any non-<code>partial</code> axis and stays out of the fold key.</p>
 <h2 id="one-schema-per-record">One schema per record<a class="headerlink" href="#one-schema-per-record" title="Permanent link">&para;</a></h2>
 <p>Not one per layer.
 A directory record's schema is <code>manifest.json</code> in the directory; a layered record's lives <strong>beside</strong> the layers, not inside any of them:</p>
