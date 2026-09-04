@@ -398,13 +398,14 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             | {"deleted", "order_key"}
         )
         # The one classification column an axis file carries, every other group
-        # being its own file. Admitted whether or not a group declares the axis:
-        # the label says which `dims/entity_type/<Type>.parquet` a component's
-        # non-varying attributes are in, so a record has it either way and a
-        # declaration only constrains its values. Named `entity_type` whatever
-        # the dim is called, that being the name this file carries it under
+        # being its own file. Admitted only where a group declares the type axis:
+        # the label then says which `dims/entity_type/<Type>.parquet` a
+        # component's non-varying attributes are in. Where no group declares it
+        # there is no member file and no column - those attributes are
+        # `attributes_on("entity")`, columns of this file, already in `known` -
+        # and an `entity_type` column is rejected as any undeclared one is
         # (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-        if key == "entity":
+        if key == "entity" and schema.entity_type_dim is not None:
             known.add("entity_type")
         extra = sorted(columns - known)
         if extra:

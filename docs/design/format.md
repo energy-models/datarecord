@@ -23,20 +23,21 @@ A dim's file is its name and nothing else — no pluralisation, which would be E
 `dims/entity.parquet` is what a component's identity **is**: which entities the layer names, what type each is, and which are tombstoned.
 
 ```text
-entity | entity_type | <component key dims> | deleted
+entity | entity_type | <component key dims> | deleted     -- a schema declaring the type axis
+entity | <component key dims> | deleted | <attr> ...       -- a schema declaring none
 ```
 
 It is **an axis file like any other**: a `Record` hands it over as `dims["entity"]` and [`write_record`](writing.md) writes it, with no derivation step of its own. A producer that knows its components knows their types — `PyPSA` builds this frame from the same per-type frames it supplies as `entity_types` — so asking it for one file is cheaper than reconstructing it from the others, and it makes the writer a thing that writes frames rather than one that also computes one.
 
-Three things live here that were previously spread across `dims/entity_type/`:
+Two things live here in every record, and — where the schema declares no type axis — a third:
 
 - **Membership.** A component exists because it has a row here, not because some type's file mentions it.
-- **Its type.** `entity_type` is a column, so `entity -> entity_type` is one read rather than a glob across every type's file with the type taken from the filename.
-- **Its tombstone.** Deleting a component is deleting its entity row.
+- **Its tombstone.** Deleting a component is deleting its entity row. A member file carries no `deleted`; membership is this file's alone, so the fold reads every tombstone here.
+- **Its type**, where a group [declares the axis](schema.md#entity_type-the-axis-of-kinds). `entity_type` is then a column, so `entity -> entity_type` is one read rather than a glob across every type's file with the type taken from the filename.
 
-The type column is here whether or not the schema [declares an entity-type axis](schema.md#entity_type-the-axis-of-kinds). Undeclared, the labels are data rather than a vocabulary — but they still name the `dims/entity_type/<Type>.parquet` a component's non-varying values are in, so a record without the column could not reach its own member rows. That a schema declaring no such axis nonetheless produces typed member files is an asymmetry [a proposal](proposals/a-member-file-holds-values.md) argues should go.
+**Where the schema declares no type axis there is no `entity_type` column** — nothing classifies a component, so there is nothing to classify into — and a component's non-varying attribute values are columns of this file rather than a per-type member file. A record with two labels then has one `dims/entity.parquet` and no `dims/entity_type/` at all, which is the honest shape of "these components have no kinds"; [`entity_types()`](record.md) is empty, matching what the schema says.
 
-What remains in `dims/entity_type/<Type>.parquet` is only [what is addressed by `entity` alone](#where-a-value-lives) — the non-varying attribute values, partitioned by type because that is the one thing genuinely per type: every type has a different column set.
+Where a group **does** declare the axis, `entity_type` is a column and the non-varying values are partitioned into `dims/entity_type/<Type>.parquet` per type — that being the one thing genuinely per type: every type has a different column set. What remains in a member file is then only [what is addressed by `entity` alone](#where-a-value-lives).
 
 The [entity axis](#the-entity-axis) folds from `dims/entity.parquet`, and so do component tombstones. Both must read the same source: membership from one and deletions from another would resolve a deletion the fold never saw. The wide static columns here are read after the fold names a live entity, resolved [inline](read-path.md#one-fold-for-every-axis) rather than through a map.
 
@@ -50,7 +51,8 @@ The rule: **an attribute naming exactly one addressing coordinate is a column on
 
 | `dims`                       | lands in                                                               |
 | ---------------------------- | ---------------------------------------------------------------------- |
-| `{"entity"}`                 | `dims/entity_type/<Type>.parquet` — one column per attribute, per type |
+| `{"entity"}`, type axis      | `dims/entity_type/<Type>.parquet` — one column per attribute, per type |
+| `{"entity"}`, no type axis   | `dims/entity.parquet` — a column of the entity axis itself             |
 | `{"connection"}`             | `groups/connection.parquet` — the group's own file                     |
 | `{"scenario"}`               | `dims/scenario.parquet` — the axis file                                |
 | `{"country"}`                | `dims/country.parquet` — the axis file, a dim shadowing the group      |
@@ -59,9 +61,10 @@ The rule: **an attribute naming exactly one addressing coordinate is a column on
 
 So "varying" is not "has dims" but **"has dims beyond its address"**, and one rule now covers what were three unrelated stories: a component's constant columns, a connection's `role`, and an axis's payload.
 
-- **`dims/entity_type/<Type>.parquet`** — attributes addressed by `entity` alone: one column per attribute, indexed by `entity`.
-  Values only: a component's _membership_ is its row on the [entity axis](#the-entity-axis), not its presence here.
+- **`dims/entity_type/<Type>.parquet`** (where a group [declares the type axis](schema.md#entity_type-the-axis-of-kinds)) — attributes addressed by `entity` alone: one column per attribute, indexed by `entity`.
+  **Values only**: a member file holds `entity` and one column per attribute, nothing else. A component's _membership_ is its row on the [entity axis](#the-entity-axis), not its presence here, and its _tombstone_ is there too — a member file carries no `deleted`, so a removal is one row on the axis rather than two kept in step.
   And no `entity_type` column: the type is the file the rows are in, and the [entity axis](#the-entity-axis) is what carries `entity -> entity_type` for every later reader. A column repeating it would be a second copy of one fact, and the one that could disagree with the other.
+  Where the schema declares **no** type axis there is no member file at all: these columns are on `dims/entity.parquet` itself, which is [the entity axis](#the-entity-axis) for every other purpose.
 - **A [group](schema.md#groups)'s file** — attributes addressed by that group alone, PyPSA's `role` on a connection being one.
 - **An axis file** — attributes addressed by one dim alone. A snapshot weighting is a number per snapshot and belongs to no component, so `dims/snapshot.parquet` carries it as a declared column with a `dtype`, a `default` and a `description`.
 - **`inputs/<attr>.parquet`** — every attribute addressed by more than its own coordinate, even where a given component's value happens to be constant.
@@ -108,7 +111,7 @@ That is what removes `entity_type` from every attribute key.
 An `inputs/` row addresses `(entity, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
 The alternative — carrying the type in the key — makes it a _component's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
 
-**The entity axis carries the classification.** `dims/entity.parquet` carries `entity_type` as a column, so `entity -> entity_type` is one read of one file rather than a glob over every type's — the [entity-type group](schema.md#entity_type-the-axis-of-kinds)'s rows, stored here rather than in `groups/` because a component's type is part of the identity this file already states.
+**The entity axis carries the classification**, where a group [declares one](schema.md#entity_type-the-axis-of-kinds). `dims/entity.parquet` carries `entity_type` as a column, so `entity -> entity_type` is one read of one file rather than a glob over every type's — the [entity-type group](schema.md#entity_type-the-axis-of-kinds)'s rows, stored here rather than in `groups/` because a component's type is part of the identity this file already states. A schema declaring no type axis has no such column and no types to recover; the rest of this section is the typed case.
 `entity_type` is a column of that axis, carried on its resolved row, never of the attribute rows.
 The type also has an axis file of its own, `dims/entity_type.parquet`, which is where a value addressed by the type alone — a per-type icon — lives; that is a column keyed by type, not an attribute row keyed by entity, so it takes nothing back from the paragraph above.
 

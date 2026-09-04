@@ -177,9 +177,14 @@ class Fold:
 
         `None` when a type is named but no entity axis exists, so `flags` returns
         empty rather than aggregating an unscoped map.
+
+        A named type where the schema declares no type axis scopes to the whole
+        axis - every component - since "which dims does type X use" has no
+        narrower meaning without types, and the axis carries no `entity_type`
+        column to filter on (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
         """
         rel = self.owner_map.set_alias("i")
-        if entity_type is not None:
+        if entity_type is not None and self.schema.entity_type_dim is not None:
             axis = self.entity_axis
             if axis is None:
                 return None

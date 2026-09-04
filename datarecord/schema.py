@@ -901,20 +901,29 @@ class Schema(BaseModel):
         `addresses_entity` - what `dims/entity_type/<Type>.parquet` is to a
         component's constant columns, the axis file is to these.
 
-        Never `entity`, whose sole-coordinate attributes are the *component*
-        frame's columns - `dims/entity_type/<Type>.parquet`, one file per type,
-        which is a different destination with a different key.
+        `entity` is one of these axes only where no group declares the type
+        axis: with no type to classify a component into there is no member file
+        for its constant columns, so they live on `dims/entity.parquet` like any
+        other axis's (`entity_type_dim`). Where a group *does* declare the axis
+        this returns `()` for `entity` - the columns are the *component* frame's,
+        `dims/entity_type/<Type>.parquet`, a different destination with a
+        different key.
 
         Keyed off `dims` rather than `coordinates_of`, because a group with one
         coordinate is indistinguishable there: `dims={"connection"}` over a
         single `bus` coordinate also yields `("bus",)`, and it belongs in the
-        group's file rather than on the bus axis.
+        group's file rather than on the bus axis. A group over `entity` alone is
+        keyed by the group name, not `entity`, so its `into` label and any
+        attribute it bundles never match here.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
         """
-        if dim == "entity" or dim not in self.dimensions:
+        if dim not in self.dimensions:
+            return ()
+        if dim == "entity" and self.entity_type_dim is not None:
             return ()
         return tuple(
             a for a, spec in self.attributes.items() if spec.dims == frozenset({dim})

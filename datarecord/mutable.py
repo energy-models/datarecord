@@ -616,10 +616,12 @@ class WorkingRecord(Record):
 
         A declared attribute addressed by one dim alone is a column of that
         dim's axis file rather than a long row, so an edit to it stages an axis
-        row. `attributes_on` is the rule, so `entity` answers None here too: its
-        sole-coordinate attributes are the component frame's columns, which
-        `add` already stages. An undeclared attribute is never one either - only
-        a result is undeclared, and a result is always long.
+        row. `attributes_on` is the rule: `entity` answers with its
+        sole-coordinate attributes where no group declares the type axis - they
+        are columns of `dims/entity.parquet` then - and answers None where one
+        does, those being per-type member columns `add` stages instead. An
+        undeclared attribute is never one either - only a result is undeclared,
+        and a result is always long.
 
         Notes
         -----
@@ -656,14 +658,36 @@ class WorkingRecord(Record):
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        if entity is not None:
+        # `entity=` names labels of *this* axis where `dim` is `entity` - an
+        # untyped record's component columns live here, so `set(attr, v,
+        # entity=[...])` selects the rows to patch, the same names a member-file
+        # edit would (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives). For any other axis `entity` is not a
+        # coordinate, so naming it is the caller error the message describes.
+        if entity is not None and dim != "entity":
             msg = (
                 f"`set({attribute!r}, ..., entity=...)` names components, but "
                 f"{attribute!r} is addressed by {dim!r} alone - it is a column of "
                 f"dims/{dim}.parquet and belongs to no component"
             )
             raise ValueError(msg)
-        if _is_frame(value) or isinstance(value, (list, tuple)):
+        if entity is not None and not isinstance(value, Mapping):
+            # A scalar broadcast to the named labels, or a sequence aligned to
+            # them - the same two forms `set` takes for a long attribute, folded
+            # to the axis's label->value mapping the rest of this method wants.
+            names = list(entity)
+            vals = (
+                list(value)
+                if isinstance(value, (list, tuple))
+                else [value] * len(names)
+            )
+            if len(vals) != len(names):
+                msg = (
+                    f"`set({attribute!r}, <sequence>, entity=...)` has "
+                    f"{len(vals)} values for {len(names)} names"
+                )
+                raise ValueError(msg)
+            value = dict(zip(names, vals, strict=True))
+        elif _is_frame(value) or isinstance(value, (list, tuple)):
             msg = (
                 f"`set({attribute!r}, <sequence>)` has no labels to align to; "
                 f"{attribute!r} is addressed by {dim!r} alone, so pass a mapping "
@@ -790,13 +814,17 @@ class WorkingRecord(Record):
         member frames instead would resolve each type's wide rows - a union and a
         join per type - to read two columns the fold already decided.
 
+        `None` where the schema declares no type axis: there is no `entity_type`
+        column then, no name has a type, and every caller here reads that as "no
+        cross-type question to ask" (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+
         Notes
         -----
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         """
         axis = self.resolver.entity_axis
-        if axis is None:
+        if axis is None or self.schema.entity_type_dim is None:
             return None
         rel = axis.project("entity", "entity_type")
         if rel.limit(1).fetchone() is None:
@@ -1563,30 +1591,36 @@ class WorkingRecord(Record):
         member_cols = [c for c in columns if c not in varying and c not in ports]
 
         rel = as_relation(lazy, self.con)
-        members = self._ensure(_MEMBERS, ctype)
-        self._reject_undeclared(f"add({ctype!r}, ...)", members, member_cols)
+        # Where a group declares the type axis a component's constant columns are
+        # a per-type member file; where none does there is no type to classify
+        # into, so they are columns of the entity axis itself and there is no
+        # member table (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        typed = self.schema.entity_type_dim is not None
+        axis_supplied = {"deleted": lit(False)}  # noqa: FBT003
+        if typed:
+            axis_supplied["entity_type"] = lit(ctype)
+            members = self._ensure(_MEMBERS, ctype)
+            self._reject_undeclared(f"add({ctype!r}, ...)", members, member_cols)
+            self._release_from_other_types(ctype, rel)
+        else:
+            self._reject_undeclared(
+                f"add({ctype!r}, ...)", self._ensure(_ENTITY_AXIS), member_cols
+            )
 
-        self._release_from_other_types(ctype, rel)
-
-        # Two rows for one component, each replacing any this record already
-        # staged for the name: the axis says it exists and of what type, the
-        # member table says what it is. `add` after `remove` of the same name is
-        # thus one row - the tombstone is deleted, not left to be outranked.
-        self._insert(
-            rel,
-            self._ensure(_ENTITY_AXIS),
-            {
-                "entity_type": lit(ctype),
-                "deleted": lit(False),  # noqa: FBT003
-            },
-            key=("entity",),
-        )
-        self._insert(
-            rel,
-            members,
-            {"deleted": lit(False)},  # noqa: FBT003
-            key=("entity",),
-        )
+        # One row per component on the entity axis, replacing any this record
+        # already staged for the name: it says the component exists, of what type
+        # where there are types, and - untyped - carries its constant columns.
+        # `add` after `remove` of the same name is thus one row: the tombstone is
+        # deleted, not left to be outranked. Where typed, a second row goes to
+        # the member table for those constant columns.
+        self._insert(rel, self._ensure(_ENTITY_AXIS), axis_supplied, key=("entity",))
+        if typed:
+            self._insert(
+                rel,
+                members,
+                {"deleted": lit(False)},  # noqa: FBT003
+                key=("entity",),
+            )
         for attribute in varying:
             # Always `inputs`: `add` declares components, and a component's
             # attribute values are inputs whatever a later solve produces.
@@ -1729,23 +1763,29 @@ class WorkingRecord(Record):
         applies it to every attribute. Nor scope it - a component exists or it
         does not, so a deletion removes it whole.
 
-        Staged twice, as `add` writes twice: once on the entity axis, which is
-        what the fold reads, and once in the type's member table, which is what
-        the *writer* derives that axis from when the layer is committed.
+        One row, on the entity axis, which is where membership lives and the only
+        place the fold reads a tombstone from. A member file holds values, never
+        a `deleted` (`_member_columns`), so no second write there keeps step
+        with this one. The axis row carries the type only where a group declares
+        the axis; the delete keys on `entity` alone regardless, so it lands
+        whatever type the `add` named.
 
         Notes
         -----
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
-        self._stage_tombstones(
-            _ENTITY_AXIS,
-            ("entity_type", "entity"),
-            [[ctype, name] for name in names],
-            ("entity",),
-        )
-        self._stage_tombstones(
-            _MEMBERS, ("entity",), [[name] for name in names], ("entity",), ctype
-        )
+        if self.schema.entity_type_dim is not None:
+            self._stage_tombstones(
+                _ENTITY_AXIS,
+                ("entity_type", "entity"),
+                [[ctype, name] for name in names],
+                ("entity",),
+            )
+        else:
+            self._stage_tombstones(
+                _ENTITY_AXIS, ("entity",), [[name] for name in names], ("entity",)
+            )
 
     def add_group(self, group: str, frame: Any) -> None:
         """Stage rows of one declared group from a frame carrying its coordinates.
@@ -1867,9 +1907,9 @@ class WorkingRecord(Record):
     def _collapsed_members(self, ctype: str) -> DuckDBPyRelation | None:
         """One type's staged member rows - a table scan, one per entity.
 
-        A tombstone stays, as it does in the file: the fold reads `deleted` from
-        this file too, so a removal that left no row here would read as a member
-        the layer never mentioned.
+        A member file holds values, never a tombstone (`_member_columns`):
+        membership is the entity axis's, and `remove` writes only there, so this
+        table carries no `deleted` row to keep out.
 
         No cross-type filter. A name this layer gave to another type is not in
         this table at all, `add` having released it (`_release_from_other_types`)
@@ -2114,10 +2154,11 @@ def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
 def _member_columns(schema: Schema, ctype: str) -> dict[str, nw.dtypes.DType]:
     """One type's member columns: the key, and the attributes it alone carries.
 
-    The shape of `dims/entity_type/{ctype}.parquet`. No `entity_type`, which is
-    the file's name and would be a second copy of it. `deleted` stays: the
-    writer derives the entity axis by globbing these files, so a tombstone
-    reaches `dims/entity.parquet` only by being in one of them.
+    The shape of `dims/entity_type/{ctype}.parquet`: `entity` and one column
+    per attribute the type carries, nothing else. No `entity_type`, which is the
+    file's name and would be a second copy of it. No `deleted` either -
+    membership is the entity axis's alone, and a tombstone reaches the fold from
+    `dims/entity.parquet`, never from a member file.
 
     Non-varying and not addressed by a group: a varying attribute is a long row
     and a group's is that group's file, so neither is a column here. That is the
@@ -2136,7 +2177,6 @@ def _member_columns(schema: Schema, ctype: str) -> dict[str, nw.dtypes.DType]:
     }
     return {
         "entity": _column_type(schema, "entity"),
-        "deleted": nw.Boolean(),
         **own,
     }
 
@@ -2175,16 +2215,15 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
     The shape of `dims/{dim}.parquet` for the attributes addressed by `dim`
     alone (`attributes_on`), plus the structural columns an axis file may hold:
     `deleted`, which `_validate_frame` admits on any axis, and `entity_type` on
-    the entity axis.
+    the entity axis where a group declares the type axis.
 
-    `entity_type` on the entity axis whether or not a group declares the axis.
-    Undeclared it is a plain string, because the label is then data rather than
-    a declaration - and it is still the only thing that says which
-    `dims/entity_type/<Type>.parquet` a component's non-varying attributes are
-    in, so a record without it could not reach its own member rows.
-
-    A schema declaring no such axis still produces typed member files, so the
-    column is written unconditionally.
+    `entity_type` on the entity axis only where a group declares the axis. Where
+    none does there is no type to classify a component into, so no member files
+    and no column: `attributes_on("entity")` then returns the component's
+    non-varying columns and they live here, on the entity axis itself. Where a
+    group does declare it the column is `entity_type`, typed by the declaration,
+    and `attributes_on("entity")` is empty - the columns are per-type member
+    files instead.
 
     Notes
     -----
@@ -2194,10 +2233,9 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
     into = schema.entity_type_dim
     classifying = (
         # The column is `entity_type` whatever the dim is called, that being the
-        # name `dims/entity.parquet` carries it under; a declaration types it,
-        # and its absence leaves it a string rather than removing it.
-        {"entity_type": _column_type(schema, into) if into else nw.String()}
-        if dim == "entity"
+        # name `dims/entity.parquet` carries it under.
+        {"entity_type": _column_type(schema, into)}
+        if dim == "entity" and into is not None
         else {}
     )
     return {

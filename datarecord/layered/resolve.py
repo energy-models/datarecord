@@ -716,14 +716,15 @@ def _materialise_dims(
     # columns live in a per-type file, not on the axis, so they are the one
     # membership value that needs materialising beside the axis for a descendant
     # to reach through a closed node (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+    # Only where a group declares the type axis: with no types there are no
+    # per-type files, a component's constant columns being on the entity axis
+    # itself (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+    axis = dims.axes.get("entity")
+    if schema.entity_type_dim is None or axis is None:
+        return
     types = resolved_dir(revision_id) + "dims/entity_type/"
     ensure_local_dir(types)
-    axis = dims.axes.get("entity")
-    live = (
-        set()
-        if axis is None
-        else set(distinct_values(axis, "entity_type", order=False))
-    )
+    live = set(distinct_values(axis, "entity_type", order=False))
     seed_base, above = _base_and_above(sources, con, schema)
     for ctype in live:
         seed = None if seed_base is None else seed_base.entity_types.get(ctype)
@@ -999,12 +1000,17 @@ class Resolver:
     def entity_types(self) -> set[str]:
         """Types with any live component row, from the resolved entity axis.
 
+        Empty where the schema declares no type axis: the axis carries no
+        `entity_type` column then, nothing classifies a component, so there are
+        no types rather than a column of NULLs to distinct
+        (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+
         Notes
         -----
         - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         """
         axis = self.entity_axis
-        if axis is None:
+        if axis is None or self.schema.entity_type_dim is None:
             return set()
         return set(distinct_values(axis, "entity_type", order=False))
 
@@ -1156,11 +1162,27 @@ class Resolver:
         whose component the axis does not carry drops out. `None` where the type
         has no live member.
 
+        Raises
+        ------
+        ValueError
+            Where the schema declares no type axis. There is then no type to be
+            asked for - a component's constant columns are on the entity axis
+            (`axis("entity")`), not in a per-type file - so a call naming one is
+            a caller error rather than an empty answer. `Record.entity_types`
+            iterates an empty mapping there, so nothing reaches this in normal use.
+
         Notes
         -----
         - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
+        if self.schema.entity_type_dim is None:
+            msg = (
+                f"entity_type({ctype!r}) but the schema declares no type axis; a "
+                f"component's constant columns are on the entity axis, read them "
+                f"through axis('entity') (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+            )
+            raise ValueError(msg)
         axis = self.entity_axis
         if axis is None:
             return None

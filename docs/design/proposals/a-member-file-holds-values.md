@@ -1,6 +1,18 @@
 # Proposal: a member file holds values, and nothing else
 
-Status: **Draft** · Drafted 2026-09-02
+Status: **Landed** · Drafted 2026-09-02 · Landed 2026-09-04
+
+> The construct below is now the behaviour. The authoritative account is [the
+> entity axis](../format.md#the-entity-axis), [where a value
+> lives](../format.md#where-a-value-lives) and [the entity-type
+> axis](../schema.md#entity_type-the-axis-of-kinds); this page is kept as the
+> argument that led there. It keys on `entity_type_dim is None` (no group over
+> `entity` alone), leaving a `String`-typed **declared** axis on today's per-type
+> layout — the [open question](#what-it-opens-rather-than-settles) below was
+> resolved that way. `entity_type(ctype)` **raises** where no type axis is
+> declared rather than answering `None`. Cache invalidation on schema change is
+> still not settled: a materialised cache written under the old layout is a
+> rebuild, [as noted below](#the-column-leaves-the-entity-axis-too).
 
 Two claims about `dims/entity_type/<Type>.parquet`, which are one claim: that file holds a type's attribute values, and everything about a component's _existence_ belongs to the [entity axis](../format.md#the-entity-axis).
 
