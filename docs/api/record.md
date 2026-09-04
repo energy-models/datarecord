@@ -1,6 +1,8 @@
 # Record
 
-::: datarecord.record.Record
+::: datarecord.layered.revision.Record
+
+::: datarecord.record.RecordLike
 
 ::: datarecord.record.Frames
 

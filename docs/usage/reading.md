@@ -7,7 +7,7 @@ Everything a consumer codes against. It is read-only, and structural — a plain
 ```python
 record.schema  # what may exist: the axes, the attributes
 record.dims["scenario"]  # axis frames, keyed by dim
-record.components["Generator"]  # wide member rows, keyed by component type
+record.entity_types["Generator"]  # wide member rows, keyed by component type
 record.groups["connection"]  # group rows, keyed by group — one frame each
 record.attributes["p_max_pu"]  # long input frames, keyed by attribute
 record.outputs["p"]  # long result frames, keyed by attribute
@@ -17,7 +17,7 @@ record.flags("Generator")  # which axes each attribute actually uses
 Every frame is a `narwhals.LazyFrame` — a plan, not data. Nothing is read until you `.collect()`, and listing the keys reads nothing at all ([design](../design/record.md#frames)).
 
 ```python
-gens = record.components["Generator"].collect().to_pandas()
+gens = record.entity_types["Generator"].collect().to_pandas()
 ```
 
 ## Wide and long
@@ -53,10 +53,10 @@ The two sets are **not** complements: a dim in both means this type's components
 A parquet directory is a record. Nothing about layers is involved:
 
 ```python
-from datarecord import DirectoryRecord, connect
+from datarecord import Record, connect
 
 con = connect()
-record = DirectoryRecord("s3://bucket/my-record/", con)
+record = Record.at("s3://bucket/my-record/", con)
 record.attributes["p_nom"].collect()
 ```
 

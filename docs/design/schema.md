@@ -32,10 +32,11 @@ class Group(BaseModel):
 
 
 class Trait(BaseModel):
-    """A bundle of attributes, and which entity types carry it."""
+    """A bundle of attributes, and which entity types and components carry it."""
 
     attributes: frozenset[str] = frozenset()
     on: dict[str, frozenset[str]] = {}  # entity-type axis -> the labels it applies to
+    switch: str | None = None  # attribute deciding it per component; joins `attributes`
     description: str | None = None
 
 
@@ -44,6 +45,7 @@ class Schema(BaseModel):
 
     dimensions: dict[str, Dimension]
     attributes: dict[str, AttributeSpec]  # flat: one attribute, one spec
+    results: dict[str, AttributeSpec]  # what a solve computes, governed apart
     groups: dict[str, Group]
     traits: dict[str, Trait]  # the only thing that narrows an attribute to some types
 
@@ -110,6 +112,25 @@ There is no `bus` field: an attribute is a [connection](record.md#connections) a
 
 An attribute naming exactly one addressing coordinate is a column on that thing's own table, and anything more is long rows in `inputs/` — [where a value lives](format.md#where-a-value-lives) is the rule, and it is the schema that decides the file split rather than a writer guessing it.
 
+## Results
+
+`results` is a second mapping of `AttributeSpec`, keyed and shaped exactly like `attributes`.
+What a solve computes is declared, not discovered: a result has a dtype, coordinates and a description like any other attribute, and reading one back needs its dtype as much as an input does — a string-valued result cast as a number is lost to `TRY_CAST` with nothing raised.
+
+It is a **separate mapping rather than a flag** because the two are governed differently at every point a caller touches them.
+A result is written to `outputs/<attr>.parquet`, never [overlays](read-path.md#outputs) a parent's, and may name a component the record does not declare.
+An input meets [`attributes_for`](#traits), which is the per-type vocabulary that validates a `set` and splits `add`'s wide frame; a result meets none of that, and keeping it out of `attributes` is what makes that structural rather than a condition repeated at each site.
+A name in both is rejected: one name is one file with one `value` column, so it is an input or a result and not both.
+
+The questions the long schema asks of a _stored_ attribute — its dtype, its coordinates — span both, since `outputs/` and `inputs/` share a layout.
+Those go through one lookup that consults each in turn.
+
+**A tool declares its results from the same registry it declares its inputs from.**
+PyPSA marks them with `status` starting `"Output"`, so the vocabulary is read rather than kept as a list, and an upgrade that adds a result is picked up.
+That is what keeps declaration from becoming a maintenance burden on the tool: the alternative — a tool attaching whatever its registry produced, unchecked — buys nothing a caller can rely on, since a consumer reading `outputs/` still needs a dtype to read it at.
+
+Results version like inputs ([versioning](#versioning)): removing one, changing its dtype, or narrowing its `dims` makes existing layers unreadable for the same reasons.
+
 ## `entity_type` — the axis of kinds
 
 What kind of thing a component is, declared like any other classification: a [group `into`](#into-a-group-that-classifies) it, over `entity` alone.
@@ -127,7 +148,7 @@ groups = {
 `into` is what says every component carries exactly one type, and being over `entity` alone is what makes this axis _the_ entity-type axis rather than one classification among several. At most one group may be that; a second has no resolved answer for what a component carries.
 An `Enum` dtype pins the vocabulary and makes an unknown type a write-time error; a plain `str` leaves the labels as data, which is the right declaration for a record whose types are not known up front.
 
-**Its rows are the entity axis file**, not a `groups/` file of its own — the one exception to [a file per group](format.md#where-a-value-lives). `dims/entity.parquet` carries `entity_type`, which is [where the format already put it](format.md#entity-is-unique-across-types), and the writer derives it from the per-type member files rather than taking it from a `Record`, so nothing can disagree with itself about which type a component is.
+**Its rows are the entity axis file**, not a `groups/` file of its own — the one exception to [a file per group](format.md#where-a-value-lives). `dims/entity.parquet` carries `entity_type`, which is [where the format already put it](format.md#entity-is-unique-across-types): the axis file a source hands over carries the column, so `entity -> entity_type` is one fact in one place and nothing can disagree with itself about which type a component is.
 
 **It may not address a value alongside the entity.** An attribute naming both `entity` and the type in its `dims` is rejected: `into` declares the type to follow from the entity, so the row is keyed twice over and the two are free to disagree.
 That is [why no attribute row carries the type](format.md#entity-is-unique-across-types), and it is the general rule for [a functional group and what it maps from](#into-a-group-that-classifies) rather than anything particular to types — `country` over `bus` is rejected the same way.
@@ -137,6 +158,7 @@ Its axis file is owned like any other's: outside [`partial`](#partial-the-granul
 Being classified buys it no exemption, and carrying an attribute is no reason to declare it `partial` — that would widen the fold's key with a column no `inputs/` row can carry.
 
 **Entirely optional.** A schema declaring no such axis has components with no types, and everything addressed by `entity` reaches all of them.
+There is then no `entity_type` column on the entity axis and no `dims/entity_type/` at all: a component's non-varying values are columns of `dims/entity.parquet` itself ([where a value lives](format.md#where-a-value-lives)), which is the honest shape of "these components have no kinds" — one file, not one per label an `add` happened to use. [`Record.entity_types`](record.md) is empty, matching `schema.entity_types`.
 A tool that needs types requires the axis in the schema it builds — [PyPSA does](tools.md) — which is where that requirement belongs, not here.
 
 **At most one.** A second dim `on` `entity` is rejected: a component has one type, and two vocabularies over one axis leave `attributes_for` with no resolved answer for what it carries.
@@ -180,6 +202,34 @@ A trait with an empty `on` narrows nothing: it is a bundle for a consumer to dis
 A trait may only name an attribute the schema declares: it says which attributes apply, never what they are, so a name with no spec is a typo rather than a shorthand declaration.
 Two traits bundling one attribute is fine — they resolve to a set — since [one attribute has one spec](#attributespec) and there is nothing left to conflict.
 
+### `switch` — a trait a component opts into
+
+A trait narrows two ways, and both are optional: `on` says which entity types carry it, `switch` names an attribute deciding it per component.
+
+```python
+traits = {
+    "committable": Trait(
+        attributes={"start_up_cost", "min_up_time", "ramp_limit_start_up"},
+        on={"entity_type": {"Generator", "Link"}},
+        switch="committable",
+    ),
+}
+attributes = {
+    "committable": AttributeSpec(dtype="bool", dims={"entity"}, default=False),
+}
+```
+
+The two never interact: `on` first, then `switch`. A trait with neither reaches every component of every type; one with a switch and no `on` reaches the components whose switch is true, whatever their type — which is how a record declaring no types still says that some components are committable and others are not.
+
+**The switch is an ordinary attribute**, `dims: [entity]` exactly, with a `dtype`, a `default` and a place [an attribute over `entity` alone](format.md#where-a-value-lives) already has. `bool` is the dtype the [proposal](proposals/trait-switches.md#which-dtypes) admits; an `Enum` switch selecting among several traits is deferred.
+Its default decides the unset case, and `false` keeps the bundle off every component that predates the trait.
+
+**It joins the trait's `attributes` on its own**, folded in at parse rather than listed by the author, so a consumer asking what `committable` bundles gets the switch with the rest.
+Being in the bundle it would otherwise be narrowed by its own trait, which nothing could then turn on — so it is in `attributes` for discovery and out of the narrowing.
+
+**`attributes_for` is unchanged.** A switched trait's attributes are carried by the type, because the question it answers is which attributes a generator _may_ have; the switch narrows which components carry a _value_, which is a question about data.
+So the switch is a validation and query mechanism rather than a change to the vocabulary. What it is declared for — rejecting a value set on a component whose switch is false, and asking which components a trait reaches — reads the switch column, and neither is wired up yet: the declaration lands first, the [checks that read data](proposals/trait-switches.md#what-it-costs) after. Whether `attributes_for` grows a per-entity counterpart is [open](open-questions.md).
+
 ## Groups
 
 A group declares **which tuples over several dims exist**: a sparse subset of a dim product, with its own order.
@@ -212,9 +262,9 @@ The fold's key therefore does not vary per attribute: [`partial_dims`](#partial-
 A group's file columns are **not declared here.** They are the attributes whose `dims` name exactly this group ([where a value lives](format.md#where-a-value-lives)) — PyPSA's `role` on a connection is `AttributeSpec(dtype="VARCHAR", dims={"connection"})`, declared by [the tool](tools.md) whose vocabulary the word is.
 Declaring them a second time on the `Group` would be two ways to say one thing, disagreeing eventually.
 
-**A group's key coordinate never broadcasts.** A NULL `bus` on a connection attribute means "every connection of this entity", which is [the group's rows](record.md#the-broadcast-rule) rather than the whole bus axis — there is no axis to expand against, only a sparse subset the group's table knows.
-That is why a key coordinate lands in the fold's key and must be declared `partial`, alongside `entity` and for the same reason.
-A functional group's `into` dim is not one of these: it is an ordinary axis whose NULL means "every country" like any other dim's.
+**A group's key coordinate [never broadcasts](record.md#the-broadcast-rule)**, so it is a _membership key_: it lands in the fold's key by being membership, not by being declared `partial`.
+`partial` is for value dims a layer patches per value (see [`partial`](#partial-the-granularity-of-an-override)); a membership key — `entity`, a group's coordinate — is patched per row by every layer already, so naming it `partial` is a category error the schema rejects.
+A functional group's `into` dim is not a membership key: it is an ordinary axis whose NULL means "every country" like any other dim's.
 
 **Connections are one instance**, not a structural category: `Group(over={"entity": "entity", "bus": "bus"})`, with `role` an ordinary attribute over it. `bus` is accordingly one coordinate of one group rather than a column the format fixes, and neither word appears in the record layer — `connection` is whatever a schema calls it, and `role` is [a tool's declaration](tools.md).
 
@@ -323,13 +373,15 @@ partial = {"scenario"}  # timestep absent, so a patch restates the series
 A dim outside `partial` is one a layer owns entirely once it touches it: overriding one timestep of `p_max_pu` means carrying that component's _entire_ series, because a partial series would resolve across two layers and produce a curve with a hole.
 The reason is a consumer's rather than the format's — a framework that splits constant from varying data cannot receive half a series — which is why it belongs to the axis: it is true of every attribute varying over it.
 
-The dims a layer owns an attribute per follow from the two declarations:
+The dims a layer owns an attribute per follow from the declarations:
 
 ```text
-owned_per(attribute) = attribute.dims ∩ schema.partial
+owned_per(attribute) = attribute.dims ∩ partial_dims
+partial_dims         = membership_keys ∪ (broadcast dims ∩ schema.partial)
 ```
 
-So `p_max_pu` is owned per scenario — `timestep` is not partial, so a patch to one hour restates that scenario's whole series; `marginal_cost` per scenario; `p_nom` and `carrier` once, across everything.
+`partial_dims` is the fold key: the membership keys (`entity`, group coordinates — patched per row by every layer) plus the broadcast value dims declared `partial`.
+So `p_max_pu` is owned per entity and per scenario — `timestep` is not partial, so a patch to one hour restates that entity-scenario's whole series; `marginal_cost` per entity and scenario; `p_nom` and `carrier` per entity, once across everything else.
 
 Two things this buys.
 The schema can distinguish `p_max_pu` from `p_nom`, which a dim-level flag cannot: that would say every attribute is owned per scenario, including those a scenario must not change.
@@ -342,11 +394,12 @@ So the declarations constrain and validate; they do not make the key vary per ro
 Outside `partial`, a layer touching an axis restates it whole — every label, with the static attributes attached to them — because a layer holding one label is not saying the others are unchanged but that they are not there: the fold keys by the axis key, so what this layer carries is what the axis has here.
 That is the same "no half-owned extent" rule a series obeys, applied to a set of labels rather than a curve.
 
-**Keep it small.** `partial` is the fold's key, so every entry widens the owner map and the resolution it keys, for every read of every attribute.
-The cost of leaving an axis out is paid once per edit and bounded by the axis; the cost of putting it in is paid by every read forever.
-So it stays what it is for `entity` and a group's coordinate — the dims a layer genuinely patches value by value — rather than growing to cover whatever an axis happens to hold.
+**Keep it small.** Every `partial` value dim widens the fold key, and the key is paid for by every read of every attribute.
+The cost of leaving a value dim out is paid once per edit and bounded by the axis; the cost of putting it in is paid by every read forever.
+So `partial` names only the broadcast value dims a layer genuinely patches value by value — `scenario`, not `timestep`.
+The membership keys are in the key already, by being membership; `partial` neither adds nor may name them.
 
-The [entity-type axis](#entity_type-the-axis-of-kinds) is the case that tests this: it carries an attribute and is exempt from `partial`, and it still restates whole rather than earning an exception.
+The [entity-type axis](#entity_type-the-axis-of-kinds) carries an attribute yet is neither `partial` nor a membership key: its labels are a column of `dims/entity.parquet`, not an addressable coordinate, so it restates whole like any non-`partial` axis and stays out of the fold key.
 
 ## One schema per record
 
@@ -368,6 +421,10 @@ The cost is that adding an attribute amends the root schema rather than shipping
 That is the right trade: a new attribute is a schema change, and one buried several layers deep is exactly what should be visible.
 
 A layer directory therefore holds only data, which is what keeps it a plain parquet directory readable by a tool that knows nothing about layering.
+
+Which of the two a directory is decides what it is read under. A **standalone** record carries its own `manifest.json`, so `Record.at(uri)` reads that file and the record answers the same through any connection — it is one whole record, and may well be opened from somewhere that knows nothing about it. A single **layer** directory carries none, so it is read under the connection's root, which is the tree it belongs to.
+
+An edit changes neither. A [`WorkingRecord`](working-record.md) is one more layer over its base, and a layer declares nothing — so it reads under whatever its base's schema is, standalone or not. A staging area that could redeclare would be the layered-schema case above, arriving by a different door.
 
 ## Versioning
 

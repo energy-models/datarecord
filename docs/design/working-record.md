@@ -26,8 +26,6 @@ class WorkingRecord:
     def add_group(self, group: str, frame: IntoFrame) -> None: ...
     def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None: ...
 
-    @property
-    def pending(self) -> Pending: ...
     def commit(self, target: Target) -> Any: ...  # the new child, for NewChild
     def rollback(self) -> None: ...
 ```
@@ -54,12 +52,12 @@ Two properties follow from accumulate-then-commit, and both are the point:
 
 Each edit maps onto exactly one part of the format:
 
-| edit                        | writes                                                                                        | key it targets                  |
-| --------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------- |
-| set an attribute on a group | `inputs/<attr>.parquet` rows                                                                  | `(*partial dims, attribute)`    |
-| add components              | `dims/entity.parquet` and `dims/components/` rows, plus `inputs/` rows for varying attributes | `entity`                        |
-| remove components           | a `deleted = true` tombstone on the entity axis                                               | `entity`                        |
-| add_group / remove_group    | `groups/<group>.parquet` rows and tombstones                                                  | the group's own key coordinates |
+| edit                        | writes                                                                                         | key it targets                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------- |
+| set an attribute on a group | `inputs/<attr>.parquet` rows                                                                   | `(*partial dims, attribute)`    |
+| add components              | `dims/entity.parquet` and `dims/entity_type/` rows, plus `inputs/` rows for varying attributes | `entity`                        |
+| remove components           | a `deleted = true` tombstone on the entity axis                                                | `entity`                        |
+| add_group / remove_group    | `groups/<group>.parquet` rows and tombstones                                                   | the group's own key coordinates |
 
 `add_group` names no component type: a group's rows are keyed by its coordinates and the type is not one of them, so there is nothing for it to scope ([where the rows live](format.md#where-a-value-lives)).
 Nor is there a `connect`/`disconnect` pair beside it — `connection` is one group among however many the schema declares, and a call naming it would be the record layer holding one framework's vocabulary.
@@ -183,15 +181,15 @@ Nothing on disk is mutated, and [write-once](layers.md#a-layers-data-is-write-on
 
 Two things differ from an input edit, both following from [outputs](read-path.md#outputs):
 
-- **No schema check on the attribute name.**
-  A result attribute is not schema-declared — [`Tool.results`](tools.md) derives which attributes count as results from the framework's own registry, and [`write_record`](writing.md) persists `outputs/` without consulting the schema.
-  So an unknown attribute name is an error for an input and simply unknowable for a result.
-  The dim vocabulary is still checked for both.
+- **The name is checked against `results`, not `attributes`.**
+  A result attribute is [declared](schema.md#results) in its own vocabulary, so an unknown name is an error exactly as it is for an input — what differs is which mapping answers.
+  A tool reads its result vocabulary off the same registry it reads its inputs from, so declaring them costs it no list of its own: PyPSA's `status` field marks them, and the [tool](tools.md) forwards what it finds.
+  The dim vocabulary is checked for both, and a result's coordinates are its own rather than every declared dim.
 - **No membership check on `entity`.**
   An input value for a name no layer declares is [rejected](#validation), because it would resolve to nothing.
   A result may legitimately name a component the record never declared: PyPSA's `SubNetwork` exists only after a solve, so rejecting it would refuse a real result.
   This is also what makes a result's name need no resolvable type: an input's type comes from [looking the name up](#set), and a result that declares no member has nothing to look up.
-- **No `_restated` completion at commit.**
+- **No extent completion when staged.**
   Results are complete as produced rather than [a partial override of a parent's](schema.md#partial-the-granularity-of-an-override), so there is nothing to carry forward from the base.
 
 Keeping results coherent with the inputs they were computed from is the caller's business.
@@ -225,19 +223,19 @@ Omitting `entity` is how "all" is spelled.
 ## `add` / `remove`
 
 ```python
-record.add("Generator", frame)  # wide, in dims/components/ shape
+record.add("Generator", frame)  # wide, in dims/entity_type/ shape
 record.remove("Generator", ["old_coal"])
 ```
 
-`add` takes a wide frame and splits it: attributes addressed by `entity` alone stay in `dims/components/`, ones varying beyond it become `inputs/` rows, and ones addressed by a [group](schema.md#groups) go to that group's table — per [where a value lives](format.md#where-a-value-lives).
+`add` takes a wide frame and splits it: attributes addressed by `entity` alone stay in `dims/entity_type/`, ones varying beyond it become `inputs/` rows, and ones addressed by a [group](schema.md#groups) go to that group's table — per [where a value lives](format.md#where-a-value-lives).
 Which is which comes from the schema, so `add` needs no framework registry.
-A column the schema does not name is written to `dims/components/` unchanged.
+A column the schema does not name is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column and no reader that would know what it means. A tool that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
 
 `add` keeps its `ctype` argument where `set` loses it: this is the call that _establishes_ what a name's type is, so there is nothing yet to [look it up in](format.md#entity-is-unique-across-types).
 It is also where uniqueness is enforced — a name the record already resolves, under this type or any other, is rejected here rather than at commit, so the collision is [reported at the line that introduces it](#validation).
 
 It is **not** a sequence of `set` calls, even though the varying columns it stages take the same path a `set` would.
-`set` writes `inputs/` rows only, and a component exists by virtue of its `dims/components/` row: staging attribute values for a name no layer declares is precisely what [validation](#validation) rejects.
+`set` writes `inputs/` rows only, and a component exists by virtue of its `dims/entity_type/` row: staging attribute values for a name no layer declares is precisely what [validation](#validation) rejects.
 Adding a bus with no attributes makes the point — nothing to `set`, yet the bus must exist.
 Membership is not reducible to attribute values.
 
@@ -260,28 +258,6 @@ The one staging path every declared [group](schema.md#groups) writes through. Th
 `add`'s own port-splitting calls `add_group` too, but only for a group whose **key** includes `entity` — the case where a row describes one of the component's own group memberships (`bus`, for `connection`).
 A group like `corridor`, relating two entities neither of which is "the" one being added, has no such row to derive from a single component's wide frame and is staged through `add_group` directly.
 
-## `pending`
-
-```python
-@dataclass(frozen=True)
-class Pending:
-    attributes: Mapping[str, int]  # attribute -> staged row count
-    components: Mapping[str, int]  # component type -> count
-    groups: Mapping[str, int]  # group -> count
-    tombstones: Mapping[str, int]
-
-    def __bool__(self) -> bool: ...
-```
-
-A **derived summary, not a second place rows live**: the counts are aggregates over [the staging tables](#staging), computed on access and discarded — a `GROUP BY` for the component kinds, a `count(*)` per group, and one per attribute table, which is already keyed by the attribute.
-There is one staging layer and it is in DuckDB, so a hundred-thousand-row edit yields a `Pending` of a few integers.
-
-`groups` is keyed by **group**, so a record declaring a second [group](schema.md#groups) is counted rather than silently omitted — a field named `connection` could only ever report the one group it named.
-Not by component type below that: the type is no coordinate of a group ([where the rows live](format.md#where-a-value-lives)).
-A group with nothing staged is absent rather than present-and-empty, matching how the other three read.
-
-`tombstones` is keyed by whatever identifies what was deleted — a component's by its type, a group row's by its group, that being all its rows are keyed by.
-
 ## Committing
 
 ```python
@@ -302,7 +278,8 @@ Target = NewChild | Directory
 The two write different things.
 A `NewChild` writes **only the edits** — that is what a patch layer is, and the fold resolves the rest from the parent.
 A `Directory` writes **the resolved result**, since there is no parent to resolve against.
-Both go through [`write_record`](writing.md), which is possible because each reading is presented as a `Record` — the one place the protocol's several implementations earn it twice over.
+Both go through [`write_record`](writing.md), which takes a [`LayerData`](record.md#layerdata): a `NewChild` hands it the staged layer's own source, a `Directory` the resolver that folds base and staged into one — the two objects a `WorkingRecord` already holds, one meaning "my layer's rows" and the other "everything folded to here", answering the same interface.
+The writer cannot tell which it was handed, which is the point: "enumerate what I hold, hand each over" is one contract whether "what I hold" is a single layer or a whole fold.
 
 An edited axis follows [`partial`](schema.md#partial-the-granularity-of-an-override), exactly as an attribute's rows do.
 A `partial` axis is patched label by label: the layer holds the labels the edit touched, and the fold resolves the rest from the parent, last-writer-wins per [axis key](record.md#axis-order).
@@ -310,8 +287,7 @@ An axis **outside** `partial` is owned whole once touched, so the layer restates
 The fold would resolve the narrower form correctly, since it keys per label and an omitted one keeps its parent's row; what ownership buys is that a layer's axis file says what the axis _is_ there, rather than being readable only against its parent.
 A `Directory` writes the resolved axis whole either way, and an axis nothing touched is written by neither.
 
-That is the reason not to reach for `partial` when an axis gains an attribute: it is the fold's key, so every entry widens the owner map and the resolution it keys.
-The cost of leaving an axis out is restating it on edit, which is bounded by the axis; the cost of putting it in is paid by every read.
+Restating on edit is what an axis outside `partial` costs, and it is [the cheaper side of that trade](schema.md#partial-the-granularity-of-an-override) — which is the reason not to reach for `partial` when an axis merely gains an attribute.
 
 Neither carries the **base's** results across.
 An edit changes the inputs a result was computed from, so a parent's `outputs/` says nothing about the child — results belong to the node that was solved, and a node with different inputs is a different node.
@@ -319,23 +295,28 @@ An edit changes the inputs a result was computed from, so a parent's `outputs/` 
 What a commit does carry is results **staged into this record** through [`set(..., kind="outputs")`](#results-through-kindoutputs).
 Those were computed against these pending inputs, so they describe exactly the layer being written, and both readings write them: a `NewChild` layer holds its edits and the results computed from them together.
 
-Staged rows are appended, never updated, so the same coordinate may be staged repeatedly.
-Commit collapses to last-write-wins per coordinate, which is what `ROW_NUMBER() OVER (PARTITION BY <coordinate> ORDER BY _seq DESC) = 1` gives when every staged row carries a monotonic `_seq`.
+An edit **replaces the rows it names** rather than appending beside them: it deletes the rows at the coordinate it writes and inserts the new ones, so a staging table holds one row per coordinate and no fold is needed to read it.
+The key it replaces on is the coordinate — the same one a read would have collapsed — so the delete removes exactly what a last-writer-wins fold would have discarded.
+An axis is the exception in mechanism, not in effect: an axis row's columns are independently editable, so a `set` there patches its one column in place (`UPDATE`) rather than replacing the row, which is what keeps a sibling attribute a different `set` wrote.
 
-Per **coordinate**, not per ownership key: the ownership key excludes the dims an attribute is [not owned per](schema.md#partial-the-granularity-of-an-override), so partitioning on it would collapse a whole staged series into one row — two edits at different snapshots are two coordinates, not two writes to the same place.
+Per **coordinate**, not per ownership key: the ownership key excludes the dims an attribute is [not owned per](schema.md#partial-the-granularity-of-an-override), so replacing on it would drop a whole staged series to one row — two edits at different snapshots are two coordinates, not two writes to the same place.
 The same distinction governs [the read overlay](#reading-with-pending-edits) and the restate below, and it is the one thing easy to get wrong here.
 
-Three interactions need stating, because each is where a naive append is wrong:
+Three interactions need stating, because each is where replacing by coordinate alone is not the whole story:
 
-- **`remove` after `set`** on the same component: the tombstone wins regardless of sequence, since a deleted component has no attributes.
-  Commit drops staged attribute rows for tombstoned keys.
+- **`remove` after `set`** on the same component: the tombstone wins, since a deleted component has no attributes.
+  A component tombstone reaches another file's rows, so it stays an anti-join at read and commit rather than a replace — the attribute rows are keyed by coordinate, the tombstone by name.
 - **`add` after `remove`** of the same name: the component exists again.
-  Commit must not write both a member row and a tombstone — the later operation wins.
+  The entity axis replaces on `entity` alone, so the `add` row displaces the tombstone by construction — no member row and tombstone both.
 - **`set` on a component this record also added**: correct as-is, since the two live in different files.
 
 The [non-`partial` rule](schema.md#partial-the-granularity-of-an-override) is the subtle one.
-Overwriting one value along a non-partial axis means the layer must carry that component's _whole_ extent along it, so such a `set` must at commit read the resolved series for that key and write it out complete.
-That is the one commit-time read of parent data.
+Overwriting one value along a non-partial axis means the layer must carry that component's _whole_ extent along it, so such a `set` reads the resolved series for that key and stages the untouched coordinates alongside the edit.
+That is the one read of parent data an edit makes, and it happens as the rows are staged rather than at commit: the staging table then already holds what the layer will write, so commit collapses and writes it without a completion step of its own.
+
+The scope is the key the edit named, never the attribute: a component no edit mentioned keeps its rows in the parent, and a layer carrying them would claim an extent it was never given.
+A staged row that leaves the axis NULL is the exception, since [the broadcast rule](record.md#the-broadcast-rule) already makes it cover every label — there is nothing left to carry, and a carried row beside it would overlap.
+Carried rows go in only where no edit already holds the coordinate, so a later `set` on a carried coordinate replaces the fill rather than tying with it — the anti-join that keeps a fill off an occupied coordinate is the whole of what orders the two.
 
 ## Validation
 
@@ -351,11 +332,14 @@ The membership read this needs is the one [`set`](#set) already performs, so der
 Staged rows live in DuckDB tables on the record's own connection:
 
 ```sql
-CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>, _seq BIGINT);  -- no entity_type
-CREATE TABLE staged_outputs_<attr>_<id>  (<that attribute's long columns>, _seq BIGINT);
-CREATE TABLE staged_components_<id>      (<component columns>, deleted BOOLEAN, _seq BIGINT);
-CREATE TABLE staged_<group>_<id>         (<group coordinates>, ..., deleted BOOLEAN, _seq BIGINT);
+CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>);  -- no entity_type
+CREATE TABLE staged_outputs_<attr>_<id>  (<that attribute's long columns>);
+CREATE TABLE staged_axis_<dim>_<id>      (<the axis key>, ..., deleted BOOLEAN);
+CREATE TABLE staged_members_<Type>_<id>  (entity, deleted BOOLEAN, <that type's columns>);
+CREATE TABLE staged_<group>_<id>         (<group coordinates>, ..., deleted BOOLEAN);
 ```
+
+**Every table is shaped like the file it becomes**, which is the rule the rest of this section is consequences of. So there is no table whose columns are a union over things the format keeps apart, and a column the schema does not declare has nowhere to go — [`add`](#add-remove) rejects one rather than widening a table to fit it, there being no declared dtype to give it.
 
 **One table per staged attribute**, because that is the file it becomes: its columns are [the attribute's own coordinates](format.md#the-long-schema) and `value` has the attribute's declared type.
 A shared table would have to widen `value` to text and carry every declared dim, which costs twice: the value needs casting back on the way out, and a NULL in a dim column becomes ambiguous between "this attribute has no such axis" and [the broadcast rule](record.md#the-broadcast-rule)'s "every value of it".
@@ -365,16 +349,22 @@ A result the schema never declares has no declared type to take; the table recor
 
 One staging table per declared [group](schema.md#groups), mirroring [the maps the fold builds](read-path.md#owner-map): `connection` is one instance, so a record declaring a second group stages it through the same path rather than a second method.
 
-The staged rows are [the format's own rows](#the-shape-of-an-edit), so a staged long table loses `entity_type` exactly as `inputs/` does, and the entity tables keep it.
+**One table per entity type, and one more for the axis**, mirroring the two files the format keeps apart: `dims/entity_type/<Type>.parquet` holds a type's own columns, and [`dims/entity.parquet`](format.md#the-entity-axis) holds membership. A single table for every type would have to carry the union of their columns, so a `Bus` frame would land a `Generator`'s `p_nom` as a NULL column of the `Bus` file — the same reason the format partitions them.
 
-These tables are the **only** place a staged row exists: `pending` counts them and [the reads](#reading-with-pending-edits) fold them, neither holding a copy.
+So `add` writes two rows for one component, and `remove` two tombstones: the axis says a name exists and of what type, the member table says what it is. Both replace on `entity`, being one edit, so re-adding or removing a name displaces its earlier row rather than stacking beside it.
 
-DuckDB rather than in-memory objects, for three reasons that all matter: the reads are already a fold, so staging elsewhere would mean marshalling every edit into a relation on every read; a large edit is a bulk insert rather than ten thousand Python objects; and commit becomes one window-function query whose result `write_record` consumes unmaterialised.
+The **entity axis is staged as an axis**, `staged_axis_entity_<id>` like any other dim, and reaches [the fold](read-path.md) as `axis("entity")` with no special case. What differs is only how an edit keys it: an ordinary axis patches a column in place, so two `set` calls on one label commute; membership replaces on `entity` alone, so a `remove` under one type and an `add` under another resolve to one row rather than merging into a component that is both a `Bus` and deleted.
+
+The staged rows are [the format's own rows](#the-shape-of-an-edit), so a staged long table loses `entity_type` exactly as `inputs/` does, and the entity axis keeps it.
+
+These tables are the **only** place a staged row exists: [the reads](#reading-with-pending-edits) read them rather than holding a copy.
+
+DuckDB rather than in-memory objects, for three reasons that all matter: the reads are already a fold, so staging elsewhere would mean marshalling every edit into a relation on every read; a large edit is a bulk insert rather than ten thousand Python objects; and commit hands each table to `write_record` as the file it already is, no collapse in between.
 
 Connection-scoped, like the owner-map cache, so they vanish with the connection and never appear on disk.
 A record whose edits must survive a process boundary should commit.
 
-`_seq` is assigned per edit call, not per row, so an edit's rows collapse together and edit order is what last-write-wins means.
+An edit **replaces** what it names rather than appending, so a table holds one row per key and reading it is a scan — no ordering column, and edit order is just which edit ran last.
 
 ## Reading with pending edits
 
@@ -387,9 +377,11 @@ So the reads compose the same way: the staged rows are the last layer, resolved 
 resolved = fold(parent layers..., staged rows)
 ```
 
-For a layered mutable record this is exactly one more fold step over the same [owner-map machinery](read-path.md#owner-map), with the staging tables standing in for a layer directory.
-It costs what one more layer costs.
-`flags` follows: a staged edge setting a dim adds it to `varies`, one leaving it NULL adds it to `broadcast`, and a staged curve sets `breakpoints` — unioned with the underlying answer.
+This is exactly one more fold step over the same [owner-map machinery](read-path.md#owner-map), with the staging tables standing in for a layer directory — over a layered base or a plain directory alike, a directory being a layer laid out like any other.
+It costs what one more layer costs, **per read**: a written layer is folded once and cached forever, and the staged one cannot be, being the only layer that can still change.
+So the fold is materialised up to the last layer that cannot change under the reader, and the staged step on top of it stays a relation — which is also why an edit needs no invalidation, there being nothing cached to invalidate.
+
+`flags` follows for free, computed in the fold's own ownership `GROUP BY` as it is for any layer: a staged row setting a dim adds it to `varies`, one leaving it NULL adds it to `broadcast`, and a staged curve sets `breakpoints`.
 It says nothing about an attribute addressed by one axis alone, being keyed per component type; `dims` is where that value is read from, staged edits included, and [`Schema.attributes_on`](format.md#where-a-value-lives) is what names the columns an axis frame carries.
 
 `dims` overlays per column rather than per row: a staged label's edited columns win, and a label the edit did not name keeps the base's whole row.

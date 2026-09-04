@@ -37,7 +37,7 @@ from datarecord import DirectoryRecord, connect
 con = connect()
 record = DirectoryRecord("s3://bucket/my-record/", con)
 
-record.components["Generator"].collect()  # wide member rows
+record.entity_types["Generator"].collect()  # wide member rows
 record.attributes["p_max_pu"].collect()  # long value rows, one per value
 record.flags("Generator")  # which axes each attribute uses
 ```

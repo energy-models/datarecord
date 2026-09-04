@@ -9,11 +9,14 @@ Notes
 
 import shutil
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 from datarecord import Revision
 from datarecord.duck import layer_dir, resolved_dir, union_all_by_name
+from datarecord.layered.sources import DirectorySource, LayerSource, ParquetLayer
+from datarecord.schema import Schema
 from tests.fixtures import export_network, tombstone, write_input
 
 
@@ -61,23 +64,32 @@ def test_union_all_by_name_fills_a_missing_column_with_null(con):
 def keys(revision, con):
     """The inputs map's keys: `(name, attribute)`, no type.
 
+    The map is tombstone-pruned in the fold (`fold_inputs` anti-joins each
+    membership's deletions), so a key whose component or group tuple was deleted
+    is already gone from it - the read needs no further gating.
+
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    df = revision.node_cache.inputs.df()
+    df = revision.resolver.inputs.df()
     return {(r["entity"], str(r.attribute)) for _, r in df.iterrows()}
 
 
-def component_names(revision):
-    return set(revision.node_cache.components.df()["entity"])
+def entity_names(revision):
+    return set(revision.resolver.entity_axis.df()["entity"])
 
 
 def test_root_map_is_its_own_layer(con, parent):
-    """Every key of a root's map points at the root itself."""
-    om = parent.node_cache
+    """Every key of a root's inputs map points at the root itself.
+
+    The entity axis has no `layer_uuid` - it folds like an axis, its winning row
+    the whole row in one file (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+    """
+    om = parent.resolver
     assert set(om.inputs.df()["layer_uuid"]) == {parent.id}
-    assert set(om.components.df()["layer_uuid"]) == {parent.id}
+    assert "layer_uuid" not in om.entity_axis.columns
     assert ("Manchester Wind", "p_max_pu") in keys(parent, con)
 
 
@@ -89,13 +101,16 @@ def test_materialise_writes_the_map_under_resolved(con, parent):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     assert Path(resolved_dir(parent.id), "owner_map", "inputs.parquet").exists()
-    assert Path(resolved_dir(parent.id), "owner_map", "components.parquet").exists()
+    # The entity axis folds like an axis now, materialised under `dims/`, not as
+    # an owner map (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+    assert Path(resolved_dir(parent.id), "dims", "entity.parquet").exists()
+    assert not Path(resolved_dir(parent.id), "owner_map", "entities.parquet").exists()
     # The cache shares the record's directory but stays out of the layer's own
     # namespace, so a reader that knows nothing about layering still sees a
     # plain parquet directory: every glob into a layer is single-level, so nothing
     # under `resolved/` is reachable by one (https://energy-models.github.io/datarecord/design/layers/#deletion).
     assert not Path(layer_dir(parent.id), "owner_map").exists()
-    # The globs the fold and `DirectoryRecord` actually use must not reach a
+    # The globs the fold and `Record.at` actually use must not reach a
     # cached file.
     layer = Path(layer_dir(parent.id))
     reachable = {
@@ -121,7 +136,7 @@ def test_last_writer_wins_per_key(con, parent):
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
-    df = child.node_cache.inputs.df()
+    df = child.resolver.inputs.df()
 
     def owner_of(name, attr):
         sel = df[(df["entity"] == name) & (df["attribute"].astype(str) == attr)]
@@ -141,12 +156,12 @@ def test_tombstone_removes_all_attributes(con, parent):
     """
     before = {k for k in keys(parent, con) if k[0] == "Norway Gas"}
     assert len(before) > 1
-    assert "Norway Gas" in component_names(parent)
+    assert "Norway Gas" in entity_names(parent)
 
     child = parent.child()
     tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
     assert not {k for k in keys(child, con) if k[0] == "Norway Gas"}
-    assert "Norway Gas" not in component_names(child)
+    assert "Norway Gas" not in entity_names(child)
 
 
 def test_live_fold_is_cached_per_connection(con, parent):
@@ -161,16 +176,13 @@ def test_live_fold_is_cached_per_connection(con, parent):
     - [open questions](https://energy-models.github.io/datarecord/design/open-questions/)
     """
     child = parent.child()
-    om = child.node_cache
+    om = child.resolver
     om.inputs.fetchall()
-    om.components.fetchall()
-    for table in (
-        f"owner_map_inputs_{child.id.hex}",
-        f"owner_map_components_{child.id.hex}",
-    ):
-        assert con.execute(
-            "SELECT 1 FROM duckdb_tables() WHERE table_name = ?", [table]
-        ).fetchone()
+    # Only `inputs` keeps an owner-map table; the entity axis folds like an axis.
+    assert con.execute(
+        "SELECT 1 FROM duckdb_tables() WHERE table_name = ?",
+        [f"owner_map_inputs_{child.id.hex}"],
+    ).fetchone()
 
 
 def test_materialising_does_not_change_the_map(con, parent):
@@ -216,6 +228,37 @@ def test_a_removed_cache_falls_back_to_the_fold(con, parent):
     assert keys(fresh, con) == expected
 
 
+def test_a_materialised_node_reads_the_same_as_an_unmaterialised_one(con, parent):
+    """The invariant the base/source split protects: a value read through a
+    materialised ancestor equals the same value re-folded from the own layers.
+
+    `parent` is materialised, so the child's fold seeds from `resolved/`. Removing
+    that cache forces the fold to walk the parent's own layer instead - a
+    different code path to the same answer, which is the whole point of the seed
+    standing for the fold above it.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
+    """
+    child = parent.child()
+    write_input(
+        layer_dir(child.id),
+        "p_max_pu",
+        [{"entity": "Manchester Wind", "value": 0.42}],
+    )
+
+    def read() -> list[str]:
+        rel = Revision.get(child.id, con).resolver.attribute("p_max_pu")
+        return sorted(repr(r) for r in rel.df().itertuples(index=False))
+
+    seeded = read()
+    shutil.rmtree(Path(resolved_dir(parent.id)))
+    refolded = read()
+    assert refolded == seeded, "the seed carries the fold above it"
+
+
 def test_any_node_may_be_a_parent(con, parent):
     """A layer is write-once, so no node needs preparing to branch from.
 
@@ -232,7 +275,7 @@ def test_any_node_may_be_a_parent(con, parent):
     grandchild = child.child()
     # The child was never materialised, yet its layer resolves for the
     # grandchild all the same.
-    df = grandchild.node_cache.inputs.df()
+    df = grandchild.resolver.inputs.df()
     row = df[(df["entity"] == "Manchester Wind") & (df["attribute"] == "p_max_pu")]
     assert set(row["layer_uuid"]) == {child.id}
 
@@ -266,6 +309,68 @@ def test_a_record_with_no_manifest_folds(con, base_uri):
     revision = Revision.create(con)
     assert revision.record.schema.dims == ()
 
-    inputs = revision.node_cache.inputs
+    inputs = revision.resolver.inputs
     assert "varies" in inputs.columns
     assert inputs.fetchall() == []
+
+
+def test_a_parquet_layer_locates_a_layers_files(base_uri):
+    """The fold names files and the source says where they are.
+
+    `layer_dir` is what a `ParquetLayer` derives from, so this pins the seam
+    rather than the layout: a reader asks for `inputs/p_nom.parquet` and never
+    builds the path itself.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    """
+    revision_id = uuid4()
+    source = ParquetLayer(revision_id, Schema())
+    assert isinstance(source, LayerSource), (
+        "structural, so no import is needed to be one"
+    )
+
+    assert source.uri() == layer_dir(revision_id), "empty is the layer root"
+    assert source.uri("inputs/p_nom.parquet") == (
+        layer_dir(revision_id) + "inputs/p_nom.parquet"
+    )
+    # A glob is a path like any other: the source neither parses nor validates.
+    assert source.uri("inputs/*.parquet").endswith("inputs/*.parquet")
+
+
+def test_a_parquet_layer_takes_the_base_it_was_given(tmp_path):
+    """Two records on two roots locate their layers apart, as `layer_dir` does."""
+    revision_id = uuid4()
+    root = str(tmp_path / "elsewhere")
+    assert ParquetLayer(revision_id, Schema(), base_uri=root).uri(
+        "dims/entity.parquet"
+    ) == (layer_dir(revision_id, root) + "dims/entity.parquet")
+
+
+def test_a_directory_source_derives_its_layer_id_from_where_it_is():
+    """A directory has no revision to be stamped with, so its location is its identity.
+
+    Derived rather than allocated, which is what makes it the *same* layer in
+    every process and every reader - the fold keys a source by UUID, and a
+    per-reader one would make two readings of one directory disagree about
+    which layer they are reading. `uuid5` is what pins that across processes; a
+    stable-per-process id would pass an in-process comparison and still be
+    wrong for a materialised map read back later.
+
+    Notes
+    -----
+    - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
+    """
+    a = DirectorySource("/records/one/", Schema())
+    assert a.layer_id == DirectorySource("/records/one/", Schema()).layer_id, (
+        "same place"
+    )
+    assert a.layer_id != DirectorySource("/records/two/", Schema()).layer_id, (
+        "different place"
+    )
+    # The literal value, so the derivation cannot drift silently: a layer id
+    # that changed between versions would orphan every materialised map naming
+    # the old one.
+    assert str(a.layer_id) == "dbc5401e-335a-506d-89db-395e6ea37662"
+    assert isinstance(a, LayerSource), "structural, with `layer_id` a property"

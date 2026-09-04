@@ -19,7 +19,7 @@ A record exposes seven things:
 ```text
 record.schema        what may exist: the axes, the attributes
 record.dims          the axes themselves, keyed by dim
-record.components    members, keyed by component type
+record.entity_types  members, keyed by entity type
 record.groups        which tuples exist, keyed by group then component type
 record.attributes    the values, keyed by attribute name
 record.outputs       results, keyed by attribute name
@@ -31,14 +31,13 @@ That is the [`Record` protocol](record.md), and [The Record protocol](record.md)
 A component's `entity` identifies it **across every type**: names are unique record-wide, not per type ([entity is unique across types](format.md#entity-is-unique-across-types)).
 That is why the values are keyed by attribute and not by type — an attribute row names a component and nothing more, and a component's type is something the record knows about it rather than part of its address.
 
-There are several implementations for storing a record:
+`Record` is the one class that answers all of this, and it is the narwhals interface over a fold across layers:
 
-- **`DirectoryRecord`** — one parquet directory.
-  What the files hold is what it presents.
-- **`LayeredRecord`** — a tree of layers, each adding a partial record on top of its parent, resolved last-writer-wins.
-  No single directory is the record; the answer is the fold across them.
-- **[`WorkingRecord`](working-record.md)** — a record plus pending edits, held in memory and not yet written anywhere.
-- **A framework's own object** — a PyPSA `Network` presenting itself as a record, without depending on this package at all.
+- **A tree of layers**, each adding a partial record on top of its parent, resolved last-writer-wins. No single directory is the record; the answer is the fold across them. `Revision.record` gives one.
+- **One parquet directory**, via `Record.at(uri)` — folded over the single layer it is, which [degenerates to a scan of it](read-path.md#one-record-over-one-fold). Not a second implementation.
+- **[`WorkingRecord`](working-record.md)** — a `Record` whose last layer is a staging area, so pending edits read back before anything is written.
+
+`RecordLike` is the protocol all of these satisfy, and so does **a framework's own object** — a PyPSA `Network` presenting itself as a record, without depending on this package at all.
 
 A consumer cannot tell which it holds, so a framework reads a hundred-layer overlay through the same call it would use for a single directory.
 
@@ -48,7 +47,7 @@ A framework consumes a record, a workflow engine produces one, and neither needs
 
 ## Scope
 
-- **In scope:** the [`Record` protocol](record.md) (the definition) and [`WorkingRecord`](working-record.md); the [parquet format](format.md) that stores it; [the schema](schema.md); [overlay resolution](layers.md) and its [owner map](read-path.md#owner-map); [the write path](writing.md); [how the two shipped implementations differ](read-path.md#what-differs-between-the-implementations).
+- **In scope:** the [`Record` protocol](record.md) (the definition) and [`WorkingRecord`](working-record.md); the [parquet format](format.md) that stores it; [the schema](schema.md); [overlay resolution](layers.md) and its [owner map](read-path.md#owner-map); [the write path](writing.md); [why one directory needs no second implementation](read-path.md#one-record-over-one-fold).
 - **Out of scope:** a non-DuckDB implementation (the protocol permits one, see [the protocol names no engine](record.md#the-protocol-names-no-engine), but only DuckDB-backed ones are provided); concurrent writers to one record; unmaterialised/meta layers.
 
 ## The pages

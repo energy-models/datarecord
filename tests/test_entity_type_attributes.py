@@ -50,7 +50,7 @@ def typed_schema():
         # map and the resolution it keys, so it is kept to what a layer really
         # patches value by value. A layer touching one type's icon therefore owns
         # the whole type axis and restates it.
-        partial=frozenset({"entity"}),
+        partial=frozenset(),
     )
 
 
@@ -129,7 +129,9 @@ def test_a_child_layer_restates_the_type_axis_it_owns_whole(root, con):
     staged = WorkingRecord(root.record, con)
     staged.set("icon", {"Generator": "windmill"})
 
-    patch = staged.staged_only().dims["entity_type"].collect().to_native()
+    axis = staged.resolver.sources[-1].axis("entity_type")
+    assert axis is not None
+    patch = axis.df()
     assert sorted(str(t) for t in patch["entity_type"]) == ["Bus", "Generator"], (
         "the whole axis, not just the edited label"
     )
@@ -149,7 +151,7 @@ def test_an_enum_label_the_dtype_does_not_declare_is_refused(root, con):
     staged = WorkingRecord(root.record, con)
     with pytest.raises(ValueError, match="pins the vocabulary"):
         staged.set("icon", {"Nope": "x"})
-    assert "entity_type" not in staged.staged_only().dims, "nothing staged"
+    assert "entity_type" not in staged.resolver.sources[-1].axes(), "nothing staged"
 
 
 def test_entity_is_refused_for_a_type_addressed_attribute(root, con):
@@ -173,5 +175,5 @@ def test_naming_the_type_alongside_entity_is_refused():
                     dtype=nw.Float64(), dims={"entity", "entity_type"}
                 )
             },
-            partial=frozenset({"entity"}),
+            partial=frozenset(),
         )

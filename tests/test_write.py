@@ -12,11 +12,12 @@ import pandas as pd
 import pytest
 
 from datarecord import Revision
-from datarecord.directory import DirectoryRecord
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema
+from datarecord.layered.revision import Record
 from datarecord.layered.write import write_record
-from datarecord.record import EMPTY, LazyFrames, Record
+from datarecord.record import EMPTY, LazyFrames, RecordLike
+from datarecord.schema import Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network, relation, schema
 
@@ -28,7 +29,7 @@ class _Source:
         self,
         schema,
         attributes=None,
-        components=None,
+        entity_types=None,
         connections=None,
         outputs=None,
         dims=None,
@@ -36,7 +37,7 @@ class _Source:
         self._schema = schema
         self.built: list[str] = []
         self._attributes = attributes or {}
-        self._components = components or {}
+        self._entity_types = entity_types or {}
         self._connections = connections or {}
         self._outputs = outputs or {}
         self._dims = dims or {}
@@ -57,8 +58,8 @@ class _Source:
         return self._frames(self._dims, "dims") if self._dims else EMPTY
 
     @property
-    def components(self):
-        return self._frames(self._components, "components")
+    def entity_types(self):
+        return self._frames(self._entity_types, "entity_types")
 
     @property
     def groups(self):
@@ -135,7 +136,7 @@ def test_write_record_builds_each_key_once(con, base_uri):
     source = _Source(
         _SCHEMA,
         attributes={"p_nom": _long(), "e_nom": _long(attribute="e_nom")},
-        components={
+        entity_types={
             "Process": pd.DataFrame({"entity": ["steel_dri"], "scenario": [None]})
         },
     )
@@ -144,7 +145,7 @@ def test_write_record_builds_each_key_once(con, base_uri):
     assert sorted(source.built) == [
         "attributes:e_nom",
         "attributes:p_nom",
-        "components:Process",
+        "entity_types:Process",
     ]
 
 
@@ -172,6 +173,69 @@ def test_write_record_creates_a_new_layer(con, base_uri):
     assert read_schema() == _SCHEMA
 
 
+def test_no_layer_file_carries_order_key(con, base_uri, ac_dc, tmp_path):
+    """`order_key` is the fold's answer about a frame, never a column of one.
+
+    A source handing over *resolved* frames carries it - which is what
+    committing a `WorkingRecord` to a `Directory` does, the record itself being
+    what is written. Writing it would put a struct column in files the
+    format promises a foreign reader can open, and would look like stored order
+    where the fold always re-derives it from file order.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+    """
+    from datarecord.mutable import Directory, WorkingRecord
+
+    revision = Revision.create(con)
+    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+
+    staged = WorkingRecord(revision.record, con)
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
+    out = str(tmp_path / "flat")
+    staged.commit(Directory(out))
+
+    written = sorted(Path(out).rglob("*.parquet"))
+    assert written, "the commit must have written something to check"
+    for path in written:
+        columns = con.sql(f"SELECT * FROM read_parquet('{path}')").columns
+        assert "order_key" not in columns, f"{path.relative_to(out)} carries order_key"
+
+
+def test_a_per_type_member_file_does_not_repeat_its_type(con, base_uri, ac_dc):
+    """`dims/entity_type/<T>.parquet` is indexed by `entity`, one column per attribute.
+
+    The type is the file the rows are in, and it reaches a reader already:
+    `dims/entity.parquet` carries `entity -> entity_type` so nobody has to
+    glob. A column repeating it here would be a second copy, and the one that
+    can disagree.
+
+    The *axis* file keeps it, and that is a different file: there `entity_type`
+    is the key, not a restatement of the path.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    - [the entity axis](https://energy-models.github.io/datarecord/design/format/#the-entity-axis)
+    """
+    revision = Revision.create(con)
+    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+    layer = Path(layer_dir(revision.id))
+
+    members = layer / "dims" / "entity_type" / "Generator.parquet"
+    columns = con.sql(f"SELECT * FROM read_parquet('{members}')").columns
+    assert "entity" in columns, "still indexed by entity"
+    assert "entity_type" not in columns, "the filename already says which type"
+
+    # Derived from those files all the same, so the type still reaches a reader.
+    axis = con.sql(f"SELECT * FROM read_parquet('{layer / 'dims' / 'entity.parquet'}')")
+    assert "entity_type" in axis.columns
+    types = {t for (t,) in axis.project("entity_type").distinct().fetchall()}
+    assert "Generator" in types, "the type survives being off the member file"
+
+
 def test_a_directory_target_carries_its_own_schema(con, base_uri, tmp_path):
     """A standalone record *is* one record, so its schema goes in the directory.
 
@@ -183,7 +247,19 @@ def test_a_directory_target_carries_its_own_schema(con, base_uri, tmp_path):
     write_record(None, _Source(_SCHEMA, attributes={"p_nom": _long()}), con, uri=out)
 
     assert (Path(out) / "manifest.json").exists()
-    assert DirectoryRecord(out, con).schema == _SCHEMA
+    assert Record.at(out, con).schema == _SCHEMA
+
+    # And it is that file answering, not the connection's root: a standalone
+    # record is one whole record, so it must read the same through a connection
+    # rooted somewhere with no manifest at all.
+    from datarecord import duck
+
+    elsewhere = duck.connect(base_uri=str(tmp_path / "unrelated"))
+    try:
+        assert read_schema(elsewhere) == Schema(), "the other root declares nothing"
+        assert Record.at(out, elsewhere).schema == _SCHEMA
+    finally:
+        elsewhere.close()
 
 
 def test_write_record_refuses_an_existing_layer(con, base_uri):
@@ -320,7 +396,7 @@ def test_write_record_rejects_a_name_two_types_share(con, base_uri):
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
-        components={
+        entity_types={
             "Process": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
             "Widget": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
         },
@@ -338,7 +414,7 @@ def test_write_record_accepts_one_name_per_type(con, base_uri):
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
-        components={
+        entity_types={
             "Process": pd.DataFrame({"entity": ["a"], "scenario": [None]}),
             "Widget": pd.DataFrame({"entity": ["b"], "scenario": [None]}),
         },
@@ -362,7 +438,7 @@ def test_the_uniqueness_check_spans_backends(con, base_uri):
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
-        components={
+        entity_types={
             # DuckDB-backed, and pandas-backed, colliding on `shared`.
             "Process": con.sql("SELECT 'shared' AS entity, NULL AS scenario"),
             "Widget": pd.DataFrame({"entity": ["shared"], "scenario": [None]}),
@@ -437,7 +513,7 @@ def test_an_axis_carries_the_attributes_addressed_by_it_alone(con, base_uri):
     )
     write_record(revision.id, source, con)
 
-    axis = revision.node_cache.dims.axes["scenario"].df()
+    axis = revision.resolver.dims.axes["scenario"].df()
     assert dict(zip(axis["scenario"], axis["weight"])) == {"high": 0.4}
 
 
@@ -448,11 +524,11 @@ def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
     """Key sets come off the network and its registry, so listing is cheap."""
     source = PyPSA.to_datarecord(ac_dc)
 
-    assert isinstance(source, Record)
-    assert "Generator" in source.components
+    assert isinstance(source, RecordLike)
+    assert "Generator" in source.entity_types
     assert "connection" in source.groups
     assert "p_max_pu" in source.attributes
-    # Non-varying attributes belong to `dims/components/`, not `inputs/` (https://energy-models.github.io/datarecord/design/record/).
+    # Non-varying attributes belong to `dims/entity_type/`, not `inputs/` (https://energy-models.github.io/datarecord/design/record/).
     assert "v_nom" not in source.attributes
     # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/design/record/#connections).
     assert "efficiency" in source.attributes
