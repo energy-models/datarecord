@@ -1,6 +1,19 @@
 # Proposal: one interface, two objects — a source is its own rows, a fold is the resolution
 
-Status: **Draft** · Drafted 2026-09-02
+Status: **Landed** · Drafted 2026-09-02 · Landed 2026-09-04
+
+> All three commits below landed on `refactor/staging-as-a-layer` (`cd2ce92`,
+> `006c159`, `7f244a9`). The authoritative account is [the read
+> path](../read-path.md#one-record-over-one-fold), [the Record
+> protocol](../record.md) — including [`LayerData`](../record.md#layerdata) —
+> [writing](../writing.md) and [the module layout](../module-layout.md); this
+> page is kept as the argument that led there, and those pages are authoritative
+> where the two disagree. `NodeCache` landed as `Resolver`, `ResolvedLayer` is
+> deleted, the base is a `Fold` (`datarecord/layered/fold.py`) discovered from
+> the sources, and `write_record` takes a `LayerData`. The untyped-enumerator
+> `∅`-not-`{None}` half is the subject of its now-landed successor,
+> [`a-member-file-holds-values`](a-member-file-holds-values.md). The "Commit N as
+> landed" notes below record where the implementation departed from this sketch.
 
 One claim: **`axis(dim)` should mean the same thing wherever it is written — "the rows of the thing I am holding".** You pick "one layer's contribution" versus "the resolved answer to here" by _which object you hold_, not by a `resolved_` prefix on a method nor by a mode flag. A [`LayerSource`](../read-path.md#owner-map) answers for its own layer; a fold answers for everything folded into it; both answer under the same names.
 
