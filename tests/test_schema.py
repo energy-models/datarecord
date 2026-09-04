@@ -69,10 +69,6 @@ def _schema(**overrides) -> Schema:
         "partial": frozenset({"scenario"}),
     }
     kwargs.update(overrides)
-    # `entity` and the group's coordinates do not broadcast, so the schema
-    # requires them `partial`. Added after the override so a caller varying
-    # `partial` says what else is patchable, not whether those are.
-    kwargs["partial"] = frozenset(kwargs["partial"]) | {"entity", "bus"}
     return Schema(**kwargs)
 
 
@@ -131,22 +127,33 @@ def test_file_split_follows_dims():
 # -- membership keys (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys) --------------------------------------------------
 
 
-def test_a_non_broadcast_dim_must_be_partial():
-    """Addressed individually and patchable value by value are the same fact.
+def test_a_membership_key_is_in_the_fold_key_without_partial():
+    """A non-broadcast dim is a membership key, in the fold key by being one.
 
-    A NULL `entity` is a value belonging to no component, not to all of them,
-    so a layer setting one component's value patches that entity alone - which
-    is what `partial` declares, and what keys the fold's ownership.
+    `entity` does not broadcast, so it is patched per row by every layer - it
+    lands in `partial_dims` (the fold key) without being declared `partial`,
+    which is for value dims a layer patches per value.
     """
-    # Built directly rather than through `_schema`, which supplies the
-    # requirement - the point here is a schema that does not.
-    with pytest.raises(ValidationError, match="do not broadcast"):
+    s = Schema(
+        dimensions={
+            "entity": Dimension(dtype=nw.String()),
+            "scenario": Dimension(dtype=nw.String()),
+        },
+        partial=frozenset({"scenario"}),
+    )
+    assert s.membership_keys == ("entity",)
+    assert s.partial_dims == ("entity", "scenario")
+
+
+def test_partial_may_not_name_a_membership_key():
+    """`partial` is for value dims; a membership key named there is a category error."""
+    with pytest.raises(ValidationError, match="membership keys"):
         Schema(
             dimensions={
                 "entity": Dimension(dtype=nw.String()),
                 "scenario": Dimension(dtype=nw.String()),
             },
-            partial=frozenset({"scenario"}),
+            partial=frozenset({"entity", "scenario"}),
         )
 
 
@@ -208,7 +215,7 @@ def test_a_trait_may_only_be_scoped_by_an_entity_type_axis():
             groups={"country": Group(over=["bus"], into="country")},
             attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
             traits={"t": Trait(attributes={"p_nom"}, on={"country": {"DE"}})},
-            partial=frozenset({"entity", "bus"}),
+            partial=frozenset(),
         )
 
 
@@ -257,7 +264,7 @@ def test_a_switched_trait_needs_no_entity_type_axis():
             ),
         },
         traits={"committable": Trait(switch="committable")},
-        partial=frozenset({"entity"}),
+        partial=frozenset(),
     )
     assert s.traits["committable"].attributes == {"committable"}
 
@@ -297,7 +304,7 @@ def test_a_functional_group_may_not_key_an_attribute_with_what_it_maps_from():
                     dtype=nw.Float64(), dims={"entity", "entity_type"}
                 )
             },
-            partial=frozenset({"entity"}),
+            partial=frozenset(),
         )
 
 
@@ -313,7 +320,7 @@ def test_the_redundant_addressing_rule_covers_every_functional_group():
             attributes={
                 "x": AttributeSpec(dtype=nw.Float64(), dims={"bus", "country"})
             },
-            partial=frozenset({"bus"}),
+            partial=frozenset(),
         )
 
 
@@ -333,7 +340,7 @@ def test_an_attribute_may_be_addressed_by_the_entity_type_alone():
             "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
             "icon": AttributeSpec(dtype=nw.String(), dims={"entity_type"}),
         },
-        partial=frozenset({"entity"}),
+        partial=frozenset(),
     )
     assert s.attributes_on("entity_type") == ("icon",), "a column of the type axis"
     assert not s.attributes["icon"].varying, "addressed by one dim, so not varying"
@@ -354,7 +361,7 @@ def test_only_one_group_may_classify_entity():
                 "kind": Group(over=["entity"], into="kind"),
             },
             attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
-            partial=frozenset({"entity"}),
+            partial=frozenset(),
         )
 
 
@@ -385,7 +392,7 @@ def test_a_record_may_declare_no_entity_type_at_all():
             "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
             "weighting": AttributeSpec(dtype=nw.Float64(), dims={"timestep"}),
         },
-        partial=frozenset({"entity"}),
+        partial=frozenset(),
     )
     assert s.entity_types == frozenset(), "no axis, so no declared vocabulary"
     assert sorted(s.attributes_for("anything")) == ["p_nom"], (
@@ -402,7 +409,7 @@ def test_a_string_entity_type_axis_leaves_the_labels_as_data():
         },
         groups={"entity_type": Group(over=["entity"], into="entity_type")},
         attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
-        partial=frozenset({"entity"}),
+        partial=frozenset(),
     )
     assert s.entity_type_dim == "entity_type"
     assert s.entity_types == frozenset(), "labels are data, not declarations"

@@ -522,17 +522,23 @@ class WorkingRecord(Record):
     # `outputs` below differs, and only because results do not overlay.
 
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
-        """`AttributeSpec.dims` minus `Schema.partial`, for every type declaring
-        `attribute` - one `inputs/<attr>.parquet` serves them all.
+        """`AttributeSpec.dims` minus the fold key - the value axes owned whole.
+
+        The complement of `owned_per`: a dim the attribute varies over but that is
+        not in `partial_dims` (a non-`partial` value axis like `timestep`) is
+        owned whole, so a patch to one value restates the attribute's whole extent
+        along it. Membership keys are in `partial_dims`, so never here - a layer
+        patches one component's or connection's value, never restating the rest.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         """
-        partial = self.schema.partial or frozenset()
         spec = self.schema.attributes.get(attribute)
-        whole = frozenset() if spec is None else spec.dims - partial
+        whole = (
+            frozenset() if spec is None else spec.dims - set(self.schema.partial_dims)
+        )
         return tuple(d for d in self.schema.dims if d in whole)
 
     @property
@@ -772,25 +778,32 @@ class WorkingRecord(Record):
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        rel = self.node_cache.entity_map
-        rows = rel.filter(col("entity_type") == lit(ctype)).project("entity").fetchall()
+        axis = self.node_cache.entity_axis
+        if axis is None:
+            return []
+        rows = (
+            axis.filter(col("entity_type") == lit(ctype)).project("entity").fetchall()
+        )
         return [str(n) for (n,) in rows]
 
     def _name_types(self) -> nw.LazyFrame | None:
         """`(name, entity_type)` over everything this record resolves.
 
-        Straight off the components map, which is keyed by entity and carries
-        the type: what every validating caller here asks is "what type is this
-        name", and that is the map's own column. Assembling it from the member
-        frames instead would resolve each type's wide rows - a union and a join
-        per type - to read two columns the fold already decided.
+        Straight off the resolved entity axis, which is keyed by entity and
+        carries the type: what every validating caller here asks is "what type is
+        this name", and that is the axis's own column. Assembling it from the
+        member frames instead would resolve each type's wide rows - a union and a
+        join per type - to read two columns the fold already decided.
 
         Notes
         -----
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         """
-        rel = self.node_cache.entity_map.project("entity", "entity_type")
+        axis = self.node_cache.entity_axis
+        if axis is None:
+            return None
+        rel = axis.project("entity", "entity_type")
         if rel.limit(1).fetchone() is None:
             return None
         return nw.from_native(rel).lazy()
@@ -2251,10 +2264,8 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
     `dims/entity_type/<Type>.parquet` a component's non-varying attributes are
     in, so a record without it could not reach its own member rows.
 
-    That a schema declaring no such axis still produces typed member files is the
-    asymmetry a proposal argues should go
-    (https://energy-models.github.io/datarecord/design/proposals/a-member-file-holds-values.md);
-    until it does, the column is unconditional.
+    A schema declaring no such axis still produces typed member files, so the
+    column is written unconditionally.
 
     Notes
     -----

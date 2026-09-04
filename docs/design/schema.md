@@ -261,8 +261,9 @@ The fold's key therefore does not vary per attribute: [`partial_dims`](#partial-
 A group's file columns are **not declared here.** They are the attributes whose `dims` name exactly this group ([where a value lives](format.md#where-a-value-lives)) — PyPSA's `role` on a connection is `AttributeSpec(dtype="VARCHAR", dims={"connection"})`, declared by [the tool](tools.md) whose vocabulary the word is.
 Declaring them a second time on the `Group` would be two ways to say one thing, disagreeing eventually.
 
-**A group's key coordinate [never broadcasts](record.md#the-broadcast-rule)**, so it lands in the fold's key and must be declared `partial`, alongside `entity` and for the same reason.
-A functional group's `into` dim is not one of these: it is an ordinary axis whose NULL means "every country" like any other dim's.
+**A group's key coordinate [never broadcasts](record.md#the-broadcast-rule)**, so it is a _membership key_: it lands in the fold's key by being membership, not by being declared `partial`.
+`partial` is for value dims a layer patches per value (see [`partial`](#partial-the-granularity-of-an-override)); a membership key — `entity`, a group's coordinate — is patched per row by every layer already, so naming it `partial` is a category error the schema rejects.
+A functional group's `into` dim is not a membership key: it is an ordinary axis whose NULL means "every country" like any other dim's.
 
 **Connections are one instance**, not a structural category: `Group(over={"entity": "entity", "bus": "bus"})`, with `role` an ordinary attribute over it. `bus` is accordingly one coordinate of one group rather than a column the format fixes, and neither word appears in the record layer — `connection` is whatever a schema calls it, and `role` is [a tool's declaration](tools.md).
 
@@ -371,13 +372,15 @@ partial = {"scenario"}  # timestep absent, so a patch restates the series
 A dim outside `partial` is one a layer owns entirely once it touches it: overriding one timestep of `p_max_pu` means carrying that component's _entire_ series, because a partial series would resolve across two layers and produce a curve with a hole.
 The reason is a consumer's rather than the format's — a framework that splits constant from varying data cannot receive half a series — which is why it belongs to the axis: it is true of every attribute varying over it.
 
-The dims a layer owns an attribute per follow from the two declarations:
+The dims a layer owns an attribute per follow from the declarations:
 
 ```text
-owned_per(attribute) = attribute.dims ∩ schema.partial
+owned_per(attribute) = attribute.dims ∩ partial_dims
+partial_dims         = membership_keys ∪ (broadcast dims ∩ schema.partial)
 ```
 
-So `p_max_pu` is owned per scenario — `timestep` is not partial, so a patch to one hour restates that scenario's whole series; `marginal_cost` per scenario; `p_nom` and `carrier` once, across everything.
+`partial_dims` is the fold key: the membership keys (`entity`, group coordinates — patched per row by every layer) plus the broadcast value dims declared `partial`.
+So `p_max_pu` is owned per entity and per scenario — `timestep` is not partial, so a patch to one hour restates that entity-scenario's whole series; `marginal_cost` per entity and scenario; `p_nom` and `carrier` per entity, once across everything else.
 
 Two things this buys.
 The schema can distinguish `p_max_pu` from `p_nom`, which a dim-level flag cannot: that would say every attribute is owned per scenario, including those a scenario must not change.
@@ -390,11 +393,12 @@ So the declarations constrain and validate; they do not make the key vary per ro
 Outside `partial`, a layer touching an axis restates it whole — every label, with the static attributes attached to them — because a layer holding one label is not saying the others are unchanged but that they are not there: the fold keys by the axis key, so what this layer carries is what the axis has here.
 That is the same "no half-owned extent" rule a series obeys, applied to a set of labels rather than a curve.
 
-**Keep it small.** `partial` is the fold's key, so every entry widens the owner map and the resolution it keys, for every read of every attribute.
-The cost of leaving an axis out is paid once per edit and bounded by the axis; the cost of putting it in is paid by every read forever.
-So it stays what it is for `entity` and a group's coordinate — the dims a layer genuinely patches value by value — rather than growing to cover whatever an axis happens to hold.
+**Keep it small.** Every `partial` value dim widens the fold key, and the key is paid for by every read of every attribute.
+The cost of leaving a value dim out is paid once per edit and bounded by the axis; the cost of putting it in is paid by every read forever.
+So `partial` names only the broadcast value dims a layer genuinely patches value by value — `scenario`, not `timestep`.
+The membership keys are in the key already, by being membership; `partial` neither adds nor may name them.
 
-The [entity-type axis](#entity_type-the-axis-of-kinds) is the case that tests this: it carries an attribute and is exempt from `partial`, and it still restates whole rather than earning an exception.
+The [entity-type axis](#entity_type-the-axis-of-kinds) carries an attribute yet is neither `partial` nor a membership key: its labels are a column of `dims/entity.parquet`, not an addressable coordinate, so it restates whole like any non-`partial` axis and stays out of the fold key.
 
 ## One schema per record
 

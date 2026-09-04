@@ -334,7 +334,7 @@ class Record:
         groups = tuple(
             g
             for g in self.node_cache.schema.groups
-            if self.node_cache.group(g).limit(1).fetchone() is not None
+            if self.node_cache.group(g) is not None
         )
         return LazyFrames(groups, self._group_frame)
 
@@ -361,20 +361,20 @@ class Record:
         """
         return self.node_cache.attributes_of(ctype)
 
-    # -- frames, ordered by the map's `order_key` (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) ---------------------
+    # -- frames, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) --
 
     def _entity_type_frame(self, ctype: str) -> nw.LazyFrame:
-        return self._ordered(self.node_cache.entity_type_frame(ctype), ctype)
+        return self._frame(self.node_cache.entity_type_frame(ctype), ctype)
 
     def _group_frame(self, group: str) -> nw.LazyFrame:
-        return self._ordered(self.node_cache.group_frame(group), group)
+        return self._frame(self.node_cache.group_frame(group), group)
 
-    def _ordered(self, rel: DuckDBPyRelation | None, key: str) -> nw.LazyFrame:
-        """`rel` in member order, which for an overlay means sorted by `order_key`.
+    def _frame(self, rel: DuckDBPyRelation | None, key: str) -> nw.LazyFrame:
+        """`rel` as a frame; it already carries member order as its row order.
 
-        The fold's own output has no order (its union puts a layer's own
-        contribution first), so the order a `Record` promises is imposed here.
-        `order_key` stays in the frame rather than being projected away.
+        The resolved relation is folded in first-introduced member order and read
+        back order-preserving (`fold_axis`), so a `Record` promises that order
+        without a re-sort and without a persisted `order_key`.
 
         Parameters
         ----------
@@ -384,8 +384,8 @@ class Record:
 
         Notes
         -----
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         """
         if rel is None:
             raise KeyError(key)
-        return nw.from_native(rel.order("order_key"))
+        return nw.from_native(rel)

@@ -247,6 +247,23 @@ class ResolvedLayer(ParquetLayer):
             self.resolved_uri(f"dims/{dim}.parquet"), self._con, union_by_name=True
         )
 
+    def group(self, name: str) -> DuckDBPyRelation | None:
+        # The resolved group, folded over everything above this node, in member
+        # order and tombstone-free: the group fold reads it as its seed.
+        return try_read_parquet(
+            self.resolved_uri(f"groups/{name}.parquet"), self._con, union_by_name=True
+        )
+
+    def entity_type(self, name: str) -> DuckDBPyRelation | None:
+        # The resolved per-type wide frame, folded over everything above this
+        # node - a component's wide columns live off the axis, so the fold seeds
+        # from this rather than this node's (possibly empty) own layer.
+        return try_read_parquet(
+            self.resolved_uri(f"dims/entity_type/{name}.parquet"),
+            self._con,
+            union_by_name=True,
+        )
+
 
 @dataclass(frozen=True)
 class DirectorySource(_FileLayer):

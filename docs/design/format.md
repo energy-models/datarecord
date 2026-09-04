@@ -38,7 +38,7 @@ The type column is here whether or not the schema [declares an entity-type axis]
 
 What remains in `dims/entity_type/<Type>.parquet` is only [what is addressed by `entity` alone](#where-a-value-lives) — the non-varying attribute values, partitioned by type because that is the one thing genuinely per type: every type has a different column set.
 
-The components [owner map](read-path.md#owner-map) folds from this file, and so do component tombstones. Both must read the same source: membership from one and deletions from another would resolve a deletion the map never saw.
+The [entity axis](#the-entity-axis) folds from `dims/entity.parquet`, and so do component tombstones. Both must read the same source: membership from one and deletions from another would resolve a deletion the fold never saw. The wide static columns here are read after the fold names a live entity, resolved [inline](read-path.md#one-fold-for-every-axis) rather than through a map.
 
 `entity` is the one dim the format knows by name, and not merely because it is an axis — it is the axis the component types partition. No other dim decides an attribute vocabulary.
 
@@ -109,10 +109,10 @@ An `inputs/` row addresses `(entity, bus, …, attribute)`, and the type it belo
 The alternative — carrying the type in the key — makes it a _component's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
 
 **The entity axis carries the classification.** `dims/entity.parquet` carries `entity_type` as a column, so `entity -> entity_type` is one read of one file rather than a glob over every type's — the [entity-type group](schema.md#entity_type-the-axis-of-kinds)'s rows, stored here rather than in `groups/` because a component's type is part of the identity this file already states.
-`entity_type` is a column of that axis and of the owner map it feeds, never of the attribute rows.
+`entity_type` is a column of that axis, carried on its resolved row, never of the attribute rows.
 The type also has an axis file of its own, `dims/entity_type.parquet`, which is where a value addressed by the type alone — a per-type icon — lives; that is a column keyed by type, not an attribute row keyed by entity, so it takes nothing back from the paragraph above.
 
-So a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the components map on `entity`.
+So a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the resolved entity axis on `entity`.
 That join is what the `entity_type` filter used to be, and it is against a relation the read path already builds.
 
 Two things follow, and they are the reason to want this.

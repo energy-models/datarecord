@@ -72,7 +72,7 @@ def _efficiencies(revision) -> dict[str, float]:
 def test_connections_resolve_in_order(con, base_uri):
     """A component's connections come back in first-introduced order."""
     revision = _root(con)
-    frame = _connections(revision).order("order_key").df()
+    frame = _connections(revision).df()
     assert list(frame["bus"]) == ["h2_north", "iron_ore", "dri"]
     # `role` describes the connection rather than keying it, so it rides along
     # from the owning layer's file (https://energy-models.github.io/datarecord/design/record/#connections).
@@ -250,8 +250,13 @@ def test_connection_tombstone_removes_one_connection(con, base_uri):
     assert _efficiencies(child) == {"h2_north": 2.1, "dri": 1.0}
 
 
-def test_component_tombstone_removes_every_connection(con, base_uri):
-    """Deleting the component takes its connections and all their rows.
+def test_component_tombstone_does_not_cascade_to_its_connections(con, base_uri):
+    """Deleting a component does not auto-remove its connections; the author does.
+
+    A component tombstone drops the component from the entity axis, but its
+    connection rows stay in `groups/connection.parquet` — deletion is not
+    cascaded across membership relations, so the two must be kept consistent by
+    hand. Removing the component *and* its connections is what clears both.
 
     Notes
     -----
@@ -260,8 +265,16 @@ def test_component_tombstone_removes_every_connection(con, base_uri):
     root = _root(con)
     root.materialise()
 
+    # The component alone: its connections survive, dangling.
     child = root.child()
     tombstone(layer_dir(child.id), PROCESS, ["steel_dri"])
+    assert child.node_cache.group_frame("connection") is not None
 
-    assert child.node_cache.group_frame("connection") is None
-    assert _efficiencies(child) == {}
+    # The connections too: now both are gone.
+    both = root.child()
+    tombstone(layer_dir(both.id), PROCESS, ["steel_dri"])
+    tombstone_connection(
+        layer_dir(both.id),
+        [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
+    )
+    assert both.node_cache.group_frame("connection") is None

@@ -3,70 +3,54 @@
 ## Owner map
 
 The owner map answers, for a node, which layer owns each key.
-Several maps, not one: `inputs`, `components`, and **one per declared [group](schema.md#groups)**.
+**One map: `inputs`.** It is the only relation whose winning _key_ and winning row's _values_ live in different files — an attribute's ownership spans every `inputs/<attr>.parquet`, so the map names the owning layer per key and a read then goes to that layer's file for the value.
+Every axis — a [dim](schema.md#partial-the-granularity-of-an-override)'s coordinates, the entity axis, a [group](schema.md#groups) — is a single keyed file whose winning row _is_ the whole row, so none needs a map; each folds to a [resolved relation](#one-fold-for-every-axis) read inline.
 
-Key columns first, then what each map carries over them:
+The inputs map's columns, keys first:
 
 ```text
-# inputs                            # components               # <group>
-<partial dims>                      entity                     <group coordinates>
-  entity     -- never NULL          --                         --
-  <group coordinates>               --                         --
-  <owned_per dims>                  --                         --
-attribute                           entity_type             entity_type
-layer_uuid                          layer_uuid                 layer_uuid
-varies      STRUCT(<dim>: BOOLEAN, ...)   order_key            order_key
-broadcast   STRUCT(<dim>: BOOLEAN, ...)   STRUCT(depth, row)   STRUCT(depth, row)
+# inputs
+<partial dims>          -- the fold key: membership keys + partial value dims
+  entity     -- never NULL
+  <group coordinates>
+  <owned_per value dims>
+attribute
+layer_uuid              -- the owning layer
+varies      STRUCT(<dim>: BOOLEAN, ...)
+broadcast   STRUCT(<dim>: BOOLEAN, ...)
 breakpoints BOOLEAN
 ```
 
-All of them map to the owning `layer_uuid`, with deletions already applied.
-None carries `value`, a varying dim's value, or `breakpoint`, so all stay small regardless of the series data or the size of a curve.
+It maps each key to the owning `layer_uuid`, with deletions already applied.
+It carries no `value`, no varying dim's value, and no `breakpoint`, so it stays small regardless of the series data or the size of a curve.
 
-Splitting them keeps each row shape honest — `attribute` and the flags are meaningless for a component or a group row — and lets each persist as its own file.
-
-**One kind per group rather than a `connections` map**, because a group is not a structural category: `connection` is one instance, `corridor` another, and a fold that named the first in its own code would have nothing to do with the second.
-Each group folds the same way — keys, tombstones, an `order_key` — differing only in which columns key it, which is `Group.over`'s coordinate names.
-
-The **inputs key is schema-derived**, not spelled: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`, where `partial` necessarily contains `entity` and every group coordinate because [neither broadcasts](record.md#the-broadcast-rule).
+The **inputs key is schema-derived**, not spelled: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`.
+`partial_dims` is the _membership keys_ — `entity` and every group coordinate, which [address a row rather than broadcasting](record.md#the-broadcast-rule) — plus the broadcast value dims a layer may patch per value (`partial`).
 A coordinate an attribute's own file does not carry reads as NULL, which is what keeps the key one fixed tuple across attributes whose columns differ.
 
-`entity_type` is on the **entity** maps only, never on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the components map is what says which type an entity is.
-So that map is the entity mapping every type-scoped question goes through — [`flags(ctype)`](record.md#flags) joins it, as does a consumer wanting one type's frame.
+`entity_type` is **not** on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the resolved entity axis is what says which type an entity is.
+That axis is the entity mapping every type-scoped question goes through — [`flags(ctype)`](record.md#flags) joins it, as does a consumer wanting one type's frame — and it carries `entity_type` as a column, functionally determined by `entity` rather than keyed alongside it.
+Keying on the type would let an entity resolve to two rows, admitting at read time the collision [name uniqueness](format.md#entity-is-unique-across-types) rejects at write time; so the fold aggregates the type over the group-by instead of grouping on it, and the staging area collapses a `remove` under one type followed by an `add` under another to the later edit ([committing](working-record.md#committing)).
 
-Where it is present it is a **column, not part of the key.**
-Every map is keyed on its own coordinates — `entity` for components, the group's for a group, `partial_dims` plus `attribute` for inputs; the components map carries `entity_type` because it is the table that answers "what type is this entity", and that answer is functionally determined by the key rather than keying alongside it.
-The fold therefore aggregates the type over the group-by instead of grouping on it.
+The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
+A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
+Every membership's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of the entity axis, of each group, and of each partial dim — read from the same file that membership folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
+This is not a cascade: each membership honours only its _own_ tombstones, so deleting a component drops the component's own row but not its connection tuples — those stay until deleted in turn.
+The coordinate a membership keys on [never broadcasts](record.md#the-broadcast-rule), so a row not addressed by one carries NULL there and its NULL-safe anti-join never takes it; only a row naming a dead coordinate is dropped.
 
-The distinction is load-bearing rather than pedantic: keying on the type would let an entity resolve to two rows, admitting at read time the collision [name uniqueness](format.md#entity-is-unique-across-types) rejects at write time.
-The same holds in the staging area, where `remove` under one type followed by `add` under another must collapse to the later edit ([committing](working-record.md#committing)).
+## One fold for every axis
 
-`order_key` is a `STRUCT(depth BIGINT, row BIGINT)`, ordering lexicographically by field — DuckDB's native rule for a struct comparison — so `ORDER BY order_key` gives first-introduced order across layers ([axis order](record.md#axis-order)).
-`depth` is one past the parent map's own deepest `depth` (`-1` folding to `0` for the root), so it depends only on the parent's rows, never on this layer's position in the ancestry list; `row` is file order within that layer alone.
-It is assigned pre-union, per layer, because the fold's own output has no order of its own — a bare `row_number()` over what `UNION ALL` returns would scramble which row counts as first.
-A key introduced at one depth and restated at a deeper one keeps its introducing `(depth, row)`: the parent's rows pass an anti-join with their own key intact, and only a genuinely new row gets a fresh one.
+A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer patches per key.
+They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), static columns carried on the winning row (`weight` on `dims/scenario.parquet`, `entity_type` on the entity axis, `into` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
 
-It is **derived, never stored**: no layer's parquet carries it, and [`write_record`](writing.md) writes no such column.
-The fold computes it from each layer file's own row order, so file order is the input and `order_key` the answer, persisted only where a node's maps are [materialised](layers.md#materialised-node-caches) — where a child folding onto a materialised parent reads that parent's greatest `depth` exactly as it would any unmaterialised ancestor's.
-Nothing sorts eagerly either — the maps carry it as a column, and a consumer wanting order applies `ORDER BY order_key`.
+The resolved relation is returned **in first-introduced member order** — root first, then file order within a layer — and a node's caches persist it _in that order_, so a reader recovers member order from the resolved file's own row number.
+There is no persisted `order_key` column: member order is the file's row order.
+A consumer wanting positional ports numbers a component's connections by this order, so a patch layer adding a connection appends rather than renumbering — the [positional-keying failure](record.md#connections) that order exists to prevent.
+Across a materialised parent it still holds: the resolved seed is read in its own row order and a descendant's new rows number after it.
 
-`order_key` is on the components and group maps only; the axes need none, since an axis row's order comes from its file ([axis order](record.md#axis-order)).
-The two kinds carry it for different reasons, and only one is a correctness requirement.
+A component's wide static columns are the one axis value that lives in another file — per type, in `dims/entity_type/<ctype>.parquet`, not on the entity axis — so a node materialises the resolved per-type frames beside the axis, and [`entity_type_frame`](#resolving-a-relation) reads them and gates against the resolved entity axis.
 
-For a **group** it is load-bearing.
-A framework wanting positional ports numbers a component's connections by this order, so a patch layer adding a third connection appends rather than renumbering.
-Without it the port index would follow whatever order the fold happened to emit, and adding a connection could silently move an existing one's attributes to a different port — the positional-keying failure [connections](record.md#connections) exists to prevent, reappearing at the point where position is reconstructed.
-
-For **components** it is a stability guarantee rather than a correctness one: nothing resolves differently, since a component's rows are keyed the same way whatever order they come back in.
-What it buys is that member order is deterministic across reads and recognisable — a record round-tripped through the write path comes back in the order it was authored, with additions appended, rather than reshuffled.
-
-Each map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
-A node whose maps are [materialised](layers.md#materialised-node-caches) persists every one of them, so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
-They are written together, so the presence of one answers for all: `inputs` is the probe, being the kind every schema has whatever groups it declares.
-
-**A component tombstone reaches a group's rows** where that group is over `entity`: deleting a component deletes every connection of it, so the group's fold anti-joins the parent against component tombstones as well as its own.
-A group not over `entity` gets no such treatment — `corridor` over `(from, to)` draws both coordinates from the entity axis under names of its own, and which of them a tombstone should match is not the fold's to guess.
-Elsewhere the fold runs live over that node's persisted maps, cached per connection; since [layers are write-once](layers.md#a-layers-data-is-write-once), such a cache never needs invalidating.
+The fold runs live over an unmaterialised tail, cached per connection; since [layers are write-once](layers.md#a-layers-data-is-write-once), such a cache never needs invalidating.
 
 The [flags](record.md#flags) are folded in alongside the ownership group-by, so they cost nothing beyond it.
 They are computed **per key**, so per component: whether _this_ component's `p_max_pu` sets `timestep` is a different question from whether any does.
@@ -112,8 +96,10 @@ There is no per-read `MAX`/group-by and no tombstone filter — deletions are al
 
 Each owned-per dim's arm is **NULL-aware**: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.
 
-A **group coordinate** like `bus` is joined **NULL-safely** rather than NULL-aware, being [an address rather than a broadcast dim](record.md#the-broadcast-rule).
-It is that group's own map that decides which of its rows exist at all; a row whose connection was tombstoned is gone because that tombstone removed its `inputs` keys from the map, not by a filter here.
+A **group coordinate** like `bus` is joined **NULL-safely** rather than NULL-aware against the map, being [an address rather than a broadcast dim](record.md#the-broadcast-rule).
+There is no membership gate at read: an attribute row is keyed by every membership its coordinates name — the entity, each group tuple, each dim coordinate — and each of those is [tombstone-pruned in the fold](#one-fold-for-every-axis), so a row whose entity, connection tuple or dim coordinate was deleted is already gone from the map.
+The fold anti-joins each membership against its own `deleted` rows, read from the same file that membership folds from; it is not a cascade — deleting a component does not delete its connections, only the component's own row.
+Because the coordinate a membership keys on [never broadcasts](record.md#the-broadcast-rule), a row not addressed by a membership carries NULL there and its NULL-safe anti-join never takes it — only a row naming a dead coordinate is dropped.
 
 `breakpoint` is projected but not joined on, being no part of the key: a curve is owned whole ([wide and long rows](record.md#wide-and-long-rows)), so every breakpoint of a key comes from the winning layer.
 

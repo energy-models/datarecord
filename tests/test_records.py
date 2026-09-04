@@ -13,6 +13,7 @@ import pytest
 from datarecord import Revision
 from datarecord.duck import layer_dir, resolved_dir
 from datarecord.layered.revision import Record
+from datarecord.layered.sources import ParquetLayer
 from datarecord.layered.write import write_record
 from datarecord.mutable import WorkingRecord
 from datarecord.record import EMPTY, Flags, Frames, RecordLike
@@ -93,6 +94,13 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
             " NULL::VARCHAR AS scenario"
         )
     )
+    # The entity axis is its own dim, supplied like any other - a record states
+    # its membership rather than leaving the writer to reconstruct it from the
+    # per-type frames, which are optional (a tombstone-only or all-long component
+    # has none).
+    entity_axis = nw.from_native(
+        con.sql("SELECT 'wind' AS entity, 'Generator' AS entity_type, FALSE AS deleted")
+    )
     # `p_nom`'s own coordinates and no others: no `entity_type` in a long
     # row, and no `bus`, which is the connection group's coordinate rather than
     # a column every attribute carries.
@@ -118,7 +126,12 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
             return {}
 
     record = DictRecord(
-        schema(), {}, {"Generator": members}, {}, {"p_nom": long}, EMPTY
+        schema(),
+        {"entity": entity_axis},
+        {"Generator": members},
+        {},
+        {"p_nom": long},
+        EMPTY,
     )
     assert isinstance(record, RecordLike)
     # Results absent, spelled as an empty mapping rather than a protocol a
@@ -403,10 +416,13 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
     )
 
     overlay = Record(child.node_cache)
-    layer_only = Record.at(layer_dir(child.id), con)
+    # The single-layer view is the raw file, read through the `LayerSource`: the
+    # folding resolver (`Record.at`) is the whole-tree lens, wrong for "what does
+    # this one patch hold".
+    layer_only = ParquetLayer(child.id, con).attribute("p_max_pu")
 
     # The child's own layer holds one row; the resolution holds the root's too.
-    assert len(layer_only.attributes["p_max_pu"].collect().to_native()) == 1
+    assert layer_only is not None and len(layer_only) == 1
     resolved = overlay.attributes["p_max_pu"].collect().to_native().to_pandas()
     assert len(resolved) > 1
     patched = resolved[resolved["entity"] == "Manchester Gas"]["value"].tolist()

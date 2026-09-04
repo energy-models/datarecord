@@ -21,6 +21,7 @@ from tests.fixtures import (
     schema,
     tombstone,
     write_input,
+    write_periods,
     write_schema,
     write_snapshots,
 )
@@ -60,6 +61,46 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     assert set(overridden["value"]) == {0.42}
 
 
+def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(
+    con, base_uri, ac_dc
+):
+    """A dim tombstone removes the attribute rows over that coordinate, not others.
+
+    The fold anti-joins every membership's tombstones into the inputs map, dims
+    included: deleting `period=2030` drops a `p_max_pu` row keyed on 2030 while
+    the row over 2020 survives. Not a cascade - the attribute honours the dim's
+    own tombstone because that coordinate is part of its key.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    write_schema(schema(partial={"period"}))
+    write_periods(layer_dir(revision.id), [{"period": 2020}, {"period": 2030}])
+    write_input(
+        layer_dir(revision.id),
+        "p_max_pu",
+        [
+            {"entity": "Manchester Wind", "period": 2020, "value": 0.2},
+            {"entity": "Manchester Wind", "period": 2030, "value": 0.3},
+        ],
+    )
+    revision.materialise()
+
+    child = revision.child()
+    write_periods(layer_dir(child.id), [{"period": 2030, "deleted": True}])
+
+    rel = relation(child, "p_max_pu").df()
+    wind = rel[rel["entity"] == "Manchester Wind"]
+    assert set(wind["period"]) == {2020}, "the deleted coordinate's row is gone"
+
+    keys = child.node_cache.inputs.df()
+    keyed = keys[keys["entity"] == "Manchester Wind"]
+    assert set(keyed["period"]) == {2020}, "and the map no longer owns its key"
+
+
 def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_dc):
     """Deletion always acts on the whole component, never scoped to a period.
 
@@ -79,7 +120,9 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     child = revision.child()
     tombstone(layer_dir(child.id), "Generator", ["Manchester Wind"])
 
-    entity_types = child.node_cache.entity_map.df()
+    axis_rel = child.node_cache.entity_axis
+    assert axis_rel is not None
+    entity_types = axis_rel.df()
     assert "Manchester Wind" not in set(entity_types["entity"])
 
 
@@ -239,7 +282,9 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     assert "entity" in record.entity_types["Generator"].collect_schema().names()
     assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
     # And in the owner map the fold builds over them.
-    assert "entity" in revision.node_cache.entity_map.df().columns
+    ea = revision.node_cache.entity_axis
+    assert ea is not None
+    assert "entity" in ea.df().columns
 
 
 def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
@@ -263,5 +308,7 @@ def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
     assert "Generator" in set(axis["entity_type"])
 
     # And it is what the fold reads: the map's entities are the axis's.
-    mapped = revision.node_cache.entity_map.df()
+    ea2 = revision.node_cache.entity_axis
+    assert ea2 is not None
+    mapped = ea2.df()
     assert set(mapped["entity"]) == set(axis.loc[~axis["deleted"], "entity"])

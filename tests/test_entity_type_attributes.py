@@ -50,7 +50,7 @@ def typed_schema():
         # map and the resolution it keys, so it is kept to what a layer really
         # patches value by value. A layer touching one type's icon therefore owns
         # the whole type axis and restates it.
-        partial=frozenset({"entity"}),
+        partial=frozenset(),
     )
 
 
@@ -173,5 +173,5 @@ def test_naming_the_type_alongside_entity_is_refused():
                     dtype=nw.Float64(), dims={"entity", "entity_type"}
                 )
             },
-            partial=frozenset({"entity"}),
+            partial=frozenset(),
         )

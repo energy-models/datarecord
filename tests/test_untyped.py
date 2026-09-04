@@ -44,7 +44,7 @@ def untyped_schema():
             ),
             "weighting": AttributeSpec(dtype=nw.Float64(), dims={"timestep"}),
         },
-        partial=frozenset({"entity"}),
+        partial=frozenset(),
     )
 
 

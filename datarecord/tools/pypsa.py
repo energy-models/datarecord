@@ -249,6 +249,10 @@ def _assign_static(
     """Set each varying attribute's static-valued entries, resolved to a wide frame."""
     keys = shape.index_names
 
+    # `static` already carries a `_pos` in member order, assigned before the
+    # connection collapse could scramble it (`build`); the wide frame is ordered
+    # by it below (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+
     # An entity exists once, whatever the scenario, so the record's member
     # frame carries one row per entity - where PyPSA's static container is
     # `(scenario, name)`-indexed. Repeated here, and any attribute that really
@@ -295,9 +299,9 @@ def _assign_static(
         *(col(static.alias, c) for c in static.columns if c not in attr_exprs),
         *attr_exprs.values(),
     )
-    frame = wide.order("order_key").project(star(exclude=["order_key"])).df()
+    frame = wide.order("_pos").project(star(exclude=["_pos"])).df()
     # Scenario-major: PyPSA's `(scenario, name)` index groups a scenario's
-    # components together, and `order_key` gives the order within one - the
+    # components together, and `_pos` gives the order within one - the
     # entity axis carrying one row per entity rather than one per scenario, so
     # it cannot order the outer level itself. A stable sort keeps that order.
     if shape.stochastic:
@@ -886,7 +890,14 @@ def _per_port_long_rows(
         long = _long_rows(c, column, dims)
         if long.empty:
             continue
-        long["bus"] = long["entity"].map(static[bus_column])
+        # `static` is `(scenario, name)`-indexed on a stochastic network, so map
+        # the bus by name alone - a component's bus does not vary by scenario, so
+        # the name level deduplicates to one bus per component.
+        buses = static[bus_column]
+        if isinstance(buses.index, pd.MultiIndex):
+            buses = buses.droplevel(SCENARIO)
+            buses = buses[~buses.index.duplicated()]
+        long["bus"] = long["entity"].map(buses)
         long["attribute"] = stem
         frames.append(long[long["bus"].astype(str) != ""])
     if not frames:
@@ -1056,6 +1067,10 @@ class PyPSATool(Tool):
             static = to_relation(record.entity_types[ctype])
             if not shape.stochastic and SCENARIO in static.columns:
                 static = static.project(star(exclude=[SCENARIO]))
+            # `_pos` in member order before any join scrambles it: the member
+            # frame arrives in member order (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis),
+            # and `_assign_static` sorts the wide frame back by it at the end.
+            static = static.project("*, row_number() OVER () AS _pos")
             # Connections back to the positional columns PyPSA expects (https://energy-models.github.io/datarecord/design/tools/).
             static = _collapse_connections(static, record, ctype, con)
 
@@ -1340,11 +1355,12 @@ class _NetworkSource:
             attributes=attributes,
             results=results,
             traits=traits,
-            # `entity` and the `connection` group's coordinates are patchable
-            # value by value: a layer may set one generator's `p_nom`, or one
-            # connection's `efficiency`, without restating every other's. That
-            # is what `partial` says, and what keys the fold's ownership.
-            partial=frozenset({SCENARIO, ENTITY, BUS}),
+            # `partial` names value dims a layer patches per value: a layer may
+            # set one generator's `p_nom` per scenario without restating the
+            # rest. Membership keys - `entity`, the `connection` group's `bus` -
+            # are in the fold key by being membership, not by being `partial`
+            # (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+            partial=frozenset({SCENARIO}),
             meta={
                 "format": "pypsa-parquet",
                 "attributes": _collect_network_attributes(self.n),

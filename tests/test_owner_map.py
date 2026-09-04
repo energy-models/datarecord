@@ -63,23 +63,32 @@ def test_union_all_by_name_fills_a_missing_column_with_null(con):
 def keys(revision, con):
     """The inputs map's keys: `(name, attribute)`, no type.
 
+    The map is tombstone-pruned in the fold (`fold_inputs` anti-joins each
+    membership's deletions), so a key whose component or group tuple was deleted
+    is already gone from it - the read needs no further gating.
+
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     df = revision.node_cache.inputs.df()
     return {(r["entity"], str(r.attribute)) for _, r in df.iterrows()}
 
 
 def entity_names(revision):
-    return set(revision.node_cache.entity_map.df()["entity"])
+    return set(revision.node_cache.entity_axis.df()["entity"])
 
 
 def test_root_map_is_its_own_layer(con, parent):
-    """Every key of a root's map points at the root itself."""
+    """Every key of a root's inputs map points at the root itself.
+
+    The entity axis has no `layer_uuid` - it folds like an axis, its winning row
+    the whole row in one file (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+    """
     om = parent.node_cache
     assert set(om.inputs.df()["layer_uuid"]) == {parent.id}
-    assert set(om.entity_map.df()["layer_uuid"]) == {parent.id}
+    assert "layer_uuid" not in om.entity_axis.columns
     assert ("Manchester Wind", "p_max_pu") in keys(parent, con)
 
 
@@ -91,7 +100,10 @@ def test_materialise_writes_the_map_under_resolved(con, parent):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     assert Path(resolved_dir(parent.id), "owner_map", "inputs.parquet").exists()
-    assert Path(resolved_dir(parent.id), "owner_map", "entities.parquet").exists()
+    # The entity axis folds like an axis now, materialised under `dims/`, not as
+    # an owner map (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+    assert Path(resolved_dir(parent.id), "dims", "entity.parquet").exists()
+    assert not Path(resolved_dir(parent.id), "owner_map", "entities.parquet").exists()
     # The cache shares the record's directory but stays out of the layer's own
     # namespace, so a reader that knows nothing about layering still sees a
     # plain parquet directory: every glob into a layer is single-level, so nothing
@@ -165,14 +177,11 @@ def test_live_fold_is_cached_per_connection(con, parent):
     child = parent.child()
     om = child.node_cache
     om.inputs.fetchall()
-    om.entity_map.fetchall()
-    for table in (
-        f"owner_map_inputs_{child.id.hex}",
-        f"owner_map_entities_{child.id.hex}",
-    ):
-        assert con.execute(
-            "SELECT 1 FROM duckdb_tables() WHERE table_name = ?", [table]
-        ).fetchone()
+    # Only `inputs` keeps an owner-map table; the entity axis folds like an axis.
+    assert con.execute(
+        "SELECT 1 FROM duckdb_tables() WHERE table_name = ?",
+        [f"owner_map_inputs_{child.id.hex}"],
+    ).fetchone()
 
 
 def test_materialising_does_not_change_the_map(con, parent):

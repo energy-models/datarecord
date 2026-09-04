@@ -78,9 +78,9 @@ def test_tombstone_removes_component(con, parent):
     child = parent.child()
     tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
 
-    om = child.node_cache.entity_map.df()
+    om = child.node_cache.entity_axis.df()
     assert "Norway Gas" not in set(om["entity"])
-    assert "Norway Gas" in set(parent.node_cache.entity_map.df()["entity"])
+    assert "Norway Gas" in set(parent.node_cache.entity_axis.df()["entity"])
 
     n = PyPSA.build(child.record)
     assert "Norway Gas" not in n.c["Generator"].static.index
@@ -113,8 +113,8 @@ def test_sibling_branch_unaffected(con, parent):
     tombstone(layer_dir(deleting.id), "Generator", ["Norway Gas"])
     sibling = parent.child()
 
-    assert "Norway Gas" not in set(deleting.node_cache.entity_map.df()["entity"])
-    assert "Norway Gas" in set(sibling.node_cache.entity_map.df()["entity"])
+    assert "Norway Gas" not in set(deleting.node_cache.entity_axis.df()["entity"])
+    assert "Norway Gas" in set(sibling.node_cache.entity_axis.df()["entity"])
 
 
 def test_grandchild_resolves_through_ancestry(con, parent):

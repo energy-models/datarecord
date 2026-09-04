@@ -390,7 +390,7 @@ def schema(
     Notes
     -----
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
-    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
     nesting = within or {}
@@ -435,7 +435,10 @@ def schema(
         | {"entity_type": Dimension(dtype=nw.String())},
         attributes=flat,
         traits=traits,
-        partial=frozenset(partial) | {"entity", *coordinates},
+        # `partial` names value dims a layer patches per value; membership keys
+        # (`entity`, a group's coordinates) are in the fold key by being
+        # membership, not by being `partial` (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+        partial=frozenset(partial),
     )
 
 

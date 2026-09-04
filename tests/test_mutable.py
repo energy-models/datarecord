@@ -13,6 +13,7 @@ from datarecord import Revision, duck
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.layered.revision import Record
+from datarecord.layered.sources import ParquetLayer
 from datarecord.mutable import Directory, NewChild, WorkingRecord, normalise_value
 from datarecord.record import RecordLike
 from datarecord.schema import AttributeSpec, Schema
@@ -54,6 +55,18 @@ def _static(revision, attribute, ctype=GEN):
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     return PyPSA.build(revision.record).c[ctype].static[attribute].to_dict()
+
+
+def _layer_rows(revision, attribute, con, kind="inputs"):
+    """One committed layer's own `<kind>/<attribute>.parquet`, as pandas.
+
+    The single-layer view, read through the `LayerSource` for that layer rather
+    than the folding resolver: "what did this patch write" is a question about
+    one layer's file, not the resolved record, so `Record.at` - which folds a
+    source through the whole-tree machinery - is the wrong lens for it.
+    """
+    rel = ParquetLayer(revision.id, con).attribute(attribute, kind)
+    return rel.to_df() if rel is not None else pd.DataFrame()
 
 
 # -- the protocol (https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit) ----------------------------------------------------
@@ -589,8 +602,7 @@ def test_the_restated_series_is_in_the_layer_itself(staged, root, con):
     staged.set("p_max_pu", one, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = Record.at(layer_dir(child.id), con)
-    rows = layer.attributes["p_max_pu"].collect().to_native().to_pandas()
+    rows = _layer_rows(child, "p_max_pu", con)
     assert len(rows[rows["entity"] == "Manchester Wind"]) == len(mine)
     # Only the touched component: an axis owned whole obliges the layer to
     # carry that key's extent, not every key's.
@@ -622,8 +634,7 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root, con):
     staged.set("p_max_pu", second, entity=["Manchester Wind"])
 
     child = staged.commit(NewChild(root))
-    layer = Record.at(layer_dir(child.id), con)
-    rows = layer.attributes["p_max_pu"].collect().to_native().to_pandas()
+    rows = _layer_rows(child, "p_max_pu", con)
     got = rows[rows["entity"] == "Manchester Wind"].sort_values("snapshot")
 
     assert len(got) == len(mine), "the whole extent is carried, once per snapshot"
@@ -647,8 +658,7 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = Record.at(layer_dir(child.id), con)
-    rows = layer.attributes["p_nom"].collect().to_native().to_pandas()
+    rows = _layer_rows(child, "p_nom", con)
     # `p_nom` varies over nothing, so there is no extent to restate: one row.
     assert len(rows) == 1
 
@@ -675,7 +685,7 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
     assert "NewSolar" in set(members["entity"]), "the addition reads back before commit"
 
     child = staged.commit(NewChild(root))
-    assert "NewSolar" in set(child.node_cache.entity_map.df()["entity"])
+    assert "NewSolar" in set(child.node_cache.entity_axis.df()["entity"])
 
     static = PyPSA.build(child.record).c[GEN].static
     assert static.loc["NewSolar", "p_nom"] == 42.0
@@ -834,7 +844,7 @@ def test_remove_tombstones_without_enumerating_attributes(staged, root):
     assert "Norway Gas" not in set(members["entity"]), "the removal reads back at once"
 
     child = staged.commit(NewChild(root))
-    assert "Norway Gas" not in set(child.node_cache.entity_map.df()["entity"])
+    assert "Norway Gas" not in set(child.node_cache.entity_axis.df()["entity"])
 
 
 def test_add_after_remove_leaves_the_component_alive(staged, root):
@@ -848,7 +858,7 @@ def test_add_after_remove_leaves_the_component_alive(staged, root):
     staged.add(GEN, pd.DataFrame([{"entity": "Norway Gas", "carrier": "gas"}]))
 
     child = staged.commit(NewChild(root))
-    assert "Norway Gas" in set(child.node_cache.entity_map.df()["entity"])
+    assert "Norway Gas" in set(child.node_cache.entity_axis.df()["entity"])
 
 
 def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
@@ -1004,8 +1014,7 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = Record.at(layer_dir(child.id), con)
-    rows = layer.attributes["p_nom"].collect().to_native().to_pandas()
+    rows = _layer_rows(child, "p_nom", con)
     assert list(rows["entity"]) == ["Manchester Wind"]
     # Yet the resolved record reads every generator's value.
     assert len(_static(child, "p_nom")) > 1
@@ -1053,8 +1062,7 @@ def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root, con
     staged.set("p_max_pu", one, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = Record.at(layer_dir(child.id), con)
-    rows = layer.attributes["p_max_pu"].collect().to_native().to_pandas()
+    rows = _layer_rows(child, "p_max_pu", con)
     assert set(rows["entity"]) == {"Manchester Wind"}, (
         "only the touched key's extent is carried"
     )
@@ -1298,12 +1306,10 @@ def test_results_survive_a_commit_into_the_new_layer(staged, root, con):
     staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
     child = staged.commit(NewChild(root))
 
-    layer = Record.at(layer_dir(child.id), con)
-    assert "p" in layer.outputs
-    rows = layer.outputs["p"].collect().to_native().to_pandas()
+    rows = _layer_rows(child, "p", con, kind="outputs")
     assert rows["value"].tolist() == [42.0]
     # And the inputs went where inputs go.
-    assert "p_nom" in layer.attributes
+    assert not _layer_rows(child, "p_nom", con).empty
 
 
 def test_results_accept_a_component_type_the_record_never_declared(staged):

@@ -93,12 +93,6 @@ def _parse_dtype(value: Any) -> nw.dtypes.DType:
 STRUCTURAL_TYPES = {
     "attribute": nw.String(),
     "breakpoint": nw.Float64(),
-    # `(depth, row)`: the source's position, root first, then file order
-    # within it - a restated key keeps its introducing pair rather than being
-    # renumbered by depth-of-restatement (https://energy-models.github.io/datarecord/design/proposals/staging-as-a-layer.md#what-lands-first-and-separately).
-    # DuckDB orders structs lexicographically by field, so `ORDER BY
-    # order_key` still means "first introduced, root first".
-    "order_key": nw.Struct({"depth": nw.Int64(), "row": nw.Int64()}),
     "deleted": nw.Boolean(),
     "breakpoints": nw.Boolean(),
 }
@@ -590,28 +584,41 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"`partial` names undeclared dims {unknown}"
                 raise ValueError(msg)
-            # A dim that does not broadcast is one whose values are addressed
-            # individually, so a layer necessarily patches it value by value -
-            # non-broadcast and `partial` are the same fact from two sides.
-            # Declared rather than assumed: a schema omitting one would key
-            # ownership without it, and resolve one layer's edit as owning
-            # every value of it at once.
-            #
-            # The entity-type axis is exempt, being non-broadcast for the other
-            # reason: it is not addressable at all. Its labels are a column of
-            # `dims/entity.parquet`, never a coordinate of an attribute or of
-            # the fold's key, so there is no ownership to key by it - the
-            # entity whose column it is carries that.
-            missing = sorted(
-                set(self.dims) - set(self.broadcast_dims) - {entity_type} - self.partial
-            )
-            if missing:
+            # `partial` names *value* dims a layer patches per value (a
+            # per-scenario weight). A membership key - `entity`, a group's
+            # coordinate - is in the fold key by being membership, not by being
+            # `partial`, so naming it here is a category error: it does not
+            # broadcast and has no "value" to patch, only rows that exist or do
+            # not (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+            keys = sorted(set(self.partial) - set(self.broadcast_dims) - {entity_type})
+            if keys:
                 msg = (
-                    f"{missing} do not broadcast, so a layer patches them value "
-                    f"by value; declare them `partial` or the fold owns every "
-                    f"value of them at once"
+                    f"`partial` names membership keys {keys}, which are patched "
+                    f"per row by every layer already; `partial` is for value "
+                    f"dims a layer patches per value"
                 )
                 raise ValueError(msg)
+
+        # The fold key rests on every dim being exactly one of: a broadcast dim
+        # (NULL means all-values), a membership key (a row exists or not), or the
+        # entity-type axis (a column of `dims/entity.parquet`, not addressable).
+        # All three derive from `broadcast_dims`, so this cannot fail unless that
+        # derivation drifts - which would silently drop a coordinate from the fold
+        # key or double-count it, the one broadcasting bug worth an assertion
+        # (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+        broadcast = set(self.broadcast_dims)
+        membership = set(self.membership_keys)
+        type_axis = {entity_type} & set(self.dims) if entity_type else set()
+        covered = broadcast | membership | type_axis
+        disjoint = len(broadcast) + len(membership) + len(type_axis) == len(covered)
+        if covered != set(self.dims) or not disjoint:
+            msg = (
+                f"every dim must be exactly one of broadcast, membership key or "
+                f"the entity-type axis; got broadcast {sorted(broadcast)}, "
+                f"membership {sorted(membership)}, type axis {sorted(type_axis)} "
+                f"over dims {sorted(self.dims)}"
+            )
+            raise ValueError(msg)
         return self
 
     # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
@@ -813,40 +820,64 @@ class Schema(BaseModel):
         """Which dims a layer owns `attribute` per.
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
-        attribute may vary over, `Schema.partial` which axes a layer may patch
-        value by value, and ownership is their intersection. A dim in `dims`
-        but not `partial` is owned whole, so a patch to one of its values
-        restates the attribute's entire extent along it.
+        attribute may vary over, `partial_dims` the fold key (membership keys
+        plus the `partial` value dims), and ownership is their intersection. A
+        dim in `dims` but not the fold key - a non-`partial` value axis like
+        `timestep` - is owned whole, so a patch to one of its values restates the
+        attribute's entire extent along it (`_owned_whole`).
 
         Notes
         -----
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         """
         spec = self.attributes.get(attribute)
         if spec is None:
             return frozenset()
-        return spec.dims & (self.partial or frozenset())
+        return spec.dims & set(self.partial_dims)
+
+    @property
+    def membership_keys(self) -> tuple[str, ...]:
+        """The dims addressed per row rather than broadcast: `entity` and group coords.
+
+        A membership key is a coordinate a layer patches one row of at a time -
+        one component, one connection - never "every value" of an axis. It is
+        the non-broadcast, addressable dims: every dim but the broadcast ones
+        and the entity-type axis, which is a column of `dims/entity.parquet`
+        rather than an addressable coordinate.
+
+        These land in the fold key by being membership, not by being `partial`.
+
+        Notes
+        -----
+        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        """
+        broadcast = set(self.broadcast_dims)
+        entity_type = self.entity_type_dim
+        return tuple(d for d in self.dims if d not in broadcast and d != entity_type)
 
     @property
     def partial_dims(self) -> tuple[str, ...]:
-        """The dims a layer may patch value by value, in declaration order.
+        """The fold key's dims, in declaration order.
 
-        `partial` itself, ordered - not the dims of an `inputs/` row, which are
-        every declared one. The fold's key is one fixed tuple over all
-        attributes, so it must carry every axis *any* layer may patch by
-        value, not only those some currently declared attribute varies over.
-        An attribute not owned per one of them writes NULL there, which is the
-        existing "NULL means all values" rule - and that is also what
-        lets a schema declare an axis before any attribute uses it.
+        The membership keys plus the broadcast value dims a layer may patch per
+        value (`partial`). The fold's key is one fixed tuple over all
+        attributes, so it carries every axis *any* layer may patch by value or
+        by row, not only those some currently declared attribute varies over. An
+        attribute not owned per one of them writes NULL there, the "NULL means
+        all values" rule - which also lets a schema declare an axis before any
+        attribute uses it.
 
         Notes
         -----
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         partial = self.partial or frozenset()
-        return tuple(d for d in self.dims if d in partial)
+        keys = set(self.membership_keys)
+        return tuple(d for d in self.dims if d in keys or d in partial)
 
     def axis_key(self, dim: str) -> tuple[str, ...]:
         """A dim's axis-table key: `(*parents, dim)`, parents first.
@@ -919,10 +950,10 @@ class Schema(BaseModel):
     def input_key(self) -> tuple[str, ...]:
         """Inputs-map key columns, compared NULL-safely when folding.
 
-        `partial` itself, plus `attribute`. `entity` and a group's coordinates
-        are in it because a layer may patch one component's value, or one
-        connection's, without restating every other's - which is what `partial`
-        says, and why they are declared `partial` rather than added here.
+        `partial_dims`, plus `attribute`. `entity` and a group's coordinates are
+        in it as membership keys - a layer may patch one component's value, or
+        one connection's, without restating every other's - and the broadcast
+        `partial` value dims beside them.
 
         A coordinate an attribute's own file does not carry reads as NULL,
         which is what makes the key one fixed tuple over attributes whose
@@ -993,30 +1024,6 @@ class Schema(BaseModel):
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         return (*self.input_key, "layer_uuid", *FLAG_COLUMNS)
-
-    @property
-    def entity_columns(self) -> tuple[str, ...]:
-        """The components map's full column set; the type is carried, not keyed.
-
-        Notes
-        -----
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-        """
-        return ("entity_type", "entity", "layer_uuid", "order_key")
-
-    def group_columns(self, group: str) -> tuple[str, ...]:
-        """One group's owner-map column set: its key, plus what it carries.
-
-        No `entity_type`, unlike `entity_columns`: the type is no coordinate
-        of a group.
-
-        Notes
-        -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-        """
-        return (*self.group_key(group), "layer_uuid", "order_key")
 
     # -- typing (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/writing/) -------------------------------------------------
 

@@ -32,6 +32,7 @@ from weakref import WeakKeyDictionary
 import duckdb
 import narwhals as nw
 import narwhals._duckdb.utils as _nw_duckdb
+from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, FunctionExpression
@@ -483,24 +484,31 @@ def fold_axis(
     key: tuple[str, ...],
     con: DuckDBPyConnection,
 ) -> DuckDBPyRelation | None:
-    """Fold one dim's axis relation over each layer's, keyed by `key`.
+    """Fold one keyed relation over each layer's, keyed by `key`, in member order.
 
+    The one fold for every axis - a dim's coordinates, a group, the entity axis.
     `axes` is root first, one entry per layer - `None` where that layer has no
-    rows for the dim. Last-writer-wins per `key`, which is `Schema.axis_key`, so
-    a nested dim is keyed by `(*parents, dim)` and two periods' identically
-    labelled timesteps stay distinct. Row order follows the layer that first
-    introduced the key.
+    rows. Last-writer-wins per `key`, which is `Schema.axis_key` for a dim or
+    `Schema.group_key` for a group, so a nested dim is keyed by `(*parents, dim)`
+    and two periods' identically labelled timesteps stay distinct.
+
+    A `deleted = true` row is a tombstone: it removes its key unless a still-
+    deeper layer restates it, and never survives into the output, which carries
+    no `deleted` column. The output is returned **in first-introduced member
+    order** - root first, then within a layer file order - so a reader recovers
+    member order from the resolved file's own row order without a persisted
+    `order_key`.
 
     `_row` is tagged **per layer, before any union**: `UNION ALL` defines no
     order, so a bare `row_number() OVER ()` over the unioned relation would
-    silently scramble which row counts as first-introduced. `_fold_ordered`
-    avoids the same pitfall the same way.
+    silently scramble which row counts as first-introduced.
 
     Notes
     -----
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
     - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     layers = []
     for depth, rel in enumerate(axes):
@@ -517,6 +525,7 @@ def fold_axis(
         return None
 
     union = union_all_by_name(layers, con)
+    has_deleted = "deleted" in union.columns
     partition = ", ".join(str(col(c)) for c in key)
     # `OVER (PARTITION BY ...)` stays text below: DuckDB's expression API has no
     # window construct, so only what the window wraps is built as an expression.
@@ -534,11 +543,21 @@ def fold_axis(
             f"OVER (PARTITION BY {partition})"
         ).alias("_first"),
     )
-    return (
-        ranked.filter(col("_rank") == lit(1))
-        .order("_first")
-        .project(star(exclude=["_depth", "_rank", "_row", "_first"]))
-    )
+    winners = ranked.filter(col("_rank") == lit(1))
+    # The deepest statement of a key wins; a tombstone there removes it.
+    if has_deleted:
+        # A row from a layer whose file lacks the column reads `deleted` as NULL
+        # once unioned by name; NULL is not a tombstone, so coalesce to false
+        # rather than letting `~NULL` drop a live row.
+        winners = winners.filter(~coalesce(col("deleted"), lit(False)))  # noqa: FBT003
+    scaffold = [
+        "_depth",
+        "_rank",
+        "_row",
+        "_first",
+        *(["deleted"] if has_deleted else []),
+    ]
+    return winners.order("_first").project(star(exclude=scaffold))
 
 
 def read_json(uri: str) -> dict[str, Any] | None:
