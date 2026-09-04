@@ -419,7 +419,9 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
     # The single-layer view is the raw file, read through the `LayerSource`: the
     # folding resolver (`Record.at`) is the whole-tree lens, wrong for "what does
     # this one patch hold".
-    layer_only = ParquetLayer(child.id, con).attribute("p_max_pu")
+    layer_only = ParquetLayer(child.id, child.resolver.schema, con).attribute(
+        "p_max_pu"
+    )
 
     # The child's own layer holds one row; the resolution holds the root's too.
     assert layer_only is not None and len(layer_only) == 1

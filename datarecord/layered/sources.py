@@ -15,7 +15,7 @@ Notes
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID, uuid5
 
 from datarecord.duck import (
@@ -24,14 +24,12 @@ from datarecord.duck import (
     try_read_parquet,
 )
 from datarecord.layered.fold import Fold
+from datarecord.record import Kind
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
     from datarecord.schema import Schema
-
-Kind = Literal["inputs", "outputs"]
-"""Which long directory an attribute lives in - the alias `set` takes."""
 
 
 @runtime_checkable
@@ -76,6 +74,21 @@ class LayerSource(Protocol):
     @property
     def frozen(self) -> bool: ...
 
+    @property
+    def schema(self) -> Schema:
+        """The record's one manifest, passed in at construction, never re-read.
+
+        A layer holds only data - its schema lives beside the tree, not in the
+        layer - so this is the reference the constructing reader already held,
+        carried so `write_record` can read it off the source it is handed. Every
+        source in one fold carries the same one.
+
+        Notes
+        -----
+        - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+        """
+        ...
+
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """This layer's resolved `Fold` if it is materialised, else `None`.
 
@@ -104,6 +117,16 @@ class LayerSource(Protocol):
         """
         ...
 
+    def entity_types(self) -> set[str]:
+        """Which types this layer has a member file for.
+
+        For `write_record`'s benefit, not the fold's: a read learns which types
+        exist from the resolved entity axis, never by listing a source's files.
+        A directory listing, like `axes()` - empty wherever no member file
+        exists, which for a schema declaring no entity-type axis is always.
+        """
+        ...
+
     def entity_type(self, name: str) -> DuckDBPyRelation | None:
         """`dims/entity_type/<name>.parquet` - one type's wide member rows.
 
@@ -112,8 +135,25 @@ class LayerSource(Protocol):
         """
         ...
 
+    def groups(self) -> set[str]:
+        """Which groups this layer has a row for, by file - like `axes()`.
+
+        For `write_record`'s benefit; not scoped to a schema, which a
+        `LayerSource` does not carry - a file some other source's declaration
+        does not recognise is the reader's concern, not this listing's.
+        """
+        ...
+
     def group(self, name: str) -> DuckDBPyRelation | None:
         """`groups/<name>.parquet` - one group's rows, tombstones included."""
+        ...
+
+    def attributes(self, kind: Kind = "inputs") -> set[str]:
+        """Which `<kind>/*.parquet` files this layer has, by name.
+
+        For `write_record`'s benefit: a read learns owned attributes from the
+        owner map, never by listing a source's own files.
+        """
         ...
 
     def attribute(self, name: str, kind: Kind = "inputs") -> DuckDBPyRelation | None:
@@ -144,11 +184,13 @@ class _FileLayer:
     """The layer layout over a URI, shared by every file-backed source.
 
     Each member is one file, addressed by what keys it. A subclass supplies
-    where the layer root is (`uri`) and the connection to read it with, and
-    inherits every accessor unchanged - which is what keeps "a directory read
-    as a layer" from being a second reading of the format.
+    where the layer root is (`uri`), the connection to read it with, and the
+    schema its reader held, and inherits every accessor unchanged - which is
+    what keeps "a directory read as a layer" from being a second reading of the
+    format.
     """
 
+    schema: Schema
     con: DuckDBPyConnection | None
     frozen: bool = True
 
@@ -183,11 +225,29 @@ class _FileLayer:
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         return self._read(f"dims/{dim}.parquet", union_by_name=True)
 
+    def entity_types(self) -> set[str]:
+        return {
+            name.removesuffix(".parquet")
+            for name in parquet_names(self.uri("dims/entity_type/"), self._con)
+        }
+
     def entity_type(self, name: str) -> DuckDBPyRelation | None:
         return self._read(f"dims/entity_type/{name}.parquet")
 
+    def groups(self) -> set[str]:
+        return {
+            name.removesuffix(".parquet")
+            for name in parquet_names(self.uri("groups/"), self._con)
+        }
+
     def group(self, name: str) -> DuckDBPyRelation | None:
         return self._read(f"groups/{name}.parquet", union_by_name=True)
+
+    def attributes(self, kind: Kind = "inputs") -> set[str]:
+        return {
+            name.removesuffix(".parquet")
+            for name in parquet_names(self.uri(f"{kind}/"), self._con)
+        }
 
     def attribute(self, name: str, kind: Kind = "inputs") -> DuckDBPyRelation | None:
         return self._read(f"{kind}/{name}.parquet")
@@ -213,6 +273,7 @@ class ParquetLayer(_FileLayer):
     """
 
     revision_id: UUID
+    schema: Schema
     con: DuckDBPyConnection | None = None
     base_uri: str | None = None
     frozen: bool = True
@@ -253,6 +314,7 @@ class DirectorySource(_FileLayer):
     """
 
     base: str
+    schema: Schema
     con: DuckDBPyConnection | None = None
     frozen: bool = True
 

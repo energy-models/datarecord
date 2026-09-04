@@ -219,10 +219,11 @@ def test_resolved_reads_same_as_unresolved(con, parent):
         def materialised(self, con, schema):  # noqa: ARG002
             return None
 
+    schema = read_schema(con)
     full = ancestry(con, grandchild.id)
-    truncated = Resolver(grandchild.id, sources_to_read(full, con), con)
+    truncated = Resolver(grandchild.id, sources_to_read(full, con, schema), con, schema)
     unresolved = Resolver(
-        grandchild.id, [_Unmaterialised(uid, con) for uid in full], con
+        grandchild.id, [_Unmaterialised(uid, schema, con) for uid in full], con, schema
     )
 
     def ownership(nc):
@@ -241,12 +242,12 @@ def test_resolved_reads_same_as_unresolved(con, parent):
         "the resolved entity axis is the same either way"
     )
 
-    for attr in truncated.attribute_names():
-        a = sorted(truncated.relation(attr).fetchall(), key=str)
-        b = sorted(unresolved.relation(attr).fetchall(), key=str)
+    for attr in truncated.attributes():
+        a = sorted(truncated.attribute(attr).fetchall(), key=str)
+        b = sorted(unresolved.attribute(attr).fetchall(), key=str)
         assert a == b, f"{attr} resolves the same through the base as from the root"
 
-    manchester = truncated.relation("p_max_pu").df()
+    manchester = truncated.attribute("p_max_pu").df()
     assert manchester[manchester["entity"] == "Manchester Wind"]["value"].tolist() == [
         0.99
     ], "grandchild's value wins over the materialised base"

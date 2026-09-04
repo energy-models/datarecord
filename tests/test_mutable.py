@@ -65,7 +65,7 @@ def _layer_rows(revision, attribute, con, kind="inputs"):
     one layer's file, not the resolved record, so `Record.at` - which folds a
     source through the whole-tree machinery - is the wrong lens for it.
     """
-    rel = ParquetLayer(revision.id, con).attribute(attribute, kind)
+    rel = ParquetLayer(revision.id, read_schema(con), con).attribute(attribute, kind)
     return rel.to_df() if rel is not None else pd.DataFrame()
 
 
@@ -92,7 +92,6 @@ def test_a_working_record_overrides_no_read_member():
         "remove_group",
         "rollback",
         "commit",
-        "staged_only",
     }
     allowed_read_override = {"outputs"}
 
@@ -511,12 +510,16 @@ def test_flags_do_not_depend_on_the_maps_grouping_grain(staged, ac_dc):
 # -- value dtypes (https://energy-models.github.io/datarecord/design/record/#flags, https://energy-models.github.io/datarecord/design/schema/#attributespec) -----------------------------------------------
 
 
-def test_a_non_float_attribute_stages_and_commits(staged, root):
+def test_a_non_float_attribute_stages_and_commits(root, con):
     """`value` carries the attribute's declared dtype, not always `DOUBLE`.
 
     One staging table holds every attribute's values, so it stages `value` as
     text and casts to the declared dtype where the attribute is known - which
     is the point at which `inputs/<attr>.parquet` is per-attribute.
+
+    The schema is amended before the `WorkingRecord` is built: a record carries
+    the schema its base was resolved under, so a widening has to be in force
+    when the record is constructed, not slipped in before a later commit.
 
     Notes
     -----
@@ -528,6 +531,7 @@ def test_a_non_float_attribute_stages_and_commits(staged, root):
     )
     write_schema(amended)
 
+    staged = WorkingRecord(root.record, con)
     staged.set("carrier", "solar", entity=["Manchester Wind"])
     rows = staged.attributes["carrier"].collect().to_native().to_pandas()
     assert rows[rows["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
@@ -1024,9 +1028,9 @@ def test_a_staged_member_frame_does_not_repeat_its_type(staged):
     """The type is the key a member frame is filed under, never a column in it.
 
     `write_record` drops `entity_type` from a member file anyway, so this holds
-    on disk either way; asserted on the frame because relying on the writer to
-    strip it makes `staged_only()` disagree with the file it describes, and the
-    next reader of that frame need not be the writer.
+    on disk either way; asserted on the `StagedSource` itself because relying on
+    the writer to strip it makes that `LayerData` disagree with the file it
+    describes, and the next reader of that frame need not be the writer.
 
     Notes
     -----
@@ -1034,8 +1038,8 @@ def test_a_staged_member_frame_does_not_repeat_its_type(staged):
     """
     staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "carrier": "solar"}]))
 
-    frame = staged.staged_only().entity_types[GEN]
-    columns = frame.collect_schema().names()
+    rel = staged.resolver.sources[-1].entity_type(GEN)
+    columns = rel.columns
     assert "entity_type" not in columns, "the file it is written to names the type"
     assert "entity" in columns, "the member key is still there"
 

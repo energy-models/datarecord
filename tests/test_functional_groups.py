@@ -344,8 +344,10 @@ def test_a_child_layer_holds_only_the_axis_labels_it_touched(con, base_uri):
     # raw layer, so no node cache is required for the fold to see both labels.
     staged = WorkingRecord(revision.record, con)
     staged.set("co2_budget", {"DE": 12.0})
-    patch = staged.staged_only().dims["country"].collect().to_native()
-    assert patch["country"].to_pylist() == ["DE"], "only the touched label"
+    country = staged.resolver.sources[-1].axis("country")
+    assert country is not None
+    patch = country.df()
+    assert patch["country"].tolist() == ["DE"], "only the touched label"
 
     child = staged.commit(NewChild(revision))
     axis = child.resolver.dims.axes["country"].df()
@@ -382,8 +384,10 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(con, base_uri):
     staged = WorkingRecord(revision.record, con)
     staged.set("co2_budget", {"DE": 12.0})
 
-    patch = staged.staged_only().dims["country"].collect().to_native()
-    assert sorted(patch["country"].to_pylist()) == ["DE", "FR"], (
+    country = staged.resolver.sources[-1].axis("country")
+    assert country is not None
+    patch = country.df()
+    assert sorted(patch["country"].tolist()) == ["DE", "FR"], (
         "the whole axis, not just the edited label"
     )
 

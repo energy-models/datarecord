@@ -1,6 +1,6 @@
 """Writing a whole record as a layer.
 
-A `Record` hands over narwhals frames and this module turns them into parquet;
+A `LayerData` hands over relations and this module turns them into parquet;
 producing one from a framework's own object is a tool's job.
 
 Notes
@@ -17,25 +17,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-import narwhals as nw
+from duckdb import ColumnExpression as col
+from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 
-from datarecord.duck import (
-    as_relation,
-    base_uri_of,
-)
+from datarecord.duck import as_relation, base_uri_of, fn, layer_dir, union_all_by_name
 from datarecord.layered.resolve import cast_declared, read_schema, write_schema
-from datarecord.layered.sources import ParquetLayer
-from datarecord.record import RecordLike, collision_detail
+from datarecord.record import Frames, LayerData, RecordLike, collision_detail
 from datarecord.schema import Schema
 
 if TYPE_CHECKING:
-    from duckdb import DuckDBPyConnection
+    from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 
 def write_record(
     revision_id: UUID | None,
-    source: RecordLike,
+    source: LayerData | RecordLike,
     con: DuckDBPyConnection,
     *,
     uri: str | None = None,
@@ -51,14 +48,17 @@ def write_record(
     Parameters
     ----------
     revision_id
-        The record whose layer this is; its `ParquetLayer` derives the path.
+        The record whose layer this is; `layer_dir` derives the path.
         `None` only together with `uri`, for a standalone record that belongs
         to no record.
     uri
         Write here instead of at the revision's own layer - how a `Directory`
         commit target produces a record outside the layer tree.
     source
-        The layer's contents. Validated against its own schema before
+        The layer's contents: a `LayerData` - a `StagedSource` for a `NewChild`
+        commit, a `Resolver` for a `Directory` one - or a framework's own
+        `RecordLike`, wrapped in a thin adapter reading its `Frames` through the
+        same enumerate-and-read pairs. Validated against its own schema before
         anything is written.
     con
         Connection to write through.
@@ -82,7 +82,7 @@ def write_record(
         if revision_id is None:
             msg = "write_record needs a revision_id or a uri"
             raise ValueError(msg)
-        base = ParquetLayer(revision_id).uri()
+        base = layer_dir(revision_id)
     else:
         base = uri if uri.endswith("/") else uri + "/"
     local = "://" not in base
@@ -90,7 +90,10 @@ def write_record(
         msg = f"layer {base} already exists; write_record creates a new layer (https://energy-models.github.io/datarecord/design/writing/)"
         raise FileExistsError(msg)
 
-    schema = source.schema
+    data = (
+        source if isinstance(source, LayerData) else _RecordLikeAsLayerData(source, con)
+    )
+    schema = data.schema
     if uri is None:
         # One schema for the whole tree (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record). The first layer written
         # declares it; every later one is checked against it, so a layer
@@ -111,44 +114,39 @@ def write_record(
             with open(staging + "manifest.json", "w") as fh:
                 fh.write(schema.model_dump_json())
         kinds = [
-            ("dims", source.dims, "dims"),
-            ("entities", source.entity_types, "dims/entity_type"),
-            ("groups", source.groups, "groups"),
-            ("attributes", source.attributes, "inputs"),
+            ("dims", data.axes(), data.axis, "dims"),
+            ("entities", data.entity_types(), data.entity_type, "dims/entity_type"),
+            ("groups", data.groups(), data.group, "groups"),
+            ("attributes", data.attributes(), data.attribute, "inputs"),
         ]
         # `outputs/` only for a source carrying results, so a record with none
         # produces a layer without the directory rather than an empty one (https://energy-models.github.io/datarecord/design/writing/).
-        if source.outputs:
-            kinds.append(("outputs", source.outputs, "outputs"))
+        output_names = data.attributes("outputs")
+        if output_names:
+            kinds.append(
+                (
+                    "outputs",
+                    output_names,
+                    lambda name: data.attribute(name, "outputs"),
+                    "outputs",
+                )
+            )
         # Each type's names, to check record-wide uniqueness once every component
-        # frame has been seen (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). Collected to one backend because a `Record`
-        # may hand over a DuckDB frame for one type and a pandas one for another,
-        # and `nw.concat` takes a single backend.
-        tagged: list[nw.LazyFrame] = []
-        for kind, frames, subdir in kinds:
-            for key in frames:
-                frame = frames[
+        # frame has been seen (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+        tagged: list[DuckDBPyRelation] = []
+        for kind, keys, read, subdir in kinds:
+            for key in keys:
+                rel = read(
                     key
-                ]  # looked up exactly once (https://energy-models.github.io/datarecord/design/writing/)
-                _validate_frame(frame, kind, key, schema)
+                )  # looked up exactly once (https://energy-models.github.io/datarecord/design/writing/)
+                if rel is None:
+                    continue
+                _validate_frame(rel, kind, key, schema)
                 if kind == "entities":
-                    tagged.append(
-                        frame.select("entity")
-                        .collect(backend="pyarrow")
-                        .lazy()
-                        # Cast after collecting: DuckDB lands `entity` as arrow
-                        # `large_string` where pandas gives `string`, and concat
-                        # compares arrow schemas.
-                        .select(
-                            nw.col("entity").cast(nw.String()),
-                            entity_type=nw.lit(key).cast(nw.String()),
-                        )
-                    )
+                    tagged.append(rel.project("entity", lit(key).alias("entity_type")))
                 _write_frame(
-                    frame,
+                    rel,
                     f"{staging}{subdir}/{key}.parquet",
-                    con,
-                    local,
                     schema,
                     # A per-type member file is indexed by `entity` and holds
                     # one column per attribute; the type is the file it is in,
@@ -157,7 +155,7 @@ def write_record(
                     # copy that can disagree.
                     drop=("entity_type",) if kind == "entities" else (),
                 )
-        _require_unique(tagged)
+        _require_unique(tagged, con)
     except BaseException:
         if local:
             shutil.rmtree(staging, ignore_errors=True)
@@ -217,20 +215,16 @@ Notes
 
 
 def _write_frame(
-    frame: nw.LazyFrame,
+    rel: DuckDBPyRelation,
     uri: str,
-    con: DuckDBPyConnection,
-    local: bool,
     schema: Schema,
     *,
     drop: tuple[str, ...] = (),
 ) -> None:
-    """Persist one narwhals frame as parquet, through `con`.
+    """Persist one relation as parquet, unmaterialised.
 
-    A DuckDB-backed frame goes to `to_parquet` unmaterialised, anything else
-    through arrow (`as_relation`). Columns are cast to their declared types on
-    the way out, so a reader can trust them rather than re-casting an all-NULL
-    column pandas typed as float.
+    Columns are cast to their declared types on the way out, so a reader can
+    trust them rather than re-casting an all-NULL column pandas typed as float.
 
     `DERIVED` is dropped from every file, and `drop` names what is redundant in
     *this* one - both here rather than in the callers, so a column a source
@@ -241,16 +235,15 @@ def _write_frame(
     - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     """
-    if local:
+    if "://" not in uri:
         Path(uri).parent.mkdir(parents=True, exist_ok=True)
-    rel = as_relation(frame, con)
     unwritable = [c for c in (*DERIVED, *drop) if c in rel.columns]
     if unwritable:
         rel = rel.project(star(exclude=unwritable))
     cast_declared(schema, rel).to_parquet(uri)
 
 
-def _require_unique(tagged: list[nw.LazyFrame]) -> None:
+def _require_unique(tagged: list[DuckDBPyRelation], con: DuckDBPyConnection) -> None:
     """Reject a record whose component types share a name.
 
     Unlike `_validate_frame`'s checks this reads the rows, uniqueness being a
@@ -260,8 +253,7 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
     Parameters
     ----------
     tagged
-        One frame per component type, each `(name, entity_type)`, on a common
-        backend so `nw.concat` accepts them.
+        One relation per component type, each `(entity, entity_type)`.
 
     Raises
     ------
@@ -274,21 +266,23 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
     """
     if len(tagged) < 2:  # nothing to collide with
         return
-    pairs = nw.concat(tagged, how="vertical").unique(["entity", "entity_type"])
+    pairs = union_all_by_name(tagged, con).distinct()
     clashing = (
-        pairs.join(
-            pairs.group_by("entity")
-            .agg(nw.col("entity_type").n_unique().alias("_types"))
-            .filter(nw.col("_types") > 1)
-            .select("entity"),
-            on="entity",
-            how="inner",
+        pairs.set_alias("p")
+        .join(
+            pairs.aggregate(
+                [col("entity"), fn.count(col("entity_type")).alias("_types")]
+            )
+            .filter(col("_types") > lit(1))
+            .project("entity")
+            .set_alias("c"),
+            "p.entity = c.entity",
         )
-        .select("entity", "entity_type")  # the order `iter_rows` unpacks
-        .collect()
+        .project(col("p", "entity").alias("entity"), col("p", "entity_type"))
     )
-    if not clashing.is_empty():
-        detail = collision_detail(clashing.iter_rows())
+    rows = clashing.fetchall()
+    if rows:
+        detail = collision_detail(rows)
         msg = (
             f"component types reuse names: {detail}; a name identifies one "
             f"component across every type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
@@ -296,7 +290,7 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
         raise ValueError(msg)
 
 
-def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) -> None:
+def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) -> None:
     """Check one frame is shaped for the fold to resolve it.
 
     Structural only: a long frame carries its own attribute's coordinates, and a
@@ -311,7 +305,7 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
     columns every long row has.
 
     Reads the schema rather than the rows, so validating an unmaterialised
-    frame costs nothing.
+    relation costs nothing.
 
     Notes
     -----
@@ -320,7 +314,7 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    columns = set(frame.collect_schema().names())
+    columns = set(rel.columns)
 
     # `outputs/` uses the same long schema as `inputs/`; it just does not
     # overlay (https://energy-models.github.io/datarecord/design/read-path/#outputs), which is a read-path property rather than a shape one.
@@ -433,3 +427,63 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
             f"{missing}; the fold would key by a column that is not there (https://energy-models.github.io/datarecord/design/schema/#groups)"
         )
         raise ValueError(msg)
+
+
+class _RecordLikeAsLayerData:
+    """A `RecordLike` read through `LayerData`'s enumerate-and-read pairs.
+
+    The adapter that lets `write_record` stay one code path over raw
+    relations: a framework's `to_datarecord()` hands over narwhals `Frames`,
+    one lookup per key exactly as `write_record` already does, so this wraps
+    each mapping rather than eagerly converting it. `con` is needed only to
+    land a non-DuckDB frame as a relation (`as_relation`).
+
+    Notes
+    -----
+    - [LayerData](https://energy-models.github.io/datarecord/design/record/#layerdata)
+    """
+
+    def __init__(self, source: RecordLike, con: DuckDBPyConnection) -> None:
+        self._source = source
+        self._con = con
+
+    @property
+    def schema(self) -> Schema:
+        return self._source.schema
+
+    @property
+    def frozen(self) -> bool:
+        # A framework object is read once to produce a layer, never folded
+        # under a reader, so there is nothing for staleness to mean here.
+        return True
+
+    def _read(self, frames: Frames, key: str) -> DuckDBPyRelation | None:
+        if key not in frames:
+            return None
+        return as_relation(frames[key], self._con)
+
+    def axes(self) -> set[str]:
+        return set(self._source.dims)
+
+    def axis(self, dim: str) -> DuckDBPyRelation | None:
+        return self._read(self._source.dims, dim)
+
+    def entity_types(self) -> set[str]:
+        return set(self._source.entity_types)
+
+    def entity_type(self, name: str) -> DuckDBPyRelation | None:
+        return self._read(self._source.entity_types, name)
+
+    def groups(self) -> set[str]:
+        return set(self._source.groups)
+
+    def group(self, name: str) -> DuckDBPyRelation | None:
+        return self._read(self._source.groups, name)
+
+    def attributes(self, kind: str = "inputs") -> set[str]:
+        frames = self._source.attributes if kind == "inputs" else self._source.outputs
+        return set(frames)
+
+    def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation | None:
+        frames = self._source.attributes if kind == "inputs" else self._source.outputs
+        return self._read(frames, name)

@@ -123,8 +123,9 @@ class Revision(BaseModel):
         """
         if self._resolver is None:
             full = ancestry(self.con, self.id)
-            sources = resolve.sources_to_read(full, self.con)
-            self._resolver = Resolver(self.id, sources, self.con)
+            schema = resolve.read_schema(self.con)
+            sources = resolve.sources_to_read(full, self.con, schema)
+            self._resolver = Resolver(self.id, sources, self.con, schema)
         return self._resolver
 
     @property
@@ -257,24 +258,22 @@ class Record:
     resolver: Resolver
 
     @classmethod
-    def over(
-        cls,
-        *sources: LayerSource,
-        con: DuckDBPyConnection,
-        declared: Schema | None = None,
-    ) -> Record:
+    def over(cls, *sources: LayerSource, con: DuckDBPyConnection) -> Record:
         """A record folded over `sources`, root first.
 
         The last source's `layer_id` names the record, which for a layer tree is
-        the revision being resolved. `con` is explicit because a source is only
-        obliged to hand over rows - where it reads them is its own business, and
-        the protocol carries no connection. `declared` likewise: a source hands
-        over rows, not a schema.
+        the revision being resolved, and its `schema` is the record's - every
+        source in one fold carries the same one, resolved by whoever built them.
+        `con` is explicit because a source is only obliged to hand over rows -
+        where it reads them is its own business, and the protocol carries no
+        connection.
         """
         if not sources:
             msg = "a `Record` needs at least one source to fold"
             raise ValueError(msg)
-        return cls(Resolver(sources[-1].layer_id, list(sources), con, declared))
+        return cls(
+            Resolver(sources[-1].layer_id, list(sources), con, sources[-1].schema)
+        )
 
     @classmethod
     def at(cls, uri: str, con: DuckDBPyConnection | None = None) -> Record:
@@ -297,10 +296,14 @@ class Record:
         - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
         """
         con = con or default_connection()
-        source = DirectorySource(uri, con)
-        raw = read_json(source.uri("manifest.json"))
-        declared = None if raw is None else Schema.model_validate(raw)
-        return cls.over(source, con=con, declared=declared)
+        # The manifest read needs only the directory URI, not a built source: a
+        # standalone record declares its own schema and a bare layer reads the
+        # connection root's, and either way the schema must be in hand before the
+        # source that carries it is built.
+        base = uri if uri.endswith("/") else uri + "/"
+        raw = read_json(base + "manifest.json")
+        schema = resolve.read_schema(con) if raw is None else Schema.model_validate(raw)
+        return cls.over(DirectorySource(base, schema, con), con=con)
 
     @property
     def schema(self) -> Schema:
@@ -338,16 +341,16 @@ class Record:
 
     @_stable_cache
     def attributes(self) -> LazyFrames:
-        names = tuple(self.resolver.attribute_names())
+        names = tuple(self.resolver.attributes())
         return LazyFrames(
-            names, lambda attr: nw.from_native(self.resolver.relation(attr))
+            names, lambda attr: nw.from_native(self.resolver.attribute(attr))
         )
 
     @_stable_cache
     def outputs(self) -> LazyFrames:
-        names = tuple(self.resolver.output_names())
+        names = tuple(self.resolver.attributes("outputs"))
         return LazyFrames(
-            names, lambda attr: nw.from_native(self.resolver.outputs(attr))
+            names, lambda attr: nw.from_native(self.resolver.attribute(attr, "outputs"))
         )
 
     def flags(self, ctype: str) -> dict[str, Flags]:
@@ -362,7 +365,7 @@ class Record:
     # -- frames, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) --
 
     def _entity_type_frame(self, ctype: str) -> nw.LazyFrame:
-        return self._frame(self.resolver.entity_type_frame(ctype), ctype)
+        return self._frame(self.resolver.entity_type(ctype), ctype)
 
     def _group_frame(self, group: str) -> nw.LazyFrame:
         return self._frame(self.resolver.group_frame(group), group)

@@ -278,7 +278,8 @@ Target = NewChild | Directory
 The two write different things.
 A `NewChild` writes **only the edits** — that is what a patch layer is, and the fold resolves the rest from the parent.
 A `Directory` writes **the resolved result**, since there is no parent to resolve against.
-Both go through [`write_record`](writing.md), which is possible because each reading is presented as a `Record` — the one place the protocol's several implementations earn it twice over.
+Both go through [`write_record`](writing.md), which takes a [`LayerData`](record.md#layerdata): a `NewChild` hands it the staged layer's own source, a `Directory` the resolver that folds base and staged into one — the two objects a `WorkingRecord` already holds, one meaning "my layer's rows" and the other "everything folded to here", answering the same interface.
+The writer cannot tell which it was handed, which is the point: "enumerate what I hold, hand each over" is one contract whether "what I hold" is a single layer or a whole fold.
 
 An edited axis follows [`partial`](schema.md#partial-the-granularity-of-an-override), exactly as an attribute's rows do.
 A `partial` axis is patched label by label: the layer holds the labels the edit touched, and the fold resolves the rest from the parent, last-writer-wins per [axis key](record.md#axis-order).

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Container, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
 from uuid import UUID, uuid4
@@ -37,7 +37,6 @@ from datarecord.layered.revision import Record, Revision
 from datarecord.layered.write import write_record
 from datarecord.record import (
     EMPTY,
-    Flags,
     Frames,
     LazyFrames,
     RecordLike,
@@ -208,38 +207,6 @@ def normalise_value(
 
 
 @dataclass(frozen=True)
-class _Written:
-    """One reading of a `WorkingRecord`, as the `Record` `write_record` consumes.
-
-    Commit needs two different records out of one staging area - `NewChild` the
-    edits alone, `Directory` the resolved result - so this holds whichever
-    frame mappings the caller chose.
-
-    Notes
-    -----
-    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-    """
-
-    schema: Schema
-    dims: Frames
-    entity_types: Frames
-    groups: Frames
-    attributes: Frames
-    # `default_factory` because `EMPTY` is a `LazyFrames` instance, which
-    # `dataclass` reads as a mutable default even though it never mutates.
-    outputs: Frames = field(default_factory=lambda: EMPTY)
-
-    def flags(self, ctype: str) -> dict[str, Flags]:
-        """Never consulted: `write_record` persists frames, not flags.
-
-        Notes
-        -----
-        - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
-        """
-        return {}
-
-
-@dataclass(frozen=True)
 class StagedSource:
     """A staging area as one layer's rows - the last source the fold reads.
 
@@ -265,6 +232,16 @@ class StagedSource:
     record: WorkingRecord
     layer_id: UUID
     frozen: bool = False
+
+    @property
+    def schema(self) -> Schema:
+        """This record's schema - the `LayerData` `write_record` reads for one.
+
+        A staging area is not a `LayerSource` a fold folds under a schema
+        someone else supplies; it is also what `write_record` writes directly
+        for a `NewChild` commit, where it needs its own.
+        """
+        return self.record.schema
 
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """A staging area has no `resolved/` cache: it is never a fold's base."""
@@ -301,6 +278,10 @@ class StagedSource:
             return None
         return self.record._axis_layer(dim)
 
+    def entity_types(self) -> set[str]:
+        """Which types have a staged member table."""
+        return set(self.record._staged_types())
+
     def entity_type(self, name: str) -> DuckDBPyRelation | None:
         """One type's staged member rows, from that type's own table.
 
@@ -310,8 +291,16 @@ class StagedSource:
         """
         return self.record._collapsed_members(name)
 
+    def groups(self) -> set[str]:
+        """Which declared groups have staged rows."""
+        return set(self.record._staged_groups())
+
     def group(self, name: str) -> DuckDBPyRelation | None:
         return self.record._collapsed_group(name)
+
+    def attributes(self, kind: str = "inputs") -> set[str]:
+        """Which attributes of `kind` have staged rows."""
+        return set(self.record._staged_attributes_of(kind))
 
     def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation | None:
         if kind == "outputs":
@@ -395,7 +384,8 @@ class WorkingRecord(Record):
         base_cache = _base_resolver(base, con)
         object.__setattr__(self, "_base", base_cache)
         # This record *is* the fold one layer deeper, and that layer is the
-        # staging area - so the field the base class holds is that fold.
+        # staging area - so the field the base class holds is that fold, whose
+        # last source is the staged layer `commit` writes.
         super().__init__(base_cache.with_source(StagedSource(self, self._layer_id)))
 
     # -- staging tables -----------------------------------------------------
@@ -1338,7 +1328,7 @@ class WorkingRecord(Record):
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
         whole = self._owned_whole(attribute)
-        if not whole or attribute not in self._base.attribute_names():
+        if not whole or attribute not in self._base.attributes():
             return
 
         # Intersected with the attribute's own columns: a key column its file
@@ -1353,7 +1343,7 @@ class WorkingRecord(Record):
             return
         coordinate = self._long_key(attribute)
         staged = self.con.table(table)
-        base = self._base.relation(attribute)
+        base = self._base.attribute(attribute)
         # A staged row leaving a whole-owned dim NULL already covers that dim's
         # whole extent by the broadcast rule, so its key has nothing left to
         # carry and a base row there would overlap it.
@@ -1938,27 +1928,6 @@ class WorkingRecord(Record):
             and self.con.table(self._table(f"{_AXIS_PREFIX}{d}")).limit(1).fetchone()
         )
 
-    def _staged_axes(self) -> Frames:
-        """The staged axis rows, completed from the base where the axis is owned whole.
-
-        Only the axis files an edit touched. What each holds follows `partial`,
-        as an attribute's rows do:
-
-        - **`partial`** - the touched labels alone, the fold resolving the rest
-          from the parent.
-        - **not `partial`** - every label with its attributes, since a dim
-          outside `partial` is one a layer owns entirely once it touches it.
-
-        Notes
-        -----
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        """
-        dims = self._staged_dims()
-        if not dims:
-            return EMPTY
-        return LazyFrames(dims, lambda dim: nw.from_native(self._axis_layer(dim)))
-
     def _axis_layer(self, dim: str) -> DuckDBPyRelation:
         """One axis as this layer writes it, which `partial` decides the extent of.
 
@@ -1998,81 +1967,23 @@ class WorkingRecord(Record):
         )
         return union_all_by_name([staged, untouched], self.con)
 
-    def _staged_entities(self) -> Frames:
-        """The staged member rows, keyed by component type - one table each.
-
-        No projection: a member table is already shaped like the file it becomes,
-        so what it holds is what is written. The type is the key rather than a
-        column, and `deleted` belongs to the entity axis.
-
-        Notes
-        -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        """
-        types = tuple(sorted(self._staged_types()))
-        if not types:
-            return EMPTY
-        return LazyFrames(
-            types,
-            lambda ctype: nw.from_native(
-                cast("DuckDBPyRelation", self._collapsed_members(ctype))
-            ),
-        )
-
     def _staged_types(self) -> tuple[str, ...]:
         """Which entity types have a staged member table, in insertion order."""
         return tuple(t for (k, t), _ in self._staged.items() if k == _MEMBERS and t)
 
     def _staged_groups(self) -> Frames:
-        """The staged group rows, keyed by group - one frame each."""
+        """The staged group rows, keyed by group - one frame each.
+
+        A `Frames` for `StagedSource.groups()`'s key set, not a builder of the
+        rows themselves - `StagedSource.group` reads those directly off
+        `_collapsed_group`.
+        """
         staged = {
             g: rel
             for g in self.schema.groups
             if (rel := self._collapsed_group(g)) is not None
         }
         return LazyFrames(tuple(staged), lambda group: nw.from_native(staged[group]))
-
-    def _staged_attributes(self) -> Frames:
-        """The staged rows - what a patch layer holds.
-
-        No completion step: a dim owned whole was carried into the staging table
-        as the rows were staged (`_complete_owned_whole`), so the rows here are
-        already the layer's full extent.
-
-        Notes
-        -----
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-        """
-        names = tuple(sorted(self._staged_attributes_of("inputs")))
-        if not names:
-            return EMPTY
-
-        def frame(attr: str) -> nw.LazyFrame:
-            return nw.from_native(
-                cast("DuckDBPyRelation", self._collapsed_inputs(attr))
-            )
-
-        return LazyFrames(names, frame)
-
-    def staged_only(self) -> _Written:
-        """The staged rows alone - what a patch layer holds.
-
-        Notes
-        -----
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-        """
-        return _Written(
-            schema=self.schema,
-            dims=self._staged_axes(),
-            entity_types=self._staged_entities(),
-            groups=self._staged_groups(),
-            attributes=self._staged_attributes(),
-            # No completion counterpart: results are complete as produced, never
-            # a partial override of a parent's, so there is nothing to carry
-            # forward from the base (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override, https://energy-models.github.io/datarecord/design/read-path/#outputs).
-            outputs=self.outputs,
-        )
 
     def _base_revision(self) -> Revision:
         """The `Revision` this record's base resolves, for `NewChild()`'s default.
@@ -2129,13 +2040,16 @@ class WorkingRecord(Record):
                 target.record if target.record is not None else self._base_revision()
             )
             child = parent.child()
-            write_record(child.id, self.staged_only(), self.con)
+            # The staged layer's own rows - the fold's last source, a `LayerData`
+            # like any other - so only the edits are written, the fold resolving
+            # the rest from the parent (https://energy-models.github.io/datarecord/design/working-record/#committing).
+            write_record(child.id, self.resolver.sources[-1], self.con)
             self.rollback()
             return child
-        # `self`, not a projection of it: a `WorkingRecord` already reads the
-        # base with its pending edits applied, which is exactly the flattened
-        # record (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits).
-        write_record(None, self, self.con, uri=target.uri)
+        # The `Resolver`, not `self`: it is the same `LayerData` a fold answers
+        # for everything folded in, which is exactly base-plus-staged flattened
+        # (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits).
+        write_record(None, self.resolver, self.con, uri=target.uri)
         self.rollback()
         return None
 

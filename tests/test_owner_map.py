@@ -16,6 +16,7 @@ import pytest
 from datarecord import Revision
 from datarecord.duck import layer_dir, resolved_dir, union_all_by_name
 from datarecord.layered.sources import DirectorySource, LayerSource, ParquetLayer
+from datarecord.schema import Schema
 from tests.fixtures import export_network, tombstone, write_input
 
 
@@ -249,7 +250,7 @@ def test_a_materialised_node_reads_the_same_as_an_unmaterialised_one(con, parent
     )
 
     def read() -> list[str]:
-        rel = Revision.get(child.id, con).resolver.relation("p_max_pu")
+        rel = Revision.get(child.id, con).resolver.attribute("p_max_pu")
         return sorted(repr(r) for r in rel.df().itertuples(index=False))
 
     seeded = read()
@@ -325,7 +326,7 @@ def test_a_parquet_layer_locates_a_layers_files(base_uri):
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
     revision_id = uuid4()
-    source = ParquetLayer(revision_id)
+    source = ParquetLayer(revision_id, Schema())
     assert isinstance(source, LayerSource), (
         "structural, so no import is needed to be one"
     )
@@ -342,9 +343,9 @@ def test_a_parquet_layer_takes_the_base_it_was_given(tmp_path):
     """Two records on two roots locate their layers apart, as `layer_dir` does."""
     revision_id = uuid4()
     root = str(tmp_path / "elsewhere")
-    assert ParquetLayer(revision_id, base_uri=root).uri("dims/entity.parquet") == (
-        layer_dir(revision_id, root) + "dims/entity.parquet"
-    )
+    assert ParquetLayer(revision_id, Schema(), base_uri=root).uri(
+        "dims/entity.parquet"
+    ) == (layer_dir(revision_id, root) + "dims/entity.parquet")
 
 
 def test_a_directory_source_derives_its_layer_id_from_where_it_is():
@@ -361,9 +362,13 @@ def test_a_directory_source_derives_its_layer_id_from_where_it_is():
     -----
     - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
     """
-    a = DirectorySource("/records/one/")
-    assert a.layer_id == DirectorySource("/records/one/").layer_id, "same place"
-    assert a.layer_id != DirectorySource("/records/two/").layer_id, "different place"
+    a = DirectorySource("/records/one/", Schema())
+    assert a.layer_id == DirectorySource("/records/one/", Schema()).layer_id, (
+        "same place"
+    )
+    assert a.layer_id != DirectorySource("/records/two/", Schema()).layer_id, (
+        "different place"
+    )
     # The literal value, so the derivation cannot drift silently: a layer id
     # that changed between versions would orphan every materialised map naming
     # the old one.

@@ -33,8 +33,8 @@ def _connections(revision):
 
 
 def _entity_type_frame(revision, ctype=PROCESS):
-    """`entity_type_frame`, asserted non-`None` for tests where a row must exist."""
-    frame = revision.resolver.entity_type_frame(ctype)
+    """`entity_type`, asserted non-`None` for tests where a row must exist."""
+    frame = revision.resolver.entity_type(ctype)
     assert frame is not None
     return frame
 

@@ -1,7 +1,7 @@
 # The `Record` protocol
 
 The definition sketched in [what a data record is](index.md#what-a-data-record-is), in full. This is the contract a consumer codes against; [the record format](format.md) is how it is stored.
-It is read-only: writing is [`write_record(revision_id, record, con)`](writing.md).
+It is read-only: writing is [`write_record(revision_id, source, con)`](writing.md).
 
 Two names, one shape. **`RecordLike`** is the protocol below — what a signature annotates against, and what a framework object satisfies structurally without depending on this package. **`Record`** is the class this package provides: the narwhals interface over [one fold](read-path.md#one-record-over-one-fold), which is what `Revision.record` and `Record.at(uri)` both give you. The concrete thing gets the short name because it is what a caller constructs and holds.
 
@@ -27,6 +27,40 @@ class RecordLike(Protocol):
 
     def flags(self, ctype: str) -> dict[str, Flags]: ...
 ```
+
+## `LayerData`
+
+`RecordLike` is what a caller reads; `write_record` writes a different, narrower protocol — **`LayerData`**, "the rows of one thing, enumerated and read":
+
+```python
+@runtime_checkable
+class LayerData(Protocol):
+    @property
+    def schema(self) -> Schema: ...
+    @property
+    def frozen(self) -> bool: ...
+
+    def axes(self) -> Iterable[str]: ...
+    def axis(self, dim: str) -> DuckDBPyRelation | None: ...
+    def entity_types(self) -> Iterable[str]: ...
+    def entity_type(self, name: str) -> DuckDBPyRelation | None: ...
+    def groups(self) -> Iterable[str]: ...
+    def group(self, name: str) -> DuckDBPyRelation | None: ...
+    def attributes(self, kind: str = "inputs") -> Iterable[str]: ...
+    def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation | None: ...
+```
+
+Each pair is an enumerator — the keys of that kind — and a read for one key.
+The enumerators return `Iterable[str]` rather than `set[str]` so a `Resolver`, whose keys carry a stable order a `Record` over it relies on, can return a `list` where a source returns a `set`; the meaning is the same set of keys either way.
+
+One object, two meanings: a [`LayerSource`](read-path.md#owner-map) answers `axis`/`entity_type`/`group`/`attribute` for its own layer's rows; a `Resolver` answers the same names for everything folded into it.
+`write_record` cannot tell which it holds and does not need to — a staged layer's own rows (`NewChild`) and a resolved whole record (`Directory`) are both a `LayerData`, so [committing](working-record.md#committing) writes either without a third shape adapting one to the other.
+
+`schema` governs which of the other pairs are populated, rather than standing beside them as a peer: `entity_types`/`entity_type` answer only where the schema declares the entity-type axis, and `groups`/`group` only for the groups it declares.
+An enumerator answers the **empty set**, never a phantom key, where the schema declares nothing of that kind.
+
+Rows are raw `DuckDBPyRelation`s, not narwhals frames — the write path stays one engine throughout.
+A framework object satisfying `RecordLike` instead (narwhals `Frames`, as [`Tool.to_datarecord`](tools.md) returns) is not itself a `LayerData`; `write_record` wraps it in a thin adapter that reads its `Frames` mappings through the same enumerate-and-read pairs, so a tool stays narwhals-facing without `write_record` growing a second code path.
 
 ## Wide and long rows
 

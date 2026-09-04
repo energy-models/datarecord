@@ -1505,7 +1505,7 @@ class _NetworkSource:
         only the frame mappings. Answering properly is easy - `c.static` and
         `c.dynamic` are PyPSA's own split on the snapshot axis, so it needs no
         scan - but an implementation no caller reaches is one no test pins, so
-        the honest answer is the empty one, as `mutable._Written` gives.
+        the honest answer is the empty one.
 
         Notes
         -----

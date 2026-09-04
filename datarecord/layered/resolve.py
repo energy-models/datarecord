@@ -293,7 +293,9 @@ def materialised(revision_id: UUID, con: DuckDBPyConnection) -> bool:
     return try_read_parquet(_map_uri(revision_id, "inputs"), con) is not None
 
 
-def sources_to_read(ancestry: list[UUID], con: DuckDBPyConnection) -> list[LayerSource]:
+def sources_to_read(
+    ancestry: list[UUID], con: DuckDBPyConnection, schema: Schema
+) -> list[LayerSource]:
     """`ancestry` as the sources to fold, truncated at the deepest materialised node.
 
     A materialised owner map is already folded over everything above it, so
@@ -311,6 +313,9 @@ def sources_to_read(ancestry: list[UUID], con: DuckDBPyConnection) -> list[Layer
     ancestry
         Root-first, ending in the node being resolved (`records.ancestry`).
     con : DuckDBPyConnection
+    schema
+        The record's one manifest, carried by every source so `write_record`
+        can read it off the layer it is handed.
 
     Returns
     -------
@@ -323,8 +328,8 @@ def sources_to_read(ancestry: list[UUID], con: DuckDBPyConnection) -> list[Layer
     """
     for depth in range(len(ancestry) - 2, -1, -1):
         if materialised(ancestry[depth], con):
-            return [ParquetLayer(uid, con) for uid in ancestry[depth:]]
-    return [ParquetLayer(uid, con) for uid in ancestry]
+            return [ParquetLayer(uid, schema, con) for uid in ancestry[depth:]]
+    return [ParquetLayer(uid, schema, con) for uid in ancestry]
 
 
 def _table_name(revision_id: UUID, kind: str) -> str:
@@ -815,13 +820,14 @@ class Resolver:
     revision_id: UUID
     sources: list[LayerSource]
     con: DuckDBPyConnection
-    declared: Schema | None = None
-    """This record's schema where it is not the connection root's.
+    schema: Schema
+    """This record's one manifest, resolved by the caller and passed in.
 
-    A standalone record carries its own `manifest.json` and may be read through
-    a connection rooted anywhere, so `Record.at` reads it and passes it here.
-    `None` for a node of a tree, whose schema sits once beside the tree and is
-    the connection's to answer.
+    A plain field, not a lazy read: every fold needs it, both construction sites
+    already hold it (a tree node reads the root's, `Record.over` has the
+    manifest), and each source carries the same reference so `write_record` can
+    read one off the layer it is handed. A standalone record's own manifest
+    reaches here the same way - `Record.at` reads it and passes it down.
 
     Notes
     -----
@@ -842,7 +848,7 @@ class Resolver:
         - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
         """
         return Resolver(
-            self.revision_id, [*self.sources, source], self.con, self.declared
+            self.revision_id, [*self.sources, source], self.con, self.schema
         )
 
     def _map(self, kind: str) -> DuckDBPyRelation:
@@ -864,7 +870,7 @@ class Resolver:
         # A layer the map names but the source list does not hold: the map was
         # materialised over a longer ancestry than this node reads, so the
         # winning row is still in that layer's own directory.
-        return ParquetLayer(layer_uuid, self.con)
+        return ParquetLayer(layer_uuid, self.schema, self.con)
 
     @property
     def fold(self) -> Fold:
@@ -963,19 +969,32 @@ class Resolver:
         """`dims` where every source is frozen, so the fold cannot go stale."""
         return resolve_coords(self.schema, self.sources, self.con)
 
-    @cached_property
-    def schema(self) -> Schema:
-        """This record's one manifest, read once per node.
-
-        From beside *this* connection's layers, so two records on different
-        roots in one process each read their own - unless `declared` names one,
-        which a standalone record read through a foreign connection needs.
+    def axes(self) -> set[str]:
+        """Which dims this fold has an axis for - the shared `LayerData` name.
 
         Notes
         -----
-        - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         """
-        return self.declared if self.declared is not None else read_schema(self.con)
+        return set(self.dims.axes)
+
+    def axis(self, dim: str) -> DuckDBPyRelation | None:
+        """One dim's folded axis relation, `None` where no layer wrote one.
+
+        Notes
+        -----
+        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
+        """
+        return self.dims.axes.get(dim)
+
+    def groups(self) -> set[str]:
+        """Declared groups with any resolved row.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        return set(self.dims.groups)
 
     def entity_types(self) -> set[str]:
         """Types with any live component row, from the resolved entity axis.
@@ -989,26 +1008,20 @@ class Resolver:
             return set()
         return set(distinct_values(axis, "entity_type", order=False))
 
-    def attribute_names(self) -> list[str]:
-        """Every input attribute any layer owns a row for, from the owner map.
+    def attributes(self, kind: str = "inputs") -> list[str]:
+        """Every attribute of `kind` any layer owns a row for.
+
+        `inputs` reads the owner map, already folded over every layer;
+        `outputs` reads this record's own layer alone, results not overlaying.
 
         Notes
         -----
         - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-        """
-        return self.fold.attributes()
-
-    def output_names(self) -> list[str]:
-        """Every result attribute this record's own layer holds.
-
-        Its own layer only: outputs do not overlay, so there is no map to
-        consult and nothing inherited from an ancestor.
-
-        Notes
-        -----
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
+        if kind == "inputs":
+            return self.fold.attributes()
         rel = self.sources[-1].all_attributes("outputs")
         if rel is None:
             return []
@@ -1023,7 +1036,26 @@ class Resolver:
         """
         return self.fold.flags(ctype)
 
-    def relation(self, attribute: str) -> DuckDBPyRelation:
+    def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation:
+        """The resolved long relation for one attribute of `kind`.
+
+        The shared `LayerData` name for `relation`/`outputs`: `inputs` folds
+        over every layer, `outputs` reads this record's own layer alone,
+        results not overlaying. Never `None`, unlike a `LayerSource`'s own
+        read - an attribute with no owning layer still resolves to an empty
+        relation in the long schema, which lets the catalog `default` apply
+        uniformly.
+
+        Notes
+        -----
+        - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+        """
+        if kind == "inputs":
+            return self._relation(name)
+        return self._outputs(name)
+
+    def _relation(self, attribute: str) -> DuckDBPyRelation:
         """The resolved long relation for one input attribute.
 
         Semi-joins the owning layers' `inputs/<attribute>.parquet` to the
@@ -1098,7 +1130,7 @@ class Resolver:
         )
         return resolved
 
-    def outputs(self, attribute: str) -> DuckDBPyRelation:
+    def _outputs(self, attribute: str) -> DuckDBPyRelation:
         """A result attribute from this record's own layer; outputs do not overlay.
 
         No fold and no owner map: if this layer has no `outputs/`, the record
@@ -1113,7 +1145,7 @@ class Resolver:
             return rel
         return _empty_relation(self.schema, self.con, *self.schema.long_columns)
 
-    def entity_type_frame(self, ctype: str) -> DuckDBPyRelation | None:
+    def entity_type(self, ctype: str) -> DuckDBPyRelation | None:
         """Wide static members of one type, resolved inline, in member order.
 
         The one axis whose *values* live in another file: a component's wide
