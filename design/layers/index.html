@@ -486,6 +486,8 @@
       
         
       
+        
+      
     
     
     
@@ -903,6 +905,76 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../proposals/dims-groups-traits/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proposals
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -921,8 +993,6 @@
       
         
           
-        
-      
         
       
         
@@ -1059,7 +1129,7 @@
 
 
 <h1 id="layered-resolution">Layered resolution<a class="headerlink" href="#layered-resolution" title="Permanent link">&para;</a></h1>
-<p>A <code>LayeredRecord</code> resolves a tree of layers.
+<p>A <code>Record</code> resolves a tree of layers.
 Each node adds one layer; a node's data is its layer resolved over its ancestors', last-writer-wins.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Revision</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="nb">id</span><span class="p">:</span> <span class="n">UUID</span>
@@ -1071,7 +1141,7 @@ Caches derived from the ancestry rather than from layer data live in a <code>res
 Resolution order along a root→node path is ancestry order; a node's own layer is last and wins.</p>
 <p>The node metadata — <code>(id, parent)</code> — is persisted in the <code>revisions</code> table, so a revision id resolves to its ancestry, and thus its layer set, through it.</p>
 <p>Two of <a href="../record/">the protocol's</a> columns take their meaning from the overlay key.</p>
-<p><code>bus</code> (<a href="../record/#connections">connections</a>) is part of the <strong>inputs</strong> key, <code>(name, bus, *owned_per dims, attribute)</code>, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
+<p>A <a href="../schema/#groups">group</a>'s coordinates are part of the <strong>inputs</strong> key, <code>(*partial dims, attribute)</code> — <code>bus</code> among them for the <code>connection</code> group, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
 That is what makes a per-connection attribute owned <em>per connection</em>: without it, a patch changing one connection's <code>efficiency</code> would own — and so have to restate — every connection's.
 It is also why a connection is keyed by its bus rather than by position: a patch layer would otherwise have to know a connection's current index, so an ancestor inserting one earlier would silently redirect that patch to a different bus.</p>
 <p><code>breakpoint</code> (<a href="../record/#wide-and-long-rows">wide and long rows</a>), by contrast, is deliberately <strong>not</strong> part of the overlay key.
@@ -1094,9 +1164,11 @@ The two are distinct paths within one directory, so a record read as an ancestor
 <p>Materialising is a policy: every N layers, at a branch point, on demand.
 It is purely additive, writing files under <code>resolved/</code> and changing no answer, only how many layers a read touches to reach it.</p>
 <h2 id="deletion">Deletion<a class="headerlink" href="#deletion" title="Permanent link">&para;</a></h2>
-<p>A <code>deleted = true</code> row in <code>dims/components/&lt;Type&gt;.parquet</code> tombstones a component from every attribute, scoped by whichever dims <a href="../schema/#keys-which-entity-tables-a-dim-keys">key <code>component</code></a>.
-A <code>deleted = true</code> row in <code>dims/connections/&lt;Type&gt;.parquet</code> tombstones one bus's connection — its connection row and its <code>inputs/</code> rows — leaving the component and its other connections intact.</p>
-<p>When <a href="../read-path/#owner-map">the owner map</a> is folded, a tombstone removes that key's entries from the map, so a deleted component is absent from the resolved map rather than filtered at read time.
+<p>A <code>deleted = true</code> row on <a href="../format/#the-entity-axis">the entity axis</a> tombstones a component from every attribute, and from every value of every dim — <a href="../schema/#existence-does-not-vary-along-a-dim">existence does not vary along one</a>, so there is nothing to scope a deletion by.
+A <code>deleted = true</code> row in <code>groups/&lt;group&gt;.parquet</code> tombstones one row of that group — the row itself and its <code>inputs/</code> rows — leaving the component and its other rows intact, so a connection is removed without touching the component it attached.</p>
+<p>A tombstone is honoured by the <a href="../read-path/#one-fold-for-every-axis">one fold</a> that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
+An <em>attribute's</em> orphaned rows stop surfacing the same way, for every membership: an attribute row is keyed by the entity, group tuple and dim coordinates its <code>dims</code> name, and <a href="../read-path/#owner-map"><code>fold_inputs</code></a> anti-joins the map against each membership's <code>deleted</code> rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map, not filtered at read.
+Each membership honours only its <strong>own</strong> tombstones, read from the same file it folds from: deletion is never a cascade, so deleting a component drops its own row but leaves its connection tuples until they are deleted in turn.
 A tombstone only affects the branch that carries it; sibling branches keep the component.</p>
 <p>The fold treats an absent <code>deleted</code> column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.
 Every derived cache lives under <code>resolved/</code> for the same reason: every glob the read path issues into a layer is single-level — <code>inputs/*.parquet</code>, <code>dims/*.parquet</code>, <code>dims/*/*.parquet</code> — so nothing under <code>resolved/</code> is reachable by one.

@@ -765,6 +765,8 @@
       
         
       
+        
+      
     
     
     
@@ -820,8 +822,6 @@
       
         
           
-        
-      
         
       
         
@@ -973,21 +973,22 @@
 <p>Everything a consumer codes against. It is read-only, and structural — a plain directory, a hundred-layer overlay, a record with pending edits and a framework's own object all satisfy it, and a consumer cannot tell which it holds (<a href="../../design/record/">design</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">record</span><span class="o">.</span><span class="n">schema</span>  <span class="c1"># what may exist: the axes, the attributes</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">&quot;scenario&quot;</span><span class="p">]</span>  <span class="c1"># axis frames, keyed by dim</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">record</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="s2">&quot;Generator&quot;</span><span class="p">]</span>  <span class="c1"># wide member rows, keyed by component type</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">record</span><span class="o">.</span><span class="n">connections</span><span class="p">[</span><span class="s2">&quot;Link&quot;</span><span class="p">]</span>  <span class="c1"># component↔bus rows, keyed by component type</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">record</span><span class="o">.</span><span class="n">entity_types</span><span class="p">[</span><span class="s2">&quot;Generator&quot;</span><span class="p">]</span>  <span class="c1"># wide member rows, keyed by component type</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">record</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="s2">&quot;connection&quot;</span><span class="p">]</span>  <span class="c1"># group rows, keyed by group — one frame each</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">&quot;p_max_pu&quot;</span><span class="p">]</span>  <span class="c1"># long input frames, keyed by attribute</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">record</span><span class="o">.</span><span class="n">outputs</span><span class="p">[</span><span class="s2">&quot;p&quot;</span><span class="p">]</span>  <span class="c1"># long result frames, keyed by attribute</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="s2">&quot;Generator&quot;</span><span class="p">)</span>  <span class="c1"># which axes each attribute actually uses</span>
 </code></pre></div>
 <p>Every frame is a <code>narwhals.LazyFrame</code> — a plan, not data. Nothing is read until you <code>.collect()</code>, and listing the keys reads nothing at all (<a href="../../design/record/#frames">design</a>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">gens</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="s2">&quot;Generator&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">gens</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">entity_types</span><span class="p">[</span><span class="s2">&quot;Generator&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">()</span>
 </code></pre></div>
 <h2 id="wide-and-long">Wide and long<a class="headerlink" href="#wide-and-long" title="Permanent link">&para;</a></h2>
-<p><code>components</code>, <code>connections</code> and <code>dims</code> are <strong>wide</strong> — one row per thing. <code>attributes</code> and <code>outputs</code> are <strong>long</strong> — one row per value:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>name | bus | &lt;one column per declared dim&gt; | attribute | breakpoint | value
+<p><code>components</code>, <code>groups</code> and <code>dims</code> are <strong>wide</strong> — one row per thing. <code>attributes</code> and <code>outputs</code> are <strong>long</strong> — one row per value:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>&lt;coordinate&gt; ... | attribute | breakpoint | value
 </code></pre></div>
-<p>A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant <code>p_max_pu</code> is one row with <code>timestep = NULL</code>, a varying one is a row per timestep (<a href="../../design/record/#the-broadcast-rule">design</a>). <code>bus</code> is non-NULL only for a value belonging to one connection rather than to the component (<a href="../../design/record/#connections">design</a>); <code>breakpoint</code> carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's <code>default</code> from the schema.</p>
-<p>There is no <code>component_type</code> column, and none in the mapping's key either — <code>attributes["p_max_pu"]</code> holds every type's rows together. A <code>name</code> identifies one component <strong>across every type</strong>, so the type is something the record knows about a name rather than part of its address (<a href="../../design/format/#name-is-unique-across-types">design</a>). To scope to one type, join <code>components</code> on <code>name</code>.</p>
+<p>The coordinates are the attribute's own, from its declared <code>dims</code> — <code>entity</code> for <code>p_max_pu</code>, <code>entity | bus</code> for a connection attribute like <code>efficiency</code>, and no entity column at all for one addressed by an axis alone (<a href="../../design/format/#the-long-schema">design</a>).</p>
+<p>A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant <code>p_max_pu</code> is one row with <code>timestep = NULL</code>, a varying one is a row per timestep (<a href="../../design/record/#the-broadcast-rule">design</a>). Two coordinates are the exception and never broadcast — <code>entity</code>, and a group's key coordinate such as <code>bus</code>, where a NULL means "every connection of this entity" rather than every bus. <code>breakpoint</code> carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's <code>default</code> from the schema.</p>
+<p>There is no <code>entity_type</code> column, in an attribute's key or a group's — <code>attributes["p_max_pu"]</code> and <code>groups["connection"]</code> each hold every type's rows together. An <code>entity</code> identifies one component <strong>across every type</strong>, so the type is something the record knows about a name rather than part of its address (<a href="../../design/format/#entity-is-unique-across-types">design</a>). To scope to one type, join <code>components</code> on <code>entity</code>.</p>
 <h2 id="flags"><code>flags</code><a class="headerlink" href="#flags" title="Permanent link">&para;</a></h2>
 <p><code>flags(ctype)</code> answers which axes an attribute's rows actually use, for a whole type in one query, so a consumer can plan its reads without opening a file:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">flags</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="s2">&quot;Generator&quot;</span><span class="p">)</span>
@@ -999,10 +1000,10 @@
 <p>The two sets are <strong>not</strong> complements: a dim in both means this type's components disagree — some carry a per-timestep series, others a single constant row — which is the instruction to use both containers, not an ambiguity (<a href="../../design/record/#flags">design</a>).</p>
 <h2 id="reading-a-directory">Reading a directory<a class="headerlink" href="#reading-a-directory" title="Permanent link">&para;</a></h2>
 <p>A parquet directory is a record. Nothing about layers is involved:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">DirectoryRecord</span><span class="p">,</span> <span class="n">connect</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Record</span><span class="p">,</span> <span class="n">connect</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">con</span> <span class="o">=</span> <span class="n">connect</span><span class="p">()</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">DirectoryRecord</span><span class="p">(</span><span class="s2">&quot;s3://bucket/my-record/&quot;</span><span class="p">,</span> <span class="n">con</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">Record</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">&quot;s3://bucket/my-record/&quot;</span><span class="p">,</span> <span class="n">con</span><span class="p">)</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">&quot;p_nom&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
 </code></pre></div>
 <p>The layout is the whole format (<a href="../../design/format/">design</a>):</p>
@@ -1010,8 +1011,8 @@
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>├── manifest.json                   # the schema
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>├── dims/
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>│   ├── components/&lt;Type&gt;.parquet   # members + non-varying attribute columns
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>│   ├── connections/&lt;Type&gt;.parquet  # component↔bus connections
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>│   └── &lt;dim&gt;s.parquet              # one axis table per declared dim
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>│   ├── &lt;group&gt;/&lt;Type&gt;.parquet      # which tuples of the group exist
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>│   └── &lt;dim&gt;.parquet               # one axis table per declared dim
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>├── inputs/&lt;attr&gt;.parquet           # one varying input attribute per file
 <a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>└── outputs/&lt;attr&gt;.parquet          # one result attribute per file
 </code></pre></div>
