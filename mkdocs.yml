@@ -119,7 +119,7 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
-          paths: [.]
+          paths: [src]
           options:
             # numpydoc throughout: `Parameters`/`Notes` with underlines, never
             # `Args:`. Docstrings cite the Design pages from `Notes`, which
@@ -147,5 +147,5 @@ extra:
       name: datarecord on PyPI
 
 watch:
-  - datarecord
+  - src/datarecord
   - README.md

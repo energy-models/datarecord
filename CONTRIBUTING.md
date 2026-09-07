@@ -16,7 +16,9 @@ Contribution rules and conventions for datarecord.
 ## Project conventions
 
 - Branch off `main` for every change and open pull requests via the GitHub CLI
-  (`gh`).
+  (`gh`). A one-line commit message is fine for a small change; a larger one gets
+  a summary line of at most 50 characters, a blank line, then a body describing
+  what changed and why.
 - Write tests for new features and bug fixes under `tests/` as `test_*.py`,
   reusing the shared fixtures in `tests/fixtures.py` and `tests/conftest.py`
   where useful. Run the tests after making changes and make sure they pass.
@@ -51,6 +53,22 @@ last-writer-wins — so a consumer cannot tell which it holds. Queries are built
 with `narwhals` and executed by `duckdb`, staying lazy until collected. Beyond
 those and `pydantic`, core depends on nothing. Keep new features consistent with
 this schema-declared, backend-agnostic, lazily-evaluated design.
+
+## Releasing
+
+The version lives in `[project].version` in [`pyproject.toml`](pyproject.toml);
+there is no VCS-derived versioning. `CHANGELOG.md` tracks user-facing changes
+under an `[Unreleased]` heading between releases.
+
+To cut `vX.Y.Z`:
+
+1. Confirm `pixi run test` and `pixi run -e docs docs-build` pass — best done on
+   a release pull request.
+2. Rename the `[Unreleased]` heading in [`CHANGELOG.md`](CHANGELOG.md) to
+   `vX.Y.Z` with the release date, and set `version` in `pyproject.toml`.
+3. Merge the release pull request, then tag the merge commit `vX.Y.Z` and create
+   the GitHub release from that tag.
+4. Open a follow-up adding a fresh `[Unreleased]` heading to `CHANGELOG.md`.
 
 ## AI-assisted contributions
 
