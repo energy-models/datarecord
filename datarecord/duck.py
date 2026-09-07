@@ -5,9 +5,10 @@ that maps a record UUID to its record location. The connection is passed as a
 parameter throughout, never a module global, so each test can open its own
 `:memory:` connection.
 
-Nothing here knows about a modelling framework: `component_type` and
-`attribute` are plain `VARCHAR`, so a record whose types no tool recognises
-still reads, and it is a tool's `verify` that reports it.
+Nothing here knows about a modelling framework: the entity-type axis is typed
+as the *schema* declares it, whatever a tool's registry holds, so a record whose
+types no tool recognises still reads and it is a tool's `verify` that reports
+them.
 
 Notes
 -----
@@ -19,6 +20,8 @@ Notes
 import os
 from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
 from functools import partial, reduce
+from glob import glob
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 from weakref import WeakKeyDictionary
@@ -233,7 +236,20 @@ def try_read_parquet(
         If the read fails for any reason other than a local or remote miss
         (e.g. DNS/TLS/timeout) - a connection failure should not be mistaken
         for a missing layer.
+
+    Notes
+    -----
+    A local miss is answered without asking DuckDB at all. Inside a transaction
+    a failed read *aborts* it, and catching the exception here does not undo
+    that - every later statement on the connection would fail until a rollback,
+    which would discard whatever the transaction had staged. A missing layer is
+    ordinary (`fold_axis` reads every declared dim, most of which no layer
+    writes), so it must not depend on being outside one.
     """
+    if "://" not in uri and not (
+        glob(uri) if any(c in uri for c in "*?[") else Path(uri).exists()
+    ):
+        return None
     try:
         return con.read_parquet(uri, **kwargs)  # type: ignore[arg-type]
     except duckdb.HTTPException as e:
@@ -362,13 +378,24 @@ class DuckTypes:
         ).limit(0)  # type: ignore[arg-type]
 
 
-def dims_dirs(ancestry: list[UUID]) -> list[str]:
+def dims_dirs(ancestry: list[UUID], *, from_cache: bool) -> list[str]:
     """`dims/`-containing directories for resolving a record's axes.
 
     `ancestry` is root first, ending in the record being resolved and already
-    truncated at the deepest materialised ancestor (`ancestry_to_read`). Every
-    entry but the last therefore has resolved dims under `resolved/`, while the
-    last is the record itself and contributes its layer's raw `dims/`.
+    truncated at the deepest materialised ancestor (`ancestry_to_read`).
+
+    `from_cache` says whether that truncation found one: it is what
+    `ancestry_to_read` stopped *at*, so with it the first entry contributes its
+    `resolved/dims/` - the fold over everything above it, which is what makes
+    stopping there complete - and without it the walk reached the root and every
+    entry is a raw layer. Told rather than inferred, because the two cases are
+    indistinguishable from the list alone, and naming `resolved/dims/` for a
+    layer that has none would silently skip its axes - `fold_axis` reads a
+    missing file as absent - and drop every label only that layer introduced.
+
+    Every other entry is an unmaterialised intermediate layer and contributes its
+    raw `dims/`. So does the last, which is the record itself, cache or not:
+    stopping at its own cache would return that instead of resolving it.
 
     The two live in the same record directory but stay distinct paths -
     `layers/<id>/dims/` against `layers/<id>/resolved/dims/` - so a record read
@@ -379,8 +406,9 @@ def dims_dirs(ancestry: list[UUID]) -> list[str]:
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     last = len(ancestry) - 1
+    cached = from_cache and last > 0
     return [
-        (layer_dir(uid) if depth == last else resolved_dir(uid)) + "dims/"
+        (resolved_dir(uid) if cached and depth == 0 else layer_dir(uid)) + "dims/"
         for depth, uid in enumerate(ancestry)
     ]
 

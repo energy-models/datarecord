@@ -139,7 +139,22 @@ class Record(Protocol):
 
     @property
     def dims(self) -> Frames:
-        """Axis frames, keyed by dim (`"scenario"` -> `dims/scenarios.parquet`)."""
+        """Axis frames, keyed by dim (`"scenario"` -> `dims/scenarios.parquet`).
+
+        An axis frame is its key column and the attributes addressed by it alone
+        (`Schema.attributes_on`) - so a per-country CO2 budget or a per-type icon
+        is read from here rather than from `attributes`, which holds long frames
+        only. A column absent from the frame is one no layer wrote, whose value
+        is that attribute's `default`.
+
+        No classification column: which buses a country holds is the group
+        `into` it, read from `groups`.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+        """
         ...
 
     @property
@@ -154,17 +169,20 @@ class Record(Protocol):
         ...
 
     @property
-    def groups(self) -> Mapping[str, Frames]:
-        """Each declared group's rows, keyed by group then by component type.
+    def groups(self) -> Frames:
+        """Each declared group's rows, keyed by group - one frame each.
 
         A group declares which tuples over several dims exist - `connection`
         over `(entity, bus)` is the one every record with connections has, and
         it is one instance rather than a member of its own.
 
+        Not split by component type, which is no coordinate of a group.
+
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [where the rows live](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
         ...
 
@@ -173,7 +191,7 @@ class Record(Protocol):
         """Long input frames, keyed by attribute name - one per file.
 
         Not by component type: one `inputs/p_max_pu.parquet` holds every type's
-        rows, keyed by `entity` alone. A row carries no `component_type` - entities
+        rows, keyed by `entity` alone. A row carries no `entity_type` - entities
         are unique across every type - so a reader wanting one type joins `components`
         on `name`.
 

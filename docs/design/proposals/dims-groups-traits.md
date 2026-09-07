@@ -2,7 +2,8 @@
 
 Status: **Landed** · Drafted 2026-08-15 · Landed 2026-08-16
 
-**This page is the argument, not the design.** What shipped is described by [the schema](../schema.md) — [groups](../schema.md#groups), [traits](../schema.md#traits), [mappings](../schema.md#on-a-mapping-over-another-axis) — together with [the record format](../format.md) and [the read path](../read-path.md), and those pages are authoritative where the two disagree.
+**This page is the argument, not the design.** What shipped is described by [the schema](../schema.md) — [groups](../schema.md#groups), [traits](../schema.md#traits) — together with [the record format](../format.md) and [the read path](../read-path.md), and those pages are authoritative where the two disagree.
+The `on` mapping this page landed has since been [absorbed into groups as `into`](groups.md), so its half of the argument describes a construct that no longer exists.
 
 It is kept because the reasoning is not reproduced there: why `keys` was deleted rather than replaced, why `bus` stopped being structural, and what the [worked example](#a-pypsa-network-in-full) exposed about vocabulary collisions.
 Two things it raises stayed open and moved to [open questions](../open-questions.md): [whether existence may depend on a dim](#may-existence-depend-on-a-dim), and whether `flags(ctype)` needs a record-level counterpart.

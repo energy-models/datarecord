@@ -77,7 +77,11 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
     -----
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
     """
-    dirs = dims_dirs(ancestry)
+    # `ancestry` stopped either at a materialised ancestor or at the root, and
+    # only the head can be the former - every entry below it is an
+    # unmaterialised intermediate layer, or the record itself.
+    from_cache = len(ancestry) > 1 and materialised(ancestry[0], con)
+    dirs = dims_dirs(ancestry, from_cache=from_cache)
     axes = {}
     for dim in schema.dims:
         # Keyed by the axis key, not the dim alone: a nested dim's labels
@@ -325,8 +329,8 @@ def _component_deleted(
 ) -> DuckDBPyRelation:
     """This layer's tombstoned components: one entity per row.
 
-    Also what removes a connection, a component tombstone killing every
-    connection of it - matched on the entity the two share.
+    Also what removes a group's rows, a component tombstone killing every row
+    of a group `entity` keys - matched on the entity the two share.
 
     Notes
     -----
@@ -340,7 +344,10 @@ def _component_deleted(
 def _group_deleted(
     group: str, revision_id: UUID, keys: Dims, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """This layer's tombstoned rows of one group, keyed by its coordinates.
+    """This layer's tombstoned rows of one group, keyed by `group_key`.
+
+    Not every coordinate: a tombstone names the tuple removed, not the `into`
+    label it carried.
 
     Notes
     -----
@@ -351,8 +358,8 @@ def _group_deleted(
         revision_id,
         keys,
         con,
-        uri=f"{layer_dir(revision_id)}dims/{group}/*.parquet",
-        fixed=keys.schema.group_coordinates(group),
+        uri=f"{layer_dir(revision_id)}groups/{group}.parquet",
+        fixed=keys.schema.group_key(group),
     )
 
 
@@ -484,7 +491,7 @@ def fold_inputs(
         (_component_deleted, ("entity",))
     ]
     tombstones += [
-        (partial(_group_deleted, group), keys.schema.group_coordinates(group))
+        (partial(_group_deleted, group), keys.schema.group_key(group))
         for group in keys.schema.groups
     ]
     kept = parent.set_alias("p")
@@ -529,14 +536,15 @@ def fold_group(
     con: DuckDBPyConnection,
     parent: DuckDBPyRelation,
 ) -> DuckDBPyRelation:
-    """One group's map: `dims/<group>/` keys, folded over `parent`.
+    """One group's map: `groups/<group>.parquet` keys, folded over `parent`.
 
-    `fold_components` keyed by the group's coordinates rather than the entity
-    alone, and with one more tombstone where the group is over `entity`: a
-    component tombstone removes every row of it, so `parent` is anti-joined
-    against that as well as against this layer's own group tombstones.
+    `fold_components` keyed by the group's key coordinates rather than the
+    entity alone, and with one more tombstone where the group is keyed by
+    `entity`: a component tombstone removes every row of it, so `parent` is
+    anti-joined against that as well as against this layer's own group
+    tombstones.
 
-    A group not over `entity` has no such relation - `corridor` over
+    A group not keyed by `entity` has no such relation - `corridor` over
     `(from, to)` draws both from the entity axis but under names of its own,
     and which of them a tombstone should match is not this fold's to guess.
 
@@ -546,15 +554,15 @@ def fold_group(
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    coordinates = keys.schema.group_coordinates(group)
-    over_entity = "entity" in coordinates
+    key = keys.schema.group_key(group)
+    over_entity = "entity" in key
     return _fold_ordered(
         revision_id,
         keys,
         con,
         parent,
-        uri=f"{layer_dir(revision_id)}dims/{group}/*.parquet",
-        key=coordinates,
+        uri=f"{layer_dir(revision_id)}groups/{group}.parquet",
+        key=key,
         columns=keys.schema.group_columns(group),
         also_deleted=_component_deleted if over_entity else None,
         also_deleted_key=("entity",) if over_entity else (),
@@ -574,12 +582,12 @@ def _fold_ordered(
     | None = None,
     also_deleted_key: tuple[str, ...] = (),
 ) -> DuckDBPyRelation:
-    """The shared fold for the two maps that carry an `order_key`.
+    """The shared fold for the maps that carry an `order_key`.
 
-    `components` and `connections` differ only in which file they read,
-    which columns key them, and whether a second tombstone kind
-    applies - so the `order_key` assignment, which is the subtle part, lives
-    here once rather than in each.
+    `components` and a group's differ only in which file they read, which
+    columns key them, whether they carry a type, and whether a second tombstone
+    kind applies - so the `order_key` assignment, which is the subtle part,
+    lives here once rather than in each.
 
     Parameters
     ----------
@@ -596,6 +604,9 @@ def _fold_ordered(
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
+    # Only the components map carries the type; a group's rows are keyed by its
+    # coordinates and `entity_type` is not one of them (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+    typed = "entity_type" in columns
     rel = try_read_parquet(uri, con, union_by_name=True)
     if rel is None:
         # No rows, so `order_key` needs no values either - just the column.
@@ -607,19 +618,23 @@ def _fold_ordered(
             rel.filter(not_deleted)
             .set_alias("i")
             .project(
-                col("i", "component_type"),
+                *([col("i", "entity_type")] if typed else []),
                 *(col("i", c) for c in key),
                 lit(str(revision_id)).cast(LAYER_UUID_TYPE).alias("layer_uuid"),
                 sql("row_number() OVER ()").alias("_row"),
             )
         )
-        # `component_type` is aggregated, not grouped by: it is determined by
+        # `entity_type` is aggregated, not grouped by: it is determined by
         # `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types), and grouping on it would keep one name under two types
         # as two rows.
         own = tagged.aggregate(
             [
                 *(col(c) for c in (*key, "layer_uuid")),
-                fn.any_value(col("component_type")).alias("component_type"),
+                *(
+                    [fn.any_value(col("entity_type")).alias("entity_type")]
+                    if typed
+                    else []
+                ),
                 fn.min(col("_row")).alias("_row"),
             ]
         )
@@ -875,10 +890,10 @@ class NodeCache:
     """A record's resolved view: owner map, dims, schema, and the relations over them.
 
     The cached artifacts and the reads gated by them
-    (`relation`/`outputs`/`component_frame`/`connection_frame`/
-    `attributes_of`) live together because every one of the latter is a
-    semi-join against the former. Tool-agnostic throughout: the long relations
-    here are what a tool (`datarecord.tools`) builds its own object from.
+    (`relation`/`outputs`/`component_frame`/`group_frame`/`attributes_of`) live
+    together because every one of the latter is a semi-join against the former.
+    Tool-agnostic throughout: the long relations here are what a tool
+    (`datarecord.tools`) builds its own object from.
 
     Notes
     -----
@@ -938,14 +953,14 @@ class NodeCache:
         """
         return read_schema(self.con)
 
-    def component_types(self) -> set[str]:
+    def entity_types(self) -> set[str]:
         """Types with any live component row, straight from the owner map.
 
         Notes
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
-        rows = self.components.project("component_type").distinct().fetchall()
+        rows = self.components.project("entity_type").distinct().fetchall()
         return {r[0] for r in rows}
 
     def attribute_names(self) -> list[str]:
@@ -1008,7 +1023,7 @@ class NodeCache:
         dims = self.schema.broadcast_dims
         # Scoped by a semi-join to the components map, the entity table saying
         # what type a name is (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-        of_type = self.components.filter(col("component_type") == lit(ctype)).project(
+        of_type = self.components.filter(col("entity_type") == lit(ctype)).project(
             "entity"
         )
         rows = (
@@ -1162,23 +1177,24 @@ class NodeCache:
             match=("entity",),
         )
 
-    def group_frame(self, group: str, ctype: str) -> DuckDBPyRelation | None:
-        """One type's rows of one group, resolved from that group's owner map.
+    def group_frame(self, group: str) -> DuckDBPyRelation | None:
+        """One group's rows, resolved from that group's owner map.
 
-        Carries every non-key column of the row - `role` on a connection, say.
-        Those describe the row rather than keying it, so the fold does not
-        track them and they come straight from the owning layer's file.
+        Not per type, which is no coordinate of a group.
+
+        Carries every non-key column of the row - an attribute over the group,
+        an `into` label. The fold does not track those, so they come straight
+        from the owning layer's file.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        return self._dim_frame(
-            ctype,
-            subdir=group,
-            owner_map=self.group(group),
-            match=self.schema.group_coordinates(group),
+        return self._owned_frame(
+            uri=lambda layer_uuid: f"{layer_dir(layer_uuid)}groups/{group}.parquet",
+            owned=self.group(group),
+            match=self.schema.group_key(group),
         )
 
     def _dim_frame(
@@ -1191,12 +1207,29 @@ class NodeCache:
     ) -> DuckDBPyRelation | None:
         """One type's rows from a `dims/` subdirectory, gated by its owner map.
 
-        Shared by `component_frame` and `connection_frame`: both semi-join the
-        owning layers' files to a map keyed the same way, differing only in
-        which columns match.
+        The per-type read, which is `components` alone: a group is one file
+        keyed by its coordinates and goes through `_owned_frame` directly.
+        """
+        return self._owned_frame(
+            uri=lambda uid: f"{layer_dir(uid)}dims/{subdir}/{ctype}.parquet",
+            owned=owner_map.filter(col("entity_type") == lit(ctype)),
+            match=match,
+        )
+
+    def _owned_frame(
+        self,
+        *,
+        uri: Callable[[UUID], str],
+        owned: DuckDBPyRelation,
+        match: tuple[str, ...],
+    ) -> DuckDBPyRelation | None:
+        """The owning layers' rows for one already-scoped slice of an owner map.
+
+        Shared by `component_frame` and `group_frame`: both semi-join the owning
+        layers' files to a map keyed the same way, differing only in which file
+        each layer contributes and which columns match.
         """
         con = self.con
-        owned = owner_map.filter(col("component_type") == lit(ctype))
         owning_ids: list[UUID] = [
             layer_uuid for (layer_uuid,) in owned["layer_uuid"].distinct().fetchall()
         ]
@@ -1205,8 +1238,7 @@ class NodeCache:
 
         layers: list[DuckDBPyRelation] = []
         for layer_uuid in owning_ids:
-            uri = f"{layer_dir(layer_uuid)}dims/{subdir}/{ctype}.parquet"
-            rel = try_read_parquet(uri, con)
+            rel = try_read_parquet(uri(layer_uuid), con)
             if rel is None:
                 continue
             layers.append(rel.project(lit(layer_uuid).alias("layer_uuid"), star()))
@@ -1226,7 +1258,7 @@ class NodeCache:
         # Project the file's attribute columns and `order_key` explicitly: a
         # bare star over the join would leak the map's duplicate key columns
         # and the layer's `deleted` into the frame.
-        skip = {"component_type", "layer_uuid", "deleted"}
+        skip = {"entity_type", "layer_uuid", "deleted"}
         return joined.project(
             *(col("u", c) for c in union.columns if c not in skip),
             col("o", "order_key"),

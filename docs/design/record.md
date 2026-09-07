@@ -31,15 +31,15 @@ class Record(Protocol):
 `schema` is [the declaration](schema.md): which axes exist, which attributes each component type may carry, and over which axes each may vary.
 The rest is data, and comes in two shapes.
 
-`dims`, `components` and `groups` are **wide** — one row per thing, keyed by the dim, the component type, or the group and then the type:
+`dims`, `components` and `groups` are **wide** — one row per thing, keyed by the dim, the component type, or the group:
 
 ```text
 dims["scenario"]                       scenario | ...   one row per axis label, in axis order
 components["Generator"]                entity | <non-varying attribute columns>
-groups["connection"]["Link"]           entity | bus | role | ...  one per attachment
+groups["connection"]                   entity | bus | <attributes over the group>
 ```
 
-`groups` is keyed twice because a group is declared record-wide while its rows are stored per component type: `connection` is one group, and `dims/connection/Link.parquet` is one type's rows of it.
+`groups` is keyed by the group alone, one frame each: a group's rows are keyed by its coordinates and the component type is not one of them, so `groups/connection.parquet` holds every type's attachments ([where the rows live](format.md#where-a-value-lives)).
 
 `attributes` and `outputs` are **long** — one row per value, keyed by the attribute's name:
 
@@ -54,7 +54,7 @@ A row names what the value belongs to, the coordinate it sits at, and the value 
 So `efficiency` over the `connection` group carries `entity | bus`, `flow` over a `corridor` carries `from | to`, and `objective_weighting` over `snapshot` alone carries no entity column at all — an all-NULL `entity` would be a column claiming a component the value has none of.
 `union_by_name` is what lets the fold union files of differing shape, supplying NULL for a coordinate a given file does not carry.
 
-There is **no `component_type` column** in that row, and none in the mapping's key either: `attributes["p_max_pu"]` holds every type's `p_max_pu` together, since an `entity` already identifies a component on its own ([what a data record is](index.md#what-a-data-record-is)).
+There is **no `entity_type` column** in that row, and none in the mapping's key either: `attributes["p_max_pu"]` holds every type's `p_max_pu` together, since an `entity` already identifies a component on its own ([what a data record is](index.md#what-a-data-record-is)).
 A consumer wanting one type's rows joins `components` on `entity` — the entity frames are what say which type an entity is.
 
 **`breakpoint`** is NULL for the ordinary case. It carries the abscissa of a piecewise-linear value: a curve is one row per breakpoint, `value` the ordinate at each. Convexity is never checked or recorded — that is a framework's judgement.
@@ -64,7 +64,7 @@ A consumer wanting one type's rows joins `components` on `entity` — the entity
 Some attributes belong not to a component but to one of its connections to a bus.
 
 A connection is one row of the **`connection` [group](schema.md#groups)** — `Group(over={"entity": "entity", "bus": "bus"})` — rather than a structural category of its own.
-`groups["connection"][ctype]` lists the attachments themselves, one row per `(entity, bus)`; `role` — which end of the component it is — describes the connection and identifies nothing, and is an ordinary attribute over the group rather than a column the format fixes.
+`groups["connection"]` lists the attachments themselves, one row per `(entity, bus)`, across every component type; `role` — which end of the component it is — describes the connection and identifies nothing, and is an ordinary attribute a tool declares over the group ([PyPSA does](tools.md)) rather than a column the format fixes.
 
 A connection is identified by **the bus it attaches to**, never by position.
 An attribute is a connection attribute because its `dims` name the group, so a per-connection value is otherwise an ordinary long row: `efficiency` may vary by timestep and scenario like any other attribute, and decodes by the same rules with no special case.

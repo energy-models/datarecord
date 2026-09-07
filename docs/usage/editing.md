@@ -21,7 +21,7 @@ w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
 w.set("p", solved_frame, kind="outputs")  # a result
 ```
 
-**There is no `component_type` keyword.** A name identifies one component across every type, so the record looks the type up and checks that each name's type carries the attribute — one call may legitimately span types ([design](../design/working-record.md#set)).
+**There is no `entity_type` keyword.** A name identifies one component across every type, so the record looks the type up and checks that each name's type carries the attribute — one call may legitimately span types ([design](../design/working-record.md#set)).
 
 `entity=None` means every component whose type carries this attribute. Every other coordinate goes through `**dims`, a group's included — `bus="north"` addresses one connection, `from=`/`to=` one corridor. A plain dim's absence means "every value of that dim" by the NULL broadcast rule; a group coordinate's means "every row of the group for this entity" ([design](../design/record.md#the-broadcast-rule)).
 
@@ -46,8 +46,8 @@ w.add(
 
 w.remove("Generator", ["old_coal"])
 
-w.connect(
-    "Link",
+w.add_group(
+    "connection",
     pd.DataFrame(
         {
             "entity": ["dc", "dc"],
@@ -56,19 +56,20 @@ w.connect(
         }
     ),
 )
-w.disconnect("Link", [("dc", "south")])
+w.remove_group("connection", [("dc", "south")])
 ```
 
 `add` takes a wide frame keyed by `entity` and splits it by the schema: columns addressed by `entity` alone stay in `dims/components/`, ones varying beyond it become `inputs/` rows ([design](../design/format.md#where-a-value-lives)). It keeps its `ctype` argument where `set` loses it — this is the call that _establishes_ what a name's type is, and where record-wide name uniqueness is enforced ([design](../design/working-record.md#add-remove)). A component exists by virtue of its member row, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
 
 `remove` stages a tombstone on the entity axis, with no dim scope — a component [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every attribute, and to every connection of the component ([design](../design/layers.md#deletion)).
 
+`add_group`/`remove_group` take no type at all, unlike `add`: a group's rows are keyed by its coordinates and the type is not one of them, so there is nothing for a type argument to scope ([design](../design/format.md#where-a-value-lives)). Every group is reached the same way — `connection` has no call of its own, being one group among however many the schema declares.
+
 ## Inspecting and rolling back
 
 ```python
 w.pending  # Pending(attributes={...}, components={...},
-#         groups={"connection": {...}}, tombstones={...})
-w.pending.connections  # shorthand for groups["connection"]
+#         groups={"connection": 2}, tombstones={...})
 bool(w.pending)  # whether anything is staged
 w.rollback()  # discard everything staged
 ```

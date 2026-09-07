@@ -20,7 +20,7 @@ So a tool's results go straight to [`write_record`](writing.md), or one at a tim
 
 A framework holds its results per component type, so reaching this shape means concatenating each attribute's types into one frame.
 That is free: the frames are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller collects.
-The concatenation needs no `component_type` column to distinguish the arms, since [`entity` is unique across them](format.md#entity-is-unique-across-types) — which is what makes the union a plain one rather than a tagged one.
+The concatenation needs no `entity_type` column to distinguish the arms, since [`entity` is unique across them](format.md#entity-is-unique-across-types) — which is what makes the union a plain one rather than a tagged one.
 
 Lazy is what the protocol asks for rather than what any implementation must do.
 A tool reshaping a solved model's in-memory containers has nothing to defer and wraps its eager frames with `.lazy()`; one that could fetch a result attribute from a solver on demand is free to, and a caller wanting three of forty then pays for three.

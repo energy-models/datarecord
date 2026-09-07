@@ -29,8 +29,8 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all
-from datarecord.record import EMPTY, Flags, Frames, LazyFrames, Record
-from datarecord.schema import AttributeSpec, ComponentType, Dimension, Group
+from datarecord.record import Flags, Frames, LazyFrames, Record
+from datarecord.schema import AttributeSpec, Dimension, Group, Trait
 from datarecord.schema import Schema as RecordSchema
 from datarecord.tools.base import (
     Requirements,
@@ -48,7 +48,14 @@ if TYPE_CHECKING:
 # A declared axis with no rows is fine - that is just a deterministic or
 # single-period network.
 SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
+# PyPSA's own name for the column `scenario_weightings` carries, so a record
+# round-trips it without renaming.
+SCENARIO_WEIGHT = "weight"
 ENTITY, BUS, CONNECTION = "entity", "bus", "connection"
+ENTITY_TYPE = "entity_type"
+# An attribute over the `connection` group, not a column the format fixes: the
+# port vocabulary below is this tool's, so the record layer never names it.
+ROLE = "role"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
 
 # PyPSA's `defaults["type"]` vocabulary, mapped to the narwhals types the long
@@ -834,7 +841,7 @@ def _long_rows(
     `_as_long` already emits the dim columns and `value`; this adds the
     columns the record's schema fixes and PyPSA has no notion of - `attribute`,
     and the NULL `breakpoint` that marks the value a scalar. No
-    `component_type`, and no `bus`: that is the `connection` group's
+    `entity_type`, and no `bus`: that is the `connection` group's
     coordinate, so it belongs to the rows of an attribute addressed by that
     group and `_per_port_long_rows` is what fills it.
 
@@ -967,10 +974,11 @@ class PyPSATool(Tool):
         known = self.component_types()
         declared = record.schema
         for ctype in sorted(record.components):
-            # A type PyPSA has no registry entry for. Reported rather than
-            # raised: the record layer stores `component_type` as a plain
-            # string, so an unknown type reads back fine and it is this
-            # tool's business that it cannot be built.
+            # A type PyPSA has no registry entry for, though the record's own
+            # schema declares it. Reported rather than raised: the record layer
+            # upholds its schema's vocabulary and knows no framework's, so this
+            # reads back fine and it is this tool's business that it cannot be
+            # built.
             if ctype not in known:
                 component_types.add(ctype)
                 continue
@@ -1090,7 +1098,7 @@ class PyPSATool(Tool):
         Keyed by attribute, matching `outputs/<attr>.parquet`: every component
         type's rows for one attribute are concatenated into one frame, exactly as
         `attributes` presents `inputs/`. The union needs no
-        `component_type` to tell the arms apart. Which attributes count as
+        `entity_type` to tell the arms apart. Which attributes count as
         results comes from PyPSA's registry, so an upgrade that adds one is
         picked up.
 
@@ -1199,8 +1207,30 @@ class _NetworkSource:
         # series differ per scenario, so an attribute not declaring it would be
         # one the fold owns once across every scenario.
         varying_dims = (SNAPSHOT, SCENARIO) if self.n.has_scenarios else (SNAPSHOT,)
-        attributes: dict[str, AttributeSpec] = {}
-        component_types: dict[str, ComponentType] = {}
+        # Which end of the component an attachment is, which PyPSA's sign
+        # convention reads off the port index (`_port_role`). Declared over the
+        # `connection` group, so it is a column of that group's file rather than
+        # a long row - and so the record layer needs no rule of its own for a
+        # word that is this tool's vocabulary (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        attributes: dict[str, AttributeSpec] = {
+            ROLE: AttributeSpec(
+                dtype=nw.String(),
+                dims=frozenset({CONNECTION}),
+                description="Which end of the component this attachment is.",
+            )
+        }
+        if self.n.has_scenarios:
+            # A probability per scenario, which `dims` addresses by the scenario
+            # axis alone - so it is a column of `dims/scenario.parquet`, where
+            # `scenario_weightings` already puts it, rather than a long row.
+            # Declared because it is data a consumer reads back: `set_scenarios`
+            # takes it on import, and an undeclared column would carry no dtype.
+            attributes[SCENARIO_WEIGHT] = AttributeSpec(
+                dtype=nw.Float64(),
+                dims=frozenset({SCENARIO}),
+                description="How much this scenario counts in the expectation.",
+            )
+        carries: dict[str, frozenset[str]] = {}
         for c in self.n.components:
             if not _exported(c):
                 continue
@@ -1241,7 +1271,15 @@ class _NetworkSource:
                 # per-type divergence the storage could not have honoured.
                 attributes.setdefault(stem, spec)
             if carried:
-                component_types[c.name] = ComponentType(attributes=frozenset(carried))
+                carries[c.name] = frozenset(carried)
+        # PyPSA's registry is per type - a `Line` has no `efficiency` - so every
+        # attribute is narrowed to the types that declare it, and none is left
+        # carried by all. One trait per type is the faithful translation of a
+        # registry that ships no trait vocabulary of its own (https://energy-models.github.io/datarecord/design/schema/#traits).
+        traits = {
+            ctype: Trait(attributes=carried, on={ENTITY_TYPE: frozenset({ctype})})
+            for ctype, carried in carries.items()
+        }
         return RecordSchema(
             dimensions={
                 SNAPSHOT: Dimension(
@@ -1253,12 +1291,8 @@ class _NetworkSource:
                     unit="year",
                     description="An investment period, labelled by its year.",
                 ),
-                # `scenario` keys both entity tables: a network's components
-                # are the same across scenarios, but a layer may still patch
-                # one scenario's values (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys).
                 SCENARIO: Dimension(
                     dtype=nw.String(),
-                    keys=frozenset({"component", "connection"}),
                     description="One realisation of a stochastic problem.",
                 ),
                 # The two axes the `connection` group is over. `entity` is the
@@ -1266,15 +1300,29 @@ class _NetworkSource:
                 # ordinary dim, one coordinate of one group.
                 ENTITY: Dimension(dtype=nw.String(), description="A component."),
                 BUS: Dimension(dtype=nw.String(), description="A node of the network."),
+                # The kinds a component may be: the labels are PyPSA's registry,
+                # so an enum rather than a bare string, and a type outside it is
+                # rejected on write.
+                ENTITY_TYPE: Dimension(
+                    dtype=nw.Enum(sorted(carries)),
+                    description="What kind of component an entity is.",
+                ),
             },
             groups={
                 CONNECTION: Group(
                     over={"entity": ENTITY, "bus": BUS},
                     description="A component's attachment to one bus.",
-                )
+                ),
+                # `into` over `entity` alone is what makes `entity_type` the
+                # entity-type axis (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
+                ENTITY_TYPE: Group(
+                    over={ENTITY: ENTITY},
+                    into=ENTITY_TYPE,
+                    description="What kind of component each entity is.",
+                ),
             },
             attributes=attributes,
-            component_types=component_types,
+            traits=traits,
             # `entity` and the `connection` group's coordinates are patchable
             # value by value: a layer may set one generator's `p_nom`, or one
             # connection's `efficiency`, without restating every other's. That
@@ -1305,19 +1353,44 @@ class _NetworkSource:
         return LazyFrames(types, self._component_frame)
 
     @property
-    def groups(self) -> dict[str, LazyFrames]:
-        """The `connection` group, which is the only one a network has.
+    def groups(self) -> LazyFrames:
+        """The `connection` group, one frame across every type.
 
         Every type with any port, single-attachment ones included: a
         Generator's one `bus` is as much a connection as a Link's `bus0`,
         and `c.ports == [""]` makes `_port_attribute` name it correctly.
 
+        The entity-type group is not here, its rows being derived on write from
+        the per-type member frames (`_write_entity_axis`).
+
         Notes
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        types = tuple(c.name for c in self.n.components if _exported(c) and c.ports)
-        return {CONNECTION: LazyFrames(types, self._connection_frame)}
+        return LazyFrames((CONNECTION,), lambda _: self._connection_frame())
+
+    def _connection_frame(self) -> nw.LazyFrame:
+        """Every type's connections in one frame, `(entity, bus, role)`.
+
+        Notes
+        -----
+        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        """
+        types = [c.name for c in self.n.components if _exported(c) and c.ports]
+        frames = [_connection_rows(self.n.c[ctype]) for ctype in types]
+        rows = (
+            pd.concat(frames, ignore_index=True)
+            if frames
+            else pd.DataFrame(columns=["entity", "bus", "role"])
+        )
+        # A stochastic network repeats its connections per scenario, which
+        # collapse to one row: an attachment exists or it does not, so nothing
+        # scopes it per value of an axis (`_tagged` says the same of members).
+        if SCENARIO in rows.columns:
+            rows = rows.drop(columns=[SCENARIO]).drop_duplicates(
+                subset=["entity", "bus"]
+            )
+        return nw.from_native(rows).lazy()
 
     @property
     def attributes(self) -> LazyFrames:
@@ -1454,21 +1527,11 @@ class _NetworkSource:
         frame = c.static[columns].reset_index().rename(columns={"name": "entity"})
         return nw.from_native(self._tagged(frame, ctype)).lazy()
 
-    def _connection_frame(self, ctype: str) -> nw.LazyFrame:
-        """One type's connections, `(name, bus, role)`.
-
-        Notes
-        -----
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        """
-        frame = _connection_rows(self.n.c[ctype])
-        return nw.from_native(self._tagged(frame, ctype)).lazy()
-
     @staticmethod
     def _tagged(frame: pd.DataFrame, ctype: str) -> pd.DataFrame:
         """A `dims/` frame with the columns the fold keys and scopes by.
 
-        `component_type` because one owner map covers every type; `deleted`
+        `entity_type` because one owner map covers every type; `deleted`
         because the fold reads the tombstone column from the same file.
 
         No `scenario`: an entity exists or it does not, so nothing scopes
@@ -1484,7 +1547,7 @@ class _NetworkSource:
         """
         if SCENARIO in frame.columns:
             frame = frame.drop(columns=[SCENARIO]).drop_duplicates(subset=["entity"])
-        frame = frame.assign(component_type=ctype)
+        frame = frame.assign(entity_type=ctype)
         if "deleted" not in frame.columns:
             frame["deleted"] = False
         return frame
@@ -1585,16 +1648,22 @@ def _ordered_connections(record: Record, ctype: str) -> pd.DataFrame | None:
     placed before outputs, so `bus0` is the input end PyPSA's sign convention
     expects.
 
+    Scoped to `ctype` by that type's entities, one frame holding every type's
+    connections.
+
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    frame = record.groups.get(CONNECTION, EMPTY).get(ctype)
-    if frame is None:
+    frame = record.groups.get(CONNECTION)
+    members = record.components.get(ctype)
+    if frame is None or members is None:
         return None
-    df = frame.to_native().df()
+    df = frame.collect(backend="pandas").to_native()
+    mine = set(members.select("entity").collect(backend="pandas").to_native()["entity"])
+    df = df[df["entity"].isin(mine)]
     if df.empty:
         return None
     # Per component: ports are numbered within the entity they belong to.
