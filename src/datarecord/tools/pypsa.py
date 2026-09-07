@@ -58,18 +58,15 @@ ENTITY_TYPE = "entity_type"
 ROLE = "role"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
 
-# PyPSA's `defaults["type"]` vocabulary, mapped to the narwhals types the long
-# schema stores. `series` and `static or series` describe *where* a value
-# lives, not what it is - both are floats in a record's `value` column.
+# PyPSA's `defaults["typ"]` (the attribute's Python type) mapped to the narwhals
+# type the long schema stores, `String` for anything unlisted. Keyed on `typ` -
+# what a value *is* - not `type`, whose `"static or series"`-style strings
+# describe only where it lives and grow a new variant per PyPSA release.
 _DTYPES = {
-    "boolean": nw.Boolean(),
-    "float": nw.Float64(),
-    "int": nw.Int64(),
-    "string": nw.String(),
-    "geometry": nw.String(),
-    "series": nw.Float64(),
-    "static": nw.Float64(),
-    "static or series": nw.Float64(),
+    bool: nw.Boolean(),
+    int: nw.Int64(),
+    float: nw.Float64(),
+    str: nw.String(),
 }
 
 
@@ -1275,7 +1272,7 @@ class _NetworkSource:
                 dims = set(varying_dims) if row["varying"] else set()
                 dims.add(CONNECTION if attr in per_port else ENTITY)
                 spec = AttributeSpec(
-                    dtype=_DTYPES.get(row["type"], nw.String()),
+                    dtype=_DTYPES.get(row["typ"], nw.String()),
                     dims=frozenset(dims),
                     default=_default(row["default"]),
                     unit=_text(row.get("unit")),
