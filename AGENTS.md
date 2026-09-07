@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # AGENTS.md
 
 Contribution rules and conventions for datarecord, for humans and AI agents alike.
@@ -181,6 +187,13 @@ $ grep -n "FAILED\|Error\|assert" "$TMPDIR/pytest.log"
 
 Run it in the background and do the next piece of work while it goes; come back
 to the log rather than watching it.
+
+## Licensing
+
+Every file carries a REUSE 3.0 header: `datarecord contributors` as the
+copyright, `MIT` for code and `CC-BY-4.0` for docs. Where the format has no
+comments, annotate it in [`REUSE.toml`](REUSE.toml) instead. `pixi run lint`
+runs `reuse lint` and fails on a file that carries neither.
 
 ## Issues
 

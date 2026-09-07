@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The `Revision` node and its ancestry query.
 
 A thin façade over `resolve`: it holds the node's identity and reads the

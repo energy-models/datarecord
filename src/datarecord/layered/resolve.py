@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The owner map, and the resolved reads gated by it.
 
 The map answers which layer owns each key; `Resolver` exposes the reads over

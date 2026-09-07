@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # The schema
 
 One schema per record, and `manifest.json` is how it is written down — the two words name the same thing, the file and the object.

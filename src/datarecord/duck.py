@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """DuckDB connection setup for the record layer.
 
 Owns the `revisions` metadata table and the `layer_dir` path convention

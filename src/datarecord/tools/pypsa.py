@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The PyPSA tool: record -> `pypsa.Network` -> results.
 
 The only module that knows PyPSA's network shape - that its axes are

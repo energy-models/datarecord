@@ -4,8 +4,6 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Layered
+# Contributing
 
-::: datarecord.layered.revision.Revision
-
-::: datarecord.layered.write.write_record
+--8<-- "CONTRIBUTING.md:docs"

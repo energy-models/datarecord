@@ -1,4 +1,12 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Contributing
+
+<!-- --8<-- [start:docs] -->
 
 Contribution rules and conventions for datarecord. We welcome all contributors —
 a good place to start is the issues tagged
@@ -41,8 +49,8 @@ Open a GitHub issue to report a bug or request a feature:
 - Write tests for new features and bug fixes under `tests/` as `test_*.py`,
   reusing the shared fixtures in `tests/fixtures.py` and `tests/conftest.py`
   where useful. Run the tests after making changes and make sure they pass.
-- [`docs/design/`](docs/design/) is the authoritative design, published at
-  <https://energy-models.github.io/datarecord/design/>. Cite its pages from a
+- The [design pages](https://energy-models.github.io/datarecord/design/) are the
+  authoritative design. Cite them from a
   docstring's numpydoc `Notes` section rather than restating the argument — a
   comment that re-argues the design is a defect. When behaviour changes, update
   the page, not just the code. (`Notes`, not `References`: numpydoc discourages
@@ -54,7 +62,7 @@ Open a GitHub issue to report a bug or request a feature:
   `https://energy-models.github.io/datarecord/pr-<N>/`, linked from a comment on
   the pull request itself; it is removed when the pull request closes, and a
   weekly job sweeps any that outlive it. Both live in
-  [`.github/workflows/docs.yml`](.github/workflows/docs.yml).
+  [`.github/workflows/docs.yml`](https://github.com/energy-models/datarecord/blob/main/.github/workflows/docs.yml).
 - No tool import may leak into core `datarecord`
   ([module layout](https://energy-models.github.io/datarecord/design/module-layout/)):
   everything framework-specific lives under `datarecord/tools/` behind an
@@ -75,15 +83,15 @@ this schema-declared, backend-agnostic, lazily-evaluated design.
 
 ## Releasing
 
-The version lives in `[project].version` in [`pyproject.toml`](pyproject.toml);
-there is no VCS-derived versioning. `CHANGELOG.md` tracks user-facing changes
-under an `[Unreleased]` heading between releases.
+The version lives in `[project].version` in `pyproject.toml`; there is no
+VCS-derived versioning. `CHANGELOG.md` tracks user-facing changes under an
+`[Unreleased]` heading between releases.
 
 To cut `vX.Y.Z`:
 
 1. Confirm `pixi run test` and `pixi run -e docs docs-build` pass — best done on
    a release pull request.
-2. Rename the `[Unreleased]` heading in [`CHANGELOG.md`](CHANGELOG.md) to
+2. Rename the `[Unreleased]` heading in `CHANGELOG.md` to
    `vX.Y.Z` with the release date, and set `version` in `pyproject.toml`.
 3. Merge the release pull request, then tag the merge commit `vX.Y.Z` and create
    the GitHub release from that tag.
@@ -91,6 +99,9 @@ To cut `vX.Y.Z`:
 
 ## AI-assisted contributions
 
-If you use AI tools when contributing, please read [`AGENTS.md`](AGENTS.md)
+If you use AI tools when contributing, please read
+[`AGENTS.md`](https://github.com/energy-models/datarecord/blob/main/AGENTS.md)
 for how AI-generated content must be marked and what we expect you to write
 by hand.
+
+<!-- --8<-- [end:docs] -->

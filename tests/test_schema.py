@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The typed schema: declarations, derived keys, validation, versioning.
 
 Notes

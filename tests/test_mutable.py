@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """`WorkingRecord`: staging, the edit operations, commit.
 
 Notes

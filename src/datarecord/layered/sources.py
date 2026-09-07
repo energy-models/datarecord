@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Where a layer's rows come from, behind a protocol the fold reads them through.
 
 The fold names files, not locations: `inputs/p_nom.parquet` is what it wants
