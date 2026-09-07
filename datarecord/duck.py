@@ -5,9 +5,10 @@ that maps a record UUID to its record location. The connection is passed as a
 parameter throughout, never a module global, so each test can open its own
 `:memory:` connection.
 
-Nothing here knows about a modelling framework: `component_type` and
-`attribute` are plain `VARCHAR`, so a record whose types no tool recognises
-still reads, and it is a tool's `verify` that reports it.
+Nothing here knows about a modelling framework: the entity-type axis is typed
+as the *schema* declares it, whatever a tool's registry holds, so a record whose
+types no tool recognises still reads and it is a tool's `verify` that reports
+them.
 
 Notes
 -----
@@ -16,18 +17,28 @@ Notes
 - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
 """
 
+import json
 import os
-from collections.abc import Callable, Iterable, MutableMapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
 from functools import partial, reduce
+from glob import glob
+from pathlib import Path
+from typing import Any
+from urllib.error import HTTPError
+from urllib.request import urlopen
 from uuid import UUID
 from weakref import WeakKeyDictionary
 
 import duckdb
+import narwhals as nw
+import narwhals._duckdb.utils as _nw_duckdb
+from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, FunctionExpression
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
+from narwhals._utils import Version
 
 
 class _Functions:
@@ -229,7 +240,20 @@ def try_read_parquet(
         If the read fails for any reason other than a local or remote miss
         (e.g. DNS/TLS/timeout) - a connection failure should not be mistaken
         for a missing layer.
+
+    Notes
+    -----
+    A local miss is answered without asking DuckDB at all. Inside a transaction
+    a failed read *aborts* it, and catching the exception here does not undo
+    that - every later statement on the connection would fail until a rollback,
+    which would discard whatever the transaction had staged. A missing kind is
+    ordinary (an attribute a layer never wrote), so it must not depend on being
+    outside one.
     """
+    if "://" not in uri and not (
+        glob(uri) if any(c in uri for c in "*?[") else Path(uri).exists()
+    ):
+        return None
     try:
         return con.read_parquet(uri, **kwargs)  # type: ignore[arg-type]
     except duckdb.HTTPException as e:
@@ -243,6 +267,19 @@ def try_read_parquet(
         if "No files found" in str(e):
             return None
         raise
+
+
+def parquet_names(dir_uri: str, con: DuckDBPyConnection) -> set[str]:
+    """Basenames of the `*.parquet` files directly under `dir_uri`.
+
+    One listing regardless of how many files exist there, local or remote -
+    what a caller otherwise probing one filename at a time (`try_read_parquet`
+    per candidate) should glob instead.
+    """
+    rows = con.sql(
+        "SELECT file FROM glob(?)", params=[f"{dir_uri}*.parquet"]
+    ).fetchall()
+    return {row[0].rsplit("/", 1)[-1] for row in rows}
 
 
 def union_all_by_name(
@@ -275,54 +312,206 @@ def ex_all(exprs: Iterable[Expression]) -> Expression:
     return reduce(lambda x, y: x & y, exprs)
 
 
-def dims_dirs(ancestry: list[UUID]) -> list[str]:
-    """`dims/`-containing directories for resolving a record's axes.
+def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
+    """NULL-safe equality on `columns`, between two aliased relations.
 
-    `ancestry` is root first, ending in the record being resolved and already
-    truncated at the deepest materialised ancestor (`ancestry_to_read`). Every
-    entry but the last therefore has resolved dims under `resolved/`, while the
-    last is the record itself and contributes its layer's raw `dims/`.
+    What an address coordinate is matched on everywhere: a row exists or it does
+    not, so NULL means "this key has no value there" and must match the same
+    NULL on the other side, which a plain `=` never does.
+    """
+    return ex_all(
+        sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}")
+        for c in columns
+    )
 
-    The two live in the same record directory but stay distinct paths -
-    `layers/<id>/dims/` against `layers/<id>/resolved/dims/` - so a record read
-    as an ancestor and the same record read as itself never alias.
+
+def broadcast_match(
+    alias_a: str, alias_b: str, fixed: Iterable[str], dims: Iterable[str]
+) -> Expression:
+    """NULL-safe equality on `fixed`, broadcast-OR on `dims`.
+
+    A raw row's `dim = NULL` means "every value of `dim`", so it must match
+    regardless of the resolved side's value there, unlike the `IS NOT DISTINCT
+    FROM` of `null_safe` which only matches NULL against NULL. `alias_a` is the
+    broadcasting side.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    last = len(ancestry) - 1
-    return [
-        (layer_dir(uid) if depth == last else resolved_dir(uid)) + "dims/"
-        for depth, uid in enumerate(ancestry)
-    ]
+    match = null_safe(alias_a, alias_b, fixed)
+    for dim in dims:
+        match = match & (
+            col(alias_a, dim).isnull()
+            | sql(f"{col(alias_a, dim)} IS NOT DISTINCT FROM {col(alias_b, dim)}")
+        )
+    return match
+
+
+def distinct_values(
+    rel: DuckDBPyRelation, column: str, *, order: bool = True
+) -> tuple[Any, ...]:
+    """`rel`'s distinct values of `column`, as a tuple.
+
+    What keys a `LazyFrames` built over a relation: the values are read from a
+    column rather than from a directory listing, so one code path serves a local
+    directory and a remote prefix alike.
+    """
+    projected = rel.project(column).distinct()
+    if order:
+        projected = projected.order(column)
+    return tuple(r[0] for r in projected.fetchall())
+
+
+def as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelation:
+    """One narwhals frame as a DuckDB relation, without collecting where possible.
+
+    A DuckDB-backed frame is already a plan, so it passes straight through; any
+    other backend is collected to arrow and re-registered. The one boundary where
+    a native representation is reached, shared by the write and edit paths.
+    """
+    native = frame.to_native()
+    if isinstance(native, DuckDBPyRelation):
+        return native
+    arrow = frame.collect(backend="pyarrow").to_native()  # noqa: F841 - bound by name
+    return con.sql("FROM arrow")
+
+
+def ensure_local_dir(uri: str, *, parent: bool = False) -> None:
+    """Create `uri`'s directory where it is a local path, a no-op for a remote one.
+
+    A remote store needs no directory created; a local write does, and a record
+    that wrote nothing to its layer has no directory yet either.
+
+    Parameters
+    ----------
+    parent
+        `uri` names a file whose directory is created, rather than the directory
+        itself.
+    """
+    if "://" in uri:
+        return
+    path = Path(uri)
+    (path.parent if parent else path).mkdir(parents=True, exist_ok=True)
+
+
+def struct_of(fields: Mapping[str, Expression]) -> Expression:
+    """A struct expression: field name to the expression for its value.
+
+    A struct rather than a column per field, because it comes back as a dict
+    keyed by name: the caller filters it by name instead of counting columns
+    into a positional slice.
+
+    `struct_pack` is what says this in DuckDB, and the field names are its
+    *keyword* arguments - which `FunctionExpression` cannot pass, being
+    positional-only. So the call is assembled as text here and the values are
+    interpolated as the expressions they already are, keeping SQL text out of
+    every caller.
+
+    Never empty, DuckDB having no empty struct.
+    """
+    packed = ", ".join(f'"{name}" := {value}' for name, value in fields.items())
+    return sql(f"struct_pack({packed})")
+
+
+class DuckTypes:
+    """Builds DuckDB types and typed shapes from narwhals dtypes, just in time.
+
+    Built once per connection and called per dtype - the constructor's
+    relation is where a timezone-aware `Datetime` resolves its zone (DuckDB
+    keeps timezone on the connection, not the dtype), and is fetched at most
+    once no matter how many dtypes this instance translates.
+
+    Reaches into narwhals' private DuckDB backend
+    (`narwhals._duckdb.utils.narwhals_to_native_dtype`) rather than a local
+    translation table - unversioned within the `narwhals>=2,<3` pin, so
+    `pixi run test` is what catches a break, not a type error here.
+
+    Parameters
+    ----------
+    rel_or_con
+        A connection is queried for the throwaway relation
+        `DeferredTimeZone` needs; a relation already in hand is used as-is,
+        skipping that query.
+    """
+
+    deferred_tz: _nw_duckdb.DeferredTimeZone
+    con: DuckDBPyConnection | None
+
+    def __init__(self, rel_or_con: DuckDBPyRelation | DuckDBPyConnection):
+        if isinstance(rel_or_con, DuckDBPyConnection):
+            self.con = rel_or_con
+            rel = rel_or_con.sql("SELECT 1")
+        else:
+            self.con = None
+            rel = rel_or_con
+        self.deferred_tz = _nw_duckdb.DeferredTimeZone(rel)
+
+    def __call__(self, dtype: nw.dtypes.DType) -> duckdb.sqltypes.DuckDBPyType:
+        """`dtype`'s DuckDB type."""
+        return _nw_duckdb.narwhals_to_native_dtype(
+            dtype, Version.MAIN, self.deferred_tz
+        )
+
+    def lit(self, value: Any, dtype: nw.dtypes.DType) -> Expression:
+        """`value`, cast to `dtype`'s DuckDB type - a typed literal."""
+        return lit(value).cast(self(dtype))
+
+    def null(self, dtype: nw.dtypes.DType) -> Expression:
+        """A typed NULL, which is one column of a shape-only relation."""
+        return self.lit(None, dtype)
+
+    def empty_relation(self, **columns: nw.dtypes.DType) -> DuckDBPyRelation:
+        """A row-less relation with `columns`' names and types.
+
+        What a staging table is created from: `create` takes the table's
+        shape from the relation, so a shape is built as expressions rather
+        than assembled as DDL text. One row of typed NULLs, kept for its
+        types and dropped for its rows.
+
+        A tuple rather than a list is what routes `values` to its expression
+        overload; the stub types only the scalar one.
+        """
+        assert self.con is not None
+        return self.con.values(
+            tuple(self.null(t).alias(n) for n, t in columns.items())
+        ).limit(0)  # type: ignore[arg-type]
 
 
 def fold_axis(
-    dims_dirs: list[str], filename: str, key: tuple[str, ...], con: DuckDBPyConnection
+    axes: Sequence[DuckDBPyRelation | None],
+    key: tuple[str, ...],
+    con: DuckDBPyConnection,
 ) -> DuckDBPyRelation | None:
-    """Fold a `<dir>/<filename>` axis table over `dims_dirs`, keyed by `key`.
+    """Fold one keyed relation over each layer's, keyed by `key`, in member order.
 
-    `dims_dirs` is root first, each entry already resolved by the caller to that
-    ancestor's layer or its `resolved/` cache. Last-writer-wins per `key`, which
-    is `Schema.axis_key` - so a nested dim is keyed by `(*parents, dim)` and two
-    periods' identically-labelled timesteps stay distinct. Row order
-    follows the directory that first introduced the key.
+    The one fold for every axis - a dim's coordinates, a group, the entity axis.
+    `axes` is root first, one entry per layer - `None` where that layer has no
+    rows. Last-writer-wins per `key`, which is `Schema.axis_key` for a dim or
+    `Schema.group_key` for a group, so a nested dim is keyed by `(*parents, dim)`
+    and two periods' identically labelled timesteps stay distinct.
 
-    `_row` is tagged **per directory, before any union**: `UNION ALL` defines no
+    A `deleted = true` row is a tombstone: it removes its key unless a still-
+    deeper layer restates it, and never survives into the output, which carries
+    no `deleted` column. The output is returned **in first-introduced member
+    order** - root first, then within a layer file order - so a reader recovers
+    member order from the resolved file's own row order without a persisted
+    `order_key`.
+
+    `_row` is tagged **per layer, before any union**: `UNION ALL` defines no
     order, so a bare `row_number() OVER ()` over the unioned relation would
-    silently scramble which row counts as first-introduced. `_fold_ordered`
-    avoids the same pitfall the same way.
+    silently scramble which row counts as first-introduced.
 
     Notes
     -----
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
     - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     layers = []
-    for depth, dims_dir in enumerate(dims_dirs):
-        rel = try_read_parquet(f"{dims_dir}{filename}", con)
+    for depth, rel in enumerate(axes):
         if rel is None:
             continue
         layers.append(
@@ -336,7 +525,10 @@ def fold_axis(
         return None
 
     union = union_all_by_name(layers, con)
+    has_deleted = "deleted" in union.columns
     partition = ", ".join(str(col(c)) for c in key)
+    # `OVER (PARTITION BY ...)` stays text below: DuckDB's expression API has no
+    # window construct, so only what the window wraps is built as an expression.
     ranked = union.project(
         star(),
         sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _depth DESC)").alias(
@@ -346,12 +538,43 @@ def fold_axis(
         # `min()` over two separate window aggregates would answer "smallest
         # _depth" and "smallest _row" independently, not the pair belonging
         # to the earliest actual row.
-        sql(f"min({{'d': _depth, 'r': _row}}) OVER (PARTITION BY {partition})").alias(
-            "_first"
-        ),
+        sql(
+            f"{fn.min(struct_of({'d': col('_depth'), 'r': col('_row')}))} "
+            f"OVER (PARTITION BY {partition})"
+        ).alias("_first"),
     )
-    return (
-        ranked.filter(col("_rank") == lit(1))
-        .order("_first")
-        .project(star(exclude=["_depth", "_rank", "_row", "_first"]))
-    )
+    winners = ranked.filter(col("_rank") == lit(1))
+    # The deepest statement of a key wins; a tombstone there removes it.
+    if has_deleted:
+        # A row from a layer whose file lacks the column reads `deleted` as NULL
+        # once unioned by name; NULL is not a tombstone, so coalesce to false
+        # rather than letting `~NULL` drop a live row.
+        winners = winners.filter(~coalesce(col("deleted"), lit(False)))  # noqa: FBT003
+    scaffold = [
+        "_depth",
+        "_rank",
+        "_row",
+        "_first",
+        *(["deleted"] if has_deleted else []),
+    ]
+    return winners.order("_first").project(star(exclude=scaffold))
+
+
+def read_json(uri: str) -> dict[str, Any] | None:
+    """Read one JSON file, or `None` if it doesn't exist (e.g. an undeclared schema).
+
+    Only a genuine miss (local `FileNotFoundError`, remote 404/403) maps to
+    `None` - any other failure raises rather than silently reading as absent.
+    """
+    try:
+        if "://" in uri:
+            with urlopen(uri) as fh:  # noqa: S310 - record URIs are derived, not user input
+                return json.load(fh)
+        with open(uri) as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return None
+    except HTTPError as e:
+        if e.code in (403, 404):  # 403: S3's "missing key" without ListBucket
+            return None
+        raise

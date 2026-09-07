@@ -7,33 +7,32 @@ except importlib.metadata.PackageNotFoundError as e:  # pragma: no cover
     warnings.warn(f"Could not determine version of {__name__}\n{e!s}", stacklevel=2)
     __version__ = "unknown"
 
-from datarecord.directory import DirectoryRecord
 from datarecord.duck import connect, layer_dir
-from datarecord.layered.revision import LayeredRecord, Revision
+from datarecord.layered.revision import Record, Revision
 from datarecord.layered.write import write_record
-from datarecord.mutable import Directory, NewChild, Pending, WorkingRecord
+from datarecord.mutable import Directory, NewChild, WorkingRecord
 from datarecord.record import (
     Flags,
     Frames,
     LazyFrames,
-    Record,
+    RecordLike,
 )
-from datarecord.schema import AttributeSpec, Dimension, Schema
+from datarecord.schema import AttributeSpec, Dimension, Group, Schema, Trait
 
 __all__ = [
     "AttributeSpec",
     "Dimension",
     "Directory",
-    "DirectoryRecord",
     "Flags",
     "Frames",
-    "LayeredRecord",
+    "Group",
     "LazyFrames",
     "NewChild",
-    "Pending",
     "Record",
+    "RecordLike",
     "Revision",
     "Schema",
+    "Trait",
     "WorkingRecord",
     "connect",
     "layer_dir",

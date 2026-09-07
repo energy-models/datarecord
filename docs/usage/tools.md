@@ -24,7 +24,7 @@ results = PyPSA.results(n)  # Frames, in the long schema
 
 ```python
 w = WorkingRecord(record, con)
-w.set("p_max_pu", 0.8, names=["wind1"])
+w.set("p_max_pu", 0.8, entity=["wind1"])
 n = PyPSA.build(w)  # a WorkingRecord is a Record
 n.optimize()
 for attr, frame in PyPSA.results(n).items():
@@ -32,4 +32,4 @@ for attr, frame in PyPSA.results(n).items():
 w.commit(NewChild())  # one layer, inputs and results together
 ```
 
-Two checks are skipped for `kind="outputs"`: the attribute need not be schema-declared, and a result's `name` need not resolve to a declared member — a solve may produce rows for a component type it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).
+Two checks are skipped for `kind="outputs"`: the attribute need not be schema-declared, and a result's `entity` need not resolve to a declared member — a solve may produce rows for a component type it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).

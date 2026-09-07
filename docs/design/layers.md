@@ -1,6 +1,6 @@
 # Layered resolution
 
-A `LayeredRecord` resolves a tree of layers.
+A `Record` resolves a tree of layers.
 Each node adds one layer; a node's data is its layer resolved over its ancestors', last-writer-wins.
 
 ```python
@@ -19,7 +19,7 @@ The node metadata — `(id, parent)` — is persisted in the `revisions` table, 
 
 Two of [the protocol's](record.md) columns take their meaning from the overlay key.
 
-`bus` ([connections](record.md#connections)) is part of the **inputs** key, `(name, bus, *owned_per dims, attribute)`, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
+A [group](schema.md#groups)'s coordinates are part of the **inputs** key, `(*partial dims, attribute)` — `bus` among them for the `connection` group, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
 That is what makes a per-connection attribute owned _per connection_: without it, a patch changing one connection's `efficiency` would own — and so have to restate — every connection's.
 It is also why a connection is keyed by its bus rather than by position: a patch layer would otherwise have to know a connection's current index, so an ancestor inserting one earlier would silently redirect that patch to a different bus.
 
@@ -54,10 +54,12 @@ It is purely additive, writing files under `resolved/` and changing no answer, o
 
 ## Deletion
 
-A `deleted = true` row in `dims/components/<Type>.parquet` tombstones a component from every attribute, scoped by whichever dims [key `component`](schema.md#keys-which-entity-tables-a-dim-keys).
-A `deleted = true` row in `dims/connections/<Type>.parquet` tombstones one bus's connection — its connection row and its `inputs/` rows — leaving the component and its other connections intact.
+A `deleted = true` row on [the entity axis](format.md#the-entity-axis) tombstones a component from every attribute, and from every value of every dim — [existence does not vary along one](schema.md#existence-does-not-vary-along-a-dim), so there is nothing to scope a deletion by.
+A `deleted = true` row in `groups/<group>.parquet` tombstones one row of that group — the row itself and its `inputs/` rows — leaving the component and its other rows intact, so a connection is removed without touching the component it attached.
 
-When [the owner map](read-path.md#owner-map) is folded, a tombstone removes that key's entries from the map, so a deleted component is absent from the resolved map rather than filtered at read time.
+A tombstone is honoured by the [one fold](read-path.md#one-fold-for-every-axis) that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
+An _attribute's_ orphaned rows stop surfacing the same way, for every membership: an attribute row is keyed by the entity, group tuple and dim coordinates its `dims` name, and [`fold_inputs`](read-path.md#owner-map) anti-joins the map against each membership's `deleted` rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map, not filtered at read.
+Each membership honours only its **own** tombstones, read from the same file it folds from: deletion is never a cascade, so deleting a component drops its own row but leaves its connection tuples until they are deleted in turn.
 A tombstone only affects the branch that carries it; sibling branches keep the component.
 
 The fold treats an absent `deleted` column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.

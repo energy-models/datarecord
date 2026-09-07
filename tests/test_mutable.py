@@ -9,15 +9,16 @@ import narwhals as nw
 import pandas as pd
 import pytest
 
-from datarecord import Revision
-from datarecord.directory import DirectoryRecord
+from datarecord import Revision, duck
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
+from datarecord.layered.revision import Record
+from datarecord.layered.sources import ParquetLayer
 from datarecord.mutable import Directory, NewChild, WorkingRecord, normalise_value
-from datarecord.record import Record
-from datarecord.schema import AttributeSpec
+from datarecord.record import RecordLike
+from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network
+from tests.fixtures import export_network, schema
 
 GEN = "Generator"
 
@@ -36,11 +37,17 @@ def staged(root, con):
     return WorkingRecord(root.record, con)
 
 
+@pytest.fixture
+def written_directory(root):
+    """One layer's own directory, as a URI a caller could pass to `Record.at`."""
+    return layer_dir(root.id)
+
+
 def _static(revision, attribute, ctype=GEN):
     """One attribute as the built network sees it, per component name.
 
     Through the build rather than `relation()`: a non-varying attribute like
-    `p_nom` lives in `dims/components/`, so `inputs/` alone would not
+    `p_nom` lives in `dims/entity_type/`, so `inputs/` alone would not
     show what the record resolves to.
 
     Notes
@@ -50,7 +57,52 @@ def _static(revision, attribute, ctype=GEN):
     return PyPSA.build(revision.record).c[ctype].static[attribute].to_dict()
 
 
+def _layer_rows(revision, attribute, con, kind="inputs"):
+    """One committed layer's own `<kind>/<attribute>.parquet`, as pandas.
+
+    The single-layer view, read through the `LayerSource` for that layer rather
+    than the folding resolver: "what did this patch write" is a question about
+    one layer's file, not the resolved record, so `Record.at` - which folds a
+    source through the whole-tree machinery - is the wrong lens for it.
+    """
+    rel = ParquetLayer(revision.id, read_schema(con), con).attribute(attribute, kind)
+    return rel.to_df() if rel is not None else pd.DataFrame()
+
+
 # -- the protocol (https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit) ----------------------------------------------------
+
+
+def test_a_working_record_overrides_no_read_member():
+    """Every member it defines beyond `Record`'s is an edit, a commit, or private.
+
+    The property the whole design rests on: a staged edit is read by the same
+    fold that reads a committed layer, so a *read* member `WorkingRecord`
+    redefines is a place where staging stopped being just another layer. No
+    behavioural test would name that, because both paths would still answer -
+    they would just be two paths again.
+
+    `outputs` is the one allowed exception, results not overlaying, and it is
+    listed so that adding a second one requires editing this line.
+    """
+    edits = {
+        "set",
+        "add",
+        "remove",
+        "add_group",
+        "remove_group",
+        "rollback",
+        "commit",
+    }
+    allowed_read_override = {"outputs"}
+
+    inherited = {n for n in vars(Record) if not n.startswith("_")}
+    defined = {n for n in vars(WorkingRecord) if not n.startswith("_")}
+    assert inherited & defined <= allowed_read_override, (
+        "a read member redefined here means staging is no longer just a layer"
+    )
+    assert defined - inherited == edits, (
+        "a public member that is neither an edit nor an inherited read"
+    )
 
 
 def test_a_mutable_record_reads_as_a_record(staged):
@@ -64,63 +116,92 @@ def test_a_mutable_record_reads_as_a_record(staged):
     -----
     - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)
     """
-    assert isinstance(staged, Record)
-
-
-def test_nothing_is_pending_before_an_edit(staged):
-    p = staged.pending
-    assert (p.attributes, p.components, p.connections, p.tombstones) == ({}, {}, {}, {})
+    assert isinstance(staged, RecordLike)
 
 
 # -- value forms (https://energy-models.github.io/datarecord/design/working-record/#set) -----------------------------------------------------
 
 
 def test_scalar_applies_to_every_name():
-    names, values, dims = normalise_value(150.0, ["wind1", "wind2"], {})
+    names, values, dims = normalise_value(150.0, ["wind1", "wind2"])
     assert (names, values, dims) == (["wind1", "wind2"], [150.0, 150.0], {})
 
 
 def test_a_sequence_is_positional():
-    names, values, _ = normalise_value([150.0, 80.0], ["wind1", "wind2"], {})
+    names, values, _ = normalise_value([150.0, 80.0], ["wind1", "wind2"])
     assert names is not None
     assert dict(zip(names, values, strict=True)) == {"wind1": 150.0, "wind2": 80.0}
 
 
 def test_a_mapping_supplies_its_own_names():
-    names, values, _ = normalise_value({"wind1": 150.0, "wind2": 80.0}, None, {})
+    names, values, _ = normalise_value({"wind1": 150.0, "wind2": 80.0}, None)
     assert names is not None
     assert dict(zip(names, values, strict=True)) == {"wind1": 150.0, "wind2": 80.0}
 
 
 def test_a_series_indexed_by_names_is_per_name():
     series = pd.Series({"wind1": 1.0, "wind2": 2.0})
-    names, values, dims = normalise_value(series, ["wind1", "wind2"], {})
+    names, values, dims = normalise_value(series, ["wind1", "wind2"])
     assert names is not None
     assert dict(zip(names, values, strict=True)) == {"wind1": 1.0, "wind2": 2.0}
     assert dims == {}
 
 
 def test_a_series_indexed_by_an_axis_is_per_coordinate():
-    """The same type, read as a dim series - which axis labels it carries decides."""
+    """The same type read as a dim series - the caller says which, never the labels."""
     series = pd.Series({"2030-01-01": 0.4, "2030-01-02": 0.6})
-    names, values, dims = normalise_value(
-        series, None, {"snapshot": ["2030-01-01", "2030-01-02"]}
-    )
+    names, values, dims = normalise_value(series, None, indexed_by="snapshot")
     assert names is None
     assert values == [0.4, 0.6]
-    assert list(dims) == ["snapshot"]
+    assert dims == {"snapshot": ["2030-01-01", "2030-01-02"]}
 
 
 def test_a_sequence_of_the_wrong_length_is_rejected():
     with pytest.raises(ValueError, match="2 names"):
-        normalise_value([1.0, 2.0, 3.0], ["wind1", "wind2"], {})
+        normalise_value([1.0, 2.0, 3.0], ["wind1", "wind2"])
 
 
-def test_an_ambiguous_index_is_rejected():
-    """Matching both names and an axis has no single reading, so it is an error."""
+def test_an_index_that_could_be_either_is_read_as_names(staged):
+    """No membership test, so a label colliding with a name is not an ambiguity.
+
+    `scenario` here has a label spelled like a component; with nothing said, the
+    index is names - a call's meaning is its own, not the record's data's.
+    """
     series = pd.Series({"wind1": 1.0})
-    with pytest.raises(ValueError, match="matches both"):
-        normalise_value(series, ["wind1"], {"scenario": ["wind1"]})
+    names, _, dims = normalise_value(series, ["wind1"])
+    assert names == ["wind1"]
+    assert dims == {}, "no axis claimed it"
+
+
+def test_indexed_by_names_the_axis_a_series_index_holds(staged):
+    """Said outright, since nothing about the labels themselves could say it."""
+    series = pd.Series({pd.Timestamp("2015-01-01"): 0.4})
+    staged.set("p_max_pu", series, entity=["Manchester Wind"], indexed_by="snapshot")
+    assert "p_max_pu" in staged.attributes
+
+
+def test_an_unnamed_series_index_holds_names(staged):
+    """Not inferred from the labels, so an index saying nothing is names.
+
+    Which then fails the member check rather than silently landing on an axis -
+    a timestamp is no component.
+    """
+    series = pd.Series({"2030-01-01": 0.4})
+    with pytest.raises(KeyError, match="no member row"):
+        staged.set("p_max_pu", series, entity=["Manchester Wind"])
+
+
+def test_the_series_index_name_says_what_it_holds(staged):
+    """A caller who named the index has already said it; `indexed_by=` is spare."""
+    index = pd.Index([pd.Timestamp("2015-01-01")], name="snapshot")
+    staged.set("p_max_pu", pd.Series([0.4], index=index), entity=["Manchester Wind"])
+    assert "p_max_pu" in staged.attributes
+
+
+def test_indexed_by_must_be_a_coordinate_of_the_attribute(staged):
+    series = pd.Series({"a": 1.0})
+    with pytest.raises(ValueError, match="no coordinate of"):
+        staged.set("p_nom", series, entity=["Manchester Wind"], indexed_by="snapshot")
 
 
 # -- set (https://energy-models.github.io/datarecord/design/working-record/#set) -------------------------------------------------------------
@@ -128,9 +209,13 @@ def test_an_ambiguous_index_is_rejected():
 
 def test_set_stages_without_writing(staged, root):
     """Staging is not a layer: the record reads the edit, the record does not."""
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
 
-    assert staged.pending.attributes == {"p_nom": 1}
+    rows = staged.attributes["p_nom"].collect().to_native().to_pandas()
+    assert (
+        dict(zip(rows["entity"], rows["value"], strict=True))["Manchester Wind"]
+        == 150.0
+    )
     # The record itself is untouched until commit.
     assert _static(root, "p_nom")["Manchester Wind"] != 150.0
 
@@ -142,13 +227,13 @@ def test_a_staged_edit_is_visible_through_the_record(staged):
     -----
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
     """
-    staged.set("p_max_pu", 0.42, names=["Manchester Wind"])
+    staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
 
     rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
-    got = set(rows[rows["name"] == "Manchester Wind"]["value"])
+    got = set(rows[rows["entity"] == "Manchester Wind"]["value"])
     assert got == {0.42}
     # Every other name still reads the base record's rows.
-    assert set(rows["name"]) > {"Manchester Wind"}
+    assert set(rows["entity"]) > {"Manchester Wind"}
 
 
 def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, con):
@@ -163,10 +248,10 @@ def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, con):
     -----
     - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
     """
-    staged.set("p_max_pu", 0.42, names=["Manchester Wind"])
+    staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
     first = staged.attributes["p_max_pu"]
 
-    staged.set("p_min_pu", 0.11, names=["Manchester Wind"])
+    staged.set("p_min_pu", 0.11, entity=["Manchester Wind"])
     second = staged.attributes["p_min_pu"]
 
     # Collected only now, after the second frame was built.
@@ -188,18 +273,21 @@ def test_last_write_wins_within_the_staging_area(staged, root):
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.set("p_nom", 100.0, names=["Manchester Wind"])
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    staged.set("p_nom", 100.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
 
-    # Both are staged - `pending` counts rows, and the collapse is applied at
-    # commit rather than on every edit (https://energy-models.github.io/datarecord/design/working-record/#pending).
-    assert staged.pending.attributes == {"p_nom": 2}
+    # Read back before commit: the collapse is what the read applies too, so
+    # the second edit wins without the rows having been merged when staged.
+    rows = staged.attributes["p_nom"].collect().to_native().to_pandas()
+    mine = rows[rows["entity"] == "Manchester Wind"]
+    assert list(mine["value"]) == [150.0], "one row survives the collapse, the later"
+
     child = staged.commit(NewChild(root))
     assert _static(child, "p_nom")["Manchester Wind"] == 150.0
 
 
 def test_set_over_several_names(staged, root):
-    staged.set("p_nom", 150.0, names=["Manchester Wind", "Norway Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind", "Norway Wind"])
     child = staged.commit(NewChild(root))
 
     got = _static(child, "p_nom")
@@ -214,7 +302,7 @@ def test_set_rejects_an_unknown_name(staged):
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
     """
     with pytest.raises(KeyError, match="Nope"):
-        staged.set("p_nom", 1.0, names=["Nope"])
+        staged.set("p_nom", 1.0, entity=["Nope"])
 
 
 def test_set_accepts_a_name_staged_by_add(staged, root):
@@ -224,8 +312,8 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
     -----
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
-    staged.add(GEN, pd.DataFrame([{"name": "NewSolar", "carrier": "solar"}]))
-    staged.set("p_nom", 7.0, names=["NewSolar"])
+    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "carrier": "solar"}]))
+    staged.set("p_nom", 7.0, entity=["NewSolar"])
 
     child = staged.commit(NewChild(root))
     assert _static(child, "p_nom")["NewSolar"] == 7.0
@@ -244,10 +332,10 @@ def test_a_broadcast_edit_displaces_the_whole_series(staged):
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
-    staged.set("p_max_pu", 0.42, names=["Manchester Wind"])
+    staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
 
     rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
-    mine = rows[rows["name"] == "Manchester Wind"]
+    mine = rows[rows["entity"] == "Manchester Wind"]
     assert set(mine["value"]) == {0.42}
     assert mine["snapshot"].isna().all()
 
@@ -265,13 +353,13 @@ def test_a_pointwise_edit_keeps_the_rest_of_the_series(staged):
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
     """
     base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
-    mine = base[base["name"] == "Manchester Wind"].sort_values("snapshot")
-    one = mine.iloc[[0]][["name", "snapshot"]].assign(value=0.123)
+    mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
+    one = mine.iloc[[0]][["entity", "snapshot"]].assign(value=0.123)
 
-    staged.set("p_max_pu", one, names=["Manchester Wind"])
+    staged.set("p_max_pu", one, entity=["Manchester Wind"])
 
     rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
-    got = rows[rows["name"] == "Manchester Wind"].sort_values("snapshot")
+    got = rows[rows["entity"] == "Manchester Wind"].sort_values("snapshot")
     assert len(got) == len(mine)
     assert got.iloc[0]["value"] == 0.123
     assert got.iloc[1:]["value"].tolist() == mine.iloc[1:]["value"].tolist()
@@ -287,7 +375,7 @@ def test_a_long_frame_naming_an_unknown_component_is_rejected(staged):
     with pytest.raises(KeyError, match="Nope"):
         staged.set(
             "p_max_pu",
-            pd.DataFrame([{"name": "Nope", "value": 1.0}]),
+            pd.DataFrame([{"entity": "Nope", "value": 1.0}]),
         )
 
 
@@ -299,14 +387,18 @@ def test_an_expression_value_stages_the_whole_series(staged, root):
     - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
     """
     base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
-    mine = base[base["name"] == "Manchester Wind"].sort_values("snapshot")
+    mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
 
-    staged.set("p_max_pu", nw.col("value") * 2, names=["Manchester Wind"])
-    assert staged.pending.attributes == {"p_max_pu": len(mine)}
+    staged.set("p_max_pu", nw.col("value") * 2, entity=["Manchester Wind"])
+    read = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    read = read[read["entity"] == "Manchester Wind"].sort_values("snapshot")
+    assert read["value"].tolist() == (mine["value"] * 2).tolist(), (
+        "every coordinate the expression read, not just one"
+    )
 
     child = staged.commit(NewChild(root))
     got = child.record.attributes["p_max_pu"].collect().to_native().to_pandas()
-    got = got[got["name"] == "Manchester Wind"].sort_values("snapshot")
+    got = got[got["entity"] == "Manchester Wind"].sort_values("snapshot")
     assert got["value"].tolist() == (mine["value"] * 2).tolist()
 
 
@@ -332,9 +424,15 @@ def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     staged.set(
         "marginal_cost",
         pd.DataFrame(
-            [{"name": "Manchester Wind", "snapshot": ac_dc.snapshots[0], "value": 7.5}]
+            [
+                {
+                    "entity": "Manchester Wind",
+                    "snapshot": ac_dc.snapshots[0],
+                    "value": 7.5,
+                }
+            ]
         ),
-        names=["Manchester Wind"],
+        entity=["Manchester Wind"],
     )
 
     after = staged.flags(GEN)["marginal_cost"]
@@ -342,38 +440,110 @@ def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     assert after.broadcast == before.broadcast
 
 
+def test_a_staged_edit_is_read_back_and_then_re_read(staged, ac_dc):
+    """Set, read, set again, read again: the second read must see the second edit.
+
+    That is the whole content of "the staged step is not cached", and it fails
+    loudly if anyone later materialises past the frozen prefix - a
+    `cached_property` over the tail, or a `.create()` that does not stop where
+    `frozen` does. The first read is what arms it: it builds the fold, so a
+    cache introduced anywhere in it would be populated before the second `set`.
+
+    Notes
+    -----
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+    """
+
+    def p_nom(name):
+        frame = staged.attributes["p_nom"].collect().to_native().to_pandas()
+        return frame[frame["entity"] == name]["value"].tolist()
+
+    staged.set("p_nom", 11.0, entity=["Manchester Wind"])
+    assert p_nom("Manchester Wind") == [11.0]
+
+    staged.set("p_nom", 22.0, entity=["Manchester Wind"])
+    assert p_nom("Manchester Wind") == [22.0], "the read re-folds the staged layer"
+
+    # A key the second edit never named, to pin that re-folding is not
+    # re-resolving from scratch and dropping what the first edit staged.
+    staged.set("p_nom", 33.0, entity=["Norway Wind"])
+    assert p_nom("Manchester Wind") == [22.0]
+    assert p_nom("Norway Wind") == [33.0]
+
+
+def test_flags_do_not_depend_on_the_maps_grouping_grain(staged, ac_dc):
+    """The fold flags per key; `flags` unions across a type. Both must agree.
+
+    The staged and parquet paths share one aggregate exactly because the
+    grouping grain is invisible to the answer: the map computes `varies` and
+    `broadcast` per owner-map key, and `attributes_of` `bool_or`-unions them
+    over a type's members. So a type whose components are staged at different
+    grains - one per-snapshot, one broadcast - must report both sets, the same
+    answer either grouping would give.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
+    staged.set(
+        "marginal_cost",
+        pd.DataFrame(
+            [
+                {
+                    "entity": "Manchester Wind",
+                    "snapshot": ac_dc.snapshots[0],
+                    "value": 7.5,
+                }
+            ]
+        ),
+        entity=["Manchester Wind"],
+    )
+    staged.set("marginal_cost", 3.0, entity=["Norway Wind"])
+
+    flags = staged.flags(GEN)["marginal_cost"]
+    assert "snapshot" in flags.varies, "one member's rows name the snapshot"
+    assert "snapshot" in flags.broadcast, "another's leave it NULL"
+
+
 # -- value dtypes (https://energy-models.github.io/datarecord/design/record/#flags, https://energy-models.github.io/datarecord/design/schema/#attributespec) -----------------------------------------------
 
 
-def test_a_non_float_attribute_stages_and_commits(staged, root):
+def test_a_non_float_attribute_stages_and_commits(root, con):
     """`value` carries the attribute's declared dtype, not always `DOUBLE`.
 
     One staging table holds every attribute's values, so it stages `value` as
     text and casts to the declared dtype where the attribute is known - which
     is the point at which `inputs/<attr>.parquet` is per-attribute.
 
+    The schema is amended before the `WorkingRecord` is built: a record carries
+    the schema its base was resolved under, so a widening has to be in force
+    when the record is constructed, not slipped in before a later commit.
+
     Notes
     -----
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
     amended = read_schema()
-    amended.attributes[GEN]["carrier"] = AttributeSpec(
-        dtype="VARCHAR", dims={"scenario"}
+    amended.attributes["carrier"] = AttributeSpec(
+        dtype=nw.String(), dims={"entity", "scenario"}
     )
     write_schema(amended)
 
-    staged.set("carrier", "solar", names=["Manchester Wind"])
+    staged = WorkingRecord(root.record, con)
+    staged.set("carrier", "solar", entity=["Manchester Wind"])
     rows = staged.attributes["carrier"].collect().to_native().to_pandas()
-    assert rows[rows["name"] == "Manchester Wind"]["value"].tolist() == ["solar"]
+    assert rows[rows["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
 
     child = staged.commit(NewChild(root))
     got = child.record.attributes["carrier"].collect().to_native().to_pandas()
-    assert got[got["name"] == "Manchester Wind"]["value"].tolist() == ["solar"]
+    assert got[got["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
 
 
 def test_a_float_attribute_stays_numeric(staged):
     """The cast is per attribute, so a `DOUBLE` one is not turned into text."""
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
 
     rows = staged.attributes["p_nom"].collect().to_native().to_pandas()
     assert rows["value"].dtype.kind == "f"
@@ -398,18 +568,20 @@ def test_a_non_partial_axis_is_restated_whole(staged, root):
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     assert "snapshot" not in (staged.schema.partial or frozenset())
-    assert staged.schema.owned_per(GEN, "p_max_pu") == frozenset()
+    # Owned per entity, since a layer patches one component without restating
+    # the rest - but not per snapshot, which is the axis this test is about.
+    assert "snapshot" not in staged.schema.owned_per("p_max_pu")
 
     base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
-    mine = base[base["name"] == "Manchester Wind"].sort_values("snapshot")
+    mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
     assert len(mine) > 1
-    one = mine.iloc[[0]][["name", "snapshot"]].assign(value=0.123)
+    one = mine.iloc[[0]][["entity", "snapshot"]].assign(value=0.123)
 
-    staged.set("p_max_pu", one, names=["Manchester Wind"])
+    staged.set("p_max_pu", one, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
     got = child.record.attributes["p_max_pu"].collect().to_native().to_pandas()
-    got = got[got["name"] == "Manchester Wind"].sort_values("snapshot")
+    got = got[got["entity"] == "Manchester Wind"].sort_values("snapshot")
     assert len(got) == len(mine)
     # The edit applied, and every other hour kept the parent's value.
     assert got.iloc[0]["value"] == 0.123
@@ -428,18 +600,53 @@ def test_the_restated_series_is_in_the_layer_itself(staged, root, con):
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
-    mine = base[base["name"] == "Manchester Wind"]
-    one = mine.iloc[[0]][["name", "snapshot"]].assign(value=0.123)
+    mine = base[base["entity"] == "Manchester Wind"]
+    one = mine.iloc[[0]][["entity", "snapshot"]].assign(value=0.123)
 
-    staged.set("p_max_pu", one, names=["Manchester Wind"])
+    staged.set("p_max_pu", one, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryRecord(layer_dir(child.id), con)
-    rows = layer.attributes["p_max_pu"].collect().to_native().to_pandas()
-    assert len(rows[rows["name"] == "Manchester Wind"]) == len(mine)
+    rows = _layer_rows(child, "p_max_pu", con)
+    assert len(rows[rows["entity"] == "Manchester Wind"]) == len(mine)
     # Only the touched component: an axis owned whole obliges the layer to
     # carry that key's extent, not every key's.
-    assert set(rows["name"]) == {"Manchester Wind"}
+    assert set(rows["entity"]) == {"Manchester Wind"}
+
+
+def test_two_edits_on_one_whole_owned_series_both_land(staged, root, con):
+    """A second `set` replaces its own fill without disturbing the first edit's.
+
+    The case `staging-without-seq` leans on hardest: a `set` on a whole-owned
+    axis stages the touched value plus the untouched coordinates as fills, and a
+    second `set` at another coordinate must replace only the fill on *its* key -
+    the first edit's value and its fills have to survive. Idempotence of
+    `_complete_owned_whole` and replace-by-coordinate are what make it hold with
+    no ordering column to rank a fill below an edit.
+
+    Notes
+    -----
+    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    """
+    base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
+    assert len(mine) > 2, "the series needs an untouched middle to keep"
+
+    first = mine.iloc[[0]][["entity", "snapshot"]].assign(value=0.111)
+    second = mine.iloc[[1]][["entity", "snapshot"]].assign(value=0.222)
+    staged.set("p_max_pu", first, entity=["Manchester Wind"])
+    staged.set("p_max_pu", second, entity=["Manchester Wind"])
+
+    child = staged.commit(NewChild(root))
+    rows = _layer_rows(child, "p_max_pu", con)
+    got = rows[rows["entity"] == "Manchester Wind"].sort_values("snapshot")
+
+    assert len(got) == len(mine), "the whole extent is carried, once per snapshot"
+    assert got.iloc[0]["value"] == 0.111, "the first edit survives the second"
+    assert got.iloc[1]["value"] == 0.222, "the second edit replaced its own fill"
+    assert got.iloc[2:]["value"].tolist() == mine.iloc[2:]["value"].tolist(), (
+        "every untouched snapshot keeps the base value"
+    )
 
 
 def test_a_partial_axis_stays_a_patch(staged, root, con):
@@ -449,12 +656,13 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    assert staged.schema.owned_per(GEN, "p_nom") == frozenset()
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    # Owned per entity alone: `p_nom` varies over no other axis, so there is no
+    # extent along one to restate.
+    assert staged.schema.owned_per("p_nom") == frozenset({"entity"})
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryRecord(layer_dir(child.id), con)
-    rows = layer.attributes["p_nom"].collect().to_native().to_pandas()
+    rows = _layer_rows(child, "p_nom", con)
     # `p_nom` varies over nothing, so there is no extent to restate: one row.
     assert len(rows) == 1
 
@@ -468,7 +676,7 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
         pd.DataFrame(
             [
                 {
-                    "name": "NewSolar",
+                    "entity": "NewSolar",
                     "bus": "Manchester",
                     "role": "attached",
                     "carrier": "solar",
@@ -477,10 +685,11 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
             ]
         ),
     )
-    assert staged.pending.components == {GEN: 1}
+    members = staged.entity_types[GEN].collect().to_native().to_pandas()
+    assert "NewSolar" in set(members["entity"]), "the addition reads back before commit"
 
     child = staged.commit(NewChild(root))
-    assert "NewSolar" in set(child.node_cache.components.df()["name"])
+    assert "NewSolar" in set(child.resolver.entity_axis.df()["entity"])
 
     static = PyPSA.build(child.record).c[GEN].static
     assert static.loc["NewSolar", "p_nom"] == 42.0
@@ -495,16 +704,16 @@ def test_add_rejects_a_name_another_type_already_holds(staged):
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
     """
     with pytest.raises(ValueError, match=r"'Manchester' is already a Bus"):
-        staged.add(GEN, pd.DataFrame([{"name": "Manchester", "carrier": "solar"}]))
+        staged.add(GEN, pd.DataFrame([{"entity": "Manchester", "carrier": "solar"}]))
 
 
 def test_add_accepts_a_name_of_its_own_type(staged, root):
     """Re-adding a name of the same type is an edit to that member, not a clash."""
-    staged.add(GEN, pd.DataFrame([{"name": "Manchester Wind", "p_nom": 5.0}]))
+    staged.add(GEN, pd.DataFrame([{"entity": "Manchester Wind", "p_nom": 5.0}]))
     child = staged.commit(NewChild(root))
     assert (
         PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 5.0
@@ -519,10 +728,10 @@ def test_a_name_lookup_stays_a_query_until_it_is_filtered(staged):
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
     names = ["Manchester Wind", "Norway Wind"]
-    total = sum(len(staged._resolved_names(ct)) for ct in staged.components)
+    total = sum(len(staged._resolved_names(ct)) for ct in staged.entity_types)
     assert total > len(names), "fixture too small for the assertion to mean anything"
 
     assert isinstance(staged._name_types(), nw.LazyFrame)
@@ -546,26 +755,23 @@ def test_resolve_types_rejects_a_name_no_layer_declares(staged):
 def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
     """`remove` then `add` under another type collapses to the later op.
 
-    The staged entity rows are keyed without `component_type`, so one name has
+    The staged entity rows are keyed without `entity_type`, so one name has
     one answer. Partitioning on the type as well would keep both the Generator
     tombstone and the Bus member row, and commit would write a record whose two
     types share a name - the collision `write_record` rejects.
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     staged.remove(GEN, ["Manchester Wind"])
-    staged.add("Bus", pd.DataFrame([{"name": "Manchester Wind"}]))
+    staged.add("Bus", pd.DataFrame([{"entity": "Manchester Wind"}]))
 
-    rows = [
-        r
-        for r in staged._collapsed_entities("components").fetchall()
-        if r[1] == "Manchester Wind"
-    ]
-    assert len(rows) == 1
-    assert rows[0][0] == "Bus"
+    axis = staged._collapsed_entities().df()
+    rows = axis[axis["entity"] == "Manchester Wind"]
+    assert len(rows) == 1, "one name, one row - the type is not part of the key"
+    assert list(rows["entity_type"]) == ["Bus"], "the later op wins"
 
     # And it commits: a record with two rows for the name would be rejected.
     child = staged.commit(NewChild(root))
@@ -575,7 +781,7 @@ def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
 def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     """`bus` keys a connection rather than being a member column.
 
-    Putting it in `dims/components/` would introduce a column the ancestors'
+    Putting it in `dims/entity_type/` would introduce a column the ancestors'
     files lack, which then reads as NULL for their rows - so every existing
     component would lose its bus.
 
@@ -585,7 +791,7 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     """
     staged.add(
         GEN,
-        pd.DataFrame([{"name": "NewSolar", "bus": "Manchester", "role": "attached"}]),
+        pd.DataFrame([{"entity": "NewSolar", "bus": "Manchester", "role": "attached"}]),
     )
     child = staged.commit(NewChild(root))
 
@@ -595,17 +801,54 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     assert buses["Manchester Wind"] == "Manchester"
 
 
+def test_add_rejects_a_column_the_schema_does_not_declare(staged):
+    """A member column no declaration accounts for is an error, not a new column.
+
+    A staging table is shaped like the file it becomes, from the schema, so an
+    undeclared column has no dtype to be given it - widening to fit would have
+    to guess one from the caller's frame, and a float guessed as `VARCHAR`
+    stored `'1234.5'` for every later reader. A tool that grows a column
+    declares it first.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    """
+    assert "capex" not in staged.schema.attributes, "undeclared, which is the case here"
+    with pytest.raises(ValueError, match="capex"):
+        staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "capex": 1234.5}]))
+
+
+def test_add_fills_a_declared_column_another_add_omitted(staged):
+    """A frame omitting a declared column stages it as NULL rather than failing.
+
+    The table's columns are the schema's, not any one frame's, so an `add`
+    naming a subset of them is ordinary: what it did not carry is NULL, and an
+    earlier `add` is unaffected by a later one naming more.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "p_nom": 1234.5}]))
+    # No `p_nom`, so it is NULL for this one alone.
+    staged.add(GEN, pd.DataFrame([{"entity": "NewWind"}]))
+
+    members = (
+        staged.entity_types[GEN].collect().to_native().to_pandas().set_index("entity")
+    )
+    assert pd.isna(members.loc["NewWind", "p_nom"]), "not carried, so NULL"
+    assert members.loc["NewSolar", "p_nom"] == 1234.5, "unaffected by the later add"
+
+
 def test_remove_tombstones_without_enumerating_attributes(staged, root):
     staged.remove(GEN, ["Norway Gas"])
-    assert staged.pending.tombstones == {GEN: 1}
+    members = staged.entity_types[GEN].collect().to_native().to_pandas()
+    assert "Norway Gas" not in set(members["entity"]), "the removal reads back at once"
 
     child = staged.commit(NewChild(root))
-    assert "Norway Gas" not in set(child.node_cache.components.df()["name"])
-
-
-def test_remove_rejects_a_dim_that_keys_nothing(staged):
-    with pytest.raises(KeyError, match="period"):
-        staged.remove(GEN, ["Norway Gas"], period=2030)
+    assert "Norway Gas" not in set(child.resolver.entity_axis.df()["entity"])
 
 
 def test_add_after_remove_leaves_the_component_alive(staged, root):
@@ -616,10 +859,10 @@ def test_add_after_remove_leaves_the_component_alive(staged, root):
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     staged.remove(GEN, ["Norway Gas"])
-    staged.add(GEN, pd.DataFrame([{"name": "Norway Gas", "carrier": "gas"}]))
+    staged.add(GEN, pd.DataFrame([{"entity": "Norway Gas", "carrier": "gas"}]))
 
     child = staged.commit(NewChild(root))
-    assert "Norway Gas" in set(child.node_cache.components.df()["name"])
+    assert "Norway Gas" in set(child.resolver.entity_axis.df()["entity"])
 
 
 def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
@@ -629,7 +872,7 @@ def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.set("p_nom", 99.0, names=["Norway Gas"])
+    staged.set("p_nom", 99.0, entity=["Norway Gas"])
     staged.remove(GEN, ["Norway Gas"])
 
     child = staged.commit(NewChild(root))
@@ -639,79 +882,127 @@ def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
 # -- connect and disconnect (https://energy-models.github.io/datarecord/design/working-record/#add-remove, https://energy-models.github.io/datarecord/design/record/#connections) --------------------------------------
 
 
-def test_connect_stages_a_new_connection(staged, root):
+def test_add_group_stages_a_new_connection(staged, root):
     """A connection is a row keyed by `(name, bus)`, not a positional column.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    staged.connect(
-        "Generator",
+    staged.add_group(
+        "connection",
         pd.DataFrame(
-            [{"name": "Manchester Wind", "bus": "Norway", "role": "attached"}]
+            [{"entity": "Manchester Wind", "bus": "Norway", "role": "attached"}]
         ),
     )
-    assert staged.pending.connections == {"Generator": 1}
+    staged_rows = staged.groups["connection"].collect().to_native().to_pandas()
+    assert "Norway" in set(
+        staged_rows[staged_rows["entity"] == "Manchester Wind"]["bus"]
+    ), "the new connection reads back before commit"
 
     child = staged.commit(NewChild(root))
-    rows = child.node_cache.connection_frame("Generator").df()
-    got = set(rows[rows["name"] == "Manchester Wind"]["bus"])
+    rows = child.resolver.group_frame("connection").df()
+    got = set(rows[rows["entity"] == "Manchester Wind"]["bus"])
     assert "Norway" in got
 
 
-def test_disconnect_stages_a_tombstone(staged, root):
-    """One `deleted` row per `(name, bus)`, scoped by the connection key dims.
+def test_remove_group_stages_a_tombstone(staged, root):
+    """One `deleted` row per `(entity, bus)`, the group's own key.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    staged.disconnect("Link", [("Norwich Converter", "Norwich")])
-    # A disconnect is a deletion, so it counts as a tombstone rather than as a
-    # connection staged to exist (https://energy-models.github.io/datarecord/design/working-record/#pending).
-    assert staged.pending.tombstones == {"Link": 1}
-    assert staged.pending.connections == {}
+    staged.remove_group("connection", [("Norwich Converter", "Norwich")])
+    before = staged.groups["connection"].collect().to_native().to_pandas()
+    ports = set(before[before["entity"] == "Norwich Converter"]["bus"])
+    assert "Norwich" not in ports, "the removal reads back before commit"
+    assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
     child = staged.commit(NewChild(root))
-    rows = child.node_cache.connection_frame("Link").df()
-    left = set(rows[rows["name"] == "Norwich Converter"]["bus"])
+    rows = child.resolver.group_frame("connection").df()
+    left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     # The component's other port survives: deletion is per connection, not per
     # component (https://energy-models.github.io/datarecord/design/record/#connections).
     assert "Norwich DC" in left
 
 
-def test_disconnect_rejects_a_dim_that_keys_nothing(staged):
-    with pytest.raises(KeyError, match="period"):
-        staged.disconnect("Link", [("Norwich Converter", "Norwich")], period=2030)
-
-
-def test_connect_needs_a_bus(staged):
+def test_add_group_needs_every_coordinate(staged):
     with pytest.raises(ValueError, match="'bus'"):
-        staged.connect("Generator", pd.DataFrame([{"name": "Manchester Wind"}]))
+        staged.add_group("connection", pd.DataFrame([{"entity": "Manchester Wind"}]))
 
 
-# -- rollback (https://energy-models.github.io/datarecord/design/working-record/#pending) --------------------------------------------------------
+def test_every_declared_group_reads_its_staged_rows(con, base_uri, ac_dc):
+    """A second group is not silently dropped: the reads are keyed by group.
+
+    `connection` is the group every fixture has, so a read path naming it rather
+    than iterating the declared ones would pass everywhere except here - a
+    record declaring a `corridor` would read nothing while holding rows to
+    commit.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    write_schema(
+        schema(
+            groups={
+                "connection": {"entity": "entity", "bus": "bus"},
+                "corridor": {"from": "entity", "to": "entity"},
+            }
+        )
+    )
+    staged = WorkingRecord(revision.record, con)
+
+    staged.add_group(
+        "connection", pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
+    )
+    staged.add_group(
+        "corridor", pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}])
+    )
+
+    connections = staged.groups["connection"].collect().to_native().to_pandas()
+    assert "Norway" in set(
+        connections[connections["entity"] == "Manchester Wind"]["bus"]
+    )
+
+    corridors = staged.groups["corridor"].collect().to_native().to_pandas()
+    assert list(zip(corridors["from"], corridors["to"], strict=True)) == [
+        ("Manchester Wind", "Norway")
+    ], "the second group reads its own rows, not the first's"
+
+
+# -- rollback (https://energy-models.github.io/datarecord/design/working-record/#committing) --------------------------------------------------------
 
 
 def test_rollback_discards_everything_staged(staged, root):
-    staged.set("p_max_pu", 0.42, names=["Manchester Wind"])
+    staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
     staged.remove(GEN, ["Norway Gas"])
     staged.rollback()
 
-    assert staged.pending.attributes == {}
-    assert staged.pending.tombstones == {}
-    # And the record reads the base rows again.
+    # The record reads the base rows again, edit and tombstone alike.
     rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
     assert 0.42 not in set(rows["value"])
+    members = staged.entity_types[GEN].collect().to_native().to_pandas()
+    assert "Norway Gas" in set(members["entity"]), "the tombstone went with the rest"
 
 
 def test_commit_clears_the_staging_area(staged, root):
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    """A second commit writes nothing: the edits left with the first.
+
+    Notes
+    -----
+    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+    """
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     staged.commit(NewChild(root))
 
-    assert staged.pending.attributes == {}
+    again = staged.commit(NewChild(root))
+    layer = Record.at(layer_dir(again.id), con=staged.con)
+    assert "p_nom" not in layer.attributes
 
 
 # -- commit targets (https://energy-models.github.io/datarecord/design/working-record/#committing) --------------------------------------------------
@@ -724,14 +1015,65 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryRecord(layer_dir(child.id), con)
-    rows = layer.attributes["p_nom"].collect().to_native().to_pandas()
-    assert list(rows["name"]) == ["Manchester Wind"]
+    rows = _layer_rows(child, "p_nom", con)
+    assert list(rows["entity"]) == ["Manchester Wind"]
     # Yet the resolved record reads every generator's value.
     assert len(_static(child, "p_nom")) > 1
+
+
+def test_a_staged_member_frame_does_not_repeat_its_type(staged):
+    """The type is the key a member frame is filed under, never a column in it.
+
+    `write_record` drops `entity_type` from a member file anyway, so this holds
+    on disk either way; asserted on the `StagedSource` itself because relying on
+    the writer to strip it makes that `LayerData` disagree with the file it
+    describes, and the next reader of that frame need not be the writer.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "carrier": "solar"}]))
+
+    rel = staged.resolver.sources[-1].entity_type(GEN)
+    columns = rel.columns
+    assert "entity_type" not in columns, "the file it is written to names the type"
+    assert "entity" in columns, "the member key is still there"
+
+
+def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root, con):
+    """Owning `snapshot` whole completes the edited series, not every series.
+
+    `p_max_pu` varies over a non-partial `snapshot`, so touching one of
+    Manchester Wind's snapshots makes the layer the owner of that generator's
+    whole series and it must carry the untouched snapshots too. The scope is the
+    key the edit named: a second generator the edit never mentioned stays in the
+    parent, and a layer carrying it would claim an extent it was never given.
+
+    Notes
+    -----
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+    """
+    base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
+    one = mine.iloc[[0]][["entity", "snapshot"]].assign(value=0.123)
+    assert len(mine) > 1, "a one-snapshot series would not distinguish the two scopes"
+
+    staged.set("p_max_pu", one, entity=["Manchester Wind"])
+    child = staged.commit(NewChild(root))
+
+    rows = _layer_rows(child, "p_max_pu", con)
+    assert set(rows["entity"]) == {"Manchester Wind"}, (
+        "only the touched key's extent is carried"
+    )
+    written = rows.sort_values("snapshot")
+    assert written["value"].tolist() == [0.123, *mine.iloc[1:]["value"].tolist()], (
+        "the edit, then the rest of the series it now owns"
+    )
 
 
 def test_new_child_defaults_to_the_node_the_record_was_built_over(staged, root):
@@ -741,7 +1083,7 @@ def test_new_child_defaults_to_the_node_the_record_was_built_over(staged, root):
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild())
 
     assert child.parent == root.id
@@ -757,11 +1099,47 @@ def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root, co
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     before = _static(root, "p_nom")["Manchester Wind"]
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild())
 
     assert _static(child, "p_nom")["Manchester Wind"] == 150.0
     assert _static(root, "p_nom")["Manchester Wind"] == before
+
+
+def test_an_edit_over_a_directory_base_reads_back(con, base_uri, ac_dc):
+    """A staged edit must win over a directory base, as it does over a layered one.
+
+    The two are separate sources of one fold, and `source_for` tells them apart
+    by `layer_uuid` alone - so a base and a staging area sharing an id would
+    send every staged win to the base and read the edit back as the base's
+    value, with a correct-looking owner map above it. The unstaged fixtures
+    cannot see that: it takes an edit that is supposed to displace something.
+
+    Notes
+    -----
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+    staged = WorkingRecord(Record.at(layer_dir(revision.id), con), con)
+
+    def marginal_cost() -> list[float]:
+        frame = staged.attributes["marginal_cost"].collect().to_native().to_pandas()
+        return frame[frame["entity"] == "Manchester Wind"]["value"].tolist()
+
+    before = marginal_cost()
+    staged.set("marginal_cost", 4242.0, entity=["Manchester Wind"])
+    assert marginal_cost() == [4242.0], (
+        "the staged layer owns the key, so the read takes its value"
+    )
+    assert before != [4242.0], "otherwise the assertion above proves nothing"
+
+    # The base's id is derived from where it is rather than allocated, so two
+    # readers of one directory agree on which layer they are reading.
+    other = WorkingRecord(Record.at(layer_dir(revision.id), con), con)
+    assert other._base.revision_id == staged._base.revision_id
+    assert other._layer_id != staged._layer_id, "each staging area is its own layer"
 
 
 def test_new_child_without_a_layered_base_says_what_to_pass(con, base_uri, tmp_path):
@@ -773,10 +1151,63 @@ def test_new_child_without_a_layered_base_says_what_to_pass(con, base_uri, tmp_p
     """
     revision = Revision.create(con)
     write_schema(read_schema(con), base_uri)
-    over_a_directory = WorkingRecord(DirectoryRecord(layer_dir(revision.id), con), con)
+    over_a_directory = WorkingRecord(Record.at(layer_dir(revision.id), con), con)
 
     with pytest.raises(ValueError, match="needs a revision to branch from"):
         over_a_directory.commit(NewChild())
+
+
+def test_a_directory_uri_reads_the_same_with_or_without_a_trailing_slash(
+    written_directory, con
+):
+    """Every member path is appended to the URI, so the slash cannot be optional.
+
+    And `layer_id` is derived from that URI, so the two spellings have to
+    normalise to one before it is hashed - otherwise one directory reads as two
+    layers and a `WorkingRecord` over each disagrees about which it edits.
+    """
+    bare = written_directory.rstrip("/")
+    assert not bare.endswith("/"), "otherwise this asserts nothing"
+
+    with_slash = Record.at(bare + "/", con)
+    without = Record.at(bare, con)
+    assert list(without.attributes) == list(with_slash.attributes)
+    assert list(without.attributes), "the fixture must have written attributes"
+    assert without.resolver.revision_id == with_slash.resolver.revision_id, (
+        "one directory is one layer, however its URI was spelled"
+    )
+
+
+def test_edits_read_under_the_base_records_schema(staged, con, tmp_path):
+    """A staging area declares nothing; it edits under the base's declaration.
+
+    Which matters for a standalone base, whose schema is its own directory's
+    rather than the connection root's: the staged layer is one more source over
+    that base, so `with_source` has to carry the schema along. Reading the edit
+    back under the connection's schema instead would resolve it against
+    different dims than the rows it is overlaying.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    """
+    out = str(tmp_path / "standalone")
+    staged.commit(Directory(out))
+
+    elsewhere = duck.connect(base_uri=str(tmp_path / "unrelated"))
+    try:
+        assert read_schema(elsewhere) == Schema(), "the other root declares nothing"
+        base = Record.at(out, elsewhere)
+        assert base.schema.dims, "the standalone record carries its own schema"
+
+        editing = WorkingRecord(base, elsewhere)
+        assert editing.schema == base.schema, "an edit declares nothing of its own"
+        editing.set("p_nom", 999.0, entity=["Manchester Wind"])
+        rows = editing.attributes["p_nom"].collect().to_native().to_pandas()
+        got = dict(zip(rows["entity"], rows["value"], strict=True))
+        assert got["Manchester Wind"] == 999.0
+    finally:
+        elsewhere.close()
 
 
 def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_path):
@@ -786,16 +1217,16 @@ def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_pat
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     out = str(tmp_path / "flat")
     assert staged.commit(Directory(out)) is None
 
-    record = DirectoryRecord(out, con)
+    record = Record.at(out, con)
     rows = record.attributes["p_nom"].collect().to_native().to_pandas()
-    got = dict(zip(rows["name"], rows["value"], strict=True))
+    got = dict(zip(rows["entity"], rows["value"], strict=True))
     assert got["Manchester Wind"] == 150.0
     # Flattened: every component is present, not left to a parent to supply.
-    members = record.components[GEN].collect().to_native().to_pandas()
+    members = record.entity_types[GEN].collect().to_native().to_pandas()
     assert len(members) == 6
 
 
@@ -806,7 +1237,7 @@ def test_a_committed_child_builds_a_network(staged, root):
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
     assert (
@@ -831,18 +1262,20 @@ def test_an_expression_over_a_named_target_with_no_rows_raises(staged):
         staged.set(
             "p_max_pu",
             nw.col("value") * 2,
-            names=["Manchester Wind"],
+            entity=["Manchester Wind"],
             snapshot="1999-01-01",
         )
 
 
 def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(staged):
-    """`names=None` and no scope means "whatever resolves", so empty is an answer."""
+    """`entity=None` and no scope means "whatever resolves", so empty is an answer."""
     absent = next(
-        a for a in sorted(staged.schema.attributes[GEN]) if a not in staged.attributes
+        a
+        for a in sorted(staged.schema.attributes_for(GEN))
+        if a not in staged.attributes
     )
     staged.set(absent, nw.col("value") * 2)
-    assert absent not in staged.pending.attributes
+    assert absent not in staged.attributes, "nothing resolved, so nothing was staged"
 
 
 # -- results through `kind="outputs"` (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/read-path/#outputs) ---------------------------
@@ -856,14 +1289,14 @@ def test_results_stage_and_read_back_without_committing(staged):
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
     assert list(staged.outputs) == []
-    staged.set("p", 42.0, names=["Manchester Wind"], kind="outputs")
+    staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
 
     rows = staged.outputs["p"].collect().to_native().to_pandas()
-    assert dict(zip(rows["name"], rows["value"], strict=True)) == {
+    assert dict(zip(rows["entity"], rows["value"], strict=True)) == {
         "Manchester Wind": 42.0
     }
     # Staged as a result, so it is not an input.
-    assert "p" not in staged.pending.attributes
+    assert "p" not in staged.attributes
 
 
 def test_results_survive_a_commit_into_the_new_layer(staged, root, con):
@@ -873,16 +1306,14 @@ def test_results_survive_a_commit_into_the_new_layer(staged, root, con):
     -----
     - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
     """
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
-    staged.set("p", 42.0, names=["Manchester Wind"], kind="outputs")
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
+    staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
     child = staged.commit(NewChild(root))
 
-    layer = DirectoryRecord(layer_dir(child.id), con)
-    assert "p" in layer.outputs
-    rows = layer.outputs["p"].collect().to_native().to_pandas()
+    rows = _layer_rows(child, "p", con, kind="outputs")
     assert rows["value"].tolist() == [42.0]
     # And the inputs went where inputs go.
-    assert "p_nom" in layer.attributes
+    assert not _layer_rows(child, "p_nom", con).empty
 
 
 def test_results_accept_a_component_type_the_record_never_declared(staged):
@@ -897,37 +1328,94 @@ def test_results_accept_a_component_type_the_record_never_declared(staged):
     - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
-    staged.set("carrier", "AC", names=["1"], kind="outputs")
-    rows = staged.outputs["carrier"].collect().to_native().to_pandas()
-    assert rows["name"].tolist() == ["1"]
+    staged.set("sub_network", "AC", entity=["1"], kind="outputs")
+    rows = staged.outputs["sub_network"].collect().to_native().to_pandas()
+    assert rows["entity"].tolist() == ["1"]
 
     # The same name as an input is still rejected: membership governs inputs.
     with pytest.raises(KeyError, match="member row"):
-        staged.set("p_nom", 1.0, names=["NoSuchGenerator"])
+        staged.set("p_nom", 1.0, entity=["NoSuchGenerator"])
+
+
+def test_an_undeclared_result_is_rejected(staged):
+    """A result is declared like an input, so a typo is caught where it is typed.
+
+    The membership rule stays relaxed either way - it is the *attribute* that
+    must be declared, not the component it names.
+
+    Notes
+    -----
+    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    """
+    with pytest.raises(KeyError, match="no result 'p_nom_optt'"):
+        staged.set("p_nom_optt", 1.0, entity=["Manchester Wind"], kind="outputs")
+
+
+def test_a_result_may_not_vary_over_a_dim_it_does_not_declare(staged):
+    """`results` carries coordinates like `attributes`, so the scope is checked.
+
+    Notes
+    -----
+    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
+    """
+    assert "period" not in staged.schema.results["p_nom_opt"].dims
+    with pytest.raises(ValueError, match="does not vary over"):
+        staged.set(
+            "p_nom_opt", 1.0, entity=["Manchester Wind"], kind="outputs", period=2030
+        )
+
+
+def test_a_results_value_keeps_its_declared_type(staged):
+    """A result round-trips at the dtype `results` declares, not a guessed one.
+
+    Staged values are held as text, since one staging table serves every
+    attribute, and reading one back casts to the declared dtype. Both halves
+    have to hold at once: PyPSA's `sub_network` is a string-valued output, and
+    casting it as a number would `TRY_CAST` it to NULL and lose it with nothing
+    raised, while `p` must come back a number rather than the text it was held
+    as.
+
+    Notes
+    -----
+    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
+    """
+    assert "sub_network" in staged.schema.results, "declared as a result, not an input"
+    assert "sub_network" not in staged.schema.attributes
+    staged.set("sub_network", "0", entity=["Manchester Wind"], kind="outputs")
+
+    rows = staged.outputs["sub_network"].collect().to_native().to_pandas()
+    assert rows["value"].tolist() == ["0"], "a string result survives the round trip"
+
+    # The other half: dropping the cast altogether would answer '42.0' here,
+    # a number read back as the text the staging column holds it as.
+    staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
+    numeric = staged.outputs["p"].collect().to_native().to_pandas()
+    assert numeric["value"].tolist() == [42.0], "a numeric result comes back a number"
 
 
 def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
     """One frame spanning types is one call, keyed by name alone.
 
     `Tool.results` hands over one frame per attribute carrying every type's rows; with names unique there is no type to stamp, so the frame needs no
-    `component_type` and nothing can be silently relabelled.
+    `entity_type` and nothing can be silently relabelled.
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     frame = pd.DataFrame(
         [
-            {"name": "Manchester Wind", "value": 1.0},
-            {"name": "0", "value": 2.0},
+            {"entity": "Manchester Wind", "value": 1.0},
+            {"entity": "0", "value": 2.0},
         ]
     )
     staged.set("p", frame, kind="outputs")
 
     rows = staged.outputs["p"].collect().to_native().to_pandas()
-    assert dict(zip(rows["name"], rows["value"], strict=True)) == {
+    assert dict(zip(rows["entity"], rows["value"], strict=True)) == {
         "Manchester Wind": 1.0,
         "0": 2.0,
     }
@@ -935,14 +1423,14 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
     # And it survives the commit into the layer's own `outputs/`.
     child = staged.commit(NewChild(root))
     got = (
-        DirectoryRecord(layer_dir(child.id), con)
+        Record.at(layer_dir(child.id), con)
         .outputs["p"]
         .collect()
         .to_native()
         .to_pandas()
     )
-    assert set(got["name"]) == {"Manchester Wind", "0"}
-    assert "component_type" not in got.columns
+    assert set(got["entity"]) == {"Manchester Wind", "0"}
+    assert "entity_type" not in got.columns
 
 
 def test_a_frame_carrying_component_type_is_rejected(staged):
@@ -953,9 +1441,9 @@ def test_a_frame_carrying_component_type_is_rejected(staged):
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
     frame = pd.DataFrame(
-        [{"component_type": GEN, "name": "Manchester Wind", "value": 1.0}]
+        [{"entity_type": GEN, "entity": "Manchester Wind", "value": 1.0}]
     )
-    with pytest.raises(ValueError, match="component_type"):
+    with pytest.raises(ValueError, match="entity_type"):
         staged.set("p_max_pu", frame)
 
 
@@ -966,9 +1454,9 @@ def test_a_scalar_derives_the_type_from_the_name(staged):
     -----
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
-    staged.set("p_nom", 150.0, names=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     rows = staged.attributes["p_nom"].collect().to_native().to_pandas()
-    assert set(rows[rows["name"] == "Manchester Wind"]["value"]) == {150.0}
+    assert set(rows[rows["entity"] == "Manchester Wind"]["value"]) == {150.0}
 
 
 def test_one_call_spans_component_types(staged):
@@ -983,7 +1471,7 @@ def test_one_call_spans_component_types(staged):
     """
     staged.set("p_nom", {"Manchester Wind": 150.0, "DC link": 80.0})
     rows = staged.attributes["p_nom"].collect().to_native().to_pandas()
-    got = dict(zip(rows["name"], rows["value"], strict=True))
+    got = dict(zip(rows["entity"], rows["value"], strict=True))
     assert got["Manchester Wind"] == 150.0
     assert got["DC link"] == 80.0
 
