@@ -29,7 +29,7 @@ def ac_dc():
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     import pypsa

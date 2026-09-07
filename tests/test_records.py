@@ -16,11 +16,11 @@ from datarecord.duck import layer_dir, resolved_dir
 from datarecord.layered.revision import LayeredRecord
 from datarecord.layered.write import write_record
 from datarecord.record import EMPTY, Flags, Frames, Record
-from datarecord.schema import Schema
+from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import schema, write_components, write_input, write_schema
 
-MEMBERS = ("dims", "components", "connections", "attributes")
+MEMBERS = ("dims", "components", "attributes")
 
 
 @pytest.fixture
@@ -71,14 +71,16 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     """
     members = nw.from_native(
         con.sql(
-            "SELECT 'Generator' AS component_type, 'wind' AS name,"
+            "SELECT 'Generator' AS component_type, 'wind' AS entity,"
             " NULL::VARCHAR AS scenario"
         )
     )
+    # `p_nom`'s own coordinates and no others: no `component_type` in a long
+    # row, and no `bus`, which is the connection group's coordinate rather than
+    # a column every attribute carries.
     long = nw.from_native(
         con.sql(
-            "SELECT 'Generator' AS component_type, 'wind' AS name,"
-            " NULL::VARCHAR AS bus, 'p_nom' AS attribute,"
+            "SELECT 'wind' AS entity, 'p_nom' AS attribute,"
             " NULL::DOUBLE AS breakpoint, 100.0 AS value,"
             " NULL::VARCHAR AS snapshot, NULL::VARCHAR AS scenario,"
             " NULL::BIGINT AS period"
@@ -90,7 +92,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
         schema: Schema
         dims: Frames
         components: Frames
-        connections: Frames
+        groups: dict[str, Frames]
         attributes: Frames
         outputs: Frames
 
@@ -184,17 +186,17 @@ def test_flags_are_per_component_type(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Generator", [{"name": "wind"}])
-    write_components(layer, "Link", [{"name": "dc"}])
+    write_components(layer, "Generator", [{"entity": "wind"}])
+    write_components(layer, "Link", [{"entity": "dc"}])
     write_input(
         layer,
         "p_max_pu",
         [
             # Generator: series only. Link: static only.
-            {"name": "wind", "snapshot": s, "value": v}
+            {"entity": "wind", "snapshot": s, "value": v}
             for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
         ]
-        + [{"name": "dc", "value": 1.0}],
+        + [{"entity": "dc", "value": 1.0}],
     )
 
     for record in (LayeredRecord(revision.node_cache), DirectoryRecord(layer, con)):
@@ -222,16 +224,16 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    narrow = {"snapshot": "TIMESTAMP", "period": "BIGINT"}
+    narrow = {"snapshot": nw.Datetime(), "period": nw.Int64()}
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
-    write_schema(schema(dims=narrow, keys={}, partial=set()))
-    write_components(layer, "Generator", [{"name": "wind"}])
+    write_schema(schema(dims=narrow, partial=set()))
+    write_components(layer, "Generator", [{"entity": "wind"}])
     write_input(
         layer,
         "p_max_pu",
         [
-            {"name": "wind", "snapshot": s, "value": v}
+            {"entity": "wind", "snapshot": s, "value": v}
             for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
         ],
     )
@@ -243,7 +245,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     assert "scenario" not in str(persisted.types[0])
 
     # The dim arrives after the map is on disk.
-    write_schema(schema(dims={**narrow, "scenario": "VARCHAR"}, keys={}, partial=set()))
+    write_schema(schema(dims={**narrow, "scenario": nw.String()}, partial=set()))
     child = revision.child()
     flags = LayeredRecord(child.node_cache).flags("Generator")["p_max_pu"]
     assert "snapshot" in flags.varies
@@ -265,21 +267,68 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Generator", [{"name": "wind"}, {"name": "gas"}])
+    write_components(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
     write_input(
         layer,
         "p_max_pu",
         [
-            {"name": "wind", "snapshot": s, "value": v}
+            {"entity": "wind", "snapshot": s, "value": v}
             for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
         ]
-        + [{"name": "gas", "value": 1.0}],
+        + [{"entity": "gas", "value": 1.0}],
     )
 
     for record in (LayeredRecord(revision.node_cache), DirectoryRecord(layer, con)):
         combined = record.flags("Generator")["p_max_pu"]
         assert "snapshot" in combined.varies
         assert "snapshot" in combined.broadcast
+
+
+def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
+    """A dim an attribute has no column for is in neither set, not in `broadcast`.
+
+    `varies | broadcast` is the test for whether an attribute touches a dim at
+    all, so a dim it is not addressed by has to be absent from both - otherwise
+    a consumer builds a container along an axis the attribute has no values on.
+
+    The two are easy to conflate because one relation holds every attribute's
+    rows: `p_nom` is stored beside `p_max_pu`, whose `snapshot` column is NULL
+    for `p_nom`'s rows. That NULL is "no such axis", not "every snapshot".
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    """
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
+    write_schema(
+        schema(
+            attributes={
+                "Generator": {
+                    # Addressed by the entity axis and nothing else.
+                    "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+                    "p_max_pu": AttributeSpec(
+                        dtype=nw.Float64(), dims={"entity", "snapshot"}
+                    ),
+                }
+            }
+        )
+    )
+    write_components(layer, "Generator", [{"entity": "wind"}])
+    write_input(layer, "p_nom", [{"entity": "wind", "value": 100.0}])
+    write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
+
+    for record in (LayeredRecord(revision.node_cache), DirectoryRecord(layer, con)):
+        flags = record.flags("Generator")
+        # Addressed by `entity` alone, so no axis is reportable either way.
+        assert flags["p_nom"].varies == frozenset()
+        assert flags["p_nom"].broadcast == frozenset(), (
+            "a dim `p_nom` has no column for is not one it broadcasts over"
+        )
+        # Addressed by `snapshot`, with a row leaving it NULL - that *is* a
+        # broadcast, and the two cases must not read the same.
+        assert "snapshot" in flags["p_max_pu"].broadcast
 
 
 def test_flags_report_a_curve(con, base_uri):
@@ -292,12 +341,12 @@ def test_flags_report_a_curve(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Process", [{"name": "steel"}])
+    write_components(layer, "Process", [{"entity": "steel"}])
     write_input(
         layer,
         "marginal_cost",
         [
-            {"name": "steel", "breakpoint": x, "value": v}
+            {"entity": "steel", "breakpoint": x, "value": v}
             for x, v in ((0.0, 20.0), (50.0, 35.0))
         ],
     )
@@ -319,7 +368,7 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
     write_input(
         layer_dir(child.id),
         "p_max_pu",
-        [{"name": "Manchester Gas", "value": 0.1}],
+        [{"entity": "Manchester Gas", "value": 0.1}],
     )
 
     overlay = LayeredRecord(child.node_cache)
@@ -329,7 +378,7 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
     assert len(layer_only.attributes["p_max_pu"].collect().to_native()) == 1
     resolved = overlay.attributes["p_max_pu"].collect().to_native().to_pandas()
     assert len(resolved) > 1
-    patched = resolved[resolved["name"] == "Manchester Gas"]["value"].tolist()
+    patched = resolved[resolved["entity"] == "Manchester Gas"]["value"].tolist()
     assert patched == [0.1]
 
 
@@ -345,14 +394,14 @@ def test_node_record_orders_members(con, base_uri, ac_dc):
     root.materialise()
 
     child = root.child()
-    write_components(layer_dir(child.id), "Generator", [{"name": "New Solar"}])
+    write_components(layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
     names = list(
         LayeredRecord(child.node_cache)
         .components["Generator"]
         .collect()
         .to_native()
-        .to_pandas()["name"]
+        .to_pandas()["entity"]
     )
     # First-introduced order: the root's members, then the child's addition.
     assert names == [*ac_dc.c["Generator"].static.index, "New Solar"]
@@ -376,7 +425,7 @@ def test_directory_record_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
 def test_directory_record_has_no_connections_when_none_were_written(
     con, base_uri, tmp_path
 ):
-    """A record with no `dims/connections/` reads as having none, not as an error.
+    """A record with no `dims/connection/` reads as having none, not as an error.
 
     Notes
     -----
@@ -385,9 +434,9 @@ def test_directory_record_has_no_connections_when_none_were_written(
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, "Generator", [{"name": "wind"}])
+    write_components(layer, "Generator", [{"entity": "wind"}])
 
-    assert list(DirectoryRecord(layer, con).connections) == []
+    assert list(DirectoryRecord(layer, con).groups["connection"]) == []
 
 
 def test_directory_record_reads_connections_blocks_wrote(written, con):
@@ -398,9 +447,9 @@ def test_directory_record_reads_connections_blocks_wrote(written, con):
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     record = DirectoryRecord(layer_dir(written.id), con)
-    assert "Link" in record.connections
+    assert "Link" in record.groups["connection"]
 
-    rows = record.connections["Link"].collect().to_native().to_pandas()
+    rows = record.groups["connection"]["Link"].collect().to_native().to_pandas()
     assert set(rows["role"]) == {"input", "output"}
 
 
@@ -455,7 +504,7 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
         schema = solved.schema
         dims = solved.dims
         components = solved.components
-        connections = solved.connections
+        groups = solved.groups
         attributes = solved.attributes
         outputs = EMPTY
         flags = solved.flags
@@ -487,21 +536,26 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
     from datarecord.layered.resolve import write_schema as write_manifest
 
     roots = {}
-    for name, dims in (("a", {"scenario": "VARCHAR"}), ("b", {"vintage": "BIGINT"})):
+    cases: list[tuple[str, dict[str, nw.dtypes.DType]]] = [
+        ("a", {"scenario": nw.String()}),
+        ("b", {"vintage": nw.Int64()}),
+    ]
+    for name, dims in cases:
         root = str(tmp_path / name)
         con = duck.connect(base_uri=root)
-        write_manifest(schema(dims=dims, partial=set(dims), keys={}), root)
+        write_manifest(schema(dims=dims, partial=set(dims)), root)
         roots[name] = (root, con, Revision.create(con))
 
     (_, _, revision_a), (root_b, con_b, revision_b) = roots["a"], roots["b"]
-    assert revision_a.record.schema.dims == ("scenario",)
-    assert revision_b.record.schema.dims == ("vintage",)
+    # Beyond `entity` and the group's coordinates, which every schema declares.
+    assert revision_a.record.schema.broadcast_dims == ("scenario",)
+    assert revision_b.record.schema.broadcast_dims == ("vintage",)
 
     # A layer read directly needs no schema supplied either: its own directory
     # carries none (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record), so the connection's root answers - which is what
     # `DirectoryRecord` used to take a `declared` argument for.
     layer = DirectoryRecord(layer_dir(revision_b.id, root_b), con_b)
-    assert layer.schema.dims == ("vintage",)
+    assert layer.schema.broadcast_dims == ("vintage",)
 
     for _, con, _ in roots.values():
         con.close()

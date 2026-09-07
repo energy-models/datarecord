@@ -7,15 +7,22 @@ Notes
 
 from pathlib import Path
 
+import narwhals as nw
 import pandas as pd
 
 from datarecord.layered.resolve import write_schema as record_write_schema
-from datarecord.schema import AttributeSpec, Dimension, Schema
+from datarecord.schema import (
+    AttributeSpec,
+    ComponentType,
+    Dimension,
+    Group,
+    Schema,
+)
 
 # No `component_type`: an attribute row is keyed by `name`, unique across every type
-# (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types). The entity tables below keep it.
+# (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
 LONG_COLUMNS = [
-    "name",
+    "entity",
     "bus",
     "snapshot",
     "scenario",
@@ -60,7 +67,7 @@ def write_input(
 
 
 def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
-    """Write `dims/connections/<ctype>.parquet`, including the `deleted` tombstone.
+    """Write `dims/connection/<ctype>.parquet`, including the `deleted` tombstone.
 
     Each row needs `name` and `bus`; `role` describes the connection and keys
     nothing, so it is optional here.
@@ -79,17 +86,15 @@ def write_connections(layer: str, ctype: str, rows: list[dict]) -> None:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["component_type", "name", "bus", "role", "scenario", "deleted"]
+    lead = ["component_type", "entity", "bus", "role", "scenario", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
-    target = Path(layer, "dims", "connections")
+    target = Path(layer, "dims", "connection")
     target.mkdir(parents=True, exist_ok=True)
     df[ordered].to_parquet(target / f"{ctype}.parquet", index=False)
 
 
-def tombstone_connection(
-    layer: str, ctype: str, pairs: list[tuple[str, str]], scenario=None
-) -> None:
-    """Mark connections deleted in this layer, by `(name, bus)`.
+def tombstone_connection(layer: str, ctype: str, pairs: list[tuple[str, str]]) -> None:
+    """Mark connections deleted in this layer, by `(entity, bus)`.
 
     Notes
     -----
@@ -98,32 +103,43 @@ def tombstone_connection(
     write_connections(
         layer,
         ctype,
-        [
-            {"name": name, "bus": bus, "scenario": scenario, "deleted": True}
-            for name, bus in pairs
-        ],
+        [{"entity": name, "bus": bus, "deleted": True} for name, bus in pairs],
     )
 
 
 def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
-    """Write `dims/components/<ctype>.parquet`, including the `deleted` tombstone."""
+    """Write `dims/components/<ctype>.parquet` *and* this type's entity rows.
+
+    Membership and tombstones live on `dims/entity.parquet`, which the writer
+    derives from the per-type frames - so a hand-built layer has to keep the
+    two in step the way `write_record` does.
+
+    Notes
+    -----
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    """
     df = pd.DataFrame(rows)
     df["component_type"] = ctype
-    if "scenario" not in df:
-        df["scenario"] = None
-    df["scenario"] = df["scenario"].astype("string")
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["component_type", "name", "scenario", "deleted"]
+    lead = ["component_type", "entity", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
     target = Path(layer, "dims", "components")
     target.mkdir(parents=True, exist_ok=True)
     df[ordered].to_parquet(target / f"{ctype}.parquet", index=False)
 
+    # Appended rather than replaced: several types land in one entity axis, and
+    # a layer may write them one call at a time.
+    axis = Path(layer, "dims", "entity.parquet")
+    entities = df[["entity", "component_type", "deleted"]]
+    if axis.exists():
+        entities = pd.concat([pd.read_parquet(axis), entities], ignore_index=True)
+    entities.to_parquet(axis, index=False)
 
-def tombstone(layer: str, ctype: str, names: list[str], scenario=None) -> None:
+
+def tombstone(layer: str, ctype: str, names: list[str]) -> None:
     """Mark components deleted in this layer.
 
     Notes
@@ -133,28 +149,28 @@ def tombstone(layer: str, ctype: str, names: list[str], scenario=None) -> None:
     write_components(
         layer,
         ctype,
-        [{"name": n, "scenario": scenario, "deleted": True} for n in names],
+        [{"entity": n, "deleted": True} for n in names],
     )
 
 
 def write_scenarios(layer: str, rows: list[dict]) -> None:
-    """Write `dims/scenarios.parquet`; each row needs `scenario` and `weight`."""
+    """Write `dims/scenario.parquet`; each row needs `scenario` and `weight`."""
     df = pd.DataFrame(rows)
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / "scenarios.parquet", index=False)
+    df.to_parquet(target / "scenario.parquet", index=False)
 
 
 def write_periods(layer: str, rows: list[dict]) -> None:
-    """Write `dims/periods.parquet`; each row needs `period`."""
+    """Write `dims/period.parquet`; each row needs `period`."""
     df = pd.DataFrame(rows)
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / "periods.parquet", index=False)
+    df.to_parquet(target / "period.parquet", index=False)
 
 
 def write_snapshots(layer: str, rows: list[dict]) -> None:
-    """Write `dims/snapshots.parquet`; each row needs `snapshot`.
+    """Write `dims/snapshot.parquet`; each row needs `snapshot`.
 
     A `period` column makes it a nested axis, keyed by `(period,
     snapshot)` rather than by the timestamp alone.
@@ -169,7 +185,23 @@ def write_snapshots(layer: str, rows: list[dict]) -> None:
         df["period"] = df["period"].astype("Int64")
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / "snapshots.parquet", index=False)
+    df.to_parquet(target / "snapshot.parquet", index=False)
+
+
+def write_axis(layer: str, dim: str, rows: list[dict]) -> None:
+    """Write `dims/<dim>.parquet` from plain rows, whatever columns they carry.
+
+    The generic form of `write_scenarios`/`write_periods`: an axis file is its
+    key column plus whatever else it holds - a mapping's column, an attribute
+    addressed by the axis alone.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    """
+    target = Path(layer, "dims")
+    target.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_parquet(target / f"{dim}.parquet", index=False)
 
 
 def rename_components(n, ctype: str, suffix: str) -> None:
@@ -194,7 +226,7 @@ def rename_components(n, ctype: str, suffix: str) -> None:
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     c = n.c[ctype]
@@ -263,42 +295,100 @@ def write_directory_schema(directory: str, schema: Schema) -> None:
     Path(directory, "manifest.json").write_text(schema.model_dump_json())
 
 
+def _default_attributes(
+    dims: dict[str, nw.dtypes.DType], groups: dict[str, dict[str, str]]
+):
+    """The attributes tests write, declared over whichever dims are in play.
+
+    Writing an attribute the schema does not declare is rejected, since its
+    `dims` are what say which columns its file carries - so every attribute a
+    test writes has to be declared, and these are the ones they write.
+
+    Addressed over every declared dim rather than a narrower set, which is the
+    widest shape and so the one that accepts any row a test writes.
+    `efficiency` is the exception, being over the `connection` group where one
+    is declared: that is what puts a `bus` column on its file.
+    """
+    varying = {"entity", *dims}
+    connection = "connection" if "connection" in groups else "entity"
+    return {
+        "p_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
+        "e_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
+        "p_max_pu": AttributeSpec(dtype=nw.Float64(), dims=varying),
+        "p_min_pu": AttributeSpec(dtype=nw.Float64(), dims=varying),
+        "marginal_cost": AttributeSpec(
+            dtype=nw.Float64(), dims=varying, breakpoints=True
+        ),
+        "efficiency": AttributeSpec(dtype=nw.Float64(), dims={connection, *dims}),
+    }
+
+
 def schema(
     *,
     partial: set[str] = {"scenario"},
-    keys: dict[str, set[str]] = {"scenario": {"component", "connection"}},
     attributes: dict[str, dict[str, AttributeSpec]] | None = None,
-    dims: dict[str, str] = {
-        "snapshot": "TIMESTAMP",
-        "period": "BIGINT",
-        "scenario": "VARCHAR",
+    dims: dict[str, nw.dtypes.DType] = {
+        "snapshot": nw.Datetime(),
+        "period": nw.Int64(),
+        "scenario": nw.String(),
+    },
+    groups: dict[str, dict[str, str]] = {
+        "connection": {"entity": "entity", "bus": "bus"}
     },
     within: dict[str, set[str]] | None = None,
 ) -> Schema:
     """A schema shaped like the PyPSA records most tests build on.
 
-    Defaults match `PyPSA.to_datarecord`: three declared dims, `scenario`
-    alone `partial` and keying both entity tables. Override `partial`/`keys`
-    to pin a different layering granularity, `dims` to declare another axis,
-    `within` to nest one axis inside another.
+    Defaults match `PyPSA.to_datarecord`: the `entity` axis and a `connection`
+    group over `(entity, bus)`, and three declared dims. Override `partial` to
+    pin a different layering granularity, `dims` to declare another axis,
+    `groups` to declare a different sparse relation, `within` to nest one axis
+    inside another.
+
+    `entity` and every group coordinate are declared dims and are `partial`:
+    a layer patches one component's value, or one connection's, without
+    restating the rest, which is what `partial` means. The schema requires it,
+    so this supplies it rather than leaving each caller to.
 
     Notes
     -----
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
     nesting = within or {}
+    # Callers declare per type, which is how a modelling framework thinks; the
+    # schema stores one spec per attribute, record-wide. Flattening here keeps
+    # the tests readable and is exactly what a tool does on the way in.
+    flat: dict[str, AttributeSpec] = {}
+    subscriptions: dict[str, ComponentType] = {}
+    for ctype, attrs in (attributes or {}).items():
+        for attr, spec in attrs.items():
+            flat.setdefault(attr, spec)
+        subscriptions[ctype] = ComponentType(attributes=frozenset(attrs))
+    # Declared whether or not a caller named them: a test writing `p_max_pu`
+    # needs it declared, and one passing `attributes=` is narrowing what a type
+    # *carries* rather than shortening the record's vocabulary.
+    for attr, spec in _default_attributes(dims, groups).items():
+        flat.setdefault(attr, spec)
+    # A group's coordinates are dims like any other, so they are declared here
+    # rather than assumed - which is what lets a caller pass a group over
+    # coordinates that are not called `bus`.
+    coordinates = {c for over in groups.values() for c in over}
+    declared = {
+        "entity": nw.String(),
+        **{c: nw.String() for c in coordinates},
+        **dims,
+    }
     return Schema(
+        groups={g: Group(over=over) for g, over in groups.items()},
         dimensions={
-            d: Dimension(
-                dtype=t,
-                keys=frozenset(keys.get(d, set())),
-                within=frozenset(nesting.get(d, set())),
-            )
-            for d, t in dims.items()
+            d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))
+            for d, t in declared.items()
         },
-        attributes=attributes or {},
-        partial=frozenset(partial),
+        attributes=flat,
+        component_types=subscriptions,
+        partial=frozenset(partial) | {"entity", *coordinates},
     )
 
 

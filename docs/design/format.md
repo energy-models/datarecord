@@ -7,65 +7,109 @@ A record that is never written has no directory, and answers [the protocol](reco
 record/
 ├── manifest.json                   # the schema
 ├── dims/
-│   ├── components/<Type>.parquet   # members + non-varying attribute columns
-│   ├── connections/<Type>.parquet  # component↔bus connections
-│   └── <dim>s.parquet              # one axis table per declared dim
+│   ├── entity.parquet              # which entities exist, and of what type
+│   ├── components/<Type>.parquet   # non-varying attribute columns, per type
+│   ├── <group>/<Type>.parquet      # which tuples of the group exist
+│   └── <dim>.parquet               # one axis table per declared dim
 ├── inputs/<attr>.parquet           # one varying input attribute per file
 └── outputs/<attr>.parquet          # one result attribute per file
 ```
 
+Every file under `dims/` is named for what it holds, singular: `dims/scenario.parquet` for the `scenario` axis, as `inputs/p_nom.parquet` is for `p_nom`.
+A dim's file is its name and nothing else — no pluralisation, which would be English grammar applied to a declared identifier and would spell a dim named `bus` as `buss.parquet`.
+
+## The entity axis
+
+`dims/entity.parquet` is what a component's identity **is**: which entities the layer names, what type each is, and which are tombstoned.
+
+```text
+entity | component_type | <component key dims> | deleted
+```
+
+It is **derived, not declared**. [`write_record`](writing.md) builds it from the per-type frames it has just written — the type from the file a row landed in — so a `Record` never hands it over and cannot disagree with itself about it.
+
+Three things live here that were previously spread across `dims/components/`:
+
+- **Membership.** A component exists because it has a row here, not because some type's file mentions it.
+- **Its type.** `component_type` is a column, so `entity -> component_type` is one read rather than a glob across every type's file with the type taken from the filename.
+- **Its tombstone.** Deleting a component is deleting its entity row.
+
+What remains in `dims/components/<Type>.parquet` is only [what is addressed by `entity` alone](#where-a-value-lives) — the non-varying attribute values, partitioned by type because that is the one thing genuinely per type: every type has a different column set.
+
+The components [owner map](read-path.md#owner-map) folds from this file, and so do component tombstones. Both must read the same source: membership from one and deletions from another would resolve a deletion the map never saw.
+
+`entity` is the one dim the format knows by name, and not merely because it is an axis — it is the axis the component types partition. No other dim decides an attribute vocabulary.
+
 ## Where a value lives
 
-Decided by the attribute's [declared `dims`](schema.md#attributespec), not by a particular value:
+Decided by the attribute's [declared `dims`](schema.md#attributespec), not by a particular value.
 
-- **`dims/components/<Type>.parquet`** — attributes that vary over nothing (`dims = {}`): one column per attribute, indexed by `name`.
-  A component's membership is its row here, and the file it is in is what gives it its type ([name is unique across types](#name-is-unique-across-types)).
-- **`inputs/<attr>.parquet`** — every attribute that may vary, even where a given component's value happens to be constant.
+The rule: **an attribute naming exactly one addressing coordinate is a column on that thing's own table; anything more is long rows in `inputs/`.**
+
+| `dims`                       | lands in                                                              |
+| ---------------------------- | --------------------------------------------------------------------- |
+| `{"entity"}`                 | `dims/components/<Type>.parquet` — one column per attribute, per type |
+| `{"connection"}`             | the `connection` group's table                                        |
+| `{"scenario"}`               | `dims/scenario.parquet` — the axis file                               |
+| `{"country"}`                | `dims/country.parquet` — a mapping's own axis file                    |
+| `{"entity", "snapshot"}`     | `inputs/<attr>.parquet`                                               |
+| `{"connection", "snapshot"}` | `inputs/<attr>.parquet`                                               |
+
+So "varying" is not "has dims" but **"has dims beyond its address"**, and one rule now covers what were three unrelated stories: a component's constant columns, a connection's `role`, and an axis's payload.
+
+- **`dims/components/<Type>.parquet`** — attributes addressed by `entity` alone: one column per attribute, indexed by `entity`.
+  Values only: a component's _membership_ is its row on the [entity axis](#the-entity-axis), not its presence here.
+- **A [group](schema.md#groups)'s table** — attributes addressed by that group alone, `role` being the case.
+- **An axis file** — attributes addressed by one dim alone. A snapshot weighting is a number per snapshot and belongs to no component, so `dims/snapshot.parquet` carries it as a declared column with a `dtype`, a `default` and a `description`.
+- **`inputs/<attr>.parquet`** — every attribute addressed by more than its own coordinate, even where a given component's value happens to be constant.
   That component is then a row with the varying dim NULL.
 
 So a component type's constant frame is assembled from both: the non-varying columns, and the dim-NULL rows of the varying files.
 
-[Connections](record.md#connections) are rows in `dims/connections/<Type>.parquet`, keyed by `(name, bus, *connection key dims)` and carrying their own tombstones.
-A record with no such directory has no connections.
+A [group](schema.md#groups)'s rows are in `dims/<group>/<Type>.parquet`, keyed by that group's coordinates and carrying their own tombstones — `dims/connection/Link.parquet` for the `connection` group over `(entity, bus)`.
+A record with no such directory has no rows of that group.
 
 ## The long schema
 
-Every `inputs/` and `outputs/` file carries the long columns [the protocol](record.md#wide-and-long-rows) describes, in this order, whatever its rows use:
+Every `inputs/` and `outputs/` file carries its attribute's own coordinates, then the columns every row has:
 
 ```text
-name | bus | attribute | breakpoint | value | <dim> ...
+<coordinate> ... | attribute | breakpoint | value
 ```
 
-So `bus` and `breakpoint` are all-NULL columns in a record with no connections and no curves.
-That uniformity is what lets one `UNION ALL BY NAME` and one join shape serve every kind of attribute row ([resolving a relation](read-path.md#resolving-a-relation)), and it means a file written without one of these columns still reads back correctly, since `union_by_name` supplies the NULL.
+The coordinates are what the attribute's [`dims`](schema.md#attributespec) declare, with a [group](schema.md#groups) expanding to its coordinate names — so `inputs/efficiency.parquet` over the `connection` group carries `entity | bus`, and `inputs/objective_weighting.parquet` over `snapshot` alone carries neither.
+
+**Per attribute rather than schema-wide.** One attribute is one file, so one column set per file; a fixed prefix of `entity | bus` would put an all-NULL `entity` on a record-level weighting, claiming a component the value has none of, and would privilege one group's spelling of `bus` over every other group's coordinates.
+
+That the shapes differ costs nothing, because `UNION ALL BY NAME` supplies NULL for a column a file does not carry — which is also what lets a file written before a dim was declared still read back correctly ([resolving a relation](read-path.md#resolving-a-relation)).
+The fold's _key_ is uniform even though the files are not: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`, one fixed tuple over every attribute, and a coordinate an attribute does not carry reads as NULL there.
 
 One attribute per file, so `value` carries that attribute's dtype.
-There is **no `component_type` column**: `name` is unique across every type ([below](#name-is-unique-across-types)), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by name alone, and a reader wanting one type's rows joins `dims/components/`.
+There is **no `component_type` column**: `entity` is unique across every type ([below](#entity-is-unique-across-types)), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by entity alone, and a reader wanting one type's rows joins `dims/components/`.
 
-A connection's `role` is not in the long schema: it lives on the connection row and identifies nothing in `inputs/` ([connections](record.md#connections)).
+A connection's `role` is not in the long schema: it is an attribute over the `connection` group, so it lives on that group's table as a column ([where a value lives](#where-a-value-lives)) rather than in `inputs/`.
 
-## `name` is unique across types
+## `entity` is unique across types
 
-A `name` identifies one component across the whole record.
+An `entity` identifies one component across the whole record.
 Two types may not share one: a `Bus` and a `Generator` both called `north` are a collision, not two components.
 
 That is what removes `component_type` from every attribute key.
-An `inputs/` row addresses `(name, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
+An `inputs/` row addresses `(entity, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
 The alternative — carrying the type in the key — makes it a _component's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
 
-**The entity tables are the mapping.** `dims/components/<Type>.parquet` already partitions membership by type, one file per type, so `name -> component_type` is the file a name's row is in.
-Nothing new is stored to answer it: no separate entity table, because the component tables _are_ one.
-Where the union of those files needs the type as data — [the owner map](read-path.md#owner-map), a glob across types — `component_type` is a column of the **entity** rows, never of the attribute rows.
+**The entity axis is the mapping.** `dims/entity.parquet` carries `component_type` as a column, so `entity -> component_type` is one read of one file rather than a glob over every type's.
+`component_type` is a column of that axis and of the owner map it feeds, never of the attribute rows.
 
-So a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the components map on `name`.
+So a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the components map on `entity`.
 That join is what the `component_type` filter used to be, and it is against a relation the read path already builds.
 
 Two things follow, and they are the reason to want this.
-An attribute row is addressed the way a component is, so `set("p_nom", 150.0, names=["wind1"])` needs no type: the name determines it ([set](working-record.md#set)).
-And the inputs key loses a column, so the fold's key is `(name, bus, *owned_per dims, attribute)` — one less column to compare NULL-safely in every join in [the read path](read-path.md).
+An attribute row is addressed the way a component is, so `set("p_nom", 150.0, entity=["wind1"])` needs no type: the entity determines it ([set](working-record.md#set)).
+And the inputs key loses a column, so the fold's key is `(entity, bus, *owned_per dims, attribute)` — one less column to compare NULL-safely in every join in [the read path](read-path.md).
 
-**Enforced, not assumed.** [`write_record`](writing.md) rejects a record whose component tables share a name, and `add` rejects a name the record already resolves under another type ([add / remove](working-record.md#add-remove)).
+**Enforced, not assumed.** [`write_record`](writing.md) rejects a record whose component tables share an entity, and `add` rejects an entity the record already resolves under another type ([add / remove](working-record.md#add-remove)).
 A collision cannot be left to be discovered: it would silently merge two components' attribute rows, since the rows themselves no longer record which type they meant.
 
 A modelling framework that scopes names per type must therefore reconcile before it writes.
-Its [tool's `verify`](tools.md) is where that is reported, rather than something the record layer mangles a name to paper over: a record's `name` is the framework's own name, and a record that renamed them would hand back components a framework cannot find.
+Its [tool's `verify`](tools.md) is where that is reported, rather than something the record layer mangles a name to paper over: a record's `entity` is the framework's own name, and a record that renamed them would hand back components a framework cannot find.

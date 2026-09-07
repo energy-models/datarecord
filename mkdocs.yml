@@ -45,6 +45,8 @@ nav:
       - Consuming a record: design/tools.md
       - Module layout: design/module-layout.md
       - Open questions: design/open-questions.md
+      - Proposals:
+          - Dims, mappings, groups and traits: design/proposals/dims-groups-traits.md
   - API Reference:
       - api/index.md
       - Record: api/record.md

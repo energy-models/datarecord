@@ -5,9 +5,6 @@ Notes
 - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
 """
 
-import pytest
-from pydantic import ValidationError
-
 from datarecord.duck import layer_dir
 from datarecord.layered.revision import Revision
 from tests.fixtures import (
@@ -26,7 +23,7 @@ PROCESS = "Process"
 
 def _connections(revision, ctype=PROCESS):
     """`connection_frame`, asserted non-`None` for tests where a row must exist."""
-    frame = revision.node_cache.connection_frame(ctype)
+    frame = revision.node_cache.group_frame("connection", ctype)
     assert frame is not None
     return frame
 
@@ -43,21 +40,21 @@ def _root(con) -> Revision:
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, PROCESS, [{"name": "steel_dri"}])
+    write_components(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer,
         PROCESS,
         [
-            {"name": "steel_dri", "bus": "h2_north", "role": "input"},
-            {"name": "steel_dri", "bus": "iron_ore", "role": "input"},
-            {"name": "steel_dri", "bus": "dri", "role": "output"},
+            {"entity": "steel_dri", "bus": "h2_north", "role": "input"},
+            {"entity": "steel_dri", "bus": "iron_ore", "role": "input"},
+            {"entity": "steel_dri", "bus": "dri", "role": "output"},
         ],
     )
     write_input(
         layer,
         "efficiency",
         [
-            {"component_type": PROCESS, "name": "steel_dri", "bus": b, "value": v}
+            {"component_type": PROCESS, "entity": "steel_dri", "bus": b, "value": v}
             for b, v in (("h2_north", 2.1), ("iron_ore", 1.6), ("dri", 1.0))
         ],
     )
@@ -91,7 +88,7 @@ def test_patch_overrides_one_connection_only(con, base_uri):
         [
             {
                 "component_type": PROCESS,
-                "name": "steel_dri",
+                "entity": "steel_dri",
                 "bus": "h2_north",
                 "value": 9.9,
             }
@@ -114,7 +111,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
     write_connections(
         layer_dir(middle.id),
         PROCESS,
-        [{"name": "steel_dri", "bus": "elec_north", "role": "input"}],
+        [{"entity": "steel_dri", "bus": "elec_north", "role": "input"}],
     )
     write_input(
         layer_dir(middle.id),
@@ -122,7 +119,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
         [
             {
                 "component_type": PROCESS,
-                "name": "steel_dri",
+                "entity": "steel_dri",
                 "bus": "elec_north",
                 "value": 0.4,
             }
@@ -134,7 +131,14 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
     write_input(
         layer_dir(leaf.id),
         "efficiency",
-        [{"component_type": PROCESS, "name": "steel_dri", "bus": "dri", "value": 7.7}],
+        [
+            {
+                "component_type": PROCESS,
+                "entity": "steel_dri",
+                "bus": "dri",
+                "value": 7.7,
+            }
+        ],
     )
 
     assert _efficiencies(leaf) == {
@@ -146,12 +150,21 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
 
 
 def test_component_level_attribute_is_unaffected(con, base_uri):
-    """A NULL `bus` keys against the map's NULL, exactly as before connections existed."""
+    """A component attribute carries no `bus` column at all, and resolves as ever.
+
+    `bus` is the `connection` group's coordinate, so it is on the files of the
+    attributes addressed by that group and on no others - where before every
+    long file carried it, all-NULL, whether or not the attribute could use it.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    """
     root = _root(con)
     write_input(
         layer_dir(root.id),
         "p_nom",
-        [{"component_type": PROCESS, "name": "steel_dri", "value": 100.0}],
+        [{"component_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
     )
     root.materialise()
 
@@ -159,12 +172,12 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
     write_input(
         layer_dir(child.id),
         "p_nom",
-        [{"component_type": PROCESS, "name": "steel_dri", "value": 250.0}],
+        [{"component_type": PROCESS, "entity": "steel_dri", "value": 250.0}],
     )
 
     df = relation(child, "p_nom").df()
     assert list(df["value"]) == [250.0]
-    assert df["bus"].isna().all()
+    assert "bus" not in df.columns, "`p_nom` is not addressed by the connection group"
 
 
 def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri):
@@ -177,9 +190,9 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, PROCESS, [{"name": "steel_dri"}])
+    write_components(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
-        layer, PROCESS, [{"name": "steel_dri", "bus": "h2_north", "role": "input"}]
+        layer, PROCESS, [{"entity": "steel_dri", "bus": "h2_north", "role": "input"}]
     )
     write_input(
         layer,
@@ -188,20 +201,20 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
             # one static row, and a two-snapshot series for the same connection
             {
                 "component_type": PROCESS,
-                "name": "steel_dri",
+                "entity": "steel_dri",
                 "bus": "h2_north",
                 "value": 2.0,
             },
             {
                 "component_type": PROCESS,
-                "name": "steel_dri",
+                "entity": "steel_dri",
                 "bus": "h2_north",
                 "snapshot": "2030-01-01",
                 "value": 2.5,
             },
             {
                 "component_type": PROCESS,
-                "name": "steel_dri",
+                "entity": "steel_dri",
                 "bus": "h2_north",
                 "snapshot": "2030-01-02",
                 "value": 2.7,
@@ -248,97 +261,5 @@ def test_component_tombstone_removes_every_connection(con, base_uri):
     child = root.child()
     tombstone(layer_dir(child.id), PROCESS, ["steel_dri"])
 
-    assert child.node_cache.connection_frame(PROCESS) is None
+    assert child.node_cache.group_frame("connection", PROCESS) is None
     assert _efficiencies(child) == {}
-
-
-def test_connection_exists_per_scenario(con, base_uri):
-    """`scenario` keys connections here, so a tombstone can scope to one.
-
-    Notes
-    -----
-    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
-    """
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema())
-    write_components(
-        layer, PROCESS, [{"name": "steel_dri", "scenario": s} for s in ("low", "high")]
-    )
-    write_connections(
-        layer,
-        PROCESS,
-        [
-            {"name": "steel_dri", "bus": "co2", "role": "output", "scenario": s}
-            for s in ("low", "high")
-        ],
-    )
-    revision.materialise()
-
-    child = revision.child()
-    tombstone_connection(
-        layer_dir(child.id), PROCESS, [("steel_dri", "co2")], scenario="high"
-    )
-
-    frame = _connections(child).df()
-    assert list(zip(frame["bus"], frame["scenario"], strict=True)) == [("co2", "low")]
-
-
-def test_a_connection_key_must_be_partial(con, base_uri):
-    """The one rule the format fixes, applied to the third key too.
-
-    A connection exists per value of a keying dim, so a tombstone selects by
-    it - which needs the dim to be one a layer patches value by value.
-
-    Notes
-    -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    - [keys](https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys)
-    """
-    with pytest.raises(ValidationError, match="not `partial`"):
-        schema(partial=set(), keys={"scenario": {"connection"}})
-
-
-@pytest.mark.xfail(
-    reason="Open question, deliberately unresolved: a component "
-    "tombstone scoped to one scenario removes a connection that is not "
-    "scenario-scoped, even though the component survives in another scenario. "
-    "Deciding it needs the folded components map, which `fold_connections` cannot "
-    "reach - `_fold_map` folds each kind independently. Low priority because PyPSA "
-    "does not let connections differ between scenarios, so no record built for it "
-    "reaches this case.",
-    strict=True,
-)
-def test_narrower_connection_key_than_component_key(con, base_uri):
-    """`component_dims` may exceed `connection_dims`; that is a model, not an error.
-
-    Components are deleted per scenario while connection existence does not
-    vary by scenario at all, so a component tombstone in one scenario should
-    leave the connection to the scenarios the component still has.
-
-    Notes
-    -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    """
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema(keys={"scenario": {"component"}}))
-    write_components(
-        layer, PROCESS, [{"name": "steel_dri", "scenario": s} for s in ("low", "high")]
-    )
-    write_connections(
-        layer, PROCESS, [{"name": "steel_dri", "bus": "co2", "role": "output"}]
-    )
-    revision.materialise()
-
-    # `scenario` does not key connections, so that map carries no such column.
-    assert revision.node_cache.schema.connection_dims == ()
-    assert "scenario" not in revision.node_cache.connections.columns
-
-    child = revision.child()
-    tombstone(layer_dir(child.id), PROCESS, ["steel_dri"], scenario="high")
-
-    # The component survives in `low`, and so the connection does - the
-    # widened match drops it only when no owning component row remains.
-    assert list(_components(child).df()["scenario"]) == ["low"]
-    assert list(_connections(child).df()["bus"]) == ["co2"]

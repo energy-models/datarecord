@@ -1,13 +1,17 @@
 """Layer keys beyond `scenario`, resolved through a real record.
 
-What `partial` and `keys` *mean* as declarations is pinned in
-`test_schema.py`; here they are written into a layer and the fold is asked
-whether it keyed by them.
+What `partial` *means* as a declaration is pinned in `test_schema.py`; here it
+is written into a layer and the fold is asked whether it keyed by it.
 
 Notes
 -----
 - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
 """
+
+from pathlib import Path
+
+import narwhals as nw
+import pandas as pd
 
 from datarecord import Revision
 from datarecord.duck import layer_dir
@@ -26,9 +30,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     """With `period` `partial`, a child may replace one period only."""
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(
-        schema(partial={"scenario", "period"}, keys={"scenario": {"component"}})
-    )
+    write_schema(schema(partial={"scenario", "period"}))
     revision.materialise()
 
     child = revision.child()
@@ -37,7 +39,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
         "p_max_pu",
         [
             {
-                "name": "Manchester Wind",
+                "entity": "Manchester Wind",
                 "period": 2030,
                 "value": 0.42,
             }
@@ -46,13 +48,14 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
 
     df = child.node_cache.inputs.df()
     wind = df[
-        (df["name"] == "Manchester Wind") & (df["attribute"].astype(str) == "p_max_pu")
+        (df["entity"] == "Manchester Wind")
+        & (df["attribute"].astype(str) == "p_max_pu")
     ]
     owners = dict(zip(wind["period"], wind["layer_uuid"], strict=False))
     assert owners.get(2030) == child.id
 
     rel = relation(child, "p_max_pu").df()
-    wind_rows = rel[rel["name"] == "Manchester Wind"]
+    wind_rows = rel[rel["entity"] == "Manchester Wind"]
     overridden = wind_rows[wind_rows["period"] == 2030]
     assert set(overridden["value"]) == {0.42}
 
@@ -60,8 +63,9 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
 def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_dc):
     """Deletion always acts on the whole component, never scoped to a period.
 
-    `period` is `partial` but keys nothing, so it never reaches the
-    components map's key - which is what makes the tombstone unscoped.
+    `period` is `partial`, so it keys the *inputs* map - but the components map
+    is keyed by `entity` alone, which is what makes the tombstone unscoped.
+    Existence does not vary along a dim, so there is nothing to scope it by.
 
     Notes
     -----
@@ -69,14 +73,14 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(schema(partial={"period"}, keys={}))
+    write_schema(schema(partial={"period"}))
     revision.materialise()
 
     child = revision.child()
     tombstone(layer_dir(child.id), "Generator", ["Manchester Wind"])
 
     components = child.node_cache.components.df()
-    assert "Manchester Wind" not in set(components["name"])
+    assert "Manchester Wind" not in set(components["entity"])
 
 
 def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
@@ -93,15 +97,13 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(
-        schema(partial={"scenario", "period"}, keys={"scenario": {"component"}})
-    )
+    write_schema(schema(partial={"scenario", "period"}))
     write_input(
         layer_dir(revision.id),
         "p_max_pu",
         [
             {
-                "name": "Manchester Wind",
+                "entity": "Manchester Wind",
                 "scenario": "base",
                 "period": 2020,
                 "value": 0.1,
@@ -116,7 +118,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
         "p_max_pu",
         [
             {
-                "name": "Manchester Wind",
+                "entity": "Manchester Wind",
                 "scenario": "high",
                 "period": 2030,
                 "value": 0.5,
@@ -125,14 +127,18 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     )
 
     df = child.node_cache.inputs.df()
-    wind = df[(df["name"] == "Manchester Wind") & (df["layer_uuid"] == child.id)]
+    wind = df[(df["entity"] == "Manchester Wind") & (df["layer_uuid"] == child.id)]
     assert wind["scenario"].tolist() == ["high"]
     assert wind["period"].tolist() == [2030]
 
 
 # -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------
 
-_NESTED_DIMS = {"snapshot": "TIMESTAMP", "period": "BIGINT", "scenario": "VARCHAR"}
+_NESTED_DIMS = {
+    "snapshot": nw.Datetime(),
+    "period": nw.Int64(),
+    "scenario": nw.String(),
+}
 _NESTED_WITHIN = {"snapshot": {"period"}}
 
 
@@ -190,3 +196,72 @@ def test_a_child_overrides_one_nested_point(con, base_uri):
     axis = child.node_cache.dims.axes["snapshot"].df()
     weights = dict(zip(axis["period"], axis["weight"], strict=True))
     assert weights == {2020: 1.0, 2030: 7.0}
+
+
+def test_a_dim_names_its_own_file(con, base_uri):
+    """`dims/<dim>.parquet`, whatever the dim is called.
+
+    A dim named `bus` is the case that matters: pluralising by concatenation
+    would look for `buss.parquet` and find nothing, so the axis would read as
+    absent rather than wrong.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    """
+    revision = Revision.create(con)
+    write_schema(schema(dims={"bus": nw.String()}, partial=set()))
+    target = Path(layer_dir(revision.id), "dims")
+    target.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([{"bus": "north"}, {"bus": "south"}]).to_parquet(
+        target / "bus.parquet", index=False
+    )
+
+    axis = revision.node_cache.dims.axes["bus"].df()
+    assert sorted(axis["bus"].tolist()) == ["north", "south"]
+
+
+def test_the_entity_column_is_entity(con, base_uri, ac_dc):
+    """`entity` names the component in every frame the protocol hands back.
+
+    The one axis the format knows by name, because it is the axis the component
+    types partition: `component_type` hangs off it and `dims/components/` is
+    keyed by it. Every other dim is declared.
+
+    Notes
+    -----
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    """
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+
+    record = revision.record
+    assert "entity" in record.components["Generator"].collect_schema().names()
+    assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
+    # And in the owner map the fold builds over them.
+    assert "entity" in revision.node_cache.components.df().columns
+
+
+def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
+    """`dims/entity.parquet` says which entities exist and what type each is.
+
+    Derived by the writer from the per-type frames rather than handed over, so
+    a record cannot disagree with itself about it. The components map folds
+    from this one file, where it used to glob `dims/components/` and take the
+    type from the filename.
+
+    Notes
+    -----
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    """
+    revision = Revision.create(con)
+    export_network(ac_dc, revision, con)
+
+    axis = con.read_parquet(layer_dir(revision.id) + "dims/entity.parquet").df()
+    assert {"entity", "component_type", "deleted"} <= set(axis.columns)
+    assert not axis["entity"].duplicated().any()
+    assert "Generator" in set(axis["component_type"])
+
+    # And it is what the fold reads: the map's entities are the axis's.
+    mapped = revision.node_cache.components.df()
+    assert set(mapped["entity"]) == set(axis.loc[~axis["deleted"], "entity"])

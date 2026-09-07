@@ -12,6 +12,7 @@ Notes
 - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Self
@@ -24,7 +25,7 @@ from pydantic import BaseModel, PrivateAttr
 from datarecord.duck import default_connection
 from datarecord.layered import resolve
 from datarecord.layered.resolve import NodeCache
-from datarecord.record import Flags, LazyFrames
+from datarecord.record import Flags, Frames, LazyFrames
 from datarecord.schema import Schema
 
 _ANCESTRY = """
@@ -234,10 +235,21 @@ class LayeredRecord:
         return LazyFrames(types, self._component_frame)
 
     @cached_property
-    def connections(self) -> LazyFrames:
-        rows = self.node_cache.connections.project("component_type").distinct()
+    def groups(self) -> Mapping[str, Frames]:
+        """Each declared group's rows, keyed by group then by component type.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        return {
+            group: self._group_frames(group) for group in self.node_cache.schema.groups
+        }
+
+    def _group_frames(self, group: str) -> LazyFrames:
+        rows = self.node_cache.group(group).project("component_type").distinct()
         types = tuple(sorted(r[0] for r in rows.fetchall()))
-        return LazyFrames(types, self._connection_frame)
+        return LazyFrames(types, lambda ctype: self._group_frame(group, ctype))
 
     @cached_property
     def attributes(self) -> LazyFrames:
@@ -272,8 +284,8 @@ class LayeredRecord:
     def _component_frame(self, ctype: str) -> nw.LazyFrame:
         return self._ordered(self.node_cache.component_frame(ctype), ctype)
 
-    def _connection_frame(self, ctype: str) -> nw.LazyFrame:
-        return self._ordered(self.node_cache.connection_frame(ctype), ctype)
+    def _group_frame(self, group: str, ctype: str) -> nw.LazyFrame:
+        return self._ordered(self.node_cache.group_frame(group, ctype), ctype)
 
     def _ordered(self, rel: DuckDBPyRelation | None, ctype: str) -> nw.LazyFrame:
         """`rel` in member order, which for an overlay means sorted by `order_key`.

@@ -18,20 +18,16 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 import narwhals as nw
+from duckdb import CoalesceOperator as coalesce
 from duckdb import DuckDBPyRelation
 
-from datarecord.duck import base_uri_of, layer_dir
-from datarecord.layered.resolve import read_schema, write_schema
+from datarecord.duck import base_uri_of, col, fn, layer_dir, lit, try_read_parquet
+from datarecord.layered.resolve import cast_declared, read_schema, write_schema
 from datarecord.record import Record
 from datarecord.schema import Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
-
-# The long schema's fixed columns (https://energy-models.github.io/datarecord/design/format/#the-long-schema). `bus`/`breakpoint` are part of it, not
-# optional extensions to it: both NULL is the ordinary component-level scalar.
-# No `component_type`: an attribute row is keyed by `name` alone (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types).
-_LONG_FIXED = ("name", "bus", "attribute", "breakpoint", "value")
 
 
 def write_record(
@@ -114,7 +110,10 @@ def write_record(
         kinds = [
             ("dims", source.dims, "dims"),
             ("components", source.components, "dims/components"),
-            ("connections", source.connections, "dims/connections"),
+            *(
+                (group, frames, f"dims/{group}")
+                for group, frames in source.groups.items()
+            ),
             ("attributes", source.attributes, "inputs"),
         ]
         # `outputs/` only for a source carrying results, so a record with none
@@ -122,7 +121,7 @@ def write_record(
         if source.outputs:
             kinds.append(("outputs", source.outputs, "outputs"))
         # Each type's names, to check record-wide uniqueness once every component
-        # frame has been seen (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types). Collected to one backend because a `Record`
+        # frame has been seen (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). Collected to one backend because a `Record`
         # may hand over a DuckDB frame for one type and a pandas one for another,
         # and `nw.concat` takes a single backend.
         tagged: list[nw.LazyFrame] = []
@@ -134,22 +133,22 @@ def write_record(
                 _validate_frame(frame, kind, key, schema)
                 if kind == "components":
                     tagged.append(
-                        frame.select("name")
+                        frame.select("entity")
                         .collect(backend="pyarrow")
                         .lazy()
-                        # Cast after collecting: DuckDB lands `name` as arrow
+                        # Cast after collecting: DuckDB lands `entity` as arrow
                         # `large_string` where pandas gives `string`, and concat
                         # compares arrow schemas.
                         .select(
-                            nw.col("name").cast(nw.String()),
+                            nw.col("entity").cast(nw.String()),
                             component_type=nw.lit(key).cast(nw.String()),
                         )
                     )
-                name = f"{key}s" if kind == "dims" else key
                 _write_frame(
-                    frame, f"{staging}{subdir}/{name}.parquet", con, local, schema
+                    frame, f"{staging}{subdir}/{key}.parquet", con, local, schema
                 )
         _require_unique(tagged)
+        _write_entity_axis(staging, schema, con)
     except BaseException:
         if local:
             shutil.rmtree(staging, ignore_errors=True)
@@ -218,25 +217,50 @@ def _write_frame(
         # the type is what distinguishes them, not the method).
         arrow = frame.collect(backend="pyarrow").to_native()  # noqa: F841 - by name
         native = con.sql("FROM arrow")
-    _typed(schema, native).to_parquet(uri)
+    cast_declared(schema, native).to_parquet(uri)
 
 
-def _typed(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
-    """`rel` with every column the schema declares a type for cast to it.
+def _write_entity_axis(staging: str, schema: Schema, con: DuckDBPyConnection) -> None:
+    """Write `dims/entity.parquet`: one row per component, with its type.
 
-    Undeclared columns pass through: a `dims/components/` frame's attribute
-    columns belong to the schema's own vocabulary, so their types are the
-    writer's business.
+    The entity axis is what a component's identity *is* - which entities the
+    layer names, what type each is, and which are tombstoned. Derived rather
+    than handed over: the per-type frames just written say all three, so a
+    `Record` never has to produce it and cannot disagree with itself about it.
+
+    Read back through DuckDB rather than unioned from the source frames,
+    because `_write_frame` has already cast every column to what the schema
+    declares - where the frames themselves may disagree, an all-NULL `scenario`
+    landing as arrow `null` for one type and `string` for another.
+
+    `component_type` is a column of this axis and of nothing else, which is
+    what makes `attributes_for` reachable from an entity alone.
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
-    cols = ", ".join(
-        f'"{c}"::{t} AS "{c}"' if (t := schema.column_type(c)) else f'"{c}"'
-        for c in rel.columns
+    rel = try_read_parquet(
+        f"{staging}dims/components/*.parquet",
+        con,
+        union_by_name=True,
+        filename=True,
     )
-    return rel.project(cols)
+    if rel is None:
+        return
+    # The type is the file a row is in, so it comes from the filename rather
+    # than a column - which is exactly the glob-and-derive this axis exists to
+    # replace for every later reader.
+    ctype = fn.regexp_extract(col("filename"), lit(r"([^/]+)\.parquet$"), lit(1))
+    deleted = (
+        coalesce(col("deleted"), lit(False))  # noqa: FBT003
+        if "deleted" in rel.columns
+        else lit(False)  # noqa: FBT003
+    )
+    rel.project(
+        col("entity"), ctype.alias("component_type"), deleted.alias("deleted")
+    ).to_parquet(f"{staging}dims/entity.parquet")
 
 
 def _require_unique(tagged: list[nw.LazyFrame]) -> None:
@@ -259,21 +283,21 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
 
     Notes
     -----
-    - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
     if len(tagged) < 2:  # nothing to collide with
         return
-    pairs = nw.concat(tagged, how="vertical").unique(["name", "component_type"])
+    pairs = nw.concat(tagged, how="vertical").unique(["entity", "component_type"])
     clashing = (
         pairs.join(
-            pairs.group_by("name")
+            pairs.group_by("entity")
             .agg(nw.col("component_type").n_unique().alias("_types"))
             .filter(nw.col("_types") > 1)
-            .select("name"),
-            on="name",
+            .select("entity"),
+            on="entity",
             how="inner",
         )
-        .select("name", "component_type")  # the order `iter_rows` unpacks
+        .select("entity", "component_type")  # the order `iter_rows` unpacks
         .collect()
     )
     if not clashing.is_empty():
@@ -288,7 +312,7 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
         )
         msg = (
             f"component types reuse names: {detail}; a name identifies one "
-            f"component across every type (https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)"
+            f"component across every type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
         )
         raise ValueError(msg)
 
@@ -296,11 +320,16 @@ def _require_unique(tagged: list[nw.LazyFrame]) -> None:
 def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) -> None:
     """Check one frame is shaped for the fold to resolve it.
 
-    Structural only: a long frame carries the long-schema columns, and a `dims/` frame
-    carries every dim the schema declares it keyed by. Values
+    Structural only: a long frame carries its own attribute's coordinates, and a
+    `dims/` frame carries every dim the schema declares it keyed by. Values
     are not checked - which component types and attribute names are valid
     belongs to whatever vocabulary the schema declares, and the record layer
     knows none.
+
+    An attribute's coordinates are what its `dims` declare, so one file's column
+    set is not another's and neither is every declared dim. A result the schema
+    does not declare has no coordinates to derive, so it falls back to the fixed
+    columns every long row has.
 
     Reads the schema rather than the rows, so validating an unmaterialised
     frame costs nothing.
@@ -318,12 +347,46 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
     # overlay (https://energy-models.github.io/datarecord/design/read-path/#outputs), which is a read-path property rather than a shape one.
     if kind in ("attributes", "outputs"):
         subdir = "inputs" if kind == "attributes" else "outputs"
-        required = {*_LONG_FIXED, *schema.dims}
+        # An input's shape comes from its spec, so one the schema does not
+        # declare has no shape to check it against - and writing it would put a
+        # file in `inputs/` that no read path knows the columns of. A *result*
+        # is never declared, a tool deriving those from its own registry.
+        if kind == "attributes" and key not in schema.attributes:
+            msg = (
+                f"inputs/{key}.parquet is not a declared attribute; its `dims` "
+                f"are what say which columns the file carries (https://energy-models.github.io/datarecord/design/schema/#attributespec)"
+            )
+            raise ValueError(msg)
+        # A result's shape is not the schema's to fix, even where its name
+        # matches a declared attribute: `outputs/control.parquet` may vary over
+        # axes the *input* `control` does not. So only the fixed columns every
+        # long row has are required of one (https://energy-models.github.io/datarecord/design/read-path/#outputs).
+        required = (
+            set(schema.long_columns_for(key))
+            if kind == "attributes"
+            else {"attribute", "breakpoint", "value"}
+        )
         missing = sorted(required - columns)
         if missing:
             msg = (
                 f"{subdir}/{key}.parquet is missing long-schema columns {missing}; "
                 f"the resolved relation needs {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
+            )
+            raise ValueError(msg)
+        # And an *input* carries nothing else: a coordinate the attribute is
+        # not addressed by would be a column the read path never projects,
+        # written as a fact about a value that does not have one. Reported
+        # rather than dropped, since a source emitting one disagrees with the
+        # schema about what the attribute is - the source's bug to fix.
+        #
+        # A result is exempt for the same reason it need not be declared: its
+        # shape is a framework's business, and a name it shares with an input
+        # says nothing about which coordinates the *result* varies over.
+        extra = sorted(columns - required) if kind == "attributes" else []
+        if extra:
+            msg = (
+                f"{subdir}/{key}.parquet carries columns {extra} the attribute is "
+                f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
             )
             raise ValueError(msg)
         return
@@ -340,24 +403,26 @@ def _validate_frame(frame: nw.LazyFrame, kind: str, key: str, schema: Schema) ->
         missing = sorted(set(schema.axis_key(key)) - columns)
         if missing:
             msg = (
-                f"dims/{key}s.parquet is missing axis key columns {missing}; "
+                f"dims/{key}.parquet is missing axis key columns {missing}; "
                 f"{key!r} is `within` {sorted(schema.dimensions[key].within)} so "
                 f"its labels identify a point only within them (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)"
             )
             raise ValueError(msg)
+        # A mapping's column lives on the axis it classifies, so that file is
+        # where the classification is stored and where its absence shows.
+        # Not required, only checked for type: a record may declare `country`
+        # before any bus is assigned one, and a NULL is "unclassified".
         return
 
-    keyed = {
-        "components": schema.component_dims,
-        "connections": schema.connection_dims,
-    }.get(kind)
-    if keyed is None:
+    if kind not in schema.groups:
         return
-    missing = sorted(set(keyed) - columns)
+    # A group's row is keyed by its coordinates, so a frame lacking one would
+    # be keyed by a column that is not there.
+    missing = sorted(set(schema.group_coordinates(kind)) - columns)
     if missing:
         msg = (
-            f"dims/{kind}/{key}.parquet is missing key dims {missing} that the "
-            f"schema declares; the fold would key by a column that is not "
-            f"there (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)"
+            f"dims/{kind}/{key}.parquet is missing the {kind!r} group's "
+            f"coordinates {missing}; the fold would key by a column that is "
+            f"not there (https://energy-models.github.io/datarecord/design/schema/#groups)"
         )
         raise ValueError(msg)

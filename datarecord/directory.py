@@ -11,16 +11,16 @@ Notes
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
 
 import narwhals as nw
 from duckdb import ColumnExpression as col
-from duckdb import ConstantExpression as lit
 
 from datarecord.duck import fn, try_read_parquet
-from datarecord.layered.resolve import read_json, read_schema
+from datarecord.layered.resolve import read_json, read_schema, with_columns
 from datarecord.record import EMPTY, Flags, LazyFrames
 from datarecord.schema import Schema
 
@@ -71,12 +71,12 @@ class DirectoryRecord:
 
     @cached_property
     def dims(self) -> LazyFrames:
-        # A dim's axis file is `{dim}s.parquet`, so the declared dims name the
+        # A dim's axis file is `{dim}.parquet`, so the declared dims name the
         # files to look for; only those that exist become keys.
         declared = self.schema.dims
-        present = tuple(d for d in declared if self._read(f"dims/{d}s.parquet"))
+        present = tuple(d for d in declared if self._read(f"dims/{d}.parquet"))
         return LazyFrames(
-            present, lambda dim: nw.from_native(self._require(f"dims/{dim}s.parquet"))
+            present, lambda dim: nw.from_native(self._require(f"dims/{dim}.parquet"))
         )
 
     @cached_property
@@ -84,8 +84,14 @@ class DirectoryRecord:
         return self._by_type("dims/components")
 
     @cached_property
-    def connections(self) -> LazyFrames:
-        return self._by_type("dims/connections")
+    def groups(self) -> Mapping[str, LazyFrames]:
+        """Each declared group's rows, keyed by group then by component type.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        return {g: self._by_type(f"dims/{g}") for g in self.schema.groups}
 
     @cached_property
     def attributes(self) -> LazyFrames:
@@ -110,7 +116,7 @@ class DirectoryRecord:
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
         """
         cache: dict[str, dict[str, Flags]] = self._flags_cache  # type: ignore[attr-defined]
@@ -121,18 +127,22 @@ class DirectoryRecord:
         members = self._read(f"dims/components/{ctype}.parquet")
         result: dict[str, Flags] = {}
         if rel is not None and members is not None:
-            declared = self.schema.dims
-            dims = tuple(d for d in declared if d in rel.columns)
-            pwl = (
-                fn.bool_or(col("breakpoint").isnotnull())
-                if "breakpoint" in rel.columns
-                else lit(False)
-            )
+            # Only the dims a NULL broadcasts over, as the fold's flags are:
+            # "did a row set this" is not a question about `entity` or a
+            # group's coordinate, which address the row rather than expanding.
+            declared = self.schema.broadcast_dims
+            # Materialised as NULL where no file carries the column, so the
+            # aggregate binds over one relation: `union_by_name` already does
+            # this for a dim *some* file has, and this covers a dim none does.
+            # Scoping to each attribute's own coordinates then happens below,
+            # where the attribute is known (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+            rel = with_columns(self.schema, rel, *declared)
+            dims = declared
             rows = (
                 rel.set_alias("i")
                 .join(
-                    members.project("name").distinct().set_alias("e"),
-                    "i.name = e.name",
+                    members.project("entity").distinct().set_alias("e"),
+                    "i.entity = e.entity",
                     how="semi",
                 )
                 .aggregate(
@@ -140,21 +150,36 @@ class DirectoryRecord:
                         col("attribute"),
                         *(fn.bool_or(col(d).isnotnull()).alias(f"v_{d}") for d in dims),
                         *(fn.bool_or(col(d).isnull()).alias(f"b_{d}") for d in dims),
-                        pwl.alias("breakpoints"),
+                        fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
                     ]
                 )
                 .fetchall()
             )
             n = len(dims)
+
+            def scope(attribute: str) -> set[str]:
+                """Which of `dims` this attribute is actually addressed by.
+
+                One relation covers every attribute, so a dim another uses reads
+                NULL here - which must not be reported as "every row broadcasts
+                over it" when the attribute has no such axis at all. Falls back
+                to all of them for an attribute the schema does not declare,
+                whose shape is not the schema's to say.
+                """
+                own = set(self.schema.coordinates_of(attribute))
+                return own & set(dims) if own else set(dims)
+
             result = {
                 r[0]: Flags(
                     frozenset(
-                        d for d, on in zip(dims, r[1 : 1 + n], strict=True) if on
+                        d
+                        for d, on in zip(dims, r[1 : 1 + n], strict=True)
+                        if on and d in scope(r[0])
                     ),
                     frozenset(
                         d
                         for d, on in zip(dims, r[1 + n : 1 + 2 * n], strict=True)
-                        if on
+                        if on and d in scope(r[0])
                     ),
                     bool(r[1 + 2 * n]),
                 )

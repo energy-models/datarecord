@@ -154,12 +154,17 @@ class Record(Protocol):
         ...
 
     @property
-    def connections(self) -> Frames:
-        """Connection rows, keyed by component type, in member order.
+    def groups(self) -> Mapping[str, Frames]:
+        """Each declared group's rows, keyed by group then by component type.
+
+        A group declares which tuples over several dims exist - `connection`
+        over `(entity, bus)` is the one every record with connections has, and
+        it is one instance rather than a member of its own.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         ...
 
@@ -168,14 +173,14 @@ class Record(Protocol):
         """Long input frames, keyed by attribute name - one per file.
 
         Not by component type: one `inputs/p_max_pu.parquet` holds every type's
-        rows, keyed by `name` alone. A row carries no `component_type` - names
+        rows, keyed by `entity` alone. A row carries no `component_type` - entities
         are unique across every type - so a reader wanting one type joins `components`
         on `name`.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [name is unique across types](https://energy-models.github.io/datarecord/design/format/#name-is-unique-across-types)
+        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         ...
 
