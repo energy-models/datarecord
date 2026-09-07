@@ -12,7 +12,7 @@ SPDX-License-Identifier = "MIT"
 path = [
   ".github/pull_request_template.md",
   ".all-contributorsrc",
-  "datarecord/py.typed",
+  "src/datarecord/py.typed",
 ]
 SPDX-FileCopyrightText = "datarecord contributors"
 SPDX-License-Identifier = "CC0-1.0"

@@ -1,6 +1,23 @@
 # Contributing
 
-Contribution rules and conventions for datarecord.
+Contribution rules and conventions for datarecord. We welcome all contributors —
+a good place to start is the issues tagged
+["help wanted"](https://github.com/energy-models/datarecord/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
+and
+["good first issue"](https://github.com/energy-models/datarecord/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+
+By opening a pull request you represent that your contribution is your own
+original work and that you agree to license it under the project's MIT license.
+
+## Reporting issues
+
+Open a GitHub issue to report a bug or request a feature:
+
+- [Report a bug](https://github.com/energy-models/datarecord/issues/new?template=BUG-REPORT.yml)
+  — include a full traceback where there is one.
+- [Request a feature](https://github.com/energy-models/datarecord/issues/new?template=FEATURE-REQUEST.yml).
+- [Report a documentation problem](https://github.com/energy-models/datarecord/issues/new?template=DOCS.yml).
+- [Anything else](https://github.com/energy-models/datarecord/issues/new).
 
 ## Development workflow
 
@@ -18,7 +35,9 @@ Contribution rules and conventions for datarecord.
 - Branch off `main` for every change and open pull requests via the GitHub CLI
   (`gh`). A one-line commit message is fine for a small change; a larger one gets
   a summary line of at most 50 characters, a blank line, then a body describing
-  what changed and why.
+  what changed and why. Before opening a pull request, check you have updated
+  `CHANGELOG.md`, added or updated documentation, and added tests for new
+  functionality; give the pull request a clear summary of the change.
 - Write tests for new features and bug fixes under `tests/` as `test_*.py`,
   reusing the shared fixtures in `tests/fixtures.py` and `tests/conftest.py`
   where useful. Run the tests after making changes and make sure they pass.
