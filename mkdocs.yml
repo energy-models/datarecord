@@ -25,6 +25,7 @@ validation:
 
 nav:
   - Home: index.md
+  - Installation: installation.md
   - Usage:
       - usage/index.md
       - Reading a record: usage/reading.md

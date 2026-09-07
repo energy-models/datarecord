@@ -66,6 +66,8 @@ See [Usage](https://energy-models.github.io/datarecord/usage/) for the rest.
 
 This project is managed by [pixi](https://pixi.sh):
 
+<!-- --8<-- [start:docs-install-dev] -->
+
 ```bash
 git clone https://github.com/energy-models/datarecord
 cd datarecord
@@ -73,5 +75,7 @@ cd datarecord
 pixi run test    # the test suite
 pixi run lint    # ruff, prettier, taplo, typos, zizmor, reuse, mypy
 ```
+
+<!-- --8<-- [end:docs-install-dev] -->
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow and conventions, and [`AGENTS.md`](AGENTS.md) for how AI-assisted contributions must be marked.
