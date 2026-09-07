@@ -62,7 +62,7 @@ Open a GitHub issue to report a bug or request a feature:
   `https://energy-models.github.io/datarecord/pr-<N>/`, linked from a comment on
   the pull request itself; it is removed when the pull request closes, and a
   weekly job sweeps any that outlive it. Both live in
-  [`.github/workflows/docs.yml`](https://github.com/energy-models/datarecord/blob/main/.github/workflows/docs.yml).
+  `.github/workflows/docs.yml`.
 - No tool import may leak into core `datarecord`
   ([module layout](https://energy-models.github.io/datarecord/design/module-layout/)):
   everything framework-specific lives under `datarecord/tools/` behind an
@@ -99,8 +99,7 @@ To cut `vX.Y.Z`:
 
 ## AI-assisted contributions
 
-If you use AI tools when contributing, please read
-[`AGENTS.md`](https://github.com/energy-models/datarecord/blob/main/AGENTS.md)
+If you use AI tools when contributing, please read `AGENTS.md`
 for how AI-generated content must be marked and what we expect you to write
 by hand.
 
