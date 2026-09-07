@@ -1,6 +1,6 @@
 # Layered resolution
 
-A `LayeredRecord` resolves a tree of layers.
+A `Record` resolves a tree of layers.
 Each node adds one layer; a node's data is its layer resolved over its ancestors', last-writer-wins.
 
 ```python
@@ -57,7 +57,9 @@ It is purely additive, writing files under `resolved/` and changing no answer, o
 A `deleted = true` row on [the entity axis](format.md#the-entity-axis) tombstones a component from every attribute, and from every value of every dim — [existence does not vary along one](schema.md#existence-does-not-vary-along-a-dim), so there is nothing to scope a deletion by.
 A `deleted = true` row in `groups/<group>.parquet` tombstones one row of that group — the row itself and its `inputs/` rows — leaving the component and its other rows intact, so a connection is removed without touching the component it attached.
 
-When [the owner map](read-path.md#owner-map) is folded, a tombstone removes that key's entries from the map, so a deleted component is absent from the resolved map rather than filtered at read time.
+A tombstone is honoured by the [one fold](read-path.md#one-fold-for-every-axis) that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
+An _attribute's_ orphaned rows stop surfacing the same way, for every membership: an attribute row is keyed by the entity, group tuple and dim coordinates its `dims` name, and [`fold_inputs`](read-path.md#owner-map) anti-joins the map against each membership's `deleted` rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map, not filtered at read.
+Each membership honours only its **own** tombstones, read from the same file it folds from: deletion is never a cascade, so deleting a component drops its own row but leaves its connection tuples until they are deleted in turn.
 A tombstone only affects the branch that carries it; sibling branches keep the component.
 
 The fold treats an absent `deleted` column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.

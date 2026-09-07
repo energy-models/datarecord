@@ -2,7 +2,7 @@
 
 ```python
 def write_record(
-    revision_id: UUID, source: Record, con: DuckDBPyConnection
+    revision_id: UUID, source: LayerData, con: DuckDBPyConnection
 ) -> None: ...
 ```
 
@@ -27,4 +27,7 @@ A frame carrying a column its attribute is **not** addressed by is rejected too,
 The read path projects an attribute's own coordinates, so such a column would be written and never read — and a source emitting one means something different by the attribute than the schema does, which is worth reporting rather than absorbing.
 A result is exempt from both checks: its shape is a framework's business, and a name it shares with an input says nothing about which coordinates the result varies over.
 
-Because a [`Record`](record.md) is the input, anything satisfying the protocol can be written — including a framework object presenting itself as one, which is what puts read and write on a single seam.
+The input is a [`LayerData`](record.md#layerdata): "the rows of one thing, enumerated and read" — the same interface a [`LayerSource`](read-path.md#owner-map) answers for its own layer and a `Resolver` answers for a whole fold, so `write_record` cannot tell which it was handed and does not need to.
+A staged layer's own rows and a resolved record are both a `LayerData`, which is what lets `commit` write either without a third shape adapting one to the other.
+
+A framework object exposing narwhals frames — [`Record`](record.md) rather than `LayerData` — is not itself one: `write_record` wraps it in a thin adapter that reads its `Frames` mappings as the enumerate-and-read pairs `LayerData` declares, so a tool stays narwhals-facing and the layered write path stays raw-relation throughout.

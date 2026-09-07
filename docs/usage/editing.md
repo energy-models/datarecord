@@ -59,7 +59,7 @@ w.add_group(
 w.remove_group("connection", [("dc", "south")])
 ```
 
-`add` takes a wide frame keyed by `entity` and splits it by the schema: columns addressed by `entity` alone stay in `dims/components/`, ones varying beyond it become `inputs/` rows ([design](../design/format.md#where-a-value-lives)). It keeps its `ctype` argument where `set` loses it — this is the call that _establishes_ what a name's type is, and where record-wide name uniqueness is enforced ([design](../design/working-record.md#add-remove)). A component exists by virtue of its member row, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
+`add` takes a wide frame keyed by `entity` and splits it by the schema: columns addressed by `entity` alone stay in `dims/entity_type/`, ones varying beyond it become `inputs/` rows ([design](../design/format.md#where-a-value-lives)). It keeps its `ctype` argument where `set` loses it — this is the call that _establishes_ what a name's type is, and where record-wide name uniqueness is enforced ([design](../design/working-record.md#add-remove)). A component exists by virtue of its member row, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
 
 `remove` stages a tombstone on the entity axis, with no dim scope — a component [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every attribute, and to every connection of the component ([design](../design/layers.md#deletion)).
 
@@ -68,13 +68,12 @@ w.remove_group("connection", [("dc", "south")])
 ## Inspecting and rolling back
 
 ```python
-w.pending  # Pending(attributes={...}, components={...},
-#         groups={"connection": 2}, tombstones={...})
-bool(w.pending)  # whether anything is staged
+w.attributes["p_nom"]  # the edit applied, over the base's rows
+w.entity_types["Generator"]  # additions in, removals out
 w.rollback()  # discard everything staged
 ```
 
-`pending` is a derived summary computed on access — a `GROUP BY` over the staging tables, not a second place rows live ([design](../design/working-record.md#pending)). Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk ([design](../design/working-record.md#staging)).
+What you staged is read back from the record itself, which satisfies `Record` and answers with the edits applied ([design](../design/working-record.md#reading-with-pending-edits)). Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk ([design](../design/working-record.md#staging)).
 
 ## Committing
 
@@ -93,9 +92,9 @@ The layer lands in the **child**, never in the node you branched from — layers
 new.record.attributes["p_nom"].collect()
 ```
 
-`NewChild()` branches from whichever node the `WorkingRecord` was built over, which is what a caller means every time. Pass one explicitly — `NewChild(other_revision)` — only to re-parent the edits elsewhere; a `WorkingRecord` over a base that is not a node in a layer tree (a `DirectoryRecord`, a framework object) has nothing to default to and must supply one.
+`NewChild()` branches from whichever node the `WorkingRecord` was built over, which is what a caller means every time. Pass one explicitly — `NewChild(other_revision)` — only to re-parent the edits elsewhere; a `WorkingRecord` over a base that is not a node in a layer tree — a `Record.at(uri)` over a plain directory — has nothing to default to and must supply one.
 
-Staged rows are appended, never updated, so the same coordinate may be staged repeatedly; commit collapses to last-write-wins per coordinate. A `remove` after a `set` wins regardless of order — a deleted component has no attributes — and an `add` after a `remove` brings the component back.
+An edit replaces the rows it names, so restating a coordinate overwrites it and the last write is what stands. A `remove` after a `set` wins regardless of order — a deleted component has no attributes — and an `add` after a `remove` brings the component back.
 
 Neither target carries a **base's** results across: an edit changes the inputs a result was computed from. What a commit does carry is results staged into this record through `set(..., kind="outputs")`, which were computed against these pending inputs ([design](../design/working-record.md#results-through-kindoutputs)).
 

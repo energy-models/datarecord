@@ -11,8 +11,8 @@ from datarecord.record import Flags
 from tests.fixtures import (
     relation,
     schema,
-    write_components,
     write_connections,
+    write_entity_type,
     write_input,
     write_schema,
 )
@@ -37,7 +37,7 @@ def _root_with_curve(con) -> Revision:
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_input(
         layer,
         "marginal_cost",
@@ -125,7 +125,7 @@ def test_curve_on_a_connection(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer,
         [
@@ -185,7 +185,7 @@ def test_curve_varying_by_snapshot(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_input(
         layer,
         "marginal_cost",
@@ -219,7 +219,7 @@ def test_scalar_replaced_by_a_curve(con, base_uri):
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
-    write_components(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_input(
         layer,
         "marginal_cost",

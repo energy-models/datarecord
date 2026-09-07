@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
     import narwhals as nw
 
-    from datarecord.record import Frames, Record
+    from datarecord.record import Frames, RecordLike
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class Requirements:
     ----------
     dims : frozenset of str
         Dims the tool cannot build a model without.
-    component_types : frozenset of str
+    entity_types : frozenset of str
         Component types the tool requires the record to define members for.
     attributes : frozenset of tuple of (str, str)
         `(component_type, attribute)` pairs the tool requires a value for.
@@ -61,7 +61,7 @@ class Requirements:
     """
 
     dims: frozenset[str] = frozenset()
-    component_types: frozenset[str] = frozenset()
+    entity_types: frozenset[str] = frozenset()
     attributes: frozenset[tuple[str, str]] = frozenset()
     unsupported_keys: frozenset[tuple[str, str]] = frozenset()
     unsupported_values: frozenset[tuple[str, str]] = frozenset()
@@ -71,7 +71,7 @@ class Requirements:
         """Whether anything is required (or, for a `verify` result, missing)."""
         return bool(
             self.dims
-            or self.component_types
+            or self.entity_types
             or self.attributes
             or self.unsupported_keys
             or self.unsupported_values
@@ -83,8 +83,8 @@ class Requirements:
         parts = []
         if self.dims:
             parts.append(f"dims {sorted(self.dims)}")
-        if self.component_types:
-            parts.append(f"component types {sorted(self.component_types)}")
+        if self.entity_types:
+            parts.append(f"component types {sorted(self.entity_types)}")
         if self.attributes:
             parts.append(f"attributes {sorted(self.attributes)}")
         if self.unsupported_keys:
@@ -109,7 +109,7 @@ def to_relation(frame: nw.LazyFrame) -> DuckDBPyRelation:
 
     Unwrapping costs nothing and the plan stays lazy. For a tool needing
     DuckDB's own SQL - `PIVOT`, which narwhals has no expression for - rather
-    than reaching past the record to a `NodeCache`.
+    than reaching past the record to a `Resolver`.
 
     Raises
     ------
@@ -169,7 +169,7 @@ class Attr:
             )
             raise ValueError(msg)
 
-    def resolve(self, record: Record) -> DuckDBPyRelation:
+    def resolve(self, record: RecordLike) -> DuckDBPyRelation:
         """This attribute's long relation, read through the `Record` interface.
 
         The record rather than the record, so a tool builds from any backing.
@@ -220,7 +220,7 @@ class Schema:
         """
         return self.attr(ctype, name).source
 
-    def resolve(self, record: Record, ctype: str, name: str) -> DuckDBPyRelation:
+    def resolve(self, record: RecordLike, ctype: str, name: str) -> DuckDBPyRelation:
         """`ctype`'s `name` as a long relation over `record`, mapping applied."""
         return self.attr(ctype, name).resolve(record)
 
@@ -256,7 +256,7 @@ class Tool(Protocol):
     name: str
     schema: Schema
 
-    def requires(self, record: Record) -> Requirements:
+    def requires(self, record: RecordLike) -> Requirements:
         """What this tool needs from `record` to build a model.
 
         Record-dependent, not a constant: which attributes are required
@@ -264,15 +264,15 @@ class Tool(Protocol):
         """
         ...
 
-    def verify(self, record: Record) -> Requirements:
+    def verify(self, record: RecordLike) -> Requirements:
         """What `record` fails to supply; falsy when the record is usable."""
         ...
 
-    def build(self, record: Record) -> Any:
+    def build(self, record: RecordLike) -> Any:
         """The tool's model object, built from the resolved record."""
         ...
 
-    def to_datarecord(self, model: Any) -> Record:
+    def to_datarecord(self, model: Any) -> RecordLike:
         """`model` presented as a layer `write_record` can persist.
 
         The inverse of `build`. Framework-specific: undoing a framework's own

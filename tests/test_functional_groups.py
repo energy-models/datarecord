@@ -42,13 +42,9 @@ def _schema(**overrides) -> Schema:
         "partial": frozenset(),
     }
     kwargs.update(overrides)
-    # A group's key coordinates address a row rather than broadcasting, so the
-    # schema requires them `partial` - which is what the classification becoming
-    # a relation buys, and what a column on the axis hid. Added here rather than
-    # in every caller's `partial=`, which is overriding what the *record* patches
-    # by value, not restating what the groups oblige.
-    keys = {g.over[c] for g in kwargs["groups"].values() for c in g.key}
-    kwargs["partial"] = frozenset(kwargs["partial"]) | keys
+    # A group's key coordinates are membership keys, in the fold key by being
+    # membership - not declared `partial`, which is for value dims a layer patches
+    # per value (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
     return Schema(**kwargs)
 
 
@@ -178,7 +174,7 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(con, base_uri):
         layer_dir(revision.id), "country", [{"country": "DE"}, {"country": "FR"}]
     )
 
-    axes = revision.node_cache.dims.axes
+    axes = revision.resolver.dims.axes
     assert sorted(axes["country"].df()["country"]) == ["DE", "FR"]
     assert axes["bus"].df()["bus"].tolist() == ["north"], (
         "no classification column: the relation is the group's own file"
@@ -203,7 +199,6 @@ def test_a_chain_is_a_join_over_two_group_files(con, base_uri):
     assert groups["state"].collect().to_native().to_pydict() == {
         "bus": ["north"],
         "state": ["lower"],
-        "order_key": [0],
     }
     assert dict(
         zip(
@@ -211,6 +206,32 @@ def test_a_chain_is_a_join_over_two_group_files(con, base_uri):
             groups["country"].collect().to_native()["country"].to_pylist(),
         )
     ) == {"lower": "DE"}
+
+
+def test_member_order_survives_a_restate_through_a_materialised_parent(con, base_uri):
+    """A group's member order is the resolved file's row order, preserved across a
+    materialised parent: a key introduced at the root stays first, and a
+    grandchild's addition sorts after the materialised seed's members.
+
+    No `order_key` column - member order is the fold's output order, read back
+    order-preserving (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+    """
+    schema = _budget_schema()
+    write_schema(schema)
+
+    root = Revision.create(con)
+    write_group(layer_dir(root.id), "state", [{"bus": "north", "state": "lower"}])
+
+    child = root.child()
+    write_group(layer_dir(child.id), "state", [{"bus": "south", "state": "upper"}])
+    child.materialise()
+
+    grandchild = child.child()
+    write_group(layer_dir(grandchild.id), "state", [{"bus": "east", "state": "lower"}])
+
+    rows = grandchild.record.groups["state"].collect().to_native().to_pydict()
+    assert rows["bus"] == ["north", "south", "east"], "member order, seed first"
+    assert "order_key" not in rows
 
 
 def test_an_attribute_addressed_by_the_into_dim_alone_is_a_column_of_its_axis(
@@ -231,7 +252,7 @@ def test_an_attribute_addressed_by_the_into_dim_alone_is_a_column_of_its_axis(
     )
 
     assert schema.attributes_on("country") == ("co2_budget",)
-    axis = revision.node_cache.dims.axes["country"].df()
+    axis = revision.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 40.0, "FR": 55.0}
     assert "co2_budget" not in revision.record.attributes, (
         "an axis-file column is no long frame"
@@ -262,6 +283,48 @@ def test_setting_an_axis_addressed_attribute_stages_an_axis_row(con, base_uri):
     )
 
 
+def test_setting_one_axis_attribute_keeps_its_siblings_value(con, base_uri):
+    """Two attributes on one axis, one edited: the other must survive the fold.
+
+    The staged row carries only the column its `set` named, and the fold is
+    last-writer-wins per label over the whole row - so a source handing over
+    just that column would blank the sibling. `_collapsed_axis` merging per
+    column *before* the fold sees it is what makes the two calls commute, and
+    this is the assertion that fails if it stops.
+    """
+    revision = Revision.create(con)
+    write_schema(
+        _schema(
+            attributes={
+                "co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"}),
+                "population": AttributeSpec(dtype=nw.Float64(), dims={"country"}),
+            },
+            partial=frozenset({"country"}),
+        )
+    )
+    write_axis(
+        layer_dir(revision.id),
+        "country",
+        [{"country": "DE", "co2_budget": 40.0, "population": 83.0}],
+    )
+
+    staged = WorkingRecord(revision.record, con)
+    staged.set("co2_budget", {"DE": 12.0})
+
+    frame = staged.dims["country"].collect().to_native()
+    assert frame["co2_budget"].to_pylist() == [12.0], "the edited column takes the edit"
+    assert frame["population"].to_pylist() == [83.0], (
+        "an axis column no edit named keeps the base's value"
+    )
+
+    # And a second `set` on the sibling composes with the first rather than
+    # displacing it, which is the same rule one step further.
+    staged.set("population", {"DE": 84.0})
+    frame = staged.dims["country"].collect().to_native()
+    assert frame["co2_budget"].to_pylist() == [12.0], "the earlier edit survives"
+    assert frame["population"].to_pylist() == [84.0]
+
+
 def test_a_child_layer_holds_only_the_axis_labels_it_touched(con, base_uri):
     """With the axis `partial`, a patch layer's `dims/` is the edits alone.
 
@@ -281,11 +344,13 @@ def test_a_child_layer_holds_only_the_axis_labels_it_touched(con, base_uri):
     # raw layer, so no node cache is required for the fold to see both labels.
     staged = WorkingRecord(revision.record, con)
     staged.set("co2_budget", {"DE": 12.0})
-    patch = staged.staged_only().dims["country"].collect().to_native()
-    assert patch["country"].to_pylist() == ["DE"], "only the touched label"
+    country = staged.resolver.sources[-1].axis("country")
+    assert country is not None
+    patch = country.df()
+    assert patch["country"].tolist() == ["DE"], "only the touched label"
 
     child = staged.commit(NewChild(revision))
-    axis = child.node_cache.dims.axes["country"].df()
+    axis = child.resolver.dims.axes["country"].df()
     resolved = dict(zip(axis["country"], axis["co2_budget"]))
     assert resolved == {"DE": 12.0, "FR": 55.0}, "last writer wins per label"
     assert axis["country"].tolist() == ["DE", "FR"], (
@@ -319,13 +384,15 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(con, base_uri):
     staged = WorkingRecord(revision.record, con)
     staged.set("co2_budget", {"DE": 12.0})
 
-    patch = staged.staged_only().dims["country"].collect().to_native()
-    assert sorted(patch["country"].to_pylist()) == ["DE", "FR"], (
+    country = staged.resolver.sources[-1].axis("country")
+    assert country is not None
+    patch = country.df()
+    assert sorted(patch["country"].tolist()) == ["DE", "FR"], (
         "the whole axis, not just the edited label"
     )
 
     child = staged.commit(NewChild(revision))
-    axis = child.node_cache.dims.axes["country"].df()
+    axis = child.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "FR": 55.0}, (
         "FR survives because this layer carried it"
     )
@@ -347,7 +414,7 @@ def test_an_axis_resolves_over_an_unmaterialised_parent(con, base_uri):
     child = revision.child()
     write_axis(layer_dir(child.id), "country", [{"country": "NO"}])
 
-    labels = child.node_cache.dims.axes["country"].df()["country"].tolist()
+    labels = child.resolver.dims.axes["country"].df()["country"].tolist()
     assert labels == ["DE", "FR", "NO"], (
         "the parent's labels survive, in the order it introduced them"
     )
@@ -369,7 +436,7 @@ def test_set_may_name_a_label_no_layer_has_written(con, base_uri):
     staged.set("co2_budget", {"DE": 12.0, "NO": 3.0})
 
     child = staged.commit(NewChild(revision))
-    axis = child.node_cache.dims.axes["country"].df()
+    axis = child.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
 
 
@@ -383,7 +450,7 @@ def test_a_classified_axis_keeps_its_own_order(con, base_uri):
         [{"country": "NO"}, {"country": "DE"}, {"country": "FR"}],
     )
 
-    assert revision.node_cache.dims.axes["country"].df()["country"].tolist() == [
+    assert revision.resolver.dims.axes["country"].df()["country"].tolist() == [
         "NO",
         "DE",
         "FR",

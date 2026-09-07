@@ -20,7 +20,7 @@ from tests.fixtures import (
     export_network,
     relation,
     schema,
-    write_components,
+    write_entity_type,
     write_input,
 )
 
@@ -71,7 +71,7 @@ def test_requires_reports_the_records_own_types(single_revision):
     """`requires` is record-dependent: PyPSA's axes plus this record's types."""
     req = PyPSA.requires(single_revision.record)
     assert {"snapshot", "period", "scenario"} <= req.dims
-    assert "Generator" in req.component_types
+    assert "Generator" in req.entity_types
     # Required attributes come from PyPSA's registry, not a list we maintain.
     assert ("Generator", "bus") in req.attributes
     assert ("Line", "x") in req.attributes
@@ -105,7 +105,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     `Enum` and that vocabulary is upheld everywhere, so a record cannot hold a
     type its own schema excludes. What it can hold is a type this tool has no
     registry entry for, which reads back fine and is this tool's business rather
-    than the record layer's. `Requirements.component_types` is what carries it.
+    than the record layer's. `Requirements.entity_types` is what carries it.
 
     Notes
     -----
@@ -130,12 +130,12 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
             }
         )
     )
-    write_components(layer_dir(revision.id), "Widget", [{"entity": "w1"}])
+    write_entity_type(layer_dir(revision.id), "Widget", [{"entity": "w1"}])
 
     missing = PyPSA.verify(revision.record)
-    assert missing.component_types == {"Widget"}
+    assert missing.entity_types == {"Widget"}
     # The types PyPSA does know are not reported.
-    assert "Generator" not in missing.component_types
+    assert "Generator" not in missing.entity_types
     with pytest.raises(UnsupportedRecordError, match="Widget"):
         PyPSA.build(revision.record)
 
@@ -215,7 +215,7 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     export_network(ac_dc, revision, con)
     # A Generator member carrying no `bus` column at all, no connection row
     # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
-    write_components(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    write_entity_type(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
     # One file across every type, so the Generators' rows are dropped from it
     # rather than a per-type file being unlinked.
     path = Path(layer_dir(revision.id), "groups", "connection.parquet")
@@ -239,7 +239,7 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_components(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    write_entity_type(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
 
     # PyPSA's own registry already declares `bus` with a `""` default, which
     # is exactly the case this pins - so the record is left as written.
@@ -474,7 +474,7 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
             return Requirements(dims=frozenset({"snapshot"}))
 
         def verify(self, record):
-            return Requirements(component_types=frozenset({"Nope"}))
+            return Requirements(entity_types=frozenset({"Nope"}))
 
         def build(self, record):
             return "fake-model"
@@ -492,7 +492,7 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
     export_network(ac_dc, revision, con)
 
     assert fake.requires(revision.record).dims == {"snapshot"}
-    assert fake.verify(revision.record).component_types == {"Nope"}
+    assert fake.verify(revision.record).entity_types == {"Nope"}
     assert fake.build(revision.record) == "fake-model"
     assert fake.results("m") == {("Thing", "x"): "m"}
     assert fake.to_datarecord("m") == "layer-of-m"
@@ -502,7 +502,7 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
 
 
 def test_schema_dims_stay_generic(con, base_uri, ac_dc):
-    """`Dims` carries a dim PyPSA knows nothing about; axis names live in the tool.
+    """`Coords` carries a dim PyPSA knows nothing about; axis names live in the tool.
 
     Declared but not `partial`, so the record's files need no column for it.
     Keying it would be a different matter, reported by the tool against the
@@ -511,7 +511,7 @@ def test_schema_dims_stay_generic(con, base_uri, ac_dc):
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     _with_schema(revision, dims={**_DIMS, "vintage": nw.String()})
-    dims = revision.node_cache.dims
+    dims = revision.resolver.dims
     assert "vintage" in dims.schema.dims
     # No axis rows anywhere, so the dim is absent from the mapping rather than
     # present-and-empty (https://energy-models.github.io/datarecord/design/record/#frames).

@@ -288,7 +288,7 @@ The `varies`/`broadcast` structs are built in the same `aggregate` as ownership,
 `types` is the same aggregation over the components map's `component_type`, which that map already carries as a column.
 So `shape()` for a `LayeredRecord` is a projection of the folded map — no attribute file is opened, which is the property [`flags`](../record.md#flags) was introduced for and the reason to put this beside it rather than inside it.
 
-A `DirectoryRecord` pays a `GROUP BY` scan over `inputs/`, as it already does for `flags` — [the same asymmetry](../read-path.md#what-differs-between-the-implementations), not a new one.
+A `DirectoryRecord` pays a `GROUP BY` scan over `inputs/`, as it already does for `flags` — [the same asymmetry](../read-path.md#one-record-over-one-fold), not a new one.
 
 **Open:** whether `flags(ctype)` survives at all, or becomes `shape()` filtered by `types`.
 The two would then differ only in scoping, and one method answering both is smaller — but `flags` is per type _by construction_ (its union stops at the type boundary deliberately), and a filtered `shape()` would have to reproduce that. Not settled here.

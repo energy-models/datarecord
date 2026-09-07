@@ -1,24 +1,30 @@
-"""The `Record` protocol: what a record answers, however it is backed.
+"""The `RecordLike` protocol: what a record answers, however it is backed.
 
-Backings: `layered.revision.LayeredRecord` (a resolved overlay) and
-`directory.DirectoryRecord` (a plain directory).
+`layered.revision.Record` is the class this package provides; a framework
+object presenting itself as a record satisfies the protocol structurally,
+which is what `tools/` is built on.
 
 Notes
 -----
 - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
 - [the protocol names no engine](https://energy-models.github.io/datarecord/design/record/#the-protocol-names-no-engine)
-- [what differs between the implementations](https://energy-models.github.io/datarecord/design/read-path/#what-differs-between-the-implementations)
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 import narwhals as nw
 
 from datarecord.schema import Schema
+
+if TYPE_CHECKING:
+    from duckdb import DuckDBPyRelation
+
+Kind = Literal["inputs", "outputs"]
+"""Which long directory an attribute lives in - the alias `set` takes."""
 
 Frames = Mapping[str, "nw.LazyFrame"]
 """What a `Record` hands over: named frames, each an unmaterialised plan.
@@ -115,11 +121,32 @@ class Flags:
     breakpoints: bool = False
 
 
-@runtime_checkable
-class Record(Protocol):
-    """What a record answers, however it is backed.
+def collision_detail(rows: Iterable[tuple[Any, Any]]) -> str:
+    """`(entity, entity_type)` pairs as the detail of a name-collision message.
 
-    Read-only: writing is `write_record(revision_id, source, con)`.
+    Sorted here rather than in the query the pairs came from: the message must
+    be deterministic, and a collision is a handful of rows.
+
+    Notes
+    -----
+    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    """
+    by_name: dict[str, list[str]] = {}
+    for name, ctype in rows:
+        by_name.setdefault(str(name), []).append(str(ctype))
+    return "; ".join(
+        f"{name!r} is a {' and a '.join(sorted(types))}"
+        for name, types in sorted(by_name.items())
+    )
+
+
+@runtime_checkable
+class RecordLike(Protocol):
+    """What a record answers, however it is backed, as narwhals frames.
+
+    Read-only: writing is `write_record(revision_id, source, con)`, which takes
+    a `LayerData` rather than this - a framework's own `RecordLike` reaches it
+    through the adapter `write_record` wraps one in.
 
     Notes
     -----
@@ -158,7 +185,7 @@ class Record(Protocol):
         ...
 
     @property
-    def components(self) -> Frames:
+    def entity_types(self) -> Frames:
         """Wide member frames, keyed by component type, in member order.
 
         Notes
@@ -192,7 +219,7 @@ class Record(Protocol):
 
         Not by component type: one `inputs/p_max_pu.parquet` holds every type's
         rows, keyed by `entity` alone. A row carries no `entity_type` - entities
-        are unique across every type - so a reader wanting one type joins `components`
+        are unique across every type - so a reader wanting one type joins `entity_types`
         on `name`.
 
         Notes
@@ -229,3 +256,48 @@ class Record(Protocol):
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
         """
         ...
+
+
+@runtime_checkable
+class LayerData(Protocol):
+    """The rows of one thing - a layer, or a fold - enumerated and read.
+
+    `write_record`'s input: it needs `schema` and, per kind, which keys this
+    thing holds and each one's rows - the enumerate-and-read pairs below, no
+    more. `layered.sources.LayerSource` and `layered.resolve.Resolver` both
+    satisfy this structurally, one answering for its own layer and the other
+    for everything folded into it; the object decides which, never a mode flag
+    or a name prefix. Rows are raw `DuckDBPyRelation`s, not narwhals frames -
+    unlike `RecordLike`, which a framework's own producer speaks instead and
+    `write_record` adapts.
+
+    `schema` is not a peer of the other members but what decides which of them
+    exist: `entity_types`/`entity_type` are populated exactly where the schema
+    declares the axis, and `groups`/`group` only for the groups it declares - an
+    enumerator answers the empty set rather than a phantom key where the schema
+    declares nothing.
+
+    Notes
+    -----
+    - [LayerData](https://energy-models.github.io/datarecord/design/record/#layerdata)
+    """
+
+    @property
+    def schema(self) -> Schema: ...
+
+    @property
+    def frozen(self) -> bool: ...
+
+    def axes(self) -> Iterable[str]: ...
+    def axis(self, dim: str) -> DuckDBPyRelation | None: ...
+
+    def entity_types(self) -> Iterable[str]: ...
+    def entity_type(self, name: str) -> DuckDBPyRelation | None: ...
+
+    def groups(self) -> Iterable[str]: ...
+    def group(self, name: str) -> DuckDBPyRelation | None: ...
+
+    def attributes(self, kind: Kind = "inputs") -> Iterable[str]: ...
+    def attribute(
+        self, name: str, kind: Kind = "inputs"
+    ) -> DuckDBPyRelation | None: ...

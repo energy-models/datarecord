@@ -132,8 +132,8 @@ def tombstone_connection(layer: str, pairs: list[tuple[str, str]]) -> None:
     )
 
 
-def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
-    """Write `dims/components/<ctype>.parquet` *and* this type's entity rows.
+def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:
+    """Write `dims/entity_type/<ctype>.parquet` *and* this type's entity rows.
 
     Membership and tombstones live on `dims/entity.parquet`, which the writer
     derives from the per-type frames - so a hand-built layer has to keep the
@@ -151,7 +151,7 @@ def write_components(layer: str, ctype: str, rows: list[dict]) -> None:
 
     lead = ["entity_type", "entity", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
-    target = Path(layer, "dims", "components")
+    target = Path(layer, "dims", "entity_type")
     target.mkdir(parents=True, exist_ok=True)
     df[ordered].to_parquet(target / f"{ctype}.parquet", index=False)
 
@@ -171,7 +171,7 @@ def tombstone(layer: str, ctype: str, names: list[str]) -> None:
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    write_components(
+    write_entity_type(
         layer,
         ctype,
         [{"entity": n, "deleted": True} for n in names],
@@ -390,7 +390,7 @@ def schema(
     Notes
     -----
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
-    - [groups](https://energy-models.github.io/datarecord/design/proposals/dims-groups-traits/#groups)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
     nesting = within or {}
@@ -435,7 +435,10 @@ def schema(
         | {"entity_type": Dimension(dtype=nw.String())},
         attributes=flat,
         traits=traits,
-        partial=frozenset(partial) | {"entity", *coordinates},
+        # `partial` names value dims a layer patches per value; membership keys
+        # (`entity`, a group's coordinates) are in the fold key by being
+        # membership, not by being `partial` (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+        partial=frozenset(partial),
     )
 
 
@@ -448,7 +451,7 @@ def relation(revision, attribute: str):
     a relation on the revision against a `Frames` mapping on the record. Tests
     want relations because they assert on `.df()`, so the affordance lives here.
     """
-    return revision.node_cache.relation(attribute)
+    return revision.resolver.attribute(attribute)
 
 
 def outputs(revision, attribute: str):
@@ -458,4 +461,4 @@ def outputs(revision, attribute: str):
     -----
     - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
     """
-    return revision.node_cache.outputs(attribute)
+    return revision.resolver.attribute(attribute, "outputs")

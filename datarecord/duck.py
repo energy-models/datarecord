@@ -17,18 +17,22 @@ Notes
 - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
 """
 
+import json
 import os
 from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
 from functools import partial, reduce
 from glob import glob
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
+from urllib.request import urlopen
 from uuid import UUID
 from weakref import WeakKeyDictionary
 
 import duckdb
 import narwhals as nw
 import narwhals._duckdb.utils as _nw_duckdb
+from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, FunctionExpression
@@ -242,9 +246,9 @@ def try_read_parquet(
     A local miss is answered without asking DuckDB at all. Inside a transaction
     a failed read *aborts* it, and catching the exception here does not undo
     that - every later statement on the connection would fail until a rollback,
-    which would discard whatever the transaction had staged. A missing layer is
-    ordinary (`fold_axis` reads every declared dim, most of which no layer
-    writes), so it must not depend on being outside one.
+    which would discard whatever the transaction had staged. A missing kind is
+    ordinary (an attribute a layer never wrote), so it must not depend on being
+    outside one.
     """
     if "://" not in uri and not (
         glob(uri) if any(c in uri for c in "*?[") else Path(uri).exists()
@@ -263,6 +267,19 @@ def try_read_parquet(
         if "No files found" in str(e):
             return None
         raise
+
+
+def parquet_names(dir_uri: str, con: DuckDBPyConnection) -> set[str]:
+    """Basenames of the `*.parquet` files directly under `dir_uri`.
+
+    One listing regardless of how many files exist there, local or remote -
+    what a caller otherwise probing one filename at a time (`try_read_parquet`
+    per candidate) should glob instead.
+    """
+    rows = con.sql(
+        "SELECT file FROM glob(?)", params=[f"{dir_uri}*.parquet"]
+    ).fetchall()
+    return {row[0].rsplit("/", 1)[-1] for row in rows}
 
 
 def union_all_by_name(
@@ -293,6 +310,90 @@ def union_all_by_name(
 def ex_all(exprs: Iterable[Expression]) -> Expression:
     """AND every expression in `exprs` together."""
     return reduce(lambda x, y: x & y, exprs)
+
+
+def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
+    """NULL-safe equality on `columns`, between two aliased relations.
+
+    What an address coordinate is matched on everywhere: a row exists or it does
+    not, so NULL means "this key has no value there" and must match the same
+    NULL on the other side, which a plain `=` never does.
+    """
+    return ex_all(
+        sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}")
+        for c in columns
+    )
+
+
+def broadcast_match(
+    alias_a: str, alias_b: str, fixed: Iterable[str], dims: Iterable[str]
+) -> Expression:
+    """NULL-safe equality on `fixed`, broadcast-OR on `dims`.
+
+    A raw row's `dim = NULL` means "every value of `dim`", so it must match
+    regardless of the resolved side's value there, unlike the `IS NOT DISTINCT
+    FROM` of `null_safe` which only matches NULL against NULL. `alias_a` is the
+    broadcasting side.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    """
+    match = null_safe(alias_a, alias_b, fixed)
+    for dim in dims:
+        match = match & (
+            col(alias_a, dim).isnull()
+            | sql(f"{col(alias_a, dim)} IS NOT DISTINCT FROM {col(alias_b, dim)}")
+        )
+    return match
+
+
+def distinct_values(
+    rel: DuckDBPyRelation, column: str, *, order: bool = True
+) -> tuple[Any, ...]:
+    """`rel`'s distinct values of `column`, as a tuple.
+
+    What keys a `LazyFrames` built over a relation: the values are read from a
+    column rather than from a directory listing, so one code path serves a local
+    directory and a remote prefix alike.
+    """
+    projected = rel.project(column).distinct()
+    if order:
+        projected = projected.order(column)
+    return tuple(r[0] for r in projected.fetchall())
+
+
+def as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelation:
+    """One narwhals frame as a DuckDB relation, without collecting where possible.
+
+    A DuckDB-backed frame is already a plan, so it passes straight through; any
+    other backend is collected to arrow and re-registered. The one boundary where
+    a native representation is reached, shared by the write and edit paths.
+    """
+    native = frame.to_native()
+    if isinstance(native, DuckDBPyRelation):
+        return native
+    arrow = frame.collect(backend="pyarrow").to_native()  # noqa: F841 - bound by name
+    return con.sql("FROM arrow")
+
+
+def ensure_local_dir(uri: str, *, parent: bool = False) -> None:
+    """Create `uri`'s directory where it is a local path, a no-op for a remote one.
+
+    A remote store needs no directory created; a local write does, and a record
+    that wrote nothing to its layer has no directory yet either.
+
+    Parameters
+    ----------
+    parent
+        `uri` names a file whose directory is created, rather than the directory
+        itself.
+    """
+    if "://" in uri:
+        return
+    path = Path(uri)
+    (path.parent if parent else path).mkdir(parents=True, exist_ok=True)
 
 
 def struct_of(fields: Mapping[str, Expression]) -> Expression:
@@ -378,66 +479,39 @@ class DuckTypes:
         ).limit(0)  # type: ignore[arg-type]
 
 
-def dims_dirs(ancestry: list[UUID], *, from_cache: bool) -> list[str]:
-    """`dims/`-containing directories for resolving a record's axes.
-
-    `ancestry` is root first, ending in the record being resolved and already
-    truncated at the deepest materialised ancestor (`ancestry_to_read`).
-
-    `from_cache` says whether that truncation found one: it is what
-    `ancestry_to_read` stopped *at*, so with it the first entry contributes its
-    `resolved/dims/` - the fold over everything above it, which is what makes
-    stopping there complete - and without it the walk reached the root and every
-    entry is a raw layer. Told rather than inferred, because the two cases are
-    indistinguishable from the list alone, and naming `resolved/dims/` for a
-    layer that has none would silently skip its axes - `fold_axis` reads a
-    missing file as absent - and drop every label only that layer introduced.
-
-    Every other entry is an unmaterialised intermediate layer and contributes its
-    raw `dims/`. So does the last, which is the record itself, cache or not:
-    stopping at its own cache would return that instead of resolving it.
-
-    The two live in the same record directory but stay distinct paths -
-    `layers/<id>/dims/` against `layers/<id>/resolved/dims/` - so a record read
-    as an ancestor and the same record read as itself never alias.
-
-    Notes
-    -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    """
-    last = len(ancestry) - 1
-    cached = from_cache and last > 0
-    return [
-        (resolved_dir(uid) if cached and depth == 0 else layer_dir(uid)) + "dims/"
-        for depth, uid in enumerate(ancestry)
-    ]
-
-
 def fold_axis(
-    dims_dirs: list[str], filename: str, key: tuple[str, ...], con: DuckDBPyConnection
+    axes: Sequence[DuckDBPyRelation | None],
+    key: tuple[str, ...],
+    con: DuckDBPyConnection,
 ) -> DuckDBPyRelation | None:
-    """Fold a `<dir>/<filename>` axis table over `dims_dirs`, keyed by `key`.
+    """Fold one keyed relation over each layer's, keyed by `key`, in member order.
 
-    `dims_dirs` is root first, each entry already resolved by the caller to that
-    ancestor's layer or its `resolved/` cache. Last-writer-wins per `key`, which
-    is `Schema.axis_key` - so a nested dim is keyed by `(*parents, dim)` and two
-    periods' identically-labelled timesteps stay distinct. Row order
-    follows the directory that first introduced the key.
+    The one fold for every axis - a dim's coordinates, a group, the entity axis.
+    `axes` is root first, one entry per layer - `None` where that layer has no
+    rows. Last-writer-wins per `key`, which is `Schema.axis_key` for a dim or
+    `Schema.group_key` for a group, so a nested dim is keyed by `(*parents, dim)`
+    and two periods' identically labelled timesteps stay distinct.
 
-    `_row` is tagged **per directory, before any union**: `UNION ALL` defines no
+    A `deleted = true` row is a tombstone: it removes its key unless a still-
+    deeper layer restates it, and never survives into the output, which carries
+    no `deleted` column. The output is returned **in first-introduced member
+    order** - root first, then within a layer file order - so a reader recovers
+    member order from the resolved file's own row order without a persisted
+    `order_key`.
+
+    `_row` is tagged **per layer, before any union**: `UNION ALL` defines no
     order, so a bare `row_number() OVER ()` over the unioned relation would
-    silently scramble which row counts as first-introduced. `_fold_ordered`
-    avoids the same pitfall the same way.
+    silently scramble which row counts as first-introduced.
 
     Notes
     -----
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
     - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     layers = []
-    for depth, dims_dir in enumerate(dims_dirs):
-        rel = try_read_parquet(f"{dims_dir}{filename}", con)
+    for depth, rel in enumerate(axes):
         if rel is None:
             continue
         layers.append(
@@ -451,6 +525,7 @@ def fold_axis(
         return None
 
     union = union_all_by_name(layers, con)
+    has_deleted = "deleted" in union.columns
     partition = ", ".join(str(col(c)) for c in key)
     # `OVER (PARTITION BY ...)` stays text below: DuckDB's expression API has no
     # window construct, so only what the window wraps is built as an expression.
@@ -468,8 +543,38 @@ def fold_axis(
             f"OVER (PARTITION BY {partition})"
         ).alias("_first"),
     )
-    return (
-        ranked.filter(col("_rank") == lit(1))
-        .order("_first")
-        .project(star(exclude=["_depth", "_rank", "_row", "_first"]))
-    )
+    winners = ranked.filter(col("_rank") == lit(1))
+    # The deepest statement of a key wins; a tombstone there removes it.
+    if has_deleted:
+        # A row from a layer whose file lacks the column reads `deleted` as NULL
+        # once unioned by name; NULL is not a tombstone, so coalesce to false
+        # rather than letting `~NULL` drop a live row.
+        winners = winners.filter(~coalesce(col("deleted"), lit(False)))  # noqa: FBT003
+    scaffold = [
+        "_depth",
+        "_rank",
+        "_row",
+        "_first",
+        *(["deleted"] if has_deleted else []),
+    ]
+    return winners.order("_first").project(star(exclude=scaffold))
+
+
+def read_json(uri: str) -> dict[str, Any] | None:
+    """Read one JSON file, or `None` if it doesn't exist (e.g. an undeclared schema).
+
+    Only a genuine miss (local `FileNotFoundError`, remote 404/403) maps to
+    `None` - any other failure raises rather than silently reading as absent.
+    """
+    try:
+        if "://" in uri:
+            with urlopen(uri) as fh:  # noqa: S310 - record URIs are derived, not user input
+                return json.load(fh)
+        with open(uri) as fh:
+            return json.load(fh)
+    except FileNotFoundError:
+        return None
+    except HTTPError as e:
+        if e.code in (403, 404):  # 403: S3's "missing key" without ListBucket
+            return None
+        raise

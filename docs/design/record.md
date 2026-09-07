@@ -1,11 +1,13 @@
 # The `Record` protocol
 
 The definition sketched in [what a data record is](index.md#what-a-data-record-is), in full. This is the contract a consumer codes against; [the record format](format.md) is how it is stored.
-It is read-only: writing is [`write_record(revision_id, record, con)`](writing.md).
+It is read-only: writing is [`write_record(revision_id, source, con)`](writing.md).
+
+Two names, one shape. **`RecordLike`** is the protocol below — what a signature annotates against, and what a framework object satisfies structurally without depending on this package. **`Record`** is the class this package provides: the narwhals interface over [one fold](read-path.md#one-record-over-one-fold), which is what `Revision.record` and `Record.at(uri)` both give you. The concrete thing gets the short name because it is what a caller constructs and holds.
 
 ```python
 @runtime_checkable
-class Record(Protocol):
+class RecordLike(Protocol):
     """Dimensioned attribute data with a declared schema."""
 
     @property
@@ -16,7 +18,7 @@ class Record(Protocol):
     @property
     def components(self) -> Frames: ...  # members, keyed by component type
     @property
-    def groups(self) -> Mapping[str, Frames]: ...  # per group, then by type
+    def groups(self) -> Frames: ...  # each group's rows, keyed by group
     @property
     def attributes(self) -> Frames: ...  # long input frames, keyed by attribute
 
@@ -25,6 +27,40 @@ class Record(Protocol):
 
     def flags(self, ctype: str) -> dict[str, Flags]: ...
 ```
+
+## `LayerData`
+
+`RecordLike` is what a caller reads; `write_record` writes a different, narrower protocol — **`LayerData`**, "the rows of one thing, enumerated and read":
+
+```python
+@runtime_checkable
+class LayerData(Protocol):
+    @property
+    def schema(self) -> Schema: ...
+    @property
+    def frozen(self) -> bool: ...
+
+    def axes(self) -> Iterable[str]: ...
+    def axis(self, dim: str) -> DuckDBPyRelation | None: ...
+    def entity_types(self) -> Iterable[str]: ...
+    def entity_type(self, name: str) -> DuckDBPyRelation | None: ...
+    def groups(self) -> Iterable[str]: ...
+    def group(self, name: str) -> DuckDBPyRelation | None: ...
+    def attributes(self, kind: str = "inputs") -> Iterable[str]: ...
+    def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation | None: ...
+```
+
+Each pair is an enumerator — the keys of that kind — and a read for one key.
+The enumerators return `Iterable[str]` rather than `set[str]` so a `Resolver`, whose keys carry a stable order a `Record` over it relies on, can return a `list` where a source returns a `set`; the meaning is the same set of keys either way.
+
+One object, two meanings: a [`LayerSource`](read-path.md#owner-map) answers `axis`/`entity_type`/`group`/`attribute` for its own layer's rows; a `Resolver` answers the same names for everything folded into it.
+`write_record` cannot tell which it holds and does not need to — a staged layer's own rows (`NewChild`) and a resolved whole record (`Directory`) are both a `LayerData`, so [committing](working-record.md#committing) writes either without a third shape adapting one to the other.
+
+`schema` governs which of the other pairs are populated, rather than standing beside them as a peer: `entity_types`/`entity_type` answer only where the schema declares the entity-type axis, and `groups`/`group` only for the groups it declares.
+An enumerator answers the **empty set**, never a phantom key, where the schema declares nothing of that kind.
+
+Rows are raw `DuckDBPyRelation`s, not narwhals frames — the write path stays one engine throughout.
+A framework object satisfying `RecordLike` instead (narwhals `Frames`, as [`Tool.to_datarecord`](tools.md) returns) is not itself a `LayerData`; `write_record` wraps it in a thin adapter that reads its `Frames` mappings through the same enumerate-and-read pairs, so a tool stays narwhals-facing without `write_record` growing a second code path.
 
 ## Wide and long rows
 
@@ -138,7 +174,7 @@ Per component they would be complements; the aggregation over a type is what mak
 Both sets empty for a dim means the attribute has no values along it, so the consumer builds no container there.
 
 **Both sets are scoped to what the attribute is addressed by.** A dim outside its [`dims`](schema.md#attributespec) is in neither, never in `broadcast`.
-The two are easy to conflate because the [owner map](read-path.md#owner-map) is one relation over every attribute, so a dim one attribute uses reads NULL for the rows of one that does not — but that NULL means "no such axis", not "every value of it".
+The two are easy to conflate because whatever the flags are aggregated from — the [owner map](read-path.md#owner-map), a scan of `inputs/`, a staging table — is one relation over every attribute, so a dim one attribute uses reads NULL for the rows of one that does not; but that NULL means "no such axis", not "every value of it".
 Reporting it as broadcast would answer the question above wrongly for every attribute in the record: a consumer would build a constant container along an axis the attribute has no values on.
 
 So an attribute addressed by `entity` alone reports both sets empty, and that is not the same as having no rows — an attribute with no rows at all is [absent from the mapping](#flags) entirely.
