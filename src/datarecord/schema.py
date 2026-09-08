@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The schema: what a record's data is, and how a patch to it behaves.
 
 One schema per record, and `manifest.json` is how it is written down - the two

@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Proposal: trait switches — a trait a component opts into
 
 Status: **Draft** · Drafted 2026-08-27

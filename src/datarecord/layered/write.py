@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Writing a whole record as a layer.
 
 A `LayerData` hands over relations and this module turns them into parquet;

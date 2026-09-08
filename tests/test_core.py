@@ -1,3 +1,8 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
+
 def test_hard():
     import datarecord  # noqa
 

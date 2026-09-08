@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Single-layer read path: our DuckDB reader against PyPSA's own.
 
 Notes
