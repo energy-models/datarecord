@@ -21,7 +21,7 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 readme = "README.md"
-dependencies = ["duckdb>=1.5.4", "narwhals>=2,<3", "pydantic>=2"]
+dependencies = ["duckdb>=1.5.4", "narwhals>=2,<3,!=2.21.0", "pydantic>=2"]
 
 [project.optional-dependencies]
 pypsa = ["pypsa"]

@@ -18,7 +18,7 @@ uv = "*"
 [dependencies]
 datarecord = { path = "." }
 duckdb = ">=1.5.4,<2"
-narwhals = ">=2,<3"
+narwhals = ">=2,<3,!=2.21.0"
 pydantic = ">=2"
 
 [feature.test.dependencies]
