@@ -16,7 +16,7 @@
         <link rel="prev" href="../staging-without-seq/">
       
       
-        <link rel="next" href="../../../api/">
+        <link rel="next" href="../../../contributing/">
       
       
         
@@ -54,6 +54,8 @@
     
     
       <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../static/extras.css">
     
     <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -241,6 +243,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -279,6 +300,44 @@
         </a>
       </li>
     
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
   
 
       
@@ -370,6 +429,33 @@
     
   
     Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
   
 
     
@@ -504,7 +590,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -526,14 +612,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -865,10 +951,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_12" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_12" checked>
         
           
-          <label class="md-nav__link" for="__nav_3_12" id="__nav_3_12_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_12" id="__nav_4_12_label" tabindex="0">
             
   
   
@@ -886,8 +972,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_12_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3_12">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_12">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1416,6 +1502,60 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
       
@@ -1750,6 +1890,12 @@
   
 
 
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 <h1 id="proposal-one-interface-two-objects-a-source-is-its-own-rows-a-fold-is-the-resolution">Proposal: one interface, two objects — a source is its own rows, a fold is the resolution<a class="headerlink" href="#proposal-one-interface-two-objects-a-source-is-its-own-rows-a-fold-is-the-resolution" title="Permanent link">&para;</a></h1>
 <p>Status: <strong>Landed</strong> · Drafted 2026-09-02 · Landed 2026-09-04</p>
 <blockquote>
@@ -1781,8 +1927,8 @@ landed" notes below record where the implementation departed from this sketch.</
 <p>This is the fact the rest of the page turns on. <code>Revision.materialise()</code> folds a node's sources and writes the result to <code>resolved/</code> — <code>_fold_kind</code> for the <code>inputs</code> owner map, <code>resolve_coords</code> for the axes (the entity axis and groups among them) (<a href="../../layers/#materialised-node-caches"><code>materialise</code></a>). That is <em>exactly</em> what a <code>NodeCache</code> computes in memory; materialising is persisting a <code>NodeCache</code>'s output. <code>ResolvedLayer</code> is the handle that reads it back, and <code>NodeCache</code> seeds from it to skip the re-fold:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">NodeCache</span><span class="o">.</span><span class="n">_fold_map</span><span class="p">:</span> <span class="n">seed</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">head</span><span class="o">.</span><span class="n">map_uri</span><span class="p">(</span><span class="n">kind</span><span class="p">)</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span>  <span class="c1"># a ResolvedLayer&#39;s stored owner map</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">NodeCache</span><span class="o">.</span><span class="n">resolve_dims</span><span class="p">:</span> <span class="n">seed</span> <span class="o">=</span> <span class="n">head</span><span class="o">.</span><span class="n">resolved_axes</span><span class="p">()</span>  <span class="c1"># a ResolvedLayer&#39;s stored dims</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span>  <span class="c1"># a ResolvedLayer's stored owner map</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">NodeCache</span><span class="o">.</span><span class="n">resolve_dims</span><span class="p">:</span> <span class="n">seed</span> <span class="o">=</span> <span class="n">head</span><span class="o">.</span><span class="n">resolved_axes</span><span class="p">()</span>  <span class="c1"># a ResolvedLayer's stored dims</span>
 </code></pre></div>
 <p>So <code>ResolvedLayer</code> and <code>NodeCache</code> are <strong>the same thing — the fold to a node — in two tenses</strong>: <code>NodeCache</code> computed live, <code>ResolvedLayer</code> computed earlier and read from <code>resolved/</code>. A <code>NodeCache</code> reads a <code>ResolvedLayer</code> as its own prior incarnation, which is the whole point of <code>sources_to_read</code> stopping at a materialised ancestor: its <code>ResolvedLayer</code> already carries what re-folding from the root would recompute.</p>
 <p>The defect is that this persisted fold is typed as a <strong><code>LayerSource</code></strong> and put in the <code>sources</code> list — a list of <em>own-layer</em> things. <strong>A fold-result is masquerading as a fold-input.</strong> Everything below follows from untangling that one type error.</p>
@@ -1832,7 +1978,7 @@ landed" notes below record where the implementation departed from this sketch.</
 <h3 id="the-fold-machinery-is-a-fold-object">The fold machinery is a <code>Fold</code> object<a class="headerlink" href="#the-fold-machinery-is-a-fold-object" title="Permanent link">&para;</a></h3>
 <p>Everything the fold <em>produces</em> and the reads gated by it move into one object, the counterpart to <code>Coords</code> (today's <code>Dims</code>, renamed — it holds axes <em>and</em> groups plus the broadcast/match algebra, which "dims" undersold):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Fold</span><span class="p">:</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A node&#39;s resolved view: the folded axes and owner map, and the reads over them.&quot;&quot;&quot;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="sd">"""A node's resolved view: the folded axes and owner map, and the reads over them."""</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">schema</span><span class="p">:</span> <span class="n">Schema</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">coords</span><span class="p">:</span> <span class="p">(</span>
@@ -1885,7 +2031,7 @@ landed" notes below record where the implementation departed from this sketch.</
 <a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">entity_types</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">/</span> <span class="n">entity_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ct</span><span class="p">):</span> <span class="o">...</span>   <span class="c1"># was entity_types / entity_type_frame</span>
 <a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">groups</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">/</span> <span class="n">group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">g</span><span class="p">):</span> <span class="o">...</span>                <span class="c1"># was (from schema) / group_frame</span>
 <a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    <span class="c1"># routing reads that need the fold&#39;s members by name</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    <span class="c1"># routing reads that need the fold's members by name</span>
 <a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">owners</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attribute</span><span class="p">):</span> <span class="o">...</span>   <span class="c1"># fold.owners(attribute)</span>
 <a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">entity_type</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span> <span class="o">...</span>   <span class="c1"># fold.flags(entity_type)  (was attributes_of)</span>
 <a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>
@@ -2119,13 +2265,13 @@ landed" notes below record where the implementation departed from this sketch.</
         
         
           
-          <a href="../../../api/" class="md-footer__link md-footer__link--next" aria-label="Next: API Reference">
+          <a href="../../../contributing/" class="md-footer__link md-footer__link--next" aria-label="Next: Contributing">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                API Reference
+                Contributing
               </div>
             </div>
             <div class="md-footer__button md-icon">
