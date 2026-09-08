@@ -149,6 +149,9 @@ extra:
       link: https://pypi.org/project/datarecord/
       name: datarecord on PyPI
 
+extra_css:
+  - static/extras.css
+
 watch:
   - src/datarecord
   - README.md
