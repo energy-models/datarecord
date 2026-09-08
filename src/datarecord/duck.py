@@ -283,7 +283,7 @@ def parquet_names(dir_uri: str, con: DuckDBPyConnection) -> set[str]:
     rows = con.sql(
         "SELECT file FROM glob(?)", params=[f"{dir_uri}*.parquet"]
     ).fetchall()
-    return {row[0].rsplit("/", 1)[-1] for row in rows}
+    return {os.path.basename(row[0]) for row in rows}
 
 
 def union_all_by_name(
