@@ -55,6 +55,8 @@
     
       <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
     
+      <link rel="stylesheet" href="../../../static/extras.css">
+    
     <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -241,6 +243,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -279,6 +300,44 @@
         </a>
       </li>
     
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
   
 
       
@@ -370,6 +429,33 @@
     
   
     Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
   
 
     
@@ -504,7 +590,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -526,14 +612,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -865,10 +951,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_12" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_12" checked>
         
           
-          <label class="md-nav__link" for="__nav_3_12" id="__nav_3_12_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_12" id="__nav_4_12_label" tabindex="0">
             
   
   
@@ -886,8 +972,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_12_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3_12">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_12">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1388,6 +1474,60 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
       
@@ -1694,6 +1834,12 @@
   
 
 
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 <h1 id="proposal-staging-as-a-layer-one-fold-two-sources">Proposal: staging as a layer — one fold, two sources<a class="headerlink" href="#proposal-staging-as-a-layer-one-fold-two-sources" title="Permanent link">&para;</a></h1>
 <p>Status: <strong>Implemented</strong> · Drafted 2026-09-01 · Implemented 2026-09-01</p>
 <p>Landed in <a href="../../read-path/#one-record-over-one-fold">the read path</a> and <a href="../../working-record/#reading-with-pending-edits"><code>WorkingRecord</code></a>; this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.</p>
@@ -1710,13 +1856,13 @@
 <h2 id="the-construct">The construct<a class="headerlink" href="#the-construct" title="Permanent link">&para;</a></h2>
 <p>The fold's three kind-folds are hardcoded to read one layer's parquet:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">fold_inputs</span><span class="p">(</span><span class="n">revision_id</span><span class="p">,</span> <span class="n">keys</span><span class="p">,</span> <span class="n">con</span><span class="p">,</span> <span class="n">parent</span><span class="p">):</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="n">try_read_parquet</span><span class="p">(</span><span class="n">layer_dir</span><span class="p">(</span><span class="n">revision_id</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;inputs/*.parquet&quot;</span><span class="p">,</span> <span class="n">con</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="n">try_read_parquet</span><span class="p">(</span><span class="n">layer_dir</span><span class="p">(</span><span class="n">revision_id</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"inputs/*.parquet"</span><span class="p">,</span> <span class="n">con</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
 </code></pre></div>
 <p><code>revision_id</code> is used for exactly two things: deriving those paths, and stamping <code>layer_uuid</code>. Replace it with a <strong>source</strong> that answers the same questions:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">LayerSource</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;One layer&#39;s own rows, however they are stored.</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="sd">"""One layer's own rows, however they are stored.</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="sd">    &quot;The layer as it would be written&quot;, not &quot;the rows as stored&quot;: a source</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="sd">    "The layer as it would be written", not "the rows as stored": a source</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="sd">    hands over what `write_record` would persist, so `_seq` collapsing and</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="sd">    tombstone application happen behind it and the fold never learns about</span>
 <a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="sd">    either. `None` means this layer wrote nothing of that kind.</span>
@@ -1726,7 +1872,7 @@
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="sd">    `order_key` - stays in the fold, which is the point: an implementation</span>
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="sd">    that computed any of it would be the second copy this proposal exists</span>
 <a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="sd">    to delete.</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="sd">    &quot;&quot;&quot;</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="sd">    """</span>
 <a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>
 <a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="n">layer_id</span><span class="p">:</span> <span class="n">UUID</span>  <span class="c1"># what the fold stamps as `layer_uuid`</span>
 <a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="n">frozen</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>  <span class="c1"># False for a staging area, which changes under the reader</span>
@@ -1736,9 +1882,9 @@
 <a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">entity_type</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 <a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 <a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attribute</span><span class="p">(</span>
-<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">kind</span><span class="p">:</span> <span class="n">Kind</span> <span class="o">=</span> <span class="s2">&quot;inputs&quot;</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">kind</span><span class="p">:</span> <span class="n">Kind</span> <span class="o">=</span> <span class="s2">"inputs"</span>
 <a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
-<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">all_attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kind</span><span class="p">:</span> <span class="n">Kind</span> <span class="o">=</span> <span class="s2">&quot;inputs&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">all_attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kind</span><span class="p">:</span> <span class="n">Kind</span> <span class="o">=</span> <span class="s2">"inputs"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 </code></pre></div>
 <p>Each member is one file, addressed by what keys it — <code>dims/&lt;dim&gt;.parquet</code>, <code>dims/entity_types/&lt;name&gt;.parquet</code>, <code>groups/&lt;name&gt;.parquet</code>, <code>inputs|outputs/&lt;name&gt;.parquet</code>. <code>Kind</code> is <code>Literal["inputs", "outputs"]</code> — the same alias <a href="../../working-record/#set"><code>set</code></a> already takes, kept a literal rather than promoted to an enum so the two signatures stay one vocabulary.</p>
 <p>Two asymmetries, both the format's rather than the protocol's:</p>
@@ -1757,7 +1903,7 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="k">class</span><span class="w"> </span><span class="nc">NodeCache</span><span class="p">:</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">revision_id</span><span class="p">:</span> <span class="n">UUID</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">sources</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">LayerSource</span><span class="p">]</span>  <span class="c1"># root first, ending in this node&#39;s own layer</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">sources</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">LayerSource</span><span class="p">]</span>  <span class="c1"># root first, ending in this node's own layer</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span>
 </code></pre></div>
 <p>A <code>WorkingRecord</code> is then <code>sources + [StagedSource(self)]</code>. No second class and no mode flag: the staged layer is the last entry, which is what "staging is a layer" was supposed to mean.</p>
@@ -1773,7 +1919,7 @@
 <p>The one wart: <code>dims</code> cannot stay a <code>cached_property</code> where the tail is live. It becomes a plain property that caches the frozen prefix's axes and re-folds the rest — the same rule as <code>_map</code>, so it is one concept applied twice rather than a special case. <code>schema</code> is unaffected: <a href="../../schema/#one-schema-per-record">one schema per record</a>, not layered data, so no source contributes to it.</p>
 <h2 id="what-makes-the-staged-source-foldable">What makes the staged source foldable<a class="headerlink" href="#what-makes-the-staged-source-foldable" title="Permanent link">&para;</a></h2>
 <p>The fold ends each kind by evicting the parent's matching keys:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">kept</span> <span class="o">=</span> <span class="n">parent</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">own</span><span class="p">,</span> <span class="n">null_safe</span><span class="p">(</span><span class="s2">&quot;p&quot;</span><span class="p">,</span> <span class="s2">&quot;o&quot;</span><span class="p">,</span> <span class="n">keys</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">input_key</span><span class="p">),</span> <span class="n">how</span><span class="o">=</span><span class="s2">&quot;anti&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">kept</span> <span class="o">=</span> <span class="n">parent</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">own</span><span class="p">,</span> <span class="n">null_safe</span><span class="p">(</span><span class="s2">"p"</span><span class="p">,</span> <span class="s2">"o"</span><span class="p">,</span> <span class="n">keys</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">input_key</span><span class="p">),</span> <span class="n">how</span><span class="o">=</span><span class="s2">"anti"</span><span class="p">)</span>
 </code></pre></div>
 <p>That is correct for a written layer <em>because</em> its extent along every non-<code>partial</code> axis has already been completed. Evicting the parent's key loses nothing, since the new layer replaced all of it. A staging area that has not completed would lose the rest of the series, so anti-joining on <code>input_key</code> would let one staged point displace the base's whole series — the loss <code>_overlay</code>'s comment describes, and the reason the staged overlay keys by coordinate instead.</p>
 <p>So the precondition, not the algebra, is what differs. <strong>Establish the precondition and the difference is gone</strong>: the completion runs as rows are staged rather than at commit.</p>
@@ -1818,9 +1964,9 @@
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># per_dim: (dim) -&gt; (varies_expr, broadcast_expr)</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1">#   fold       bool_or(col(&quot;_raw_&lt;d&gt;&quot;).isnotnull())  /  ...isnull()</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1">#   fold       bool_or(col("_raw_&lt;d&gt;").isnotnull())  /  ...isnull()</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="c1">#   directory  bool_or(col(d).isnotnull())           /  ...isnull()</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1"># attribute: a literal where the caller aggregates one attribute&#39;s own table,</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="c1"># attribute: a literal where the caller aggregates one attribute's own table,</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="c1">#   `None` where it groups by an `attribute` column.</span>
 </code></pre></div>
 <p><code>flags_from_rows</code> already shares the tail — the coordinate scoping — and stays as it is.</p>

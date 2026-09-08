@@ -55,6 +55,8 @@
     
       <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
     
+      <link rel="stylesheet" href="../../../static/extras.css">
+    
     <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -241,6 +243,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -279,6 +300,44 @@
         </a>
       </li>
     
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
   
 
       
@@ -370,6 +429,33 @@
     
   
     Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
   
 
     
@@ -504,7 +590,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -526,14 +612,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -865,10 +951,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_12" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_12" checked>
         
           
-          <label class="md-nav__link" for="__nav_3_12" id="__nav_3_12_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_12" id="__nav_4_12_label" tabindex="0">
             
   
   
@@ -886,8 +972,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_12_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3_12">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_12_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_12">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1400,6 +1486,60 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
       
@@ -1718,6 +1858,12 @@
   
 
 
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 <h1 id="proposal-dims-mappings-groups-and-traits">Proposal: dims, mappings, groups and traits<a class="headerlink" href="#proposal-dims-mappings-groups-and-traits" title="Permanent link">&para;</a></h1>
 <p>Status: <strong>Landed</strong> · Drafted 2026-08-15 · Landed 2026-08-16</p>
 <p><strong>This page is the argument, not the design.</strong> What shipped is described by <a href="../../schema/">the schema</a> — <a href="../../schema/#groups">groups</a>, <a href="../../schema/#traits">traits</a> — together with <a href="../../format/">the record format</a> and <a href="../../read-path/">the read path</a>, and those pages are authoritative where the two disagree.
@@ -1795,7 +1941,7 @@ An ordinary dim does not — an axis is <a href="../../schema/#partial-the-granu
 <p>What remains in <code>dims/components/&lt;Type&gt;.parquet</code> is then only <a href="../../format/#where-a-value-lives">what varies over nothing</a> — the non-varying attribute values, partitioned by type.
 The partition is justified by the one thing that genuinely is per type: the attribute vocabulary, since every type has a different column set.</p>
 <p>An attribute with no <code>entity</code> in its <code>dims</code> needs no owner and no special case:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="s2">&quot;objective_weighting&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;DOUBLE&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;snapshot&quot;</span><span class="p">})</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="s2">"objective_weighting"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"DOUBLE"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"snapshot"</span><span class="p">})</span>
 </code></pre></div>
 <p>That is the thing that started this, expressible — and <a href="#where-a-value-lives">the file-split rule</a> puts it on <code>dims/snapshot.parquet</code>, which is where the undeclared column sits today.</p>
 <h2 id="attributes-are-top-level">Attributes are top-level<a class="headerlink" href="#attributes-are-top-level" title="Permanent link">&para;</a></h2>
@@ -1807,15 +1953,15 @@ Nothing rejects that today; it is a silent wrong read waiting for a record that 
 <p>Flat declaration makes it unrepresentable, which is the stronger form of the same guarantee.
 The declaration then matches the file layout one-to-one: one attribute, one spec, one file, one dtype.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">attributes</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="s2">&quot;p_max_pu&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>        <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;DOUBLE&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">,</span> <span class="s2">&quot;snapshot&quot;</span><span class="p">,</span> <span class="s2">&quot;scenario&quot;</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="s2">"p_max_pu"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>        <span class="n">dtype</span><span class="o">=</span><span class="s2">"DOUBLE"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"snapshot"</span><span class="p">,</span> <span class="s2">"scenario"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="p">),</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="s2">&quot;p_nom&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;DOUBLE&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">),</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="s2">&quot;efficiency&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>        <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;DOUBLE&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;connection&quot;</span><span class="p">,</span> <span class="s2">&quot;snapshot&quot;</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="s2">"p_nom"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"DOUBLE"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="s2">"efficiency"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>        <span class="n">dtype</span><span class="o">=</span><span class="s2">"DOUBLE"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"connection"</span><span class="p">,</span> <span class="s2">"snapshot"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
 <a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="p">),</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="s2">&quot;objective_weighting&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>        <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;DOUBLE&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;snapshot&quot;</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="s2">"objective_weighting"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>        <span class="n">dtype</span><span class="o">=</span><span class="s2">"DOUBLE"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"snapshot"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    <span class="p">),</span>
 <a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="p">}</span>
 </code></pre></div>
@@ -1868,34 +2014,34 @@ Declaring them a second time on the <code>Group</code> or the <code>Dimension</c
 <h2 id="traits">Traits<a class="headerlink" href="#traits" title="Permanent link">&para;</a></h2>
 <p>A trait is a named bundle of attributes; a component type subscribes to traits and may add its own.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">traits</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="s2">&quot;investable&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        <span class="s2">&quot;capital_cost&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="s2">&quot;overnight_cost&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        <span class="s2">&quot;discount_rate&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        <span class="s2">&quot;fom_cost&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        <span class="s2">&quot;build_year&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>        <span class="s2">&quot;lifetime&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="s2">"investable"</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        <span class="s2">"capital_cost"</span><span class="p">,</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="s2">"overnight_cost"</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        <span class="s2">"discount_rate"</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>        <span class="s2">"fom_cost"</span><span class="p">,</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        <span class="s2">"build_year"</span><span class="p">,</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>        <span class="s2">"lifetime"</span><span class="p">,</span>
 <a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="p">},</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="s2">&quot;dispatchable&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>        <span class="s2">&quot;p_min_pu&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>        <span class="s2">&quot;p_max_pu&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>        <span class="s2">&quot;p_set&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>        <span class="s2">&quot;marginal_cost&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>        <span class="s2">&quot;marginal_cost_quadratic&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    <span class="s2">"dispatchable"</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>        <span class="s2">"p_min_pu"</span><span class="p">,</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>        <span class="s2">"p_max_pu"</span><span class="p">,</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>        <span class="s2">"p_set"</span><span class="p">,</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>        <span class="s2">"marginal_cost"</span><span class="p">,</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>        <span class="s2">"marginal_cost_quadratic"</span><span class="p">,</span>
 <a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>    <span class="p">},</span>
-<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>    <span class="s2">&quot;committable&quot;</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>        <span class="s2">&quot;committable&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>        <span class="s2">&quot;min_up_time&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>        <span class="s2">&quot;min_down_time&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>        <span class="s2">&quot;start_up_cost&quot;</span><span class="p">,</span>
-<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>        <span class="s2">&quot;shut_down_cost&quot;</span><span class="p">,</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>    <span class="s2">"committable"</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>        <span class="s2">"committable"</span><span class="p">,</span>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>        <span class="s2">"min_up_time"</span><span class="p">,</span>
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>        <span class="s2">"min_down_time"</span><span class="p">,</span>
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>        <span class="s2">"start_up_cost"</span><span class="p">,</span>
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>        <span class="s2">"shut_down_cost"</span><span class="p">,</span>
 <a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>        <span class="o">...</span><span class="p">,</span>
 <a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>    <span class="p">},</span>
 <a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="p">}</span>
 <a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="n">component_types</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>    <span class="s2">&quot;Generator&quot;</span><span class="p">:</span> <span class="n">ComponentType</span><span class="p">(</span>
-<a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a>        <span class="n">traits</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;investable&quot;</span><span class="p">,</span> <span class="s2">&quot;dispatchable&quot;</span><span class="p">,</span> <span class="s2">&quot;committable&quot;</span><span class="p">},</span>
-<a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a>        <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;efficiency&quot;</span><span class="p">,</span> <span class="s2">&quot;sign&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>
+<a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>    <span class="s2">"Generator"</span><span class="p">:</span> <span class="n">ComponentType</span><span class="p">(</span>
+<a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a>        <span class="n">traits</span><span class="o">=</span><span class="p">{</span><span class="s2">"investable"</span><span class="p">,</span> <span class="s2">"dispatchable"</span><span class="p">,</span> <span class="s2">"committable"</span><span class="p">},</span>
+<a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a>        <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">"efficiency"</span><span class="p">,</span> <span class="s2">"sign"</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>
 <a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a>    <span class="p">),</span>
 <a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a><span class="p">}</span>
 </code></pre></div>
@@ -1911,8 +2057,8 @@ Declaring them a second time on the <code>Group</code> or the <code>Dimension</c
 <p>A group declares <strong>which tuples over several dims exist</strong>: a sparse subset of a dim product, with its own order.
 Its table's non-key columns are not declared here — they are the attributes whose <code>dims</code> name exactly this group (<a href="#where-a-value-lives">where a value lives</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">groups</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="s2">&quot;connection&quot;</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">:</span> <span class="s2">&quot;entity&quot;</span><span class="p">,</span> <span class="s2">&quot;bus&quot;</span><span class="p">:</span> <span class="s2">&quot;bus&quot;</span><span class="p">}),</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="s2">&quot;corridor&quot;</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;from&quot;</span><span class="p">:</span> <span class="s2">&quot;entity&quot;</span><span class="p">,</span> <span class="s2">&quot;to&quot;</span><span class="p">:</span> <span class="s2">&quot;entity&quot;</span><span class="p">}),</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="s2">"connection"</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"bus"</span><span class="p">}),</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="s2">"corridor"</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">"from"</span><span class="p">:</span> <span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"to"</span><span class="p">:</span> <span class="s2">"entity"</span><span class="p">}),</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">}</span>
 </code></pre></div>
 <p><code>over</code> maps <strong>coordinate name -&gt; dim</strong>, not a bare set of dims, for two reasons.
@@ -2027,134 +2173,134 @@ Anything relying on scenario-scoped existence needs the open question answered f
 <h2 id="a-pypsa-network-in-full">A PyPSA network in full<a class="headerlink" href="#a-pypsa-network-in-full" title="Permanent link">&para;</a></h2>
 <p>The point of the example. Attribute names, dtypes, defaults and trait boundaries below are read from PyPSA's own component registry rather than invented; the trait <em>names</em> are authored.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>{
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  &quot;version&quot;: 2,
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>  "version": 2,
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>  &quot;dimensions&quot;: {
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>  "dimensions": {
 <a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    // no `keys`: whether existence may vary along a dim is deliberately
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    // unanswered here — see &quot;may existence depend on a dim&quot;
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    &quot;entity&quot;: { &quot;dtype&quot;: &quot;VARCHAR&quot;, &quot;description&quot;: &quot;A component.&quot; },
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    &quot;snapshot&quot;: { &quot;dtype&quot;: &quot;TIMESTAMP&quot;, &quot;description&quot;: &quot;A point in the operational time series.&quot; },
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    &quot;period&quot;: { &quot;dtype&quot;: &quot;BIGINT&quot;, &quot;unit&quot;: &quot;year&quot;, &quot;description&quot;: &quot;An investment period.&quot; },
-<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    &quot;scenario&quot;: { &quot;dtype&quot;: &quot;VARCHAR&quot; },
-<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    &quot;bus&quot;: { &quot;dtype&quot;: &quot;VARCHAR&quot;, &quot;description&quot;: &quot;A node of the network.&quot; },
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    // unanswered here — see "may existence depend on a dim"
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    "entity": { "dtype": "VARCHAR", "description": "A component." },
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    "snapshot": { "dtype": "TIMESTAMP", "description": "A point in the operational time series." },
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    "period": { "dtype": "BIGINT", "unit": "year", "description": "An investment period." },
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    "scenario": { "dtype": "VARCHAR" },
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    "bus": { "dtype": "VARCHAR", "description": "A node of the network." },
 <a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
 <a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>    // a mapping: each bus is in one country; the column lives on dims/bus.parquet
-<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>    &quot;country&quot;: { &quot;dtype&quot;: &quot;VARCHAR&quot;, &quot;on&quot;: &quot;bus&quot; },
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>    "country": { "dtype": "VARCHAR", "on": "bus" },
 <a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>  },
 <a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>
-<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>  &quot;groups&quot;: {
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>  "groups": {
 <a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>    // subsumes dims/connections/: a component attaches to a bus.
 <a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>    // No payload block — `role` is an attribute over this group, below
-<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>    &quot;connection&quot;: {
-<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>      &quot;over&quot;: { &quot;entity&quot;: &quot;entity&quot;, &quot;bus&quot;: &quot;bus&quot; },
+<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>    "connection": {
+<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>      "over": { "entity": "entity", "bus": "bus" },
 <a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a>    },
 <a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a>  },
 <a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a>
-<a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a>  &quot;traits&quot;: {
+<a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a>  "traits": {
 <a id="__codelineno-10-26" name="__codelineno-10-26" href="#__codelineno-10-26"></a>    // measured: shared by Generator, Line, Link, Store, StorageUnit, Transformer
-<a id="__codelineno-10-27" name="__codelineno-10-27" href="#__codelineno-10-27"></a>    // `capacity*` is renamed from PyPSA&#39;s p_nom/s_nom/e_nom, which lets the
+<a id="__codelineno-10-27" name="__codelineno-10-27" href="#__codelineno-10-27"></a>    // `capacity*` is renamed from PyPSA's p_nom/s_nom/e_nom, which lets the
 <a id="__codelineno-10-28" name="__codelineno-10-28" href="#__codelineno-10-28"></a>    // capacity itself sit in the trait rather than only its costs — see below
-<a id="__codelineno-10-29" name="__codelineno-10-29" href="#__codelineno-10-29"></a>    &quot;investable&quot;: [
-<a id="__codelineno-10-30" name="__codelineno-10-30" href="#__codelineno-10-30"></a>      &quot;capital_cost&quot;,
-<a id="__codelineno-10-31" name="__codelineno-10-31" href="#__codelineno-10-31"></a>      &quot;overnight_cost&quot;,
-<a id="__codelineno-10-32" name="__codelineno-10-32" href="#__codelineno-10-32"></a>      &quot;discount_rate&quot;,
-<a id="__codelineno-10-33" name="__codelineno-10-33" href="#__codelineno-10-33"></a>      &quot;fom_cost&quot;,
-<a id="__codelineno-10-34" name="__codelineno-10-34" href="#__codelineno-10-34"></a>      &quot;build_year&quot;,
-<a id="__codelineno-10-35" name="__codelineno-10-35" href="#__codelineno-10-35"></a>      &quot;lifetime&quot;,
-<a id="__codelineno-10-36" name="__codelineno-10-36" href="#__codelineno-10-36"></a>      &quot;capacity&quot;,
-<a id="__codelineno-10-37" name="__codelineno-10-37" href="#__codelineno-10-37"></a>      &quot;capacity_extendable&quot;,
-<a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a>      &quot;capacity_min&quot;,
-<a id="__codelineno-10-39" name="__codelineno-10-39" href="#__codelineno-10-39"></a>      &quot;capacity_max&quot;,
-<a id="__codelineno-10-40" name="__codelineno-10-40" href="#__codelineno-10-40"></a>      &quot;capacity_set&quot;,
-<a id="__codelineno-10-41" name="__codelineno-10-41" href="#__codelineno-10-41"></a>      &quot;capacity_mod&quot;,
+<a id="__codelineno-10-29" name="__codelineno-10-29" href="#__codelineno-10-29"></a>    "investable": [
+<a id="__codelineno-10-30" name="__codelineno-10-30" href="#__codelineno-10-30"></a>      "capital_cost",
+<a id="__codelineno-10-31" name="__codelineno-10-31" href="#__codelineno-10-31"></a>      "overnight_cost",
+<a id="__codelineno-10-32" name="__codelineno-10-32" href="#__codelineno-10-32"></a>      "discount_rate",
+<a id="__codelineno-10-33" name="__codelineno-10-33" href="#__codelineno-10-33"></a>      "fom_cost",
+<a id="__codelineno-10-34" name="__codelineno-10-34" href="#__codelineno-10-34"></a>      "build_year",
+<a id="__codelineno-10-35" name="__codelineno-10-35" href="#__codelineno-10-35"></a>      "lifetime",
+<a id="__codelineno-10-36" name="__codelineno-10-36" href="#__codelineno-10-36"></a>      "capacity",
+<a id="__codelineno-10-37" name="__codelineno-10-37" href="#__codelineno-10-37"></a>      "capacity_extendable",
+<a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a>      "capacity_min",
+<a id="__codelineno-10-39" name="__codelineno-10-39" href="#__codelineno-10-39"></a>      "capacity_max",
+<a id="__codelineno-10-40" name="__codelineno-10-40" href="#__codelineno-10-40"></a>      "capacity_set",
+<a id="__codelineno-10-41" name="__codelineno-10-41" href="#__codelineno-10-41"></a>      "capacity_mod",
 <a id="__codelineno-10-42" name="__codelineno-10-42" href="#__codelineno-10-42"></a>    ],
 <a id="__codelineno-10-43" name="__codelineno-10-43" href="#__codelineno-10-43"></a>    // measured: shared by Generator, Link, StorageUnit
-<a id="__codelineno-10-44" name="__codelineno-10-44" href="#__codelineno-10-44"></a>    &quot;dispatchable&quot;: [&quot;p_min_pu&quot;, &quot;p_max_pu&quot;, &quot;p_set&quot;],
+<a id="__codelineno-10-44" name="__codelineno-10-44" href="#__codelineno-10-44"></a>    "dispatchable": ["p_min_pu", "p_max_pu", "p_set"],
 <a id="__codelineno-10-45" name="__codelineno-10-45" href="#__codelineno-10-45"></a>    // measured: shared by Generator, Link
-<a id="__codelineno-10-46" name="__codelineno-10-46" href="#__codelineno-10-46"></a>    &quot;committable&quot;: [
-<a id="__codelineno-10-47" name="__codelineno-10-47" href="#__codelineno-10-47"></a>      &quot;committable&quot;,
-<a id="__codelineno-10-48" name="__codelineno-10-48" href="#__codelineno-10-48"></a>      &quot;min_up_time&quot;,
-<a id="__codelineno-10-49" name="__codelineno-10-49" href="#__codelineno-10-49"></a>      &quot;min_down_time&quot;,
-<a id="__codelineno-10-50" name="__codelineno-10-50" href="#__codelineno-10-50"></a>      &quot;up_time_before&quot;,
-<a id="__codelineno-10-51" name="__codelineno-10-51" href="#__codelineno-10-51"></a>      &quot;down_time_before&quot;,
-<a id="__codelineno-10-52" name="__codelineno-10-52" href="#__codelineno-10-52"></a>      &quot;start_up_cost&quot;,
-<a id="__codelineno-10-53" name="__codelineno-10-53" href="#__codelineno-10-53"></a>      &quot;shut_down_cost&quot;,
-<a id="__codelineno-10-54" name="__codelineno-10-54" href="#__codelineno-10-54"></a>      &quot;stand_by_cost&quot;,
-<a id="__codelineno-10-55" name="__codelineno-10-55" href="#__codelineno-10-55"></a>      &quot;ramp_limit_up&quot;,
-<a id="__codelineno-10-56" name="__codelineno-10-56" href="#__codelineno-10-56"></a>      &quot;ramp_limit_down&quot;,
-<a id="__codelineno-10-57" name="__codelineno-10-57" href="#__codelineno-10-57"></a>      &quot;ramp_limit_start_up&quot;,
-<a id="__codelineno-10-58" name="__codelineno-10-58" href="#__codelineno-10-58"></a>      &quot;ramp_limit_shut_down&quot;,
+<a id="__codelineno-10-46" name="__codelineno-10-46" href="#__codelineno-10-46"></a>    "committable": [
+<a id="__codelineno-10-47" name="__codelineno-10-47" href="#__codelineno-10-47"></a>      "committable",
+<a id="__codelineno-10-48" name="__codelineno-10-48" href="#__codelineno-10-48"></a>      "min_up_time",
+<a id="__codelineno-10-49" name="__codelineno-10-49" href="#__codelineno-10-49"></a>      "min_down_time",
+<a id="__codelineno-10-50" name="__codelineno-10-50" href="#__codelineno-10-50"></a>      "up_time_before",
+<a id="__codelineno-10-51" name="__codelineno-10-51" href="#__codelineno-10-51"></a>      "down_time_before",
+<a id="__codelineno-10-52" name="__codelineno-10-52" href="#__codelineno-10-52"></a>      "start_up_cost",
+<a id="__codelineno-10-53" name="__codelineno-10-53" href="#__codelineno-10-53"></a>      "shut_down_cost",
+<a id="__codelineno-10-54" name="__codelineno-10-54" href="#__codelineno-10-54"></a>      "stand_by_cost",
+<a id="__codelineno-10-55" name="__codelineno-10-55" href="#__codelineno-10-55"></a>      "ramp_limit_up",
+<a id="__codelineno-10-56" name="__codelineno-10-56" href="#__codelineno-10-56"></a>      "ramp_limit_down",
+<a id="__codelineno-10-57" name="__codelineno-10-57" href="#__codelineno-10-57"></a>      "ramp_limit_start_up",
+<a id="__codelineno-10-58" name="__codelineno-10-58" href="#__codelineno-10-58"></a>      "ramp_limit_shut_down",
 <a id="__codelineno-10-59" name="__codelineno-10-59" href="#__codelineno-10-59"></a>    ],
 <a id="__codelineno-10-60" name="__codelineno-10-60" href="#__codelineno-10-60"></a>    // measured: shared by Line, Transformer
-<a id="__codelineno-10-61" name="__codelineno-10-61" href="#__codelineno-10-61"></a>    &quot;passive_branch&quot;: [&quot;r&quot;, &quot;b&quot;, &quot;g&quot;, &quot;s_max_pu&quot;, &quot;num_parallel&quot;, &quot;v_ang_min&quot;, &quot;v_ang_max&quot;],
+<a id="__codelineno-10-61" name="__codelineno-10-61" href="#__codelineno-10-61"></a>    "passive_branch": ["r", "b", "g", "s_max_pu", "num_parallel", "v_ang_min", "v_ang_max"],
 <a id="__codelineno-10-62" name="__codelineno-10-62" href="#__codelineno-10-62"></a>  },
 <a id="__codelineno-10-63" name="__codelineno-10-63" href="#__codelineno-10-63"></a>
-<a id="__codelineno-10-64" name="__codelineno-10-64" href="#__codelineno-10-64"></a>  &quot;component_types&quot;: {
-<a id="__codelineno-10-65" name="__codelineno-10-65" href="#__codelineno-10-65"></a>    &quot;Bus&quot;: { &quot;traits&quot;: [], &quot;attributes&quot;: [&quot;v_nom&quot;, &quot;v_mag_pu_set&quot;, &quot;v_mag_pu_min&quot;, &quot;v_mag_pu_max&quot;, &quot;carrier&quot;, &quot;unit&quot;, &quot;location&quot;] },
-<a id="__codelineno-10-66" name="__codelineno-10-66" href="#__codelineno-10-66"></a>    &quot;Carrier&quot;: { &quot;traits&quot;: [], &quot;attributes&quot;: [&quot;co2_emissions&quot;, &quot;color&quot;, &quot;nice_name&quot;, &quot;max_growth&quot;, &quot;max_relative_growth&quot;] },
-<a id="__codelineno-10-67" name="__codelineno-10-67" href="#__codelineno-10-67"></a>    &quot;Generator&quot;: {
-<a id="__codelineno-10-68" name="__codelineno-10-68" href="#__codelineno-10-68"></a>      &quot;traits&quot;: [&quot;investable&quot;, &quot;dispatchable&quot;, &quot;committable&quot;],
-<a id="__codelineno-10-69" name="__codelineno-10-69" href="#__codelineno-10-69"></a>      &quot;attributes&quot;: [&quot;efficiency&quot;, &quot;sign&quot;, &quot;carrier&quot;, &quot;active&quot;, &quot;control&quot;, &quot;q_set&quot;, &quot;e_sum_min&quot;, &quot;e_sum_max&quot;, &quot;weight&quot;, &quot;marginal_cost&quot;, &quot;marginal_cost_quadratic&quot;],
+<a id="__codelineno-10-64" name="__codelineno-10-64" href="#__codelineno-10-64"></a>  "component_types": {
+<a id="__codelineno-10-65" name="__codelineno-10-65" href="#__codelineno-10-65"></a>    "Bus": { "traits": [], "attributes": ["v_nom", "v_mag_pu_set", "v_mag_pu_min", "v_mag_pu_max", "carrier", "unit", "location"] },
+<a id="__codelineno-10-66" name="__codelineno-10-66" href="#__codelineno-10-66"></a>    "Carrier": { "traits": [], "attributes": ["co2_emissions", "color", "nice_name", "max_growth", "max_relative_growth"] },
+<a id="__codelineno-10-67" name="__codelineno-10-67" href="#__codelineno-10-67"></a>    "Generator": {
+<a id="__codelineno-10-68" name="__codelineno-10-68" href="#__codelineno-10-68"></a>      "traits": ["investable", "dispatchable", "committable"],
+<a id="__codelineno-10-69" name="__codelineno-10-69" href="#__codelineno-10-69"></a>      "attributes": ["efficiency", "sign", "carrier", "active", "control", "q_set", "e_sum_min", "e_sum_max", "weight", "marginal_cost", "marginal_cost_quadratic"],
 <a id="__codelineno-10-70" name="__codelineno-10-70" href="#__codelineno-10-70"></a>    },
-<a id="__codelineno-10-71" name="__codelineno-10-71" href="#__codelineno-10-71"></a>    &quot;Line&quot;: { &quot;traits&quot;: [&quot;investable&quot;, &quot;passive_branch&quot;], &quot;attributes&quot;: [&quot;length&quot;, &quot;terrain_factor&quot;, &quot;carrier&quot;, &quot;active&quot;, &quot;x&quot;] },
-<a id="__codelineno-10-72" name="__codelineno-10-72" href="#__codelineno-10-72"></a>    &quot;Link&quot;: { &quot;traits&quot;: [&quot;investable&quot;, &quot;dispatchable&quot;, &quot;committable&quot;], &quot;attributes&quot;: [&quot;efficiency&quot;, &quot;length&quot;, &quot;terrain_factor&quot;, &quot;carrier&quot;, &quot;active&quot;, &quot;marginal_cost&quot;, &quot;marginal_cost_quadratic&quot;] },
-<a id="__codelineno-10-73" name="__codelineno-10-73" href="#__codelineno-10-73"></a>    &quot;Store&quot;: { &quot;traits&quot;: [&quot;investable&quot;], &quot;attributes&quot;: [&quot;e_cyclic&quot;, &quot;e_initial&quot;, &quot;standing_loss&quot;, &quot;marginal_cost&quot;, &quot;marginal_cost_storage&quot;, &quot;carrier&quot;, &quot;active&quot;] },
-<a id="__codelineno-10-74" name="__codelineno-10-74" href="#__codelineno-10-74"></a>    &quot;StorageUnit&quot;: {
-<a id="__codelineno-10-75" name="__codelineno-10-75" href="#__codelineno-10-75"></a>      &quot;traits&quot;: [&quot;investable&quot;, &quot;dispatchable&quot;],
-<a id="__codelineno-10-76" name="__codelineno-10-76" href="#__codelineno-10-76"></a>      &quot;attributes&quot;: [
-<a id="__codelineno-10-77" name="__codelineno-10-77" href="#__codelineno-10-77"></a>        &quot;max_hours&quot;,
-<a id="__codelineno-10-78" name="__codelineno-10-78" href="#__codelineno-10-78"></a>        &quot;efficiency_store&quot;,
-<a id="__codelineno-10-79" name="__codelineno-10-79" href="#__codelineno-10-79"></a>        &quot;efficiency_dispatch&quot;,
-<a id="__codelineno-10-80" name="__codelineno-10-80" href="#__codelineno-10-80"></a>        &quot;standing_loss&quot;,
-<a id="__codelineno-10-81" name="__codelineno-10-81" href="#__codelineno-10-81"></a>        &quot;cyclic_state_of_charge&quot;,
-<a id="__codelineno-10-82" name="__codelineno-10-82" href="#__codelineno-10-82"></a>        &quot;state_of_charge_initial&quot;,
-<a id="__codelineno-10-83" name="__codelineno-10-83" href="#__codelineno-10-83"></a>        &quot;inflow&quot;,
-<a id="__codelineno-10-84" name="__codelineno-10-84" href="#__codelineno-10-84"></a>        &quot;marginal_cost&quot;,
-<a id="__codelineno-10-85" name="__codelineno-10-85" href="#__codelineno-10-85"></a>        &quot;marginal_cost_storage&quot;,
-<a id="__codelineno-10-86" name="__codelineno-10-86" href="#__codelineno-10-86"></a>        &quot;carrier&quot;,
-<a id="__codelineno-10-87" name="__codelineno-10-87" href="#__codelineno-10-87"></a>        &quot;active&quot;,
+<a id="__codelineno-10-71" name="__codelineno-10-71" href="#__codelineno-10-71"></a>    "Line": { "traits": ["investable", "passive_branch"], "attributes": ["length", "terrain_factor", "carrier", "active", "x"] },
+<a id="__codelineno-10-72" name="__codelineno-10-72" href="#__codelineno-10-72"></a>    "Link": { "traits": ["investable", "dispatchable", "committable"], "attributes": ["efficiency", "length", "terrain_factor", "carrier", "active", "marginal_cost", "marginal_cost_quadratic"] },
+<a id="__codelineno-10-73" name="__codelineno-10-73" href="#__codelineno-10-73"></a>    "Store": { "traits": ["investable"], "attributes": ["e_cyclic", "e_initial", "standing_loss", "marginal_cost", "marginal_cost_storage", "carrier", "active"] },
+<a id="__codelineno-10-74" name="__codelineno-10-74" href="#__codelineno-10-74"></a>    "StorageUnit": {
+<a id="__codelineno-10-75" name="__codelineno-10-75" href="#__codelineno-10-75"></a>      "traits": ["investable", "dispatchable"],
+<a id="__codelineno-10-76" name="__codelineno-10-76" href="#__codelineno-10-76"></a>      "attributes": [
+<a id="__codelineno-10-77" name="__codelineno-10-77" href="#__codelineno-10-77"></a>        "max_hours",
+<a id="__codelineno-10-78" name="__codelineno-10-78" href="#__codelineno-10-78"></a>        "efficiency_store",
+<a id="__codelineno-10-79" name="__codelineno-10-79" href="#__codelineno-10-79"></a>        "efficiency_dispatch",
+<a id="__codelineno-10-80" name="__codelineno-10-80" href="#__codelineno-10-80"></a>        "standing_loss",
+<a id="__codelineno-10-81" name="__codelineno-10-81" href="#__codelineno-10-81"></a>        "cyclic_state_of_charge",
+<a id="__codelineno-10-82" name="__codelineno-10-82" href="#__codelineno-10-82"></a>        "state_of_charge_initial",
+<a id="__codelineno-10-83" name="__codelineno-10-83" href="#__codelineno-10-83"></a>        "inflow",
+<a id="__codelineno-10-84" name="__codelineno-10-84" href="#__codelineno-10-84"></a>        "marginal_cost",
+<a id="__codelineno-10-85" name="__codelineno-10-85" href="#__codelineno-10-85"></a>        "marginal_cost_storage",
+<a id="__codelineno-10-86" name="__codelineno-10-86" href="#__codelineno-10-86"></a>        "carrier",
+<a id="__codelineno-10-87" name="__codelineno-10-87" href="#__codelineno-10-87"></a>        "active",
 <a id="__codelineno-10-88" name="__codelineno-10-88" href="#__codelineno-10-88"></a>      ],
 <a id="__codelineno-10-89" name="__codelineno-10-89" href="#__codelineno-10-89"></a>    },
-<a id="__codelineno-10-90" name="__codelineno-10-90" href="#__codelineno-10-90"></a>    &quot;Load&quot;: { &quot;traits&quot;: [], &quot;attributes&quot;: [&quot;p_set&quot;, &quot;q_set&quot;, &quot;sign&quot;, &quot;carrier&quot;, &quot;active&quot;] },
+<a id="__codelineno-10-90" name="__codelineno-10-90" href="#__codelineno-10-90"></a>    "Load": { "traits": [], "attributes": ["p_set", "q_set", "sign", "carrier", "active"] },
 <a id="__codelineno-10-91" name="__codelineno-10-91" href="#__codelineno-10-91"></a>  },
 <a id="__codelineno-10-92" name="__codelineno-10-92" href="#__codelineno-10-92"></a>
 <a id="__codelineno-10-93" name="__codelineno-10-93" href="#__codelineno-10-93"></a>  // One rule places every one of these: an attribute naming exactly one
-<a id="__codelineno-10-94" name="__codelineno-10-94" href="#__codelineno-10-94"></a>  // addressing coordinate is a column on that thing&#39;s table; anything more
-<a id="__codelineno-10-95" name="__codelineno-10-95" href="#__codelineno-10-95"></a>  // is long rows in inputs/. See &quot;where a value lives&quot;.
-<a id="__codelineno-10-96" name="__codelineno-10-96" href="#__codelineno-10-96"></a>  &quot;attributes&quot;: {
+<a id="__codelineno-10-94" name="__codelineno-10-94" href="#__codelineno-10-94"></a>  // addressing coordinate is a column on that thing's table; anything more
+<a id="__codelineno-10-95" name="__codelineno-10-95" href="#__codelineno-10-95"></a>  // is long rows in inputs/. See "where a value lives".
+<a id="__codelineno-10-96" name="__codelineno-10-96" href="#__codelineno-10-96"></a>  "attributes": {
 <a id="__codelineno-10-97" name="__codelineno-10-97" href="#__codelineno-10-97"></a>    // dims = {entity} -&gt; a column in dims/components/&lt;Type&gt;.parquet
-<a id="__codelineno-10-98" name="__codelineno-10-98" href="#__codelineno-10-98"></a>    &quot;capacity&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;entity&quot;], &quot;default&quot;: 0.0, &quot;unit&quot;: &quot;MW&quot; },
-<a id="__codelineno-10-99" name="__codelineno-10-99" href="#__codelineno-10-99"></a>    &quot;capacity_extendable&quot;: { &quot;dtype&quot;: &quot;BOOLEAN&quot;, &quot;dims&quot;: [&quot;entity&quot;], &quot;default&quot;: false },
-<a id="__codelineno-10-100" name="__codelineno-10-100" href="#__codelineno-10-100"></a>    &quot;capacity_max&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;entity&quot;], &quot;default&quot;: &quot;__inf__&quot; },
-<a id="__codelineno-10-101" name="__codelineno-10-101" href="#__codelineno-10-101"></a>    &quot;capital_cost&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;entity&quot;], &quot;default&quot;: 0.0, &quot;unit&quot;: &quot;EUR/MW&quot; },
-<a id="__codelineno-10-102" name="__codelineno-10-102" href="#__codelineno-10-102"></a>    &quot;carrier&quot;: { &quot;dtype&quot;: &quot;VARCHAR&quot;, &quot;dims&quot;: [&quot;entity&quot;], &quot;default&quot;: &quot;&quot; },
-<a id="__codelineno-10-103" name="__codelineno-10-103" href="#__codelineno-10-103"></a>    &quot;v_nom&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;entity&quot;], &quot;default&quot;: 1.0, &quot;unit&quot;: &quot;kV&quot; },
+<a id="__codelineno-10-98" name="__codelineno-10-98" href="#__codelineno-10-98"></a>    "capacity": { "dtype": "DOUBLE", "dims": ["entity"], "default": 0.0, "unit": "MW" },
+<a id="__codelineno-10-99" name="__codelineno-10-99" href="#__codelineno-10-99"></a>    "capacity_extendable": { "dtype": "BOOLEAN", "dims": ["entity"], "default": false },
+<a id="__codelineno-10-100" name="__codelineno-10-100" href="#__codelineno-10-100"></a>    "capacity_max": { "dtype": "DOUBLE", "dims": ["entity"], "default": "__inf__" },
+<a id="__codelineno-10-101" name="__codelineno-10-101" href="#__codelineno-10-101"></a>    "capital_cost": { "dtype": "DOUBLE", "dims": ["entity"], "default": 0.0, "unit": "EUR/MW" },
+<a id="__codelineno-10-102" name="__codelineno-10-102" href="#__codelineno-10-102"></a>    "carrier": { "dtype": "VARCHAR", "dims": ["entity"], "default": "" },
+<a id="__codelineno-10-103" name="__codelineno-10-103" href="#__codelineno-10-103"></a>    "v_nom": { "dtype": "DOUBLE", "dims": ["entity"], "default": 1.0, "unit": "kV" },
 <a id="__codelineno-10-104" name="__codelineno-10-104" href="#__codelineno-10-104"></a>
 <a id="__codelineno-10-105" name="__codelineno-10-105" href="#__codelineno-10-105"></a>    // beyond its address -&gt; inputs/&lt;attr&gt;.parquet, as long rows
-<a id="__codelineno-10-106" name="__codelineno-10-106" href="#__codelineno-10-106"></a>    &quot;p_max_pu&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;entity&quot;, &quot;snapshot&quot;, &quot;scenario&quot;], &quot;default&quot;: 1.0 },
-<a id="__codelineno-10-107" name="__codelineno-10-107" href="#__codelineno-10-107"></a>    &quot;marginal_cost&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;entity&quot;, &quot;snapshot&quot;, &quot;scenario&quot;], &quot;default&quot;: 0.0, &quot;breakpoints&quot;: true, &quot;unit&quot;: &quot;EUR/MWh&quot; },
-<a id="__codelineno-10-108" name="__codelineno-10-108" href="#__codelineno-10-108"></a>    &quot;efficiency&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;connection&quot;, &quot;snapshot&quot;], &quot;default&quot;: 1.0 },
+<a id="__codelineno-10-106" name="__codelineno-10-106" href="#__codelineno-10-106"></a>    "p_max_pu": { "dtype": "DOUBLE", "dims": ["entity", "snapshot", "scenario"], "default": 1.0 },
+<a id="__codelineno-10-107" name="__codelineno-10-107" href="#__codelineno-10-107"></a>    "marginal_cost": { "dtype": "DOUBLE", "dims": ["entity", "snapshot", "scenario"], "default": 0.0, "breakpoints": true, "unit": "EUR/MWh" },
+<a id="__codelineno-10-108" name="__codelineno-10-108" href="#__codelineno-10-108"></a>    "efficiency": { "dtype": "DOUBLE", "dims": ["connection", "snapshot"], "default": 1.0 },
 <a id="__codelineno-10-109" name="__codelineno-10-109" href="#__codelineno-10-109"></a>
-<a id="__codelineno-10-110" name="__codelineno-10-110" href="#__codelineno-10-110"></a>    // dims = {connection} -&gt; a column on the group&#39;s own table. Replaces the
+<a id="__codelineno-10-110" name="__codelineno-10-110" href="#__codelineno-10-110"></a>    // dims = {connection} -&gt; a column on the group's own table. Replaces the
 <a id="__codelineno-10-111" name="__codelineno-10-111" href="#__codelineno-10-111"></a>    // `payload` block, and gives `role` a dtype it never had
-<a id="__codelineno-10-112" name="__codelineno-10-112" href="#__codelineno-10-112"></a>    &quot;role&quot;: { &quot;dtype&quot;: &quot;VARCHAR&quot;, &quot;dims&quot;: [&quot;connection&quot;], &quot;description&quot;: &quot;Which end of the component this attachment is.&quot; },
+<a id="__codelineno-10-112" name="__codelineno-10-112" href="#__codelineno-10-112"></a>    "role": { "dtype": "VARCHAR", "dims": ["connection"], "description": "Which end of the component this attachment is." },
 <a id="__codelineno-10-113" name="__codelineno-10-113" href="#__codelineno-10-113"></a>
 <a id="__codelineno-10-114" name="__codelineno-10-114" href="#__codelineno-10-114"></a>    // dims = {snapshot} -&gt; a column on dims/snapshot.parquet, the axis file.
 <a id="__codelineno-10-115" name="__codelineno-10-115" href="#__codelineno-10-115"></a>    // The thing that started this: declared, typed, and no longer a column
 <a id="__codelineno-10-116" name="__codelineno-10-116" href="#__codelineno-10-116"></a>    // the PyPSA tool recognises by name
-<a id="__codelineno-10-117" name="__codelineno-10-117" href="#__codelineno-10-117"></a>    &quot;objective_weighting&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;snapshot&quot;], &quot;default&quot;: 1.0 },
-<a id="__codelineno-10-118" name="__codelineno-10-118" href="#__codelineno-10-118"></a>    &quot;generator_weighting&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;snapshot&quot;], &quot;default&quot;: 1.0 },
-<a id="__codelineno-10-119" name="__codelineno-10-119" href="#__codelineno-10-119"></a>    &quot;store_weighting&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;snapshot&quot;], &quot;default&quot;: 1.0 },
+<a id="__codelineno-10-117" name="__codelineno-10-117" href="#__codelineno-10-117"></a>    "objective_weighting": { "dtype": "DOUBLE", "dims": ["snapshot"], "default": 1.0 },
+<a id="__codelineno-10-118" name="__codelineno-10-118" href="#__codelineno-10-118"></a>    "generator_weighting": { "dtype": "DOUBLE", "dims": ["snapshot"], "default": 1.0 },
+<a id="__codelineno-10-119" name="__codelineno-10-119" href="#__codelineno-10-119"></a>    "store_weighting": { "dtype": "DOUBLE", "dims": ["snapshot"], "default": 1.0 },
 <a id="__codelineno-10-120" name="__codelineno-10-120" href="#__codelineno-10-120"></a>
 <a id="__codelineno-10-121" name="__codelineno-10-121" href="#__codelineno-10-121"></a>    // dims = {scenario} -&gt; dims/scenario.parquet, beside the axis labels
-<a id="__codelineno-10-122" name="__codelineno-10-122" href="#__codelineno-10-122"></a>    &quot;scenario_weighting&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;scenario&quot;], &quot;default&quot;: 1.0 },
+<a id="__codelineno-10-122" name="__codelineno-10-122" href="#__codelineno-10-122"></a>    "scenario_weighting": { "dtype": "DOUBLE", "dims": ["scenario"], "default": 1.0 },
 <a id="__codelineno-10-123" name="__codelineno-10-123" href="#__codelineno-10-123"></a>
-<a id="__codelineno-10-124" name="__codelineno-10-124" href="#__codelineno-10-124"></a>    // dims = {country} -&gt; dims/country.parquet, a mapping&#39;s own axis file
-<a id="__codelineno-10-125" name="__codelineno-10-125" href="#__codelineno-10-125"></a>    &quot;co2_budget&quot;: { &quot;dtype&quot;: &quot;DOUBLE&quot;, &quot;dims&quot;: [&quot;country&quot;], &quot;unit&quot;: &quot;t&quot; },
+<a id="__codelineno-10-124" name="__codelineno-10-124" href="#__codelineno-10-124"></a>    // dims = {country} -&gt; dims/country.parquet, a mapping's own axis file
+<a id="__codelineno-10-125" name="__codelineno-10-125" href="#__codelineno-10-125"></a>    "co2_budget": { "dtype": "DOUBLE", "dims": ["country"], "unit": "t" },
 <a id="__codelineno-10-126" name="__codelineno-10-126" href="#__codelineno-10-126"></a>  },
 <a id="__codelineno-10-127" name="__codelineno-10-127" href="#__codelineno-10-127"></a>
-<a id="__codelineno-10-128" name="__codelineno-10-128" href="#__codelineno-10-128"></a>  &quot;partial&quot;: [&quot;scenario&quot;],
-<a id="__codelineno-10-129" name="__codelineno-10-129" href="#__codelineno-10-129"></a>  &quot;meta&quot;: { &quot;format&quot;: &quot;pypsa-parquet&quot; },
+<a id="__codelineno-10-128" name="__codelineno-10-128" href="#__codelineno-10-128"></a>  "partial": ["scenario"],
+<a id="__codelineno-10-129" name="__codelineno-10-129" href="#__codelineno-10-129"></a>  "meta": { "format": "pypsa-parquet" },
 <a id="__codelineno-10-130" name="__codelineno-10-130" href="#__codelineno-10-130"></a>}
 </code></pre></div>
 <h3 id="what-the-example-exposes">What the example exposes<a class="headerlink" href="#what-the-example-exposes" title="Permanent link">&para;</a></h3>

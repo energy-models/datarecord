@@ -55,6 +55,8 @@
     
       <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
     
+      <link rel="stylesheet" href="../../static/extras.css">
+    
     <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -240,6 +242,25 @@
   
   
   
+  
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
     
   
   
@@ -279,6 +300,44 @@
         </a>
       </li>
     
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
   
 
       
@@ -386,6 +445,33 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -425,7 +511,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -447,14 +533,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -817,6 +903,60 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
       
@@ -968,19 +1108,25 @@
   
 
 
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 <h1 id="reading-a-record">Reading a record<a class="headerlink" href="#reading-a-record" title="Permanent link">&para;</a></h1>
 <h2 id="the-record-protocol">The <code>Record</code> protocol<a class="headerlink" href="#the-record-protocol" title="Permanent link">&para;</a></h2>
 <p>Everything a consumer codes against. It is read-only, and structural — a plain directory, a hundred-layer overlay, a record with pending edits and a framework's own object all satisfy it, and a consumer cannot tell which it holds (<a href="../../design/record/">design</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">record</span><span class="o">.</span><span class="n">schema</span>  <span class="c1"># what may exist: the axes, the attributes</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">&quot;scenario&quot;</span><span class="p">]</span>  <span class="c1"># axis frames, keyed by dim</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">record</span><span class="o">.</span><span class="n">entity_types</span><span class="p">[</span><span class="s2">&quot;Generator&quot;</span><span class="p">]</span>  <span class="c1"># wide member rows, keyed by component type</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">record</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="s2">&quot;connection&quot;</span><span class="p">]</span>  <span class="c1"># group rows, keyed by group — one frame each</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">&quot;p_max_pu&quot;</span><span class="p">]</span>  <span class="c1"># long input frames, keyed by attribute</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">record</span><span class="o">.</span><span class="n">outputs</span><span class="p">[</span><span class="s2">&quot;p&quot;</span><span class="p">]</span>  <span class="c1"># long result frames, keyed by attribute</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="s2">&quot;Generator&quot;</span><span class="p">)</span>  <span class="c1"># which axes each attribute actually uses</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"scenario"</span><span class="p">]</span>  <span class="c1"># axis frames, keyed by dim</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">record</span><span class="o">.</span><span class="n">entity_types</span><span class="p">[</span><span class="s2">"Generator"</span><span class="p">]</span>  <span class="c1"># wide member rows, keyed by component type</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">record</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span>  <span class="c1"># group rows, keyed by group — one frame each</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span>  <span class="c1"># long input frames, keyed by attribute</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">record</span><span class="o">.</span><span class="n">outputs</span><span class="p">[</span><span class="s2">"p"</span><span class="p">]</span>  <span class="c1"># long result frames, keyed by attribute</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="s2">"Generator"</span><span class="p">)</span>  <span class="c1"># which axes each attribute actually uses</span>
 </code></pre></div>
 <p>Every frame is a <code>narwhals.LazyFrame</code> — a plan, not data. Nothing is read until you <code>.collect()</code>, and listing the keys reads nothing at all (<a href="../../design/record/#frames">design</a>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">gens</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">entity_types</span><span class="p">[</span><span class="s2">&quot;Generator&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">gens</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">entity_types</span><span class="p">[</span><span class="s2">"Generator"</span><span class="p">]</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">()</span>
 </code></pre></div>
 <h2 id="wide-and-long">Wide and long<a class="headerlink" href="#wide-and-long" title="Permanent link">&para;</a></h2>
 <p><code>components</code>, <code>groups</code> and <code>dims</code> are <strong>wide</strong> — one row per thing. <code>attributes</code> and <code>outputs</code> are <strong>long</strong> — one row per value:</p>
@@ -991,11 +1137,11 @@
 <p>There is no <code>entity_type</code> column, in an attribute's key or a group's — <code>attributes["p_max_pu"]</code> and <code>groups["connection"]</code> each hold every type's rows together. An <code>entity</code> identifies one component <strong>across every type</strong>, so the type is something the record knows about a name rather than part of its address (<a href="../../design/format/#entity-is-unique-across-types">design</a>). To scope to one type, join <code>components</code> on <code>entity</code>.</p>
 <h2 id="flags"><code>flags</code><a class="headerlink" href="#flags" title="Permanent link">&para;</a></h2>
 <p><code>flags(ctype)</code> answers which axes an attribute's rows actually use, for a whole type in one query, so a consumer can plan its reads without opening a file:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">flags</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="s2">&quot;Generator&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">flags</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="s2">"Generator"</span><span class="p">)</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nb">set</span><span class="p">(</span><span class="n">flags</span><span class="p">)</span>  <span class="c1"># which attributes this type has at all</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="s2">&quot;timestep&quot;</span> <span class="ow">in</span> <span class="n">flags</span><span class="p">[</span><span class="s2">&quot;p_max_pu&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">varies</span>  <span class="c1"># some row sets it</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="s2">&quot;timestep&quot;</span> <span class="ow">in</span> <span class="n">flags</span><span class="p">[</span><span class="s2">&quot;p_max_pu&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">broadcast</span>  <span class="c1"># some row leaves it NULL</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">flags</span><span class="p">[</span><span class="s2">&quot;marginal_cost&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">breakpoints</span>  <span class="c1"># some row carries a curve</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="s2">"timestep"</span> <span class="ow">in</span> <span class="n">flags</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">varies</span>  <span class="c1"># some row sets it</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="s2">"timestep"</span> <span class="ow">in</span> <span class="n">flags</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">broadcast</span>  <span class="c1"># some row leaves it NULL</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">flags</span><span class="p">[</span><span class="s2">"marginal_cost"</span><span class="p">]</span><span class="o">.</span><span class="n">breakpoints</span>  <span class="c1"># some row carries a curve</span>
 </code></pre></div>
 <p>The two sets are <strong>not</strong> complements: a dim in both means this type's components disagree — some carry a per-timestep series, others a single constant row — which is the instruction to use both containers, not an ambiguity (<a href="../../design/record/#flags">design</a>).</p>
 <h2 id="reading-a-directory">Reading a directory<a class="headerlink" href="#reading-a-directory" title="Permanent link">&para;</a></h2>
@@ -1003,8 +1149,8 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Record</span><span class="p">,</span> <span class="n">connect</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">con</span> <span class="o">=</span> <span class="n">connect</span><span class="p">()</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">Record</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">&quot;s3://bucket/my-record/&quot;</span><span class="p">,</span> <span class="n">con</span><span class="p">)</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">&quot;p_nom&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">Record</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"s3://bucket/my-record/"</span><span class="p">,</span> <span class="n">con</span><span class="p">)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
 </code></pre></div>
 <p>The layout is the whole format (<a href="../../design/format/">design</a>):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>record/
@@ -1051,7 +1197,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../" class="md-footer__link md-footer__link--prev" aria-label="Previous: Usage">
+          <a href="../" class="md-footer__link md-footer__link--prev" aria-label="Previous: Index">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1061,7 +1207,7 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Usage
+                Index
               </div>
             </div>
           </a>

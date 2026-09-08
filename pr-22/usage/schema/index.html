@@ -55,6 +55,8 @@
     
       <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
     
+      <link rel="stylesheet" href="../../static/extras.css">
+    
     <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -240,6 +242,25 @@
   
   
   
+  
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
     
   
   
@@ -279,6 +300,44 @@
         </a>
       </li>
     
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
   
 
       
@@ -386,6 +445,33 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -425,7 +511,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -447,14 +533,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_2">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -784,6 +870,60 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
       
@@ -902,6 +1042,12 @@
   
 
 
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 <h1 id="the-schema">The schema<a class="headerlink" href="#the-schema" title="Permanent link">&para;</a></h1>
 <p>One schema per record, written down as <code>manifest.json</code> (<a href="../../design/schema/">design</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">narwhals</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nw</span>
@@ -910,34 +1056,34 @@
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">schema</span> <span class="o">=</span> <span class="n">Schema</span><span class="p">(</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">version</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">dimensions</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        <span class="s2">&quot;entity&quot;</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">()),</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="s2">&quot;entity_type&quot;</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Enum</span><span class="p">([</span><span class="s2">&quot;Bus&quot;</span><span class="p">,</span> <span class="s2">&quot;Generator&quot;</span><span class="p">,</span> <span class="s2">&quot;Link&quot;</span><span class="p">])),</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="s2">&quot;bus&quot;</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">()),</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="s2">&quot;scenario&quot;</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">()),</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        <span class="s2">&quot;timestep&quot;</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Datetime</span><span class="p">()),</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        <span class="s2">"entity"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">()),</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="s2">"entity_type"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Enum</span><span class="p">([</span><span class="s2">"Bus"</span><span class="p">,</span> <span class="s2">"Generator"</span><span class="p">,</span> <span class="s2">"Link"</span><span class="p">])),</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="s2">"bus"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">()),</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="s2">"scenario"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">()),</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        <span class="s2">"timestep"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Datetime</span><span class="p">()),</span>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="p">},</span>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="n">groups</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="s2">&quot;connection&quot;</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">:</span> <span class="s2">&quot;entity&quot;</span><span class="p">,</span> <span class="s2">&quot;bus&quot;</span><span class="p">:</span> <span class="s2">&quot;bus&quot;</span><span class="p">}),</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>        <span class="s2">&quot;entity_type&quot;</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;entity&quot;</span><span class="p">],</span> <span class="n">into</span><span class="o">=</span><span class="s2">&quot;entity_type&quot;</span><span class="p">),</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="s2">"connection"</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"bus"</span><span class="p">}),</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>        <span class="s2">"entity_type"</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">],</span> <span class="n">into</span><span class="o">=</span><span class="s2">"entity_type"</span><span class="p">),</span>
 <a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="p">},</span>
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="n">attributes</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>        <span class="s2">&quot;p_nom&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>            <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Float64</span><span class="p">(),</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">&quot;MW&quot;</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>        <span class="s2">"p_nom"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>            <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Float64</span><span class="p">(),</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"MW"</span>
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>        <span class="p">),</span>
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>        <span class="s2">&quot;carrier&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">(),</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">}),</span>
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>        <span class="s2">&quot;p_max_pu&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>            <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Float64</span><span class="p">(),</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">,</span> <span class="s2">&quot;scenario&quot;</span><span class="p">,</span> <span class="s2">&quot;timestep&quot;</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>        <span class="s2">"carrier"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">(),</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">}),</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>        <span class="s2">"p_max_pu"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>            <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Float64</span><span class="p">(),</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"scenario"</span><span class="p">,</span> <span class="s2">"timestep"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
 <a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>        <span class="p">),</span>
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>        <span class="s2">&quot;efficiency&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>            <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Float64</span><span class="p">(),</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;connection&quot;</span><span class="p">,</span> <span class="s2">&quot;timestep&quot;</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>        <span class="s2">"efficiency"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>            <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Float64</span><span class="p">(),</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"connection"</span><span class="p">,</span> <span class="s2">"timestep"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
 <a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>        <span class="p">),</span>
 <a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    <span class="p">},</span>
 <a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>    <span class="n">traits</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>        <span class="s2">&quot;dispatchable&quot;</span><span class="p">:</span> <span class="n">Trait</span><span class="p">(</span>
-<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>            <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;p_max_pu&quot;</span><span class="p">},</span> <span class="n">on</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity_type&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;Generator&quot;</span><span class="p">}}</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>        <span class="s2">"dispatchable"</span><span class="p">:</span> <span class="n">Trait</span><span class="p">(</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>            <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">"p_max_pu"</span><span class="p">},</span> <span class="n">on</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity_type"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Generator"</span><span class="p">}}</span>
 <a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>        <span class="p">)</span>
 <a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="p">},</span>
-<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>    <span class="n">partial</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">,</span> <span class="s2">&quot;bus&quot;</span><span class="p">,</span> <span class="s2">&quot;scenario&quot;</span><span class="p">},</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>    <span class="n">partial</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">,</span> <span class="s2">"scenario"</span><span class="p">},</span>
 <a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="p">)</span>
 </code></pre></div>
 <ul>
@@ -953,7 +1099,7 @@
 <p><code>schema.compatible_with(other)</code> answers whether layers written under <code>other</code> still read under <code>self</code>, returning one reason per incompatibility and an empty list when the change is compatible (<a href="../../design/schema/#versioning">design</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">reasons</span> <span class="o">=</span> <span class="n">new_schema</span><span class="o">.</span><span class="n">compatible_with</span><span class="p">(</span><span class="n">old_schema</span><span class="p">)</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">if</span> <span class="n">reasons</span><span class="p">:</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">reasons</span><span class="p">))</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">reasons</span><span class="p">))</span>
 </code></pre></div>
 
 

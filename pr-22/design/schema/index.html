@@ -55,6 +55,8 @@
     
       <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
     
+      <link rel="stylesheet" href="../../static/extras.css">
+    
     <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -241,6 +243,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -279,6 +300,44 @@
         </a>
       </li>
     
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
   
 
       
@@ -370,6 +429,33 @@
     
   
     Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
   
 
     
@@ -504,7 +590,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -526,14 +612,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1149,6 +1235,60 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
       
@@ -1450,19 +1590,25 @@
   
 
 
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 <h1 id="the-schema">The schema<a class="headerlink" href="#the-schema" title="Permanent link">&para;</a></h1>
 <p>One schema per record, and <code>manifest.json</code> is how it is written down — the two words name the same thing, the file and the object.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Dimension</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;One axis attribute data may vary over.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="sd">"""One axis attribute data may vary over."""</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">dtype</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># the axis labels&#39; type</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">dtype</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># the axis labels' type</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">within</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">()</span>  <span class="c1"># labels unique only within these dims</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># what the labels measure, if anything</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># what the axis is, in prose</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="k">class</span><span class="w"> </span><span class="nc">AttributeSpec</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;What shape one attribute&#39;s data may take.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="sd">"""What shape one attribute's data may take."""</span>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
 <a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="n">dtype</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># value column type</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="n">dims</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">()</span>  <span class="c1"># what addresses it: dims and groups</span>
@@ -1473,7 +1619,7 @@
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="k">class</span><span class="w"> </span><span class="nc">Group</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;Which tuples over several dims exist: a sparse subset of a dim product.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="sd">"""Which tuples over several dims exist: a sparse subset of a dim product."""</span>
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>
 <a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="n">over</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span>  <span class="c1"># coordinate name -&gt; the dim it draws labels from</span>
 <a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    <span class="n">into</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># each `over` tuple carries exactly one label of it</span>
@@ -1481,7 +1627,7 @@
 <a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>
 <a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>
 <a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="k">class</span><span class="w"> </span><span class="nc">Trait</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
-<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A bundle of attributes, and which entity types and components carry it.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">    </span><span class="sd">"""A bundle of attributes, and which entity types and components carry it."""</span>
 <a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>
 <a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    <span class="n">attributes</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">()</span>
 <a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    <span class="n">on</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># entity-type axis -&gt; the labels it applies to</span>
@@ -1518,17 +1664,17 @@ It does not declare which dims an <em>attribute</em> varies over (that is <a hre
 <p>What one attribute may do over those axes:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">attributes</span> <span class="o">=</span> <span class="p">{</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="c1"># a capacity to build: one decision, evaluated against every scenario</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="s2">&quot;p_nom&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">}),</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="s2">"p_nom"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"float64"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">}),</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="c1"># an availability profile: varies over time, and per scenario</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="s2">&quot;p_max_pu&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">,</span> <span class="s2">&quot;scenario&quot;</span><span class="p">,</span> <span class="s2">&quot;timestep&quot;</span><span class="p">}),</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="s2">&quot;marginal_cost&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>        <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">,</span> <span class="s2">&quot;scenario&quot;</span><span class="p">},</span> <span class="n">breakpoints</span><span class="o">=</span><span class="kc">True</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="s2">"p_max_pu"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"float64"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"scenario"</span><span class="p">,</span> <span class="s2">"timestep"</span><span class="p">}),</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="s2">"marginal_cost"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>        <span class="n">dtype</span><span class="o">=</span><span class="s2">"float64"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"scenario"</span><span class="p">},</span> <span class="n">breakpoints</span><span class="o">=</span><span class="kc">True</span>
 <a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="p">),</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="s2">&quot;carrier&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;str&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">}),</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="s2">"carrier"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"str"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">}),</span>
 <a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="c1"># addressed by a group rather than by the entity axis</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="s2">&quot;efficiency&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;connection&quot;</span><span class="p">,</span> <span class="s2">&quot;timestep&quot;</span><span class="p">}),</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="s2">"efficiency"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"float64"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"connection"</span><span class="p">,</span> <span class="s2">"timestep"</span><span class="p">}),</span>
 <a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="c1"># addressed by an axis alone: a weighting belongs to no component</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="s2">&quot;objective_weighting&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;float64&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;snapshot&quot;</span><span class="p">}),</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="s2">"objective_weighting"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"float64"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"snapshot"</span><span class="p">}),</span>
 <a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="p">}</span>
 </code></pre></div>
 <p><strong>Flat, one spec per attribute</strong>, with <a href="#traits">component types subscribing</a> rather than owning.
@@ -1559,11 +1705,11 @@ That is what keeps declaration from becoming a maintenance burden on the tool: t
 <h2 id="entity_type-the-axis-of-kinds"><code>entity_type</code> — the axis of kinds<a class="headerlink" href="#entity_type-the-axis-of-kinds" title="Permanent link">&para;</a></h2>
 <p>What kind of thing a component is, declared like any other classification: a <a href="#into-a-group-that-classifies">group <code>into</code></a> it, over <code>entity</code> alone.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">dimensions</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="s2">&quot;entity&quot;</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;str&quot;</span><span class="p">),</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="s2">&quot;entity_type&quot;</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">Enum</span><span class="p">([</span><span class="s2">&quot;Bus&quot;</span><span class="p">,</span> <span class="s2">&quot;Generator&quot;</span><span class="p">,</span> <span class="s2">&quot;Link&quot;</span><span class="p">])),</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="s2">"entity"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"str"</span><span class="p">),</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="s2">"entity_type"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">Enum</span><span class="p">([</span><span class="s2">"Bus"</span><span class="p">,</span> <span class="s2">"Generator"</span><span class="p">,</span> <span class="s2">"Link"</span><span class="p">])),</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">}</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">groups</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="s2">&quot;entity_type&quot;</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;entity&quot;</span><span class="p">],</span> <span class="n">into</span><span class="o">=</span><span class="s2">&quot;entity_type&quot;</span><span class="p">),</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="s2">"entity_type"</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">],</span> <span class="n">into</span><span class="o">=</span><span class="s2">"entity_type"</span><span class="p">),</span>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="p">}</span>
 </code></pre></div>
 <p><code>into</code> is what says every component carries exactly one type, and being over <code>entity</code> alone is what makes this axis <em>the</em> entity-type axis rather than one classification among several. At most one group may be that; a second has no resolved answer for what a component carries.
@@ -1581,13 +1727,13 @@ A tool that needs types requires the axis in the schema it builds — <a href=".
 <h2 id="traits">Traits<a class="headerlink" href="#traits" title="Permanent link">&para;</a></h2>
 <p>A trait is a named bundle of attributes, and which entity types carry them:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">traits</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="s2">&quot;investable&quot;</span><span class="p">:</span> <span class="n">Trait</span><span class="p">(</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;capital_cost&quot;</span><span class="p">,</span> <span class="s2">&quot;build_year&quot;</span><span class="p">,</span> <span class="s2">&quot;lifetime&quot;</span><span class="p">,</span> <span class="s2">&quot;capacity&quot;</span><span class="p">},</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="n">on</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity_type&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;Generator&quot;</span><span class="p">,</span> <span class="s2">&quot;Line&quot;</span><span class="p">,</span> <span class="s2">&quot;Link&quot;</span><span class="p">,</span> <span class="s2">&quot;Store&quot;</span><span class="p">}},</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="s2">"investable"</span><span class="p">:</span> <span class="n">Trait</span><span class="p">(</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">"capital_cost"</span><span class="p">,</span> <span class="s2">"build_year"</span><span class="p">,</span> <span class="s2">"lifetime"</span><span class="p">,</span> <span class="s2">"capacity"</span><span class="p">},</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="n">on</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity_type"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="s2">"Line"</span><span class="p">,</span> <span class="s2">"Link"</span><span class="p">,</span> <span class="s2">"Store"</span><span class="p">}},</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="p">),</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="s2">&quot;dispatchable&quot;</span><span class="p">:</span> <span class="n">Trait</span><span class="p">(</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;p_min_pu&quot;</span><span class="p">,</span> <span class="s2">&quot;p_max_pu&quot;</span><span class="p">,</span> <span class="s2">&quot;p_set&quot;</span><span class="p">},</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>        <span class="n">on</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity_type&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;Generator&quot;</span><span class="p">,</span> <span class="s2">&quot;Link&quot;</span><span class="p">}},</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="s2">"dispatchable"</span><span class="p">:</span> <span class="n">Trait</span><span class="p">(</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>        <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">"p_min_pu"</span><span class="p">,</span> <span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="s2">"p_set"</span><span class="p">},</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>        <span class="n">on</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity_type"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="s2">"Link"</span><span class="p">}},</span>
 <a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    <span class="p">),</span>
 <a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="p">}</span>
 </code></pre></div>
@@ -1608,14 +1754,14 @@ Two traits bundling one attribute is fine — they resolve to a set — since <a
 <h3 id="switch-a-trait-a-component-opts-into"><code>switch</code> — a trait a component opts into<a class="headerlink" href="#switch-a-trait-a-component-opts-into" title="Permanent link">&para;</a></h3>
 <p>A trait narrows two ways, and both are optional: <code>on</code> says which entity types carry it, <code>switch</code> names an attribute deciding it per component.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">traits</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="s2">&quot;committable&quot;</span><span class="p">:</span> <span class="n">Trait</span><span class="p">(</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>        <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;start_up_cost&quot;</span><span class="p">,</span> <span class="s2">&quot;min_up_time&quot;</span><span class="p">,</span> <span class="s2">&quot;ramp_limit_start_up&quot;</span><span class="p">},</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>        <span class="n">on</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity_type&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;Generator&quot;</span><span class="p">,</span> <span class="s2">&quot;Link&quot;</span><span class="p">}},</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>        <span class="n">switch</span><span class="o">=</span><span class="s2">&quot;committable&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="s2">"committable"</span><span class="p">:</span> <span class="n">Trait</span><span class="p">(</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>        <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">"start_up_cost"</span><span class="p">,</span> <span class="s2">"min_up_time"</span><span class="p">,</span> <span class="s2">"ramp_limit_start_up"</span><span class="p">},</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>        <span class="n">on</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity_type"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="s2">"Link"</span><span class="p">}},</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>        <span class="n">switch</span><span class="o">=</span><span class="s2">"committable"</span><span class="p">,</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="p">),</span>
 <a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="p">}</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">attributes</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="s2">&quot;committable&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;bool&quot;</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="s2">"committable"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"bool"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
 <a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="p">}</span>
 </code></pre></div>
 <p>The two never interact: <code>on</code> first, then <code>switch</code>. A trait with neither reaches every component of every type; one with a switch and no <code>on</code> reaches the components whose switch is true, whatever their type — which is how a record declaring no types still says that some components are committable and others are not.</p>
@@ -1628,9 +1774,9 @@ So the switch is a validation and query mechanism rather than a change to the vo
 <h2 id="groups">Groups<a class="headerlink" href="#groups" title="Permanent link">&para;</a></h2>
 <p>A group declares <strong>which tuples over several dims exist</strong>: a sparse subset of a dim product, with its own order.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">groups</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="s2">&quot;connection&quot;</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;entity&quot;</span><span class="p">:</span> <span class="s2">&quot;entity&quot;</span><span class="p">,</span> <span class="s2">&quot;bus&quot;</span><span class="p">:</span> <span class="s2">&quot;bus&quot;</span><span class="p">}),</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="s2">&quot;corridor&quot;</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;from&quot;</span><span class="p">:</span> <span class="s2">&quot;bus&quot;</span><span class="p">,</span> <span class="s2">&quot;to&quot;</span><span class="p">:</span> <span class="s2">&quot;bus&quot;</span><span class="p">}),</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="s2">&quot;country&quot;</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;bus&quot;</span><span class="p">],</span> <span class="n">into</span><span class="o">=</span><span class="s2">&quot;country&quot;</span><span class="p">),</span>  <span class="c1"># functional: one country per bus</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="s2">"connection"</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"bus"</span><span class="p">}),</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="s2">"corridor"</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">"from"</span><span class="p">:</span> <span class="s2">"bus"</span><span class="p">,</span> <span class="s2">"to"</span><span class="p">:</span> <span class="s2">"bus"</span><span class="p">}),</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="s2">"country"</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">[</span><span class="s2">"bus"</span><span class="p">],</span> <span class="n">into</span><span class="o">=</span><span class="s2">"country"</span><span class="p">),</span>  <span class="c1"># functional: one country per bus</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">}</span>
 </code></pre></div>
 <p>Not a dim. A dim declares an axis of labels and a NULL in its column means "every value of it"; a group declares which <em>combinations</em> are there, which no axis can say because the product is sparse — a component attaches to two buses out of a thousand.</p>
@@ -1659,8 +1805,8 @@ A functional group's <code>into</code> dim is not a membership key: it is an ord
 <h3 id="addressing-dims-x">Addressing: <code>dims: [X]</code><a class="headerlink" href="#addressing-dims-x" title="Permanent link">&para;</a></h3>
 <p>An attribute names a group in its <code>dims</code> exactly as it names a dim, and one rule resolves both:</p>
 <p><strong><code>X</code> is the dim <code>X</code> if one is declared, and otherwise the group <code>X</code> expanded to its <code>over</code> coordinates.</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="s2">&quot;efficiency&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;connection&quot;</span><span class="p">,</span> <span class="s2">&quot;timestep&quot;</span><span class="p">}),</span>  <span class="c1"># entity | bus | timestep</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="s2">&quot;co2_budget&quot;</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;country&quot;</span><span class="p">}),</span>  <span class="c1"># country: the dim, not the group</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="s2">"efficiency"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"connection"</span><span class="p">,</span> <span class="s2">"timestep"</span><span class="p">}),</span>  <span class="c1"># entity | bus | timestep</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="s2">"co2_budget"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"country"</span><span class="p">}),</span>  <span class="c1"># country: the dim, not the group</span>
 </code></pre></div>
 <p>A group with no dim of its name has no other spelling, so expanding it is the only way to declare an attribute over it, and the expansion is what keeps <a href="#partial-the-granularity-of-an-override">the fold's key</a> one fixed tuple.</p>
 <p><strong>A group may share a dim's name</strong>, and there the dim wins. For a functional group that is the natural spelling: the dim is the axis of labels, the group is the relation between it and <code>over</code>, and shadowing is what should happen — a value that is genuinely per-country is <code>dims: [country]</code>, the dim, which is what the axis file exists for. Expanding instead would give <code>dims: [bus]</code> written so the reader has to look up the group's <code>over</code> to see it.</p>
@@ -1673,8 +1819,8 @@ A functional group's <code>into</code> dim is not a membership key: it is an ord
 <p>A dim whose labels identify a point only <em>within</em> another dim's value.
 Multi-period time is the case: the axis is a <code>(period, timestep)</code> pair, so <code>t1</code> alone names nothing and two periods may hold different timesteps.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">dimensions</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="s2">&quot;period&quot;</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;int64&quot;</span><span class="p">),</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="s2">&quot;timestep&quot;</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;datetime64[us]&quot;</span><span class="p">,</span> <span class="n">within</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;period&quot;</span><span class="p">}),</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="s2">"period"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"int64"</span><span class="p">),</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="s2">"timestep"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"datetime64[us]"</span><span class="p">,</span> <span class="n">within</span><span class="o">=</span><span class="p">{</span><span class="s2">"period"</span><span class="p">}),</span>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="p">}</span>
 </code></pre></div>
 <p><code>within</code> makes <code>timestep.parquet</code> carry a <code>period</code> column, and the axis key <code>(period, timestep)</code> rather than <code>timestep</code>.
@@ -1713,7 +1859,7 @@ The remaining question is at what granularity along each axis, and it splits fro
   <code>scenario</code> is patchable value by value; <code>timestep</code> is not, for any attribute.
   <code>schema.partial</code>.</li>
 </ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">partial</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;scenario&quot;</span><span class="p">}</span>  <span class="c1"># timestep absent, so a patch restates the series</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">partial</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"scenario"</span><span class="p">}</span>  <span class="c1"># timestep absent, so a patch restates the series</span>
 </code></pre></div>
 <p>A dim outside <code>partial</code> is one a layer owns entirely once it touches it: overriding one timestep of <code>p_max_pu</code> means carrying that component's <em>entire</em> series, because a partial series would resolve across two layers and produce a curve with a hole.
 The reason is a consumer's rather than the format's — a framework that splits constant from varying data cannot receive half a series — which is why it belongs to the axis: it is true of every attribute varying over it.</p>

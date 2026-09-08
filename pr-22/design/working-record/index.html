@@ -55,6 +55,8 @@
     
       <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
     
+      <link rel="stylesheet" href="../../static/extras.css">
+    
     <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
@@ -241,6 +243,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -279,6 +300,44 @@
         </a>
       </li>
     
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
   
 
       
@@ -370,6 +429,33 @@
     
   
     Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
   
 
     
@@ -504,7 +590,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -526,14 +612,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1076,6 +1162,60 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
       
@@ -1304,11 +1444,17 @@
   
 
 
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 <h1 id="workingrecord"><code>WorkingRecord</code><a class="headerlink" href="#workingrecord" title="Permanent link">&para;</a></h1>
 <p><a href="../record/"><code>Record</code></a> is read-only, and <a href="../writing/"><code>write_record</code></a> writes a whole record from a source that already knows everything it will contain.
 Neither covers editing: adding components, removing them, setting an attribute on a group.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">WorkingRecord</span><span class="p">:</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;A `Record` that accepts edits and materialises them on commit.&quot;&quot;&quot;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="sd">"""A `Record` that accepts edits and materialises them on commit."""</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base</span><span class="p">:</span> <span class="n">Record</span><span class="p">,</span> <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
@@ -1318,8 +1464,8 @@ Neither covers editing: adding components, removing them, setting an attribute o
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>  <span class="c1"># scalar | sequence | mapping | series | frame | nw.Expr</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="o">*</span><span class="p">,</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        <span class="n">entity</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;inputs&quot;</span><span class="p">,</span> <span class="s2">&quot;outputs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;inputs&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        <span class="n">indexed_by</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># what a series&#39; index holds</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"inputs"</span><span class="p">,</span> <span class="s2">"outputs"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"inputs"</span><span class="p">,</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        <span class="n">indexed_by</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># what a series' index holds</span>
 <a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="o">**</span><span class="n">dims</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 <a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
@@ -1389,16 +1535,16 @@ That is what makes <code>remove("Generator", ["x"])</code> followed by <code>add
 <p>The crucial property: <strong>an edit is expressed in the format's own terms.</strong> Setting <code>p_nom</code> on twenty components <em>is</em> twenty <code>inputs/p_nom.parquet</code> rows, which is what a patch layer would hold anyway.
 So a staged edit is already the row it will be written as, and <code>commit()</code> is a concatenation rather than a translation.</p>
 <h2 id="set"><code>set</code><a class="headerlink" href="#set" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;p_nom&quot;</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;wind1&quot;</span><span class="p">,</span> <span class="s2">&quot;wind2&quot;</span><span class="p">])</span>  <span class="c1"># broadcast</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;p_nom&quot;</span><span class="p">,</span> <span class="p">[</span><span class="mf">150.0</span><span class="p">,</span> <span class="mf">80.0</span><span class="p">],</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;wind1&quot;</span><span class="p">,</span> <span class="s2">&quot;wind2&quot;</span><span class="p">])</span>  <span class="c1"># per name</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;p_nom&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;wind1&quot;</span><span class="p">:</span> <span class="mf">150.0</span><span class="p">,</span> <span class="s2">&quot;wind2&quot;</span><span class="p">:</span> <span class="mf">80.0</span><span class="p">})</span>  <span class="c1"># per name, keyed</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;p_max_pu&quot;</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;wind1&quot;</span><span class="p">])</span>  <span class="c1"># long frame</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;p_max_pu&quot;</span><span class="p">,</span> <span class="n">series</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;wind1&quot;</span><span class="p">],</span> <span class="n">indexed_by</span><span class="o">=</span><span class="s2">&quot;snapshot&quot;</span><span class="p">)</span>  <span class="c1"># a series</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;icon&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;Generator&quot;</span><span class="p">:</span> <span class="s2">&quot;turbine&quot;</span><span class="p">})</span>  <span class="c1"># keyed by the type axis</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;efficiency&quot;</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;dc&quot;</span><span class="p">],</span> <span class="n">bus</span><span class="o">=</span><span class="s2">&quot;north&quot;</span><span class="p">)</span>  <span class="c1"># a connection</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;p_nom&quot;</span><span class="p">,</span> <span class="mf">200.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;wind1&quot;</span><span class="p">],</span> <span class="n">scenario</span><span class="o">=</span><span class="s2">&quot;high&quot;</span><span class="p">)</span>  <span class="c1"># scoped</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;p_nom&quot;</span><span class="p">,</span> <span class="n">nw</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;value&quot;</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.1</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;wind1&quot;</span><span class="p">])</span>  <span class="c1"># derived</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;p&quot;</span><span class="p">,</span> <span class="n">solved</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;outputs&quot;</span><span class="p">)</span>  <span class="c1"># a result</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">])</span>  <span class="c1"># broadcast</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="p">[</span><span class="mf">150.0</span><span class="p">,</span> <span class="mf">80.0</span><span class="p">],</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">])</span>  <span class="c1"># per name</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"wind1"</span><span class="p">:</span> <span class="mf">150.0</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">:</span> <span class="mf">80.0</span><span class="p">})</span>  <span class="c1"># per name, keyed</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">])</span>  <span class="c1"># long frame</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="n">series</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">],</span> <span class="n">indexed_by</span><span class="o">=</span><span class="s2">"snapshot"</span><span class="p">)</span>  <span class="c1"># a series</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"icon"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"Generator"</span><span class="p">:</span> <span class="s2">"turbine"</span><span class="p">})</span>  <span class="c1"># keyed by the type axis</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"efficiency"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"dc"</span><span class="p">],</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"north"</span><span class="p">)</span>  <span class="c1"># a connection</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">200.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">],</span> <span class="n">scenario</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>  <span class="c1"># scoped</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="n">nw</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">"value"</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.1</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">])</span>  <span class="c1"># derived</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p"</span><span class="p">,</span> <span class="n">solved</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">"outputs"</span><span class="p">)</span>  <span class="c1"># a result</span>
 </code></pre></div>
 <p><strong>There is no <code>entity_type</code> keyword.</strong> A name identifies one component across every type (<a href="../format/#entity-is-unique-across-types">entity is unique across types</a>), so the type is a property of the name rather than something the caller supplies: the record looks it up in the resolved components map, which is the same read <code>entity</code> is already <a href="#validation">checked against</a>.
 That removes the parameter that had to be either given or inferred in every earlier spelling, and with it the class of error where a name was staged under the wrong type.</p>
@@ -1469,8 +1615,8 @@ An index that says neither holds names.</p>
 An unnamed index of timestamps is therefore read as names and fails the <a href="#validation">member check</a>, which is the loud version of the same mistake.</p>
 <p><code>entity=None</code> means every component of that type the record currently resolves, which is a read, so it includes earlier pending edits.</p>
 <h2 id="an-nwexpr-value-derived-from-the-current-one">An <code>nw.Expr</code> value — derived from the current one<a class="headerlink" href="#an-nwexpr-value-derived-from-the-current-one" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;p_nom&quot;</span><span class="p">,</span> <span class="n">nw</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;value&quot;</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.1</span><span class="p">)</span>  <span class="c1"># scale up every p_nom</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;p_max_pu&quot;</span><span class="p">,</span> <span class="n">nw</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">&quot;value&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">upper</span><span class="o">=</span><span class="mf">0.9</span><span class="p">),</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;wind1&quot;</span><span class="p">])</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="n">nw</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">"value"</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.1</span><span class="p">)</span>  <span class="c1"># scale up every p_nom</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="n">nw</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">"value"</span><span class="p">)</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">upper</span><span class="o">=</span><span class="mf">0.9</span><span class="p">),</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">])</span>
 </code></pre></div>
 <p>A fifth <code>value</code> form rather than a second method.
 Nothing else a caller passes is an <code>nw.Expr</code>, so the dispatch is unambiguous — unlike the series-versus-mapping tie, which <a href="#set"><code>set</code></a> has the caller settle rather than guessing at.</p>
@@ -1491,11 +1637,11 @@ That asymmetry is the whole of the rule: a broad derived edit over a type where 
 <h2 id="results-through-kindoutputs">Results through <code>kind="outputs"</code><a class="headerlink" href="#results-through-kindoutputs" title="Permanent link">&para;</a></h2>
 <p>A tool solves against a record and hands back what it computed:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">record</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">con</span><span class="p">)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">&quot;p_max_pu&quot;</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;wind1&quot;</span><span class="p">])</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">])</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">model</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">build</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>  <span class="c1"># solve the edited record</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">model</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="k">for</span> <span class="n">attr</span><span class="p">,</span> <span class="n">frame</span> <span class="ow">in</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">results</span><span class="p">(</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">attr</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;outputs&quot;</span><span class="p">)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">record</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">attr</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">"outputs"</span><span class="p">)</span>
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">record</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">NewChild</span><span class="p">())</span>  <span class="c1"># one layer, inputs and results together</span>
 </code></pre></div>
 <p>In memory only: the results live in the staging area beside the input edits and become part of the same layer at commit, so a solve produces one new record rather than a record plus a separate results record.
@@ -1518,11 +1664,11 @@ Editing an input after attaching results leaves results describing a record that
 <h2 id="accessors-not-implemented">Accessors — <strong>not implemented</strong><a class="headerlink" href="#accessors-not-implemented" title="Permanent link">&para;</a></h2>
 <p><code>set</code> is the whole of the edit API.
 This section is the intended spelling for an accessor over it, not something the package provides.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">record</span><span class="p">[</span><span class="s2">&quot;Generator&quot;</span><span class="p">][</span><span class="s2">&quot;p_nom&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">150.0</span>  <span class="c1"># every generator</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">record</span><span class="p">[</span><span class="s2">&quot;Generator&quot;</span><span class="p">][</span><span class="s2">&quot;p_nom&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;wind1&quot;</span><span class="p">,</span> <span class="s2">&quot;wind2&quot;</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">150.0</span><span class="p">,</span> <span class="mf">80.0</span><span class="p">]</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">record</span><span class="p">[</span><span class="s2">&quot;Generator&quot;</span><span class="p">][</span><span class="s2">&quot;p_max_pu&quot;</span><span class="p">,</span> <span class="s2">&quot;wind1&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">series</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">record</span><span class="p">[</span><span class="s2">&quot;Link&quot;</span><span class="p">,</span> <span class="s2">&quot;north&quot;</span><span class="p">][</span><span class="s2">&quot;efficiency&quot;</span><span class="p">,</span> <span class="s2">&quot;dc&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.9</span>  <span class="c1"># a connection</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">record</span><span class="p">[</span><span class="s2">&quot;Generator&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;scenario&quot;</span><span class="p">:</span> <span class="s2">&quot;high&quot;</span><span class="p">}][</span><span class="s2">&quot;p_nom&quot;</span><span class="p">,</span> <span class="s2">&quot;wind1&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">200.0</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">record</span><span class="p">[</span><span class="s2">"Generator"</span><span class="p">][</span><span class="s2">"p_nom"</span><span class="p">]</span> <span class="o">=</span> <span class="mf">150.0</span>  <span class="c1"># every generator</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">record</span><span class="p">[</span><span class="s2">"Generator"</span><span class="p">][</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span><span class="mf">150.0</span><span class="p">,</span> <span class="mf">80.0</span><span class="p">]</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">record</span><span class="p">[</span><span class="s2">"Generator"</span><span class="p">][</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="s2">"wind1"</span><span class="p">]</span> <span class="o">=</span> <span class="n">series</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">record</span><span class="p">[</span><span class="s2">"Link"</span><span class="p">,</span> <span class="s2">"north"</span><span class="p">][</span><span class="s2">"efficiency"</span><span class="p">,</span> <span class="s2">"dc"</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.9</span>  <span class="c1"># a connection</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">record</span><span class="p">[</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"scenario"</span><span class="p">:</span> <span class="s2">"high"</span><span class="p">}][</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="s2">"wind1"</span><span class="p">]</span> <span class="o">=</span> <span class="mf">200.0</span>
 </code></pre></div>
 <p>The component type in the subscript is a <strong>scope</strong>, not part of the key it writes: it selects which members <code>entity</code> resolves against and which <code>AttributeSpec</code> a bare attribute means, then <code>set</code> <a href="../format/#entity-is-unique-across-types">addresses the names it produced</a>.
 So <code>record["Generator"]["p_nom"] = 150.0</code> is "every Generator", which <code>set("p_nom", 150.0)</code> alone cannot say — that being the one thing an accessor would add now that the keyword is gone, and the reason this spelling survives the change.</p>
@@ -1533,8 +1679,8 @@ The read must be scoped by both the component type and the names — an accessor
 <p>It deliberately does not reproduce a dataframe library's full indexing grammar — no boolean masks, no slices — because a record is not a dataframe and a partial imitation invites the assumption that the rest works.
 Omitting <code>entity</code> is how "all" is spelled.</p>
 <h2 id="add-remove"><code>add</code> / <code>remove</code><a class="headerlink" href="#add-remove" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">record</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">&quot;Generator&quot;</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span>  <span class="c1"># wide, in dims/entity_type/ shape</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">record</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">&quot;Generator&quot;</span><span class="p">,</span> <span class="p">[</span><span class="s2">&quot;old_coal&quot;</span><span class="p">])</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">record</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span>  <span class="c1"># wide, in dims/entity_type/ shape</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">record</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"old_coal"</span><span class="p">])</span>
 </code></pre></div>
 <p><code>add</code> takes a wide frame and splits it: attributes addressed by <code>entity</code> alone stay in <code>dims/entity_type/</code>, ones varying beyond it become <code>inputs/</code> rows, and ones addressed by a <a href="../schema/#groups">group</a> go to that group's table — per <a href="../format/#where-a-value-lives">where a value lives</a>.
 Which is which comes from the schema, so <code>add</code> needs no framework registry.
@@ -1548,8 +1694,8 @@ Membership is not reducible to attribute values.</p>
 <p><code>remove</code> stages a tombstone on the <a href="../format/#the-entity-axis">entity axis</a>, one row per entity and no dim scope: a component <a href="../schema/#existence-does-not-vary-along-a-dim">exists or it does not</a>, so there is no axis to scope a deletion along.
 It need not enumerate what it deletes: <a href="../layers/#deletion">the fold</a> applies it to every attribute, and to every row of a group over <code>entity</code> — deleting a component deletes its connections with it.</p>
 <h2 id="add_group-remove_group"><code>add_group</code> / <code>remove_group</code><a class="headerlink" href="#add_group-remove_group" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">record</span><span class="o">.</span><span class="n">add_group</span><span class="p">(</span><span class="s2">&quot;connection&quot;</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span>  <span class="c1"># the group&#39;s own coordinates</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">record</span><span class="o">.</span><span class="n">remove_group</span><span class="p">(</span><span class="s2">&quot;connection&quot;</span><span class="p">,</span> <span class="p">[(</span><span class="s2">&quot;dc&quot;</span><span class="p">,</span> <span class="s2">&quot;north&quot;</span><span class="p">)])</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">record</span><span class="o">.</span><span class="n">add_group</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span>  <span class="c1"># the group's own coordinates</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">record</span><span class="o">.</span><span class="n">remove_group</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[(</span><span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"north"</span><span class="p">)])</span>
 </code></pre></div>
 <p>The one staging path every declared <a href="../schema/#groups">group</a> writes through. There is no <code>connect</code>/<code>disconnect</code> beside it: <code>connection</code> is one group among however many a schema declares, and a call naming it would put one framework's vocabulary in the record layer.</p>
 <p><code>frame</code> carries <code>group</code>'s own coordinate columns (<code>entity</code> and <code>bus</code> for <code>connection</code>, <code>from</code> and <code>to</code> for a <code>corridor</code>) plus whatever else the group's file holds — an attribute <a href="../format/#where-a-value-lives">addressed by the group</a>, such as PyPSA's <code>role</code>. <code>keys</code> is a tuple per row in the group's <a href="../schema/#into-a-group-that-classifies">key</a> order.</p>
@@ -1613,10 +1759,10 @@ These are caught when the edit is <strong>staged</strong>, not at commit — a c
 The membership read this needs is the one <a href="#set"><code>set</code></a> already performs, so deriving the type costs nothing beyond it.</p>
 <h2 id="staging">Staging<a class="headerlink" href="#staging" title="Permanent link">&para;</a></h2>
 <p>Staged rows live in DuckDB tables on the record's own connection:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">staged_inputs_</span><span class="o">&lt;</span><span class="n">attr</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">id</span><span class="o">&gt;</span><span class="w">   </span><span class="p">(</span><span class="o">&lt;</span><span class="n">that</span><span class="w"> </span><span class="n">attribute</span><span class="s1">&#39;s long columns&gt;);  -- no entity_type</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="s1">CREATE TABLE staged_outputs_&lt;attr&gt;_&lt;id&gt;  (&lt;that attribute&#39;</span><span class="n">s</span><span class="w"> </span><span class="n">long</span><span class="w"> </span><span class="n">columns</span><span class="o">&gt;</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">staged_inputs_</span><span class="o">&lt;</span><span class="n">attr</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">id</span><span class="o">&gt;</span><span class="w">   </span><span class="p">(</span><span class="o">&lt;</span><span class="n">that</span><span class="w"> </span><span class="n">attribute</span><span class="s1">'s long columns&gt;);  -- no entity_type</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="s1">CREATE TABLE staged_outputs_&lt;attr&gt;_&lt;id&gt;  (&lt;that attribute'</span><span class="n">s</span><span class="w"> </span><span class="n">long</span><span class="w"> </span><span class="n">columns</span><span class="o">&gt;</span><span class="p">);</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">staged_axis_</span><span class="o">&lt;</span><span class="n">dim</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">id</span><span class="o">&gt;</span><span class="w">      </span><span class="p">(</span><span class="o">&lt;</span><span class="n">the</span><span class="w"> </span><span class="n">axis</span><span class="w"> </span><span class="k">key</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="p">...,</span><span class="w"> </span><span class="n">deleted</span><span class="w"> </span><span class="nb">BOOLEAN</span><span class="p">);</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">staged_members_</span><span class="o">&lt;</span><span class="k">Type</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">id</span><span class="o">&gt;</span><span class="w">  </span><span class="p">(</span><span class="n">entity</span><span class="p">,</span><span class="w"> </span><span class="n">deleted</span><span class="w"> </span><span class="nb">BOOLEAN</span><span class="p">,</span><span class="w"> </span><span class="o">&lt;</span><span class="n">that</span><span class="w"> </span><span class="k">type</span><span class="err">&#39;</span><span class="n">s</span><span class="w"> </span><span class="n">columns</span><span class="o">&gt;</span><span class="p">);</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">staged_members_</span><span class="o">&lt;</span><span class="k">Type</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">id</span><span class="o">&gt;</span><span class="w">  </span><span class="p">(</span><span class="n">entity</span><span class="p">,</span><span class="w"> </span><span class="n">deleted</span><span class="w"> </span><span class="nb">BOOLEAN</span><span class="p">,</span><span class="w"> </span><span class="o">&lt;</span><span class="n">that</span><span class="w"> </span><span class="k">type</span><span class="err">'</span><span class="n">s</span><span class="w"> </span><span class="n">columns</span><span class="o">&gt;</span><span class="p">);</span>
 <a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">staged_</span><span class="o">&lt;</span><span class="k">group</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">id</span><span class="o">&gt;</span><span class="w">         </span><span class="p">(</span><span class="o">&lt;</span><span class="k">group</span><span class="w"> </span><span class="n">coordinates</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="p">...,</span><span class="w"> </span><span class="n">deleted</span><span class="w"> </span><span class="nb">BOOLEAN</span><span class="p">);</span>
 </code></pre></div>
 <p><strong>Every table is shaped like the file it becomes</strong>, which is the rule the rest of this section is consequences of. So there is no table whose columns are a union over things the format keeps apart, and a column the schema does not declare has nowhere to go — <a href="#add-remove"><code>add</code></a> rejects one rather than widening a table to fit it, there being no declared dtype to give it.</p>
