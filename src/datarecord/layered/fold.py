@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """A node's resolved view: the folded axes, groups and owner map, and the reads.
 
 A `Fold` is what `materialise` wrote and what a live resolution computes: the

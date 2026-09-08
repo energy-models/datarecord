@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Design
 
 Status: Draft · Owner: Jonas Hörsch · Date: 2026-08-05

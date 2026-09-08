@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Proposal: staging as a layer — one fold, two sources
 
 Status: **Implemented** · Drafted 2026-09-01 · Implemented 2026-09-01

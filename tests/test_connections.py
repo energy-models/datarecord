@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Connections as bus-keyed rows, and `bus` in the inputs key.
 
 Notes

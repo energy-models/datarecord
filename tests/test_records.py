@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """`Record`, and the `RecordLike` protocol it is one implementation of.
 
 Notes

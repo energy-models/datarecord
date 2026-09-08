@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Proposal: staging without `_seq`
 
 Status: **Implemented** · Drafted 2026-09-02 · Implemented 2026-09-02

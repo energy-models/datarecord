@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Hand-built patch layers, since the v2 write path does not exist.
 
 Notes

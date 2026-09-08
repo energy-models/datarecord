@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Proposal: dims, mappings, groups and traits
 
 Status: **Landed** · Drafted 2026-08-15 · Landed 2026-08-16
