@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Proposal: a member file holds values, and nothing else
 
 Status: **Landed** · Drafted 2026-09-02 · Landed 2026-09-04

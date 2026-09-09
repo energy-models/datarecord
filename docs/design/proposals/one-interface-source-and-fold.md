@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Proposal: one interface, two objects — a source is its own rows, a fold is the resolution
 
 Status: **Landed** · Drafted 2026-09-02 · Landed 2026-09-04

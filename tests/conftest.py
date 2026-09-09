@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 import pytest
 
 from datarecord import duck

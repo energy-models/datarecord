@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Layer keys beyond `scenario`, resolved through a real record.
 
 What `partial` *means* as a declaration is pinned in `test_schema.py`; here it

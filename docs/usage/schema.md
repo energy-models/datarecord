@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # The schema
 
 One schema per record, written down as `manifest.json` ([design](../design/schema.md)).

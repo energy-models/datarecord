@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Proposal: one `Record`, over a `NodeCache`
 
 Status: **Implemented** · Drafted 2026-09-01 · Landed 2026-09-01

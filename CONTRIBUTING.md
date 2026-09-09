@@ -1,6 +1,31 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 # Contributing
 
-Contribution rules and conventions for datarecord.
+<!-- --8<-- [start:docs] -->
+
+Contribution rules and conventions for datarecord. We welcome all contributors —
+a good place to start is the issues tagged
+["help wanted"](https://github.com/energy-models/datarecord/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
+and
+["good first issue"](https://github.com/energy-models/datarecord/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+
+By opening a pull request you represent that your contribution is your own
+original work and that you agree to license it under the project's MIT license.
+
+## Reporting issues
+
+Open a GitHub issue to report a bug or request a feature:
+
+- [Report a bug](https://github.com/energy-models/datarecord/issues/new?template=BUG-REPORT.yml)
+  — include a full traceback where there is one.
+- [Request a feature](https://github.com/energy-models/datarecord/issues/new?template=FEATURE-REQUEST.yml).
+- [Report a documentation problem](https://github.com/energy-models/datarecord/issues/new?template=DOCS.yml).
+- [Anything else](https://github.com/energy-models/datarecord/issues/new).
 
 ## Development workflow
 
@@ -16,12 +41,16 @@ Contribution rules and conventions for datarecord.
 ## Project conventions
 
 - Branch off `main` for every change and open pull requests via the GitHub CLI
-  (`gh`).
+  (`gh`). A one-line commit message is fine for a small change; a larger one gets
+  a summary line of at most 50 characters, a blank line, then a body describing
+  what changed and why. Before opening a pull request, check you have updated
+  `CHANGELOG.md`, added or updated documentation, and added tests for new
+  functionality; give the pull request a clear summary of the change.
 - Write tests for new features and bug fixes under `tests/` as `test_*.py`,
   reusing the shared fixtures in `tests/fixtures.py` and `tests/conftest.py`
   where useful. Run the tests after making changes and make sure they pass.
-- [`docs/design/`](docs/design/) is the authoritative design, published at
-  <https://energy-models.github.io/datarecord/design/>. Cite its pages from a
+- The [design pages](https://energy-models.github.io/datarecord/design/) are the
+  authoritative design. Cite them from a
   docstring's numpydoc `Notes` section rather than restating the argument — a
   comment that re-argues the design is a defect. When behaviour changes, update
   the page, not just the code. (`Notes`, not `References`: numpydoc discourages
@@ -33,7 +62,7 @@ Contribution rules and conventions for datarecord.
   `https://energy-models.github.io/datarecord/pr-<N>/`, linked from a comment on
   the pull request itself; it is removed when the pull request closes, and a
   weekly job sweeps any that outlive it. Both live in
-  [`.github/workflows/docs.yml`](.github/workflows/docs.yml).
+  `.github/workflows/docs.yml`.
 - No tool import may leak into core `datarecord`
   ([module layout](https://energy-models.github.io/datarecord/design/module-layout/)):
   everything framework-specific lives under `datarecord/tools/` behind an
@@ -52,8 +81,26 @@ with `narwhals` and executed by `duckdb`, staying lazy until collected. Beyond
 those and `pydantic`, core depends on nothing. Keep new features consistent with
 this schema-declared, backend-agnostic, lazily-evaluated design.
 
+## Releasing
+
+The version lives in `[project].version` in `pyproject.toml`; there is no
+VCS-derived versioning. `CHANGELOG.md` tracks user-facing changes under an
+`[Unreleased]` heading between releases.
+
+To cut `vX.Y.Z`:
+
+1. Confirm `pixi run test` and `pixi run -e docs docs-build` pass — best done on
+   a release pull request.
+2. Rename the `[Unreleased]` heading in `CHANGELOG.md` to
+   `vX.Y.Z` with the release date, and set `version` in `pyproject.toml`.
+3. Merge the release pull request, then tag the merge commit `vX.Y.Z` and create
+   the GitHub release from that tag.
+4. Open a follow-up adding a fresh `[Unreleased]` heading to `CHANGELOG.md`.
+
 ## AI-assisted contributions
 
-If you use AI tools when contributing, please read [`AGENTS.md`](AGENTS.md)
+If you use AI tools when contributing, please read `AGENTS.md`
 for how AI-generated content must be marked and what we expect you to write
 by hand.
+
+<!-- --8<-- [end:docs] -->

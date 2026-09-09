@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 import importlib.metadata
 import warnings
 

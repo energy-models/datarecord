@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 [workspace]
 name = "datarecord"
 channels = ["conda-forge"]
@@ -11,14 +15,14 @@ name = "datarecord"
 name = "pixi-build-python"
 version = "*"
 [package.host-dependencies]
-python = ">=3.11"
+python = ">=3.12"
 hatchling = "*"
 uv = "*"
 
 [dependencies]
 datarecord = { path = "." }
 duckdb = ">=1.5.4,<2"
-narwhals = ">=2,<3"
+narwhals = ">=2,<3,!=2.21.0"
 pydantic = ">=2"
 
 [feature.test.dependencies]
@@ -87,8 +91,6 @@ reuse = "*"
 pre-commit-install = "lefthook install"
 lint = "lefthook run pre-commit --all-files"
 
-[feature.py311.dependencies]
-python = "3.11.*"
 [feature.py312.dependencies]
 python = "3.12.*"
 [feature.py313.dependencies]
@@ -99,7 +101,6 @@ python = "3.14.*"
 [environments]
 default = ["test", "build", "lint"]
 docs = ["docs"]
-py311 = ["py311", "test"]
 py312 = ["py312", "test"]
 py313 = ["py313", "test"]
 py314 = ["py314", "test"]

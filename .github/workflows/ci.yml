@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord Contributors
+#
+# SPDX-License-Identifier: MIT
+
 name: CI
 on:
   pull_request:
@@ -19,17 +23,10 @@ jobs:
     timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout branch
+      - name: Check out branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up pixi
-        uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347 # v0.10.1
-        with:
-          # Pinned because `exclude-newer` hides the newest pixi-build-python
-          # from the solve: pixi 0.77.0 offers pixi-build-api-version 7 only,
-          # and the backend providing 7 is younger than the cutoff. Unpin once
-          # a backend inside the cutoff provides 7 -- and drop the pin in the
-          # other workflows with it.
-          pixi-version: v0.76.2
+        uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
       - name: Run linting
         run: pixi run lint
         env:
@@ -42,20 +39,21 @@ jobs:
       fail-fast: false
       matrix:
         environment:
-          - py311
+          - py312
+          - py313
           - py314
         os:
           - ubuntu-latest
+          - macos-latest
+          - windows-latest
     steps:
-      - name: Checkout branch
+      - name: Check out branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Set up pixi
-        uses: prefix-dev/setup-pixi@f00437f565399d418b0acc85936d12c1fb668347 # v0.10.1
+        uses: prefix-dev/setup-pixi@d3f436a425481402e6a95a1d1fc10331c708cd9e # v0.10.2
         with:
-          # Pinned, see above.
-          pixi-version: v0.76.2
           environments: ${{ matrix.environment }}
       - name: Run pytest
         run: pixi run -e ${{ matrix.environment }} test-coverage --color=yes

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """The `RecordLike` protocol: what a record answers, however it is backed.
 
 `layered.revision.Record` is the class this package provides; a framework

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
 """Editing a record: staged edits, materialised on commit.
 
 What `Record` (read-only) and `write_record` (a whole record at once) do not
