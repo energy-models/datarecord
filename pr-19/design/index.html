@@ -27,7 +27,7 @@
     
     
       
-        <title>Design - datarecord</title>
+        <title>Index - datarecord</title>
       
     
     
@@ -54,6 +54,8 @@
     
     
       <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../static/extras.css">
     
     <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
@@ -116,7 +118,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Design
+              Index
             
           </span>
         </div>
@@ -241,6 +243,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -279,6 +300,44 @@
         </a>
       </li>
     
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
   
 
       
@@ -370,6 +429,33 @@
     
   
     Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
   
 
     
@@ -486,6 +572,8 @@
       
         
       
+        
+      
     
     
     
@@ -502,7 +590,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -524,14 +612,14 @@
             </a>
             
               
-              <label class="md-nav__link md-nav__link--active" for="__nav_3" id="__nav_3_label" tabindex="">
+              <label class="md-nav__link md-nav__link--active" for="__nav_4" id="__nav_4_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_3">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -823,9 +911,133 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="proposals/dims-groups-traits/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Proposals
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -841,8 +1053,6 @@
       
         
           
-        
-      
         
       
         
@@ -978,6 +1188,12 @@
   
 
 
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
 <h1 id="design">Design<a class="headerlink" href="#design" title="Permanent link">&para;</a></h1>
 <p>Status: Draft · Owner: Jonas Hörsch · Date: 2026-08-05</p>
 <p>The authoritative design for datarecord. <a href="../usage/">Usage</a> is how to
@@ -986,36 +1202,34 @@ docstrings in the source cite them by link rather than restating the argument �
 a comment that re-argues the design is a defect.</p>
 <h2 id="what-a-data-record-is">What a data record is<a class="headerlink" href="#what-a-data-record-is" title="Permanent link">&para;</a></h2>
 <p>Dimensioned attribute data with a declared schema.</p>
-<p>A record holds <strong>components</strong> (named members of a type), <strong>connections</strong> between components and buses, <strong>attribute values</strong> over both, and the <strong>axes</strong> those values vary along.
+<p>A record holds <strong>components</strong> (named members of a type), <strong>groups</strong> of them — connections between components and buses being the one every network has — <strong>attribute values</strong> over both, and the <strong>axes</strong> those values vary along.
 A schema declares what may exist; the data says what does.</p>
 <p>A record exposes seven things:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>record.schema        what may exist: the axes, the attributes
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>record.dims          the axes themselves, keyed by dim
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>record.components    members, keyed by component type
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>record.connections   component↔bus rows, keyed by component type
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>record.entity_types  members, keyed by entity type
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>record.groups        which tuples exist, keyed by group then component type
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>record.attributes    the values, keyed by attribute name
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>record.outputs       results, keyed by attribute name
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>record.flags(ctype)  which axes an attribute actually uses
 </code></pre></div>
 <p>That is the <a href="record/"><code>Record</code> protocol</a>, and <a href="record/">The Record protocol</a> gives it precisely.</p>
-<p>A component's <code>name</code> identifies it <strong>across every type</strong>: names are unique record-wide, not per type (<a href="format/#name-is-unique-across-types">name is unique across types</a>).
+<p>A component's <code>entity</code> identifies it <strong>across every type</strong>: names are unique record-wide, not per type (<a href="format/#entity-is-unique-across-types">entity is unique across types</a>).
 That is why the values are keyed by attribute and not by type — an attribute row names a component and nothing more, and a component's type is something the record knows about it rather than part of its address.</p>
-<p>There are several implementations for storing a record:</p>
+<p><code>Record</code> is the one class that answers all of this, and it is the narwhals interface over a fold across layers:</p>
 <ul>
-<li><strong><code>DirectoryRecord</code></strong> — one parquet directory.
-  What the files hold is what it presents.</li>
-<li><strong><code>LayeredRecord</code></strong> — a tree of layers, each adding a partial record on top of its parent, resolved last-writer-wins.
-  No single directory is the record; the answer is the fold across them.</li>
-<li><strong><a href="working-record/"><code>WorkingRecord</code></a></strong> — a record plus pending edits, held in memory and not yet written anywhere.</li>
-<li><strong>A framework's own object</strong> — a PyPSA <code>Network</code> presenting itself as a record, without depending on this package at all.</li>
+<li><strong>A tree of layers</strong>, each adding a partial record on top of its parent, resolved last-writer-wins. No single directory is the record; the answer is the fold across them. <code>Revision.record</code> gives one.</li>
+<li><strong>One parquet directory</strong>, via <code>Record.at(uri)</code> — folded over the single layer it is, which <a href="read-path/#one-record-over-one-fold">degenerates to a scan of it</a>. Not a second implementation.</li>
+<li><strong><a href="working-record/"><code>WorkingRecord</code></a></strong> — a <code>Record</code> whose last layer is a staging area, so pending edits read back before anything is written.</li>
 </ul>
+<p><code>RecordLike</code> is the protocol all of these satisfy, and so does <strong>a framework's own object</strong> — a PyPSA <code>Network</code> presenting itself as a record, without depending on this package at all.</p>
 <p>A consumer cannot tell which it holds, so a framework reads a hundred-layer overlay through the same call it would use for a single directory.</p>
 <p>Neither the concept nor this package names a modelling framework.
 A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
 <code>datarecord</code> depends only on <code>duckdb</code>, <code>narwhals</code> and <code>pydantic</code>.</p>
 <h2 id="scope">Scope<a class="headerlink" href="#scope" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>In scope:</strong> the <a href="record/"><code>Record</code> protocol</a> (the definition) and <a href="working-record/"><code>WorkingRecord</code></a>; the <a href="format/">parquet format</a> that stores it; <a href="schema/">the schema</a>; <a href="layers/">overlay resolution</a> and its <a href="read-path/#owner-map">owner map</a>; <a href="writing/">the write path</a>; <a href="read-path/#what-differs-between-the-implementations">how the two shipped implementations differ</a>.</li>
+<li><strong>In scope:</strong> the <a href="record/"><code>Record</code> protocol</a> (the definition) and <a href="working-record/"><code>WorkingRecord</code></a>; the <a href="format/">parquet format</a> that stores it; <a href="schema/">the schema</a>; <a href="layers/">overlay resolution</a> and its <a href="read-path/#owner-map">owner map</a>; <a href="writing/">the write path</a>; <a href="read-path/#one-record-over-one-fold">why one directory needs no second implementation</a>.</li>
 <li><strong>Out of scope:</strong> a non-DuckDB implementation (the protocol permits one, see <a href="record/#the-protocol-names-no-engine">the protocol names no engine</a>, but only DuckDB-backed ones are provided); concurrent writers to one record; unmaterialised/meta layers.</li>
 </ul>
 <h2 id="the-pages">The pages<a class="headerlink" href="#the-pages" title="Permanent link">&para;</a></h2>
