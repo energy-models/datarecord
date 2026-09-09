@@ -13,11 +13,13 @@ from pathlib import Path
 
 import narwhals as nw
 import pandas as pd
+import pypsa
 import pytest
 
-from datarecord import Revision
+from datarecord import Record, Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
+from datarecord.layered.write import write_record
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import ENTITY_TYPE, PyPSA, _colliding_names
 from tests.fixtures import (
@@ -34,6 +36,25 @@ def single_revision(con, base_uri, ac_dc):
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     return revision
+
+
+def test_default_now_snapshots_are_normalized(con, base_uri, ac_dc):
+    """A default-`now` network writes, and its per-snapshot value survives."""
+    n = ac_dc.copy()  # the fixture is session-scoped
+    n.set_snapshots(pypsa.Network().snapshots)
+    n.c["Generator"].dynamic["p_max_pu"].loc["now", "Manchester Wind"] = 0.42
+
+    uri = str(Path(base_uri) / "now") + "/"
+    write_record(None, PyPSA.to_datarecord(n), con, uri=uri)
+    built = PyPSA.build(Record.at(uri, con))
+
+    assert built.snapshots.tolist() == [pd.Timestamp("1970-01-01")], (
+        "now becomes a timestamp"
+    )
+    p_max_pu = built.c["Generator"].dynamic["p_max_pu"]
+    assert p_max_pu.iloc[0]["Manchester Wind"] == 0.42, (
+        "the series value survives relabelling"
+    )
 
 
 def test_requirements_falsy_when_empty():
