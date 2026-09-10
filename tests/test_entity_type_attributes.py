@@ -157,7 +157,7 @@ def test_an_enum_label_the_dtype_does_not_declare_is_refused(root, con):
 def test_entity_is_refused_for_a_type_addressed_attribute(root, con):
     """`entity=` names components, and an icon belongs to none."""
     staged = WorkingRecord(root.record, con)
-    with pytest.raises(ValueError, match="belongs to no component"):
+    with pytest.raises(ValueError, match="belongs to no entity"):
         staged.set("icon", "x", entity=["g1"])
 
 

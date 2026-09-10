@@ -93,7 +93,7 @@ def _parse_dtype(value: Any) -> nw.dtypes.DType:
 # dims: `entity`, a group's `bus` and the entity-type axis are declared like any
 # other axis and typed from that declaration, which is what lets an `Enum` there
 # pin its vocabulary. These are the ones no schema names - `breakpoint` is NULL
-# for the ordinary component-level scalar, so one column set serves every row.
+# for the ordinary entity-level scalar, so one column set serves every row.
 STRUCTURAL_TYPES = {
     "attribute": nw.String(),
     "breakpoint": nw.Float64(),
@@ -256,11 +256,11 @@ class AttributeSpec(BaseModel):
 
         "Varies beyond its address", not "has dims": naming exactly one
         addressing coordinate is a column on that thing's own table, so
-        `dims={"entity"}` is a component column and `dims={"connection"}` a
+        `dims={"entity"}` is an entity column and `dims={"connection"}` a
         column of the group's table. Anything more is `inputs/<attr>.parquet`.
 
         A bare `bool(dims)` was the test before `entity` was a declared dim,
-        when a component attribute declared none - it would now call every
+        when an entity attribute declared none - it would now call every
         attribute varying and route every constant to `inputs/`.
 
         Notes
@@ -275,7 +275,7 @@ class Group(BaseModel):
 
     Not a dim. A dim declares an axis of labels and NULL in its column means
     "every value of it"; a group declares *which combinations are there*, which
-    no axis can say because the product is sparse - a component attaches to two
+    no axis can say because the product is sparse - an entity attaches to two
     buses out of a thousand.
 
     An attribute names the group in its `dims` and its rows carry the group's
@@ -338,7 +338,7 @@ class Group(BaseModel):
 
 
 class Trait(BaseModel):
-    """A named bundle of attributes, and which entity types and components carry it.
+    """A named bundle of attributes, and which entity types and entities carry it.
 
     The narrowing direction: an attribute the schema declares is carried by
     every entity type it can address, and a trait is how that is cut down to
@@ -357,16 +357,16 @@ class Trait(BaseModel):
         vocabulary partitions - `Schema` rejects any other. Empty means this
         narrowing does not apply, reaching every type.
     switch
-        The attribute deciding, per component, whether this trait applies -
+        The attribute deciding, per entity, whether this trait applies -
         `dims={"entity"}` exactly. `None` means this narrowing does not
-        apply, reaching every component.
+        apply, reaching every entity.
     description
         What the trait is, in prose. Never interpreted.
 
     Notes
     -----
     - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
-    - [switch](https://energy-models.github.io/datarecord/design/schema/#switch-a-trait-a-component-opts-into)
+    - [switch](https://energy-models.github.io/datarecord/design/schema/#switch-a-trait-an-entity-opts-into)
     """
 
     attributes: frozenset[str] = frozenset()
@@ -427,7 +427,7 @@ class Schema(BaseModel):
 
     Separate because the two are governed differently, not because they are
     stored differently: a result is written to `outputs/<attr>.parquet` rather
-    than `inputs/`, never overlays a parent's, and may name a component the
+    than `inputs/`, never overlays a parent's, and may name an entity the
     record does not declare. Keeping it out of `attributes` is what stops it
     reaching `attributes_for`, and so `add`'s wide-frame split and the input
     validation, neither of which a result should meet.
@@ -512,7 +512,7 @@ class Schema(BaseModel):
         )
         if len(classifying) > 1:
             msg = (
-                f"{classifying} all classify `entity`; a component has one type, "
+                f"{classifying} all classify `entity`; an entity has one type, "
                 f"so at most one group may be `into` a dim over `entity` alone"
             )
             raise ValueError(msg)
@@ -561,7 +561,7 @@ class Schema(BaseModel):
                 raise ValueError(msg)
             # Only the entity-type axis may scope a trait. Any other
             # classification would make the vocabulary depend on data rather
-            # than on the schema - which attributes a component carries would
+            # than on the schema - which attributes an entity carries would
             # follow from what its bus maps to, a per-entity lookup every caller
             # of `attributes_for` treats as answerable from the schema alone.
             for dim in trait_spec.on:
@@ -578,7 +578,7 @@ class Schema(BaseModel):
                     msg = (
                         f"trait {trait!r} is switched on {trait_spec.switch!r}, "
                         f"which is addressed by {sorted(switch_spec.dims)}; a "
-                        f"switch decides a trait per component, so it is "
+                        f"switch decides a trait per entity, so it is "
                         f"addressed by `entity` alone"
                     )
                     raise ValueError(msg)
@@ -644,17 +644,17 @@ class Schema(BaseModel):
         A NULL here means "every value of this dim", which the fold expands
         against the axis. The three exclusions cannot mean that:
 
-        - `entity`, because a NULL there is a value belonging to no component
+        - `entity`, because a NULL there is a value belonging to no entity
           rather than to all of them. The one dim named literally, being the
           one every entity-type axis classifies.
         - The entity-type axis, because it inherits `entity`'s exclusion: its
-          labels are a column of `dims/entity.parquet`, so a NULL there is a
-          component whose type is unknown rather than one of every type. An
+          labels are a column of `dims/entity.parquet`, so a NULL there is an
+          entity whose type is unknown rather than one of every type. An
           attribute addressed by the type *alone* never reaches here: it is a
           column of the type axis file rather than a long row, so it has no
           NULL to expand.
         - A coordinate a group is keyed by, because there is no axis to expand
-          against. "Every bus of this component" is the group's rows, not the
+          against. "Every bus of this entity" is the group's rows, not the
           bus axis - a sparse subset only the group's table knows.
 
         A functional group's `into` dim is *not* excluded, though it is one of
@@ -691,7 +691,7 @@ class Schema(BaseModel):
 
         Per attribute rather than schema-wide: one file per attribute means one
         column set per attribute, and an all-NULL `entity` on a record-level
-        weighting would be a column claiming a component the value has none of.
+        weighting would be a column claiming an entity the value has none of.
 
         Notes
         -----
@@ -713,7 +713,7 @@ class Schema(BaseModel):
         """One attribute's full long column set, in order - input or result.
 
         An attribute carries the coordinates its `dims` name and no others, so a
-        record-level weighting has no `entity` column and a component attribute
+        record-level weighting has no `entity` column and an entity attribute
         has no `bus`.
 
         An attribute neither vocabulary declares is `long_columns` - every
@@ -751,7 +751,7 @@ class Schema(BaseModel):
 
     @property
     def entity_types(self) -> frozenset[str]:
-        """Every declared entity-type label - the types a component may be.
+        """Every declared entity-type label - the types an entity may be.
 
         The entity-type axis's enum categories, so a schema declaring it as a
         plain `String` has none: the labels are then data rather than
@@ -770,7 +770,7 @@ class Schema(BaseModel):
         )
 
     def addresses_entity(self, attribute: str) -> bool:
-        """Whether `attribute` reaches a component at all.
+        """Whether `attribute` reaches an entity at all.
 
         True where its `dims` name `entity`, or a group one of whose
         coordinates draws on `entity`. False for an attribute over an axis
@@ -788,7 +788,7 @@ class Schema(BaseModel):
 
         Every attribute addressed by `entity` that no trait narrows, plus those
         the traits naming `ctype` bundle. Untraited is carried by all: writing
-        `entity` in an attribute's `dims` is what says it is per component, and
+        `entity` in an attribute's `dims` is what says it is per entity, and
         declining to bundle it says it is so for every type - the same thing
         `dims={"scenario"}` already means along the scenario axis.
 
@@ -845,7 +845,7 @@ class Schema(BaseModel):
         """The dims addressed per row rather than broadcast: `entity` and group coords.
 
         A membership key is a coordinate a layer patches one row of at a time -
-        one component, one connection - never "every value" of an axis. It is
+        one entity, one connection - never "every value" of an axis. It is
         the non-broadcast, addressable dims: every dim but the broadcast ones
         and the entity-type axis, which is a column of `dims/entity.parquet`
         rather than an addressable coordinate.
@@ -902,14 +902,14 @@ class Schema(BaseModel):
         An attribute addressed by `dim` alone: a per-country CO2 budget, a
         snapshot weighting, a per-type icon. `AttributeSpec.varying` is False
         for exactly these, and this is the axis-side counterpart of
-        `addresses_entity` - what `dims/entity_type/<Type>.parquet` is to a
-        component's constant columns, the axis file is to these.
+        `addresses_entity` - what `dims/entity_type/<Type>.parquet` is to an
+        entity's constant columns, the axis file is to these.
 
         `entity` is one of these axes only where no group declares the type
-        axis: with no type to classify a component into there is no member file
+        axis: with no type to classify an entity into there is no member file
         for its constant columns, so they live on `dims/entity.parquet` like any
         other axis's (`entity_type_dim`). Where a group *does* declare the axis
-        this returns `()` for `entity` - the columns are the *component* frame's,
+        this returns `()` for `entity` - the columns are the *entity* frame's,
         `dims/entity_type/<Type>.parquet`, a different destination with a
         different key.
 
@@ -964,7 +964,7 @@ class Schema(BaseModel):
         """Inputs-map key columns, compared NULL-safely when folding.
 
         `partial_dims`, plus `attribute`. `entity` and a group's coordinates are
-        in it as membership keys - a layer may patch one component's value, or
+        in it as membership keys - a layer may patch one entity's value, or
         one connection's, without restating every other's - and the broadcast
         `partial` value dims beside them.
 
@@ -1120,7 +1120,7 @@ class Schema(BaseModel):
         Empty for a record-level attribute, which no type carries and which
         therefore targets no names at all, and empty too for a schema declaring
         no entity-type labels, where the caller has no type vocabulary to
-        enumerate and works from the resolved components instead.
+        enumerate and works from the resolved entities instead.
 
         Notes
         -----
@@ -1194,7 +1194,7 @@ class Schema(BaseModel):
             dropped = sorted(was_attrs - set(self.attributes_for(ctype)))
             if dropped:
                 problems.append(
-                    f"component type {ctype!r} no longer carries {dropped}; "
+                    f"entity type {ctype!r} no longer carries {dropped}; "
                     f"rows written for it have no valid reading"
                 )
 

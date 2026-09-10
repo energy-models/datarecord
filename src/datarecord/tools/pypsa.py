@@ -1268,9 +1268,9 @@ class _NetworkSource:
                     continue
                 stem = per_port.get(attr, attr)
                 row = defaults.loc[attr]
-                # `entity` is a dim like any other, so a component attribute
+                # `entity` is a dim like any other, so an entity attribute
                 # declares it: `dims` is the whole address, and an attribute
-                # omitting it would be one no component owns (https://energy-models.github.io/datarecord/design/schema/#attributespec).
+                # omitting it would be one no entity owns (https://energy-models.github.io/datarecord/design/schema/#attributespec).
                 # A per-port attribute names the `connection` group instead,
                 # which expands to `(entity, bus)` (https://energy-models.github.io/datarecord/design/schema/#groups).
                 dims = set(varying_dims) if row["varying"] else set()
@@ -1328,29 +1328,29 @@ class _NetworkSource:
                     description="One realisation of a stochastic problem.",
                 ),
                 # The two axes the `connection` group is over. `entity` is the
-                # component axis the format knows by name; `bus` is an
+                # entity axis the format knows by name; `bus` is an
                 # ordinary dim, one coordinate of one group.
-                ENTITY: Dimension(dtype=nw.String(), description="A component."),
+                ENTITY: Dimension(dtype=nw.String(), description="An entity."),
                 BUS: Dimension(dtype=nw.String(), description="A node of the network."),
-                # The kinds a component may be: the labels are PyPSA's registry,
+                # The kinds an entity may be: the labels are PyPSA's registry,
                 # so an enum rather than a bare string, and a type outside it is
                 # rejected on write.
                 ENTITY_TYPE: Dimension(
                     dtype=nw.Enum(sorted(carries)),
-                    description="What kind of component an entity is.",
+                    description="What kind of entity an entity is.",
                 ),
             },
             groups={
                 CONNECTION: Group(
                     over={"entity": ENTITY, "bus": BUS},
-                    description="A component's attachment to one bus.",
+                    description="An entity's attachment to one bus.",
                 ),
                 # `into` over `entity` alone is what makes `entity_type` the
                 # entity-type axis (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
                 ENTITY_TYPE: Group(
                     over={ENTITY: ENTITY},
                     into=ENTITY_TYPE,
-                    description="What kind of component each entity is.",
+                    description="What kind of entity each entity is.",
                 ),
             },
             attributes=attributes,

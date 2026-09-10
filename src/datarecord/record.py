@@ -97,10 +97,10 @@ EMPTY = LazyFrames((), _unreachable)
 
 @dataclass(frozen=True)
 class Flags:
-    """Which axes an attribute's rows actually use, for one component type.
+    """Which axes an attribute's rows actually use, for one entity type.
 
     The two sets are **not** complements: a dim in both means this type's
-    components disagree, which is the instruction to use both containers rather
+    entities disagree, which is the instruction to use both containers rather
     than an ambiguity to resolve. `varies | broadcast` is the test for
     whether an attribute touches a dim at all.
 
@@ -190,7 +190,7 @@ class RecordLike(Protocol):
 
     @property
     def entity_types(self) -> Frames:
-        """Wide member frames, keyed by component type, in member order.
+        """Wide member frames, keyed by entity type, in member order.
 
         Notes
         -----
@@ -207,7 +207,7 @@ class RecordLike(Protocol):
         over `(entity, bus)` is the one every record with connections has, and
         it is one instance rather than a member of its own.
 
-        Not split by component type, which is no coordinate of a group.
+        Not split by entity type, which is no coordinate of a group.
 
         Notes
         -----
@@ -221,7 +221,7 @@ class RecordLike(Protocol):
     def attributes(self) -> Frames:
         """Long input frames, keyed by attribute name - one per file.
 
-        Not by component type: one `inputs/p_max_pu.parquet` holds every type's
+        Not by entity type: one `inputs/p_max_pu.parquet` holds every type's
         rows, keyed by `entity` alone. A row carries no `entity_type` - entities
         are unique across every type - so a reader wanting one type joins `entity_types`
         on `name`.

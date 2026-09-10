@@ -116,7 +116,7 @@ class LayerSource(Protocol):
         """`dims/<dim>.parquet` - one axis's full row, not the key alone.
 
         `entity` is a dim like any other, so the entity axis is `axis("entity")`;
-        what differs is only that the fold takes it as the components map,
+        what differs is only that the fold takes it as the entities map,
         with `order_key` and tombstones, where `resolve_coords` folds the rest.
         """
         ...

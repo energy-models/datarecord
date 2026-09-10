@@ -384,7 +384,7 @@ class Record:
         Parameters
         ----------
         key
-            What the frame was looked up by - a component type or a group name -
+            What the frame was looked up by - an entity type or a group name -
             so a miss raises the `KeyError` the caller asked with.
 
         Notes

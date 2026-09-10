@@ -38,9 +38,9 @@ class Requirements:
     dims : frozenset of str
         Dims the tool cannot build a model without.
     entity_types : frozenset of str
-        Component types the tool requires the record to define members for.
+        Entity types the tool requires the record to define members for.
     attributes : frozenset of tuple of (str, str)
-        `(component_type, attribute)` pairs the tool requires a value for.
+        `(entity_type, attribute)` pairs the tool requires a value for.
         Named in the *record's* vocabulary, not the tool's, so a caller can
         act on them: an attribute the tool renames or computes (`Schema`) is
         reported by the source attribute it is missing.
@@ -50,11 +50,11 @@ class Requirements:
         trusts every declared key, so this is a tool's verdict on the record it
         was handed, not a schema rejection.
     unsupported_values : frozenset of tuple of (str, str)
-        `(component_type, attribute)` pairs whose stored *shape* this tool
+        `(entity_type, attribute)` pairs whose stored *shape* this tool
         cannot represent, as opposed to a value it is missing - a
         piecewise-linear attribute where the tool takes a scalar.
     names : frozenset of str
-        Names two of the framework's components claim, which a record scopes
+        Names two of the framework's entities claim, which a record scopes
         across every type.
 
     Notes
@@ -88,7 +88,7 @@ class Requirements:
         if self.dims:
             parts.append(f"dims {sorted(self.dims)}")
         if self.entity_types:
-            parts.append(f"component types {sorted(self.entity_types)}")
+            parts.append(f"entity types {sorted(self.entity_types)}")
         if self.attributes:
             parts.append(f"attributes {sorted(self.attributes)}")
         if self.unsupported_keys:
@@ -102,7 +102,7 @@ class Requirements:
             )
         if self.names:
             parts.append(
-                f"names claimed by more than one component type "
+                f"names claimed by more than one entity type "
                 f"{sorted(self.names)} (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
             )
         return ", ".join(parts) if parts else "nothing"
@@ -199,7 +199,7 @@ class Schema:
     Parameters
     ----------
     attrs : dict of str to tuple of Attr
-        Per component type, the attributes that are renamed or computed.
+        Per entity type, the attributes that are renamed or computed.
 
     Notes
     -----
@@ -264,7 +264,7 @@ class Tool(Protocol):
         """What this tool needs from `record` to build a model.
 
         Record-dependent, not a constant: which attributes are required
-        follows the record's own component types and its declared schema.
+        follows the record's own entity types and its declared schema.
         """
         ...
 
@@ -294,7 +294,7 @@ class Tool(Protocol):
         Keyed by attribute, each frame in the long schema - `name`, the dim
         columns, `value` - the same shape `Record.outputs` presents, so results
         go straight to `write_record` or to `set(..., kind="outputs")`. One frame
-        spans every component type, needing no type column.
+        spans every entity type, needing no type column.
 
         Narwhals frames, so the seam names no one dataframe library, and lazy so
         an implementation may fetch a result attribute on demand rather than

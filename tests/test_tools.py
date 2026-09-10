@@ -307,7 +307,7 @@ def test_to_datarecord_rejects_a_cross_type_name_collision():
     n.add("Bus", "north")
     n.add("Generator", "north", bus="north")
 
-    with pytest.raises(UnsupportedRecordError, match="more than one component type"):
+    with pytest.raises(UnsupportedRecordError, match="more than one entity type"):
         PyPSA.to_datarecord(n)
 
 

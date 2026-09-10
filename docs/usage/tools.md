@@ -22,7 +22,7 @@ record_back = PyPSA.to_datarecord(n)  # the inverse; a `Record`
 results = PyPSA.results(n)  # Frames, in the long schema
 ```
 
-`verify` catches what the record layer cannot — a component type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks its constant-versus-varying split — and returns a falsy `Requirements` when the record is usable. `build` raises `UnsupportedRecordError` rather than producing a partial model.
+`verify` catches what the record layer cannot — an entity type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks its constant-versus-varying split — and returns a falsy `Requirements` when the record is usable. `build` raises `UnsupportedRecordError` rather than producing a partial model.
 
 ## Solving and writing results back
 
@@ -38,4 +38,4 @@ for attr, frame in PyPSA.results(n).items():
 w.commit(NewChild())  # one layer, inputs and results together
 ```
 
-Two checks are skipped for `kind="outputs"`: the attribute need not be schema-declared, and a result's `entity` need not resolve to a declared member — a solve may produce rows for a component type it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).
+Two checks are skipped for `kind="outputs"`: the attribute need not be schema-declared, and a result's `entity` need not resolve to a declared member — a solve may produce rows for an entity type it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).

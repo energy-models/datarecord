@@ -125,13 +125,13 @@ class Fold:
 
     @property
     def entity_axis(self) -> DuckDBPyRelation | None:
-        """The resolved entity axis, or `None` where no layer wrote a component."""
+        """The resolved entity axis, or `None` where no layer wrote an entity."""
         return self.axes.get("entity")
 
     def attributes(self) -> list[str]:
         """Every input attribute any layer owns a row for, from the owner map.
 
-        Across component types, matching the file layout: one
+        Across entity types, matching the file layout: one
         `inputs/<attr>.parquet` holds every type's rows. Ordered, so a `Record`
         over this has a stable key order.
 
@@ -153,9 +153,9 @@ class Fold:
     def flags(self, entity_type: str | None = None) -> dict[str, Flags]:
         """Per attribute, which dims its rows use - whole-record, or one type.
 
-        Whole-record when `entity_type` is `None`; scoped to a type's components
+        Whole-record when `entity_type` is `None`; scoped to a type's entities
         when named, by a semi-join to the resolved entity axis. A type whose
-        components disagree yields a dim in both sets - the instruction to use
+        entities disagree yields a dim in both sets - the instruction to use
         both containers, each taking the rows it matches. The union stops at the
         type boundary: across types it would describe neither.
 
@@ -183,7 +183,7 @@ class Fold:
         empty rather than aggregating an unscoped map.
 
         A named type where the schema declares no type axis scopes to the whole
-        axis - every component - since "which dims does type X use" has no
+        axis - every entity - since "which dims does type X use" has no
         narrower meaning without types, and the axis carries no `entity_type`
         column to filter on (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
         """

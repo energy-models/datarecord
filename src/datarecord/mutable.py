@@ -255,8 +255,8 @@ class StagedSource:
         """The dims with staged rows, `entity` among them.
 
         `entity` is an axis file like any other to a reader, so an `add` or a
-        `remove` contributes to it - which is what puts a staged component in
-        the components map.
+        `remove` contributes to it - which is what puts a staged entity in
+        the entities map.
         """
         return set(self.record._staged_dims())
 
@@ -527,7 +527,7 @@ class WorkingRecord(Record):
         not in `partial_dims` (a non-`partial` value axis like `timestep`) is
         owned whole, so a patch to one value restates the attribute's whole extent
         along it. Membership keys are in `partial_dims`, so never here - a layer
-        patches one component's or connection's value, never restating the rest.
+        patches one entity's or connection's value, never restating the rest.
 
         Notes
         -----
@@ -663,15 +663,15 @@ class WorkingRecord(Record):
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         # `entity=` names labels of *this* axis where `dim` is `entity` - an
-        # untyped record's component columns live here, so `set(attr, v,
+        # untyped record's entity columns live here, so `set(attr, v,
         # entity=[...])` selects the rows to patch, the same names a member-file
         # edit would (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives). For any other axis `entity` is not a
         # coordinate, so naming it is the caller error the message describes.
         if entity is not None and dim != "entity":
             msg = (
-                f"`set({attribute!r}, ..., entity=...)` names components, but "
+                f"`set({attribute!r}, ..., entity=...)` names entities, but "
                 f"{attribute!r} is addressed by {dim!r} alone - it is a column of "
-                f"dims/{dim}.parquet and belongs to no component"
+                f"dims/{dim}.parquet and belongs to no entity"
             )
             raise ValueError(msg)
         if entity is not None and not isinstance(value, Mapping):
@@ -789,7 +789,7 @@ class WorkingRecord(Record):
     def _resolved_names(self, ctype: str) -> list[str]:
         """Every name `ctype` currently resolves to, base plus staged.
 
-        Off the components map rather than the member frame, for the reason
+        Off the entities map rather than the member frame, for the reason
         `_name_types` gives: membership is what the map decided, and resolving
         the type's wide rows to read one column of it is the expensive way to
         ask. `str` because a backend's column yields its own scalar type (a
@@ -869,8 +869,8 @@ class WorkingRecord(Record):
                 f"{n!r} is already a {t}" for n, t in sorted(clashing.iter_rows())
             )
             msg = (
-                f"cannot add {ctype} components whose names are taken: {detail}; "
-                f"names are unique across every component type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
+                f"cannot add {ctype} entities whose names are taken: {detail}; "
+                f"names are unique across every entity type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
             )
             raise ValueError(msg)
 
@@ -921,7 +921,7 @@ class WorkingRecord(Record):
         """A result's name and dims, against the schema's `results`.
 
         The attribute check only - not membership, which stays relaxed for a
-        result: a solve may produce rows for a component type it derived rather
+        result: a solve may produce rows for an entity type it derived rather
         than read, and rejecting those would refuse a legitimate result.
 
         Notes
@@ -959,7 +959,7 @@ class WorkingRecord(Record):
 
         Inputs only: a result is declared in `results` rather than per type, so
         `_validate_result` checks its name and dims and nothing checks its
-        membership - what a solve computes need not be a component the record
+        membership - what a solve computes need not be an entity the record
         declares.
 
         `name` is reported where known: with the type derived rather than passed, the name is what the caller can act on.
@@ -1006,7 +1006,7 @@ class WorkingRecord(Record):
         indexed_by: str | None = None,
         **dims: Any,
     ) -> None:
-        """Stage an attribute value for a group of components.
+        """Stage an attribute value for a group of entities.
 
         A labelled series must say what its index holds: `indexed_by="snapshot"`
         names the axis, and `entity=` implies it where the attribute has exactly
@@ -1023,7 +1023,7 @@ class WorkingRecord(Record):
 
         No `entity_type` parameter: the type is looked up from the entity,
         so one call may span types and each is validated against its own
-        type's spec. `entity=None` means every component whose type
+        type's spec. `entity=None` means every entity whose type
         declares `attribute`.
 
         Every other coordinate goes through `**dims`, including a group's -
@@ -1039,7 +1039,7 @@ class WorkingRecord(Record):
         Two checks are skipped for `"outputs"`, both because a result is not a
         value the schema governs: the attribute need not be declared, and a
         result's `name` need not resolve to a declared member. A solve may
-        produce rows for a component type it derived rather than read - PyPSA's
+        produce rows for an entity type it derived rather than read - PyPSA's
         `SubNetwork` is one - and rejecting those would refuse a legitimate
         result. An *input* for an undeclared name stays an error.
 
@@ -1112,7 +1112,7 @@ class WorkingRecord(Record):
         The types come from the record rather than from `types_declaring` where
         the schema declares no entity-type labels: the axis is then a plain
         string and its labels are data, so what types exist is a question only
-        the resolved components can answer.
+        the resolved entities can answer.
 
         Notes
         -----
@@ -1172,7 +1172,7 @@ class WorkingRecord(Record):
 
         The rows are `keys` x `per_dim`'s labels - every named entity at every
         coordinate the value covers - so a per-snapshot series over a year for a
-        thousand components is millions of them. Both factors are small, and only
+        thousand entities is millions of them. Both factors are small, and only
         their product is not, so each becomes a one-column relation and DuckDB
         joins them: the product never exists as Python objects.
 
@@ -1343,7 +1343,7 @@ class WorkingRecord(Record):
         loss.
 
         Scoped by the keys already staged, not by the attribute: the semi-join
-        below reaches only the keys some edit named, so a component this record
+        below reaches only the keys some edit named, so an entity this record
         never touched stays in the parent.
 
         Idempotent, which is what lets it run per insert instead of once: the
@@ -1547,13 +1547,13 @@ class WorkingRecord(Record):
         self._insert(shaped, table, {}, key=self._long_key(attribute))
 
     def add(self, ctype: str, frame: Any) -> None:
-        """Stage new components from a wide frame.
+        """Stage new entities from a wide frame.
 
         Splits it: attributes addressed by `entity` alone stay in `dims/entity_type/`,
         varying ones become `inputs/` rows. Which is which comes from the
         schema, so this needs no framework registry.
 
-        Not a sequence of `set` calls: a component exists by virtue of its
+        Not a sequence of `set` calls: an entity exists by virtue of its
         member row, so staging attribute values for a name no layer declares is
         what `_validate_attribute` rejects. Adding a bus with no attributes makes
         the point - nothing to `set`, yet the bus must exist.
@@ -1580,8 +1580,8 @@ class WorkingRecord(Record):
         # ancestors' files lack, which then reads as NULL for their rows. It
         # says so by naming the group among its `dims`, which is what replaced
         # a field of its own (https://energy-models.github.io/datarecord/design/record/#connections).
-        # Only a group `entity` itself keys: a wide frame adding one component
-        # can describe that component's own row of such a group (`bus`, for
+        # Only a group `entity` itself keys: a wide frame adding one entity
+        # can describe that entity's own row of such a group (`bus`, for
         # `connection`), but not a `corridor`, which relates two entities
         # neither is "the" one being added here - that goes through `add_group`.
         by_group: dict[str, list[str]] = {}
@@ -1595,7 +1595,7 @@ class WorkingRecord(Record):
         member_cols = [c for c in columns if c not in varying and c not in ports]
 
         rel = as_relation(lazy, self.con)
-        # Where a group declares the type axis a component's constant columns are
+        # Where a group declares the type axis an entity's constant columns are
         # a per-type member file; where none does there is no type to classify
         # into, so they are columns of the entity axis itself and there is no
         # member table (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
@@ -1611,8 +1611,8 @@ class WorkingRecord(Record):
                 f"add({ctype!r}, ...)", self._ensure(_ENTITY_AXIS), member_cols
             )
 
-        # One row per component on the entity axis, replacing any this record
-        # already staged for the name: it says the component exists, of what type
+        # One row per entity on the entity axis, replacing any this record
+        # already staged for the name: it says the entity exists, of what type
         # where there are types, and - untyped - carries its constant columns.
         # `add` after `remove` of the same name is thus one row: the tombstone is
         # deleted, not left to be outranked. Where typed, a second row goes to
@@ -1626,7 +1626,7 @@ class WorkingRecord(Record):
                 key=("entity",),
             )
         for attribute in varying:
-            # Always `inputs`: `add` declares components, and a component's
+            # Always `inputs`: `add` declares entities, and an entity's
             # attribute values are inputs whatever a later solve produces.
             self._stage_long(
                 attribute,
@@ -1764,7 +1764,7 @@ class WorkingRecord(Record):
         """Stage a tombstone per entity.
 
         Need not enumerate what it deletes: one row per key, and the fold
-        applies it to every attribute. Nor scope it - a component exists or it
+        applies it to every attribute. Nor scope it - an entity exists or it
         does not, so a deletion removes it whole.
 
         One row, on the entity axis, which is where membership lives and the only
@@ -1797,7 +1797,7 @@ class WorkingRecord(Record):
         The one path every group is added through, a record's `connection`
         group included.
 
-        No component type, which is no coordinate of a group
+        No entity type, which is no coordinate of a group
         (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
 
         Notes
@@ -1852,7 +1852,7 @@ class WorkingRecord(Record):
 
         The rows are already one per coordinate - an edit replaced its key rather
         than appending beside it (`_replace`) - so this is the table scan minus
-        the coordinates a component tombstone reaches. That anti-join stays, being
+        the coordinates an entity tombstone reaches. That anti-join stays, being
         a cross-table fact rather than an ordering one: a `remove` on the entity
         axis has to clear this attribute's rows for the name too.
 
@@ -1869,7 +1869,7 @@ class WorkingRecord(Record):
         dead = self._tombstoned()
         if dead is None:
             return rel
-        # A deleted component has no attributes, so the tombstone drops a staged
+        # A deleted entity has no attributes, so the tombstone drops a staged
         # value for its name (https://energy-models.github.io/datarecord/design/working-record/#committing).
         #
         # Matched on `name` alone: the tombstone carries a type and a staged
@@ -1878,7 +1878,7 @@ class WorkingRecord(Record):
         return rel.set_alias("l").join(dead.set_alias("d"), on, how="anti")
 
     def _tombstoned(self) -> DuckDBPyRelation | None:
-        """Component keys whose staged entity-axis row is a tombstone.
+        """Entity keys whose staged entity-axis row is a tombstone.
 
         One row per name in the table already (`_replace` on `entity`), so an
         `add` after a `remove` has replaced the tombstone rather than sitting
@@ -1987,7 +1987,7 @@ class WorkingRecord(Record):
 
         `entity` is a table scan either way: membership is one row per name
         already (`_collapsed_entities`), never completed from the base - a layer
-        names the components it touched and the fold resolves the rest.
+        names the entities it touched and the fold resolves the rest.
 
         Notes
         -----
@@ -2222,8 +2222,8 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
     the entity axis where a group declares the type axis.
 
     `entity_type` on the entity axis only where a group declares the axis. Where
-    none does there is no type to classify a component into, so no member files
-    and no column: `attributes_on("entity")` then returns the component's
+    none does there is no type to classify an entity into, so no member files
+    and no column: `attributes_on("entity")` then returns the entity's
     non-varying columns and they live here, on the entity axis itself. Where a
     group does declare it the column is `entity_type`, typed by the declaration,
     and `attributes_on("entity")` is empty - the columns are per-type member

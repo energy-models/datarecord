@@ -449,7 +449,7 @@ def test_the_uniqueness_check_spans_backends(con, base_uri):
         },
     )
 
-    with pytest.raises(ValueError, match="component types reuse names"):
+    with pytest.raises(ValueError, match="entity types reuse names"):
         write_record(revision.id, source, con)
 
 

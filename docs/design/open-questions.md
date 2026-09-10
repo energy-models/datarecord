@@ -6,9 +6,9 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Open questions
 
-- **May an entity's existence depend on a dim?** `Dimension.keys` said yes — a generator present in scenario `high` and absent from `low` — and is [now deleted](schema.md#existence-does-not-vary-along-a-dim), with nothing in its place. A component exists or it does not.
+- **May an entity's existence depend on a dim?** `Dimension.keys` said yes — a generator present in scenario `high` and absent from `low` — and is [now deleted](schema.md#existence-does-not-vary-along-a-dim), with nothing in its place. An entity exists or it does not.
 
-  What it cost to keep was a second question with no good answer: what a component tombstone means for a connection keyed by fewer dims. Deleting a component in one scenario removed a connection that was not scenario-scoped, even though the component survived elsewhere, and no projection recovers the difference — the connection row has no scenario column to write it into. The conservative reading was implemented and pinned by an `xfail`.
+  What it cost to keep was a second question with no good answer: what an entity tombstone means for a connection keyed by fewer dims. Deleting an entity in one scenario removed a connection that was not scenario-scoped, even though the entity survived elsewhere, and no projection recovers the difference — the connection row has no scenario column to write it into. The conservative reading was implemented and pinned by an `xfail`.
 
   What it cost to drop is narrower than it looks. A **value** may still vary along any axis; it is the **thing** that may not. A stochastic network with a different `capital_cost` per scenario is an attribute over `{entity, scenario}`, which [the file split](format.md#where-a-value-lives) already places in `inputs/`. Only membership itself is unrepresentable.
 
@@ -30,12 +30,12 @@ SPDX-License-Identifier: CC-BY-4.0
   Creating a view binds its schema, so registering N attributes costs N footer reads; and catalog reopen cost is linear in view count, which argues for one catalog per record rather than one shared.
 
 - **What else a `Record` should answer about its entities without handing over a frame.** [`flags`](record.md#flags) sets the shape — cheap derived metadata a consumer plans against without opening a file — but answers only per attribute, per type.
-  The entity-level case is `entity -> entity_type`: a question a record can answer, [names being unique record-wide](format.md#entity-is-unique-across-types), and one the layered `components` owner map is keyed by before it opens a file.
+  The entity-level case is `entity -> entity_type`: a question a record can answer, [names being unique record-wide](format.md#entity-is-unique-across-types), and one the layered `entity_types` owner map is keyed by before it opens a file.
   Asking it through the protocol costs a frame per type instead, which `WorkingRecord` pays on every [`set`](working-record.md#validation).
   What is open is the granularity: "which types have live rows" and "how many members a type has" are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
   Whatever is chosen, it has to be answerable off the owner map, which is where a record's membership already lives.
 
-- **Whether [`flags(ctype)`](record.md#flags) needs a record-level counterpart.** It takes a component type, which two kinds of attribute do not have: one addressed by an axis alone, and one addressed by a [group](schema.md#groups)'s coordinates. Neither has a `ctype` to ask about, so neither is reachable through it.
+- **Whether [`flags(ctype)`](record.md#flags) needs a record-level counterpart.** It takes an entity type, which two kinds of attribute do not have: one addressed by an axis alone, and one addressed by a [group](schema.md#groups)'s coordinates. Neither has a `ctype` to ask about, so neither is reachable through it.
 
   A second method keyed by attribute and scoped record-wide would answer it — which attributes have rows at all, which coordinates they use, which types they touch — and the [owner map](read-path.md#owner-map) already computes the material, so it costs a projection rather than a scan.
   What is unsettled is whether that replaces `flags` or sits beside it. `flags` is per type _by construction_, its union deliberately stopping at the type boundary, and a record-level answer filtered by type would have to reproduce that.

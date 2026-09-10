@@ -24,9 +24,9 @@ Every column the schema declares a type for is cast to it on the way out, so a r
 Without that a source may hand over an all-NULL column its dataframe library typed as float, and every reader would re-cast defensively instead.
 
 Validation is structural: a long frame carries [its attribute's own coordinates](format.md#the-long-schema), and an entity frame carries every dim it is keyed by.
-Which component types are valid belongs to [the schema's vocabulary](schema.md), which the record layer does not interpret.
+Which entity types are valid belongs to [the schema's vocabulary](schema.md), which the record layer does not interpret.
 
-An **input attribute the schema does not declare is rejected**, unlike a component type: its [`dims`](schema.md#attributespec) are what say which columns its file carries, so an undeclared one has no shape to write it in and would leave a file no reader could derive the columns of.
+An **input attribute the schema does not declare is rejected**, unlike an entity type: its [`dims`](schema.md#attributespec) are what say which columns its file carries, so an undeclared one has no shape to write it in and would leave a file no reader could derive the columns of.
 A **result is exempt** — [`Tool.results`](tools.md) derives which attributes count as results from a framework's own registry, so an unknown name is an error for an input and simply unknowable for a result.
 
 A frame carrying a column its attribute is **not** addressed by is rejected too, rather than narrowed on the way out.

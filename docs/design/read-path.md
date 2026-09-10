@@ -41,7 +41,7 @@ Keying on the type would let an entity resolve to two rows, admitting at read ti
 The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
 Every membership's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of the entity axis, of each group, and of each partial dim — read from the same file that membership folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
-This is not a cascade: each membership honours only its _own_ tombstones, so deleting a component drops the component's own row but not its connection tuples — those stay until deleted in turn.
+This is not a cascade: each membership honours only its _own_ tombstones, so deleting an entity drops the entity's own row but not its connection tuples — those stay until deleted in turn.
 The coordinate a membership keys on [never broadcasts](record.md#the-broadcast-rule), so a row not addressed by one carries NULL there and its NULL-safe anti-join never takes it; only a row naming a dead coordinate is dropped.
 
 ## One fold for every axis
@@ -51,15 +51,15 @@ They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.
 
 The resolved relation is returned **in first-introduced member order** — root first, then file order within a layer — and a node's caches persist it _in that order_, so a reader recovers member order from the resolved file's own row number.
 There is no persisted `order_key` column: member order is the file's row order.
-A consumer wanting positional ports numbers a component's connections by this order, so a patch layer adding a connection appends rather than renumbering — the [positional-keying failure](record.md#connections) that order exists to prevent.
+A consumer wanting positional ports numbers an entity's connections by this order, so a patch layer adding a connection appends rather than renumbering — the [positional-keying failure](record.md#connections) that order exists to prevent.
 Across a materialised parent it still holds: the resolved seed is read in its own row order and a descendant's new rows number after it.
 
-A component's wide static columns are the one axis value that lives in another file — per type, in `dims/entity_type/<ctype>.parquet`, not on the entity axis — so a node materialises the resolved per-type frames beside the axis, and [`entity_type`](#resolving-a-relation) reads them and gates against the resolved entity axis.
+An entity's wide static columns are the one axis value that lives in another file — per type, in `dims/entity_type/<ctype>.parquet`, not on the entity axis — so a node materialises the resolved per-type frames beside the axis, and [`entity_type`](#resolving-a-relation) reads them and gates against the resolved entity axis.
 
 The fold runs live over an unmaterialised tail, cached per connection; since [layers are write-once](layers.md#a-layers-data-is-write-once), such a cache never needs invalidating.
 
 The [flags](record.md#flags) are folded in alongside the ownership group-by, so they cost nothing beyond it.
-They are computed **per key**, so per component: whether _this_ component's `p_max_pu` sets `timestep` is a different question from whether any does.
+They are computed **per key**, so per entity: whether _this_ entity's `p_max_pu` sets `timestep` is a different question from whether any does.
 
 The structs have a field per **broadcast** dim rather than per declared dim: an address coordinate [never broadcasts](record.md#the-broadcast-rule), so "did a row set it" is not a question about it — `entity` and a group's coordinate are always set, by construction.
 
@@ -116,7 +116,7 @@ A flag field missing from a map persisted before the dim was declared counts as 
 
 A **group coordinate** like `bus` is joined **NULL-safely** rather than NULL-aware against the map, being [an address rather than a broadcast dim](record.md#the-broadcast-rule).
 There is no membership gate at read: an attribute row is keyed by every membership its coordinates name — the entity, each group tuple, each dim coordinate — and each of those is [tombstone-pruned in the fold](#one-fold-for-every-axis), so a row whose entity, connection tuple or dim coordinate was deleted is already gone from the map.
-The fold anti-joins each membership against its own `deleted` rows, read from the same file that membership folds from; it is not a cascade — deleting a component does not delete its connections, only the component's own row.
+The fold anti-joins each membership against its own `deleted` rows, read from the same file that membership folds from; it is not a cascade — deleting an entity does not delete its connections, only the entity's own row.
 Because the coordinate a membership keys on [never broadcasts](record.md#the-broadcast-rule), a row not addressed by a membership carries NULL there and its NULL-safe anti-join never takes it — only a row naming a dead coordinate is dropped.
 
 `breakpoint` is projected but not joined on, being no part of the key: a curve is owned whole ([wide and long rows](record.md#wide-and-long-rows)), so every breakpoint of a key comes from the winning layer.
@@ -131,7 +131,7 @@ There is one `Record`, and it is the narwhals interface over a [`Resolver`](#own
 
 So a directory takes the same properties as a tree node, rather than its own column of exceptions:
 
-- **`flags`** are computed in the ownership `GROUP BY`, one scan rather than the second one a separate aggregate would cost. They need a real aggregate either way: parquet's footer statistics are per row group, not per component type, so a file mixing one type's series rows with another's constant says nothing about either.
+- **`flags`** are computed in the ownership `GROUP BY`, one scan rather than the second one a separate aggregate would cost. They need a real aggregate either way: parquet's footer statistics are per row group, not per entity type, so a file mixing one type's series rows with another's constant says nothing about either.
 - **Member order** is `order_key`, which over one source is `(0, file order)` — file order, arrived at by the general rule.
 - **`schema.partial`** is the granularity of a patch, and one layer patches nothing, so it is inert rather than absent.
 

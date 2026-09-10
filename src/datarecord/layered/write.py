@@ -135,7 +135,7 @@ def write_record(
                     "outputs",
                 )
             )
-        # Each type's names, to check record-wide uniqueness once every component
+        # Each type's names, to check record-wide uniqueness once every entity
         # frame has been seen (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
         tagged: list[DuckDBPyRelation] = []
         for kind, keys, read, subdir in kinds:
@@ -248,7 +248,7 @@ def _write_frame(
 
 
 def _require_unique(tagged: list[DuckDBPyRelation], con: DuckDBPyConnection) -> None:
-    """Reject a record whose component types share a name.
+    """Reject a record whose entity types share a name.
 
     Unlike `_validate_frame`'s checks this reads the rows, uniqueness being a
     property of the data. A tombstone still occupies the name, so `deleted` is
@@ -257,7 +257,7 @@ def _require_unique(tagged: list[DuckDBPyRelation], con: DuckDBPyConnection) -> 
     Parameters
     ----------
     tagged
-        One relation per component type, each `(entity, entity_type)`.
+        One relation per entity type, each `(entity, entity_type)`.
 
     Raises
     ------
@@ -288,8 +288,8 @@ def _require_unique(tagged: list[DuckDBPyRelation], con: DuckDBPyConnection) -> 
     if rows:
         detail = collision_detail(rows)
         msg = (
-            f"component types reuse names: {detail}; a name identifies one "
-            f"component across every type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
+            f"entity types reuse names: {detail}; a name identifies one "
+            f"entity across every type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
         )
         raise ValueError(msg)
 
@@ -299,7 +299,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
 
     Structural only: a long frame carries its own attribute's coordinates, and a
     `dims/` frame carries every dim the schema declares it keyed by. Values
-    are not checked - which component types and attribute names are valid
+    are not checked - which entity types and attribute names are valid
     belongs to whatever vocabulary the schema declares, and the record layer
     knows none.
 
@@ -404,7 +404,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         # The one classification column an axis file carries, every other group
         # being its own file. Admitted only where a group declares the type axis:
         # the label then says which `dims/entity_type/<Type>.parquet` a
-        # component's non-varying attributes are in. Where no group declares it
+        # entity's non-varying attributes are in. Where no group declares it
         # there is no member file and no column - those attributes are
         # `attributes_on("entity")`, columns of this file, already in `known` -
         # and an `entity_type` column is rejected as any undeclared one is

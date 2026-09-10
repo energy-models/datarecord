@@ -343,7 +343,7 @@ def _deleted_relation(
     rel
         The layer's rows of that membership, or `None` where it has none.
     fixed
-        The key columns, compared NULL-safely: `entity` for a component, a
+        The key columns, compared NULL-safely: `entity` for an entity, a
         group's coordinates for one of its tuples, a dim's `axis_key` for a
         coordinate.
 
@@ -728,12 +728,12 @@ def _materialise_dims(
     ensure_local_dir(groups)
     for group, rel in dims.groups.items():
         rel.to_parquet(f"{groups}{group}.parquet")
-    # The per-type wide static frames, folded across sources. A component's wide
+    # The per-type wide static frames, folded across sources. An entity's wide
     # columns live in a per-type file, not on the axis, so they are the one
     # membership value that needs materialising beside the axis for a descendant
     # to reach through a closed node (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
     # Only where a group declares the type axis: with no types there are no
-    # per-type files, a component's constant columns being on the entity axis
+    # per-type files, an entity's constant columns being on the entity axis
     # itself (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
     axis = dims.axes.get("entity")
     if schema.entity_type_dim is None or axis is None:
@@ -914,7 +914,7 @@ class Resolver:
         """The resolved inputs owner map: which layer owns each attribute key.
 
         Ownership only - membership is not gated here. A key whose coordinate is
-        not live (a deleted component, a deleted group tuple) is dropped per
+        not live (a deleted entity, a deleted group tuple) is dropped per
         attribute in `relation`, where the attribute's own dims say which
         memberships its rows carry.
 
@@ -926,10 +926,10 @@ class Resolver:
 
     @property
     def entity_axis(self) -> DuckDBPyRelation | None:
-        """The resolved entity axis: one row per live component, `entity_type` carried.
+        """The resolved entity axis: one row per live entity, `entity_type` carried.
 
         Folded like any axis (`dims.axes`), not an owner map - the winning row is
-        the whole row in one file. `None` where no layer wrote a component.
+        the whole row in one file. `None` where no layer wrote an entity.
 
         Notes
         -----
@@ -1014,10 +1014,10 @@ class Resolver:
         return set(self.dims.groups)
 
     def entity_types(self) -> set[str]:
-        """Types with any live component row, from the resolved entity axis.
+        """Types with any live entity row, from the resolved entity axis.
 
         Empty where the schema declares no type axis: the axis carries no
-        `entity_type` column then, nothing classifies a component, so there are
+        `entity_type` column then, nothing classifies an entity, so there are
         no types rather than a column of NULLs to distinct
         (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
 
@@ -1163,19 +1163,19 @@ class Resolver:
     def entity_type(self, ctype: str) -> DuckDBPyRelation | None:
         """Wide static members of one type, resolved inline, in member order.
 
-        The one axis whose *values* live in another file: a component's wide
+        The one axis whose *values* live in another file: an entity's wide
         static columns are per-type (`dims/entity_type/<ctype>.parquet`), not on
         the entity axis. So the per-type files fold on `entity` (last-writer-wins,
         each layer's own row winning), and the result is semi-joined to the live
         resolved entity axis - which decides membership, type and order - so a row
-        whose component the axis does not carry drops out. `None` where the type
+        whose entity the axis does not carry drops out. `None` where the type
         has no live member.
 
         Raises
         ------
         ValueError
             Where the schema declares no type axis. There is then no type to be
-            asked for - a component's constant columns are on the entity axis
+            asked for - an entity's constant columns are on the entity axis
             (`axis("entity")`), not in a per-type file - so a call naming one is
             a caller error rather than an empty answer. `Record.entity_types`
             iterates an empty mapping there, so nothing reaches this in normal use.
@@ -1188,7 +1188,7 @@ class Resolver:
         if self.schema.entity_type_dim is None:
             msg = (
                 f"entity_type({ctype!r}) but the schema declares no type axis; a "
-                f"component's constant columns are on the entity axis, read them "
+                f"entity's constant columns are on the entity axis, read them "
                 f"through axis('entity') (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
             )
             raise ValueError(msg)
@@ -1238,7 +1238,7 @@ class Resolver:
         `axis` carries a `_pos` in member order (`fold_axis`); the join does not
         preserve row order, so `_pos` is carried through it and sorted by, then
         dropped. The join also scopes `wide` to the live axis - a row whose
-        component the axis does not carry drops out.
+        entity the axis does not carry drops out.
         """
         joined = wide.set_alias("u").join(
             axis.set_alias("o"), null_safe("u", "o", match)
