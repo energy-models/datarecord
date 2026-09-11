@@ -16,8 +16,13 @@ import narwhals as nw
 import pytest
 from pydantic import ValidationError
 
-from datarecord.duck import DuckTypes
+from datarecord.duck import SCAFFOLD, DuckTypes
+from datarecord.layered.write import DERIVED
 from datarecord.schema import (
+    FLAG_COLUMNS,
+    LONG_TAIL,
+    RESERVED,
+    STRUCTURAL_TYPES,
     AttributeSpec,
     Dimension,
     Group,
@@ -695,3 +700,57 @@ def test_a_schema_declaring_nothing_stays_legal():
     """
     assert Schema().dims == ()
     assert Schema().attributes == {}
+
+
+INJECTED = (
+    "attribute",
+    "breakpoint",
+    "breakpoints",
+    "broadcast",
+    "deleted",
+    "order_key",
+    "value",
+    "varies",
+    "_depth",
+    "_first",
+    "_rank",
+    "_row",
+)
+
+
+def _declaring(position: str, name: str) -> Schema:
+    dim = Dimension(dtype=nw.String())
+    attr = AttributeSpec(dtype=nw.Float64(), dims={"entity"})
+    builders = {
+        "dim": lambda: Schema(dimensions={"entity": dim, name: dim}),
+        "group": lambda: Schema(
+            dimensions={"entity": dim, "bus": dim},
+            groups={name: Group(over={"entity": "entity", "bus": "bus"})},
+        ),
+        "attribute": lambda: Schema(
+            dimensions={"entity": dim}, attributes={name: attr}
+        ),
+        "result": lambda: Schema(dimensions={"entity": dim}, results={name: attr}),
+    }
+    return builders[position]()
+
+
+@pytest.mark.parametrize("position", ["dim", "group", "attribute", "result"])
+@pytest.mark.parametrize("name", INJECTED, ids=INJECTED)
+def test_a_declaration_named_after_an_injected_column_is_refused(name, position):
+    """`value` gave the long file two columns of one name, and `deleted` was read
+    as a tombstone flag so its rows left the fold. Every position was accepted."""
+    with pytest.raises(ValidationError, match="the format writes"):
+        _declaring(position, name)
+
+
+def test_every_column_the_format_injects_is_reserved():
+    """A scaffold or derived column added without being reserved is a name a
+    schema may still declare, which is the bug this set exists to close."""
+    assert set(RESERVED) == set(INJECTED), (
+        "the reserved set is exactly the columns no schema names"
+    )
+    for spelled in (STRUCTURAL_TYPES, LONG_TAIL, FLAG_COLUMNS, DERIVED, SCAFFOLD):
+        assert set(spelled) <= RESERVED, (
+            f"{sorted(spelled)} names a column the schema may still declare"
+        )

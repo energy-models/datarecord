@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS revisions (
 )
 """
 
+# The fold's own bookkeeping, dropped before it returns, and reserved against a dim of the same name (https://energy-models.github.io/datarecord/design/format/#reserved-column-names).
+SCAFFOLD = ("_depth", "_rank", "_row", "_first")
+
 # Where layers live; `layer_dir(id)` derives every record path from it (https://energy-models.github.io/datarecord/design/module-layout/).
 DEFAULT_BASE_URI = os.environ.get("DATARECORD_BASE_URI", "")
 
@@ -554,13 +557,7 @@ def fold_axis(
         # once unioned by name; NULL is not a tombstone, so coalesce to false
         # rather than letting `~NULL` drop a live row.
         winners = winners.filter(~coalesce(col("deleted"), lit(False)))  # noqa: FBT003
-    scaffold = [
-        "_depth",
-        "_rank",
-        "_row",
-        "_first",
-        *(["deleted"] if has_deleted else []),
-    ]
+    scaffold = [*SCAFFOLD, *(["deleted"] if has_deleted else [])]
     return winners.order("_first").project(star(exclude=scaffold))
 
 

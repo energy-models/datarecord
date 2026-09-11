@@ -108,6 +108,24 @@ There is **no `entity_type` column**: `entity` is unique across every type ([bel
 
 An attribute addressed by a group alone is not here either: it is a column of that group's own file ([where a value lives](#where-a-value-lives)) rather than a long row. PyPSA's `role` on a connection is the case.
 
+## Reserved column names
+
+A schema may not declare a dim, group, attribute or result named after a column the format writes for itself. `Schema` refuses one at load, and names the whole set in the message.
+
+| reserved                             | written by                                                                |
+| ------------------------------------ | ------------------------------------------------------------------------- |
+| `attribute`, `breakpoint`, `value`   | [every long row](#the-long-schema)                                        |
+| `deleted`                            | [the entity axis](#the-entity-axis) and each group's file, as a tombstone |
+| `varies`, `broadcast`, `breakpoints` | [the owner map](read-path.md#owner-map)'s flag columns                    |
+| `order_key`                          | the fold, on a resolved frame; stripped from every layer file             |
+| `_depth`, `_rank`, `_row`, `_first`  | the fold's scaffold, dropped before it returns a relation                 |
+
+**The names are taken, so a schema is refused rather than accommodated.** The long schema puts `attribute` and `value` in the file as real columns, which is what lets a foreign tool read a record with `select … where attribute = 'p_nom'` and no library at all. Names that varied per record would buy one free dim and cost every reader a `manifest.json` lookup before its first query.
+
+**A collision is silent, which is why it is caught at load.** A dim named `value` gives the long file two columns of one name. A dim named `deleted` is worse: the fold turns tombstoning on by [the column's presence](layers.md#deletion), so ordinary labels read as tombstones and their rows leave the resolved relation with nothing reported.
+
+**`entity` is not reserved.** A schema declares it like any other axis, so it cannot be taken by surprise. The reserved names are the ones the format writes and no schema mentions.
+
 ## `entity` is unique across types
 
 An `entity` identifies one component across the whole record.

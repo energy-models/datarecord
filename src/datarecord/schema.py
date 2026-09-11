@@ -114,6 +114,20 @@ LONG_TAIL = ("attribute", "breakpoint", "value")
 # (https://energy-models.github.io/datarecord/design/read-path/#owner-map, https://energy-models.github.io/datarecord/design/record/#flags).
 FLAG_COLUMNS = ("varies", "broadcast", "breakpoints")
 
+# Every column the format writes or derives itself, and so the names a schema may not take (https://energy-models.github.io/datarecord/design/format/#reserved-column-names).
+RESERVED = frozenset(
+    {
+        *STRUCTURAL_TYPES,
+        *LONG_TAIL,
+        *FLAG_COLUMNS,
+        "order_key",
+        "_depth",
+        "_rank",
+        "_row",
+        "_first",
+    }
+)
+
 
 def flag_type(dims: tuple[str, ...]) -> nw.dtypes.DType:
     """One flag struct's type: a BOOLEAN field per declared dim.
@@ -450,6 +464,27 @@ class Schema(BaseModel):
         - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
         """
         declared = set(self.dimensions)
+
+        taken = sorted(
+            {
+                name
+                for name in (
+                    *self.dimensions,
+                    *self.groups,
+                    *self.attributes,
+                    *self.results,
+                )
+                if name in RESERVED
+            }
+        )
+        if taken:
+            msg = (
+                f"{taken} name columns the format writes into every record, so a schema "
+                f"declaring one collides with it. Rename each to a name the format does not "
+                f"take, such as `amount` for `value`. Reserved: {sorted(RESERVED)} "
+                f"(https://energy-models.github.io/datarecord/design/format/#reserved-column-names)"
+            )
+            raise ValueError(msg)
 
         # Attributes but no axes is a table, not a record (https://energy-models.github.io/datarecord/design/schema/#dimensions). Rejected here
         # so the owner map never needs a struct with no fields, which DuckDB has
