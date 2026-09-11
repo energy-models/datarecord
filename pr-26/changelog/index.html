@@ -905,12 +905,9 @@ SPDX-License-Identifier: CC-BY-4.0
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
 <li>A schema declaring a dim, group, attribute or result named after a column the
-  format writes for itself is refused at load. <code>value</code>, <code>attribute</code> and
-  <code>breakpoint</code> gave the long file two columns of one name, and <code>deleted</code> was
-  read as a tombstone flag so its rows left the resolved relation without an
-  error. The reserved set has one home, <code>datarecord.schema.RESERVED</code>, and
-  <a href="https://energy-models.github.io/datarecord/design/format/#reserved-column-names">the record format</a>
-  lists it. <code>entity</code> is not reserved: a schema declares it like any other axis.</li>
+  format writes for itself is refused at load, rather than colliding with it
+  silently. The set is <code>datarecord.schema.RESERVED</code>, listed in
+  <a href="https://energy-models.github.io/datarecord/design/format/#reserved-column-names">the record format</a>.</li>
 </ul>
 
 
