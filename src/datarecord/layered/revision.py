@@ -352,14 +352,14 @@ class Record:
             names, lambda attr: nw.from_native(self.resolver.attribute(attr, "outputs"))
         )
 
-    def flags(self, entities: Sequence[str] | None = None) -> dict[str, Flags]:
+    def flags(self, **labels: Sequence[str]) -> dict[str, Flags]:
         """Straight off the `inputs` owner map, which folded these in for free.
 
         Notes
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return self.resolver.attributes_of(entities)
+        return self.resolver.attributes_of(**labels)
 
     # -- frames, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) --
 

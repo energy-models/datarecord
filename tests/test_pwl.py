@@ -33,7 +33,7 @@ def _curve(revision, attribute: str) -> list[tuple[float, float]]:
 
 def _flags(revision, ctype: str, attribute: str) -> Flags:
     record = revision.record
-    flags = record.flags(names(record, ctype))
+    flags = record.flags(entity=names(record, ctype))
     if attribute not in flags:
         raise AssertionError(f"{attribute} not in the owner map")
     return flags[attribute]
@@ -86,12 +86,12 @@ def test_breakpoints_distinguishes_curve_from_scalar(con, base_uri):
 
     curve = _flags(revision, PROCESS, "marginal_cost")
     scalar = _flags(revision, PROCESS, "p_nom")
-    # A curve and a scalar are shaped alike - both rows leave every dim NULL,
-    # so all three are in `broadcast` - and `breakpoints` is what separates
-    # them, without opening the file.
-    assert curve.broadcast == scalar.broadcast
+    assert curve.broadcast == scalar.broadcast, "both rows leave every value dim NULL"
     assert "snapshot" in curve.broadcast
-    assert not curve.varies
+    assert curve.varies == scalar.varies == frozenset({"entity"}), (
+        "both rows name their entity and nothing else, so only `breakpoints` "
+        "separates a curve from a scalar"
+    )
     assert curve.breakpoints
     assert not scalar.breakpoints
 

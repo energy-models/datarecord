@@ -71,7 +71,7 @@ class _Source:
     def outputs(self):
         return self._frames(self._outputs, "outputs")
 
-    def flags(self, entities=None):
+    def flags(self, **labels):
         return {}
 
 

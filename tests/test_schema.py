@@ -9,6 +9,7 @@ Notes
 - [the schema](https://energy-models.github.io/datarecord/design/schema/)
 """
 
+import re
 from typing import Any
 
 import duckdb
@@ -57,7 +58,7 @@ def _schema(**overrides) -> Schema:
                 dtype=nw.Float64(), dims={"connection", "scenario", "timestep"}
             ),
         },
-        "partial": frozenset({"scenario"}),
+        "partial": frozenset({"entity", "bus", "scenario"}),
     }
     kwargs.update(overrides)
     return Schema(**kwargs)
@@ -71,7 +72,6 @@ def test_ownership_is_derived_not_declared():
     s = _schema()
     # Varies over both time axes, but only `scenario` is partial among them -
     # so a patch to one timestep restates that scenario's whole series.
-    # `entity` joins it because a layer patches one component's value.
     assert s.owned_per("p_max_pu") == frozenset({"entity", "scenario"})
     assert s.owned_per("marginal_cost") == frozenset({"entity", "scenario"})
     # A first-stage decision: one value per component, owned once across
@@ -94,12 +94,14 @@ def test_a_scenario_varying_capacity_is_a_schema_violation():
 def test_partial_dims_is_the_union_over_attributes():
     """The fold's key is one fixed tuple, so an unowned dim is NULL rather than absent."""
     s = _schema()
-    # `entity` and `bus` are always partial - they do not broadcast.
-    assert s.partial_dims == ("entity", "bus", "scenario")
+    assert s.partial_dims == ("entity", "bus", "scenario"), (
+        "the declared order, not the order `partial` names them"
+    )
 
-    # Make `timestep` partial too and it joins the key.
-    wider = _schema(partial=frozenset({"scenario", "timestep"}))
-    assert wider.partial_dims == ("entity", "bus", "timestep", "scenario")
+    wider = _schema(partial=frozenset({"entity", "bus", "scenario", "timestep"}))
+    assert wider.partial_dims == ("entity", "bus", "timestep", "scenario"), (
+        "a dim made `partial` joins the key"
+    )
 
 
 def test_file_split_follows_dims():
@@ -115,16 +117,11 @@ def test_file_split_follows_dims():
     assert s.attributes["p_max_pu"].varying
 
 
-# -- membership keys (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys) --------------------------------------------------
+# -- group keys (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------------------
 
 
-def test_a_membership_key_is_in_the_fold_key_without_partial():
-    """A non-broadcast dim is a membership key, in the fold key by being one.
-
-    `entity` does not broadcast, so it is patched per row by every layer - it
-    lands in `partial_dims` (the fold key) without being declared `partial`,
-    which is for value dims a layer patches per value.
-    """
+def test_the_fold_key_is_exactly_partial():
+    """No dim joins the fold key by its name: `entity` is a dim like any other."""
     s = Schema(
         dimensions={
             "entity": Dimension(dtype=nw.String()),
@@ -132,20 +129,62 @@ def test_a_membership_key_is_in_the_fold_key_without_partial():
         },
         partial=frozenset({"scenario"}),
     )
-    assert s.membership_keys == ("entity",)
-    assert s.partial_dims == ("entity", "scenario")
+    assert s.partial_dims == ("scenario",), "`entity` is not added to `partial`"
 
 
-def test_partial_may_not_name_a_membership_key():
-    """`partial` is for value dims; a membership key named there is a category error."""
-    with pytest.raises(ValidationError, match="membership keys"):
+@pytest.mark.parametrize(
+    ("groups", "partial", "missing"),
+    [
+        pytest.param(
+            {"connection": Group(over=["entity", "bus"])},
+            {"entity"},
+            "['bus']",
+            id="one-coordinate-of-a-tuple-set",
+        ),
+        pytest.param(
+            {"entity_type": Group(over=["entity"], into="entity_type")},
+            set(),
+            "['entity']",
+            id="the-key-of-a-functional-group",
+        ),
+        pytest.param(
+            {"connection": Group(over=["entity", "bus"])},
+            None,
+            "['bus', 'entity']",
+            id="no-partial-at-all",
+        ),
+    ],
+)
+def test_a_group_key_missing_from_partial_is_refused(groups, partial, missing):
+    """A layer adds or removes one row of a group, so its key must be `partial`.
+
+    The `into` dim is no key, so `entity_type` need not be named.
+    """
+    with pytest.raises(
+        ValidationError, match=rf"`partial` must name {re.escape(missing)}"
+    ):
         Schema(
             dimensions={
                 "entity": Dimension(dtype=nw.String()),
-                "scenario": Dimension(dtype=nw.String()),
+                "bus": Dimension(dtype=nw.String()),
+                "entity_type": Dimension(dtype=nw.String()),
             },
-            partial=frozenset({"entity", "scenario"}),
+            groups=groups,
+            partial=None if partial is None else frozenset(partial),
         )
+
+
+def test_an_attribute_broadcasts_over_the_dims_it_names():
+    """A coordinate reached through a group is the group's rows, not an axis."""
+    s = _schema()
+    assert s.broadcast_dims == s.dims, "any declared dim may broadcast"
+    assert s.broadcasts_over("p_max_pu") == ("entity", "timestep", "scenario"), (
+        "the dims its spec names, in declaration order"
+    )
+    assert s.broadcasts_over("efficiency") == ("timestep", "scenario"), (
+        "`entity` and `bus` come through `connection`, so they do not broadcast"
+    )
+    assert s.broadcasts_over("undeclared") == (), "a result broadcasts over nothing"
 
 
 # -- entity types ----------------------------------------------------------
@@ -169,7 +208,7 @@ def test_a_functional_group_may_not_key_an_attribute_with_what_it_maps_from():
                     dtype=nw.Float64(), dims={"entity", "entity_type"}
                 )
             },
-            partial=frozenset(),
+            partial=frozenset({"entity"}),
         )
 
 
@@ -185,7 +224,7 @@ def test_the_redundant_addressing_rule_covers_every_functional_group():
             attributes={
                 "x": AttributeSpec(dtype=nw.Float64(), dims={"bus", "country"})
             },
-            partial=frozenset(),
+            partial=frozenset({"bus"}),
         )
 
 
@@ -205,7 +244,7 @@ def test_an_attribute_may_be_addressed_by_the_entity_type_alone():
             "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
             "icon": AttributeSpec(dtype=nw.String(), dims={"entity_type"}),
         },
-        partial=frozenset(),
+        partial=frozenset({"entity"}),
     )
     assert s.attributes_on("entity_type") == ("icon",), "a column of the type axis"
     assert not s.attributes["icon"].varying, "addressed by one dim, so not varying"
@@ -228,7 +267,7 @@ def test_several_groups_may_map_entity_into_other_dims():
             "bus_of": Group(over=["entity"], into="bus"),
         },
         attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
-        partial=frozenset(),
+        partial=frozenset({"entity"}),
     )
     assert s.attributes_on("entity") == ("p_nom",), (
         "a constant is an entity-axis column"
@@ -351,7 +390,7 @@ def test_widening_dims_is_compatible():
 def test_widening_partial_is_compatible():
     """Ownership becomes finer; an old row is owned at the coarser granularity."""
     old = _schema()
-    new = _schema(partial=frozenset({"scenario", "timestep"}))
+    new = _schema(partial=frozenset({"entity", "bus", "scenario", "timestep"}))
     assert new.compatible_with(old) == []
 
 
@@ -376,7 +415,7 @@ def test_changing_a_dtype_is_incompatible():
 
 def test_removing_from_partial_is_incompatible():
     """A layer that patched one value is now a partial override of a whole axis."""
-    old = _schema(partial=frozenset({"scenario", "timestep"}))
+    old = _schema(partial=frozenset({"entity", "bus", "scenario", "timestep"}))
     new = _schema()
     reasons = new.compatible_with(old)
     assert any("no longer `partial`" in r for r in reasons)

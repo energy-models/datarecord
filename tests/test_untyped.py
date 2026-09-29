@@ -27,7 +27,11 @@ from datarecord.schema import AttributeSpec, Dimension, Schema
 
 @pytest.fixture
 def untyped_schema():
-    """Two attributes over `entity`, and no group classifying it."""
+    """Two attributes over `entity`, and no group classifying it.
+
+    `entity` is `partial`, so a layer adds or removes one component without
+    restating the rest.
+    """
     return Schema(
         dimensions={
             "entity": Dimension(dtype=nw.String()),
@@ -40,7 +44,7 @@ def untyped_schema():
             ),
             "weighting": AttributeSpec(dtype=nw.Float64(), dims={"timestep"}),
         },
-        partial=frozenset(),
+        partial=frozenset({"entity"}),
     )
 
 
@@ -51,6 +55,7 @@ def root(con, base_uri, untyped_schema):
     revision = Revision.create(con)
     staged = WorkingRecord(revision.record, con)
     staged.add(
+        "entity",
         pd.DataFrame(
             [{"entity": "a", "p_nom": 1.0}, {"entity": "b", "p_nom": 2.0}],
         ),
@@ -150,7 +155,7 @@ def test_a_child_add_joins_the_parents_entities(root, con):
     `dims/entity.parquet` with the parent's rather than replacing them.
     """
     staged = WorkingRecord(root.record, con)
-    staged.add(pd.DataFrame([{"entity": "c", "p_nom": 3.0}]))
+    staged.add("entity", pd.DataFrame([{"entity": "c", "p_nom": 3.0}]))
     child = staged.commit(NewChild(root))
     assert _entities(child.record) == {"a": 1.0, "b": 2.0, "c": 3.0}
 
@@ -176,6 +181,7 @@ def test_a_resolved_record_reads_the_same_as_an_unresolved_one(
     revision = Revision.create(con)
     staged = WorkingRecord(revision.record, con)
     staged.add(
+        "entity",
         pd.DataFrame([{"entity": "a", "p_nom": 1.0}, {"entity": "b", "p_nom": 2.0}]),
     )
     child = staged.commit(NewChild(revision))

@@ -223,7 +223,7 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
     )
 
     record = revision.record
-    flags = record.flags(names(record, PROCESS))["efficiency"]
+    flags = record.flags(entity=names(record, PROCESS))["efficiency"]
     # Both sets hold `snapshot`: one connection's efficiency is per-snapshot,
     # another's is a single broadcast row, and the union over the type's names
     # reports both - which is what tells a consumer one container will not do

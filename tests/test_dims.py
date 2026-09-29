@@ -127,7 +127,7 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     child = revision.child()
     tombstone(layer_dir(child.id), "Generator", ["Manchester Wind"])
 
-    axis_rel = child.resolver.entity_axis
+    axis_rel = child.resolver.dims.axes["entity"]
     assert axis_rel is not None
     assert "Manchester Wind" not in set(axis_rel.df()["entity"])
 
@@ -288,7 +288,7 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     assert "entity" in record.groups["entity_type"].collect_schema().names()
     assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
     # And in the owner map the fold builds over them.
-    ea = revision.resolver.entity_axis
+    ea = revision.resolver.dims.axes["entity"]
     assert ea is not None
     assert "entity" in ea.df().columns
 
@@ -313,7 +313,7 @@ def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
     assert "Generator" in set(kinds.df()["entity_type"])
 
     # And it is what the fold reads: the map's entities are the axis's.
-    ea2 = revision.resolver.entity_axis
+    ea2 = revision.resolver.dims.axes["entity"]
     assert ea2 is not None
     mapped = ea2.df()
     assert set(mapped["entity"]) == set(axis.loc[~axis["deleted"], "entity"])

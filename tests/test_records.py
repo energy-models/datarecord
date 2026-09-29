@@ -122,7 +122,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
         attributes: Frames
         outputs: Frames
 
-        def flags(self, entities=None) -> dict[str, Flags]:
+        def flags(self, **labels) -> dict[str, Flags]:
             return {}
 
     record = DictRecord(
@@ -178,7 +178,7 @@ def test_constructions_agree_on_flags(both):
     for other in rest:
         for ctype in _types(node):
             entities = names(node, ctype)
-            assert node.flags(entities) == other.flags(entities), ctype
+            assert node.flags(entity=entities) == other.flags(entity=entities), ctype
 
 
 def test_constructions_agree_on_rows(both):
@@ -250,8 +250,8 @@ def test_flags_are_per_component_type(con, base_uri):
     )
 
     record = revision.record
-    generator = record.flags(names(record, "Generator"))["p_max_pu"]
-    link = record.flags(names(record, "Link"))["p_max_pu"]
+    generator = record.flags(entity=names(record, "Generator"))["p_max_pu"]
+    link = record.flags(entity=names(record, "Link"))["p_max_pu"]
     # The Generator's rows set `snapshot`; the Link's leaves it NULL. Naming
     # the dim is what makes these two answers distinguishable at all.
     assert "snapshot" in generator.varies
@@ -298,7 +298,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     write_schema(schema(dims={**narrow, "scenario": nw.String()}, partial=set()))
     child = revision.child()
     record = Record(child.resolver)
-    flags = record.flags(names(record, "Generator"))["p_max_pu"]
+    flags = record.flags(entity=names(record, "Generator"))["p_max_pu"]
     assert "snapshot" in flags.varies
     assert "scenario" not in flags.varies
     assert "scenario" not in flags.broadcast
@@ -330,7 +330,7 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
     )
 
     record = revision.record
-    combined = record.flags(names(record, "Generator"))["p_max_pu"]
+    combined = record.flags(entity=names(record, "Generator"))["p_max_pu"]
     assert "snapshot" in combined.varies
     assert "snapshot" in combined.broadcast
 
@@ -375,8 +375,10 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
     write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
 
     record = revision.record
-    flags = record.flags(names(record, "Generator"))
-    assert flags["capital_cost"].varies == frozenset({"period"})
+    flags = record.flags(entity=names(record, "Generator"))
+    assert flags["capital_cost"].varies == frozenset({"entity", "period"}), (
+        "`entity` is a dim like `period`, so a row naming it varies over it"
+    )
     assert flags["capital_cost"].broadcast == frozenset(), (
         "a dim `capital_cost` has no column for is not one it broadcasts over"
     )
@@ -406,7 +408,7 @@ def test_flags_report_a_curve(con, base_uri):
     )
 
     record = revision.record
-    assert record.flags(names(record, "Process"))["marginal_cost"].breakpoints
+    assert record.flags(entity=names(record, "Process"))["marginal_cost"].breakpoints
 
 
 # -- more than one layer, which is where the fold stops being a scan ---------
@@ -583,6 +585,10 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
     `layer_dir` macro derives from that root - so the manifest
     beside those layers is a property of the connection too. Two records on
     two roots therefore disagree about their dims without either being wrong.
+
+    Every declared dim is a broadcast dim now, `entity` and the connection's
+    `bus` included, so each tuple is the root's whole dim list rather than its
+    value dims alone.
     """
     from datarecord import duck
     from datarecord.layered.resolve import write_schema as write_manifest
@@ -599,18 +605,24 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
         roots[name] = (root, con, Revision.create(con))
 
     (_, _, revision_a), (root_b, con_b, revision_b) = roots["a"], roots["b"]
-    assert revision_a.record.schema.broadcast_dims == ("scenario", "entity_type"), (
-        "root a reads its own `scenario`, beside the type group's dim"
-    )
-    assert revision_b.record.schema.broadcast_dims == ("vintage", "entity_type"), (
-        "root b reads its own `vintage`, beside the type group's dim"
-    )
+    assert revision_a.record.schema.broadcast_dims == (
+        "entity",
+        "bus",
+        "scenario",
+        "entity_type",
+    ), "root a reads its own `scenario`, beside the fixture's other dims"
+    assert revision_b.record.schema.broadcast_dims == (
+        "entity",
+        "bus",
+        "vintage",
+        "entity_type",
+    ), "root b reads its own `vintage`, beside the fixture's other dims"
 
     # A layer read directly needs no schema supplied either: its own directory
     # carries none (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record), so the connection's root answers - which is what
     # `Record.at` used to take a `declared` argument for.
     layer = Record.at(layer_dir(revision_b.id, root_b), con_b)
-    assert layer.schema.broadcast_dims == ("vintage", "entity_type"), (
+    assert layer.schema.broadcast_dims == ("entity", "bus", "vintage", "entity_type"), (
         "a layer read at its URI takes its connection's root schema"
     )
 

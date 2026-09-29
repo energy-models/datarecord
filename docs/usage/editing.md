@@ -38,8 +38,12 @@ An `nw.Expr` value is a **function of the current value**: it reads the resolved
 ```python
 import pandas as pd
 
-w.add(pd.DataFrame({"entity": ["north", "south"], "entity_type": ["Bus", "Bus"]}))
 w.add(
+    "entity",
+    pd.DataFrame({"entity": ["north", "south"], "entity_type": ["Bus", "Bus"]}),
+)
+w.add(
+    "entity",
     pd.DataFrame(
         {
             "entity": ["wind1", "wind2"],
@@ -47,7 +51,7 @@ w.add(
             "carrier": ["wind", "wind"],
             "p_nom": [100.0, 80.0],
         }
-    )
+    ),
 )
 
 w.remove("entity", ["old_coal"])

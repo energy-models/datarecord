@@ -161,18 +161,29 @@ def test_a_sequence_is_positional():
     assert dict(zip(names, values, strict=True)) == {"wind1": 150.0, "wind2": 80.0}
 
 
-def test_a_mapping_supplies_its_own_names():
-    names, values, _ = normalise_value({"wind1": 150.0, "wind2": 80.0}, None)
-    assert names is not None
-    assert dict(zip(names, values, strict=True)) == {"wind1": 150.0, "wind2": 80.0}
+def test_a_mapping_supplies_its_own_labels():
+    """The keys are labels along the dim `indexed_by` names, not listed names."""
+    names, values, dims = normalise_value(
+        {"wind1": 150.0, "wind2": 80.0}, None, indexed_by="entity"
+    )
+    assert names is None, "nothing was listed, so no names come back"
+    assert dims == {"entity": ["wind1", "wind2"]}
+    assert dict(zip(dims["entity"], values, strict=True)) == {
+        "wind1": 150.0,
+        "wind2": 80.0,
+    }
 
 
 def test_a_series_indexed_by_names_is_per_name():
+    """A series of names is one more dim series: its index keys `entity`."""
     series = pd.Series({"wind1": 1.0, "wind2": 2.0})
-    names, values, dims = normalise_value(series, ["wind1", "wind2"])
-    assert names is not None
-    assert dict(zip(names, values, strict=True)) == {"wind1": 1.0, "wind2": 2.0}
-    assert dims == {}
+    names, values, dims = normalise_value(series, None, indexed_by="entity")
+    assert names is None, "nothing was listed, so no names come back"
+    assert dims == {"entity": ["wind1", "wind2"]}
+    assert dict(zip(dims["entity"], values, strict=True)) == {
+        "wind1": 1.0,
+        "wind2": 2.0,
+    }
 
 
 def test_a_series_indexed_by_an_axis_is_per_coordinate():
@@ -185,20 +196,26 @@ def test_a_series_indexed_by_an_axis_is_per_coordinate():
 
 
 def test_a_sequence_of_the_wrong_length_is_rejected():
-    with pytest.raises(ValueError, match="2 names"):
+    with pytest.raises(ValueError, match="2 labels"):
         normalise_value([1.0, 2.0, 3.0], ["wind1", "wind2"])
 
 
-def test_an_index_that_could_be_either_is_read_as_names(staged):
-    """No membership test, so a label colliding with a name is not an ambiguity.
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(pd.Series({"Manchester Wind": 1.0}), id="series"),
+        pytest.param({"Manchester Wind": 1.0}, id="mapping"),
+    ],
+)
+def test_an_index_that_could_be_either_is_refused(staged, value):
+    """No membership test, so labels spelled like components do not decide.
 
-    `scenario` here has a label spelled like a component; with nothing said, the
-    index is names - a call's meaning is its own, not the record's data's.
+    `p_max_pu` is over `entity` and `snapshot`, and the call names neither, so
+    the index could hold either. It used to be read as names; with no dim
+    special, nothing makes `entity` the default, and the call says which.
     """
-    series = pd.Series({"wind1": 1.0})
-    names, _, dims = normalise_value(series, ["wind1"])
-    assert names == ["wind1"]
-    assert dims == {}, "no axis claimed it"
+    with pytest.raises(ValueError, match="say `indexed_by=`"):
+        staged.set("p_max_pu", value)
 
 
 def test_indexed_by_names_the_axis_a_series_index_holds(staged):
@@ -208,15 +225,24 @@ def test_indexed_by_names_the_axis_a_series_index_holds(staged):
     assert "p_max_pu" in staged.attributes
 
 
-def test_an_unnamed_series_index_holds_names(staged):
-    """Not inferred from the labels, so an index saying nothing is names.
+def test_an_unnamed_series_index_holds_the_one_unnamed_coordinate(staged):
+    """With `entity` named, the index can only be the `snapshot` it leaves.
 
-    Which then fails the member check rather than silently landing on an axis -
-    a timestamp is no component.
+    It used to be read as names whatever the call named; now the one
+    coordinate no keyword names is what an unnamed index holds.
     """
+    when = pd.Timestamp("2015-01-01")
+    staged.set("p_max_pu", pd.Series({when: 0.4}), entity=["Manchester Wind"])
+    rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    mine = rows[(rows["entity"] == "Manchester Wind") & (rows["snapshot"] == when)]
+    assert list(mine["value"]) == [0.4], "one row, at the snapshot the index held"
+
+
+def test_an_index_of_entity_labels_is_member_checked(staged):
+    """An index said to hold `entity` fails the member check - a date is no component."""
     series = pd.Series({"2030-01-01": 0.4})
     with pytest.raises(KeyError, match="no entity"):
-        staged.set("p_max_pu", series, entity=["Manchester Wind"])
+        staged.set("p_max_pu", series, indexed_by="entity")
 
 
 def test_the_series_index_name_says_what_it_holds(staged):
@@ -352,7 +378,7 @@ def test_a_scalar_reaches_an_entity_staged_by_add(staged):
     -----
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
-    staged.add(pd.DataFrame({"entity": ["new wind"], "entity_type": [GEN]}))
+    staged.add("entity", pd.DataFrame({"entity": ["new wind"], "entity_type": [GEN]}))
     staged.set("p_nom", 5.0)
     got = _entity_column(staged, "p_nom")
     assert got["new wind"] == got["Manchester Wind"] == 5.0, (
@@ -368,7 +394,8 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
     staged.add(
-        pd.DataFrame([{"entity": "NewSolar", "entity_type": GEN, "carrier": "solar"}])
+        "entity",
+        pd.DataFrame([{"entity": "NewSolar", "entity_type": GEN, "carrier": "solar"}]),
     )
     staged.set("p_nom", 7.0, entity=["NewSolar"])
 
@@ -474,7 +501,7 @@ def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     -----
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
     """
-    before = staged.flags(names(staged, GEN))["marginal_cost"]
+    before = staged.flags(entity=names(staged, GEN))["marginal_cost"]
     assert "snapshot" not in before.varies
     assert "snapshot" in before.broadcast
 
@@ -492,7 +519,7 @@ def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
         entity=["Manchester Wind"],
     )
 
-    after = staged.flags(names(staged, GEN))["marginal_cost"]
+    after = staged.flags(entity=names(staged, GEN))["marginal_cost"]
     assert "snapshot" in after.varies
     assert after.broadcast == before.broadcast
 
@@ -558,7 +585,7 @@ def test_flags_do_not_depend_on_the_maps_grouping_grain(staged, ac_dc):
     )
     staged.set("marginal_cost", 3.0, entity=["Norway Wind"])
 
-    flags = staged.flags(names(staged, GEN))["marginal_cost"]
+    flags = staged.flags(entity=names(staged, GEN))["marginal_cost"]
     assert "snapshot" in flags.varies, "one member's rows name the snapshot"
     assert "snapshot" in flags.broadcast, "another's leave it NULL"
 
@@ -733,6 +760,7 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
 
 def test_add_then_commit_makes_a_component_exist(staged, root):
     staged.add(
+        "entity",
         pd.DataFrame(
             [
                 {
@@ -749,7 +777,7 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
     assert "NewSolar" in names(staged, GEN), "the addition reads back before commit"
 
     child = staged.commit(NewChild(root))
-    assert "NewSolar" in set(child.resolver.entity_axis.df()["entity"])
+    assert "NewSolar" in set(child.resolver.dims.axes["entity"].df()["entity"])
 
     static = PyPSA.build(child.record).c[GEN].static
     assert static.loc["NewSolar", "p_nom"] == 42.0
@@ -758,14 +786,14 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
 
 def test_add_accepts_a_name_of_its_own_type(staged, root):
     """`add` of a name the record already holds is an edit to that entity."""
-    staged.add(pd.DataFrame([{"entity": "Manchester Wind", "p_nom": 5.0}]))
+    staged.add("entity", pd.DataFrame([{"entity": "Manchester Wind", "p_nom": 5.0}]))
     child = staged.commit(NewChild(root))
     assert (
         PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 5.0
     )
 
 
-def test_require_members_rejects_a_name_no_layer_declares(staged):
+def test_require_labels_rejects_a_name_no_layer_declares(staged):
     """A value keyed to a name with no entity-axis row is caught, not dropped.
 
     Notes
@@ -773,7 +801,7 @@ def test_require_members_rejects_a_name_no_layer_declares(staged):
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
     with pytest.raises(KeyError, match="Nowhere"):
-        staged._require_members(["Manchester Wind", "Nowhere"])
+        staged._require_labels("entity", ["Manchester Wind", "Nowhere"])
 
 
 def test_add_routes_a_port_attribute_to_the_connections(staged, root):
@@ -788,6 +816,7 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     staged.add(
+        "entity",
         pd.DataFrame(
             [
                 {
@@ -824,7 +853,7 @@ def test_add_rejects_a_column_the_schema_does_not_declare(staged):
     """
     assert "capex" not in staged.schema.attributes, "undeclared, which is the case here"
     with pytest.raises(ValueError, match="capex"):
-        staged.add(pd.DataFrame([{"entity": "NewSolar", "capex": 1234.5}]))
+        staged.add("entity", pd.DataFrame([{"entity": "NewSolar", "capex": 1234.5}]))
 
 
 def test_add_fills_a_declared_column_another_add_omitted(staged):
@@ -838,8 +867,8 @@ def test_add_fills_a_declared_column_another_add_omitted(staged):
     -----
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
     """
-    staged.add(pd.DataFrame([{"entity": "NewSolar", "p_nom": 1234.5}]))
-    staged.add(pd.DataFrame([{"entity": "NewWind"}]))
+    staged.add("entity", pd.DataFrame([{"entity": "NewSolar", "p_nom": 1234.5}]))
+    staged.add("entity", pd.DataFrame([{"entity": "NewWind"}]))
 
     p_nom = _entity_column(staged, "p_nom")
     assert pd.isna(p_nom["NewWind"]), "not carried, so NULL"
@@ -851,7 +880,7 @@ def test_remove_tombstones_without_enumerating_attributes(staged, root):
     assert "Norway Gas" not in names(staged, GEN), "the removal reads back at once"
 
     child = staged.commit(NewChild(root))
-    assert "Norway Gas" not in set(child.resolver.entity_axis.df()["entity"])
+    assert "Norway Gas" not in set(child.resolver.dims.axes["entity"].df()["entity"])
 
 
 def test_add_after_remove_leaves_the_component_alive(staged, root):
@@ -863,11 +892,12 @@ def test_add_after_remove_leaves_the_component_alive(staged, root):
     """
     staged.remove("entity", ["Norway Gas"])
     staged.add(
-        pd.DataFrame([{"entity": "Norway Gas", "entity_type": GEN, "carrier": "gas"}])
+        "entity",
+        pd.DataFrame([{"entity": "Norway Gas", "entity_type": GEN, "carrier": "gas"}]),
     )
 
     child = staged.commit(NewChild(root))
-    assert "Norway Gas" in set(child.resolver.entity_axis.df()["entity"])
+    assert "Norway Gas" in set(child.resolver.dims.axes["entity"].df()["entity"])
 
 
 def test_a_tombstone_drops_that_components_staged_attributes(staged, root):

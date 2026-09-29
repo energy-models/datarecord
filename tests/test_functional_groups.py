@@ -39,12 +39,9 @@ def _schema(**overrides) -> Schema:
             "state": Group(over=["bus"], into="state"),
             "country": Group(over=["state"], into="country"),
         },
-        "partial": frozenset(),
+        "partial": frozenset({"bus", "state"}),
     }
     kwargs.update(overrides)
-    # A group's key coordinates are membership keys, in the fold key by being
-    # membership - not declared `partial`, which is for value dims a layer patches
-    # per value (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
     return Schema(**kwargs)
 
 
@@ -85,7 +82,7 @@ def test_a_group_may_share_a_dims_name_and_the_dim_wins():
     """
     s = _schema(
         attributes={"co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})},
-        partial=frozenset({"country"}),
+        partial=frozenset({"bus", "state", "country"}),
     )
     assert s.coordinates_of("co2_budget") == ("country",), "the dim, not the group"
     assert s.groups_of("co2_budget") == (), "a shadowed group addresses nothing"
@@ -103,7 +100,10 @@ def test_an_into_less_group_in_dims_expands_to_its_coordinates():
 
 def test_a_corridor_draws_two_coordinates_from_one_dim():
     """`over`'s dict form is what a relation between two of one axis needs."""
-    s = _schema(groups={"corridor": Group(over={"from": "bus", "to": "bus"})})
+    s = _schema(
+        groups={"corridor": Group(over={"from": "bus", "to": "bus"})},
+        partial=frozenset({"bus"}),
+    )
     assert s.group_coordinates("corridor") == ("from", "to")
     assert s.group_key("corridor") == ("from", "to"), "no `into`, so all of them"
 
@@ -156,7 +156,7 @@ def _budget_schema() -> Schema:
     """The mapping chain, with an attribute addressed by `country` alone."""
     return _schema(
         attributes={"co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})},
-        partial=frozenset({"country"}),
+        partial=frozenset({"bus", "state", "country"}),
     )
 
 
@@ -299,7 +299,7 @@ def test_setting_one_axis_attribute_keeps_its_siblings_value(con, base_uri):
                 "co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"}),
                 "population": AttributeSpec(dtype=nw.Float64(), dims={"country"}),
             },
-            partial=frozenset({"country"}),
+            partial=frozenset({"bus", "state", "country"}),
         )
     )
     write_axis(

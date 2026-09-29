@@ -460,10 +460,7 @@ def schema(
         }
         | {"entity_type": Dimension(dtype=nw.String())},
         attributes=flat,
-        # `partial` names value dims a layer patches per value; membership keys
-        # (`entity`, a group's coordinates) are in the fold key by being
-        # membership, not by being `partial` (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-        partial=frozenset(partial),
+        partial=frozenset({"entity", *coordinates, *partial}),
     )
 
 

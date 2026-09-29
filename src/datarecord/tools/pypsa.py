@@ -998,7 +998,7 @@ class PyPSATool(Tool):
             if ctype not in known:
                 entity_types.add(ctype)
                 continue
-            resolved = record.flags(_names(members[ctype]))
+            resolved = record.flags(entity=_names(members[ctype]))
             owned = set(resolved)
             # A curve, not a scalar (https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows). PyPSA takes a scalar for every
             # attribute this build assigns, so the record is storing something
@@ -1084,7 +1084,7 @@ class PyPSATool(Tool):
             # type's wide frames rather than the whole network (https://energy-models.github.io/datarecord/design/tools/).
             attributes = {}
             carried = _carried(ctype)
-            for attr, flags in record.flags(_names(members[ctype])).items():
+            for attr, flags in record.flags(entity=_names(members[ctype])).items():
                 if attr not in carried:
                     continue
                 # Both sets empty no longer means "no rows": the flags are
@@ -1360,12 +1360,9 @@ class _NetworkSource:
             },
             attributes=attributes,
             results=results,
-            # `partial` names value dims a layer patches per value: a layer may
-            # set one generator's `p_nom` per scenario without restating the
-            # rest. Membership keys - `entity`, the `connection` group's `bus` -
-            # are in the fold key by being membership, not by being `partial`
-            # (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-            partial=frozenset({SCENARIO}),
+            # A layer patches one component, one connection and one scenario
+            # at a time, and restates a snapshot series whole.
+            partial=frozenset({ENTITY, BUS, SCENARIO}),
             meta={
                 "format": "pypsa-parquet",
                 "attributes": _collect_network_attributes(self.n),
@@ -1507,7 +1504,7 @@ class _NetworkSource:
             tuple(names), lambda attr: self._output_frame(attr, names[attr])
         )
 
-    def flags(self, entities: Sequence[str] | None = None) -> dict[str, Flags]:
+    def flags(self, **labels: Sequence[str]) -> dict[str, Flags]:
         """Never consulted: `write_record` persists frames, not flags.
 
         A network-backed source exists to be written, and the write path reads

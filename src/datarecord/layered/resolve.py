@@ -262,8 +262,12 @@ class Coords:
         ----------
         rel : DuckDBPyRelation
         layer_keys : tuple of str
-            `schema.partial_dims`. Never `entity` or a group's coordinate,
-            which address a row rather than broadcasting over an axis.
+            `schema.partial_dims`.
+        addressed
+            Per dim, the attributes whose NULL there broadcasts
+            (`Schema.broadcasts_over`). A group's coordinate addresses a row of
+            the group rather than broadcasting over an axis, so an attribute
+            reaching the dim through a group is not listed.
 
         Returns
         -------
@@ -505,7 +509,7 @@ def fold_inputs(
                 d: tuple(
                     a
                     for a in keys.schema.attributes
-                    if d in keys.schema.coordinates_of(a)
+                    if d in keys.schema.broadcasts_over(a)
                 )
                 for d in broadcast
             },
@@ -941,19 +945,6 @@ class Resolver:
         """
         return self.fold.owner_map
 
-    @property
-    def entity_axis(self) -> DuckDBPyRelation | None:
-        """The resolved entity axis: one row per live component, its constant columns carried.
-
-        Folded like any axis (`dims.axes`), not an owner map - the winning row is
-        the whole row in one file. `None` where no layer wrote a component.
-
-        Notes
-        -----
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-        """
-        return self.dims.axes.get("entity")
-
     def group(self, name: str) -> DuckDBPyRelation | None:
         """One declared group's resolved relation, folded like an axis.
 
@@ -1049,14 +1040,14 @@ class Resolver:
             return []
         return list(distinct_values(rel, "attribute"))
 
-    def attributes_of(self, entities: Sequence[str] | None = None) -> dict[str, Flags]:
-        """Per attribute, which dims its rows use - over `entities`, or all.
+    def attributes_of(self, **labels: Sequence[str]) -> dict[str, Flags]:
+        """Per attribute, which dims its rows use - over `labels`, or all.
 
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
         """
-        return self.fold.flags(entities)
+        return self.fold.flags(**labels)
 
     def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation:
         """The resolved long relation for one attribute of `kind`.
@@ -1114,10 +1105,10 @@ class Resolver:
         # at all, so it constrains nothing and passes straight through.
         #
         # Of those that are, an address coordinate matches NULL-safely and a
-        # broadcast dim NULL-aware - the split `broadcast_dims` draws
+        # broadcast dim NULL-aware - the split `broadcasts_over` draws
         # (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         coordinates = set(keys.schema.coordinates_of(attribute))
-        broadcasts = set(keys.schema.broadcast_dims)
+        broadcasts = set(keys.schema.broadcasts_over(attribute))
         address = tuple(
             d for d in partial_dims if d in coordinates and d not in broadcasts
         )

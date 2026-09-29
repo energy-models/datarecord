@@ -215,12 +215,13 @@ class RecordLike(Protocol):
         """
         ...
 
-    def flags(self, entities: Sequence[str] | None = None) -> dict[str, Flags]:
-        """Every attribute, mapped to the shape its rows take - over `entities`, or all.
+    def flags(self, **labels: Sequence[str]) -> dict[str, Flags]:
+        """Every attribute, mapped to the shape its rows take - over `labels`, or all.
 
-        Only attributes with rows are present, so the key set also answers
-        which attributes these entities have at all. A consumer grouping
-        entities by a relation (a type, a carrier) passes each group's names.
+        `labels` narrows by any fold-key dim, `generator=["wind", "gas"]`. Only
+        attributes with rows are present, so the key set also answers which
+        attributes these labels have at all. A consumer grouping labels by a
+        relation (a type, a carrier) passes each group's labels.
 
         Notes
         -----

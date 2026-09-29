@@ -220,7 +220,7 @@ Omitting `entity` is how "all" is spelled.
 ## `add` / `remove`
 
 ```python
-record.add(frame)  # wide: entity, entity_type, attribute columns
+record.add("entity", frame)  # wide: entity, entity_type, attribute columns
 record.remove("entity", ["old_coal"])
 ```
 

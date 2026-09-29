@@ -120,11 +120,6 @@ class Fold:
     groups: dict[str, DuckDBPyRelation]
     owner_map: DuckDBPyRelation
 
-    @property
-    def entity_axis(self) -> DuckDBPyRelation | None:
-        """The resolved entity axis, or `None` where no layer wrote a component."""
-        return self.axes.get("entity")
-
     def attributes(self) -> list[str]:
         """Every input attribute any layer owns a row for, from the owner map.
 
@@ -147,23 +142,37 @@ class Fold:
         """
         return self.owner_map.filter(col("attribute") == lit(attribute))
 
-    def flags(self, entities: Sequence[str] | None = None) -> dict[str, Flags]:
-        """Per attribute, which dims its rows use - whole-record, or over `entities`.
+    def flags(self, **labels: Sequence[str]) -> dict[str, Flags]:
+        """Per attribute, which dims its rows use - whole-record, or over `labels`.
 
-        Entities that disagree yield a dim in both sets - the instruction to use
+        `labels` narrows by any fold-key dim, `generator=["wind", "gas"]`.
+        Labels that disagree yield a dim in both sets - the instruction to use
         both containers, each taking the rows it matches.
+
+        Raises
+        ------
+        TypeError
+            If a dim's labels are one string rather than a sequence of them.
+        ValueError
+            If a dim is not in the fold key, so the map holds no column for it.
 
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
         """
-        if isinstance(entities, str):
-            msg = f"`flags` takes entity names, not one string; pass [{entities!r}]"
-            raise TypeError(msg)
         dims = self.schema.broadcast_dims
         rel = self.owner_map
-        if entities is not None:
-            rel = rel.filter(col("entity").isin(*(lit(e) for e in entities)))
+        for dim, wanted in labels.items():
+            if isinstance(wanted, str):
+                msg = f"`flags({dim}=...)` takes labels, not one string; pass [{wanted!r}]"
+                raise TypeError(msg)
+            if dim not in self.schema.partial_dims:
+                msg = (
+                    f"`flags` cannot narrow by {dim!r}: the fold key is "
+                    f"{list(self.schema.partial_dims)}; declare it `partial`"
+                )
+                raise ValueError(msg)
+            rel = rel.filter(col(dim).isin(*(lit(w) for w in wanted)))
         rows = rel.aggregate(
             [
                 col("attribute"),

@@ -490,20 +490,14 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"`partial` names undeclared dims {unknown}"
                 raise ValueError(msg)
-            # `partial` names *value* dims a layer patches per value (a
-            # per-scenario weight). A membership key - `entity`, a group's
-            # coordinate - is in the fold key by being membership, not by being
-            # `partial`, so naming it here is a category error: it does not
-            # broadcast and has no "value" to patch, only rows that exist or do
-            # not (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-            keys = sorted(set(self.partial) - set(self.broadcast_dims))
-            if keys:
-                msg = (
-                    f"`partial` names membership keys {keys}, which are patched "
-                    f"per row by every layer already; `partial` is for value "
-                    f"dims a layer patches per value"
-                )
-                raise ValueError(msg)
+        keys = {g.over[c] for g in self.groups.values() for c in g.key}
+        missing = sorted(keys - (self.partial or frozenset()))
+        if missing:
+            msg = (
+                f"`partial` must name {missing}: a group is keyed by them, and "
+                f"a layer adds or removes one of its rows at a time"
+            )
+            raise ValueError(msg)
 
         return self
 
@@ -625,37 +619,39 @@ class Schema(BaseModel):
 
     @property
     def broadcast_dims(self) -> tuple[str, ...]:
-        """The dims a NULL broadcasts over: every dim but `entity` and a group's key.
+        """The dims a NULL may broadcast over: every declared dim.
 
         A NULL here means "every value of this dim", which the fold expands
-        against the axis. The two exclusions have no axis that is the right
-        domain:
+        against the axis - but only for an attribute that names the dim in its
+        own `dims` (`broadcasts_over`). A coordinate an attribute reaches
+        through a group never broadcasts, because "every bus of this component"
+        is the group's rows, not the bus axis.
 
-        - `entity`, because its axis holds every kind of component, so a NULL
-          there would give the value to all of them. The one dim named
-          literally.
-        - A coordinate a group is keyed by, because "every bus of this
-          component" is the group's rows, not the bus axis - a sparse subset
-          only the group's table knows.
-
-        A functional group's `into` dim is *not* excluded, though it is one of
-        the group's `coordinates`: only `key` addresses a row, so `country` and
-        `entity_type` broadcast like any other axis.
-
-        The complement of this is what `Schema` requires to be `partial`: a dim
-        whose values are addressed individually is one a layer patches value by
-        value.
-
-        What the `varies`/`broadcast` structs have a field per, and what
-        `expand_dims` joins.
+        What the `varies`/`broadcast` structs have a field per.
 
         Notes
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        sparse = {c for g in self.groups.values() for c in g.key}
-        return tuple(d for d in self.dims if d != "entity" and d not in sparse)
+        return self.dims
+
+    def broadcasts_over(self, attribute: str) -> tuple[str, ...]:
+        """The dims a NULL in `attribute`'s rows means "every value" of.
+
+        The dims its spec names directly, in declaration order. A coordinate it
+        reaches through a group is not among them: the domain there is the
+        group's rows, which a NULL cannot name. An undeclared attribute - a
+        result - broadcasts over nothing.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        """
+        spec = self.attributes.get(attribute)
+        if spec is None:
+            return ()
+        return tuple(d for d in self.dims if d in spec.dims)
 
     def coordinates_of(self, attribute: str) -> tuple[str, ...]:
         """The dim columns one attribute's rows carry, groups expanded.
@@ -707,25 +703,12 @@ class Schema(BaseModel):
             return self.long_columns
         return (*self.coordinates_of(attribute), *LONG_TAIL)
 
-    def addresses_entity(self, attribute: str) -> bool:
-        """Whether `attribute` reaches a component at all.
-
-        True where its `dims` name `entity`, or a group one of whose
-        coordinates draws on `entity`. False for an attribute over an axis
-        alone - a snapshot weighting belongs to the record, not to a component.
-
-        Notes
-        -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        """
-        return "entity" in self.coordinates_of(attribute)
-
     def owned_per(self, attribute: str) -> frozenset[str]:
         """Which dims a layer owns `attribute` per.
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
-        attribute may vary over, `partial_dims` the fold key (membership keys
-        plus the `partial` value dims), and ownership is their intersection. A
+        attribute may vary over, `partial_dims` the fold key, and ownership is
+        their intersection. A
         dim in `dims` but not the fold key - a non-`partial` value axis like
         `timestep` - is owned whole, so a patch to one of its values restates the
         attribute's entire extent along it (`_owned_whole`).
@@ -741,29 +724,11 @@ class Schema(BaseModel):
         return spec.dims & set(self.partial_dims)
 
     @property
-    def membership_keys(self) -> tuple[str, ...]:
-        """The dims addressed per row rather than broadcast: `entity` and group keys.
-
-        A membership key is a coordinate a layer patches one row of at a time -
-        one component, one connection - never "every value" of an axis. It is
-        every dim but the broadcast ones.
-
-        These land in the fold key by being membership, not by being `partial`.
-
-        Notes
-        -----
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-        """
-        broadcast = set(self.broadcast_dims)
-        return tuple(d for d in self.dims if d not in broadcast)
-
-    @property
     def partial_dims(self) -> tuple[str, ...]:
         """The fold key's dims, in declaration order.
 
-        The membership keys plus the broadcast value dims a layer may patch per
-        value (`partial`). The fold's key is one fixed tuple over all
+        The dims a layer patches one value or one row at a time (`partial`),
+        which include every group key. The fold's key is one fixed tuple over all
         attributes, so it carries every axis *any* layer may patch by value or
         by row, not only those some currently declared attribute varies over. An
         attribute not owned per one of them writes NULL there, the "NULL means
@@ -777,8 +742,7 @@ class Schema(BaseModel):
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         partial = self.partial or frozenset()
-        keys = set(self.membership_keys)
-        return tuple(d for d in self.dims if d in keys or d in partial)
+        return tuple(d for d in self.dims if d in partial)
 
     def axis_key(self, dim: str) -> tuple[str, ...]:
         """A dim's axis-table key: `(*parents, dim)`, parents first.

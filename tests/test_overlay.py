@@ -89,9 +89,9 @@ def test_tombstone_removes_component(con, parent):
     child = parent.child()
     tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
 
-    om = child.resolver.entity_axis.df()
+    om = child.resolver.dims.axes["entity"].df()
     assert "Norway Gas" not in set(om["entity"])
-    assert "Norway Gas" in set(parent.resolver.entity_axis.df()["entity"])
+    assert "Norway Gas" in set(parent.resolver.dims.axes["entity"].df()["entity"])
 
     n = PyPSA.build(child.record)
     assert "Norway Gas" not in n.c["Generator"].static.index
@@ -124,8 +124,8 @@ def test_sibling_branch_unaffected(con, parent):
     tombstone(layer_dir(deleting.id), "Generator", ["Norway Gas"])
     sibling = parent.child()
 
-    assert "Norway Gas" not in set(deleting.resolver.entity_axis.df()["entity"])
-    assert "Norway Gas" in set(sibling.resolver.entity_axis.df()["entity"])
+    assert "Norway Gas" not in set(deleting.resolver.dims.axes["entity"].df()["entity"])
+    assert "Norway Gas" in set(sibling.resolver.dims.axes["entity"].df()["entity"])
 
 
 def test_grandchild_resolves_through_ancestry(con, parent):
@@ -240,7 +240,7 @@ def test_resolved_reads_same_as_unresolved(con, parent):
         "the owner map folded through the base matches folding from the root"
     )
 
-    t_axis, u_axis = truncated.entity_axis, unresolved.entity_axis
+    t_axis, u_axis = truncated.dims.axes["entity"], unresolved.dims.axes["entity"]
     assert t_axis is not None and u_axis is not None
     assert set(t_axis.df()["entity"]) == set(u_axis.df()["entity"]), (
         "the resolved entity axis is the same either way"
@@ -317,7 +317,7 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
         attributes = EMPTY
         outputs = EMPTY
 
-        def flags(self, entities=None):
+        def flags(self, **labels):
             return {}
 
     child = parent.child()

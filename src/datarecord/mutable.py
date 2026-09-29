@@ -16,7 +16,7 @@ Notes
 from __future__ import annotations
 
 import re
-from collections.abc import Container, Mapping, Sequence
+from collections.abc import Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal, cast, overload
@@ -152,36 +152,35 @@ def _series_index_name(value: Any) -> str | None:
 
 def normalise_value(
     value: Any,
-    names: Sequence[str] | None,
+    names: Sequence[Any] | None,
     *,
     indexed_by: str | None = None,
-) -> tuple[list[str] | None, list[Any], dict[str, list[Any]]]:
-    """One of `set`'s four `value` forms as per-name values.
+) -> tuple[list[Any] | None, list[Any], dict[str, list[Any]]]:
+    """One of `set`'s four `value` forms as labels and values.
 
     Parameters
     ----------
     value
         Scalar, sequence, mapping, or a one-dimensional labelled series.
     names
-        The names to broadcast or align to.
+        The labels a call listed along one dim, which a scalar reaches and a
+        sequence aligns to.
     indexed_by
-        Which axis a labelled series' index holds, where the caller's `entity=`
-        or `**dims` said so. `None` means the index holds entity names, which is
-        the only other thing it can be.
+        The dim a mapping's keys or a series' index hold (`_series_axis`).
 
     Returns
     -------
     names
-        The names each value belongs to, or None to keep the caller's.
+        The listed labels each value belongs to, or None where none were listed.
     values
-        One value per name.
+        One value per name, or per `per_dim` label.
     per_dim
-        Dim -> label, where a labelled series indexed by an axis was given.
+        Dim -> labels, where a mapping or a labelled series was given.
 
     Raises
     ------
     ValueError
-        If a sequence's length does not match `names`.
+        If a sequence's length does not match `names`, or no names were listed.
 
     Notes
     -----
@@ -189,32 +188,62 @@ def normalise_value(
     """
     labels = _series_index(value)
     if labels is not None:
-        # Told, never inferred: an axis label may be a string just like an entity
-        # name, so testing membership would make one call mean different things
-        # in two records (https://energy-models.github.io/datarecord/design/working-record/#set).
-        if indexed_by is not None:
-            return None, list(value), {indexed_by: list(labels)}
-        return list(labels), list(value), {}
+        return _listed(names), list(value), {str(indexed_by): list(labels)}
 
     if isinstance(value, Mapping):
-        return list(value), list(value.values()), {}
+        return _listed(names), list(value.values()), {str(indexed_by): list(value)}
 
     if isinstance(value, str | bytes) or not isinstance(value, Sequence):
-        # A scalar: broadcast to every name.
         if names is None:
             return None, [value], {}
         return list(names), [value] * len(names), {}
 
     if names is None:
-        msg = "a sequence needs `names` to align to"
+        msg = "a sequence needs labels listed along one dim to align to"
         raise ValueError(msg)
     if len(value) != len(names):
         msg = (
-            f"{len(value)} values for {len(names)} names; a length mismatch is an "
+            f"{len(value)} values for {len(names)} labels; a length mismatch is an "
             f"error at the call rather than a truncated edit"
         )
         raise ValueError(msg)
     return list(names), list(value), {}
+
+
+def _listed(names: Sequence[Any] | None) -> list[Any] | None:
+    """`names` as a list, keeping None for "no labels listed"."""
+    return None if names is None else list(names)
+
+
+def _split_dims(
+    dims: Mapping[str, Any],
+) -> tuple[str | None, list[Any], dict[str, Any]]:
+    """`set`'s keywords split into the one dim given a list, its labels, and the rest.
+
+    A list along two dims would ask for their product, which a mapping or a long
+    frame states unambiguously, so it is refused rather than guessed.
+
+    Raises
+    ------
+    ValueError
+        If more than one dim is given a list.
+    """
+    many = {
+        d: list(v)
+        for d, v in dims.items()
+        if isinstance(v, Iterable) and not isinstance(v, str | bytes)
+    }
+    if len(many) > 1:
+        msg = (
+            f"`set` takes a list of labels along one dim at a time; it was given "
+            f"lists for {sorted(many)}. Pass a long frame for their product"
+        )
+        raise ValueError(msg)
+    fixed = {d: v for d, v in dims.items() if d not in many}
+    if not many:
+        return None, [], fixed
+    ((dim, labels),) = many.items()
+    return dim, labels, fixed
 
 
 @dataclass(frozen=True)
@@ -564,46 +593,61 @@ class WorkingRecord(Record):
     # -- edits (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one, https://energy-models.github.io/datarecord/design/working-record/#add-remove) ----------------------------------------
 
     def _series_axis(
-        self, attribute: str, value: Any, indexed_by: str | None
+        self,
+        attribute: str,
+        value: Any,
+        indexed_by: str | None,
+        named: Collection[str] = (),
     ) -> str | None:
-        """Which axis a labelled series' index holds, or None for entity names.
+        """Which dim a labelled series' index or a mapping's keys hold.
 
         The caller says which - `indexed_by="snapshot"`, or the series' own
-        `index.name` where it names a coordinate of this attribute. Never read
-        off the labels: an axis label may be a string just like an entity name,
-        so a membership test would make one call mean different things in two
+        `index.name` where it names a coordinate of this attribute - or else it
+        is the one coordinate the call does not name. Never read off the
+        labels: one dim's label may be a string just like another's, so a
+        membership test would make one call mean different things in two
         records.
 
         An `index.name` naming no coordinate is ignored rather than rejected; it
         may be `None`, or a pandas artefact like `"index"`.
 
+        Raises
+        ------
+        ValueError
+            If more than one coordinate is left unnamed and nothing says which.
+
         Notes
         -----
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        if _series_index(value) is None:
+        keyed = isinstance(value, Mapping) or _series_index(value) is not None
+        if not keyed:
             if indexed_by is not None:
                 msg = (
                     f"`set({attribute!r}, ..., indexed_by={indexed_by!r})` says what "
-                    f"a series index holds, but the value is not a labelled series"
+                    f"a mapping's keys or a series index hold, but the value has "
+                    f"no labels"
                 )
                 raise ValueError(msg)
             return None
-        named = indexed_by if indexed_by is not None else _series_index_name(value)
-        if named is None:
-            return None
-        coordinates = [
-            c for c in self.schema.coordinates_of(attribute) if c != "entity"
-        ]
-        if named not in coordinates:
-            if indexed_by is None:
-                return None
+        coordinates = [c for c in self._staged_coordinates(attribute) if c not in named]
+        told = indexed_by if indexed_by is not None else _series_index_name(value)
+        if told is None or (indexed_by is None and told not in coordinates):
+            if len(coordinates) == 1:
+                return coordinates[0]
             msg = (
-                f"`indexed_by={named!r}` is no coordinate of {attribute!r}, "
-                f"which is addressed by {coordinates or ['entity']}"
+                f"`set({attribute!r}, ...)` cannot tell which of {coordinates} "
+                f"the value's labels hold; say `indexed_by=`"
             )
             raise ValueError(msg)
-        return named
+        named_dim = told
+        if named_dim not in coordinates:
+            msg = (
+                f"`indexed_by={named_dim!r}` is no coordinate of {attribute!r}, "
+                f"which is addressed by {coordinates}"
+            )
+            raise ValueError(msg)
+        return named_dim
 
     def _axis_of(self, attribute: str) -> str | None:
         """The dim whose axis file carries `attribute`, or `None`.
@@ -629,15 +673,15 @@ class WorkingRecord(Record):
         attribute: str,
         value: Any,
         *,
-        entity: Sequence[str] | None,
+        labels: Sequence[Any] | None,
     ) -> None:
         """Stage one axis-file attribute, keyed by the axis's own labels.
 
         `value` is a mapping from label to value, or a scalar for every label the
         axis currently has. A mapping may name a label no layer has written yet,
         which becomes a row of this layer's axis file - the fold keys per label,
-        so introducing one displaces nothing. The entity axis is the exception:
-        `set` requires its names first, because an entity arrives through `add`.
+        so introducing one displaces nothing. A dim that keys a group is the
+        exception: `set` requires its labels first (`_require_labels`).
 
         One *complete* row per label: this edit's column over the label's
         current row - the one already staged where there is one, else the base's
@@ -649,18 +693,11 @@ class WorkingRecord(Record):
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        if entity is not None and dim != "entity":
-            msg = (
-                f"`set({attribute!r}, ..., entity=...)` names components, but "
-                f"{attribute!r} is addressed by {dim!r} alone - it is a column of "
-                f"dims/{dim}.parquet and belongs to no component"
-            )
-            raise ValueError(msg)
-        if entity is not None and not isinstance(value, Mapping):
+        if labels is not None and not isinstance(value, Mapping):
             # A scalar broadcast to the named labels, or a sequence aligned to
             # them - the same two forms `set` takes for a long attribute, folded
             # to the axis's label->value mapping the rest of this method wants.
-            names = list(entity)
+            names = list(labels)
             vals = (
                 list(value)
                 if isinstance(value, (list, tuple))
@@ -668,7 +705,7 @@ class WorkingRecord(Record):
             )
             if len(vals) != len(names):
                 msg = (
-                    f"`set({attribute!r}, <sequence>, entity=...)` has "
+                    f"`set({attribute!r}, <sequence>, {dim}=...)` has "
                     f"{len(vals)} values for {len(names)} names"
                 )
                 raise ValueError(msg)
@@ -768,32 +805,33 @@ class WorkingRecord(Record):
             )
         self._insert(rows, table, {})
 
-    def _require_members(self, names: Sequence[str]) -> None:
-        """Reject any of `names` the entity axis does not hold, base plus staged.
+    def _require_labels(self, dim: str, labels: Iterable[Any]) -> None:
+        """Reject a label of a group-keying dim its axis does not hold, base plus staged.
 
-        A value keyed to a name with no axis row would resolve to nothing, so
-        it is caught here rather than dropped at read time.
+        A dim that keys a group - `entity` for `connection` - names the rows a
+        layer adds and removes, so a value for a label no layer added would
+        resolve to a member that does not exist. Other axes take new labels
+        from `set`, which is why the check is scoped rather than universal.
 
         Notes
         -----
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
-        wanted = list(dict.fromkeys(str(n) for n in names))
-        axis = self.resolver.entity_axis
-        found = (
-            set()
-            if axis is None or not wanted
-            else {str(n) for (n,) in axis.project("entity").fetchall()}
-        )
+        if not any(dim in g.key for g in self.schema.groups.values()):
+            return
+        wanted = list(dict.fromkeys(str(n) for n in labels))
+        if not wanted:
+            return
+        found = {str(n) for n in self._labels(dim)}
         unknown = sorted(n for n in wanted if n not in found)
         if unknown:
             msg = (
-                f"no entity {unknown}; `add` them first - a value for a "
-                f"name no layer declares would resolve to nothing"
+                f"no {dim} {unknown}; `add` them first - a value for a label "
+                f"no layer declares would resolve to nothing"
             )
             raise KeyError(msg)
 
-    def _validate_dims(self, dims: Mapping[str, Any]) -> None:
+    def _validate_dims(self, dims: Collection[str]) -> None:
         """The dim vocabulary, checked for either `kind`.
 
         Notes
@@ -806,7 +844,7 @@ class WorkingRecord(Record):
             msg = f"the schema declares no dims {unknown}"
             raise KeyError(msg)
 
-    def _validate_result(self, attribute: str, dims: Mapping[str, Any]) -> None:
+    def _validate_result(self, attribute: str, dims: Collection[str]) -> None:
         """A result's name and dims, against the schema's `results`.
 
         The attribute check only - not membership, which stays relaxed for a
@@ -836,7 +874,7 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
 
-    def _validate_attribute(self, attribute: str, dims: Mapping[str, Any]) -> None:
+    def _validate_attribute(self, attribute: str, dims: Collection[str]) -> None:
         """An input attribute's declaration and the dims an edit names for it.
 
         Notes
@@ -844,14 +882,24 @@ class WorkingRecord(Record):
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         spec = self.schema.attributes.get(attribute)
-        if spec is None or not self.schema.addresses_entity(attribute):
-            msg = f"no attribute {attribute!r} over `entity` is declared"
+        if spec is None:
+            msg = f"no attribute {attribute!r} is declared"
             raise KeyError(msg)
-        outside = sorted(set(dims) - spec.dims)
+        coordinates = self.schema.coordinates_of(attribute)
+        outside = sorted(set(dims) - set(coordinates))
         if outside:
             msg = (
                 f"{attribute} does not vary over {outside}; "
-                f"it varies over {sorted(spec.dims) or 'nothing'}"
+                f"it varies over {list(coordinates) or 'nothing'}"
+            )
+            raise ValueError(msg)
+        through_group = sorted(
+            set(coordinates) - set(self.schema.broadcasts_over(attribute)) - set(dims)
+        )
+        if through_group:
+            msg = (
+                f"{attribute} is addressed through a group, so each row names "
+                f"{through_group} too; a NULL there cannot mean every row of the group"
             )
             raise ValueError(msg)
 
@@ -860,32 +908,31 @@ class WorkingRecord(Record):
         attribute: str,
         value: Any,
         *,
-        entity: Sequence[str] | None = None,
         kind: Literal["inputs", "outputs"] = "inputs",
         indexed_by: str | None = None,
         **dims: Any,
     ) -> None:
-        """Stage an attribute value for a group of components.
+        """Stage an attribute value.
 
-        A labelled series must say what its index holds: `indexed_by="snapshot"`
-        names the axis, and `entity=` implies it where the attribute has exactly
-        one other coordinate. Without either the index is read as entity names.
-        Never inferred from the labels themselves - an axis label may be a string
-        just like a name, so that would make one call mean different things in
-        two records.
+        `**dims` scopes the edit, one keyword per coordinate: a label
+        (`scenario="high"`), or a list of labels along one dim at most
+        (`generator=["wind", "gas"]`). A coordinate no keyword names is
+        written NULL, which the broadcast rule reads as every label of it -
+        including labels a later layer adds. A coordinate the attribute reaches
+        through a group - `bus` for a connection attribute - must be named.
 
-        `value` takes five forms: a scalar broadcast to every name, a sequence
-        aligned positionally to `names`, a mapping keyed by name, a long frame
-        supplying its own keys, and a narwhals expression - which is a *function
-        of the current value* rather than a value, so it reads before it stages
-        and two such calls compose.
+        `value` takes five forms: a scalar for every named label, a sequence
+        aligned positionally to the listed labels, a mapping or a labelled
+        series keyed by one coordinate, a long frame supplying its own keys,
+        and a narwhals expression - which is a *function of the current value*
+        rather than a value, so it reads before it stages and two such calls
+        compose.
 
-        `entity=None` means every entity the record holds.
-
-        Every other coordinate goes through `**dims`, including a group's -
-        `bus="north"` for a connection attribute, `from=`/`to=` for a corridor.
-        None has a parameter of its own, since which coordinates exist is
-        declared rather than fixed.
+        A mapping's keys and a series' index hold the coordinate `indexed_by`
+        names, else the series' own `index.name`, else the one coordinate no
+        keyword names. Never inferred from the labels themselves - one dim's
+        label may be a string just like another's, so that would make one call
+        mean different things in two records.
 
         `kind` names the destination in the format's own terms:
         `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a
@@ -893,11 +940,21 @@ class WorkingRecord(Record):
         is that they do not overlay.
 
         Two checks are skipped for `"outputs"`, both because a result is not a
-        value the schema governs: the attribute need not be declared, and a
-        result's `name` need not resolve to a declared member. A solve may
-        produce rows for a component type it derived rather than read - PyPSA's
-        `SubNetwork` is one - and rejecting those would refuse a legitimate
-        result. An *input* for an undeclared name stays an error.
+        value the schema governs: the attribute need not be declared, and its
+        labels need not resolve to declared members. A solve may produce rows
+        for a component it derived rather than read - PyPSA's `SubNetwork` is
+        one - and rejecting those would refuse a legitimate result. An *input*
+        for an undeclared label stays an error.
+
+        Raises
+        ------
+        KeyError
+            If the attribute is not declared, or a label of a dim that keys a
+            group is on no layer's axis.
+        ValueError
+            If a keyword names a dim the attribute does not vary over, a group
+            coordinate is left unnamed, two dims are given lists, or the dim a
+            mapping or series is keyed by cannot be told.
 
         Notes
         -----
@@ -922,134 +979,153 @@ class WorkingRecord(Record):
                 self._validate_dims(dims)
             else:
                 self._validate_result(attribute, dims)
-            self._stage_derived(attribute, value, entity=entity, kind=kind, **dims)
+            self._stage_derived(attribute, value, kind=kind, **dims)
             return
 
+        listed, labels, fixed = _split_dims(dims)
         axis = self._axis_of(attribute) if kind == "inputs" else None
         if axis is not None:
-            self._series_axis(attribute, value, indexed_by)
-            if dims:
-                msg = (
-                    f"{attribute} does not vary over {sorted(dims)}; it is a "
-                    f"column of dims/{axis}.parquet, keyed by {axis!r} alone"
-                )
-                raise ValueError(msg)
-            if axis == "entity":
-                if entity is None and not _mapping_keys(value):
-                    entity = self._names_declaring(attribute)
-                self._require_members(
-                    entity if entity is not None else _mapping_keys(value)
-                )
-            self._stage_axis(axis, attribute, value, entity=entity)
+            self._set_axis(axis, attribute, value, indexed_by, listed, labels, fixed)
             return
 
-        target = (
-            list(entity) if entity is not None else self._names_declaring(attribute)
-        )
+        keyed_by = self._series_axis(attribute, value, indexed_by, named=dims)
+        if keyed_by is not None and listed is not None and isinstance(value, Mapping):
+            msg = (
+                f"`set({attribute!r}, <mapping>, {listed}=[...])` names labels "
+                f"twice; key the mapping by {listed!r} or pass a scalar"
+            )
+            raise ValueError(msg)
         keys, values, per_dim = normalise_value(
-            value,
-            target,
-            indexed_by=self._series_axis(attribute, value, indexed_by),
+            value, labels if listed is not None else None, indexed_by=keyed_by
         )
-        if keys is None:
-            keys = target
-            if len(values) == 1 and len(keys) > 1:
-                values = values * len(keys)
+        named = {*dims, *per_dim}
         if kind == "inputs":
-            self._validate_dims(dims)
-            self._require_members(keys)
-            self._validate_attribute(attribute, dims)
+            self._validate_dims(named)
+            self._validate_attribute(attribute, named)
+            for dim, dim_labels in per_dim.items():
+                self._require_labels(dim, dim_labels)
+            if listed is not None:
+                self._require_labels(listed, keys or labels)
+            for dim, label in fixed.items():
+                self._require_labels(dim, [label])
         else:
-            self._validate_result(attribute, dims)
+            self._validate_result(attribute, named)
 
         table = self._ensure(kind, attribute)
-        self._stage_rows(attribute, table, keys, values, per_dim, dims)
+        self._stage_rows(attribute, table, listed, keys, values, per_dim, fixed)
 
-    def _names_declaring(self, attribute: str) -> list[str]:
-        """Every entity the record resolves - what `entity=None` means.
+    def _set_axis(
+        self,
+        axis: str,
+        attribute: str,
+        value: Any,
+        indexed_by: str | None,
+        listed: str | None,
+        labels: list[Any],
+        fixed: Mapping[str, Any],
+    ) -> None:
+        """`set` on an attribute stored as a column of `axis`'s file.
 
-        Notes
-        -----
-        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        The attribute is keyed by `axis` alone, so a keyword for any other dim
+        has nothing to scope and is refused rather than dropped. A scalar with
+        no labels reaches every label the axis resolves, staged ones included:
+        an axis file has no NULL row to broadcast from.
         """
-        axis = self.resolver.entity_axis
-        return (
-            []
-            if axis is None
-            else [str(n) for (n,) in axis.project("entity").fetchall()]
+        other = sorted(d for d in {*fixed, *([listed] if listed else [])} if d != axis)
+        if other:
+            msg = (
+                f"{attribute} does not vary over {other}; it is a column of "
+                f"dims/{axis}.parquet, keyed by {axis!r} alone"
+            )
+            raise ValueError(msg)
+        self._series_axis(attribute, value, indexed_by, named=())
+        names: list[Any] | None = (
+            labels if listed == axis else [fixed[axis]] if axis in fixed else None
         )
+        if names is None and not _mapping_keys(value):
+            names = self._labels(axis)
+        self._require_labels(axis, names if names is not None else _mapping_keys(value))
+        self._stage_axis(axis, attribute, value, labels=names)
+
+    def _labels(self, dim: str) -> list[Any]:
+        """Every label `dim`'s axis resolves to, staged edits included."""
+        axis = self.resolver.dims.axes.get(dim)
+        return [] if axis is None else [n for (n,) in axis.project(dim).fetchall()]
 
     def _validate_frame(
         self, lazy: nw.LazyFrame, attribute: str, dims: Mapping[str, Any]
     ) -> None:
-        """A long input frame's dims, names and the attribute's spec.
+        """A long input frame's dims, labels and the attribute's spec.
 
-        The frame supplies its own names, so each must be on the entity axis;
-        one frame may span types, since the attribute's spec is record-wide.
+        The frame supplies its own labels, so each of a group-keying dim must
+        already be on its axis (`_require_labels`).
 
         Notes
         -----
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         self._validate_dims(dims)
-        if "entity" not in lazy.collect_schema().names():
-            return
-        names = [
-            str(n)
-            for n in lazy.select("entity")
-            .unique("entity")
-            .collect()["entity"]
-            .to_list()
-        ]
-        self._require_members(names)
-        self._validate_attribute(attribute, dims)
+        columns = lazy.collect_schema().names()
+        for dim in self.schema.coordinates_of(attribute):
+            if dim in columns:
+                self._require_labels(
+                    dim, lazy.select(dim).unique(dim).collect()[dim].to_list()
+                )
+        self._validate_attribute(
+            attribute, {*dims, *(c for c in columns if c in self.schema.dimensions)}
+        )
 
     def _stage_rows(
         self,
         attribute: str,
         table: str,
-        keys: list[str],
+        listed: str | None,
+        keys: list[Any] | None,
         values: list[Any],
         per_dim: dict[str, list[Any]],
-        dims: Mapping[str, Any],
+        fixed: Mapping[str, Any],
     ) -> None:
         """Stage the scalar/sequence/mapping forms, as a relation rather than rows.
 
-        The rows are `keys` x `per_dim`'s labels - every named entity at every
-        coordinate the value covers - so a per-snapshot series over a year for a
-        thousand components is millions of them. Both factors are small, and only
-        their product is not, so each becomes a one-column relation and DuckDB
-        joins them: the product never exists as Python objects.
+        The rows are `listed`'s labels x `per_dim`'s labels - every named label
+        at every coordinate the value covers - so a per-snapshot series over a
+        year for a thousand components is millions of them. Both factors are
+        small, and only their product is not, so each becomes a one-column
+        relation and DuckDB joins them: the product never exists as Python
+        objects.
 
         `keys` and `values` are positionally aligned where there is no `per_dim`;
         with one, `values` aligns to its labels and every key takes all of them.
+        With neither a listed dim nor `per_dim`, the one value is one row, NULL
+        wherever `fixed` names nothing.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        entity = {"entity": self._column_type("entity")}
-        # `value` is inferred: an undeclared result has no declared dtype, and
-        # the staging table already took its type from `_scalar_dtype`.
         if per_dim:
-            (dim, labels) = next(iter(per_dim.items()))
-            # The value belongs to the label, so it rides on that side of the
-            # join and every entity picks it up.
-            rel = self._values_relation({"entity": keys}, entity).cross(
-                self._values_relation(
-                    {dim: labels, "value": values},
-                    {dim: self._column_type(dim), "value": None},
-                )
-            )
-            present = {"entity", dim}
-        else:
+            ((dim, labels),) = per_dim.items()
             rel = self._values_relation(
-                {"entity": keys, "value": values}, {**entity, "value": None}
+                {dim: labels, "value": values},
+                {dim: self._column_type(dim), "value": None},
             )
-            present = {"entity"}
-
-        self._insert_long(rel, table, attribute, present, dims)
+            present = {dim}
+            if listed is not None and keys:
+                rel = self._values_relation(
+                    {listed: keys}, {listed: self._column_type(listed)}
+                ).cross(rel)
+                present.add(listed)
+        elif listed is not None:
+            rel = self._values_relation(
+                {listed: keys or [], "value": values},
+                {listed: self._column_type(listed), "value": None},
+            )
+            present = {listed}
+        else:
+            rel = self._values_relation({"value": values}, {"value": None})
+            present = set()
+        self._insert_long(rel, table, attribute, present, fixed)
 
     def _insert(
         self,
@@ -1291,7 +1367,6 @@ class WorkingRecord(Record):
         attribute: str,
         expr: nw.Expr,
         *,
-        entity: Sequence[str] | None = None,
         kind: str = "inputs",
         **dims: Any,
     ) -> None:
@@ -1312,38 +1387,27 @@ class WorkingRecord(Record):
         - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
         """
         source = self.outputs if kind == "outputs" else self.attributes
-        # Once: three uses follow, and something iterating only once would be
-        # exhausted by the first.
-        names = None if entity is None else list(entity)
+        listed, labels, fixed = _split_dims(dims)
         if attribute not in source:
             frame = None
         else:
             frame = source[attribute]
-            if names is not None:
+            if listed is not None:
                 if kind == "inputs":
-                    self._require_members(names)
-                    self._validate_attribute(attribute, dims)
-                frame = frame.filter(nw.col("entity").is_in(names))
-            for dim, value in dims.items():
+                    self._require_labels(listed, labels)
+                frame = frame.filter(nw.col(listed).is_in(labels))
+            for dim, value in fixed.items():
                 frame = frame.filter(nw.col(dim) == value)
 
         # A named target that resolves to no row is a failed change, not a
         # no-op: the caller asked for these rows to take a new value and there
-        # is nothing to derive one from. With `entity=None` and no scope the
-        # instruction is "whatever resolves", so an empty result is an answer.
-        if names is not None or dims:
+        # is nothing to derive one from. With no scope the instruction is
+        # "whatever resolves", so an empty result is an answer.
+        if dims:
             # `head(1)`: `is_empty` is a `DataFrame` method, so the question
             # costs a collect either way - this one collects a single row.
-            if frame is None or frame.select("entity").head(1).collect().is_empty():
-                scope = ", ".join(
-                    filter(
-                        None,
-                        [
-                            f"entity={names}" if names is not None else "",
-                            *(f"{d}={v!r}" for d, v in dims.items()),
-                        ],
-                    )
-                )
+            if frame is None or frame.select("value").head(1).collect().is_empty():
+                scope = ", ".join(f"{d}={v!r}" for d, v in dims.items())
                 msg = (
                     f"no {attribute!r} rows resolve for {scope}, so there is "
                     f"no current value to derive from; `set` a value directly to "
@@ -1389,19 +1453,25 @@ class WorkingRecord(Record):
         # value, so it already carries the extent an edit would have to.
         self._insert(shaped, table, {}, key=self._long_key(attribute))
 
-    def add(self, frame: Any) -> None:
-        """Stage new entities from a wide frame, with the relation rows it names.
+    def add(self, dim: str, frame: Any) -> None:
+        """Stage new labels of `dim` from a wide frame, with the relation rows it names.
 
-        Splits it by the schema: an attribute addressed by `entity` alone is a
-        column of the entity axis, a varying one becomes `inputs/` rows, and the
-        coordinates of a relation keyed on `entity` - `entity_type` for a type
-        relation, `bus` for `connection` - stage that relation's row, with any
-        attribute over it.
+        `frame` has a `dim` column. Splits the rest by the schema: an attribute
+        addressed by `dim` alone is a column of its axis, one that varies over
+        more is `inputs/` rows, and the coordinates of a relation keyed on `dim`
+        - `entity_type` for a type relation, `bus` for `connection` - stage that
+        relation's row, with any attribute over it.
 
-        Not a sequence of `set` calls: an entity exists by its axis row, so a
-        value for a name no layer declares is what `_validate_attribute`
-        rejects. Adding a bus with no attributes makes the point - nothing to
-        `set`, yet the bus must exist.
+        Not a sequence of `set` calls: a label exists by its axis row, so a
+        value for a label no layer declares is what `_require_labels` rejects.
+        Adding a bus with no attributes makes the point - nothing to `set`, yet
+        the bus must exist.
+
+        Raises
+        ------
+        ValueError
+            If `frame` has no `dim` column, or a column the schema has no
+            place for.
 
         Notes
         -----
@@ -1410,22 +1480,20 @@ class WorkingRecord(Record):
         """
         lazy = _incoming(frame, self.con)
         columns = lazy.collect_schema().names()
-        if "entity" not in columns:
-            msg = "`add` needs an `entity` column"
+        if dim not in columns:
+            msg = f"`add({dim!r}, frame)` needs a {dim!r} column"
             raise ValueError(msg)
         declared = {
             a: spec
             for a, spec in self.schema.attributes.items()
-            if self.schema.addresses_entity(a)
+            if dim in self.schema.coordinates_of(a)
         }
         varying = [c for c in columns if c in declared and declared[c].varying]
         by_group: dict[str, list[str]] = {}
         for group in self.schema.groups:
-            if "entity" not in self.schema.group_key(group):
+            if dim not in self.schema.group_key(group):
                 continue
-            coordinates = [
-                c for c in self.schema.group_coordinates(group) if c != "entity"
-            ]
+            coordinates = [c for c in self.schema.group_coordinates(group) if c != dim]
             riding = [
                 c
                 for c in columns
@@ -1439,25 +1507,23 @@ class WorkingRecord(Record):
         axis_columns = [c for c in columns if c not in varying and c not in in_groups]
 
         rel = as_relation(lazy, self.con)
-        axis = self._ensure(_ENTITY_AXIS)
-        self._reject_undeclared("add(...)", axis, axis_columns)
-        # One row per entity, replacing any this record already staged for the
-        # name: `add` after `remove` is one row, the tombstone deleted rather
-        # than left to be outranked.
-        self._insert(rel, axis, {"deleted": lit(False)}, key=("entity",))  # noqa: FBT003
+        axis = self._ensure(f"{_AXIS_PREFIX}{dim}")
+        self._reject_undeclared(f"add({dim!r}, ...)", axis, axis_columns)
+        # One row per label, replacing any this record already staged for it:
+        # `add` after `remove` is one row, the tombstone deleted rather than
+        # left to be outranked.
+        self._insert(rel, axis, {"deleted": lit(False)}, key=(dim,))  # noqa: FBT003
         for attribute in varying:
             self._stage_long(
                 attribute,
-                lazy.select("entity", nw.col(attribute).alias("value")),
+                lazy.select(dim, nw.col(attribute).alias("value")),
                 "inputs",
                 {},
             )
         for group, group_columns in by_group.items():
             self.add_group(
                 group,
-                lazy.select(
-                    "entity", *(nw.col(c) for c in dict.fromkeys(group_columns))
-                ),
+                lazy.select(dim, *(nw.col(c) for c in dict.fromkeys(group_columns))),
             )
 
     def _reject_undeclared(self, call: str, table: str, columns: Sequence[str]) -> None:
@@ -1645,21 +1711,18 @@ class WorkingRecord(Record):
         rel = self._rows("inputs", attribute)
         if rel is None:
             return None
-        dead = self._tombstoned()
-        if dead is None:
-            return rel
-        # A deleted component has no attributes, so the tombstone drops a staged
-        # value for its name (https://energy-models.github.io/datarecord/design/working-record/#committing).
-        #
-        # Matched on `name` alone: the tombstone carries a type and a staged
-        # input row does not (https://energy-models.github.io/datarecord/design/format/#the-entity-axis).
-        on = null_safe("l", "d", ("entity",))
-        return rel.set_alias("l").join(dead.set_alias("d"), on, how="anti")
+        coordinates = set(self.schema.coordinates_of(attribute))
+        for dim in self.schema.partial_dims:
+            dead = self._tombstoned(dim) if dim in coordinates else None
+            if dead is not None:
+                on = null_safe("l", "d", (dim,))
+                rel = rel.set_alias("l").join(dead.set_alias("d"), on, how="anti")
+        return rel
 
-    def _tombstoned(self) -> DuckDBPyRelation | None:
-        """Component keys whose staged entity-axis row is a tombstone.
+    def _tombstoned(self, dim: str) -> DuckDBPyRelation | None:
+        """Labels whose staged axis row is a tombstone.
 
-        One row per name in the table already (`_replace` on `entity`), so an
+        One row per label in the table already (`_replace` on `dim`), so an
         `add` after a `remove` has replaced the tombstone rather than sitting
         above it - the scan is the answer.
 
@@ -1667,23 +1730,10 @@ class WorkingRecord(Record):
         -----
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        rel = self._rows(_ENTITY_AXIS)
-        if rel is None:
+        rel = self._rows(f"{_AXIS_PREFIX}{dim}")
+        if rel is None or "deleted" not in rel.columns:
             return None
-        return rel.filter(col("deleted")).project(col("entity"))
-
-    def _collapsed_entities(self) -> DuckDBPyRelation | None:
-        """The staged entity axis: which names exist, dead or live.
-
-        A table scan: one row per name, keyed by `entity` alone (`_replace`), so
-        a `remove` and a later `add` of one name are already one row rather
-        than a member that is both live and deleted.
-
-        Notes
-        -----
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-        """
-        return self._rows(_ENTITY_AXIS)
+        return rel.filter(col("deleted")).project(col(dim))
 
     def _collapsed_group(self, group: str) -> DuckDBPyRelation | None:
         """One group's staged rows - a table scan, one per `group_key`.
@@ -1706,11 +1756,6 @@ class WorkingRecord(Record):
         Rows rather than tables: `_ensure` creates the table before the label
         checks run, so a rejected `set` leaves an empty one behind and a table
         that exists is not yet an edit.
-
-        `entity` is one of them, staged as `_ENTITY_AXIS` like any other dim -
-        so both the fold's `axes()` and what `commit` writes come from here,
-        rather than one of them special-casing it. `Schema` declares `entity`
-        like any dim, so `schema.dims` names it and no arm is needed for it.
 
         Notes
         -----
@@ -1742,18 +1787,10 @@ class WorkingRecord(Record):
           untouched labels are carried from the base, unioned by name so a base
           row lacking a newly-added column reads NULL there.
 
-        `entity` is a table scan either way: membership is one row per name
-        already (`_collapsed_entities`), never completed from the base - a layer
-        names the components it touched and the fold resolves the rest.
-
         Notes
         -----
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         """
-        if dim == "entity":
-            entities = self._collapsed_entities()
-            assert entities is not None, "only a staged dim reaches an axis layer"
-            return entities
         staged = self._rows(f"{_AXIS_PREFIX}{dim}")
         assert staged is not None, "only a staged dim reaches an axis layer"
         base = self._base.dims.axes.get(dim)
@@ -1953,7 +1990,6 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
 # which `Schema` already rejects for colliding with a declared dim.
 _AXIS_PREFIX = "axis_of_"
 
-_ENTITY_AXIS = f"{_AXIS_PREFIX}entity"
 """The entity axis's staging kind - an axis like any other, named like one.
 
 `dims/entity.parquet` is a file a layer holds, so staging it as an axis is what
