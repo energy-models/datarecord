@@ -91,7 +91,10 @@ JOIN inputs o
  AND o.bus         IS NOT DISTINCT FROM u.bus     -- never expanded against an axis
  AND o.attribute   = u.attribute
  AND o.layer_uuid  = u.layer_uuid
- AND (u.scenario IS NULL OR u.scenario IS NOT DISTINCT FROM o.scenario)
+ AND o.scenario    IS NOT DISTINCT FROM u.scenario  -- owned-per dims: only the rows that set one
+WHERE u.scenario IS NOT NULL
+UNION ALL BY NAME
+-- the same join without the scenario arm, WHERE u.scenario IS NULL
 ```
 
 The projected coordinates are the **attribute's own**, not a fixed prefix: `entity | bus` for a connection attribute, `from | to` for one over a corridor, neither for a record-level weighting ([the long schema](format.md#the-long-schema)).
@@ -101,6 +104,9 @@ The map already names the winning layer per key, so resolution reads only the ow
 There is no per-read `MAX`/group-by and no tombstone filter — deletions are already absent from the map.
 
 Each owned-per dim's arm is **NULL-aware**: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.
+The arm is spelled as a split rather than one condition.
+`u.scenario IS NULL OR u.scenario IS NOT DISTINCT FROM o.scenario` is no hash key: DuckDB joins on the other columns and filters the dim afterwards, which costs the square of the dim's length per key.
+So the rows are split by which owned-per dims they leave NULL, each part joins on exactly the dims it sets, and the parts are unioned — one part per NULL pattern, each a hash join.
 
 A **group coordinate** like `bus` is joined **NULL-safely** rather than NULL-aware against the map, being [an address rather than a broadcast dim](record.md#the-broadcast-rule).
 There is no membership gate at read: an attribute row is keyed by every membership its coordinates name — the entity, each group tuple, each dim coordinate — and each of those is [tombstone-pruned in the fold](#one-fold-for-every-axis), so a row whose entity, connection tuple or dim coordinate was deleted is already gone from the map.
