@@ -32,9 +32,6 @@ dependencies = [
   "pydantic>=2",
 ]
 
-[project.optional-dependencies]
-pypsa = ["pypsa"]
-
 [project.urls]
 repository = "https://github.com/energy-models/datarecord"
 
