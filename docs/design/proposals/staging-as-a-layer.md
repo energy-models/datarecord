@@ -164,7 +164,7 @@ Today a result attribute is not declared: [`Tool.results`](../sources.md) derive
 - **One vocabulary.** `Schema` stops having two classes of attribute, one it validates and one it cannot see.
 - **`value_hint` retires.** `_empty_long` types a staging table's `value` as `schema.value_type(attribute) or value_hint or String()`, where the hint is the dtype the caller's frame arrived with — "that being the only thing that knows" for an undeclared result. Once results are declared the schema knows, so the fallback is dead. Retiring it removes the parameter from `_ensure` and `_empty_long`, its three call sites, and the two helpers that compute it (`_value_dtype`, `_scalar_dtype`) — check those have no other caller first.
 
-The cost is real and lands outside this repo. A tool must declare a result before attaching it, where today it may attach anything its registry produced — and PyPSA's `SubNetwork` exists only _after_ a solve, which is exactly the case [results through `kind="outputs"`](../working-record.md#results-through-kindoutputs) cites for not requiring declaration. So a tool either declares its full result vocabulary up front, or amends the schema at solve time, and [`Schema.compatible_with`](../schema.md#versioning) is what says whether existing layers survive the amendment.
+The cost is real and lands outside this repo. A tool must declare a result before attaching it, where today it may attach anything its registry produced — and PyPSA's `SubNetwork` exists only _after_ a solve, which is exactly the case results through `kind="outputs"` cites for not requiring declaration. So a tool either declares its full result vocabulary up front, or amends the schema at solve time, and [`Schema.compatible_with`](../schema.md#versioning) is what says whether existing layers survive the amendment.
 
 The membership check stays relaxed regardless: a result may name a component the record never declared, which is a separate rule from whether the _attribute_ is declared and is not changed here.
 
@@ -320,7 +320,7 @@ Those deletions are what make the two smaller cleanups this grew out of unnecess
 
 **Two sections still owe an edit**, neither optional — when behaviour changes, the page changes, not just the code:
 
-- [results through `kind="outputs"`](../working-record.md#results-through-kindoutputs) says a result attribute is not schema-declared, and gives the reason. Question 3 reverses that; the page keeps the membership rule and loses the declaration one.
+- results through `kind="outputs"` says a result attribute is not schema-declared, and gives the reason. Question 3 reverses that; the page keeps the membership rule and loses the declaration one.
 - [reading with pending edits](../working-record.md#reading-with-pending-edits) says the staged fold "costs what one more layer costs". True per read, and the page should say per read — a written layer pays that once and is cached forever, the staged one pays it on every read, being the only layer that can still change.
 
 ## What it opens

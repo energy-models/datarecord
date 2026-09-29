@@ -28,7 +28,6 @@ from datarecord.duck import (
     try_read_parquet,
 )
 from datarecord.layered.fold import Fold
-from datarecord.record import Kind
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
@@ -134,16 +133,16 @@ class LayerSource(Protocol):
         """`groups/<name>.parquet` - one group's rows, tombstones included."""
         ...
 
-    def attributes(self, kind: Kind = "inputs") -> set[str]:
-        """Which `<kind>/*.parquet` files this layer has, by name.
+    def attributes(self) -> set[str]:
+        """Which `inputs/*.parquet` files this layer has, by name.
 
         For `write_record`'s benefit: a read learns owned attributes from the
         owner map, never by listing a source's own files.
         """
         ...
 
-    def attribute(self, name: str, kind: Kind = "inputs") -> DuckDBPyRelation | None:
-        """`<kind>/<name>.parquet` - one attribute's own columns, unpadded.
+    def attribute(self, name: str) -> DuckDBPyRelation | None:
+        """`inputs/<name>.parquet` - one attribute's own columns, unpadded.
 
         Not the singular of `all_attributes`: this is the *owned* read, and it
         must keep exactly the columns the file has, a padded one being ambiguous
@@ -155,10 +154,10 @@ class LayerSource(Protocol):
         """
         ...
 
-    def all_attributes(self, kind: Kind = "inputs") -> DuckDBPyRelation | None:
-        """Every `<kind>/*.parquet` unioned by name, unprojected.
+    def all_attributes(self) -> DuckDBPyRelation | None:
+        """Every `inputs/*.parquet` unioned by name, unprojected.
 
-        Only the long kinds have one: they share `input_key`, so a single scan
+        Only the attributes have one: they share `input_key`, so a single scan
         answers the ownership `GROUP BY` for every attribute at once. An axis or
         a group folds on a key of its own, so a union across them would have
         nothing to fold on.
@@ -220,17 +219,17 @@ class _FileLayer:
     def group(self, name: str) -> DuckDBPyRelation | None:
         return self._read(f"groups/{name}.parquet", union_by_name=True)
 
-    def attributes(self, kind: Kind = "inputs") -> set[str]:
+    def attributes(self) -> set[str]:
         return {
             name.removesuffix(".parquet")
-            for name in parquet_names(self.uri(f"{kind}/"), self._con)
+            for name in parquet_names(self.uri("inputs/"), self._con)
         }
 
-    def attribute(self, name: str, kind: Kind = "inputs") -> DuckDBPyRelation | None:
-        return self._read(f"{kind}/{name}.parquet")
+    def attribute(self, name: str) -> DuckDBPyRelation | None:
+        return self._read(f"inputs/{name}.parquet")
 
-    def all_attributes(self, kind: Kind = "inputs") -> DuckDBPyRelation | None:
-        return self._read(f"{kind}/*.parquet", union_by_name=True)
+    def all_attributes(self) -> DuckDBPyRelation | None:
+        return self._read("inputs/*.parquet", union_by_name=True)
 
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """No cache by default: only a `ParquetLayer` has a revision to key one by."""

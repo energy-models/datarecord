@@ -36,3 +36,6 @@ All notable changes to datarecord are documented here. The format follows
 - `datarecord.tools`, with the `Tool` protocol and the PyPSA tool, and the
   `pypsa` extra. A converter outside datarecord produces the tables that
   `from_sources` reads.
+- Outputs: the `outputs/` directory, `Schema.results`, `Record.outputs` and
+  `set(kind="outputs")`. A solve's answers are stored as a record of their own,
+  whose schema the producer defines.

@@ -15,8 +15,6 @@ def write_record(
 Writes `source` as a new layer.
 An existing layer directory is an error rather than an overwrite or a merge, so a whole-record write can never half-replace what a record holds.
 
-`outputs/` is written only for a source whose [`outputs` mapping](record.md) is non-empty, so a record with no results produces a layer with no `outputs/` rather than an empty directory.
-
 Keys are looked up one at a time and each file written before the next is built, so a lazily-building source does one read per file written rather than one per key up front.
 Frames are staged into a sibling directory and renamed on success, so a frame the fold could not resolve leaves no layer rather than half of one.
 
@@ -26,12 +24,10 @@ Without that a source may hand over an all-NULL column its dataframe library typ
 Validation is structural: a long frame carries [its attribute's own coordinates](format.md#the-long-schema), and an entity frame carries every dim it is keyed by.
 Which component types are valid belongs to [the schema's vocabulary](schema.md), which the record layer does not interpret.
 
-An **input attribute the schema does not declare is rejected**, unlike a component type: its [`dims`](schema.md#attributespec) are what say which columns its file carries, so an undeclared one has no shape to write it in and would leave a file no reader could derive the columns of.
-A **result is exempt**: `write_record` writes the `outputs/` it is handed, and [`set(..., kind="outputs")`](working-record.md#results-through-kindoutputs) is where a result's name is checked against the schema.
+An **attribute the schema does not declare is rejected**, unlike a component type: its [`dims`](schema.md#attributespec) are what say which columns its file carries, so an undeclared one has no shape to write it in and would leave a file no reader could derive the columns of.
 
 A frame carrying a column its attribute is **not** addressed by is rejected too, rather than narrowed on the way out.
 The read path projects an attribute's own coordinates, so such a column would be written and never read — and a source emitting one means something different by the attribute than the schema does, which is worth reporting rather than absorbing.
-A result is exempt from both checks: its shape is a framework's business, and a name it shares with an input says nothing about which coordinates the result varies over.
 
 The input is a [`LayerData`](record.md#layerdata): "the rows of one thing, enumerated and read" — the same interface a [`LayerSource`](read-path.md#owner-map) answers for its own layer and a `Resolver` answers for a whole fold, so `write_record` cannot tell which it was handed and does not need to.
 A staged layer's own rows and a resolved record are both a `LayerData`, which is what lets `commit` write either without a third shape adapting one to the other.

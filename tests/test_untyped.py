@@ -115,10 +115,10 @@ def test_an_entity_type_column_is_rejected(con, base_uri, untyped_schema):
         def group(self, name):
             return None
 
-        def attributes(self, kind="inputs"):
+        def attributes(self):
             return ()
 
-        def attribute(self, name, kind="inputs"):
+        def attribute(self, name):
             return None
 
         frozen = True

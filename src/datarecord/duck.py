@@ -137,9 +137,9 @@ def resolved_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
     reader that knows nothing about it - which is what keeps a layer directory a
     plain parquet directory a foreign reader can consume.
 
-    Only the layer's *inputs* are write-once, then: `materialise` writes here
-    after the fact, which invalidates nothing because results and caches are
-    derived rather than depended on.
+    Only what the layer wrote is write-once, then: `materialise` writes here
+    after the fact, which invalidates nothing because a cache is derived rather
+    than depended on.
 
     Notes
     -----

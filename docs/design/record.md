@@ -24,10 +24,7 @@ class RecordLike(Protocol):
     @property
     def groups(self) -> Frames: ...  # each group's rows, keyed by group
     @property
-    def attributes(self) -> Frames: ...  # long input frames, keyed by attribute
-
-    @property
-    def outputs(self) -> Frames: ...  # long result frames, keyed by attribute
+    def attributes(self) -> Frames: ...  # long frames, keyed by attribute
 
     def flags(self, entities: Sequence[str] | None = None) -> dict[str, Flags]: ...
 ```
@@ -48,8 +45,8 @@ class LayerData(Protocol):
     def axis(self, dim: str) -> DuckDBPyRelation | None: ...
     def groups(self) -> Iterable[str]: ...
     def group(self, name: str) -> DuckDBPyRelation | None: ...
-    def attributes(self, kind: str = "inputs") -> Iterable[str]: ...
-    def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation | None: ...
+    def attributes(self) -> Iterable[str]: ...
+    def attribute(self, name: str) -> DuckDBPyRelation | None: ...
 ```
 
 Each pair is an enumerator — the keys of that kind — and a read for one key.
@@ -80,7 +77,7 @@ groups["entity_type"]                  entity | entity_type
 
 `groups` is keyed by the group alone, one frame each: a group's rows are keyed by its coordinates and the component type is not one of them, so `groups/connection.parquet` holds every type's attachments ([where the rows live](format.md#where-a-value-lives)).
 
-`attributes` and `outputs` are **long** — one row per value, keyed by the attribute's name:
+`attributes` is **long** — one row per value, keyed by the attribute's name:
 
 ```text
 attributes["p_max_pu"]     entity | <one column per coordinate> | attribute | breakpoint | value

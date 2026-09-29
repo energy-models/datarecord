@@ -20,14 +20,13 @@ Dimensioned attribute data with a declared schema.
 A record holds **components** (named members of a type), **groups** of them — connections between components and buses being the one every network has — **attribute values** over both, and the **axes** those values vary along.
 A schema declares what may exist; the data says what does.
 
-A record exposes six things:
+A record exposes five things:
 
 ```text
 record.schema           what may exist: the axes, the groups, the attributes
 record.dims             the axes themselves, keyed by dim
 record.groups           which tuples exist, keyed by group
 record.attributes       the values, keyed by attribute name
-record.outputs          results, keyed by attribute name
 record.flags(entities)  which axes an attribute actually uses
 ```
 

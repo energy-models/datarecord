@@ -16,8 +16,7 @@ record/
 │   ├── entity.parquet              # which entities exist, and their constant values
 │   └── <dim>.parquet               # one axis table per declared dim
 ├── groups/<group>.parquet          # which tuples of the group exist
-├── inputs/<attr>.parquet           # one varying input attribute per file
-└── outputs/<attr>.parquet          # one result attribute per file
+└── inputs/<attr>.parquet           # one varying attribute per file
 ```
 
 Every file under `dims/` and `groups/` is named for what it holds, singular: `dims/scenario.parquet` for the `scenario` axis, as `inputs/p_nom.parquet` is for `p_nom`.
@@ -83,7 +82,7 @@ A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a
 
 ## The long schema
 
-Every `inputs/` and `outputs/` file carries its attribute's own coordinates, then the columns every row has:
+Every `inputs/` file carries its attribute's own coordinates, then the columns every row has:
 
 ```text
 <coordinate> ... | attribute | breakpoint | value

@@ -42,7 +42,6 @@ class Schema(BaseModel):
 
     dimensions: dict[str, Dimension]
     attributes: dict[str, AttributeSpec]  # flat: one attribute, one spec
-    results: dict[str, AttributeSpec]  # what a solve computes, governed apart
     groups: dict[str, Group]
 
     # Which dims a layer may patch value by value; absent for a record with no
@@ -104,23 +103,6 @@ There is no `bus` field: an attribute is a [connection](record.md#connections) a
 `breakpoints` answers what a bare column set cannot: whether it may carry a piecewise-linear curve, so a curve on an attribute that takes one value is rejected on write rather than reported unbuildable later ([wide and long rows](record.md#wide-and-long-rows)).
 
 An attribute naming exactly one addressing coordinate is a column on that thing's own table, and anything more is long rows in `inputs/` — [where a value lives](format.md#where-a-value-lives) is the rule, and it is the schema that decides the file split rather than a writer guessing it.
-
-## Results
-
-`results` is a second mapping of `AttributeSpec`, keyed and shaped exactly like `attributes`.
-What a solve computes is declared, not discovered: a result has a dtype, coordinates and a description like any other attribute, and reading one back needs its dtype as much as an input does — a string-valued result cast as a number is lost to `TRY_CAST` with nothing raised.
-
-It is a **separate mapping rather than a flag** because the two are governed differently at every point a caller touches them.
-A result is written to `outputs/<attr>.parquet`, never [overlays](read-path.md#outputs) a parent's, and may name a component the record does not declare.
-An input is checked against `attributes` when a `set` stages it, and `add` splits its wide frame by them; a result meets neither, and keeping it out of `attributes` is what makes that structural rather than a condition repeated at each site.
-A name in both is rejected: one name is one file with one `value` column, so it is an input or a result and not both.
-
-The questions the long schema asks of a _stored_ attribute — its dtype, its coordinates — span both, since `outputs/` and `inputs/` share a layout.
-Those go through one lookup that consults each in turn.
-
-**`Schema.from_mathspec` takes results in its `storage` block**, because a mathspec declarations file holds data only.
-
-Results version like inputs ([versioning](#versioning)): removing one, changing its dtype, or narrowing its `dims` makes existing layers unreadable for the same reasons.
 
 ## Types
 
@@ -329,7 +311,7 @@ A directory record's schema is `manifest.json` in the directory; a layered recor
 ```text
 record-root/
 ├── manifest.json               # the schema — one, for the whole tree
-└── layers/<uuid>/              # a layer: dims/, inputs/, outputs/ — no manifest
+└── layers/<uuid>/              # a layer: dims/, groups/, inputs/ — no manifest
     └── resolved/               # caches (owner map, resolved dims)
 ```
 

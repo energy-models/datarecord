@@ -314,8 +314,7 @@ def network_schema(n) -> Schema:
 
     `p_nom` and `carrier` are entity-axis columns; `SERIES` and the per-port
     `efficiency` vary over `snapshot`, and over `scenario` too where `n` has
-    one; `role` is a column of the `connection` group. The results are the ones
-    tests stage.
+    one; `role` is a column of the `connection` group.
     """
     varying = {"snapshot", "scenario"} if n.has_scenarios else {"snapshot"}
     declared = {
@@ -328,12 +327,7 @@ def network_schema(n) -> Schema:
         "efficiency": AttributeSpec(dtype=nw.Float64(), dims={"connection", *varying}),
         "role": AttributeSpec(dtype=nw.String(), dims={"connection"}),
     }
-    results = {
-        "p": AttributeSpec(dtype=nw.Float64(), dims={"entity", *varying}),
-        "p_nom_opt": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
-        "sub_network": AttributeSpec(dtype=nw.String(), dims={"entity"}),
-    }
-    return schema(attributes={"network": declared}, results=results)
+    return schema(attributes={"network": declared})
 
 
 def network_tables(n) -> dict[str, pd.DataFrame]:
@@ -576,15 +570,13 @@ def schema(
         "connection": {"entity": "entity", "bus": "bus"}
     },
     within: dict[str, set[str]] | None = None,
-    results: dict[str, AttributeSpec] | None = None,
 ) -> Schema:
     """A schema shaped like the PyPSA records most tests build on.
 
     The `entity` axis and a `connection` group over `(entity, bus)`, and three
     declared dims. Override `partial` to pin a different layering granularity,
     `dims` to declare another axis, `groups` to declare a different sparse
-    relation, `within` to nest one axis inside another, `results` to declare
-    what a solve writes back.
+    relation, and `within` to nest one axis inside another.
 
     `entity` and every group coordinate are declared dims and are `partial`:
     a layer patches one component's value, or one connection's, without
@@ -627,7 +619,6 @@ def schema(
         }
         | {"entity_type": Dimension(dtype=nw.String())},
         attributes=flat,
-        results=results or {},
         partial=frozenset({"entity", *coordinates, *partial}),
     )
 
@@ -637,18 +628,8 @@ def relation(revision, attribute: str):
 
     A test helper rather than a `Revision` method: `Revision` presents its data
     through `.record` (a `Record`), and a DuckDB-shaped accessor beside it would
-    duplicate `record.attributes[attr]` while inverting what `outputs` means -
-    a relation on the revision against a `Frames` mapping on the record. Tests
-    want relations because they assert on `.df()`, so the affordance lives here.
+    duplicate `record.attributes[attr]` as a relation on the revision against a
+    `Frames` mapping on the record. Tests want relations because they assert on
+    `.df()`, so the affordance lives here.
     """
     return revision.resolver.attribute(attribute)
-
-
-def outputs(revision, attribute: str):
-    """One result attribute as a DuckDB relation; outputs do not overlay.
-
-    Notes
-    -----
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-    """
-    return revision.resolver.attribute(attribute, "outputs")

@@ -15,7 +15,6 @@ Data comes in, and a record goes out, as tables keyed by the names its [schema](
 | a dimension                            | its labels, one column named after it |
 | a relation ([group](schema.md#groups)) | its rows, one column per coordinate   |
 | a parameter (attribute)                | its coordinates and `value`           |
-| a result                               | its coordinates and `value`           |
 
 ## Declared names
 
@@ -52,12 +51,10 @@ It refuses a parameter the spec reads and the record does not hold, and a label 
 A record read without a spec has no requirement to meet.
 The same holds for [types](schema.md#types): a record does not narrow an attribute to a type, and the spec says which attributes a type uses.
 
-## Results
+## Answers
 
-A result goes back as a table of its coordinates and `value`, the shape a parameter has.
-[`set(name, table, kind="outputs")`](working-record.md#results-through-kindoutputs) stages one into `outputs/`, and a commit writes it in the same layer as the inputs it was solved from.
-The schema declares each result under [`results`](schema.md#results), so a reader has a dtype to read it at.
-`from_sources` sends the table of a declared result to `outputs/` too, for a record written whole.
+A solve's answers are stored as a record of their own, whose schema the producer defines.
+That record is linked to the input record by the revision id of the input node.
 
 ## Framework objects
 

@@ -14,8 +14,7 @@ Everything a consumer codes against. It is read-only, and structural — a plain
 record.schema  # what may exist: the axes, the attributes
 record.dims["scenario"]  # axis frames, keyed by dim
 record.groups["connection"]  # group rows, keyed by group — one frame each
-record.attributes["p_max_pu"]  # long input frames, keyed by attribute
-record.outputs["p"]  # long result frames, keyed by attribute
+record.attributes["p_max_pu"]  # long frames, keyed by attribute
 record.flags(["wind1", "wind2"])  # which axes each attribute uses, over these entities
 ```
 
@@ -27,7 +26,7 @@ entities = record.dims["entity"].collect().to_pandas()
 
 ## Wide and long
 
-`dims` and `groups` are **wide** — one row per thing. `attributes` and `outputs` are **long** — one row per value:
+`dims` and `groups` are **wide** — one row per thing. `attributes` is **long** — one row per value:
 
 ```text
 <coordinate> ... | attribute | breakpoint | value
@@ -84,6 +83,5 @@ record/
 │   ├── entity.parquet              # entities + attribute columns over entity alone
 │   └── <dim>.parquet               # one axis table per declared dim
 ├── groups/<group>.parquet          # which tuples of the group exist
-├── inputs/<attr>.parquet           # one varying input attribute per file
-└── outputs/<attr>.parquet          # one result attribute per file
+└── inputs/<attr>.parquet           # one varying attribute per file
 ```
