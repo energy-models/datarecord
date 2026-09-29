@@ -597,6 +597,110 @@ class Schema(BaseModel):
             raise ValueError(msg)
         return self
 
+    # -- declarations in mathspec's vocabulary --------------------------------
+
+    @classmethod
+    def from_declarations(
+        cls, declarations: Any, *, storage: dict[str, Any] | None = None
+    ) -> Schema:
+        """A schema from a mathspec file of declarations, plus what only storage needs.
+
+        Parameters
+        ----------
+        declarations
+            What `mathspec.to_spec` takes. It holds `dimensions`, `relations` and
+            `parameters` only: a record holds data, and builds no math.
+        storage
+            `partial`, `results` and `meta` as `Schema` takes them, and under
+            `dimensions` and `parameters` the fields mathspec has no place for:
+            `unit` and `within` on a dim, `default`, `unit` and `breakpoints` on a
+            parameter.
+
+        Raises
+        ------
+        ValueError
+            If the file declares math, or a relation or dtype has no datarecord
+            form: a relation determining more than one column, or under a role
+            named other than its dim.
+        """
+        import mathspec
+
+        spec = mathspec.to_spec(declarations)
+        math = [
+            k
+            for k in ("variables", "constraints", "expressions", "piecewise", "sos")
+            if getattr(spec, k)
+        ]
+        if math or spec.objective is not None:
+            msg = f"a record's declarations hold data only; this file declares {math or ['objective']}"
+            raise ValueError(msg)
+        storage = storage or {}
+        dim_extra = storage.get("dimensions", {})
+        param_extra = storage.get("parameters", {})
+        dimensions = {
+            d: Dimension(
+                dtype=_FROM_MATHSPEC[b.dtype](),
+                description=b.description,
+                **dim_extra.get(d, {}),
+            )
+            for d, b in spec.dimensions.items()
+        }
+        groups = {r: _group_from_relation(r, b) for r, b in spec.relations.items()}
+        attributes = {
+            a: AttributeSpec(
+                dtype=_FROM_MATHSPEC[b.dtype](),
+                dims=frozenset(b.dims),
+                description=b.description,
+                **param_extra.get(a, {}),
+            )
+            for a, b in spec.parameters.items()
+        }
+        rest = {
+            k: v for k, v in storage.items() if k not in ("dimensions", "parameters")
+        }
+        return cls(dimensions=dimensions, groups=groups, attributes=attributes, **rest)
+
+    def to_declarations(self) -> dict[str, Any]:
+        """This schema's dims, groups and attributes as a mathspec declarations file.
+
+        What `from_declarations` reads back, less the storage block. A model spec
+        merges with it (`mathspec.merge`) and reads its parameters as `given:`.
+
+        Raises
+        ------
+        ValueError
+            If a dtype has no mathspec form, or an attribute is addressed by a
+            group, which a mathspec parameter cannot be.
+        """
+        relations = {}
+        for g, group in self.groups.items():
+            key: Any = (
+                dict(group.over)
+                if any(k != v for k, v in group.over.items())
+                else list(group.over)
+            )
+            if isinstance(key, list) and len(key) == 1:
+                key = key[0]
+            relations[g] = {"key": key} | ({"values": group.into} if group.into else {})
+        parameters = {}
+        for a, spec in self.attributes.items():
+            if spec.dims & set(self.groups):
+                msg = f"attribute {a!r} is addressed by a group; a mathspec parameter is over dims only"
+                raise ValueError(msg)
+            parameters[a] = {
+                "dims": [d for d in self.dimensions if d in spec.dims],
+                "dtype": _to_mathspec(spec.dtype, f"attribute {a!r}"),
+            } | ({"description": spec.description} if spec.description else {})
+        return {
+            "dimensions": {
+                d: {"dtype": _to_mathspec(s.dtype, f"dim {d!r}")}
+                | ({"description": s.description} if s.description else {})
+                for d, s in self.dimensions.items()
+            },
+            "relations": relations,
+            "parameters": parameters,
+        }
+
     # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
 
     @property
@@ -1185,3 +1289,35 @@ def _ancestors(dim: str, within: dict[str, frozenset[str]]) -> set[str]:
         seen.add(node)
         stack.extend(within.get(node, ()))
     return seen
+
+
+_FROM_MATHSPEC: dict[str, type[nw.dtypes.DType]] = {
+    "str": nw.String,
+    "int": nw.Int64,
+    "float": nw.Float64,
+    "bool": nw.Boolean,
+    "datetime": nw.Datetime,
+}
+
+
+def _to_mathspec(dtype: nw.dtypes.DType, where: str) -> str:
+    """`dtype` as the mathspec dtype name that reads back to it, or a refusal naming `where`."""
+    for name, kind in _FROM_MATHSPEC.items():
+        if type(dtype) is kind:
+            return name
+    msg = f"{where}: dtype {dtype} has no mathspec form"
+    raise ValueError(msg)
+
+
+def _group_from_relation(name: str, block: Any) -> Group:
+    """A mathspec relation as a group: `key` becomes `over`, one `values` column `into`.
+
+    A group determines at most one column, named after its dim; a relation may
+    determine several, under any role, and those have no group form.
+    """
+    over = dict(block.pairs[: len(block.key_roles)])
+    values = block.pairs[len(block.key_roles) :]
+    if len(values) > 1 or any(role != dim for role, dim in values):
+        msg = f"relation {name!r} determines {values}; a group is `into` one dim, named after it"
+        raise ValueError(msg)
+    return Group(over=over, into=values[0][1] if values else None)

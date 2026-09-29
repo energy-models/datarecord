@@ -16,7 +16,7 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
@@ -249,11 +249,12 @@ class RecordLike(Protocol):
         """
         ...
 
-    def flags(self, ctype: str) -> dict[str, Flags]:
-        """Every attribute of `ctype`, mapped to the shape its rows take.
+    def flags(self, entities: Sequence[str] | None = None) -> dict[str, Flags]:
+        """Every attribute, mapped to the shape its rows take - over `entities`, or all.
 
         Only attributes with rows are present, so the key set also answers
-        which attributes this type has at all.
+        which attributes these entities have at all. A consumer grouping
+        entities by a relation (a type, a carrier) passes each group's names.
 
         Notes
         -----

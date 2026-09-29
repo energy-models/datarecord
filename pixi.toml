@@ -25,6 +25,9 @@ duckdb = ">=1.5.4,<2"
 narwhals = ">=2,<3,!=2.21.0"
 pydantic = ">=2"
 
+[pypi-dependencies]
+mathspec = { path = "/home/user/mathspec", editable = true }
+
 [feature.test.dependencies]
 pytest = "*"
 pytest-cov = "*"

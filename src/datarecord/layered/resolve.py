@@ -1092,14 +1092,14 @@ class Resolver:
             return []
         return list(distinct_values(rel, "attribute"))
 
-    def attributes_of(self, ctype: str) -> dict[str, Flags]:
-        """Per attribute of `ctype`, which dims its rows use.
+    def attributes_of(self, entities: Sequence[str] | None = None) -> dict[str, Flags]:
+        """Per attribute, which dims its rows use - over `entities`, or all.
 
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
         """
-        return self.fold.flags(ctype)
+        return self.fold.flags(entities)
 
     def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation:
         """The resolved long relation for one attribute of `kind`.

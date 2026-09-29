@@ -321,7 +321,7 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
         attributes = EMPTY
         outputs = EMPTY
 
-        def flags(self, ctype):
+        def flags(self, entities=None):
             return {}
 
     child = parent.child()

@@ -18,7 +18,7 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import wraps
 from typing import Self, cast
@@ -357,14 +357,14 @@ class Record:
             names, lambda attr: nw.from_native(self.resolver.attribute(attr, "outputs"))
         )
 
-    def flags(self, ctype: str) -> dict[str, Flags]:
+    def flags(self, entities: Sequence[str] | None = None) -> dict[str, Flags]:
         """Straight off the `inputs` owner map, which folded these in for free.
 
         Notes
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return self.resolver.attributes_of(ctype)
+        return self.resolver.attributes_of(entities)
 
     # -- frames, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) --
 

@@ -43,7 +43,7 @@ from datarecord.duck import (
 from datarecord.record import Flags
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
 
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
@@ -150,55 +150,24 @@ class Fold:
         """
         return self.owner_map.filter(col("attribute") == lit(attribute))
 
-    def flags(self, entity_type: str | None = None) -> dict[str, Flags]:
-        """Per attribute, which dims its rows use - whole-record, or one type.
+    def flags(self, entities: Sequence[str] | None = None) -> dict[str, Flags]:
+        """Per attribute, which dims its rows use - whole-record, or over `entities`.
 
-        Whole-record when `entity_type` is `None`; scoped to a type's components
-        when named, by a semi-join to the resolved entity axis. A type whose
-        components disagree yields a dim in both sets - the instruction to use
-        both containers, each taking the rows it matches. The union stops at the
-        type boundary: across types it would describe neither.
+        Entities that disagree yield a dim in both sets - the instruction to use
+        both containers, each taking the rows it matches.
 
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
-        # The flags have a field per *broadcast* dim: an address coordinate never
-        # broadcasts, so "did a row set it" is not a question about it.
+        if isinstance(entities, str):
+            msg = f"`flags` takes entity names, not one string; pass [{entities!r}]"
+            raise TypeError(msg)
         dims = self.schema.broadcast_dims
-        rows = self._flag_rows(entity_type, dims)
-        if rows is None:
-            return {}
-        # The structs come back as dicts keyed by dim, so each set is a filter by
-        # name rather than a positional slice.
-        return flags_from_rows(self.schema, dims, rows)
-
-    def _flag_rows(
-        self, entity_type: str | None, dims: tuple[str, ...]
-    ) -> list[tuple[Any, ...]] | None:
-        """The aggregated flag rows, scoped to `entity_type` if named.
-
-        `None` when a type is named but no entity axis exists, so `flags` returns
-        empty rather than aggregating an unscoped map.
-
-        A named type where the schema declares no type axis scopes to the whole
-        axis - every component - since "which dims does type X use" has no
-        narrower meaning without types, and the axis carries no `entity_type`
-        column to filter on (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-        """
-        rel = self.owner_map.set_alias("i")
-        if entity_type is not None and self.schema.entity_type_dim is not None:
-            axis = self.entity_axis
-            if axis is None:
-                return None
-            of_type = axis.filter(col("entity_type") == lit(entity_type)).project(
-                "entity"
-            )
-            rel = rel.join(
-                of_type.distinct().set_alias("e"), "i.entity = e.entity", how="semi"
-            )
-        return rel.aggregate(
+        rel = self.owner_map
+        if entities is not None:
+            rel = rel.filter(col("entity").isin(*(lit(e) for e in entities)))
+        rows = rel.aggregate(
             [
                 col("attribute"),
                 struct_of({d: fn.bool_or(col("varies", d)) for d in dims}).alias(
@@ -210,6 +179,7 @@ class Fold:
                 fn.bool_or(col("breakpoints")).alias("breakpoints"),
             ]
         ).fetchall()
+        return flags_from_rows(self.schema, dims, rows)
 
     @classmethod
     def read(

@@ -78,7 +78,7 @@ class _Source:
     def outputs(self):
         return self._frames(self._outputs, "outputs")
 
-    def flags(self, ctype):
+    def flags(self, entities=None):
         return {}
 
 

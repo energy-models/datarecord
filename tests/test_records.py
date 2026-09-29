@@ -126,7 +126,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
         attributes: Frames
         outputs: Frames
 
-        def flags(self, ctype: str) -> dict[str, Flags]:
+        def flags(self, entities=None) -> dict[str, Flags]:
             return {}
 
     record = DictRecord(
