@@ -618,6 +618,10 @@ _INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT = "input", "output", "attached"
 # undone on write and reapplied on build.
 _PORT_STEMS = ("bus", "efficiency", "p")
 
+# Separates a type from a static column whose name the record declares for
+# another quantity (`_NetworkSource._clashing`).
+_CLASH = "__"
+
 
 def _port_role(port: str) -> str:
     """The `role` for a port index.
@@ -1204,7 +1208,7 @@ class _NetworkSource:
     # decides these three are what a network is shaped by (https://energy-models.github.io/datarecord/design/tools/).
     _DIMS = (SNAPSHOT, PERIOD, SCENARIO)
 
-    @property
+    @cached_property
     def schema(self) -> RecordSchema:
         """The layer's schema, derived from PyPSA's own registry.
 
@@ -1306,6 +1310,24 @@ class _NetworkSource:
         # another would be both here; the input declaration wins, one file
         # holding one `value` column either way.
         results = {a: s for a, s in results.items() if a not in attributes}
+        for c in self.n.components:
+            if not _exported(c):
+                continue
+            for column in c.static.columns:
+                if _clashes(c, column, attributes.get(column), self._port_stems(c)):
+                    typ = (
+                        c.defaults.loc[column, "typ"]
+                        if column in c.defaults.index
+                        else None
+                    )
+                    attributes[f"{c.name}{_CLASH}{column}"] = AttributeSpec(
+                        dtype=_DTYPES.get(typ, _custom_dtype(c.static[column])),
+                        dims=frozenset({ENTITY}),
+                    )
+                if column not in c.defaults.index and column not in attributes:
+                    attributes[column] = AttributeSpec(
+                        dtype=_custom_dtype(c.static[column]), dims=frozenset({ENTITY})
+                    )
         return RecordSchema(
             dimensions={
                 SNAPSHOT: Dimension(
@@ -1429,7 +1451,12 @@ class _NetworkSource:
     def _type_frame(self) -> nw.LazyFrame:
         """`(entity, entity_type)` for every exported component."""
         rows = [
-            pd.DataFrame({ENTITY: self.n.c[t].static.index.unique(), ENTITY_TYPE: t})
+            pd.DataFrame(
+                {
+                    ENTITY: self.n.c[t].static.index.get_level_values("name").unique(),
+                    ENTITY_TYPE: t,
+                }
+            )
             for t in self._types()
         ]
         return nw.from_native(pd.concat(rows, ignore_index=True)).lazy()
@@ -1534,12 +1561,18 @@ class _NetworkSource:
         per_port = self._port_stems(c)
         diverging = _scenario_varying(c, [x for x in c.static.columns])
         stems: list[str] = []
+        declared = self.schema.attributes
         for attr in defaults.index:
             if attr in outputs or attr == "name":
                 continue
-            if not defaults.loc[attr, "varying"] and attr not in diverging:
-                continue
             stem = per_port.get(attr, attr)
+            varies_somewhere = stem in declared and declared[stem].varying
+            if (
+                not defaults.loc[attr, "varying"]
+                and attr not in diverging
+                and not (varies_somewhere and attr in c.static.columns)
+            ):
+                continue
             if stem not in stems:
                 stems.append(stem)
         return stems
@@ -1582,15 +1615,50 @@ class _NetworkSource:
                 and defaults.loc[column, "status"] != "Output"
             )
 
-        columns = [x for x in c.static.columns if keep(x)]
+        columns = [
+            x for x in c.static.columns if keep(x) and self._on_entity_axis(c, x)
+        ]
         # A stochastic network repeats its static frame per scenario, and
         # PyPSA permits the repeats to differ - `capital_cost` may be one value
         # in `high` and another in `low`. Such an attribute varies over
         # `scenario`, so it belongs in `inputs/` and is dropped here; what is
         # left is the same in every scenario and collapses to one entity row.
         columns = [x for x in columns if x not in _scenario_varying(c, columns)]
-        frame = c.static[columns].reset_index().rename(columns={"name": "entity"})
+        frame = (
+            c.static[columns]
+            .rename(columns=self._clashing(c))
+            .reset_index()
+            .rename(columns={"name": "entity"})
+        )
         return nw.from_native(self._tagged(frame)).lazy()
+
+    def _on_entity_axis(self, c: pypsa.Components, column: str) -> bool:
+        """Whether `c`'s static `column` is a column of the entity axis.
+
+        Not where the record declares it over `entity` and more - a
+        time-varying attribute some other type holds as a series - which goes
+        to `inputs/` as a row per entity with `snapshot` NULL, so one value has
+        one place.
+        """
+        if column in self._clashing(c):
+            return True
+        spec = self.schema.attributes.get(column)
+        return spec is None or spec.dims == {ENTITY}
+
+    def _clashing(self, c: pypsa.Components) -> dict[str, str]:
+        """`c`'s static columns whose name the record declares for something else.
+
+        PyPSA reuses a name across types for different quantities -
+        `Carrier.efficiency` is one number per carrier, `Link.efficiency` one
+        per port. A record declares a name once, so the type's column is stored
+        as `<type>__<name>` and `_members` strips the prefix on the way back.
+        """
+        ports = self._port_stems(c)
+        return {
+            column: f"{c.name}{_CLASH}{column}"
+            for column in c.static.columns
+            if _clashes(c, column, self.schema.attributes.get(column), ports)
+        }
 
     @staticmethod
     def _tagged(frame: pd.DataFrame) -> pd.DataFrame:
@@ -1816,6 +1884,36 @@ def _static_columns(members: dict[str, nw.LazyFrame], ctype: str) -> frozenset[s
     )
 
 
+def _clashes(
+    c: pypsa.Components, column: str, spec: AttributeSpec | None, ports: dict[str, str]
+) -> bool:
+    """Whether `c`'s static `column` is a different quantity than the record's `spec` of that name.
+
+    A column PyPSA's registry does not declare for `c` is its own quantity,
+    whatever the record means by the name. A registry column is the same
+    quantity unless the record declares the name over no `entity` - a port
+    attribute over `connection` being the same for a type that has the port.
+    """
+    if spec is None or spec.dims == {ENTITY}:
+        return False
+    if column not in c.defaults.index:
+        return True
+    if ENTITY in spec.dims:
+        return False
+    return not (CONNECTION in spec.dims and column in ports)
+
+
+def _custom_dtype(column: pd.Series) -> nw.dtypes.DType:
+    """A narwhals dtype for a static column PyPSA's registry does not declare."""
+    if pd.api.types.is_bool_dtype(column):
+        return nw.Boolean()
+    if pd.api.types.is_integer_dtype(column):
+        return nw.Int64()
+    if pd.api.types.is_float_dtype(column):
+        return nw.Float64()
+    return nw.String()
+
+
 def _members(record: RecordLike) -> dict[str, nw.LazyFrame]:
     """Each component type's wide frame, from the entity axis and the `entity_type` group.
 
@@ -1833,6 +1931,10 @@ def _members(record: RecordLike) -> dict[str, nw.LazyFrame]:
     out = {}
     for ctype, rows in wide.groupby(ENTITY_TYPE, sort=True, observed=True):
         rows = rows.drop(columns=[ENTITY_TYPE]).dropna(axis=1, how="all")
+        own = f"{ctype}{_CLASH}"
+        rows = rows.rename(
+            columns={c: c[len(own) :] for c in rows.columns if c.startswith(own)}
+        )
         out[str(ctype)] = nw.from_native(con.from_df(rows.reset_index(drop=True)))
     return out
 
