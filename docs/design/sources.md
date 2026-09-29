@@ -10,12 +10,12 @@ This page explains how a record meets a solver or a modelling framework, and why
 Data comes in, and a record goes out, as tables keyed by the names its [schema](schema.md) declares.
 `from_sources` and `to_sources` are the two directions ([API](../api/sources.md)).
 
-| declared as                          | its table                             |
-| ------------------------------------ | ------------------------------------- |
-| a dimension                          | its labels, one column named after it |
+| declared as                            | its table                             |
+| -------------------------------------- | ------------------------------------- |
+| a dimension                            | its labels, one column named after it |
 | a relation ([group](schema.md#groups)) | its rows, one column per coordinate   |
-| a parameter (attribute)              | its coordinates and `value`           |
-| a result                             | its coordinates and `value`           |
+| a parameter (attribute)                | its coordinates and `value`           |
+| a result                               | its coordinates and `value`           |
 
 ## Declared names
 

@@ -26,15 +26,13 @@ def ac_dc():
     """PyPSA's `ac_dc_meshed`, with its loads renamed off their buses.
 
     The example names each `Load` after the `Bus` it sits on, which a record
-    cannot represent: names are unique across component types,
-    and `PyPSA.to_datarecord` rejects such a network rather than renaming it. Renaming here is the test suite standing in for the caller that has
-    to reconcile the two vocabularies; `test_tools.py` pins the rejection
-    itself.
+    cannot represent: names are unique across component types. Renaming here
+    is the test suite standing in for the caller that has to reconcile the two
+    vocabularies.
 
     Notes
     -----
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     import pypsa
 

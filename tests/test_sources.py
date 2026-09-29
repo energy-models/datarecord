@@ -9,13 +9,14 @@ Notes
 - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
 """
 
+import narwhals as nw
 import pandas as pd
 import pytest
 
 from datarecord import Revision
 from datarecord.layered.resolve import write_schema
 from datarecord.layered.write import write_record
-from datarecord.schema import Schema
+from datarecord.schema import Dimension, Group, Schema
 from datarecord.sources import from_sources, to_sources
 from tests.test_declared_dims import DECLARATIONS, SNAPSHOTS, STORAGE
 
@@ -136,4 +137,44 @@ def test_an_integer_coordinate_left_out_of_a_pandas_table_is_written_null(
     got = _rows(to_sources(revision.record)["Load_p_set"], "snapshot", "bus")
     assert got == {(0, "north"): 120.0, (1, "north"): 120.0}, (
         "the one row reaches both snapshots"
+    )
+
+
+@pytest.fixture
+def kind_schema():
+    """A classifying group that shares its `into` dim's name, as the schema allows."""
+    return Schema(
+        dimensions={
+            "entity": Dimension(dtype=nw.String()),
+            "kind": Dimension(dtype=nw.String()),
+        },
+        groups={"kind": Group(over=["entity"], into="kind")},
+        partial=frozenset({"entity"}),
+    )
+
+
+def test_a_name_both_a_dimension_and_a_group_is_refused_on_the_way_in(kind_schema):
+    """One key cannot carry both a dim's labels and a group's rows.
+
+    `from_sources` handed the `kind` table to the dim too, and `write_record`
+    then refused `dims/kind.parquet` for carrying `entity`. mathspec refuses a
+    relation named after a dimension, so the seam refuses it by name first.
+    """
+    tables = {"kind": pd.DataFrame({"entity": ["wind"], "kind": ["Generator"]})}
+    with pytest.raises(KeyError, match=r"\['kind'\] name both a dimension and a group"):
+        from_sources(kind_schema, tables)
+
+
+def test_a_name_both_a_dimension_and_a_group_is_refused_on_the_way_out(
+    con, base_uri, kind_schema
+):
+    """`to_sources` refuses the colliding name, and serves every other one asked for."""
+    write_schema(kind_schema, base_uri)
+    revision = Revision.create(con)
+    tables = {"entity": pd.DataFrame({"entity": ["wind"]})}
+    write_record(revision.id, from_sources(kind_schema, tables), con)
+    with pytest.raises(KeyError, match=r"\['kind'\] name both a dimension and a group"):
+        to_sources(revision.record)
+    assert set(to_sources(revision.record, names=["entity"])) == {"entity"}, (
+        "a caller naming what it needs is served"
     )

@@ -18,7 +18,7 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 import narwhals as nw
@@ -27,17 +27,31 @@ from datarecord.record import EMPTY, Flags, Frames, LazyFrames, RecordLike
 from datarecord.schema import Schema
 
 
-def to_sources(record: RecordLike) -> dict[str, nw.LazyFrame]:
-    """Every dimension, relation and parameter `record` holds, as tables by name.
+def to_sources(
+    record: RecordLike, names: Collection[str] | None = None
+) -> dict[str, nw.LazyFrame]:
+    """The dimensions, relations and parameters `record` holds, as tables by name.
 
     A dimension is a table of its live labels, one column named after it. A
     relation is its rows, one column per coordinate. A parameter is one row per
     coordinate it has a value at, its coordinates and `value`: a row stored
     NULL along a dim it broadcasts over is expanded to every label of that dim,
     a row that names the label outranking it there, and a NULL value is left
-    out, since a coordinate with no value has no row.
+    out, since a coordinate with no value has no row. Every coordinate has the
+    type the schema declares, whatever precision a layer stored it at.
 
     A parameter no layer wrote is absent rather than filled with its `default`.
+
+    Parameters
+    ----------
+    names
+        The names to return - a solver passes the ones its spec declares.
+        Every name the record holds where `None`.
+
+    Raises
+    ------
+    KeyError
+        If a name to return is both a dimension and a group.
 
     Notes
     -----
@@ -45,23 +59,59 @@ def to_sources(record: RecordLike) -> dict[str, nw.LazyFrame]:
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     schema = record.schema
+    wanted = None if names is None else set(names)
+    _ambiguous(schema, set(schema.dimensions) if wanted is None else wanted)
     dims = record.dims
+    labels: dict[str, nw.LazyFrame] = {}
     out: dict[str, nw.LazyFrame] = {}
     for dim in schema.dims:
         if dim not in dims:
             continue
-        axis = dims[dim]
-        out[dim] = axis.select(dim)
+        axis = _typed(schema, dims[dim])
+        labels[dim] = axis.select(dim)
+        out[dim] = labels[dim]
         for attribute in schema.attributes_on(dim):
             if attribute in axis.collect_schema().names():
                 out[attribute] = axis.select(
                     dim, nw.col(attribute).alias("value")
                 ).filter(~nw.col("value").is_null())
     for group in record.groups:
-        out[group] = record.groups[group].select(*schema.group_coordinates(group))
+        out[group] = _typed(schema, record.groups[group]).select(
+            *schema.group_coordinates(group)
+        )
     for attribute in record.attributes:
-        out[attribute] = _expanded(schema, record.attributes[attribute], attribute, out)
-    return out
+        if wanted is None or attribute in wanted:
+            out[attribute] = _expanded(
+                schema, record.attributes[attribute], attribute, labels
+            )
+    return out if wanted is None else {n: f for n, f in out.items() if n in wanted}
+
+
+def _ambiguous(schema: Schema, names: Collection[str]) -> None:
+    """Refuse a name that is both a dimension and a group.
+
+    The tables are keyed by name alone, so the two would share one key.
+    mathspec keeps every declaration in one namespace and refuses the same
+    collision, which is why this refuses rather than picks one.
+    """
+    both = sorted(set(names) & set(schema.dimensions) & set(schema.groups))
+    if both:
+        msg = (
+            f"{both} name both a dimension and a group; tables are keyed by one "
+            f"flat namespace, so rename the group"
+        )
+        raise KeyError(msg)
+
+
+def _typed(schema: Schema, frame: nw.LazyFrame) -> nw.LazyFrame:
+    """`frame` with each declared dim column cast to the type the schema gives it."""
+    return frame.with_columns(
+        *(
+            nw.col(c).cast(dtype)
+            for c in frame.collect_schema().names()
+            if c in schema.dimensions and (dtype := schema.column_type(c)) is not None
+        )
+    )
 
 
 def _expanded(
@@ -84,7 +134,8 @@ def _expanded(
     ]
     spread_over = [d for d in schema.broadcasts_over(attribute) if d in labels]
     frame = (
-        frame.select(*coordinates, "value")
+        _typed(schema, frame)
+        .select(*coordinates, "value")
         .filter(~nw.col("value").is_null())
         .with_columns(
             nw.sum_horizontal(
@@ -120,7 +171,7 @@ def from_sources(schema: Schema, sources: Mapping[str, Any]) -> RecordLike:
     Raises
     ------
     KeyError
-        If a name is none the schema declares.
+        If a name is none the schema declares, or both a dimension and a group.
 
     Notes
     -----
@@ -128,6 +179,7 @@ def from_sources(schema: Schema, sources: Mapping[str, Any]) -> RecordLike:
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     tables = {name: _lazy(table) for name, table in sources.items()}
+    _ambiguous(schema, tables)
     declared = {
         *schema.dimensions,
         *schema.groups,

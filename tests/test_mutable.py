@@ -21,7 +21,6 @@ from datarecord.layered.sources import ParquetLayer
 from datarecord.mutable import Directory, NewChild, WorkingRecord, normalise_value
 from datarecord.record import RecordLike
 from datarecord.schema import AttributeSpec, Schema
-from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network, members, names, schema
 
 GEN = "Generator"
@@ -48,9 +47,9 @@ def written_directory(root):
 
 
 def _static(revision, attribute, ctype=GEN):
-    """One attribute as the built network sees it, per component name.
+    """One entity-axis attribute of one type's live members, per component name.
 
-    Through the build rather than `relation()`: a non-varying attribute like
+    Through the members rather than `relation()`: a non-varying attribute like
     `p_nom` lives in `dims/entity.parquet`, so `inputs/` alone would not
     show what the record resolves to.
 
@@ -58,7 +57,8 @@ def _static(revision, attribute, ctype=GEN):
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    return PyPSA.build(revision.record).c[ctype].static[attribute].to_dict()
+    frame = members(revision.record, ctype)
+    return dict(zip(frame["entity"], frame[attribute], strict=True))
 
 
 def _entity_column(record, attribute):
@@ -491,8 +491,7 @@ def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
 
     `flags` is the one non-`Frames` member of `Record`, so the promise that a
     read reflects pending edits has to hold for it too - and it decides which
-    container a consumer puts a value in (`PyPSA.build` splits static from
-    series on exactly this). `marginal_cost` starts broadcast over `snapshot`
+    container a consumer puts a value in (a constant or a series). `marginal_cost` starts broadcast over `snapshot`
     and varying over nothing; a per-snapshot edit must add `snapshot` to
     `varies` while leaving `broadcast` alone, since the base's NULL-snapshot
     rows are still there.
@@ -779,7 +778,7 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
     child = staged.commit(NewChild(root))
     assert "NewSolar" in set(child.resolver.dims.axes["entity"].df()["entity"])
 
-    static = PyPSA.build(child.record).c[GEN].static
+    static = members(child.record, GEN).set_index("entity")
     assert static.loc["NewSolar", "p_nom"] == 42.0
     assert static.loc["NewSolar", "carrier"] == "solar"
 
@@ -788,9 +787,7 @@ def test_add_accepts_a_name_of_its_own_type(staged, root):
     """`add` of a name the record already holds is an edit to that entity."""
     staged.add("entity", pd.DataFrame([{"entity": "Manchester Wind", "p_nom": 5.0}]))
     child = staged.commit(NewChild(root))
-    assert (
-        PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 5.0
-    )
+    assert _static(child, "p_nom")["Manchester Wind"] == 5.0
 
 
 def test_require_labels_rejects_a_name_no_layer_declares(staged):
@@ -830,7 +827,8 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     )
     child = staged.commit(NewChild(root))
 
-    buses = PyPSA.build(child.record).c[GEN].static["bus"]
+    rows = child.record.groups["connection"].collect().to_native().to_pandas()
+    buses = dict(zip(rows["entity"], rows["bus"], strict=True))
     assert buses["NewSolar"] == "Manchester"
     assert buses["Manchester Wind"] == "Manchester", (
         "the inherited components keep their bus"
@@ -1240,21 +1238,6 @@ def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_pat
     )
 
 
-def test_a_committed_child_builds_a_network(staged, root):
-    """The whole point: an edited record is still a buildable model.
-
-    Notes
-    -----
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-    """
-    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
-    child = staged.commit(NewChild(root))
-
-    assert (
-        PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 150.0
-    )
-
-
 # -- the `Expr` value form's raise rule (https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one) -------------------------------
 
 
@@ -1280,7 +1263,7 @@ def test_an_expression_over_a_named_target_with_no_rows_raises(staged):
 def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(root, con):
     """`entity=None` and no scope means "whatever resolves", so empty is an answer.
 
-    The attribute is declared here because the PyPSA export writes a row for
+    The attribute is declared here because `export_network` writes a row for
     every attribute it declares, so the record has none that resolves empty.
     """
     amended = read_schema()
@@ -1414,13 +1397,12 @@ def test_a_results_value_keeps_its_declared_type(staged):
 def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
     """One frame spanning types is one call, keyed by name alone.
 
-    `Tool.results` hands over one frame per attribute carrying every type's
-    rows; a row is keyed by `entity`, so the frame needs no `entity_type`.
+    A solver hands over one frame per attribute carrying every type's rows; a
+    row is keyed by `entity`, so the frame needs no `entity_type`.
 
     Notes
     -----
     - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     frame = pd.DataFrame(
         [

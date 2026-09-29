@@ -7,7 +7,6 @@
 Notes
 -----
 - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
 from pathlib import Path
@@ -17,7 +16,6 @@ import pytest
 
 from datarecord import Revision
 from datarecord.duck import layer_dir, resolved_dir
-from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     export_network,
     relation,
@@ -25,7 +23,6 @@ from tests.fixtures import (
     write_input,
     write_scenarios,
 )
-from tests.test_roundtrip import assert_networks_equal
 
 
 @pytest.fixture(scope="session")
@@ -53,13 +50,6 @@ def parent(con, base_uri, stochastic):
     export_network(stochastic, revision, con)
     revision.materialise()
     return revision
-
-
-def test_scenario_roundtrip(con, parent, stochastic):
-    """A stochastic record round-trips through our reader."""
-    n = PyPSA.build(parent.record)
-    assert list(n.scenarios) == list(stochastic.scenarios)
-    assert_networks_equal(n, stochastic)
 
 
 def test_map_is_scenario_expanded(con, parent, stochastic):
@@ -141,8 +131,8 @@ def test_child_adds_new_scenario(con, parent, stochastic):
         ],
     )
 
-    n = PyPSA.build(child.record)
-    assert set(n.scenarios) == set(stochastic.scenarios) | {"extra"}
+    scenarios = child.record.dims["scenario"].collect("pandas").to_native()
+    assert set(scenarios["scenario"]) == set(stochastic.scenarios) | {"extra"}
 
     rel = relation(child, "p_max_pu").df()
     extra_solar = rel[(rel["entity"] == "solar Gen") & (rel["scenario"] == "extra")]

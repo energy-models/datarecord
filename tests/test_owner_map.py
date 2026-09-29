@@ -8,7 +8,6 @@ Notes
 -----
 - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
 - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
 import shutil

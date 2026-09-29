@@ -22,9 +22,12 @@ from datarecord.layered.write import write_record
 from datarecord.mutable import WorkingRecord
 from datarecord.record import EMPTY, Flags, Frames, RecordLike
 from datarecord.schema import AttributeSpec, Schema
-from datarecord.tools.pypsa import PyPSA
+from datarecord.sources import from_sources
 from tests.fixtures import (
+    export_network,
     names,
+    network_schema,
+    network_tables,
     schema,
     write_entity_type,
     write_input,
@@ -38,7 +41,7 @@ MEMBERS = ("dims", "groups", "attributes")
 def written(con, base_uri, ac_dc):
     """A record of one layer, so every construction below reads the same files."""
     revision = Revision.create(con)
-    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+    export_network(ac_dc, revision, con)
     return revision
 
 
@@ -80,11 +83,6 @@ def test_every_construction_satisfies_the_protocol(both):
     """
     for record in both:
         assert isinstance(record, RecordLike)
-
-
-def test_a_network_source_is_a_record(ac_dc):
-    """`to_datarecord` returns one too, which is what puts read and write on one seam."""
-    assert isinstance(PyPSA.to_datarecord(ac_dc), RecordLike)
 
 
 def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
@@ -417,7 +415,7 @@ def test_flags_report_a_curve(con, base_uri):
 def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
     """One layer read alone against the same layer folded onto its parent."""
     root = Revision.create(con)
-    write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
+    export_network(ac_dc, root, con)
     root.materialise()
 
     child = root.child()
@@ -451,7 +449,7 @@ def test_node_record_orders_members(con, base_uri, ac_dc):
     - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
     """
     root = Revision.create(con)
-    write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
+    export_network(ac_dc, root, con)
     root.materialise()
 
     child = root.child()
@@ -469,7 +467,7 @@ def test_node_record_orders_members(con, base_uri, ac_dc):
 def test_a_directory_at_a_uri_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
     """No revision and no tree: any parquet directory blocks wrote is a `Record`."""
     revision = Revision.create(con)
-    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+    export_network(ac_dc, revision, con)
 
     record = Record.at(layer_dir(revision.id), con)
     assert isinstance(record, RecordLike)
@@ -551,7 +549,7 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
     """
     from datarecord.duck import try_read_parquet
 
-    solved = PyPSA.to_datarecord(ac_dc)
+    solved = from_sources(network_schema(ac_dc), network_tables(ac_dc))
 
     class Unsolved:
         """The same record, with no results: `outputs` answers empty."""
