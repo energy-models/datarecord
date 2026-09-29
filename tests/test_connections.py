@@ -12,6 +12,7 @@ Notes
 from datarecord.duck import layer_dir
 from datarecord.layered.revision import Revision
 from tests.fixtures import (
+    names,
     relation,
     schema,
     tombstone,
@@ -32,13 +33,6 @@ def _connections(revision):
     tests declare a single one.
     """
     frame = revision.resolver.group_frame("connection")
-    assert frame is not None
-    return frame
-
-
-def _entity_type_frame(revision, ctype=PROCESS):
-    """`entity_type`, asserted non-`None` for tests where a row must exist."""
-    frame = revision.resolver.entity_type(ctype)
     assert frame is not None
     return frame
 
@@ -228,7 +222,8 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
         ],
     )
 
-    flags = revision.record.flags(PROCESS)["efficiency"]
+    record = revision.record
+    flags = record.flags(names(record, PROCESS))["efficiency"]
     # Both sets hold `snapshot`: one connection's efficiency is per-snapshot,
     # another's is a single broadcast row, and the union over the type's names
     # reports both - which is what tells a consumer one container will not do
@@ -254,13 +249,13 @@ def test_connection_tombstone_removes_one_connection(con, base_uri):
     assert _efficiencies(child) == {"h2_north": 2.1, "dri": 1.0}
 
 
-def test_component_tombstone_does_not_cascade_to_its_connections(con, base_uri):
-    """Deleting a component does not auto-remove its connections; the author does.
+def test_component_tombstone_removes_its_connections(con, base_uri):
+    """Deleting a component removes its connections with it.
 
-    A component tombstone drops the component from the entity axis, but its
-    connection rows stay in `groups/connection.parquet` — deletion is not
-    cascaded across membership relations, so the two must be kept consistent by
-    hand. Removing the component *and* its connections is what clears both.
+    A component tombstone removes the `entity` label, and every group row keyed
+    on that label goes with it - the `connection` rows included. Before, the
+    connections survived the component, dangling, until the author tombstoned
+    them by hand.
 
     Notes
     -----
@@ -269,16 +264,8 @@ def test_component_tombstone_does_not_cascade_to_its_connections(con, base_uri):
     root = _root(con)
     root.materialise()
 
-    # The component alone: its connections survive, dangling.
     child = root.child()
     tombstone(layer_dir(child.id), PROCESS, ["steel_dri"])
-    assert child.resolver.group_frame("connection") is not None
-
-    # The connections too: now both are gone.
-    both = root.child()
-    tombstone(layer_dir(both.id), PROCESS, ["steel_dri"])
-    tombstone_connection(
-        layer_dir(both.id),
-        [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
+    assert child.resolver.group_frame("connection") is None, (
+        "a removed component leaves no connection rows behind"
     )
-    assert both.resolver.group_frame("connection") is None

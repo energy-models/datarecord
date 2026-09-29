@@ -13,6 +13,7 @@ from datarecord.duck import layer_dir
 from datarecord.layered.revision import Revision
 from datarecord.record import Flags
 from tests.fixtures import (
+    names,
     relation,
     schema,
     write_connections,
@@ -31,7 +32,8 @@ def _curve(revision, attribute: str) -> list[tuple[float, float]]:
 
 
 def _flags(revision, ctype: str, attribute: str) -> Flags:
-    flags = revision.record.flags(ctype)
+    record = revision.record
+    flags = record.flags(names(record, ctype))
     if attribute not in flags:
         raise AssertionError(f"{attribute} not in the owner map")
     return flags[attribute]
