@@ -15,7 +15,7 @@ This page shows how to fill a record from a framework's data, solve it with spec
 | a parameter | its coordinates and `value`                |
 | a result    | its coordinates and `value`, in `outputs/` |
 
-A schema built with `Schema.from_declarations` carries the names of a mathspec declarations file, so these are the names and the shapes that specsolve's `solve(spec, sources)` takes.
+A schema built with `Schema.from_mathspec` carries the names of a mathspec declarations file, so these are the names and the shapes that specsolve's `solve(spec, sources)` takes.
 
 ## Import
 

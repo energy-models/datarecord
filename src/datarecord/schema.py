@@ -504,16 +504,19 @@ class Schema(BaseModel):
     # -- declarations in mathspec's vocabulary --------------------------------
 
     @classmethod
-    def from_declarations(
-        cls, declarations: Any, *, storage: dict[str, Any] | None = None
+    def from_mathspec(
+        cls, spec: Any, *, storage: dict[str, Any] | None = None
     ) -> Schema:
-        """A schema from a mathspec file of declarations, plus what only storage needs.
+        """A schema from a mathspec spec's data declarations, plus what only storage needs.
+
+        Needs the `mathspec` extra: `pip install 'datarecord[mathspec]'`.
 
         Parameters
         ----------
-        declarations
-            What `mathspec.to_spec` takes. It holds `dimensions`, `relations` and
-            `parameters` only: a record holds data, and builds no math.
+        spec
+            What `mathspec.to_spec` takes - a `Spec`, a path, YAML text or a
+            dict. Its `dimensions`, `relations` and `parameters` become dims,
+            groups and attributes; its math, if it has any, is not read.
         storage
             `partial`, `results` and `meta` as `Schema` takes them, and under
             `dimensions` and `parameters` the fields mathspec has no place for:
@@ -522,22 +525,20 @@ class Schema(BaseModel):
 
         Raises
         ------
+        ImportError
+            If mathspec is not installed.
         ValueError
-            If the file declares math, or a relation or dtype has no datarecord
-            form: a relation determining more than one column, or under a role
-            named other than its dim.
+            If a relation or dtype has no datarecord form: a relation
+            determining more than one column, or under a role named other than
+            its dim.
         """
-        import mathspec
+        try:
+            import mathspec
+        except ImportError as e:
+            msg = "Schema.from_mathspec needs mathspec: pip install 'datarecord[mathspec]'"
+            raise ImportError(msg) from e
 
-        spec = mathspec.to_spec(declarations)
-        math = [
-            k
-            for k in ("variables", "constraints", "expressions", "piecewise", "sos")
-            if getattr(spec, k)
-        ]
-        if math or spec.objective is not None:
-            msg = f"a record's declarations hold data only; this file declares {math or ['objective']}"
-            raise ValueError(msg)
+        spec = mathspec.to_spec(spec)
         storage = storage or {}
         dim_extra = storage.get("dimensions", {})
         param_extra = storage.get("parameters", {})
@@ -564,10 +565,10 @@ class Schema(BaseModel):
         }
         return cls(dimensions=dimensions, groups=groups, attributes=attributes, **rest)
 
-    def to_declarations(self) -> dict[str, Any]:
+    def to_mathspec(self) -> dict[str, Any]:
         """This schema's dims, groups and attributes as a mathspec declarations file.
 
-        What `from_declarations` reads back, less the storage block. A model spec
+        What `from_mathspec` reads back, less the storage block. A model spec
         merges with it (`mathspec.merge`) and reads its parameters as `given:`.
 
         Raises

@@ -118,7 +118,7 @@ A name in both is rejected: one name is one file with one `value` column, so it 
 The questions the long schema asks of a _stored_ attribute — its dtype, its coordinates — span both, since `outputs/` and `inputs/` share a layout.
 Those go through one lookup that consults each in turn.
 
-**`Schema.from_declarations` takes results in its `storage` block**, because a mathspec declarations file holds data only.
+**`Schema.from_mathspec` takes results in its `storage` block**, because a mathspec declarations file holds data only.
 
 Results version like inputs ([versioning](#versioning)): removing one, changing its dtype, or narrowing its `dims` makes existing layers unreadable for the same reasons.
 

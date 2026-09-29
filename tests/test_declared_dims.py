@@ -48,7 +48,7 @@ SNAPSHOTS = pd.date_range("2030-01-01", periods=2, freq="h")
 @pytest.fixture
 def root(con, base_uri):
     """Two generators on one bus, their relations and a constant each."""
-    write_schema(Schema.from_declarations(DECLARATIONS, storage=STORAGE), base_uri)
+    write_schema(Schema.from_mathspec(DECLARATIONS, storage=STORAGE), base_uri)
     revision = Revision.create(con)
     staged = WorkingRecord(revision.record, con)
     staged.add(
