@@ -54,10 +54,9 @@ def to_sources(record: RecordLike) -> dict[str, nw.LazyFrame]:
         out[dim] = axis.select(dim)
         for attribute in schema.attributes_on(dim):
             if attribute in axis.collect_schema().names():
-                out[attribute] = (
-                    axis.select(dim, nw.col(attribute).alias("value"))
-                    .filter(~nw.col("value").is_null())
-                )
+                out[attribute] = axis.select(
+                    dim, nw.col(attribute).alias("value")
+                ).filter(~nw.col("value").is_null())
     for group in record.groups:
         out[group] = record.groups[group].select(*schema.group_coordinates(group))
     for attribute in record.attributes:
@@ -66,7 +65,10 @@ def to_sources(record: RecordLike) -> dict[str, nw.LazyFrame]:
 
 
 def _expanded(
-    schema: Schema, frame: nw.LazyFrame, attribute: str, labels: Mapping[str, nw.LazyFrame]
+    schema: Schema,
+    frame: nw.LazyFrame,
+    attribute: str,
+    labels: Mapping[str, nw.LazyFrame],
 ) -> nw.LazyFrame:
     """One long attribute with its broadcast NULLs replaced by every label.
 
@@ -97,7 +99,9 @@ def _expanded(
             .join(labels[dim], how="cross")
             .select(*coordinates, "value", "_unnamed")
         )
-        frame = nw.concat([frame.filter(~nw.col(dim).is_null()), spread], how="vertical")
+        frame = nw.concat(
+            [frame.filter(~nw.col(dim).is_null()), spread], how="vertical"
+        )
     return frame.filter(
         nw.col("_unnamed") == nw.col("_unnamed").min().over(*coordinates)
     ).drop("_unnamed")
@@ -123,7 +127,7 @@ def from_sources(schema: Schema, sources: Mapping[str, Any]) -> RecordLike:
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    tables = {name: nw.from_native(table).lazy() for name, table in sources.items()}
+    tables = {name: _lazy(table) for name, table in sources.items()}
     declared = {
         *schema.dimensions,
         *schema.groups,
@@ -138,6 +142,18 @@ def from_sources(schema: Schema, sources: Mapping[str, Any]) -> RecordLike:
         )
         raise KeyError(msg)
     return _Tables(schema, tables)
+
+
+def _lazy(table: Any) -> nw.LazyFrame:
+    """`table` as a lazy frame, an eager one by way of Arrow.
+
+    Arrow rather than the table's own backend, because the shaping below adds
+    typed NULL columns and pandas has no NULL for an integer column.
+    """
+    frame = nw.from_native(table)
+    if isinstance(frame, nw.DataFrame):
+        return nw.from_native(frame.to_arrow()).lazy()
+    return frame
 
 
 class _Tables:
