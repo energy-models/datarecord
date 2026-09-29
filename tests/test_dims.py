@@ -102,7 +102,10 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(
 
     keys = child.resolver.inputs.df()
     keyed = keys[keys["entity"] == "Manchester Wind"]
-    assert set(keyed["period"]) == {2020}, "and the map no longer owns its key"
+    assert set(keyed["period"].dropna()) == {2020}, (
+        "and the map no longer owns its key; an attribute not over `period` "
+        "keeps a NULL there"
+    )
 
 
 def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_dc):
@@ -126,8 +129,7 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
 
     axis_rel = child.resolver.entity_axis
     assert axis_rel is not None
-    entity_types = axis_rel.df()
-    assert "Manchester Wind" not in set(entity_types["entity"])
+    assert "Manchester Wind" not in set(axis_rel.df()["entity"])
 
 
 def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
@@ -271,9 +273,8 @@ def test_a_dim_names_its_own_file(con, base_uri):
 def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     """`entity` names the component in every frame the protocol hands back.
 
-    The one axis the format knows by name, because it is the axis the component
-    types partition: `entity_type` hangs off it and `dims/entity_type/` is
-    keyed by it. Every other dim is declared.
+    The one axis the format knows by name: the component axis, which the type
+    relation and every other group over components are keyed by.
 
     Notes
     -----
@@ -283,7 +284,8 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     export_network(ac_dc, revision, con)
 
     record = revision.record
-    assert "entity" in record.entity_types["Generator"].collect_schema().names()
+    assert "entity" in record.dims["entity"].collect_schema().names()
+    assert "entity" in record.groups["entity_type"].collect_schema().names()
     assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
     # And in the owner map the fold builds over them.
     ea = revision.resolver.entity_axis
@@ -292,12 +294,10 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
 
 
 def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
-    """`dims/entity.parquet` says which entities exist and what type each is.
+    """`dims/entity.parquet` says which entities exist, once each.
 
-    Derived by the writer from the per-type frames rather than handed over, so
-    a record cannot disagree with itself about it. The components map folds
-    from this one file, where it used to glob `dims/entity_type/` and take the
-    type from the filename.
+    What type each is lives in the `entity_type` group, keyed by the same
+    names. The components map folds from the axis file alone.
 
     Notes
     -----
@@ -307,9 +307,10 @@ def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
     export_network(ac_dc, revision, con)
 
     axis = con.read_parquet(layer_dir(revision.id) + "dims/entity.parquet").df()
-    assert {"entity", "entity_type", "deleted"} <= set(axis.columns)
+    assert {"entity", "deleted"} <= set(axis.columns)
     assert not axis["entity"].duplicated().any()
-    assert "Generator" in set(axis["entity_type"])
+    kinds = con.read_parquet(layer_dir(revision.id) + "groups/entity_type.parquet")
+    assert "Generator" in set(kinds.df()["entity_type"])
 
     # And it is what the fold reads: the map's entities are the axis's.
     ea2 = revision.resolver.entity_axis

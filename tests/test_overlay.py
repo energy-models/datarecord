@@ -270,14 +270,8 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     amended = read_schema()
-    # Declared once, record-wide, then narrowed to the type that carries it -
-    # the two halves an amendment now has.
     amended.attributes["p_min_pu"] = AttributeSpec(
         dtype=nw.Float64(), dims={"entity", "snapshot"}, default=0.25
-    )
-    was = amended.traits["Generator"]
-    amended.traits["Generator"] = was.model_copy(
-        update={"attributes": was.attributes | {"p_min_pu"}}
     )
     write_schema(amended)
 
@@ -293,9 +287,9 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     )
     n = PyPSA.build(child.record)
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
-    # And the amendment is visible from the record, not just from the layer
-    # that happens to carry a row for it.
-    assert "p_min_pu" in child.record.schema.attributes_for("Generator")
+    assert child.record.schema.attributes["p_min_pu"].default == 0.25, (
+        "the record reads the amended declaration, not the one the layers were written under"
+    )
 
 
 def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
@@ -316,7 +310,6 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
 
         schema = narrowed
         dims = EMPTY
-        entity_types = EMPTY
         groups: dict = {}
         attributes = EMPTY
         outputs = EMPTY

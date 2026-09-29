@@ -60,8 +60,10 @@ def root(con, base_uri, typed_schema):
     write_schema(typed_schema, base_uri)
     revision = Revision.create(con)
     staged = WorkingRecord(revision.record, con)
-    staged.add("Bus", pd.DataFrame([{"entity": "b1"}]))
-    staged.add("Generator", pd.DataFrame([{"entity": "g1", "p_nom": 1.0}]))
+    staged.add(pd.DataFrame([{"entity": "b1", "entity_type": "Bus"}]))
+    staged.add(
+        pd.DataFrame([{"entity": "g1", "entity_type": "Generator", "p_nom": 1.0}])
+    )
     child = staged.commit(NewChild(revision))
     write_axis(
         layer_dir(child.id),
@@ -94,11 +96,8 @@ def test_the_type_axis_carries_it_as_a_column(typed_schema):
 
 
 def test_it_belongs_to_no_component(typed_schema):
-    """A value per type is not a value per entity, so no type carries it."""
-    s = typed_schema
-    assert not s.addresses_entity("icon")
-    for ctype in TYPES:
-        assert "icon" not in s.attributes_for(ctype)
+    """A value per type is not a value per entity."""
+    assert not typed_schema.addresses_entity("icon")
 
 
 def test_it_reads_back_from_the_type_axis(root):
