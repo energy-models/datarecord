@@ -219,9 +219,18 @@ class Coords:
         )
 
     def expand_dims(
-        self, rel: DuckDBPyRelation, layer_keys: tuple[str, ...]
+        self,
+        rel: DuckDBPyRelation,
+        layer_keys: tuple[str, ...],
+        addressed: dict[str, tuple[str, ...]],
     ) -> tuple[DuckDBPyRelation, dict[str, Expression]]:
         """Left-join `rel` against each of `layer_keys`' axis, broadcasting NULLs.
+
+        Only a row whose `attribute` is in `addressed[dim]` broadcasts over `dim`.
+        Every row carries every dim, so an attribute not addressed by `dim` reads
+        NULL there too; that NULL means "not addressed", and expanding it would
+        give the attribute one owner-map key per label of `dim`, and a read one
+        duplicate row per label.
 
         Parameters
         ----------
@@ -259,7 +268,16 @@ class Coords:
                 exprs[dim] = col(alias, dim)
                 continue
             key = axis.project(dim)
-            rel = rel.join(key, col(alias, dim).isnull(), how="left")
+            over = addressed.get(dim, ())
+            if not over:
+                exprs[dim] = col(alias, dim)
+                continue
+            rel = rel.join(
+                key,
+                col(alias, dim).isnull()
+                & col(alias, "attribute").isin(*(lit(a) for a in over)),
+                how="left",
+            )
             exprs[dim] = coalesce(col(alias, dim), col(key.alias, dim))
         return rel, exprs
 
@@ -454,7 +472,18 @@ def fold_inputs(
             keys.schema,
             with_columns(keys.schema, rel, "breakpoint", *keys.schema.dims),
         )
-        rel, dims = keys.expand_dims(rel.set_alias("i"), keys.schema.partial_dims)
+        rel, dims = keys.expand_dims(
+            rel.set_alias("i"),
+            tuple(d for d in keys.schema.partial_dims if d in broadcast),
+            {
+                d: tuple(
+                    a
+                    for a in keys.schema.attributes
+                    if d in keys.schema.coordinates_of(a)
+                )
+                for d in broadcast
+            },
+        )
         # Each broadcast dim is carried twice: the (possibly broadcast) key
         # value, and `_raw_<dim>` as the row stored it. The flags describe the
         # stored form - whether a row set the dim or left it NULL - so they
@@ -491,14 +520,13 @@ def fold_inputs(
     # in `input_key` (https://energy-models.github.io/datarecord/design/read-path/#owner-map).
     schema = keys.schema
     keyed = set(schema.input_key)
-    # `optional` where an absent key is legitimate: entity and groups drop out of
-    # `input_key` when a schema declares no dims. A partial dim's `axis_key` is
+    # `optional` where an absent key is legitimate: groups drop out of
+    # `input_key` when a schema declares no dims. A fold-key dim's `axis_key` is
     # always present, so a miss there is a nested dim whose parents the schema
     # failed to keep in the fold key, and the assert names it.
     memberships = [
-        (source.axis("entity"), ("entity",), True),
         *((source.group(g), schema.group_key(g), True) for g in schema.groups),
-        *((source.axis(d), schema.axis_key(d), False) for d in schema.partial or ()),
+        *((source.axis(d), schema.axis_key(d), False) for d in schema.partial_dims),
     ]
     kept = parent.set_alias("p")
     for rel_deleted, key, optional in memberships:

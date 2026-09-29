@@ -205,7 +205,7 @@ def test_an_unknown_label_is_accepted(root, con):
 def test_remove_drops_a_component_through_the_axis_alone(root, con):
     """`remove` writes one tombstone, on the entity axis, and the fold honours it."""
     staged = WorkingRecord(root.record, con)
-    staged.remove(KIND, ["a"])
+    staged.remove("entity", ["a"])
     child = staged.commit(NewChild(root))
     assert _entities(child.record) == {"b": 2.0}
 

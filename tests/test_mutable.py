@@ -769,7 +769,7 @@ def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.remove(GEN, ["Manchester Wind"])
+    staged.remove("entity", ["Manchester Wind"])
     staged.add("Bus", pd.DataFrame([{"entity": "Manchester Wind"}]))
 
     axis = staged._collapsed_entities().df()
@@ -847,7 +847,7 @@ def test_add_fills_a_declared_column_another_add_omitted(staged):
 
 
 def test_remove_tombstones_without_enumerating_attributes(staged, root):
-    staged.remove(GEN, ["Norway Gas"])
+    staged.remove("entity", ["Norway Gas"])
     members = staged.entity_types[GEN].collect().to_native().to_pandas()
     assert "Norway Gas" not in set(members["entity"]), "the removal reads back at once"
 
@@ -862,7 +862,7 @@ def test_add_after_remove_leaves_the_component_alive(staged, root):
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.remove(GEN, ["Norway Gas"])
+    staged.remove("entity", ["Norway Gas"])
     staged.add(GEN, pd.DataFrame([{"entity": "Norway Gas", "carrier": "gas"}]))
 
     child = staged.commit(NewChild(root))
@@ -877,7 +877,7 @@ def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     staged.set("p_nom", 99.0, entity=["Norway Gas"])
-    staged.remove(GEN, ["Norway Gas"])
+    staged.remove("entity", ["Norway Gas"])
 
     child = staged.commit(NewChild(root))
     assert "Norway Gas" not in _static(child, "p_nom")
@@ -984,7 +984,7 @@ def test_every_declared_group_reads_its_staged_rows(con, base_uri, ac_dc):
 
 def test_rollback_discards_everything_staged(staged, root):
     staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
-    staged.remove(GEN, ["Norway Gas"])
+    staged.remove("entity", ["Norway Gas"])
     staged.rollback()
 
     # The record reads the base rows again, edit and tombstone alike.

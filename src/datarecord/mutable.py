@@ -1760,36 +1760,52 @@ class WorkingRecord(Record):
             key=key,
         )
 
-    def remove(self, ctype: str, names: Sequence[str]) -> None:
-        """Stage a tombstone per entity.
+    def remove(self, dim: str, labels: Sequence[Any]) -> None:
+        """Stage a tombstone per label of `dim`, which removes it from every attribute.
 
-        Need not enumerate what it deletes: one row per key, and the fold
-        applies it to every attribute. Nor scope it - a component exists or it
-        does not, so a deletion removes it whole.
+        Need not enumerate what it deletes: one row per label, on `dim`'s axis,
+        and the fold applies it to every attribute keyed on `dim`. Nor scope it -
+        a label exists or it does not.
 
-        One row, on the entity axis, which is where membership lives and the only
-        place the fold reads a tombstone from. A member file holds values, never
-        a `deleted` (`_member_columns`), so no second write there keeps step
-        with this one. The axis row carries the type only where a group declares
-        the axis; the delete keys on `entity` alone regardless, so it lands
-        whatever type the `add` named.
+        Raises
+        ------
+        ValueError
+            If `dim` is not declared, or is outside the fold key. A dim outside it
+            is owned whole by the layer that last wrote an attribute over it, so a
+            tombstone would have no key to remove - declaring it `partial` puts it
+            in the key.
 
         Notes
         -----
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         """
-        if self.schema.entity_type_dim is not None:
+        if dim not in self.schema.dimensions:
+            msg = f"`remove({dim!r}, ...)`: no dim {dim!r} is declared"
+            raise ValueError(msg)
+        if dim not in self.schema.partial_dims:
+            msg = (
+                f"`remove({dim!r}, ...)`: {dim!r} is outside the fold key "
+                f"{list(self.schema.partial_dims)}, so a layer owns it whole and a "
+                f"tombstone has no key to remove; declare it `partial`"
+            )
+            raise ValueError(msg)
+        if dim == "entity" and self.schema.entity_type_dim is not None:
+            types = self._resolve_types(labels)
             self._stage_tombstones(
                 _ENTITY_AXIS,
                 ("entity_type", "entity"),
-                [[ctype, name] for name in names],
+                [[types[name], name] for name in labels],
                 ("entity",),
             )
-        else:
-            self._stage_tombstones(
-                _ENTITY_AXIS, ("entity",), [[name] for name in names], ("entity",)
-            )
+            return
+        key = self.schema.axis_key(dim)
+        if key != (dim,):
+            msg = f"`remove({dim!r}, ...)`: a dim `within` {key[:-1]} is not handled"
+            raise NotImplementedError(msg)
+        self._stage_tombstones(
+            f"{_AXIS_PREFIX}{dim}", key, [[label] for label in labels], key
+        )
 
     def add_group(self, group: str, frame: Any) -> None:
         """Stage rows of one declared group from a frame carrying its coordinates.
