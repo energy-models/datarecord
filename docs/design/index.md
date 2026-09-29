@@ -20,21 +20,20 @@ Dimensioned attribute data with a declared schema.
 A record holds **components** (named members of a type), **groups** of them — connections between components and buses being the one every network has — **attribute values** over both, and the **axes** those values vary along.
 A schema declares what may exist; the data says what does.
 
-A record exposes seven things:
+A record exposes six things:
 
 ```text
-record.schema        what may exist: the axes, the attributes
-record.dims          the axes themselves, keyed by dim
-record.entity_types  members, keyed by entity type
-record.groups        which tuples exist, keyed by group then component type
-record.attributes    the values, keyed by attribute name
-record.outputs       results, keyed by attribute name
-record.flags(ctype)  which axes an attribute actually uses
+record.schema           what may exist: the axes, the groups, the attributes
+record.dims             the axes themselves, keyed by dim
+record.groups           which tuples exist, keyed by group
+record.attributes       the values, keyed by attribute name
+record.outputs          results, keyed by attribute name
+record.flags(entities)  which axes an attribute actually uses
 ```
 
 That is the [`Record` protocol](record.md), and [The Record protocol](record.md) gives it precisely.
 
-A component's `entity` identifies it **across every type**: names are unique record-wide, not per type ([entity is unique across types](format.md#entity-is-unique-across-types)).
+A component's `entity` identifies it on its own: an entity is one label of [the entity axis](format.md#the-entity-axis), and its type is a row of a [group](schema.md#types).
 That is why the values are keyed by attribute and not by type — an attribute row names a component and nothing more, and a component's type is something the record knows about it rather than part of its address.
 
 `Record` is the one class that answers all of this, and it is the narwhals interface over a fold across layers:

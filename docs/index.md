@@ -25,9 +25,9 @@ from datarecord import Record, connect
 con = connect()
 record = Record.at("s3://bucket/my-record/", con)
 
-record.entity_types["Generator"].collect()  # wide member rows
+record.dims["entity"].collect()  # one row per entity
 record.attributes["p_max_pu"].collect()  # long value rows
-record.flags("Generator")  # which axes each attribute uses
+record.flags()  # which axes each attribute uses
 ```
 
 ## Where to go

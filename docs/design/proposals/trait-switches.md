@@ -20,14 +20,14 @@ The same shape recurs wherever a framework has an opt-in behaviour: `cyclic_stat
 
 It is the minority of traits. `investable` and `dispatchable` are properties of a _type_ — every generator is dispatchable — and the type scope is the right and only scope for them. What is missing is a way to say the other thing, not a replacement for what `on` says.
 
-[Only an entity-type axis may scope a trait](../schema.md#traits), and that rule is right: a trait scoped to `country` would make an attribute's vocabulary depend on what a bus maps to, a per-entity lookup every caller of `attributes_for` treats as answerable from the schema alone. The rule bans scoping a trait on _data_.
+[Only an entity-type axis may scope a trait](../schema.md#types), and that rule is right: a trait scoped to `country` would make an attribute's vocabulary depend on what a bus maps to, a per-entity lookup every caller of `attributes_for` treats as answerable from the schema alone. The rule bans scoping a trait on _data_.
 
 But a switch is not data of that kind. It is a declared attribute of the component itself, with a known dtype and a default, and the vocabulary it selects is fixed by the schema — which of two known answers applies is per entity, and both answers are on the page before any row is read.
 
 ## The construct
 
 **A trait narrows two ways, and both are optional.** `on` says which entity types carry it and reaches every type when absent; `switch` names an attribute deciding it per component, and gates nothing when absent.
-Neither is the primary mechanism the other qualifies — a trait may use either, both or [neither](#the-four-combinations), and `on` reaching everywhere is [what it already means](../schema.md#traits) rather than anything this proposal adds.
+Neither is the primary mechanism the other qualifies — a trait may use either, both or [neither](#the-four-combinations), and `on` reaching everywhere is [what it already means](../schema.md#types) rather than anything this proposal adds.
 
 The new half is `switch`, an attribute of the trait's own that turns it on:
 
@@ -102,7 +102,7 @@ A `bool` switch is that generalisation with the label fixed at `true`, so admitt
 A switched trait's attributes are **carried by the type** — `attributes_for("Generator")` includes `start_up_cost` — because the question it answers is which attributes a generator _may_ have, which is what [`flags`](../record.md#flags) and the [`add` routing](../working-record.md#add-remove) need. A schema-level answer cannot depend on a row, and it does not have to: the switch narrows which components carry a _value_, not which the type admits.
 
 A trait gated only by a switch is therefore invisible to `attributes_for`, which is the right answer for the same reason: its attributes reach every type, and which components hold a value is a question about data.
-A schema with no entity-type axis already has `attributes_for` [returning everything addressed by `entity`](../schema.md#traits) whatever it is asked, and a switch does not change that.
+A schema with no entity-type axis already has `attributes_for` [returning everything addressed by `entity`](../schema.md#types) whatever it is asked, and a switch does not change that.
 
 So the switch is a **validation and query mechanism, not a change to the vocabulary**:
 
@@ -125,7 +125,7 @@ Trait(attributes={"start_up_cost", ..., "committable"}, ...)     # what `attribu
 - **`attributes_for`** excludes the switch from its own trait's narrowing — one membership test, where a trait's bundle is already being resolved.
 - **The write-time check** reads it to find the column gating a value.
 
-Validation is the [existing trait validator](../schema.md#traits), which already rejects a bundled attribute the schema does not declare; `switch` is checked the same way, plus that its `dims` are exactly `{"entity"}`.
+Validation is the [existing trait validator](../schema.md#types), which already rejects a bundled attribute the schema does not declare; `switch` is checked the same way, plus that its `dims` are exactly `{"entity"}`.
 Folding it into `attributes` before that check runs means the declared-attribute half needs no second call site.
 
 ## What it costs

@@ -22,35 +22,35 @@ w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per name, positional
 w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
 w.set("p_max_pu", frame, entity=["wind1"])  # a long frame
 w.set("efficiency", 0.9, entity=["dc"], bus="north")  # a connection
-w.set("p_nom", 200.0, entity=["wind1"], scenario="high")  # scoped to one scenario
-w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
+w.set("p_max_pu", 0.5, entity=["wind1"], scenario="high")  # scoped to one scenario
+w.set("p_max_pu", nw.col("value") * 1.1, entity=["wind1"])  # derived
 w.set("p", solved_frame, kind="outputs")  # a result
 ```
 
-**There is no `entity_type` keyword.** A name identifies one component across every type, so the record looks the type up and checks that each name's type carries the attribute — one call may legitimately span types ([design](../design/working-record.md#set)).
+**There is no `entity_type` keyword.** No attribute is narrowed to a type, so one call may span types. `set` refuses a name that is not on the entity axis — `add` it first — and an attribute that is not declared over the dims the call names ([design](../design/working-record.md#set)).
 
-`entity=None` means every component whose type carries this attribute. Every other coordinate goes through `**dims`, a group's included — `bus="north"` addresses one connection, `from=`/`to=` one corridor. A plain dim's absence means "every value of that dim" by the NULL broadcast rule; a group coordinate's means "every row of the group for this entity" ([design](../design/record.md#the-broadcast-rule)).
+`entity=None` means every entity on the axis. Every other coordinate goes through `**dims`, a group's included — `bus="north"` addresses one connection, `from=`/`to=` one corridor. A plain dim's absence means "every value of that dim" by the NULL broadcast rule; a group coordinate's means "every row of the group for this entity" ([design](../design/record.md#the-broadcast-rule)).
 
 An `nw.Expr` value is a **function of the current value**: it reads the resolved value including earlier pending edits, so two such calls compose, and what gets staged is the result rather than the expression ([design](../design/working-record.md#an-nwexpr-value-derived-from-the-current-one)). A named target that resolves to no row raises — the caller asked for those rows to take a new value and there is nothing to compute one from.
 
-## `add` / `remove` / `connect` / `disconnect`
+## `add` / `remove` / `add_group` / `remove_group`
 
 ```python
 import pandas as pd
 
-w.add("Bus", pd.DataFrame({"entity": ["north", "south"]}))
+w.add(pd.DataFrame({"entity": ["north", "south"], "entity_type": ["Bus", "Bus"]}))
 w.add(
-    "Generator",
     pd.DataFrame(
         {
             "entity": ["wind1", "wind2"],
+            "entity_type": ["Generator", "Generator"],
             "carrier": ["wind", "wind"],
             "p_nom": [100.0, 80.0],
         }
-    ),
+    )
 )
 
-w.remove("Generator", ["old_coal"])
+w.remove("entity", ["old_coal"])
 
 w.add_group(
     "connection",
@@ -65,17 +65,17 @@ w.add_group(
 w.remove_group("connection", [("dc", "south")])
 ```
 
-`add` takes a wide frame keyed by `entity` and splits it by the schema: columns addressed by `entity` alone stay in `dims/entity_type/`, ones varying beyond it become `inputs/` rows ([design](../design/format.md#where-a-value-lives)). It keeps its `ctype` argument where `set` loses it — this is the call that _establishes_ what a name's type is, and where record-wide name uniqueness is enforced ([design](../design/working-record.md#add-remove)). A component exists by virtue of its member row, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
+`add` takes a wide frame keyed by `entity` and splits it by the schema: columns addressed by `entity` alone go to the entity axis, ones varying beyond it become `inputs/` rows, and the `entity_type` column becomes rows of the `entity_type` group, which gives each entity its type ([design](../design/working-record.md#add-remove)). A frame that carries every coordinate of a group keyed on `entity` adds that group's rows the same way. A component exists by virtue of its row on the entity axis, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
 
-`remove` stages a tombstone on the entity axis, with no dim scope — a component [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every attribute, and to every connection of the component ([design](../design/layers.md#deletion)).
+`remove(dim, labels)` stages a tombstone per label on that dim's axis. `dim` may be any dim in the fold key: `entity`, a group key coordinate such as `bus`, or a dim declared `partial`; any other dim is refused. It need not enumerate what it deletes: the fold applies it to every attribute row and every group row keyed on the label, so a removed component takes its connection rows and its `entity_type` row with it ([design](../design/layers.md#deletion)).
 
-`add_group`/`remove_group` take no type at all, unlike `add`: a group's rows are keyed by its coordinates and the type is not one of them, so there is nothing for a type argument to scope ([design](../design/format.md#where-a-value-lives)). Every group is reached the same way — `connection` has no call of its own, being one group among however many the schema declares.
+`add_group`/`remove_group` take no type: a group's rows are keyed by its coordinates ([design](../design/format.md#where-a-value-lives)). Every group is reached the same way — `connection` has no call of its own, being one group among however many the schema declares.
 
 ## Inspecting and rolling back
 
 ```python
-w.attributes["p_nom"]  # the edit applied, over the base's rows
-w.entity_types["Generator"]  # additions in, removals out
+w.attributes["p_max_pu"]  # the edit applied, over the base's rows
+w.dims["entity"]  # additions in, removals out
 w.rollback()  # discard everything staged
 ```
 
@@ -95,7 +95,7 @@ w.commit(Directory("out/"))  # a standalone record, flattened; returns None
 The layer lands in the **child**, never in the node you branched from — layers are write-once ([design](../design/layers.md#a-layers-data-is-write-once)) — so it is the returned node that reads the edits back:
 
 ```python
-new.record.attributes["p_nom"].collect()
+new.record.attributes["p_max_pu"].collect()
 ```
 
 `NewChild()` branches from whichever node the `WorkingRecord` was built over, which is what a caller means every time. Pass one explicitly — `NewChild(other_revision)` — only to re-parent the edits elsewhere; a `WorkingRecord` over a base that is not a node in a layer tree — a `Record.at(uri)` over a plain directory — has nothing to default to and must supply one.

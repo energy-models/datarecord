@@ -26,8 +26,8 @@ class WorkingRecord:
         **dims: Any,
     ) -> None: ...
 
-    def add(self, ctype: str, frame: IntoFrame) -> None: ...
-    def remove(self, ctype: str, names: Sequence[str]) -> None: ...
+    def add(self, frame: IntoFrame) -> None: ...
+    def remove(self, dim: str, labels: Sequence[Any]) -> None: ...
 
     def add_group(self, group: str, frame: IntoFrame) -> None: ...
     def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None: ...
@@ -58,22 +58,21 @@ Two properties follow from accumulate-then-commit, and both are the point:
 
 Each edit maps onto exactly one part of the format:
 
-| edit                        | writes                                                                                         | key it targets                  |
-| --------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------- |
-| set an attribute on a group | `inputs/<attr>.parquet` rows                                                                   | `(*partial dims, attribute)`    |
-| add components              | `dims/entity.parquet` and `dims/entity_type/` rows, plus `inputs/` rows for varying attributes | `entity`                        |
-| remove components           | a `deleted = true` tombstone on the entity axis                                                | `entity`                        |
-| add_group / remove_group    | `groups/<group>.parquet` rows and tombstones                                                   | the group's own key coordinates |
+| edit                        | writes                                                                                          | key it targets                  |
+| --------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------- |
+| set an attribute on a group | `inputs/<attr>.parquet` rows                                                                    | `(*partial dims, attribute)`    |
+| add components              | `dims/entity.parquet` rows, `inputs/` rows for varying attributes, and rows of the groups named | `entity`                        |
+| remove labels               | a `deleted = true` tombstone on the dim's axis                                                  | the dim's label                 |
+| add_group / remove_group    | `groups/<group>.parquet` rows and tombstones                                                    | the group's own key coordinates |
 
 `add_group` names no component type: a group's rows are keyed by its coordinates and the type is not one of them, so there is nothing for it to scope ([where the rows live](format.md#where-a-value-lives)).
 Nor is there a `connect`/`disconnect` pair beside it — `connection` is one group among however many the schema declares, and a call naming it would be the record layer holding one framework's vocabulary.
 
-The inputs key is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: `partial` necessarily contains `entity` and every [group](schema.md#groups) key coordinate, since neither broadcasts.
-Every key is `entity`-based, because `entity` is [what identifies a component](format.md#entity-is-unique-across-types).
-An **entity** edit still _names_ a type — `add("Generator", frame)` — because it creates the thing that has one, and the row it writes records it; but the type is a column of that row rather than part of the key it targets.
-That is what makes `remove("Generator", ["x"])` followed by `add("Bus", frame)` collapse to the later edit: one name has one answer, where a type-partitioned key would keep both and commit a record whose two types share a name.
+The inputs key is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: the fold key contains `entity` and every [group](schema.md#groups) key coordinate, since neither broadcasts.
+Every key is `entity`-based, because `entity` is [what identifies a component](format.md#the-entity-axis).
+No edit names a type. An `add` gives an entity its type through an `entity_type` column, which stages a row of the `entity_type` [group](schema.md#types) keyed by `entity`, so one name has one type.
 
-The crucial property: **an edit is expressed in the format's own terms.** Setting `p_nom` on twenty components _is_ twenty `inputs/p_nom.parquet` rows, which is what a patch layer would hold anyway.
+The crucial property: **an edit is expressed in the format's own terms.** Setting a constant `p_max_pu` on twenty components _is_ twenty broadcast rows of `inputs/p_max_pu.parquet`, which is what a patch layer would hold anyway.
 So a staged edit is already the row it will be written as, and `commit()` is a concatenation rather than a translation.
 
 ## `set`
@@ -84,21 +83,17 @@ record.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per name
 record.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
 record.set("p_max_pu", frame, entity=["wind1"])  # long frame
 record.set("p_max_pu", series, entity=["wind1"], indexed_by="snapshot")  # a series
-record.set("icon", {"Generator": "turbine"})  # keyed by the type axis
+record.set("icon", {"Generator": "turbine"})  # keyed by entity_type labels
 record.set("efficiency", 0.9, entity=["dc"], bus="north")  # a connection
-record.set("p_nom", 200.0, entity=["wind1"], scenario="high")  # scoped
-record.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
+record.set("p_max_pu", 0.5, entity=["wind1"], scenario="high")  # scoped
+record.set("p_max_pu", nw.col("value") * 1.1, entity=["wind1"])  # derived
 record.set("p", solved, kind="outputs")  # a result
 ```
 
-**There is no `entity_type` keyword.** A name identifies one component across every type ([entity is unique across types](format.md#entity-is-unique-across-types)), so the type is a property of the name rather than something the caller supplies: the record looks it up in the resolved components map, which is the same read `entity` is already [checked against](#validation).
-That removes the parameter that had to be either given or inferred in every earlier spelling, and with it the class of error where a name was staged under the wrong type.
+**There is no `entity_type` keyword.** An attribute is not narrowed to [types](schema.md#types): every declared attribute can be set on any entity its `dims` address.
+So `set` checks that each name is on the entity axis and that the attribute is declared over the dims the call names ([validation](#validation)), and one call may span types: `set("p_nom", {"wind1": 150.0, "link_dc": 80.0})` stages both.
 
-One call may therefore span types, since the names decide: `set("p_nom", {"wind1": 150.0, "link_dc": 80.0})` checks that Generator and Link each [carry](schema.md#traits) `p_nom`, and stages both.
-The **spec** is the same for both, one attribute having [one spec record-wide](schema.md#attributespec); what varies per type is whether it carries the attribute at all, so an attribute one type subscribes to and another does not is an error naming the name that caused it.
-
-`entity=None` means every component the record resolves that the schema declares this attribute for — the types declaring `attribute`, not every type.
-`set("p_max_pu", 0.9)` is "every component with a `p_max_pu`", which is the only reading left once the type keyword is gone, and the useful one.
+`entity=None` means every entity on the axis. `set("p_max_pu", 0.9)` sets it on every entity, buses included; name the entities to scope it.
 
 **Every coordinate but `entity` goes through `**dims`**, a [group](schema.md#groups)'s included: `bus="north"` addresses one connection, `from=`/`to=` one corridor.
 None has a parameter of its own, because which coordinates exist is declared rather than fixed — a `bus=` keyword would spell one group's coordinate and be unable to name a two-coordinate group at all.
@@ -124,9 +119,6 @@ A label the axis does not have is refused rather than introduced: an axis row is
 | frame     | supplies its own keys                | redundant                                                                    |
 | `nw.Expr` | a function of the current value      | selects what to [derive from](#an-nwexpr-value-derived-from-the-current-one) |
 
-A frame "supplies its own keys" now means its `entity` column alone: a `entity_type` column is neither required nor read, since [the name determines the type](format.md#entity-is-unique-across-types).
-A frame carrying one is rejected rather than ignored — it says the writer believes the type is part of the key, and silently dropping the column would let a genuine disagreement through.
-
 The first four normalise to a long frame before staging, so there is one staging path.
 A length mismatch between a sequence and `entity` is an error at the call, not a silently truncated edit.
 
@@ -139,12 +131,12 @@ An index that says neither holds names.
 Never inferred from the labels themselves: testing them against the axis would make one call mean different things in two records — a scenario labelled `wind1` would silently capture a series meant per component — and a partial overlap would pick a reading without saying so.
 An unnamed index of timestamps is therefore read as names and fails the [member check](#validation), which is the loud version of the same mistake.
 
-`entity=None` means every component of that type the record currently resolves, which is a read, so it includes earlier pending edits.
+`entity=None` means every entity the record currently resolves, which is a read, so it includes earlier pending edits.
 
 ## An `nw.Expr` value — derived from the current one
 
 ```python
-record.set("p_nom", nw.col("value") * 1.1)  # scale up every p_nom
+record.set("p_max_pu", nw.col("value") * 1.1)  # scale up every p_max_pu
 record.set("p_max_pu", nw.col("value").clip(upper=0.9), entity=["wind1"])
 ```
 
@@ -166,7 +158,7 @@ If the caller names `entity`, a group coordinate or any dim scope, every one of 
 The caller asked for those rows to take a new value and there is nothing to compute one from, which is a failed change rather than a no-op — the same class of error as [naming a component no layer declares](#validation), and it was silently staging zero rows before.
 
 With `entity=None` and no scope the instruction is "whatever resolves", so an empty result is an answer rather than a failure.
-That asymmetry is the whole of the rule: a broad derived edit over a type where only some members carry the attribute is ordinary, while a targeted one that hits nothing is a typo.
+That asymmetry is the whole of the rule: a broad derived edit where only some entities hold a value is ordinary, while a targeted one that hits nothing is a typo.
 
 ## Results through `kind="outputs"`
 
@@ -194,7 +186,6 @@ Two things differ from an input edit, both following from [outputs](read-path.md
 - **No membership check on `entity`.**
   An input value for a name no layer declares is [rejected](#validation), because it would resolve to nothing.
   A result may legitimately name a component the record never declared: PyPSA's `SubNetwork` exists only after a solve, so rejecting it would refuse a real result.
-  This is also what makes a result's name need no resolvable type: an input's type comes from [looking the name up](#set), and a result that declares no member has nothing to look up.
 - **No extent completion when staged.**
   Results are complete as produced rather than [a partial override of a parent's](schema.md#partial-the-granularity-of-an-override), so there is nothing to carry forward from the base.
 
@@ -211,11 +202,11 @@ record["Generator"]["p_nom"] = 150.0  # every generator
 record["Generator"]["p_nom", ["wind1", "wind2"]] = [150.0, 80.0]
 record["Generator"]["p_max_pu", "wind1"] = series
 record["Link", "north"]["efficiency", "dc"] = 0.9  # a connection
-record["Generator", {"scenario": "high"}]["p_nom", "wind1"] = 200.0
+record["Generator", {"scenario": "high"}]["p_max_pu", "wind1"] = 0.5
 ```
 
-The component type in the subscript is a **scope**, not part of the key it writes: it selects which members `entity` resolves against and which `AttributeSpec` a bare attribute means, then `set` [addresses the names it produced](format.md#entity-is-unique-across-types).
-So `record["Generator"]["p_nom"] = 150.0` is "every Generator", which `set("p_nom", 150.0)` alone cannot say — that being the one thing an accessor would add now that the keyword is gone, and the reason this spelling survives the change.
+The component type in the subscript is a **scope**, not part of the key it writes: it selects the entities of that type from the `entity_type` [group](schema.md#types), then `set` [addresses the names it produced](format.md#the-entity-axis).
+So `record["Generator"]["p_nom"] = 150.0` is "every Generator", which `set("p_nom", 150.0)` alone cannot say.
 
 Sugar with **no added capability** otherwise: `__setitem__` normalises its key into `(attribute, entity)` and its extra arguments into dims, then calls `set`.
 Keeping the method as the protocol member and any accessor on top is deliberate — `set` is what an implementation provides and other code calls, so a spelling over it can change, or not exist, without touching an implementation.
@@ -229,24 +220,32 @@ Omitting `entity` is how "all" is spelled.
 ## `add` / `remove`
 
 ```python
-record.add("Generator", frame)  # wide, in dims/entity_type/ shape
-record.remove("Generator", ["old_coal"])
+record.add(frame)  # wide: entity, entity_type, attribute columns
+record.remove("entity", ["old_coal"])
 ```
 
-`add` takes a wide frame and splits it: attributes addressed by `entity` alone stay in `dims/entity_type/`, ones varying beyond it become `inputs/` rows, and ones addressed by a [group](schema.md#groups) go to that group's table — per [where a value lives](format.md#where-a-value-lives).
+`add` takes a wide frame keyed by `entity` and splits it by the schema, per [where a value lives](format.md#where-a-value-lives):
+
+- **An attribute over `entity` alone is a column of the entity axis.**
+- **A varying attribute becomes `inputs/` rows.** A constant value of one is a broadcast row, its other dims NULL.
+- **A group keyed on `entity` gets a row where the frame carries every other coordinate of it**, with any attribute over that group. An `entity_type` column gives each entity its type; a `bus` column gives it a connection.
+
 Which is which comes from the schema, so `add` needs no framework registry.
 A column the schema does not name is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column and no reader that would know what it means. A tool that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
 
-`add` keeps its `ctype` argument where `set` loses it: this is the call that _establishes_ what a name's type is, so there is nothing yet to [look it up in](format.md#entity-is-unique-across-types).
-It is also where uniqueness is enforced — a name the record already resolves, under this type or any other, is rejected here rather than at commit, so the collision is [reported at the line that introduces it](#validation).
+An `add` of a name the record already holds replaces its row on the entity axis, and its row of each group the frame names, so the name keeps one row and one type.
 
 It is **not** a sequence of `set` calls, even though the varying columns it stages take the same path a `set` would.
-`set` writes `inputs/` rows only, and a component exists by virtue of its `dims/entity_type/` row: staging attribute values for a name no layer declares is precisely what [validation](#validation) rejects.
+A component exists by virtue of its row on the entity axis, and `set` refuses a name no layer declares ([validation](#validation)).
 Adding a bus with no attributes makes the point — nothing to `set`, yet the bus must exist.
 Membership is not reducible to attribute values.
 
-`remove` stages a tombstone on the [entity axis](format.md#the-entity-axis), one row per entity and no dim scope: a component [exists or it does not](schema.md#existence-does-not-vary-along-a-dim), so there is no axis to scope a deletion along.
-It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute, and to every row of a group over `entity` — deleting a component deletes its connections with it.
+`remove(dim, labels)` stages a tombstone per label on that dim's axis.
+`dim` may be any dim in the fold key (`Schema.partial_dims`): `entity`, a group key coordinate such as `bus`, or a dim declared `partial`.
+A dim outside the fold key is refused, with an error that names `partial`: a layer owns such a dim whole, so a tombstone has no key to remove. A dim `within` another is refused too.
+
+It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute row and every group row keyed on the label, so a removed component takes its connection rows and its `entity_type` row with it.
+A tombstone on the [entity axis](format.md#the-entity-axis) has no dim scope: a component [exists or it does not](schema.md#existence-does-not-vary-along-a-dim).
 
 ## `add_group` / `remove_group`
 
@@ -259,9 +258,7 @@ The one staging path every declared [group](schema.md#groups) writes through. Th
 
 `frame` carries `group`'s own coordinate columns (`entity` and `bus` for `connection`, `from` and `to` for a `corridor`) plus whatever else the group's file holds — an attribute [addressed by the group](format.md#where-a-value-lives), such as PyPSA's `role`. `keys` is a tuple per row in the group's [key](schema.md#into-a-group-that-classifies) order.
 
-**No component type**, unlike [`add`](#add-remove): a group's rows are keyed by its coordinates and the type is not one of them.
-
-`add`'s own port-splitting calls `add_group` too, but only for a group whose **key** includes `entity` — the case where a row describes one of the component's own group memberships (`bus`, for `connection`).
+[`add`](#add-remove) calls `add_group` too, but only for a group whose **key** includes `entity` — the case where a row describes one of the component's own group memberships (`bus` for `connection`, `entity_type` for the type group).
 A group like `corridor`, relating two entities neither of which is "the" one being added, has no such row to derive from a single component's wide frame and is staged through `add_group` directly.
 
 ## Committing
@@ -313,7 +310,7 @@ Three interactions need stating, because each is where replacing by coordinate a
 - **`remove` after `set`** on the same component: the tombstone wins, since a deleted component has no attributes.
   A component tombstone reaches another file's rows, so it stays an anti-join at read and commit rather than a replace — the attribute rows are keyed by coordinate, the tombstone by name.
 - **`add` after `remove`** of the same name: the component exists again.
-  The entity axis replaces on `entity` alone, so the `add` row displaces the tombstone by construction — no member row and tombstone both.
+  The entity axis replaces on `entity` alone, so the `add` row displaces the tombstone by construction — no axis row and tombstone both.
 - **`set` on a component this record also added**: correct as-is, since the two live in different files.
 
 The [non-`partial` rule](schema.md#partial-the-granularity-of-an-override) is the subtle one.
@@ -327,21 +324,19 @@ Carried rows go in only where no edit already holds the coordinate, so a later `
 ## Validation
 
 [`write_record`](writing.md) validates structurally, so commit inherits that.
-What editing adds is edit-level: an `add` whose frame lacks `entity`, an `add` whose name [collides](format.md#entity-is-unique-across-types) with one the record already resolves, a `set` naming a component the record does not resolve, a dim keyword the schema does not declare.
+What editing adds is edit-level: an `add` whose frame lacks `entity` or carries an undeclared column, a `set` naming a component the record does not resolve, a `set` of an attribute not declared over the dims it names, a dim keyword the schema does not declare.
 These are caught when the edit is **staged**, not at commit — a caller should learn about a typo'd attribute at the line that typed it, not fifty edits later.
 
-A `set` resolves each name to its type before checking anything else, so "no member row for `wind9`" and "`Generator` declares no `p_nom_maxx`" are both reported against the name that produced them.
-The membership read this needs is the one [`set`](#set) already performs, so deriving the type costs nothing beyond it.
+A `set` refuses a name that is not on the entity axis, and the error says to `add` it first.
 
 ## Staging
 
 Staged rows live in DuckDB tables on the record's own connection:
 
 ```sql
-CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>);  -- no entity_type
+CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>);
 CREATE TABLE staged_outputs_<attr>_<id>  (<that attribute's long columns>);
 CREATE TABLE staged_axis_<dim>_<id>      (<the axis key>, ..., deleted BOOLEAN);
-CREATE TABLE staged_members_<Type>_<id>  (entity, deleted BOOLEAN, <that type's columns>);
 CREATE TABLE staged_<group>_<id>         (<group coordinates>, ..., deleted BOOLEAN);
 ```
 
@@ -355,13 +350,9 @@ A result the schema never declares has no declared type to take; the table recor
 
 One staging table per declared [group](schema.md#groups), mirroring [the maps the fold builds](read-path.md#owner-map): `connection` is one instance, so a record declaring a second group stages it through the same path rather than a second method.
 
-**One table per entity type, and one more for the axis**, mirroring the two files the format keeps apart: `dims/entity_type/<Type>.parquet` holds a type's own columns, and [`dims/entity.parquet`](format.md#the-entity-axis) holds membership. A single table for every type would have to carry the union of their columns, so a `Bus` frame would land a `Generator`'s `p_nom` as a NULL column of the `Bus` file — the same reason the format partitions them.
-
-So `add` writes two rows for one component, and `remove` two tombstones: the axis says a name exists and of what type, the member table says what it is. Both replace on `entity`, being one edit, so re-adding or removing a name displaces its earlier row rather than stacking beside it.
-
-The **entity axis is staged as an axis**, `staged_axis_entity_<id>` like any other dim, and reaches [the fold](read-path.md) as `axis("entity")` with no special case. What differs is only how an edit keys it: an ordinary axis patches a column in place, so two `set` calls on one label commute; membership replaces on `entity` alone, so a `remove` under one type and an `add` under another resolve to one row rather than merging into a component that is both a `Bus` and deleted.
-
-The staged rows are [the format's own rows](#the-shape-of-an-edit), so a staged long table loses `entity_type` exactly as `inputs/` does, and the entity axis keeps it.
+The **entity axis is staged as an axis**, `staged_axis_entity_<id>` like any other dim, and reaches [the fold](read-path.md) as `axis("entity")` with no special case. It holds membership, tombstones and the columns of attributes over `entity` alone, as [`dims/entity.parquet`](format.md#the-entity-axis) does.
+What differs is only how an edit keys it: an ordinary axis patches a column in place, so two `set` calls on one label commute; `add` and `remove` replace on `entity` alone, so a `remove` followed by an `add` of one name resolves to one row.
+An entity's type is staged in the `entity_type` group's table, which replaces on `entity` too.
 
 These tables are the **only** place a staged row exists: [the reads](#reading-with-pending-edits) read them rather than holding a copy.
 
@@ -388,7 +379,7 @@ It costs what one more layer costs, **per read**: a written layer is folded once
 So the fold is materialised up to the last layer that cannot change under the reader, and the staged step on top of it stays a relation — which is also why an edit needs no invalidation, there being nothing cached to invalidate.
 
 `flags` follows for free, computed in the fold's own ownership `GROUP BY` as it is for any layer: a staged row setting a dim adds it to `varies`, one leaving it NULL adds it to `broadcast`, and a staged curve sets `breakpoints`.
-It says nothing about an attribute addressed by one axis alone, being keyed per component type; `dims` is where that value is read from, staged edits included, and [`Schema.attributes_on`](format.md#where-a-value-lives) is what names the columns an axis frame carries.
+It says nothing about an attribute addressed by one axis alone, which has no rows in the owner map; `dims` is where that value is read from, staged edits included, and [`Schema.attributes_on`](format.md#where-a-value-lives) is what names the columns an axis frame carries.
 
 `dims` overlays per column rather than per row: a staged label's edited columns win, and a label the edit did not name keeps the base's whole row.
 So two `set` calls for two attributes on one axis compose instead of the later one blanking the earlier's column.

@@ -43,9 +43,9 @@ from datarecord import DirectoryRecord, connect
 con = connect()
 record = DirectoryRecord("s3://bucket/my-record/", con)
 
-record.entity_types["Generator"].collect()  # wide member rows
+record.dims["entity"].collect()  # one row per component, its constants
 record.attributes["p_max_pu"].collect()  # long value rows, one per value
-record.flags("Generator")  # which axes each attribute uses
+record.flags()  # which axes each attribute uses
 ```
 
 Every frame is a `narwhals.LazyFrame` — a plan, not data. Nothing is read until you `.collect()`.
@@ -56,7 +56,7 @@ Records stack, and a `WorkingRecord` accumulates edits that become one layer at 
 from datarecord import WorkingRecord, NewChild
 
 w = WorkingRecord(revision.record, con)
-w.set("p_nom", 150.0, names=["wind1", "wind2"])
+w.set("p_nom", 150.0, entity=["wind1", "wind2"])
 child = w.commit(NewChild())
 ```
 
