@@ -328,6 +328,38 @@ def test_set_rejects_an_unknown_name(staged):
         staged.set("p_nom", 1.0, entity=["Nope"])
 
 
+def test_set_refuses_a_dim_an_entity_axis_attribute_lacks(staged):
+    """`p_nom` is a column of the entity axis, so it has no `scenario` to scope.
+
+    The entity-axis path of `set` dropped the keyword and wrote the value for
+    every scenario, where the long path refuses it.
+
+    Notes
+    -----
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    """
+    with pytest.raises(ValueError, match="does not vary over"):
+        staged.set("p_nom", 200.0, entity=["Manchester Wind"], scenario="high")
+
+
+def test_a_scalar_reaches_an_entity_staged_by_add(staged):
+    """`entity=None` means every entity the record resolves, pending adds included.
+
+    The entity-axis path broadcast a scalar over the base's labels only, so an
+    entity staged by `add` kept no value.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    staged.add(pd.DataFrame({"entity": ["new wind"], "entity_type": [GEN]}))
+    staged.set("p_nom", 5.0)
+    got = _entity_column(staged, "p_nom")
+    assert got["new wind"] == got["Manchester Wind"] == 5.0, (
+        "a scalar with no `entity=` reaches staged and base entities alike"
+    )
+
+
 def test_set_accepts_a_name_staged_by_add(staged, root):
     """`add` makes the name exist, so a value for it is no longer unknown.
 

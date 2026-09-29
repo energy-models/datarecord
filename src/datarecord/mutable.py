@@ -928,7 +928,15 @@ class WorkingRecord(Record):
         axis = self._axis_of(attribute) if kind == "inputs" else None
         if axis is not None:
             self._series_axis(attribute, value, indexed_by)
+            if dims:
+                msg = (
+                    f"{attribute} does not vary over {sorted(dims)}; it is a "
+                    f"column of dims/{axis}.parquet, keyed by {axis!r} alone"
+                )
+                raise ValueError(msg)
             if axis == "entity":
+                if entity is None and not _mapping_keys(value):
+                    entity = self._names_declaring(attribute)
                 self._require_members(
                     entity if entity is not None else _mapping_keys(value)
                 )
