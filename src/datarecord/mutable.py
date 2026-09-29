@@ -974,15 +974,13 @@ class WorkingRecord(Record):
     def _validate_frame(
         self, lazy: nw.LazyFrame, attribute: str, dims: Mapping[str, Any]
     ) -> None:
-        """A long input frame's dims, names and per-name specs.
+        """A long input frame's dims, names and the attribute's spec.
 
-        The frame supplies its own names, so each is resolved to its type and
-        checked against that type's spec - one frame may legitimately span
-        types, since names are unique.
+        The frame supplies its own names, so each must be on the entity axis;
+        one frame may span types, since the attribute's spec is record-wide.
 
         Notes
         -----
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         self._validate_dims(dims)
@@ -1299,12 +1297,10 @@ class WorkingRecord(Record):
         On a layered base the read is a fold, so this is the one edit whose cost
         scales with the ancestry rather than with the rows written.
 
-        Unscoped, this derives from every row of the attribute across the types
-        declaring it - there being no type keyword to narrow it.
+        Unscoped, this derives from every row of the attribute.
 
         Notes
         -----
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
         """
         source = self.outputs if kind == "outputs" else self.attributes
@@ -1648,7 +1644,7 @@ class WorkingRecord(Record):
         # value for its name (https://energy-models.github.io/datarecord/design/working-record/#committing).
         #
         # Matched on `name` alone: the tombstone carries a type and a staged
-        # input row does not (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+        # input row does not (https://energy-models.github.io/datarecord/design/format/#the-entity-axis).
         on = null_safe("l", "d", ("entity",))
         return rel.set_alias("l").join(dead.set_alias("d"), on, how="anti")
 
@@ -1669,16 +1665,14 @@ class WorkingRecord(Record):
         return rel.filter(col("deleted")).project(col("entity"))
 
     def _collapsed_entities(self) -> DuckDBPyRelation | None:
-        """The staged entity axis: which names exist, of what type, dead or live.
+        """The staged entity axis: which names exist, dead or live.
 
-        A table scan: one row per name, keyed by `entity` alone with the type
-        carried (`_replace`), so a `remove` under one type and an `add` under
-        another are already one row - a retype replaced the row rather than
-        merging into a member that is both a `Bus` and deleted.
+        A table scan: one row per name, keyed by `entity` alone (`_replace`), so
+        a `remove` and a later `add` of one name are already one row rather
+        than a member that is both live and deleted.
 
         Notes
         -----
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
         return self._rows(_ENTITY_AXIS)
@@ -1747,7 +1741,6 @@ class WorkingRecord(Record):
         Notes
         -----
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         if dim == "entity":
             entities = self._collapsed_entities()

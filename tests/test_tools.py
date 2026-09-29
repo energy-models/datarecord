@@ -113,7 +113,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
 
     Notes
     -----
-    - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
+    - [entity types](https://energy-models.github.io/datarecord/design/schema/#types)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = Revision.create(con)

@@ -396,7 +396,6 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
 
     Notes
     -----
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     seen: dict[str, str] = {}
@@ -1095,7 +1094,7 @@ class PyPSATool(Tool):
                 # absent from the map entirely, which is what this filtered.
                 # Through the schema, so a renamed or computed attribute
                 # reaches the pivot below as an ordinary long relation. Scoped
-                # by a semi-join against `static`, this type's entity table (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+                # by a semi-join against `static`, this type's entity table (https://energy-models.github.io/datarecord/design/format/#the-entity-axis).
                 long = self.schema.resolve(record, ctype, attr)
                 # An attribute addressed by `entity` scopes to this type's
                 # members; one addressed by an axis alone has no entity column
@@ -1136,7 +1135,6 @@ class PyPSATool(Tool):
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
         per_attribute: dict[str, list[nw.LazyFrame]] = {}
@@ -1180,7 +1178,6 @@ class PyPSATool(Tool):
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
@@ -1214,13 +1211,11 @@ class _NetworkSource:
 
         `c.defaults` already declares what an `AttributeSpec` asks for, so this reads it
         rather than restating it. Every stored attribute, not only the varying
-        ones - `dims=frozenset()` is what puts one in `dims/entity_type/`.
+        ones - one over `entity` alone is a column of `dims/entity.parquet`.
 
         Results go to `results` rather than `attributes`, read off the same
         registry (`status` starting "Output"), so a PyPSA upgrade adding one is
-        still picked up rather than needing a list kept here. They carry no
-        trait: a trait is the input vocabulary a type is validated and split
-        against, and a result is neither.
+        still picked up rather than needing a list kept here.
 
         Notes
         -----
@@ -1295,9 +1290,6 @@ class _NetworkSource:
                 # a later disagreement is a schema error rather than a silent
                 # per-type divergence the storage could not have honoured.
                 if attr in outputs:
-                    # A result is declared but not carried: it belongs to no
-                    # trait, `attributes_for` being the input vocabulary a type
-                    # is validated and split against.
                     results.setdefault(stem, spec)
                     continue
                 if stem in carried:
@@ -1387,7 +1379,7 @@ class _NetworkSource:
 
         `entity` is an axis like the others rather than something the writer
         works out: a record supplies its own membership, so nothing downstream
-        has to reconstruct it from the per-type files.
+        has to reconstruct it from the component frames.
 
         Notes
         -----
@@ -1658,9 +1650,8 @@ class _NetworkSource:
     def _tagged(frame: pd.DataFrame) -> pd.DataFrame:
         """A `dims/` frame with the tombstone column the fold scopes by.
 
-        `deleted` because the fold reads it from this same file. Not the type -
-        a per-type member file is the file its rows are in, and the entity axis
-        (`_entity_axis_frame`) is what states it.
+        `deleted` because the fold reads it from this same file. Not the type,
+        which is a row of the `entity_type` group.
 
         No `scenario`: an entity exists or it does not, so nothing scopes
         membership per value of an axis. A stochastic network repeats its

@@ -5,7 +5,7 @@
 """A node's resolved view: the folded axes, groups and owner map, and the reads.
 
 A `Fold` is what `materialise` wrote and what a live resolution computes: the
-folded axes, groups, per-type wide frames, and the `inputs` owner map, each
+folded axes, groups, and the `inputs` owner map, each
 folded over the node's whole ancestry. `Resolver.fold` takes the deepest
 materialised source's `Fold` as its base and folds the layers below it on top,
 so a `Fold` read from disk is the prior incarnation of one computed live - the
@@ -188,8 +188,8 @@ class Fold:
     ) -> Fold | None:
         """This node's `Fold`, or `None` if it is not materialised.
 
-        The `inputs` owner map is the presence marker: the maps, dims, groups and
-        per-type frames are written together (`resolve.materialise`), so if the
+        The `inputs` owner map is the presence marker: the maps, dims and groups
+        are written together (`resolve.materialise`), so if the
         map is absent the node has no `resolved/` cache at all.
         """
         base = resolved_dir(revision_id, base_uri)

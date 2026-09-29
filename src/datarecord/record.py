@@ -190,12 +190,12 @@ class RecordLike(Protocol):
         """Long input frames, keyed by attribute name - one per file.
 
         One `inputs/p_max_pu.parquet` holds every entity's rows, keyed by
-        `entity`; a reader wanting some entities - one type's, say - joins on it.
+        `entity`; a reader wanting some entities - one type's, say - filters on
+        it with names read from the `entity_type` group.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         ...
 

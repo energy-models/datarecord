@@ -90,7 +90,7 @@ def _parse_dtype(value: Any) -> nw.dtypes.DType:
 
 
 # Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Not the
-# dims: `entity`, a group's `bus` and the entity-type axis are declared like any
+# dims: `entity`, a group's `bus` and `entity_type` are declared like any
 # other axis and typed from that declaration, which is what lets an `Enum` there
 # pin its vocabulary. These are the ones no schema names - `breakpoint` is NULL
 # for the ordinary component-level scalar, so one column set serves every row.
@@ -625,27 +625,22 @@ class Schema(BaseModel):
 
     @property
     def broadcast_dims(self) -> tuple[str, ...]:
-        """The dims a NULL broadcasts over: every dim but `entity`, the type axis and a group's key.
+        """The dims a NULL broadcasts over: every dim but `entity` and a group's key.
 
         A NULL here means "every value of this dim", which the fold expands
-        against the axis. The three exclusions cannot mean that:
+        against the axis. The two exclusions have no axis that is the right
+        domain:
 
-        - `entity`, because a NULL there is a value belonging to no component
-          rather than to all of them. The one dim named literally, being the
-          one every entity-type axis classifies.
-        - The entity-type axis, because it inherits `entity`'s exclusion: its
-          labels are a column of `dims/entity.parquet`, so a NULL there is a
-          component whose type is unknown rather than one of every type. An
-          attribute addressed by the type *alone* never reaches here: it is a
-          column of the type axis file rather than a long row, so it has no
-          NULL to expand.
-        - A coordinate a group is keyed by, because there is no axis to expand
-          against. "Every bus of this component" is the group's rows, not the
-          bus axis - a sparse subset only the group's table knows.
+        - `entity`, because its axis holds every kind of component, so a NULL
+          there would give the value to all of them. The one dim named
+          literally.
+        - A coordinate a group is keyed by, because "every bus of this
+          component" is the group's rows, not the bus axis - a sparse subset
+          only the group's table knows.
 
         A functional group's `into` dim is *not* excluded, though it is one of
-        the group's `coordinates`: only `key` addresses a row, so `country`
-        broadcasts like any other axis.
+        the group's `coordinates`: only `key` addresses a row, so `country` and
+        `entity_type` broadcast like any other axis.
 
         The complement of this is what `Schema` requires to be `partial`: a dim
         whose values are addressed individually is one a layer patches value by
@@ -747,13 +742,11 @@ class Schema(BaseModel):
 
     @property
     def membership_keys(self) -> tuple[str, ...]:
-        """The dims addressed per row rather than broadcast: `entity` and group coords.
+        """The dims addressed per row rather than broadcast: `entity` and group keys.
 
         A membership key is a coordinate a layer patches one row of at a time -
         one component, one connection - never "every value" of an axis. It is
-        the non-broadcast, addressable dims: every dim but the broadcast ones
-        and the entity-type axis, which is a column of `dims/entity.parquet`
-        rather than an addressable coordinate.
+        every dim but the broadcast ones.
 
         These land in the fold key by being membership, not by being `partial`.
 
@@ -840,7 +833,6 @@ class Schema(BaseModel):
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         return (*self.dims, *LONG_TAIL)
 

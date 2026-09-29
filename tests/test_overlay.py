@@ -269,26 +269,29 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
+    before = read_schema()
+    assert "availability" not in before.attributes, "the attribute must be new"
     amended = read_schema()
-    amended.attributes["p_min_pu"] = AttributeSpec(
+    amended.attributes["availability"] = AttributeSpec(
         dtype=nw.Float64(), dims={"entity", "snapshot"}, default=0.25
     )
+    assert amended.compatible_with(before) == [], (
+        "adding an attribute leaves the layers written before it readable"
+    )
     write_schema(amended)
-
-    # Adding an attribute is compatible, so the layers written before the
-    # amendment stay readable (https://energy-models.github.io/datarecord/design/schema/#versioning).
-    assert amended.compatible_with(read_schema()) == []
 
     child = parent.child()
     write_input(
         layer_dir(child.id),
-        "p_min_pu",
+        "availability",
         [{"entity": "Norway Gas", "value": 0.1}],
     )
-    n = PyPSA.build(child.record)
-    assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
-    assert child.record.schema.attributes["p_min_pu"].default == 0.25, (
-        "the record reads the amended declaration, not the one the layers were written under"
+    rows = child.record.attributes["availability"].collect().to_pandas()
+    assert rows.set_index("entity")["value"].to_dict() == {"Norway Gas": 0.1}, (
+        "a layer written after the amendment carries the new attribute"
+    )
+    assert "availability" in parent.record.schema.attributes, (
+        "a layer written before the amendment is read under the amended schema"
     )
 
 

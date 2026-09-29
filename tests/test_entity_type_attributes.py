@@ -12,7 +12,7 @@ over.
 
 Notes
 -----
-- [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
+- [entity types](https://energy-models.github.io/datarecord/design/schema/#types)
 - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
 """
 

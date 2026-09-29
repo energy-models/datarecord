@@ -374,11 +374,21 @@ def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
     assert not Path(layer_dir(revision.id)).exists()
 
 
-def test_write_record_rejects_an_undeclared_axis_column(con, base_uri):
-    """An axis file's payload is the schema's to state, like a long frame's.
+@pytest.mark.parametrize(
+    ("dim", "column"),
+    [
+        pytest.param("scenario", "nonsense", id="undeclared"),
+        pytest.param("entity", "p_max_pu", id="declared-over-more-than-the-axis"),
+    ],
+)
+def test_write_record_rejects_an_undeclared_axis_column(con, base_uri, dim, column):
+    """An axis file carries only the attributes addressed by that axis alone.
 
     A column no declaration accounts for would be read back with no dtype and
-    no meaning, so it is refused rather than carried along.
+    no meaning. A column the schema declares over more dims, as `p_max_pu` is
+    over `(entity, snapshot)`, belongs in `inputs/` as long rows: on the entity
+    axis it would shadow nothing and be read by nothing. Both are refused
+    rather than carried along.
 
     Notes
     -----
@@ -387,10 +397,10 @@ def test_write_record_rejects_an_undeclared_axis_column(con, base_uri):
     revision = Revision.create(con)
     source = _Source(
         schema(),
-        dims={"scenario": pd.DataFrame({"scenario": ["high"], "nonsense": [1.0]})},
+        dims={dim: pd.DataFrame({dim: ["x"], column: [1.0]})},
     )
 
-    with pytest.raises(ValueError, match="does not declare for the 'scenario' axis"):
+    with pytest.raises(ValueError, match=f"does not declare for the '{dim}' axis"):
         write_record(revision.id, source, con)
     assert not Path(layer_dir(revision.id)).exists()
 
