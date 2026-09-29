@@ -62,7 +62,7 @@ One object, two meanings: a [`LayerSource`](read-path.md#owner-map) answers `axi
 An enumerator answers the **empty set**, never a phantom key, where the schema declares nothing of that kind.
 
 Rows are raw `DuckDBPyRelation`s, not narwhals frames — the write path stays one engine throughout.
-A framework object satisfying `RecordLike` instead (narwhals `Frames`, as [`Tool.to_datarecord`](tools.md) returns) is not itself a `LayerData`; `write_record` wraps it in a thin adapter that reads its `Frames` mappings through the same enumerate-and-read pairs, so a tool stays narwhals-facing without `write_record` growing a second code path.
+A `RecordLike` over narwhals `Frames` instead, such as the one [`from_sources`](sources.md) returns, is not itself a `LayerData`; `write_record` wraps it in a thin adapter that reads its `Frames` mappings through the same enumerate-and-read pairs, so a source stays narwhals-facing without `write_record` growing a second code path.
 
 ## Wide and long rows
 
@@ -103,7 +103,7 @@ A consumer that wants one type's rows joins `groups["entity_type"]` on `entity`,
 Some attributes belong not to a component but to one of its connections to a bus.
 
 A connection is one row of the **`connection` [group](schema.md#groups)** — `Group(over={"entity": "entity", "bus": "bus"})` — rather than a structural category of its own.
-`groups["connection"]` lists the attachments themselves, one row per `(entity, bus)`, across every component type; `role` — which end of the component it is — describes the connection and identifies nothing, and is an ordinary attribute a tool declares over the group ([PyPSA does](tools.md)) rather than a column the format fixes.
+`groups["connection"]` lists the attachments themselves, one row per `(entity, bus)`, across every component type; `role` — which end of the component it is — describes the connection and identifies nothing, and is an ordinary attribute a schema declares over the group rather than a column the format fixes.
 
 A connection is identified by **the bus it attaches to**, never by position.
 An attribute is a connection attribute because its `dims` name the group, so a per-connection value is otherwise an ordinary long row: `efficiency` may vary by timestep and scenario like any other attribute, and decodes by the same rules with no special case.

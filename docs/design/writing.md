@@ -27,7 +27,7 @@ Validation is structural: a long frame carries [its attribute's own coordinates]
 Which component types are valid belongs to [the schema's vocabulary](schema.md), which the record layer does not interpret.
 
 An **input attribute the schema does not declare is rejected**, unlike a component type: its [`dims`](schema.md#attributespec) are what say which columns its file carries, so an undeclared one has no shape to write it in and would leave a file no reader could derive the columns of.
-A **result is exempt** — [`Tool.results`](tools.md) derives which attributes count as results from a framework's own registry, so an unknown name is an error for an input and simply unknowable for a result.
+A **result is exempt**: `write_record` writes the `outputs/` it is handed, and [`set(..., kind="outputs")`](working-record.md#results-through-kindoutputs) is where a result's name is checked against the schema.
 
 A frame carrying a column its attribute is **not** addressed by is rejected too, rather than narrowed on the way out.
 The read path projects an attribute's own coordinates, so such a column would be written and never read — and a source emitting one means something different by the attribute than the schema does, which is worth reporting rather than absorbing.
@@ -36,4 +36,4 @@ A result is exempt from both checks: its shape is a framework's business, and a 
 The input is a [`LayerData`](record.md#layerdata): "the rows of one thing, enumerated and read" — the same interface a [`LayerSource`](read-path.md#owner-map) answers for its own layer and a `Resolver` answers for a whole fold, so `write_record` cannot tell which it was handed and does not need to.
 A staged layer's own rows and a resolved record are both a `LayerData`, which is what lets `commit` write either without a third shape adapting one to the other.
 
-A framework object exposing narwhals frames — [`Record`](record.md) rather than `LayerData` — is not itself one: `write_record` wraps it in a thin adapter that reads its `Frames` mappings as the enumerate-and-read pairs `LayerData` declares, so a tool stays narwhals-facing and the layered write path stays raw-relation throughout.
+A framework object exposing narwhals frames — [`Record`](record.md) rather than `LayerData` — is not itself one: `write_record` wraps it in a thin adapter that reads its `Frames` mappings as the enumerate-and-read pairs `LayerData` declares, so a source stays narwhals-facing and the layered write path stays raw-relation throughout.

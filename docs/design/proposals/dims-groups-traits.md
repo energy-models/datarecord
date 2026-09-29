@@ -511,7 +511,7 @@ Nested under a component type those are three unrelated attributes; flat, they a
 
 The example renames them to `capacity`, which is what lets `capacity` and its bounds sit in the trait alongside `capital_cost`. That is the outcome to want — an equation in lpspec asking for "the capacity of anything investable" gets one name — and it implies: **the record's vocabulary is not PyPSA's**, and the tool renames on the way in and out.
 
-**Renaming happens tool-side, and traits declare no roles.** The [schema a tool carries](../tools.md) already maps a framework's attribute names to a record's, per component type, so `p_nom -> capacity` for a Generator and `s_nom -> capacity` for a Line is what that mechanism is for.
+**Renaming happens tool-side, and traits declare no roles.** The [schema a tool carries](../sources.md) already maps a framework's attribute names to a record's, per component type, so `p_nom -> capacity` for a Generator and `s_nom -> capacity` for a Line is what that mechanism is for.
 A trait naming a _role_ an attribute fills would put the same mapping in the record's schema instead, which is one more indirection for something the tool seam already answers — and it would mean an equation dispatching on `capacity` has to resolve a role before it can read a column.
 
 **Collisions become representable rather than silent.** `Bus.x` is a coordinate, `Line.x` is reactance; `Bus.type` and `Line.type` are unrelated standard-type references.
@@ -521,7 +521,7 @@ Two declared dtypes and one column is a silent wrong read, and nothing rejects i
 Flattening cannot represent the disagreement, which is why the collision surfaces at declaration time instead.
 
 **The record does not resolve them.** One attribute name means one thing record-wide; two concepts wanting the same name is a limitation the record states rather than a problem it solves.
-A tool reconciles on its own side — prefixing (`line_x`), renaming to something meaningful (`reactance`), or refusing the network in `verify` — which is [the same seam](../tools.md) that renames `p_nom` to `capacity` above, and the same one that already reports a framework scoping names per type against a record scoping them record-wide.
+A tool reconciles on its own side — prefixing (`line_x`), renaming to something meaningful (`reactance`), or refusing the network in `verify` — which is [the same seam](../sources.md) that renames `p_nom` to `capacity` above, and the same one that already reports a framework scoping names per type against a record scoping them record-wide.
 
 No qualified names, no per-type namespaces: both would put the component type back into an attribute's address, which is exactly what [name uniqueness](../format.md#the-entity-axis) removed and what makes one file per attribute possible.
 The example accordingly removes `type` from every type and `x`/`y` from `Bus` rather than inventing a mechanism.
@@ -582,7 +582,7 @@ Closes, in [open questions](../open-questions.md):
 
 Decided here, rather than left open:
 
-- **Vocabulary reconciliation is tool-side.** Renaming `p_nom`/`s_nom`/`e_nom` to `capacity` happens in [the tool's schema](../tools.md); traits declare no roles.
+- **Vocabulary reconciliation is tool-side.** Renaming `p_nom`/`s_nom`/`e_nom` to `capacity` happens in [the tool's schema](../sources.md); traits declare no roles.
 - **Genuine collisions are a limitation, not a mechanism.** One attribute name means one thing record-wide; `Bus.x` versus `Line.x` is a tool's problem to work around by prefixing or renaming.
 
 Opens:

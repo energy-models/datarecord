@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # The record format
 
-A record's **on-disk form** is a parquet directory: [`write_record`](writing.md) produces it, `Record.at(uri)` reads it, and a foreign tool can consume it knowing nothing about this package.
+A record's **on-disk form** is a parquet directory: [`write_record`](writing.md) produces it, `Record.at(uri)` reads it, and a foreign reader can consume it knowing nothing about this package.
 A record that is never written has no directory, and answers [the protocol](record.md) all the same.
 
 ```text
@@ -44,8 +44,8 @@ The [entity axis](#the-entity-axis) folds from `dims/entity.parquet`, and so do 
 
 `entity` is the one dim the format knows by name. A NULL there is a value that belongs to no entity, so it never [broadcasts](record.md#the-broadcast-rule).
 
-A modelling framework that scopes names per type reconciles them before it writes.
-Its [tool](tools.md) reports a clash rather than the record layer renaming to hide it: a record's `entity` is the framework's own name, and a record that renamed them would hand back components the framework cannot find.
+A modelling framework that scopes names per type reconciles them before it writes, in [the converter](sources.md#framework-objects) that produces its tables.
+The record layer does not rename to hide a clash: a record's `entity` is the framework's own name, and a record that renamed them would hand back components the framework cannot find.
 
 ## Where a value lives
 

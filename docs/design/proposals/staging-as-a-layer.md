@@ -155,7 +155,7 @@ Nothing constructs such a `WorkingRecord` today, and `_base_revision` already re
 
 ### 3. Results become schema-declared
 
-Today a result attribute is not declared: [`Tool.results`](../tools.md) derives which attributes count as results from the framework's own registry, and `write_record` persists `outputs/` without consulting the schema. So `set(..., kind="outputs")` accepts any name, and `output_names()` has to _discover_ what is there by globbing.
+Today a result attribute is not declared: [`Tool.results`](../sources.md) derives which attributes count as results from the framework's own registry, and `write_record` persists `outputs/` without consulting the schema. So `set(..., kind="outputs")` accepts any name, and `output_names()` has to _discover_ what is there by globbing.
 
 **Declare them.** `Schema` gains result attributes beside its input ones, and three things follow:
 

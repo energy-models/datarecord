@@ -4,9 +4,8 @@
 
 """The `RecordLike` protocol: what a record answers, however it is backed.
 
-`layered.revision.Record` is the class this package provides; a framework
-object presenting itself as a record satisfies the protocol structurally,
-which is what `tools/` is built on.
+`layered.revision.Record` is the class this package provides; anything else
+satisfies the protocol structurally, as `sources.from_sources` does.
 
 Notes
 -----

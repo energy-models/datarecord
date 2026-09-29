@@ -5,12 +5,12 @@
 """Writing a whole record as a layer.
 
 A `LayerData` hands over relations and this module turns them into parquet;
-producing one from a framework's own object is a tool's job.
+`sources.from_sources` produces one from tables keyed by declared names.
 
 Notes
 -----
 - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [consuming a record](https://energy-models.github.io/datarecord/design/sources/)
 - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
 """
 
@@ -258,8 +258,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         subdir = "inputs" if kind == "attributes" else "outputs"
         # An input's shape comes from its spec, so one the schema does not
         # declare has no shape to check it against - and writing it would put a
-        # file in `inputs/` that no read path knows the columns of. A *result*
-        # is never declared, a tool deriving those from its own registry.
+        # file in `inputs/` that no read path knows the columns of.
         if kind == "attributes" and key not in schema.attributes:
             msg = (
                 f"inputs/{key}.parquet is not a declared attribute; its `dims` "
@@ -360,7 +359,7 @@ class _RecordLikeAsLayerData:
     """A `RecordLike` read through `LayerData`'s enumerate-and-read pairs.
 
     The adapter that lets `write_record` stay one code path over raw
-    relations: a framework's `to_datarecord()` hands over narwhals `Frames`,
+    relations: `sources.from_sources` hands over narwhals `Frames`,
     one lookup per key exactly as `write_record` already does, so this wraps
     each mapping rather than eagerly converting it. `con` is needed only to
     land a non-DuckDB frame as a relation (`as_relation`).

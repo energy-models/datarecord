@@ -39,4 +39,6 @@ from datarecord import (
 | [Duck](../design/module-layout.md) | `connect`, `layer_dir`                                  |
 | [Layered](layered.md)              | `Revision`, `write_record`                              |
 | [WorkingRecord](mutable.md)        | `WorkingRecord`, `NewChild`, `Directory`                |
-| [Tools](tools.md)                  | `Tool`, `Requirements`, the PyPSA tool                  |
+| [Sources](sources.md)              | `from_sources`, `to_sources`                            |
+
+`from_sources` and `to_sources` are imported from `datarecord.sources`.

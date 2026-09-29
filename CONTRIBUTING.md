@@ -63,10 +63,10 @@ Open a GitHub issue to report a bug or request a feature:
   the pull request itself; it is removed when the pull request closes, and a
   weekly job sweeps any that outlive it. Both live in
   `.github/workflows/docs.yml`.
-- No tool import may leak into core `datarecord`
+- `datarecord` imports no modelling framework
   ([module layout](https://energy-models.github.io/datarecord/design/module-layout/)):
-  everything framework-specific lives under `datarecord/tools/` behind an
-  optional extra.
+  a framework meets a record as tables keyed by declared names
+  ([tables by declared name](https://energy-models.github.io/datarecord/design/sources/)).
 
 ## Architecture in one paragraph
 
@@ -78,7 +78,7 @@ on-disk form. Two implementations serve that protocol — `DirectoryRecord` over
 single directory, and `LayeredRecord` over a tree of layers resolved
 last-writer-wins — so a consumer cannot tell which it holds. Queries are built
 with `narwhals` and executed by `duckdb`, staying lazy until collected. Beyond
-those and `pydantic`, core depends on nothing. Keep new features consistent with
+those, `pydantic` and `mathspec`, core depends on nothing. Keep new features consistent with
 this schema-declared, backend-agnostic, lazily-evaluated design.
 
 ## Releasing

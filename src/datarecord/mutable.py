@@ -561,9 +561,9 @@ class WorkingRecord(Record):
 
     @property
     def outputs(self) -> Frames:
-        """Staged results, keyed by attribute - what a tool handed back.
+        """Staged results, keyed by attribute - what a solve handed back.
 
-        Results reach a record through `set(..., kind="outputs")`, so a tool can
+        Results reach a record through `set(..., kind="outputs")`, so a caller can
         solve against this record's pending inputs and attach what it computed
         without committing first. The base's results are *not* included: they
         were computed from inputs these edits may have changed, and results do
@@ -939,12 +939,10 @@ class WorkingRecord(Record):
         tool hands results back. Results use the same long schema; what differs
         is that they do not overlay.
 
-        Two checks are skipped for `"outputs"`, both because a result is not a
-        value the schema governs: the attribute need not be declared, and its
-        labels need not resolve to declared members. A solve may produce rows
-        for a component it derived rather than read - PyPSA's `SubNetwork` is
-        one - and rejecting those would refuse a legitimate result. An *input*
-        for an undeclared label stays an error.
+        A result is declared under `Schema.results`, and its labels are not
+        checked against the axes: a solve may produce rows for a component it
+        derived rather than read, and rejecting those would refuse a legitimate
+        result. An *input* for an undeclared label stays an error.
 
         Raises
         ------

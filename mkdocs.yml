@@ -33,7 +33,7 @@ nav:
       - Layers: usage/layers.md
       - Editing: usage/editing.md
       - Writing: usage/writing.md
-      - Tools: usage/tools.md
+      - Tables in and out: usage/sources.md
   - Design:
       - design/index.md
       - The Record protocol: design/record.md
@@ -43,7 +43,7 @@ nav:
       - The DuckDB read path: design/read-path.md
       - Writing a record: design/writing.md
       - WorkingRecord: design/working-record.md
-      - Consuming a record: design/tools.md
+      - Tables by declared name: design/sources.md
       - Module layout: design/module-layout.md
       - Open questions: design/open-questions.md
       - Proposals:
@@ -63,7 +63,7 @@ nav:
       - Schema: api/schema.md
       - Layered: api/layered.md
       - WorkingRecord: api/mutable.md
-      - Tools: api/tools.md
+      - Sources: api/sources.md
 
 theme:
   name: material

@@ -12,8 +12,7 @@ How to use the package. [Design](../design/index.md) is what it is and why;
 ## Installation
 
 ```bash
-pip install datarecord           # core
-pip install datarecord[pypsa]    # with the PyPSA tool
+pip install datarecord
 ```
 
 Or with conda/mamba, from conda-forge:
@@ -41,11 +40,11 @@ defaults to the `DATARECORD_BASE_URI` environment variable.
 
 ## The pages
 
-| page                           | what it covers                                |
-| ------------------------------ | --------------------------------------------- |
-| [Reading a record](reading.md) | the `Record` protocol, frames, `flags`        |
-| [The schema](schema.md)        | declaring dims and attributes                 |
-| [Layers](layers.md)            | revisions, branching, materialising           |
-| [Editing](editing.md)          | `WorkingRecord`: `set`, `add`, `commit`       |
-| [Writing](writing.md)          | `write_record`                                |
-| [Tools](tools.md)              | consuming a record from a modelling framework |
+| page                            | what it covers                                 |
+| ------------------------------- | ---------------------------------------------- |
+| [Reading a record](reading.md)  | the `Record` protocol, frames, `flags`         |
+| [The schema](schema.md)         | declaring dims and attributes                  |
+| [Layers](layers.md)             | revisions, branching, materialising            |
+| [Editing](editing.md)           | `WorkingRecord`: `set`, `add`, `commit`        |
+| [Writing](writing.md)           | `write_record`                                 |
+| [Tables in and out](sources.md) | importing tables, solving, storing the results |
