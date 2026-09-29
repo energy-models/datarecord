@@ -33,7 +33,7 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all
-from datarecord.record import EMPTY, Flags, Frames, LazyFrames, RecordLike
+from datarecord.record import Flags, Frames, LazyFrames, RecordLike
 from datarecord.schema import AttributeSpec, Dimension, Group
 from datarecord.schema import Schema as RecordSchema
 from datarecord.tools.base import (
@@ -1315,14 +1315,13 @@ class _NetworkSource:
                 continue
             for column in c.static.columns:
                 if _clashes(c, column, attributes.get(column), self._port_stems(c)):
-                    typ = (
-                        c.defaults.loc[column, "typ"]
+                    dtype = (
+                        _DTYPES.get(c.defaults.loc[column, "typ"], nw.String())
                         if column in c.defaults.index
-                        else None
+                        else _custom_dtype(c.static[column])
                     )
                     attributes[f"{c.name}{_CLASH}{column}"] = AttributeSpec(
-                        dtype=_DTYPES.get(typ, _custom_dtype(c.static[column])),
-                        dims=frozenset({ENTITY}),
+                        dtype=dtype, dims=frozenset({ENTITY})
                     )
                 if column not in c.defaults.index and column not in attributes:
                     attributes[column] = AttributeSpec(
@@ -1424,11 +1423,6 @@ class _NetworkSource:
 
     def _types(self) -> tuple[str, ...]:
         return tuple(c.name for c in self.n.components if _exported(c))
-
-    @property
-    def entity_types(self) -> LazyFrames:
-        """Empty: a component's type is a row of the `entity_type` group."""
-        return EMPTY
 
     @property
     def groups(self) -> LazyFrames:

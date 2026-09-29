@@ -21,7 +21,7 @@ from datarecord.record import (
     LazyFrames,
     RecordLike,
 )
-from datarecord.schema import AttributeSpec, Dimension, Group, Schema, Trait
+from datarecord.schema import AttributeSpec, Dimension, Group, Schema
 
 __all__ = [
     "AttributeSpec",
@@ -36,7 +36,6 @@ __all__ = [
     "RecordLike",
     "Revision",
     "Schema",
-    "Trait",
     "WorkingRecord",
     "connect",
     "layer_dir",

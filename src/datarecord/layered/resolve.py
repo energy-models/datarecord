@@ -30,7 +30,6 @@ from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
-from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
@@ -771,27 +770,6 @@ def _materialise_dims(
     ensure_local_dir(groups)
     for group, rel in dims.groups.items():
         rel.to_parquet(f"{groups}{group}.parquet")
-    # The per-type wide static frames, folded across sources. A component's wide
-    # columns live in a per-type file, not on the axis, so they are the one
-    # membership value that needs materialising beside the axis for a descendant
-    # to reach through a closed node (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-    # Only where a group declares the type axis: with no types there are no
-    # per-type files, a component's constant columns being on the entity axis
-    # itself (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-    axis = dims.axes.get("entity")
-    if schema.entity_type_dim is None or axis is None:
-        return
-    types = resolved_dir(revision_id) + "dims/entity_type/"
-    ensure_local_dir(types)
-    live = set(distinct_values(axis, "entity_type", order=False))
-    seed_base, above = _base_and_above(sources, con, schema)
-    for ctype in live:
-        seed = None if seed_base is None else seed_base.entity_types.get(ctype)
-        wide = fold_axis(
-            [seed, *(source.entity_type(ctype) for source in above)], ("entity",), con
-        )
-        if wide is not None:
-            wide.to_parquet(f"{types}{ctype}.parquet")
 
 
 # -- the schema (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ---------------------------------------------
@@ -849,7 +827,7 @@ class Resolver:
     """A record's resolved view: owner map, dims, schema, and the relations over them.
 
     The cached artifacts and the reads gated by them
-    (`relation`/`outputs`/`entity_type_frame`/`group_frame`/`attributes_of`) live
+    (`relation`/`outputs`/`group_frame`/`attributes_of`) live
     together because every one of the latter is a semi-join against the former.
     Tool-agnostic throughout: the long relations here are what a tool
     (`datarecord.tools`) builds its own object from.
@@ -938,17 +916,13 @@ class Resolver:
 
         Assembled from `dims` (the folded axes and groups) and `_map("inputs")`
         (the folded owner map), both of which carry their own frozen-scoped
-        cache, so `fold` re-wraps rather than re-folds. `entity_types` is left
-        empty: a live fold is never another fold's base, and the map reads it
-        exposes (`owners`, `attributes`, `flags`) never touch the per-type frames
-        - those are read through `entity_type_frame`, which folds them per call.
+        cache, so `fold` re-wraps rather than re-folds.
         """
         coords = self.dims
         return Fold(
             schema=self.schema,
             axes=coords.axes,
             groups=coords.groups,
-            entity_types={},
             owner_map=self._map("inputs"),
         )
 
@@ -969,7 +943,7 @@ class Resolver:
 
     @property
     def entity_axis(self) -> DuckDBPyRelation | None:
-        """The resolved entity axis: one row per live component, `entity_type` carried.
+        """The resolved entity axis: one row per live component, its constant columns carried.
 
         Folded like any axis (`dims.axes`), not an owner map - the winning row is
         the whole row in one file. `None` where no layer wrote a component.
@@ -1055,23 +1029,6 @@ class Resolver:
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         return set(self.dims.groups)
-
-    def entity_types(self) -> set[str]:
-        """Types with any live component row, from the resolved entity axis.
-
-        Empty where the schema declares no type axis: the axis carries no
-        `entity_type` column then, nothing classifies a component, so there are
-        no types rather than a column of NULLs to distinct
-        (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-
-        Notes
-        -----
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-        """
-        axis = self.entity_axis
-        if axis is None or self.schema.entity_type_dim is None:
-            return set()
-        return set(distinct_values(axis, "entity_type", order=False))
 
     def attributes(self, kind: str = "inputs") -> list[str]:
         """Every attribute of `kind` any layer owns a row for.
@@ -1210,58 +1167,6 @@ class Resolver:
             return rel
         return _empty_relation(self.schema, self.con, *self.schema.long_columns)
 
-    def entity_type(self, ctype: str) -> DuckDBPyRelation | None:
-        """Wide static members of one type, resolved inline, in member order.
-
-        The one axis whose *values* live in another file: a component's wide
-        static columns are per-type (`dims/entity_type/<ctype>.parquet`), not on
-        the entity axis. So the per-type files fold on `entity` (last-writer-wins,
-        each layer's own row winning), and the result is semi-joined to the live
-        resolved entity axis - which decides membership, type and order - so a row
-        whose component the axis does not carry drops out. `None` where the type
-        has no live member.
-
-        Raises
-        ------
-        ValueError
-            Where the schema declares no type axis. There is then no type to be
-            asked for - a component's constant columns are on the entity axis
-            (`axis("entity")`), not in a per-type file - so a call naming one is
-            a caller error rather than an empty answer. `Record.entity_types`
-            iterates an empty mapping there, so nothing reaches this in normal use.
-
-        Notes
-        -----
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        """
-        if self.schema.entity_type_dim is None:
-            msg = (
-                f"entity_type({ctype!r}) but the schema declares no type axis; a "
-                f"component's constant columns are on the entity axis, read them "
-                f"through axis('entity') (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
-            )
-            raise ValueError(msg)
-        axis = self.entity_axis
-        if axis is None:
-            return None
-        base, above = _base_and_above(self.sources, self.con, self.schema)
-        seed = None if base is None else base.entity_types.get(ctype)
-        wide = fold_axis(
-            [seed, *(source.entity_type(ctype) for source in above)],
-            ("entity",),
-            self.con,
-        )
-        if wide is None:
-            return None
-        # `_pos` off the *unfiltered* axis, which is still in fold (member) order;
-        # numbering after the type filter would rest on a filter preserving row
-        # order, which it need not.
-        live = axis.project(star(), sql("row_number() OVER ()").alias("_pos")).filter(
-            col("entity_type") == lit(ctype)
-        )
-        return self._in_axis_order(wide, live, ("entity",))
-
     def group_frame(self, group: str) -> DuckDBPyRelation | None:
         """One group's resolved rows, folded like an axis, in member order.
 
@@ -1279,24 +1184,3 @@ class Resolver:
         if rel is None or rel.limit(1).fetchone() is None:
             return None
         return rel
-
-    def _in_axis_order(
-        self, wide: DuckDBPyRelation, axis: DuckDBPyRelation, match: tuple[str, ...]
-    ) -> DuckDBPyRelation | None:
-        """`wide`'s rows scoped to `axis`, in `axis`'s member order.
-
-        `axis` carries a `_pos` in member order (`fold_axis`); the join does not
-        preserve row order, so `_pos` is carried through it and sorted by, then
-        dropped. The join also scopes `wide` to the live axis - a row whose
-        component the axis does not carry drops out.
-        """
-        joined = wide.set_alias("u").join(
-            axis.set_alias("o"), null_safe("u", "o", match)
-        )
-        cols = [c for c in wide.columns if c not in ("entity_type", "deleted")]
-        result = joined.project(*(col("u", c) for c in cols), col("o", "_pos")).order(
-            "_pos"
-        )
-        if result.limit(1).fetchone() is None:
-            return None
-        return result.project(star(exclude=["_pos"]))

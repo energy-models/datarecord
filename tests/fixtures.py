@@ -20,7 +20,6 @@ from datarecord.schema import (
     Dimension,
     Group,
     Schema,
-    Trait,
 )
 
 # No `entity_type`: an attribute row is keyed by `name`, unique across every type
@@ -67,7 +66,11 @@ def write_input(
 
     target = Path(layer, "inputs")
     target.mkdir(parents=True, exist_ok=True)
-    df[LONG_COLUMNS].to_parquet(target / f"{attribute}.parquet", index=False)
+    path = target / f"{attribute}.parquet"
+    df = df[LONG_COLUMNS]
+    if path.exists():
+        df = pd.concat([pd.read_parquet(path), df], ignore_index=True)
+    df.to_parquet(path, index=False)
 
 
 def write_group(layer: str, group: str, rows: list[dict]) -> None:
@@ -136,50 +139,73 @@ def tombstone_connection(layer: str, pairs: list[tuple[str, str]]) -> None:
     )
 
 
-def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:
-    """Write `dims/entity_type/<ctype>.parquet` *and* this type's entity rows.
+# The attributes `_default_attributes` declares over more than `entity`: a
+# component's constant value of one is a row per entity with every other dim
+# NULL, not an entity-axis column.
+LONG_ATTRIBUTES = {"p_nom", "e_nom", "p_max_pu", "p_min_pu", "marginal_cost", "efficiency"}
 
-    Membership and tombstones live on `dims/entity.parquet`, which the writer
-    derives from the per-type frames - so a hand-built layer has to keep the
-    two in step the way `write_record` does.
+
+def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:
+    """Write components of one type: entity rows, their type, and their constants.
+
+    The entity axis holds membership, tombstones and every other column; the
+    `entity_type` group holds each entity's type; a constant of an attribute
+    declared over more than `entity` is a broadcast row in `inputs/`.
 
     Notes
     -----
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     df = pd.DataFrame(rows)
-    df["entity_type"] = ctype
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
+    long = [c for c in df.columns if c in LONG_ATTRIBUTES]
+    for attribute in long:
+        values = df[["entity", attribute]].dropna()
+        if not values.empty:
+            write_input(
+                layer,
+                attribute,
+                values.rename(columns={attribute: "value"}).to_dict("records"),
+            )
+    _append(Path(layer, "dims", "entity.parquet"), df.drop(columns=long))
+    kinds = df[["entity", "deleted"]].assign(entity_type=ctype)
+    _append(Path(layer, "groups", "entity_type.parquet"), kinds[~kinds["deleted"]])
 
-    lead = ["entity_type", "entity", "deleted"]
-    ordered = lead + [c for c in df.columns if c not in lead]
-    target = Path(layer, "dims", "entity_type")
-    target.mkdir(parents=True, exist_ok=True)
-    df[ordered].to_parquet(target / f"{ctype}.parquet", index=False)
 
-    # Appended rather than replaced: several types land in one entity axis, and
-    # a layer may write them one call at a time.
-    axis = Path(layer, "dims", "entity.parquet")
-    entities = df[["entity", "entity_type", "deleted"]]
-    if axis.exists():
-        entities = pd.concat([pd.read_parquet(axis), entities], ignore_index=True)
-    entities.to_parquet(axis, index=False)
+def _append(path: Path, df: pd.DataFrame) -> None:
+    """`df` added to the parquet file at `path`, which several calls share."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        df = pd.concat([pd.read_parquet(path), df], ignore_index=True)
+    df.to_parquet(path, index=False)
 
 
 def tombstone(layer: str, ctype: str, names: list[str]) -> None:
-    """Mark components deleted in this layer.
+    """Mark components deleted in this layer: an entity-axis tombstone per name.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    write_entity_type(
-        layer,
-        ctype,
-        [{"entity": n, "deleted": True} for n in names],
+    _append(
+        Path(layer, "dims", "entity.parquet"),
+        pd.DataFrame({"entity": names, "deleted": True}),
     )
+
+
+def members(record, ctype: str) -> pd.DataFrame:
+    """One type's entity-axis rows: the entities the `entity_type` group names `ctype`."""
+    axis = record.dims["entity"].collect("pandas").to_native()
+    kinds = record.groups["entity_type"].collect("pandas").to_native()
+    mine = kinds.loc[kinds["entity_type"] == ctype, ["entity"]]
+    return axis.merge(mine, on="entity").reset_index(drop=True)
+
+
+def names(record, ctype: str) -> list[str]:
+    """One type's entity names, in entity-axis order - what `flags` is scoped by."""
+    return [str(n) for n in members(record, ctype)["entity"]]
 
 
 def write_scenarios(layer: str, rows: list[dict]) -> None:
@@ -399,17 +425,11 @@ def schema(
     """
     nesting = within or {}
     # Callers declare per type, which is how a modelling framework thinks; the
-    # schema stores one spec per attribute, record-wide, and a trait per type
-    # narrows it back. Flattening here keeps the tests readable and is exactly
-    # what a tool does on the way in.
+    # schema stores one spec per attribute, record-wide.
     flat: dict[str, AttributeSpec] = {}
-    traits: dict[str, Trait] = {}
-    for ctype, attrs in (attributes or {}).items():
+    for attrs in (attributes or {}).values():
         for attr, spec in attrs.items():
             flat.setdefault(attr, spec)
-        traits[ctype] = Trait(
-            attributes=frozenset(attrs), on={"entity_type": frozenset({ctype})}
-        )
     # Declared whether or not a caller named them: a test writing `p_max_pu`
     # needs it declared, and one passing `attributes=` is narrowing what a type
     # *carries* rather than shortening the record's vocabulary.
@@ -426,19 +446,13 @@ def schema(
     }
     return Schema(
         groups={g: Group(over=over) for g, over in groups.items()}
-        # `into` over `entity` alone is what makes `entity_type` the
-        # entity-type axis (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
         | {"entity_type": Group(over=["entity"], into="entity_type")},
         dimensions={
             d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))
             for d, t in declared.items()
         }
-        # A plain string rather than an enum: the tests name types freely, and
-        # pinning the categories here would make every fixture that adds one
-        # declare it twice (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
         | {"entity_type": Dimension(dtype=nw.String())},
         attributes=flat,
-        traits=traits,
         # `partial` names value dims a layer patches per value; membership keys
         # (`entity`, a group's coordinates) are in the fold key by being
         # membership, not by being `partial` (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).

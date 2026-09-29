@@ -110,8 +110,6 @@ class Fold:
         Each resolved dim's axis relation, keyed by dim; `entity` among them.
     groups
         Each resolved group's relation, keyed by group.
-    entity_types
-        Each type's resolved wide static frame, keyed by type.
     owner_map
         The resolved `inputs` owner map: `(input_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per owned key.
@@ -120,7 +118,6 @@ class Fold:
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
     groups: dict[str, DuckDBPyRelation]
-    entity_types: dict[str, DuckDBPyRelation]
     owner_map: DuckDBPyRelation
 
     @property
@@ -203,7 +200,6 @@ class Fold:
             schema=schema,
             axes=_read_dir(f"{base}dims/", con),
             groups=_read_dir(f"{base}groups/", con),
-            entity_types=_read_dir(f"{base}dims/entity_type/", con),
             owner_map=owner_map,
         )
 

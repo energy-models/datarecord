@@ -323,11 +323,6 @@ class Record:
         return LazyFrames(tuple(axes), lambda dim: nw.from_native(axes[dim]))
 
     @_stable_cache
-    def entity_types(self) -> LazyFrames:
-        types = tuple(sorted(self.resolver.entity_types()))
-        return LazyFrames(types, self._entity_type_frame)
-
-    @_stable_cache
     def groups(self) -> LazyFrames:
         """Each declared group's rows, keyed by group - one frame each.
 
@@ -367,9 +362,6 @@ class Record:
         return self.resolver.attributes_of(entities)
 
     # -- frames, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) --
-
-    def _entity_type_frame(self, ctype: str) -> nw.LazyFrame:
-        return self._frame(self.resolver.entity_type(ctype), ctype)
 
     def _group_frame(self, group: str) -> nw.LazyFrame:
         return self._frame(self.resolver.group_frame(group), group)
