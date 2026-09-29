@@ -230,7 +230,9 @@ def test_several_groups_may_map_entity_into_other_dims():
         attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
         partial=frozenset(),
     )
-    assert s.attributes_on("entity") == ("p_nom",), "a constant is an entity-axis column"
+    assert s.attributes_on("entity") == ("p_nom",), (
+        "a constant is an entity-axis column"
+    )
 
 
 # -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------

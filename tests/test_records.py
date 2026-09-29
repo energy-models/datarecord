@@ -342,9 +342,10 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
     all, so a dim it is not addressed by has to be absent from both - otherwise
     a consumer builds a container along an axis the attribute has no values on.
 
-    The two are easy to conflate because one relation holds every attribute's
-    rows: `p_nom` is stored beside `p_max_pu`, whose `snapshot` column is NULL
-    for `p_nom`'s rows. That NULL is "no such axis", not "every snapshot".
+    The two are easy to conflate because one relation holds every long
+    attribute's rows: `capital_cost` is stored beside `p_max_pu`, whose
+    `snapshot` column is NULL for `capital_cost`'s rows. That NULL is "no such
+    axis", not "every snapshot".
 
     Notes
     -----
@@ -357,8 +358,9 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
         schema(
             attributes={
                 "Generator": {
-                    # Addressed by the entity axis and nothing else.
-                    "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+                    "capital_cost": AttributeSpec(
+                        dtype=nw.Float64(), dims={"entity", "period"}
+                    ),
                     "p_max_pu": AttributeSpec(
                         dtype=nw.Float64(), dims={"entity", "snapshot"}
                     ),
@@ -367,15 +369,16 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
         )
     )
     write_entity_type(layer, "Generator", [{"entity": "wind"}])
-    write_input(layer, "p_nom", [{"entity": "wind", "value": 100.0}])
+    write_input(
+        layer, "capital_cost", [{"entity": "wind", "period": 2030, "value": 1.0}]
+    )
     write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
 
     record = revision.record
     flags = record.flags(names(record, "Generator"))
-    # Addressed by `entity` alone, so no axis is reportable either way.
-    assert flags["p_nom"].varies == frozenset()
-    assert flags["p_nom"].broadcast == frozenset(), (
-        "a dim `p_nom` has no column for is not one it broadcasts over"
+    assert flags["capital_cost"].varies == frozenset({"period"})
+    assert flags["capital_cost"].broadcast == frozenset(), (
+        "a dim `capital_cost` has no column for is not one it broadcasts over"
     )
     # Addressed by `snapshot`, with a row leaving it NULL - that *is* a
     # broadcast, and the two cases must not read the same.

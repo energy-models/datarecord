@@ -142,7 +142,14 @@ def tombstone_connection(layer: str, pairs: list[tuple[str, str]]) -> None:
 # The attributes `_default_attributes` declares over more than `entity`: a
 # component's constant value of one is a row per entity with every other dim
 # NULL, not an entity-axis column.
-LONG_ATTRIBUTES = {"p_nom", "e_nom", "p_max_pu", "p_min_pu", "marginal_cost", "efficiency"}
+LONG_ATTRIBUTES = {
+    "p_nom",
+    "e_nom",
+    "p_max_pu",
+    "p_min_pu",
+    "marginal_cost",
+    "efficiency",
+}
 
 
 def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:

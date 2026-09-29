@@ -130,6 +130,13 @@ def _series_index(value: Any) -> Sequence[Any] | None:
     return list(index)
 
 
+def _mapping_keys(value: Any) -> list[Any]:
+    """The labels a mapping or a labelled series is keyed by; none for a scalar."""
+    if isinstance(value, Mapping):
+        return list(value)
+    return list(_series_index(value) or [])
+
+
 def _series_index_name(value: Any) -> str | None:
     """A labelled series' index name, where it has one a caller could have meant.
 
@@ -629,7 +636,8 @@ class WorkingRecord(Record):
         `value` is a mapping from label to value, or a scalar for every label the
         axis currently has. A mapping may name a label no layer has written yet,
         which becomes a row of this layer's axis file - the fold keys per label,
-        so introducing one displaces nothing.
+        so introducing one displaces nothing. The entity axis is the exception:
+        `set` requires its names first, because an entity arrives through `add`.
 
         One *complete* row per label: this edit's column over the label's
         current row - the one already staged where there is one, else the base's
@@ -641,11 +649,6 @@ class WorkingRecord(Record):
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        # `entity=` names labels of *this* axis where `dim` is `entity` - an
-        # untyped record's component columns live here, so `set(attr, v,
-        # entity=[...])` selects the rows to patch, the same names a member-file
-        # edit would (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives). For any other axis `entity` is not a
-        # coordinate, so naming it is the caller error the message describes.
         if entity is not None and dim != "entity":
             msg = (
                 f"`set({attribute!r}, ..., entity=...)` names components, but "
@@ -898,7 +901,6 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
@@ -925,6 +927,11 @@ class WorkingRecord(Record):
 
         axis = self._axis_of(attribute) if kind == "inputs" else None
         if axis is not None:
+            self._series_axis(attribute, value, indexed_by)
+            if axis == "entity":
+                self._require_members(
+                    entity if entity is not None else _mapping_keys(value)
+                )
             self._stage_axis(axis, attribute, value, entity=entity)
             return
 
@@ -942,8 +949,6 @@ class WorkingRecord(Record):
                 values = values * len(keys)
         if kind == "inputs":
             self._validate_dims(dims)
-            # One lookup serves both: rejects a name with no member row, and
-            # returns the type whose spec is checked (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
             self._require_members(keys)
             self._validate_attribute(attribute, dims)
         else:
