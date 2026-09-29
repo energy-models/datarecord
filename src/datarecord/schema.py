@@ -503,21 +503,6 @@ class Schema(BaseModel):
                 )
                 raise ValueError(msg)
 
-        # One group may classify `entity`, or none: every caller of
-        # `attributes_for` asks for exactly one vocabulary.
-        classifying = sorted(
-            g.into
-            for g in self.groups.values()
-            if g.into is not None and tuple(g.over.values()) == ("entity",)
-        )
-        if len(classifying) > 1:
-            msg = (
-                f"{classifying} all classify `entity`; a component has one type, "
-                f"so at most one group may be `into` a dim over `entity` alone"
-            )
-            raise ValueError(msg)
-        entity_type = classifying[0] if classifying else None
-
         # One name means one file with one `value` column, so a name declared as
         # both would have to be an input and a result at once - two files, two
         # governing rules, one key.
@@ -559,19 +544,6 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"trait {trait!r} bundles undeclared attributes {unknown}"
                 raise ValueError(msg)
-            # Only the entity-type axis may scope a trait. Any other
-            # classification would make the vocabulary depend on data rather
-            # than on the schema - which attributes a component carries would
-            # follow from what its bus maps to, a per-entity lookup every caller
-            # of `attributes_for` treats as answerable from the schema alone.
-            for dim in trait_spec.on:
-                if dim != entity_type:
-                    msg = (
-                        f"trait {trait!r} is `on` {dim!r}, which does not classify "
-                        f"`entity`; only the entity-type axis partitions an "
-                        f"attribute vocabulary"
-                    )
-                    raise ValueError(msg)
             if trait_spec.switch is not None:
                 switch_spec = self.attributes.get(trait_spec.switch)
                 if switch_spec is not None and switch_spec.dims != {"entity"}:
@@ -594,7 +566,7 @@ class Schema(BaseModel):
             # `partial`, so naming it here is a category error: it does not
             # broadcast and has no "value" to patch, only rows that exist or do
             # not (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-            keys = sorted(set(self.partial) - set(self.broadcast_dims) - {entity_type})
+            keys = sorted(set(self.partial) - set(self.broadcast_dims))
             if keys:
                 msg = (
                     f"`partial` names membership keys {keys}, which are patched "
@@ -612,7 +584,7 @@ class Schema(BaseModel):
         # (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
         broadcast = set(self.broadcast_dims)
         membership = set(self.membership_keys)
-        type_axis = {entity_type} & set(self.dims) if entity_type else set()
+        type_axis: set[str] = set()
         covered = broadcast | membership | type_axis
         disjoint = len(broadcast) + len(membership) + len(type_axis) == len(covered)
         if covered != set(self.dims) or not disjoint:
@@ -740,14 +712,7 @@ class Schema(BaseModel):
         -----
         - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
         """
-        return next(
-            (
-                g.into
-                for g in self.groups.values()
-                if g.into is not None and tuple(g.over.values()) == ("entity",)
-            ),
-            None,
-        )
+        return None
 
     @property
     def entity_types(self) -> frozenset[str]:

@@ -126,11 +126,38 @@ def resolve_coords(
         )
         if rel is not None:
             axes[dim] = rel
+    groups = resolve_groups(schema, base, above, con)
     return Coords(
         schema=schema,
         axes=axes,
-        groups=resolve_groups(schema, base, above, con),
+        groups={g: _live_rows(schema, g, rel, axes) for g, rel in groups.items()},
     )
+
+
+def _live_rows(
+    schema: Schema, group: str, rel: DuckDBPyRelation, axes: dict[str, DuckDBPyRelation]
+) -> DuckDBPyRelation:
+    """`group`'s rows whose key names only labels its dims still hold.
+
+    A removed label takes every row keyed on it: the fold drops its attribute
+    rows by the axis tombstone, and this drops its group rows, which carry no
+    tombstone of their own for it. Only a fold-key dim can lose a label, so only
+    those coordinates are checked.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    spec = schema.groups[group]
+    for coordinate in spec.key:
+        dim = spec.over[coordinate]
+        if dim not in schema.partial_dims or dim not in axes:
+            continue
+        labels = axes[dim].project(col(dim).alias(coordinate)).set_alias("a")
+        rel = rel.set_alias("g").join(
+            labels, null_safe("g", "a", [coordinate]), how="semi"
+        )
+    return rel
 
 
 def resolve_groups(

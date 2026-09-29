@@ -786,29 +786,6 @@ class WorkingRecord(Record):
             )
         self._insert(rows, table, {})
 
-    def _resolved_names(self, ctype: str) -> list[str]:
-        """Every name `ctype` currently resolves to, base plus staged.
-
-        Off the components map rather than the member frame, for the reason
-        `_name_types` gives: membership is what the map decided, and resolving
-        the type's wide rows to read one column of it is the expensive way to
-        ask. `str` because a backend's column yields its own scalar type (a
-        `pyarrow.StringScalar`, say), which would compare unequal to the plain
-        strings an edit names.
-
-        Notes
-        -----
-        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-        """
-        axis = self.resolver.entity_axis
-        if axis is None:
-            return []
-        rows = (
-            axis.filter(col("entity_type") == lit(ctype)).project("entity").fetchall()
-        )
-        return [str(n) for (n,) in rows]
-
     def _name_types(self) -> nw.LazyFrame | None:
         """`(name, entity_type)` over everything this record resolves.
 
@@ -874,35 +851,30 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
 
-    def _resolve_types(self, names: Sequence[str]) -> dict[str, str]:
-        """`names` mapped to their types, rejecting any the record does not resolve.
+    def _require_members(self, names: Sequence[str]) -> None:
+        """Reject any of `names` the entity axis does not hold, base plus staged.
 
-        A value keyed to a name with no member row would resolve to nothing, so
+        A value keyed to a name with no axis row would resolve to nothing, so
         it is caught here rather than dropped at read time.
 
         Notes
         -----
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
-        wanted = list(dict.fromkeys(names))
-        known = self._name_types()
-        if known is None or not wanted:
-            found: dict[str, str] = {}
-        else:
-            matched = (
-                known.filter(nw.col("entity").is_in(wanted))
-                .select("entity", "entity_type")
-                .collect()
-            )
-            found = {str(n): str(t) for n, t in matched.iter_rows()}
-        unknown = sorted({n for n in wanted if n not in found})
+        wanted = list(dict.fromkeys(str(n) for n in names))
+        axis = self.resolver.entity_axis
+        found = (
+            set()
+            if axis is None or not wanted
+            else {str(n) for (n,) in axis.project("entity").fetchall()}
+        )
+        unknown = sorted(n for n in wanted if n not in found)
         if unknown:
             msg = (
-                f"no member row for {unknown}; `add` them first - a value for a "
+                f"no entity {unknown}; `add` them first - a value for a "
                 f"name no layer declares would resolve to nothing"
             )
             raise KeyError(msg)
-        return {n: found[n] for n in names}
 
     def _validate_dims(self, dims: Mapping[str, Any]) -> None:
         """The dim vocabulary, checked for either `kind`.
@@ -947,51 +919,21 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
 
-    def _validate_attribute(
-        self,
-        ctype: str,
-        attribute: str,
-        dims: Mapping[str, Any],
-        *,
-        name: str | None = None,
-    ) -> None:
-        """One name's attribute checks, against the spec of *its* type.
-
-        Inputs only: a result is declared in `results` rather than per type, so
-        `_validate_result` checks its name and dims and nothing checks its
-        membership - what a solve computes need not be a component the record
-        declares.
-
-        `name` is reported where known: with the type derived rather than passed, the name is what the caller can act on.
+    def _validate_attribute(self, attribute: str, dims: Mapping[str, Any]) -> None:
+        """An input attribute's declaration and the dims an edit names for it.
 
         Notes
         -----
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
-        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
-        who = f" (for {name!r})" if name is not None else ""
-        # The type's existence and its vocabulary are separate questions once
-        # attributes are declared record-wide: `entity_types` answers the
-        # first, `attributes_for` the second, and a type carrying nothing is
-        # not the same as a type the schema never declared. An empty
-        # `entity_types` is no vocabulary rather than an empty one - the axis
-        # is undeclared or a plain string - so there is nothing to check
-        # against and any label passes.
-        known = self.schema.entity_types
-        if known and ctype not in known:
-            msg = f"the schema declares no entity type {ctype!r}{who}"
+        spec = self.schema.attributes.get(attribute)
+        if spec is None or not self.schema.addresses_entity(attribute):
+            msg = f"no attribute {attribute!r} over `entity` is declared"
             raise KeyError(msg)
-        declared = self.schema.attributes_for(ctype)
-        if attribute not in declared:
-            msg = f"{ctype} does not carry {attribute!r}{who}"
-            raise KeyError(msg)
-        spec = declared[attribute]
         outside = sorted(set(dims) - spec.dims)
         if outside:
             msg = (
-                f"{ctype}.{attribute} does not vary over {outside}{who}; "
+                f"{attribute} does not vary over {outside}; "
                 f"it varies over {sorted(spec.dims) or 'nothing'}"
             )
             raise ValueError(msg)
@@ -1098,8 +1040,8 @@ class WorkingRecord(Record):
             self._validate_dims(dims)
             # One lookup serves both: rejects a name with no member row, and
             # returns the type whose spec is checked (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-            for name, ctype in self._resolve_types(keys).items():
-                self._validate_attribute(ctype, attribute, dims, name=name)
+            self._require_members(keys)
+            self._validate_attribute(attribute, dims)
         else:
             self._validate_result(attribute, dims)
 
@@ -1107,30 +1049,18 @@ class WorkingRecord(Record):
         self._stage_rows(attribute, table, keys, values, per_dim, dims)
 
     def _names_declaring(self, attribute: str) -> list[str]:
-        """Every resolved name whose type declares `attribute` - `names=None`.
-
-        The types come from the record rather than from `types_declaring` where
-        the schema declares no entity-type labels: the axis is then a plain
-        string and its labels are data, so what types exist is a question only
-        the resolved components can answer.
+        """Every entity the record resolves - what `entity=None` means.
 
         Notes
         -----
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        declared = self.schema.types_declaring(attribute)
-        if not self.schema.entity_types:
-            declared = frozenset(
-                c
-                for c in self.entity_types
-                if attribute in self.schema.attributes_for(c)
-            )
-        return [
-            name
-            for ctype in sorted(declared)
-            if ctype in self.entity_types
-            for name in self._resolved_names(ctype)
-        ]
+        axis = self.resolver.entity_axis
+        return (
+            []
+            if axis is None
+            else [str(n) for (n,) in axis.project("entity").fetchall()]
+        )
 
     def _validate_frame(
         self, lazy: nw.LazyFrame, attribute: str, dims: Mapping[str, Any]
@@ -1156,8 +1086,8 @@ class WorkingRecord(Record):
             .collect()["entity"]
             .to_list()
         ]
-        for name, ctype in self._resolve_types(names).items():
-            self._validate_attribute(ctype, attribute, dims, name=name)
+        self._require_members(names)
+        self._validate_attribute(attribute, dims)
 
     def _stage_rows(
         self,
@@ -1478,8 +1408,8 @@ class WorkingRecord(Record):
             frame = source[attribute]
             if names is not None:
                 if kind == "inputs":
-                    for name, ctype in self._resolve_types(names).items():
-                        self._validate_attribute(ctype, attribute, dims, name=name)
+                    self._require_members(names)
+                    self._validate_attribute(attribute, dims)
                 frame = frame.filter(nw.col("entity").is_in(names))
             for dim, value in dims.items():
                 frame = frame.filter(nw.col(dim) == value)
@@ -1790,15 +1720,6 @@ class WorkingRecord(Record):
                 f"tombstone has no key to remove; declare it `partial`"
             )
             raise ValueError(msg)
-        if dim == "entity" and self.schema.entity_type_dim is not None:
-            types = self._resolve_types(labels)
-            self._stage_tombstones(
-                _ENTITY_AXIS,
-                ("entity_type", "entity"),
-                [[types[name], name] for name in labels],
-                ("entity",),
-            )
-            return
         key = self.schema.axis_key(dim)
         if key != (dim,):
             msg = f"`remove({dim!r}, ...)`: a dim `within` {key[:-1]} is not handled"
