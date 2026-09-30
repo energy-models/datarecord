@@ -765,6 +765,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#fixed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -927,6 +938,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#fixed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1008,6 +1030,21 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>Outputs: the <code>outputs/</code> directory, <code>Schema.results</code>, <code>Record.outputs</code> and
   <code>set(kind="outputs")</code>. A solve's answers are stored as a record of their own,
   whose schema the producer defines.</li>
+</ul>
+<h3 id="fixed_1">Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>write_record</code> refuses a relation frame that carries a column beyond the
+  relation's columns and its tombstone, as <code>add_relation</code> already does.</li>
+<li><code>set(attribute, expr)</code> with a narwhals expression derives an attribute over
+  one dim alone, such as <code>p_nom</code> over <code>entity</code>, from that dim's axis. It raised
+  <code>KeyError</code> before (#33).</li>
+<li><code>set(attribute, expr)</code> with a narwhals expression raises <code>KeyError</code> when any
+  label it names has no current value, and names those labels. It derived the
+  labels that had a value and skipped the others without a word, and raised
+  only where none had one.</li>
+<li>Removing a label also removes the relation rows whose <code>values</code> column holds
+  it. A removed entity no longer leaves <code>port_entity</code> rows that map its ports to
+  it.</li>
 </ul>
 
 

@@ -1618,7 +1618,8 @@ Nothing else a caller passes is an <code>nw.Expr</code>, so the dispatch is unam
 <li>What is staged is the <em>result</em>, not the expression.
   So a committed layer holds ordinary rows, and nothing in the format records that a value was derived — replaying an edit sequence is not a thing the record supports.</li>
 </ul>
-<p>The expression is evaluated by narwhals against the resolved long frame, so it names <code>value</code> rather than the attribute: the frame is long, and one attribute per call means the column is always <code>value</code>.</p>
+<p>The expression is evaluated by narwhals against the resolved long frame, so it names <code>value</code> rather than the attribute: the frame is long, and one attribute per call means the column is always <code>value</code>.
+An attribute over one dim alone is a column of that dim's axis (<a href="../format/#where-a-value-lives">where a value lives</a>), so it is read from the resolved axis as a <code>(dim, value)</code> frame and staged back to the axis, and the expression names <code>value</code> there too.</p>
 <p><strong>A named target must resolve to a row.</strong>
 If the caller names <code>entity</code> or any other dim, every one of those targets must produce a row to derive from, or the call raises.
 The caller asked for those rows to take a new value and there is nothing to compute one from, which is a failed change rather than a no-op — the same class of error as <a href="#validation">naming a component no layer declares</a>, and it was silently staging zero rows before.</p>
@@ -1664,6 +1665,7 @@ Membership is not reducible to attribute values.</p>
 <code>dim</code> may be any dim declared <code>partial</code> (<code>Schema.partial_dims</code>), which includes every dim a relation is keyed by, such as <code>entity</code>, <code>bus</code> and <code>port</code>.
 Any other dim is refused, with an error that names <code>partial</code>: a layer owns such a dim whole, so a tombstone has no key to remove. A dim <code>within</code> another is refused too.</p>
 <p>It need not enumerate what it deletes: <a href="../layers/#deletion">the fold</a> applies it to every attribute row and every relation row keyed on the label, so a removed component takes its connection rows and its <code>entity_type</code> row with it.
+It also removes the relation rows whose <code>values</code> column holds the label, where that <code>values</code> dim is <code>partial</code> and has an axis: a removed component takes the <code>port_entity</code> rows that map its ports to it, and leaves the ports.
 A tombstone on the <a href="../format/#the-entity-axis">entity axis</a> has no dim scope: a component <a href="../schema/#existence-does-not-vary-along-a-dim">exists or it does not</a>.</p>
 <h2 id="add_relation-remove_relation"><code>add_relation</code> / <code>remove_relation</code><a class="headerlink" href="#add_relation-remove_relation" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">record</span><span class="o">.</span><span class="n">add_relation</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span>  <span class="c1"># the relation's own columns</span>
