@@ -69,7 +69,7 @@ Each edit maps onto exactly one part of the format:
 `add_relation` names no component type: a relation's rows are keyed by its columns and the type is not one of them, so there is nothing for it to scope ([where the rows live](format.md#where-a-value-lives)).
 Nor is there a `connect`/`disconnect` pair beside it — `connection` is one relation among however many the schema declares, and a call naming it would be the record layer holding one framework's vocabulary.
 
-The key of `attributes/` is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: the fold key is the dims declared `partial`, which include every dim a [relation](schema.md#relations) is keyed by.
+The key of `attributes/` is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: the fold key is the dims declared `partial`.
 No edit names a type. An `add` gives an entity its type through an `entity_type` column, which stages a row of the `entity_type` [relation](schema.md#types) keyed by `entity`, so one name has one type.
 
 The crucial property: **an edit is expressed in the format's own terms.** Setting a constant `p_max_pu` on twenty components _is_ twenty broadcast rows of `attributes/p_max_pu.parquet`, which is what a patch layer would hold anyway.
@@ -208,7 +208,7 @@ Adding a bus with no attributes makes the point — nothing to `set`, yet the bu
 Membership is not reducible to attribute values.
 
 `remove(dim, labels)` stages a tombstone per label on that dim's axis.
-`dim` may be any dim declared `partial` (`Schema.partial_dims`), which includes every dim a relation is keyed by, such as `entity`, `bus` and `port`.
+`dim` may be any dim declared `partial` (`Schema.partial_dims`), such as `entity`, `bus` and `port`.
 Any other dim is refused, with an error that names `partial`: a layer owns such a dim whole, so a tombstone has no key to remove. A dim `within` another is refused too.
 
 It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute row and every relation row keyed on the label, so a removed component takes its connection rows and its `entity_type` row with it.

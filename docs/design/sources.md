@@ -20,6 +20,7 @@ Data comes in, and a record goes out, as tables keyed by the names its [schema](
 
 The names are the contract, and nothing sits between a record and its consumer.
 `Schema.from_mathspec` builds a schema from a mathspec declarations file, so the dims, relations and attributes of a record carry the names of its dimensions, relations and parameters.
+A dimension the spec declares `ordered` is left out of [`partial`](schema.md#partial-the-granularity-of-an-override), so a layer restates a series along it whole.
 A spec that reads those parameters takes the same names in its `sources`.
 So specsolve's `solve(spec, sources)` takes what `to_sources(record)` returns, and the record needs no knowledge of the spec.
 

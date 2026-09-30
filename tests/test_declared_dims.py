@@ -26,7 +26,11 @@ from datarecord.schema import Schema
 DECLARATIONS = {
     "dimensions": {
         "scenario": {"description": "the futures dispatch is chosen in"},
-        "snapshot": {"description": "dispatch periods", "dtype": "datetime"},
+        "snapshot": {
+            "description": "dispatch periods",
+            "dtype": "datetime",
+            "ordered": True,
+        },
         "bus": {"description": "network nodes"},
         "carrier": {"description": "energy carriers"},
         "generator": {"description": "generating units, each on one bus"},
@@ -167,3 +171,45 @@ def test_flags_narrow_by_the_declared_dim(root, con):
     gas = child.record.flags(generator=["gas"])["Generator_p_max_pu"]
     assert "snapshot" in wind.varies, "wind's rows set the snapshot"
     assert "snapshot" in gas.broadcast, "gas's one row leaves the snapshot NULL"
+
+
+def test_a_relation_keyed_by_a_dim_outside_partial_folds_row_by_row(con, base_uri):
+    """`snapshot_period` is keyed by `snapshot`, which is ordered and so not partial.
+
+    `partial` had to name every relation key, which put `snapshot` in it and
+    let a layer patch one hour of a series. A relation folds on its own key
+    whatever `partial` says, and only a partial dim loses a label.
+    """
+    spec = {
+        "dimensions": {
+            "snapshot": {"dtype": "int", "ordered": True},
+            "period": {"dtype": "int", "ordered": True},
+            "generator": {},
+        },
+        "relations": {"snapshot_period": {"key": "snapshot", "values": "period"}},
+        "parameters": {"Generator_p_max_pu": {"dims": ["snapshot", "generator"]}},
+    }
+    schema = Schema.from_mathspec(spec)
+    assert schema.partial == {"generator"}, "the two ordered dims are left out"
+    write_schema(schema, base_uri)
+    root = Revision.create(con)
+    staged = WorkingRecord(root.record, con)
+    staged.add("period", pd.DataFrame({"period": [2030, 2040]}))
+    staged.add(
+        "snapshot",
+        pd.DataFrame({"snapshot": [0, 1, 2], "period": [2030, 2030, 2040]}),
+    )
+    first = staged.commit(NewChild(root))
+    staged = WorkingRecord(first.record, con)
+    staged.add(
+        "snapshot",
+        pd.DataFrame({"snapshot": [0, 1, 2], "period": [2030, 2040, 2040]}),
+    )
+    second = staged.commit(NewChild(first))
+
+    rows = second.record.relations["snapshot_period"].collect().to_native().to_pandas()
+    assert dict(zip(rows["snapshot"], rows["period"], strict=True)) == {
+        0: 2030,
+        1: 2040,
+        2: 2040,
+    }, "the later layer's period wins for snapshot 1"

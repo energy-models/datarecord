@@ -65,7 +65,8 @@ It is stored and never interpreted, since none of it describes the dimensioned d
 Every dim is declared: a record with `region`, `technology` or `vintage` needs no code change, and `dtype` is the axis's own property.
 
 A `Dimension` declares the axis's shape — its type and its [nesting](#within-an-axis-inside-an-axis).
-It does not declare which dims an _attribute_ varies over (that is [per attribute](#attributespec)), nor [the patch granularity](#partial-the-granularity-of-an-override), nor [order](record.md#axis-order), nor what classifies it — [a relation with it as `values`](#values-a-relation-that-classifies) says that, from the relation's side.
+It does not declare which dims an _attribute_ varies over (that is [per attribute](#attributespec)), nor [the patch granularity](#partial-the-granularity-of-an-override), nor what classifies it — [a relation with it as `values`](#values-a-relation-that-classifies) says that, from the relation's side.
+`ordered` says whether the axis's [order](record.md#axis-order) is part of the data: a snapshot follows the one before it, a generator follows nothing.
 
 ## `AttributeSpec`
 
@@ -155,8 +156,9 @@ A list is sugar for the dict with identical keys and values, so `key=["bus"]` is
 **A relation's file holds the relation's columns and its tombstones, and nothing else.** `relations/connection.parquet` is `entity | bus`, and `relations/corridor.parquet` is `from | to` ([where a value lives](format.md#where-a-value-lives)).
 No attribute is over a relation, so no attribute is a column of one. Data on a relation's rows goes over a dim of its own ([data on a relation's rows](#data-on-a-relations-rows)).
 
-**`partial` names every dim a relation is keyed by.** A layer adds or removes one relation row at a time, so the fold keys by those dims, and the schema refuses a `partial` that leaves one out ([`partial`](#partial-the-granularity-of-an-override)).
-The `values` dim of a functional relation is not in its key, so the rule does not reach it: `country` is an ordinary axis whose NULL means "every country" like any other dim's.
+**A relation folds on its own key, whatever `partial` says.** A layer that writes a row replaces the row with the same key and leaves the others ([one fold for every axis](read-path.md#one-fold-for-every-axis)).
+So a relation may be keyed by a dim outside `partial`: `snapshot_period` is keyed by `snapshot`, which is ordered and so restated whole.
+Only a `partial` dim loses a label (`remove` refuses any other), so no relation row is left keyed on a label that is gone.
 
 **Connections are one instance**, not a structural category: `Relation(key={"entity": "entity", "bus": "bus"})`. `bus` is one coordinate of one relation rather than a column the format fixes, and neither word appears in the record layer. `connection` is whatever a schema calls it.
 
@@ -195,7 +197,7 @@ attributes = {
     "role": AttributeSpec(dtype="str", dims={"port"}),  # dims/port.parquet
     "efficiency": AttributeSpec(dtype="float64", dims={"port", "timestep"}),
 }
-partial = {"port"}  # both relations are keyed by it
+partial = {"port"}  # a layer patches one port at a time
 ```
 
 mathspec's [PyPSA example](https://github.com/energy-models/mathspec/blob/main/examples/pypsa.yaml) declares the same shape: `link_output` is the dim, `Link_output_link` and `Link_output_bus` are the relations, and `Link_efficiency` is over `link_output`.
@@ -297,7 +299,7 @@ owned_per(attribute) = attribute.dims ∩ partial_dims
 partial_dims         = schema.partial, in declaration order
 ```
 
-`partial_dims` is the fold key: the dims declared `partial`, which include every dim a [relation](#relations) is keyed by — `entity` for the `entity_type` relation, `port` for `port_bus`.
+`partial_dims` is the fold key: the dims declared `partial`, such as `entity` and `port`.
 So `p_max_pu` is owned per entity and per scenario — `timestep` is not partial, so a patch to one hour restates that entity-scenario's whole series; `marginal_cost` per entity and scenario; `p_nom` and `carrier` per entity, once across everything else.
 
 Two things this buys.
@@ -313,7 +315,8 @@ That is the same "no half-owned extent" rule a series obeys, applied to a set of
 
 **Keep it small.** Every `partial` value dim widens the fold key, and the key is paid for by every read of every attribute.
 The cost of leaving a value dim out is paid once per edit and bounded by the axis; the cost of putting it in is paid by every read forever.
-So `partial` names the dims a relation is keyed by, and beside them only the value dims a layer patches value by value — `scenario`, not `timestep`.
+So `partial` names the dims a layer patches label by label — `entity`, `port`, `scenario` — and not `timestep`.
+`Schema.from_mathspec` starts from exactly that split: every dim the spec does not declare `ordered` is partial, unless the storage block names `partial` itself.
 
 ## One schema per record
 
