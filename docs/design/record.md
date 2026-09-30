@@ -118,7 +118,9 @@ A NULL dim means "all values of that dim", not that the attribute lacks the axis
 **Every dim an attribute is over broadcasts**, `entity` and `port` included: a NULL `entity` on `p_max_pu` means every entity, and a NULL `port` on `efficiency` means every port.
 The `values` dim of a functional relation is an ordinary axis too: `entity_type` and `country` broadcast like any other.
 
-Rows never overlap, so at most one covers any coordinate.
+One layer may hold a default and its exceptions side by side: an `efficiency` row with `port = NULL` beside one that names `dc_out`.
+Where two rows of the owning layer cover one coordinate, the row that names more of the attribute's dims wins there.
+Two rows that cover one coordinate where neither names a superset of the other's dims are a tie, and `write_record` refuses them: state the value at that coordinate in a row of its own.
 A coordinate no row covers — including an attribute with no rows at all — takes that attribute's `default` from [the schema](schema.md#attributespec).
 
 Broadcast form is preserved: a value held once is answered once, so a consumer can reconstruct the constant-versus-varying split from the shape it gets back.

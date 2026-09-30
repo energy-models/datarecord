@@ -17,13 +17,16 @@ Notes
 from __future__ import annotations
 
 import shutil
+from itertools import combinations
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from duckdb import ColumnExpression as col
+from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 
-from datarecord.duck import as_relation, base_uri_of, layer_dir
+from datarecord.duck import as_relation, base_uri_of, ex_all, layer_dir
 from datarecord.layered.resolve import cast_declared, read_schema, write_schema
 from datarecord.record import Frames, LayerData, RecordLike
 from datarecord.schema import Schema
@@ -72,6 +75,8 @@ def write_record(
     ValueError
         If a long frame is missing a long-schema column, or the schema declares a key
         dim no frame carries - either would make the fold misresolve the layer.
+        Also if two rows of one attribute cover one coordinate and neither
+        names more of its dims, which no rule orders.
 
     Notes
     -----
@@ -128,6 +133,8 @@ def write_record(
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
+                if kind == "attributes":
+                    _refuse_ties(rel, key, schema)
                 _write_frame(rel, f"{staging}{kind}/{key}.parquet", schema)
     except BaseException:
         if local:
@@ -324,6 +331,81 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             f"{missing}; the fold would key by a column that is not there (https://energy-models.github.io/datarecord/design/schema/#relations)"
         )
         raise ValueError(msg)
+
+
+def _refuse_ties(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
+    """Refuse two rows that cover one coordinate with neither naming more dims.
+
+    The read keeps the row that names more of the attribute's dims
+    (`resolve._named_most`), which orders two rows only where one names a
+    superset of the other's dims. Only pairs of distinct NULL patterns are
+    checked, which are few, and a pair overlaps where it agrees on the dims
+    both name. Reads the rows, unlike `_validate_frame`.
+
+    Raises
+    ------
+    ValueError
+        If two such rows overlap, naming both NULL patterns and a coordinate
+        they share.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    dims = schema.broadcasts_over(attribute)
+    if len(dims) < 2:
+        return
+    patterns = [
+        frozenset(d for d, unnamed in zip(dims, row, strict=True) if not unnamed)
+        for row in rel.project(*(col(d).isnull().alias(d) for d in dims))
+        .distinct()
+        .fetchall()
+    ]
+    for a, b in combinations(patterns, 2):
+        if a <= b or b <= a:
+            continue
+        overlap = _overlap(rel, dims, a, b)
+        if overlap is None:
+            continue
+        coordinate = ", ".join(
+            f"{d}={v!r}" for d, v in zip(sorted(a | b), overlap, strict=True)
+        )
+        msg = (
+            f"attributes/{attribute}.parquet has a row leaving "
+            f"{sorted(set(dims) - a)} NULL and one leaving {sorted(set(dims) - b)} "
+            f"NULL that both cover {coordinate}; neither names more of "
+            f"{list(dims)}, so no rule picks one. State the value at that "
+            f"coordinate in a row of its own (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
+        )
+        raise ValueError(msg)
+
+
+def _overlap(
+    rel: DuckDBPyRelation,
+    dims: tuple[str, ...],
+    a: frozenset[str],
+    b: frozenset[str],
+) -> tuple | None:
+    """A coordinate of `a | b` that a row naming `a` and one naming `b` share.
+
+    `None` where they share none. The dims neither names are left out: both
+    rows cover every label there.
+    """
+
+    def named(alias: str, names: frozenset[str]) -> DuckDBPyRelation:
+        return rel.filter(
+            ex_all(col(d).isnotnull() if d in names else col(d).isnull() for d in dims)
+        ).set_alias(alias)
+
+    both = sorted(a & b)
+    joined = named("a", a).join(
+        named("b", b),
+        ex_all(col("a", d) == col("b", d) for d in both) if both else lit(True),  # noqa: FBT003
+    )
+    row = joined.project(
+        *(col("a" if d in a else "b", d) for d in sorted(a | b))
+    ).fetchone()
+    return None if row is None else tuple(row)
 
 
 class _RecordLikeAsLayerData:

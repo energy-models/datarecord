@@ -95,6 +95,8 @@ The map already names the winning layer per key, so resolution reads only the ow
 There is no per-read `MAX`/group-by and no tombstone filter — deletions are already absent from the map.
 
 Each owned-per dim's arm is **NULL-aware**: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.
+A default and its exception in one layer both join the entry for the label the exception names, so at each coordinate the read keeps the rows that leave the fewest fold-key dims NULL ([the broadcast rule](record.md#the-broadcast-rule)).
+The coordinate is the attribute's own dims without `breakpoint`, so a curve is kept or dropped whole.
 
 A fold-key dim the attribute is not over is joined **NULL-safely**: it is NULL on both sides, so it matches and expands nothing.
 There is no membership gate at read: an attribute row is keyed by the labels of the fold-key dims it is over, and each of those axes is [tombstone-pruned in the fold](#one-fold-for-every-axis), so a row whose label on one of them was deleted is already gone from the map.

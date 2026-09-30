@@ -34,6 +34,14 @@ All notable changes to datarecord are documented here. The format follows
 - An attribute is over dims only. Data on a relation's rows goes over a dim of
   its own, related to the relation's columns.
 
+### Fixed
+
+- A layer that holds a default and its exception side by side, such as
+  `set("efficiency", 0.9, port=["dc_out"])` and `set("efficiency", 0.95)`,
+  reads one value at each coordinate: the row that names more of the
+  attribute's dims. A write is refused where two rows cover one coordinate and
+  neither names more dims than the other.
+
 ### Removed
 
 - Traits, per-type member files, `Record.entity_types`, `Schema.attributes_for`

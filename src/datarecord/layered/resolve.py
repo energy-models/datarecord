@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from functools import cached_property
+from functools import cached_property, reduce
 from uuid import UUID
 
 import duckdb
@@ -27,6 +27,7 @@ from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
+from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
@@ -470,6 +471,39 @@ def with_columns(
         duck_types.null(schema.column_type(c) or nw.String()).alias(c) for c in missing
     ]
     return rel.project(star(), *added)
+
+
+def _count_unnamed(alias: str, dims: Sequence[str]) -> Expression:
+    """How many of `dims` the raw row under `alias` leaves NULL."""
+    return reduce(
+        lambda total, dim: total + col(alias, dim).isnull().cast("INTEGER"),
+        dims,
+        lit(0),
+    )
+
+
+def _named_most(rel: DuckDBPyRelation, coordinates: Sequence[str]) -> DuckDBPyRelation:
+    """Per coordinate, only the rows whose `_unnamed` count is the lowest.
+
+    One layer may hold a default and its exceptions side by side, and the owner
+    map matches both at every coordinate the exception names. The partition is
+    the resolved coordinates without `breakpoint`, so a curve is kept or dropped
+    whole: partitioning per breakpoint would leak the default's extra points
+    into the exception's curve. `write_record` refuses the ties this cannot
+    order.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    partition = ", ".join(str(col(c)) for c in coordinates)
+    # `OVER (PARTITION BY ...)` stays text: DuckDB's expression API has no
+    # window construct.
+    ranked = rel.project(
+        star(),
+        sql(f"min(_unnamed) OVER (PARTITION BY {partition})").alias("_fewest"),
+    )
+    return ranked.filter(col("_unnamed") == col("_fewest"))
 
 
 def fold_inputs(
@@ -1083,10 +1117,13 @@ class Resolver:
                     if dim in partial_dims
                     else col("l", dim)
                     for dim in columns
-                )
+                ),
+                _count_unnamed("l", broadcast_over).alias("_unnamed"),
             )
         )
-        return resolved
+        if broadcast_over:
+            resolved = _named_most(resolved, keys.schema.coordinates_of(attribute))
+        return resolved.project(*(col(c) for c in columns))
 
     def relation_frame(self, relation: str) -> DuckDBPyRelation | None:
         """One relation's resolved rows, folded like an axis, in member order.
