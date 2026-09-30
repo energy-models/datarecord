@@ -41,7 +41,7 @@ Its type is a row of the `entity_type` [relation](schema.md#types), keyed by `en
 
 The [entity axis](#the-entity-axis) folds from `dims/entity.parquet`, and so do entity tombstones. Both must read the same source: membership from one and deletions from another would resolve a deletion the fold never saw.
 
-`entity` is the one dim the format knows by name. A NULL there is a value that belongs to no entity, so it never [broadcasts](record.md#the-broadcast-rule).
+`entity` [broadcasts](record.md#the-broadcast-rule) like any other dim: a NULL `entity` on an attribute over `entity` means every entity.
 
 A modelling framework that scopes names per type reconciles them before it writes, in [the converter](sources.md#framework-objects) that produces its tables.
 The record layer does not rename to hide a clash: a record's `entity` is the framework's own name, and a record that renamed them would hand back components the framework cannot find.
@@ -50,29 +50,29 @@ The record layer does not rename to hide a clash: a record's `entity` is the fra
 
 Decided by the attribute's [declared `dims`](schema.md#attributespec), not by a particular value.
 
-The rule: **an attribute naming exactly one addressing coordinate is a column on that thing's own table; anything more is long rows in `attributes/`.**
+The rule: **an attribute over exactly one dim is a column of that dim's own file; anything more is long rows in `attributes/`.**
 
-| `dims`                       | lands in                                                             |
-| ---------------------------- | -------------------------------------------------------------------- |
-| `{"entity"}`                 | `dims/entity.parquet` — a column of the entity axis itself           |
-| `{"entity_type"}`            | `dims/entity_type.parquet` — the axis file                           |
-| `{"connection"}`             | `relations/connection.parquet` — the relation's own file             |
-| `{"scenario"}`               | `dims/scenario.parquet` — the axis file                              |
-| `{"country"}`                | `dims/country.parquet` — the axis file, a dim shadowing the relation |
-| `{"entity", "snapshot"}`     | `attributes/<attr>.parquet`                                          |
-| `{"connection", "snapshot"}` | `attributes/<attr>.parquet`                                          |
+| `dims`                   | lands in                                                   |
+| ------------------------ | ---------------------------------------------------------- |
+| `{"entity"}`             | `dims/entity.parquet` — a column of the entity axis itself |
+| `{"entity_type"}`        | `dims/entity_type.parquet` — the axis file                 |
+| `{"port"}`               | `dims/port.parquet` — the axis file                        |
+| `{"scenario"}`           | `dims/scenario.parquet` — the axis file                    |
+| `{"country"}`            | `dims/country.parquet` — the axis file                     |
+| `{"entity", "snapshot"}` | `attributes/<attr>.parquet`                                |
+| `{"port", "snapshot"}`   | `attributes/<attr>.parquet`                                |
 
-So "varying" is not "has dims" but **"has dims beyond its address"**, and one rule covers a component's constant columns, a connection's `role`, and an axis's payload.
+So "varying" is not "has dims" but **"has more than one dim"**, and one rule covers a component's constant columns, a port's `role`, and an axis's payload.
 
-- **[The entity axis](#the-entity-axis)** — attributes addressed by `entity` alone: one column per attribute, beside `entity` and `deleted`.
-- **A [relation](schema.md#relations)'s file** — attributes addressed by that relation alone, PyPSA's `role` on a connection being one.
-- **An axis file** — attributes addressed by one dim alone. A snapshot weighting is a number per snapshot and belongs to no component, so `dims/snapshot.parquet` carries it as a declared column with a `dtype`, a `default` and a `description`. A per-type icon is a column of `dims/entity_type.parquet` in the same way.
-- **`attributes/<attr>.parquet`** — every attribute addressed by more than its own coordinate, even where a given component's value happens to be constant.
+- **[The entity axis](#the-entity-axis)** — attributes over `entity` alone: one column per attribute, beside `entity` and `deleted`.
+- **An axis file** — attributes over one dim alone. PyPSA's `role` is over `port` alone, so it is a column of `dims/port.parquet` ([data on a relation's rows](schema.md#data-on-a-relations-rows)). A snapshot weighting is a number per snapshot and belongs to no component, so `dims/snapshot.parquet` carries it as a declared column with a `dtype`, a `default` and a `description`. A per-type icon is a column of `dims/entity_type.parquet` in the same way.
+- **`attributes/<attr>.parquet`** — every attribute over more than one dim, even where a given component's value happens to be constant.
   That component is then a broadcast row, with the varying dims NULL.
 
 So the constant values of an entity come from both: its columns on the entity axis, and its broadcast rows in the varying files.
 
 A [relation](schema.md#relations)'s rows are in `relations/<relation>.parquet`, keyed by that relation's columns and carrying their own tombstones — `relations/connection.parquet` for the `connection` relation keyed by `(entity, bus)`.
+A relation's file carries no attribute: no attribute is over a relation.
 A record with no such file has no rows of that relation.
 
 **One file per relation, never split by type.** A relation's rows are keyed by its columns, and a type is not one of them, so `relations/connection.parquet` holds the connections of every type.
@@ -88,15 +88,13 @@ Every `attributes/` file carries its attribute's own coordinates, then the colum
 <coordinate> ... | attribute | breakpoint | value
 ```
 
-The coordinates are what the attribute's [`dims`](schema.md#attributespec) declare, with a [relation](schema.md#relations) expanding to its column names — so `attributes/efficiency.parquet` over the `connection` relation carries `entity | bus`, and `attributes/p_max_pu.parquet` over `entity` and `snapshot` carries `entity | snapshot` and no `bus`.
+The coordinates are the dims the attribute's [`dims`](schema.md#attributespec) name — so `attributes/efficiency.parquet` over `port` and `snapshot` carries `port | snapshot`, and `attributes/p_max_pu.parquet` over `entity` and `snapshot` carries `entity | snapshot` and no `port`.
 An attribute over one dim alone has no file here at all: it is [a column of that dim's own table](#where-a-value-lives).
 
-**Per attribute rather than schema-wide.** One attribute is one file, so one column set per file; a fixed prefix of `entity | bus` would put an all-NULL `entity` on a record-level weighting, claiming a component the value has none of, and would privilege one relation's spelling of `bus` over the columns of every other relation.
+**Per attribute rather than schema-wide.** One attribute is one file, so one column set per file; a fixed prefix of `entity` would put an all-NULL `entity` on a record-level weighting, claiming a component the value has none of.
 
 That the shapes differ costs nothing, because `UNION ALL BY NAME` supplies NULL for a column a file does not carry — which is also what lets a file written before a dim was declared still read back correctly ([resolving a relation](read-path.md#resolving-a-relation)).
 The fold's _key_ is uniform even though the files are not: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`, one fixed tuple over every attribute, and a coordinate an attribute does not carry reads as NULL there.
 
 One attribute per file, so `value` carries that attribute's dtype.
 There is **no `entity_type` column** on an attribute over `entity`: `attributes/p_max_pu.parquet` holds the `p_max_pu` rows of every entity, keyed by `entity`. A reader that wants the rows of one type joins the `entity_type` relation on `entity`.
-
-An attribute addressed by a relation alone is not here either: it is a column of that relation's own file ([where a value lives](#where-a-value-lives)) rather than a long row. PyPSA's `role` on a connection is the case.

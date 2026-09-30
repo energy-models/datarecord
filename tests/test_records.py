@@ -483,19 +483,21 @@ def test_a_directory_has_no_connections_when_none_were_written(con, base_uri, tm
     assert "connection" not in Record.at(layer, con).relations
 
 
-def test_a_directory_reads_connections_blocks_wrote(written, con):
-    """A record blocks wrote has them, with the roles the collapse assigned.
+def test_a_directory_reads_the_ports_a_network_wrote(written, con):
+    """A record a network wrote has its connections, and its ports with their roles.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     record = Record.at(layer_dir(written.id), con)
-    assert "connection" in record.relations
+    assert {"connection", "port_entity", "port_bus"} <= set(record.relations), (
+        "the network's connections and both port relations"
+    )
 
-    rows = record.relations["connection"].collect().to_native().to_pandas()
-    assert set(rows["role"]) == {"input", "output", "attached"}, (
-        "one file across every type, so a Generator's role rides beside a Link's"
+    ports = record.dims["port"].collect().to_native().to_pandas()
+    assert set(ports["role"]) == {"input", "output", "attached"}, (
+        "one axis across every type, so a Generator's role sits beside a Link's"
     )
 
 
@@ -517,9 +519,9 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
     beside those layers is a property of the connection too. Two records on
     two roots therefore disagree about their dims without either being wrong.
 
-    Every declared dim is a broadcast dim now, `entity` and the connection's
-    `bus` included, so each tuple is the root's whole dim list rather than its
-    value dims alone.
+    Every declared dim is a broadcast dim now, `entity`, the connection's
+    `bus` and `port` included, so each tuple is the root's whole dim list rather
+    than its value dims alone.
     """
     from datarecord import duck
     from datarecord.layered.resolve import write_schema as write_manifest
@@ -539,12 +541,14 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
     assert revision_a.record.schema.broadcast_dims == (
         "entity",
         "bus",
+        "port",
         "scenario",
         "entity_type",
     ), "root a reads its own `scenario`, beside the fixture's other dims"
     assert revision_b.record.schema.broadcast_dims == (
         "entity",
         "bus",
+        "port",
         "vintage",
         "entity_type",
     ), "root b reads its own `vintage`, beside the fixture's other dims"
@@ -553,9 +557,13 @@ def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
     # carries none (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record), so the connection's root answers - which is what
     # `Record.at` used to take a `declared` argument for.
     layer = Record.at(layer_dir(revision_b.id, root_b), con_b)
-    assert layer.schema.broadcast_dims == ("entity", "bus", "vintage", "entity_type"), (
-        "a layer read at its URI takes its connection's root schema"
-    )
+    assert layer.schema.broadcast_dims == (
+        "entity",
+        "bus",
+        "port",
+        "vintage",
+        "entity_type",
+    ), "a layer read at its URI takes its connection's root schema"
 
     for _, con, _ in roots.values():
         con.close()

@@ -71,7 +71,9 @@ The rest is data, and comes in two shapes.
 ```text
 dims["scenario"]                       scenario | ...   one row per axis label, in axis order
 dims["entity"]                         entity | <attributes over entity alone>
-relations["connection"]                entity | bus | <attributes over the relation>
+dims["port"]                           port | <attributes over port alone>
+relations["connection"]                entity | bus
+relations["port_bus"]                  port | bus
 relations["entity_type"]               entity | entity_type
 ```
 
@@ -81,13 +83,13 @@ relations["entity_type"]               entity | entity_type
 
 ```text
 attributes["p_max_pu"]     entity | <one column per coordinate> | attribute | breakpoint | value
-attributes["efficiency"]   entity | bus | <...> | attribute | breakpoint | value
+attributes["efficiency"]   port | <...> | attribute | breakpoint | value
 ```
 
 A row names what the value belongs to, the coordinate it sits at, and the value there.
 
-**The columns are the attribute's own**, not a fixed set every file carries: an attribute's coordinates are what its [`dims`](schema.md#attributespec) declare, with a [relation](schema.md#relations) expanding to its column names.
-So `efficiency` over the `connection` relation carries `entity | bus`, `flow` over a `corridor` carries `from | to`, and `objective_weighting` over `snapshot` alone carries no entity column at all — an all-NULL `entity` would be a column claiming a component the value has none of.
+**The columns are the attribute's own**, not a fixed set every file carries: an attribute's coordinates are the dims its [`dims`](schema.md#attributespec) name.
+So `efficiency` over `port` and `timestep` carries `port | timestep`, and `objective_weighting` over `snapshot` alone carries no entity column at all — an all-NULL `entity` would be a column claiming a component the value has none of.
 `union_by_name` is what lets the fold union files of differing shape, supplying NULL for a coordinate a given file does not carry.
 
 There is **no `entity_type` column** in that row, and none in the mapping's key either: `attributes["p_max_pu"]` holds every type's `p_max_pu` together, since an `entity` already identifies a component on its own ([what a data record is](index.md#what-a-data-record-is)).
@@ -97,32 +99,24 @@ A consumer that wants one type's rows joins `relations["entity_type"]` on `entit
 
 ## Connections
 
-Some attributes belong not to a component but to one of its connections to a bus.
+A component attaches to buses, and some attributes are per attachment rather than per component.
+Each attachment is one label of a dim of its own, `port` in the PyPSA-shaped schema, and two functional [relations](schema.md#relations) tie it to its component and its bus: `port_entity` keyed by `port` with values `entity`, and `port_bus` keyed by `port` with values `bus`.
+`role`, which end of the component a port is, is an attribute over `port` alone, so it is a column of `dims["port"]`. `efficiency` is over `port` and `timestep`, so it is long rows like any other attribute, and decodes by the same rules with no special case ([data on a relation's rows](schema.md#data-on-a-relations-rows)).
 
-A connection is one row of the **`connection` [relation](schema.md#relations)** — `Relation(key={"entity": "entity", "bus": "bus"})` — rather than a structural category of its own.
-`relations["connection"]` lists the attachments themselves, one row per `(entity, bus)`, across every component type; `role` — which end of the component it is — describes the connection and identifies nothing, and is an ordinary attribute a schema declares over the relation rather than a column the format fixes.
+A port is identified by **its own label**, never by position. A patch layer that adds a port adds a label, and no other port is renumbered.
 
-A connection is identified by **the bus it attaches to**, never by position.
-An attribute is a connection attribute because its `dims` name the relation, so a per-connection value is otherwise an ordinary long row: `efficiency` may vary by timestep and scenario like any other attribute, and decodes by the same rules with no special case.
-
-A record declaring no such relation has no connections, and one declaring it with no rows answers `relations["connection"]` empty.
-Nothing about the mechanism is particular to buses — `corridor` over `(from, to)` is the same machinery, which is why `bus` is a coordinate name here rather than a word the read path knows.
+A schema may also declare `connection`, keyed by `(entity, bus)`, for the topology alone. `relations["connection"]` then lists the attachments, one row per `(entity, bus)` across every component type, and carries no attribute.
+A record declaring none of these has no connections. Nothing about the mechanism is particular to buses — `corridor` over `(from, to)` is the same machinery, which is why `bus` is a dim name here rather than a word the read path knows.
 
 ## The broadcast rule
 
 A row's `value` applies to every combination of its NULL dim columns, enumerated from the axis frames in `dims`.
 A NULL dim means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep.
 
-**A NULL expands only for an attribute addressed by that dim.** Every row of the fold carries every dim, so a row of `efficiency`, which is not addressed by `scenario`, reads NULL there too. That NULL means "not addressed", and it expands nothing.
+**A NULL expands only for an attribute over that dim.** Every row of the fold carries every dim, so a row of `efficiency`, which is not over `scenario`, reads NULL there too. That NULL means "not over this dim", and it expands nothing.
 
-**Two kinds of coordinate do not broadcast**, and for the same reason — neither has an axis to expand against:
-
-- **`entity`.** A NULL there is a value belonging to no component rather than to every component. It is the one dim the format knows by name ([the entity axis](format.md#the-entity-axis)).
-- **A coordinate some [relation](schema.md#relations) is keyed by.** A NULL `bus` on a connection attribute means "every connection of _this_ entity", which is the relation's rows — a sparse subset only the relation's table knows, not the bus axis.
-
-Both kinds are compared NULL-safely, and both are in the fold key as membership keys rather than through [`partial`](schema.md#partial-the-granularity-of-an-override): a coordinate addressed individually is one a layer patches row by row.
-
-Every other dim broadcasts, the `values` dim of a functional relation included: `entity_type` and `country` are ordinary axes.
+**Every dim an attribute is over broadcasts**, `entity` and `port` included: a NULL `entity` on `p_max_pu` means every entity, and a NULL `port` on `efficiency` means every port.
+The `values` dim of a functional relation is an ordinary axis too: `entity_type` and `country` broadcast like any other.
 
 Rows never overlap, so at most one covers any coordinate.
 A coordinate no row covers — including an attribute with no rows at all — takes that attribute's `default` from [the schema](schema.md#attributespec).
@@ -178,11 +172,11 @@ Per component they would be complements; the aggregation over several entities i
 **`varies | broadcast`** is the test for whether an attribute touches a dim at all.
 Both sets empty for a dim means the attribute has no values along it, so the consumer builds no container there.
 
-**Both sets are scoped to what the attribute is addressed by.** A dim outside its [`dims`](schema.md#attributespec) is in neither, never in `broadcast`.
+**Both sets are scoped to the dims the attribute is over.** A dim outside its [`dims`](schema.md#attributespec) is in neither, never in `broadcast`.
 The two are easy to conflate because whatever the flags are aggregated from — the [owner map](read-path.md#owner-map), a scan of `attributes/`, a staging table — is one DuckDB relation over every attribute, so a dim one attribute uses reads NULL for the rows of one that does not; but that NULL means "no such axis", not "every value of it".
 Reporting it as broadcast would answer the question above wrongly for every attribute in the record: a consumer would build a constant container along an axis the attribute has no values on.
 
-So an attribute addressed by `entity` alone reports both sets empty, and that is not the same as having no rows — an attribute with no rows at all is [absent from the mapping](#flags) entirely.
+So an attribute over `entity` alone reports both sets empty, and that is not the same as having no rows — an attribute with no rows at all is [absent from the mapping](#flags) entirely.
 
 A consumer asks per type, because one file holds every type's rows: unioning across types would report a Generator's per-timestep rows and a Link's single row as one shape, which describes neither.
 So it passes the names of one type, read from `relations["entity_type"]`, and `flags` filters the [owner map](read-path.md#owner-map) on `entity`.

@@ -31,6 +31,8 @@ All notable changes to datarecord are documented here. The format follows
 - Groups are relations: `Relation(key, values)`, `Schema.relations`,
   `record.relations` and `add_relation`. A relation's rows are stored under
   `relations/`, and attribute values under `attributes/`.
+- An attribute is over dims only. Data on a relation's rows goes over a dim of
+  its own, related to the relation's columns.
 
 ### Removed
 

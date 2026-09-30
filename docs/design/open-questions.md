@@ -29,7 +29,7 @@ SPDX-License-Identifier: CC-BY-4.0
   What is open is the granularity: "which types have live rows" and "how many members a type has" are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
   Whatever is chosen, it has to be answerable off the resolved axes and relations, which is where a record's membership lives.
 
-- **Whether [`flags`](record.md#flags) needs a counterpart for an attribute stored as a column.** `flags` reads the owner map, so an attribute addressed by an axis alone or by a [relation](schema.md#relations) alone, which is a column of that file, is not reachable through it.
+- **Whether [`flags`](record.md#flags) needs a counterpart for an attribute stored as a column.** `flags` reads the owner map, so an attribute over one axis alone, which is a column of that axis's file, is not reachable through it.
 
   A second method keyed by attribute and scoped record-wide would answer it: which attributes have values at all, and which coordinates they use.
   What is unsettled is whether that replaces `flags` or sits beside it.
@@ -37,6 +37,5 @@ SPDX-License-Identifier: CC-BY-4.0
 ## Settled
 
 - **Whether `within` should subsume `bus`** — no; [relations](schema.md#relations) do it.
-  The recorded blocker was that `bus` inverts the rule NULL follows for a dim: a NULL declared dim means "all values" and the fold expands it against the axis, while a NULL `bus` is compared NULL-safely and never expanded.
-  That premise did not survive. Expansion is governed by whether a coordinate is in the fold's key set, and a non-`partial` dim is never expanded either — so the behaviour that "makes a dim a dim" was never uniform, and `bus` was not an exception to it.
-  A relation states the rule instead of carrying an exception: a relation key coordinate addresses a sparse subset with no axis to expand against, which is [the broadcast rule](record.md#the-broadcast-rule) rather than a special case in it.
+  `bus` is an ordinary dim, and a NULL `bus` [broadcasts](record.md#the-broadcast-rule) like a NULL in any other dim.
+  Data on a component's attachments to buses goes over a dim of its own, related to `entity` and `bus` ([data on a relation's rows](schema.md#data-on-a-relations-rows)).

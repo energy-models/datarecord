@@ -29,7 +29,7 @@ from datarecord.sources import from_sources
 # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
 LONG_COLUMNS = [
     "entity",
-    "bus",
+    "port",
     "snapshot",
     "scenario",
     "period",
@@ -46,14 +46,13 @@ def write_attribute(
 
     Each row needs at least `name` and `value`; missing dimension columns
     default to NULL, i.e. "applies to the whole axis".
-    `bus` set marks a per-connection attribute, `breakpoint`
+    `port` set marks a per-port attribute, `breakpoint`
     a piecewise-linear one; both NULL is the ordinary component-level
     scalar.
 
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     df = pd.DataFrame(rows)
     df["attribute"] = attribute
@@ -62,7 +61,7 @@ def write_attribute(
             df[col] = None
     df["snapshot"] = pd.Series(df["snapshot"]).astype(snapshot_dtype)
     df["scenario"] = df["scenario"].astype("string")
-    df["bus"] = df["bus"].astype("string")
+    df["port"] = df["port"].astype("string")
     df["period"] = df["period"].astype("Int64")
     df["breakpoint"] = df["breakpoint"].astype("float64")
     df["value"] = df["value"].astype("float64")
@@ -98,11 +97,9 @@ def write_relation(layer: str, name: str, rows: list[dict]) -> None:
 def write_connections(layer: str, rows: list[dict]) -> None:
     """Write `relations/connection.parquet`, including the `deleted` tombstone.
 
-    Each row needs `entity` and `bus`; `role` describes the connection and keys
-    nothing, so it is optional here.
-
-    No component type - one file holds every type's rows. Appended rather than
-    replaced, since a layer may write them a call at a time.
+    Each row needs `entity` and `bus`. No component type - one file holds every
+    type's rows. Appended rather than replaced, since a layer may write them a
+    call at a time.
 
     Notes
     -----
@@ -110,36 +107,40 @@ def write_connections(layer: str, rows: list[dict]) -> None:
     - [where the rows live](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     df = pd.DataFrame(rows)
-    for col in ("scenario", "role"):
-        if col not in df:
-            df[col] = None
-        df[col] = df[col].astype("string")
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
-
-    lead = ["entity", "bus", "role", "scenario", "deleted"]
-    ordered = lead + [c for c in df.columns if c not in lead]
-    target = Path(layer, "relations")
-    target.mkdir(parents=True, exist_ok=True)
-    path = target / "connection.parquet"
-    out = df[ordered]
-    if path.exists():
-        out = pd.concat([pd.read_parquet(path), out], ignore_index=True)
-    out.to_parquet(path, index=False)
+    _append(Path(layer, "relations", "connection.parquet"), df)
 
 
-def tombstone_connection(layer: str, pairs: list[tuple[str, str]]) -> None:
-    """Mark connections deleted in this layer, by `(entity, bus)`.
+def port(entity: str, suffix: str) -> str:
+    """The `port` label of `entity`'s attachment `suffix` - PyPSA's `""`, `"0"`, `"1"`."""
+    return f"{entity}:{suffix}"
+
+
+def write_ports(layer: str, rows: list[dict]) -> None:
+    """Write ports: the `port` axis with its `role`, and `port_entity` and `port_bus`.
+
+    Each row needs `entity`, `port` (the suffix `port()` labels) and `bus`;
+    `role` is optional. Appended rather than replaced, since a layer may write
+    them a call at a time.
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
     """
-    write_connections(
-        layer,
-        [{"entity": name, "bus": bus, "deleted": True} for name, bus in pairs],
-    )
+    df = pd.DataFrame(rows)
+    df["port"] = [port(e, p) for e, p in zip(df["entity"], df["port"], strict=True)]
+    if "role" not in df:
+        df["role"] = None
+    df["role"] = df["role"].astype("string")
+    df["deleted"] = False
+    _append(Path(layer, "dims", "port.parquet"), df[["port", "role", "deleted"]])
+    for relation, column in (("port_entity", "entity"), ("port_bus", "bus")):
+        _append(
+            Path(layer, "relations", f"{relation}.parquet"),
+            df[["port", column, "deleted"]],
+        )
 
 
 # The attributes `_default_attributes` declares over more than `entity`: a
@@ -314,7 +315,7 @@ def network_schema(n) -> Schema:
 
     `p_nom` and `carrier` are entity-axis columns; `SERIES` and the per-port
     `efficiency` vary over `snapshot`, and over `scenario` too where `n` has
-    one; `role` is a column of the `connection` relation.
+    one; `role` is a column of the `port` axis.
     """
     varying = {"snapshot", "scenario"} if n.has_scenarios else {"snapshot"}
     declared = {
@@ -324,8 +325,8 @@ def network_schema(n) -> Schema:
             a: AttributeSpec(dtype=nw.Float64(), dims={"entity", *varying})
             for a in SERIES
         },
-        "efficiency": AttributeSpec(dtype=nw.Float64(), dims={"connection", *varying}),
-        "role": AttributeSpec(dtype=nw.String(), dims={"connection"}),
+        "efficiency": AttributeSpec(dtype=nw.Float64(), dims={"port", *varying}),
+        "role": AttributeSpec(dtype=nw.String(), dims={"port"}),
     }
     return schema(attributes={"network": declared})
 
@@ -350,7 +351,11 @@ def network_tables(n) -> dict[str, pd.DataFrame]:
     tables = {
         "snapshot": pd.DataFrame({"snapshot": n.snapshots}),
         "entity": network_kinds(n)[["entity"]].assign(deleted=False),
-        "connection": ports[["entity", "bus", "role"]],
+        "port": ports[["port"]],
+        "role": ports[["port", "role"]].rename(columns={"role": "value"}),
+        "port_entity": ports[["port", "entity"]],
+        "port_bus": ports[["port", "bus"]],
+        "connection": ports[["entity", "bus"]].drop_duplicates(ignore_index=True),
         "efficiency": pd.concat(
             [
                 _per_port(n.c[t], "efficiency", rows)
@@ -424,21 +429,30 @@ def _port_name(stem: str, port: str) -> str:
 
 
 def _ports(c) -> pd.DataFrame:
-    """One type's attachments, `(type, port, entity, bus, role)`, one per bus it names.
+    """One type's attachments, `(type, suffix, port, entity, bus, role)`, one per bus it names.
 
-    `role` is PyPSA's sign convention written out: a one-port component is
-    `attached`, port `0` the `input`, every later port an `output`.
+    `suffix` is PyPSA's port, `port` its label (`port()`). `role` is PyPSA's
+    sign convention written out: a one-port component is `attached`, port `0`
+    the `input`, every later port an `output`.
     """
     static = c.static.reset_index().rename(columns={"name": "entity"})
     frames = []
-    for port in c.ports:
-        column = _port_name("bus", port)
+    for suffix in c.ports:
+        column = _port_name("bus", suffix)
         if column not in static:
             continue
         rows = static[["entity", column]].rename(columns={column: "bus"})
-        role = "attached" if port == "" else "input" if port == "0" else "output"
-        frames.append(rows[rows["bus"] != ""].assign(type=c.name, port=port, role=role))
-    columns = ["type", "port", "entity", "bus", "role"]
+        rows = rows[rows["bus"] != ""]
+        role = "attached" if suffix == "" else "input" if suffix == "0" else "output"
+        frames.append(
+            rows.assign(
+                type=c.name,
+                suffix=suffix,
+                port=[port(e, suffix) for e in rows["entity"]],
+                role=role,
+            )
+        )
+    columns = ["type", "suffix", "port", "entity", "bus", "role"]
     return (
         pd.concat(frames)[columns].drop_duplicates()
         if frames
@@ -447,16 +461,16 @@ def _ports(c) -> pd.DataFrame:
 
 
 def _per_port(c, stem: str, ports: pd.DataFrame) -> pd.DataFrame:
-    """One type's per-port `stem` as long rows, each carrying the bus of its port."""
+    """One type's per-port `stem` as long rows, keyed by `port` rather than `entity`."""
     return pd.concat(
         [
-            _series(c, _port_name(stem, port)).merge(
-                rows[["entity", "bus"]], on="entity"
-            )
-            for port, rows in ports.groupby("port")
-            if _has(c, _port_name(stem, port))
+            _series(c, _port_name(stem, suffix))
+            .merge(rows[["entity", "port"]], on="entity")
+            .drop(columns="entity")
+            for suffix, rows in ports.groupby("suffix")
+            if _has(c, _port_name(stem, suffix))
         ]
-        or [pd.DataFrame(columns=["entity", "bus", "value"])],
+        or [pd.DataFrame(columns=["port", "value"])],
         ignore_index=True,
     )
 
@@ -517,19 +531,18 @@ def write_directory_schema(directory: str, schema: Schema) -> None:
     Path(directory, "manifest.json").write_text(schema.model_dump_json())
 
 
-def _default_attributes(
-    dims: dict[str, nw.dtypes.DType], relations: dict[str, dict[str, str]]
-):
+def _default_attributes(dims: dict[str, nw.dtypes.DType], *, ports: bool):
     """The attributes tests write, declared over whichever dims are in play.
 
     Writing an attribute the schema does not declare is rejected, since its
     `dims` are what say which columns its file carries - so every attribute a
     test writes has to be declared, and these are the ones they write.
 
-    Addressed over every declared dim rather than a narrower set, which is the
-    widest shape and so the one that accepts any row a test writes.
-    `efficiency` is the exception, being over the `connection` relation where one
-    is declared: that is what puts a `bus` column on its file.
+    Over every declared dim rather than a narrower set, which is the widest
+    shape and so the one that accepts any row a test writes. `efficiency` is
+    the exception, being over `port` rather than `entity` where ports are
+    declared - and not over `bus`, which `port_bus` maps a port to - and
+    `role` a column of the `port` axis.
 
     `weight` is the other, addressed by `scenario` alone - so it is a column of
     `dims/scenario.parquet` rather than a long row, and it is declared because
@@ -537,7 +550,7 @@ def _default_attributes(
     declaration accounts for.
     """
     varying = {"entity", *dims}
-    connection = "connection" if "connection" in relations else "entity"
+    per_port = {"port", *dims} - {"bus"} if ports else varying
     declared = {
         "p_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
         "e_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
@@ -546,8 +559,10 @@ def _default_attributes(
         "marginal_cost": AttributeSpec(
             dtype=nw.Float64(), dims=varying, breakpoints=True
         ),
-        "efficiency": AttributeSpec(dtype=nw.Float64(), dims={connection, *dims}),
+        "efficiency": AttributeSpec(dtype=nw.Float64(), dims=per_port),
     }
+    if ports:
+        declared["role"] = AttributeSpec(dtype=nw.String(), dims={"port"})
     if "scenario" in dims:
         declared["weight"] = AttributeSpec(
             dtype=nw.Float64(),
@@ -578,10 +593,14 @@ def schema(
     `dims` to declare another axis, `relations` to declare a different sparse
     relation, and `within` to nest one axis inside another.
 
+    Where `bus` is declared, so is a `port` dim - one label per attachment of
+    a component to a bus - with the relations `port_entity` and `port_bus`
+    mapping it to both, as mathspec's PyPSA example does.
+
     `entity` and every relation coordinate are declared dims and are `partial`:
-    a layer patches one component's value, or one connection's, without
-    restating the rest, which is what `partial` means. The schema requires it,
-    so this supplies it rather than leaving each caller to.
+    a layer patches one component's value, or one port's, without restating
+    the rest, which is what `partial` means. The schema requires it, so this
+    supplies it rather than leaving each caller to.
 
     Notes
     -----
@@ -599,19 +618,24 @@ def schema(
     # Declared whether or not a caller named them: a test writing `p_max_pu`
     # needs it declared, and one passing `attributes=` is narrowing what a type
     # *carries* rather than shortening the record's vocabulary.
-    for attr, spec in _default_attributes(dims, relations).items():
-        flat.setdefault(attr, spec)
     # A relation's coordinates are dims like any other, so they are declared here
     # rather than assumed - which is what lets a caller pass a relation over
     # coordinates that are not called `bus`.
     coordinates = {c for key in relations.values() for c in key}
+    ports = {"port"} if "bus" in coordinates else set()
+    for attr, spec in _default_attributes(dims, ports=bool(ports)).items():
+        flat.setdefault(attr, spec)
     declared = {
         "entity": nw.String(),
-        **{c: nw.String() for c in coordinates},
+        **{c: nw.String() for c in (*coordinates, *ports)},
         **dims,
+    }
+    port_relations = {
+        f"port_{d}": Relation(key=["port"], values=d) for d in ("entity", "bus")
     }
     return Schema(
         relations={r: Relation(key=key) for r, key in relations.items()}
+        | (port_relations if ports else {})
         | {"entity_type": Relation(key=["entity"], values="entity_type")},
         dimensions={
             d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))
@@ -619,7 +643,7 @@ def schema(
         }
         | {"entity_type": Dimension(dtype=nw.String())},
         attributes=flat,
-        partial=frozenset({"entity", *coordinates, *partial}),
+        partial=frozenset({"entity", *coordinates, *ports, *partial}),
     )
 
 

@@ -761,7 +761,6 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
                     "entity": "NewSolar",
                     "entity_type": GEN,
                     "bus": "Manchester",
-                    "role": "attached",
                     "carrier": "solar",
                     "p_nom": 42.0,
                 }
@@ -815,7 +814,6 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
                     "entity": "NewSolar",
                     "entity_type": GEN,
                     "bus": "Manchester",
-                    "role": "attached",
                 }
             ]
         ),
@@ -828,6 +826,44 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     assert buses["Manchester Wind"] == "Manchester", (
         "the inherited components keep their bus"
     )
+
+
+def test_add_stages_a_port_with_its_role_and_relations(staged, root):
+    """A port is a label: `role` is a column of its axis, entity and bus its relations.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
+    """
+    staged.add(
+        "port",
+        pd.DataFrame(
+            [
+                {
+                    "port": "Manchester Wind:x",
+                    "entity": "Manchester Wind",
+                    "bus": "Norway",
+                    "role": "attached",
+                }
+            ]
+        ),
+    )
+    staged.set("efficiency", 0.5, port="Manchester Wind:x")
+    child = staged.commit(NewChild(root))
+
+    axis = child.resolver.dims.axes["port"].df().set_index("port")
+    assert axis.loc["Manchester Wind:x", "role"] == "attached", "a port-axis column"
+    for relation, column, label in (
+        ("port_entity", "entity", "Manchester Wind"),
+        ("port_bus", "bus", "Norway"),
+    ):
+        rows = child.record.relations[relation].collect().to_native().to_pandas()
+        mapped = dict(zip(rows["port"], rows[column], strict=True))
+        assert mapped["Manchester Wind:x"] == label, f"a `{relation}` row"
+    efficiency = child.record.attributes["efficiency"].collect().to_native()
+    mine = efficiency.to_pandas().query("port == 'Manchester Wind:x'")
+    assert list(mine["value"]) == [0.5], "a value over the new port"
 
 
 def test_add_rejects_a_column_the_schema_does_not_declare(staged):
@@ -919,9 +955,7 @@ def test_add_relation_stages_a_new_connection(staged, root):
     """
     staged.add_relation(
         "connection",
-        pd.DataFrame(
-            [{"entity": "Manchester Wind", "bus": "Norway", "role": "attached"}]
-        ),
+        pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}]),
     )
     staged_rows = staged.relations["connection"].collect().to_native().to_pandas()
     assert "Norway" in set(

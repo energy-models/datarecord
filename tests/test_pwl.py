@@ -14,11 +14,12 @@ from datarecord.layered.revision import Revision
 from datarecord.record import Flags
 from tests.fixtures import (
     names,
+    port,
     relation,
     schema,
     write_attribute,
-    write_connections,
     write_entity_type,
+    write_ports,
     write_schema,
 )
 
@@ -121,8 +122,8 @@ def test_patch_replaces_the_whole_curve(con, base_uri):
     assert _curve(child, "marginal_cost") == [(0.0, 25.0), (90.0, 70.0)]
 
 
-def test_curve_on_a_connection(con, base_uri):
-    """`bus` and `breakpoint` compose: one keys, the other does not.
+def test_curve_on_a_port(con, base_uri):
+    """`port` and `breakpoint` compose: one keys, the other does not.
 
     Notes
     -----
@@ -132,58 +133,42 @@ def test_curve_on_a_connection(con, base_uri):
     layer = layer_dir(revision.id)
     write_schema(schema())
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_connections(
+    write_ports(
         layer,
         [
-            {"entity": "steel_dri", "bus": "h2_north", "role": "input"},
-            {"entity": "steel_dri", "bus": "dri", "role": "output"},
+            {"entity": "steel_dri", "port": "0", "bus": "h2_north", "role": "input"},
+            {"entity": "steel_dri", "port": "1", "bus": "dri", "role": "output"},
         ],
     )
+    h2, dri = port("steel_dri", "0"), port("steel_dri", "1")
     write_attribute(
         layer,
         "efficiency",
         [
-            {
-                "entity_type": PROCESS,
-                "entity": "steel_dri",
-                "bus": bus,
-                "breakpoint": x,
-                "value": v,
-            }
-            for bus, x, v in (
-                ("h2_north", 0.0, 2.0),
-                ("h2_north", 50.0, 2.4),
-                ("dri", 0.0, 1.0),
-            )
+            {"port": p, "breakpoint": x, "value": v}
+            for p, x, v in ((h2, 0.0, 2.0), (h2, 50.0, 2.4), (dri, 0.0, 1.0))
         ],
     )
     revision.materialise()
 
-    # Each connection owns its own curve, so a patch to one leaves the other.
     child = revision.child()
     write_attribute(
         layer_dir(child.id),
         "efficiency",
         [
-            {
-                "entity_type": PROCESS,
-                "entity": "steel_dri",
-                "bus": "h2_north",
-                "breakpoint": x,
-                "value": v,
-            }
+            {"port": h2, "breakpoint": x, "value": v}
             for x, v in ((0.0, 3.0), (50.0, 3.5), (99.0, 4.0))
         ],
     )
 
-    df = relation(child, "efficiency").order("bus, breakpoint").df()
-    rows = list(zip(df["bus"], df["breakpoint"], df["value"], strict=True))
+    df = relation(child, "efficiency").order("port, breakpoint").df()
+    rows = list(zip(df["port"], df["breakpoint"], df["value"], strict=True))
     assert rows == [
-        ("dri", 0.0, 1.0),
-        ("h2_north", 0.0, 3.0),
-        ("h2_north", 50.0, 3.5),
-        ("h2_north", 99.0, 4.0),
-    ]
+        (h2, 0.0, 3.0),
+        (h2, 50.0, 3.5),
+        (h2, 99.0, 4.0),
+        (dri, 0.0, 1.0),
+    ], "each port owns its own curve, so a patch to one leaves the other"
 
 
 def test_curve_varying_by_snapshot(con, base_uri):

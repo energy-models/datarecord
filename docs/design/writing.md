@@ -26,7 +26,7 @@ Which component types are valid belongs to [the schema's vocabulary](schema.md),
 
 An **attribute the schema does not declare is rejected**, unlike a component type: its [`dims`](schema.md#attributespec) are what say which columns its file carries, so an undeclared one has no shape to write it in and would leave a file no reader could derive the columns of.
 
-A frame carrying a column its attribute is **not** addressed by is rejected too, rather than narrowed on the way out.
+A frame carrying a dim column its attribute is **not** over is rejected too, rather than narrowed on the way out.
 The read path projects an attribute's own coordinates, so such a column would be written and never read — and a source emitting one means something different by the attribute than the schema does, which is worth reporting rather than absorbing.
 
 The input is a [`LayerData`](record.md#layerdata): "the rows of one thing, enumerated and read" — the same interface a [`LayerSource`](read-path.md#owner-map) answers for its own layer and a `Resolver` answers for a whole fold, so `write_record` cannot tell which it was handed and does not need to.

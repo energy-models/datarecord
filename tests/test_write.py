@@ -242,10 +242,10 @@ def test_write_record_refuses_an_existing_layer(con, base_uri):
 def test_a_file_carries_only_its_own_attributes_coordinates(con, base_uri, ac_dc):
     """One attribute is one file, so one column set - not every declared dim.
 
-    A component attribute has no `bus` column, a connection attribute does, and
-    neither carries a dim it is not addressed by. The uniform prefix this
-    replaces put an all-NULL `bus` on every file and a `period` column on
-    attributes that never vary over one.
+    A component attribute has no `port` column, a per-port attribute does, and
+    neither carries a dim it is not over. The uniform prefix this replaces put
+    an all-NULL `bus` on every file and a `period` column on attributes that
+    never vary over one.
 
     Notes
     -----
@@ -267,13 +267,15 @@ def test_a_file_carries_only_its_own_attributes_coordinates(con, base_uri, ac_dc
         "attribute",
         "breakpoint",
         "value",
-    }, "a component attribute carries `entity`, not the connection relation's `bus`"
+    }, "a component attribute carries `entity`, not `port`"
 
-    efficiency = columns("efficiency")
-    assert "bus" in efficiency, (
-        "a connection attribute carries the relation's coordinates"
-    )
-    assert "period" not in efficiency, "and no dim it is not addressed by"
+    assert columns("efficiency") == {
+        "port",
+        "snapshot",
+        "attribute",
+        "breakpoint",
+        "value",
+    }, "a per-port attribute carries `port`, and no dim it is not over"
 
 
 # -- validation -------------------------------------------------------------
