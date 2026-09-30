@@ -147,6 +147,7 @@ What it does differently is read before it stages:
   So a committed layer holds ordinary rows, and nothing in the format records that a value was derived — replaying an edit sequence is not a thing the record supports.
 
 The expression is evaluated by narwhals against the resolved long frame, so it names `value` rather than the attribute: the frame is long, and one attribute per call means the column is always `value`.
+An attribute over one dim alone is a column of that dim's axis ([where a value lives](format.md#where-a-value-lives)), so it is read from the resolved axis as a `(dim, value)` frame and staged back to the axis, and the expression names `value` there too.
 
 **A named target must resolve to a row.**
 If the caller names `entity` or any other dim, every one of those targets must produce a row to derive from, or the call raises.

@@ -349,6 +349,60 @@ def test_write_record_rejects_a_relation_frame_missing_a_column(con, base_uri):
         write_record(revision.id, source, con)
 
 
+def test_write_record_rejects_a_relation_frame_carrying_an_attribute(con, base_uri):
+    """A relation file holds its columns and its tombstone, and nothing else.
+
+    `write_record` wrote a `connection` frame carrying a `p_nom` column without
+    complaint, where staging (`add_relation`) refuses it. An attribute is over
+    dims only, so a column on a relation's rows is data no reader knows the
+    meaning of. Refused, and nothing is written.
+
+    Notes
+    -----
+    - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
+    """
+    revision = Revision.create(con)
+    source = _Source(
+        _SCHEMA,
+        relations={
+            "connection": pd.DataFrame(
+                {"entity": ["steel_dri"], "bus": ["b0"], "p_nom": [1.0]}
+            )
+        },
+    )
+
+    with pytest.raises(
+        ValueError, match=r"relations/connection\.parquet carries columns \['p_nom'\]"
+    ):
+        write_record(revision.id, source, con)
+    assert not Path(layer_dir(revision.id)).exists(), "a refused frame leaves no layer"
+
+
+def test_write_record_admits_a_relation_tombstone(con, base_uri):
+    """`deleted` is a relation file's own column, not an extra one.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    revision = Revision.create(con)
+    source = _Source(
+        _SCHEMA,
+        relations={
+            "connection": pd.DataFrame(
+                {"entity": ["steel_dri"], "bus": ["b0"], "deleted": [False]}
+            )
+        },
+    )
+
+    write_record(revision.id, source, con)
+
+    written = con.read_parquet(layer_dir(revision.id) + "relations/connection.parquet")
+    assert set(written.columns) == {"entity", "bus", "deleted"}, (
+        "a relation file keeps its columns and its tombstone"
+    )
+
+
 def test_write_record_rejects_a_nested_axis_without_its_parent(con, base_uri):
     """A `within` dim's file needs a column per parent, or the fold miskeys it.
 
