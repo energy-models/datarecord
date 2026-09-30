@@ -12,9 +12,10 @@ Notes
 import subprocess
 import sys
 
+import narwhals as nw
 import pytest
 
-from datarecord.schema import Schema
+from datarecord.schema import AttributeSpec, Dimension, Relation, Schema
 from tests.test_declared_dims import DECLARATIONS, STORAGE
 
 DISPATCH = DECLARATIONS | {
@@ -65,18 +66,42 @@ def test_a_full_spec_gives_its_data_declarations(con):
     assert full == data, "variables, constraints and the objective add nothing"
 
 
-@pytest.mark.parametrize(
-    "storage",
-    [
-        pytest.param(STORAGE, id="partial-given"),
-        pytest.param(None, id="partial-inferred"),
-    ],
-)
-def test_the_declarations_round_trip(storage):
-    """`to_mathspec` gives back what `from_mathspec` read, less the storage block."""
-    schema = Schema.from_mathspec(DECLARATIONS, storage=storage)
-    assert Schema.from_mathspec(schema.to_mathspec(), storage=storage) == schema, (
-        "the round trip loses nothing a mathspec file can say, `ordered` included"
+def test_the_declarations_become_dims_relations_and_attributes():
+    """Each mathspec declaration maps to its `Schema` field, `ordered` included."""
+    want = Schema(
+        dimensions={
+            "scenario": Dimension(
+                dtype=nw.String(), description="the futures dispatch is chosen in"
+            ),
+            "snapshot": Dimension(
+                dtype=nw.Datetime(), ordered=True, description="dispatch periods"
+            ),
+            "bus": Dimension(dtype=nw.String(), description="network nodes"),
+            "carrier": Dimension(dtype=nw.String(), description="energy carriers"),
+            "generator": Dimension(
+                dtype=nw.String(), description="generating units, each on one bus"
+            ),
+        },
+        relations={
+            "Generator_bus": Relation(key=["generator"], values="bus"),
+            "Generator_carrier": Relation(key=["generator"], values="carrier"),
+        },
+        attributes={
+            "Generator_p_nom": AttributeSpec(
+                dtype=nw.Float64(), dims=frozenset({"scenario", "generator"})
+            ),
+            "Generator_p_max_pu": AttributeSpec(
+                dtype=nw.Float64(),
+                dims=frozenset({"scenario", "snapshot", "generator"}),
+            ),
+            "Generator_marginal_cost": AttributeSpec(
+                dtype=nw.Float64(), dims=frozenset({"generator"})
+            ),
+        },
+        partial=frozenset({"generator", "scenario"}),
+    )
+    assert Schema.from_mathspec(DECLARATIONS, storage=STORAGE) == want, (
+        "a dim, a relation and a float parameter each, under the storage block's `partial`"
     )
 
 

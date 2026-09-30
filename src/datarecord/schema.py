@@ -526,46 +526,6 @@ class Schema(BaseModel):
             dimensions=dimensions, relations=relations, attributes=attributes, **rest
         )
 
-    def to_mathspec(self) -> dict[str, Any]:
-        """This schema's dims, relations and attributes as a mathspec declarations file.
-
-        What `from_mathspec` reads back, less the storage block. A model spec
-        merges with it (`mathspec.merge`) and reads its parameters as `given:`.
-
-        Raises
-        ------
-        ValueError
-            If a dtype has no mathspec form.
-        """
-        relations = {}
-        for r, relation in self.relations.items():
-            key: Any = (
-                dict(relation.key)
-                if any(k != v for k, v in relation.key.items())
-                else list(relation.key)
-            )
-            if isinstance(key, list) and len(key) == 1:
-                key = key[0]
-            relations[r] = {"key": key} | (
-                {"values": relation.values} if relation.values else {}
-            )
-        parameters = {}
-        for a, spec in self.attributes.items():
-            parameters[a] = {
-                "dims": [d for d in self.dimensions if d in spec.dims],
-                "dtype": _to_mathspec(spec.dtype, f"attribute {a!r}"),
-            } | ({"description": spec.description} if spec.description else {})
-        return {
-            "dimensions": {
-                d: {"dtype": _to_mathspec(s.dtype, f"dim {d!r}")}
-                | ({"ordered": True} if s.ordered else {})
-                | ({"description": s.description} if s.description else {})
-                for d, s in self.dimensions.items()
-            },
-            "relations": relations,
-            "parameters": parameters,
-        }
-
     # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
 
     @property
@@ -894,15 +854,6 @@ _FROM_MATHSPEC: dict[str, type[nw.dtypes.DType]] = {
     "bool": nw.Boolean,
     "datetime": nw.Datetime,
 }
-
-
-def _to_mathspec(dtype: nw.dtypes.DType, where: str) -> str:
-    """`dtype` as the mathspec dtype name that reads back to it, or a refusal naming `where`."""
-    for name, kind in _FROM_MATHSPEC.items():
-        if type(dtype) is kind:
-            return name
-    msg = f"{where}: dtype {dtype} has no mathspec form"
-    raise ValueError(msg)
 
 
 def _relation_from_mathspec(name: str, block: Any) -> Relation:

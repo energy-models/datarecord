@@ -17,14 +17,15 @@ w = WorkingRecord(root.record, con)
 ## `set`
 
 ```python
-w.set("p_nom", 150.0, entity=["wind1", "wind2"])  # broadcast
-w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per name, positional
-w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
-w.set("p_max_pu", frame, entity=["wind1"])  # a long frame
+w.set("p_nom", 150.0, entity=["wind1", "wind2"])  # one value, two names
+w.set("p_nom", pd.DataFrame({"entity": ["wind1", "wind2"], "value": [150.0, 80.0]}))
+w.set("p_max_pu", frame, entity="wind1")  # a long frame, scoped
 w.set("efficiency", 0.9, port=["dc_out"])  # one port
 w.set("p_max_pu", 0.5, entity=["wind1"], scenario="high")  # scoped to one scenario
 w.set("p_max_pu", nw.col("value") * 1.1, entity=["wind1"])  # derived
 ```
+
+`value` is a scalar, a long frame or an `nw.Expr`. A different value per label is a frame, with a column per coordinate and a `value` column; a mapping, a sequence or a series is refused, and the error spells the frame ([design](../design/working-record.md#set)).
 
 **There is no `entity_type` keyword.** No attribute is narrowed to a type, so one call may span types. `set` refuses a name that is not on the entity axis — `add` it first — and an attribute that is not declared over the dims the call names ([design](../design/working-record.md#set)).
 

@@ -18,7 +18,7 @@ from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.layered.revision import Record
 from datarecord.layered.sources import ParquetLayer
-from datarecord.mutable import Directory, NewChild, WorkingRecord, normalise_value
+from datarecord.mutable import Directory, NewChild, WorkingRecord
 from datarecord.record import RecordLike
 from datarecord.schema import AttributeSpec, Schema
 from datarecord.sources import to_sources
@@ -121,112 +121,21 @@ def test_a_mutable_record_reads_as_a_record(staged):
 # -- value forms (https://energy-models.github.io/datarecord/design/working-record/#set) -----------------------------------------------------
 
 
-def test_scalar_applies_to_every_name():
-    names, values, dims = normalise_value(150.0, ["wind1", "wind2"])
-    assert (names, values, dims) == (["wind1", "wind2"], [150.0, 150.0], {})
-
-
-def test_a_sequence_is_positional():
-    names, values, _ = normalise_value([150.0, 80.0], ["wind1", "wind2"])
-    assert names is not None
-    assert dict(zip(names, values, strict=True)) == {"wind1": 150.0, "wind2": 80.0}
-
-
-def test_a_mapping_supplies_its_own_labels():
-    """The keys are labels along the dim `indexed_by` names, not listed names."""
-    names, values, dims = normalise_value(
-        {"wind1": 150.0, "wind2": 80.0}, None, indexed_by="entity"
-    )
-    assert names is None, "nothing was listed, so no names come back"
-    assert dims == {"entity": ["wind1", "wind2"]}
-    assert dict(zip(dims["entity"], values, strict=True)) == {
-        "wind1": 150.0,
-        "wind2": 80.0,
-    }
-
-
-def test_a_series_indexed_by_names_is_per_name():
-    """A series of names is one more dim series: its index keys `entity`."""
-    series = pd.Series({"wind1": 1.0, "wind2": 2.0})
-    names, values, dims = normalise_value(series, None, indexed_by="entity")
-    assert names is None, "nothing was listed, so no names come back"
-    assert dims == {"entity": ["wind1", "wind2"]}
-    assert dict(zip(dims["entity"], values, strict=True)) == {
-        "wind1": 1.0,
-        "wind2": 2.0,
-    }
-
-
-def test_a_series_indexed_by_an_axis_is_per_coordinate():
-    """The same type read as a dim series - the caller says which, never the labels."""
-    series = pd.Series({"2030-01-01": 0.4, "2030-01-02": 0.6})
-    names, values, dims = normalise_value(series, None, indexed_by="snapshot")
-    assert names is None
-    assert values == [0.4, 0.6]
-    assert dims == {"snapshot": ["2030-01-01", "2030-01-02"]}
-
-
-def test_a_sequence_of_the_wrong_length_is_rejected():
-    with pytest.raises(ValueError, match="2 labels"):
-        normalise_value([1.0, 2.0, 3.0], ["wind1", "wind2"])
-
-
 @pytest.mark.parametrize(
     "value",
     [
-        pytest.param(pd.Series({"Manchester Wind": 1.0}), id="series"),
         pytest.param({"Manchester Wind": 1.0}, id="mapping"),
+        pytest.param([1.0], id="sequence"),
+        pytest.param(pd.Series({"Manchester Wind": 1.0}), id="series"),
     ],
 )
-def test_an_index_that_could_be_either_is_refused(staged, value):
-    """No membership test, so labels spelled like components do not decide.
-
-    `p_max_pu` is over `entity` and `snapshot`, and the call names neither, so
-    the index could hold either. It used to be read as names; with no dim
-    special, nothing makes `entity` the default, and the call says which.
-    """
-    with pytest.raises(ValueError, match="say `indexed_by=`"):
+def test_a_value_per_label_is_a_frame(staged, value):
+    """`set` takes a scalar, a long frame or an `nw.Expr`; the error names the frame."""
+    with pytest.raises(
+        TypeError, match=r"pd\.DataFrame\(\{'entity': \[\.\.\.\], 'snapshot'"
+    ):
         staged.set("p_max_pu", value)
-
-
-def test_indexed_by_names_the_axis_a_series_index_holds(staged):
-    """Said outright, since nothing about the labels themselves could say it."""
-    series = pd.Series({pd.Timestamp("2015-01-01"): 0.4})
-    staged.set("p_max_pu", series, entity=["Manchester Wind"], indexed_by="snapshot")
-    assert "p_max_pu" in staged.attributes
-
-
-def test_an_unnamed_series_index_holds_the_one_unnamed_coordinate(staged):
-    """With `entity` named, the index can only be the `snapshot` it leaves.
-
-    It used to be read as names whatever the call named; now the one
-    coordinate no keyword names is what an unnamed index holds.
-    """
-    when = pd.Timestamp("2015-01-01")
-    staged.set("p_max_pu", pd.Series({when: 0.4}), entity=["Manchester Wind"])
-    rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
-    mine = rows[(rows["entity"] == "Manchester Wind") & (rows["snapshot"] == when)]
-    assert list(mine["value"]) == [0.4], "one row, at the snapshot the index held"
-
-
-def test_an_index_of_entity_labels_is_member_checked(staged):
-    """An index said to hold `entity` fails the member check - a date is no component."""
-    series = pd.Series({"2030-01-01": 0.4})
-    with pytest.raises(KeyError, match="no entity"):
-        staged.set("p_max_pu", series, indexed_by="entity")
-
-
-def test_the_series_index_name_says_what_it_holds(staged):
-    """A caller who named the index has already said it; `indexed_by=` is spare."""
-    index = pd.Index([pd.Timestamp("2015-01-01")], name="snapshot")
-    staged.set("p_max_pu", pd.Series([0.4], index=index), entity=["Manchester Wind"])
-    assert "p_max_pu" in staged.attributes
-
-
-def test_indexed_by_must_be_a_coordinate_of_the_attribute(staged):
-    series = pd.Series({"a": 1.0})
-    with pytest.raises(ValueError, match="no coordinate of"):
-        staged.set("p_nom", series, entity=["Manchester Wind"], indexed_by="snapshot")
+    assert "p_max_pu" not in staged.resolver.sources[-1].attributes(), "nothing staged"
 
 
 # -- set (https://energy-models.github.io/datarecord/design/working-record/#set) -------------------------------------------------------------
@@ -331,21 +240,12 @@ def test_set_rejects_an_unknown_name(staged):
         pytest.param(
             lambda s: s.set(
                 "p_max_pu",
-                pd.Series({"2030-01-01": 0.4}),
-                entity=["Manchester Wind"],
-            ),
-            r"snapshot is Datetime, and '2030-01-01' is a str; "
-            r"pass pd\.Timestamp\('2030-01-01'\)",
-            id="str-for-datetime-series-index",
-        ),
-        pytest.param(
-            lambda s: s.set(
-                "p_max_pu",
-                {"2030-01-01": 0.4, "2030-01-02": 0.5},
+                0.4,
                 entity="Manchester Wind",
+                snapshot=["2030-01-01", "2030-01-02"],
             ),
             r"snapshot is Datetime, and '2030-01-01' is a str \(2 labels\)",
-            id="str-for-datetime-mapping-key",
+            id="str-for-datetime-keyword-two-labels",
         ),
         pytest.param(
             lambda s: s.set(
@@ -370,21 +270,6 @@ def test_set_rejects_an_unknown_name(staged):
             lambda s: s.set("p_max_pu", 0.4, entity=[1]),
             r"entity is String, and 1 is an int; pass str\(1\)",
             id="int-for-string-keyword-list",
-        ),
-        pytest.param(
-            lambda s: s.set(
-                "p_max_pu",
-                pd.Series({1: 0.4}),
-                indexed_by="entity",
-                snapshot=pd.Timestamp("2015-01-01"),
-            ),
-            r"entity is String, and 1 is an int",
-            id="int-for-string-series-index",
-        ),
-        pytest.param(
-            lambda s: s.set("p_nom", {1: 3.0}),
-            r"entity is String, and 1 is an int",
-            id="int-for-string-axis-mapping-key",
         ),
         pytest.param(
             lambda s: s.remove("entity", [1]),
@@ -1614,7 +1499,12 @@ def test_one_call_spans_component_types(staged):
     -----
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
-    staged.set("p_nom", {"Manchester Wind": 150.0, "DC link": 80.0})
+    staged.set(
+        "p_nom",
+        pd.DataFrame(
+            {"entity": ["Manchester Wind", "DC link"], "value": [150.0, 80.0]}
+        ),
+    )
     got = _entity_column(staged, "p_nom")
     assert got["Manchester Wind"] == 150.0
     assert got["DC link"] == 80.0

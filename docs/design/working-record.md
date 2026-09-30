@@ -18,14 +18,11 @@ class WorkingRecord:
     def set(
         self,
         attribute: str,
-        value: Any,  # scalar | sequence | mapping | series | frame | nw.Expr
-        *,
-        entity: Sequence[str] | None = None,
-        indexed_by: str | None = None,  # what a series' index holds
+        value: Any,  # scalar | frame | nw.Expr
         **dims: Any,
     ) -> None: ...
 
-    def add(self, frame: IntoFrame) -> None: ...
+    def add(self, dim: str, frame: IntoFrame) -> None: ...
     def remove(self, dim: str, labels: Sequence[Any]) -> None: ...
 
     def add_relation(self, relation: str, frame: IntoFrame) -> None: ...
@@ -78,54 +75,41 @@ So a staged edit is already the row it will be written as, and `commit()` is a c
 ## `set`
 
 ```python
-record.set("p_nom", 150.0, entity=["wind1", "wind2"])  # broadcast
-record.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per name
-record.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
-record.set("p_max_pu", frame, entity=["wind1"])  # long frame
-record.set("p_max_pu", series, entity=["wind1"], indexed_by="snapshot")  # a series
-record.set("icon", {"Generator": "turbine"})  # keyed by entity_type labels
+record.set("p_nom", 150.0, entity=["wind1", "wind2"])  # one value, two names
+record.set(
+    "p_nom", pd.DataFrame({"entity": ["wind1", "wind2"], "value": [150.0, 80.0]})
+)
+record.set("p_max_pu", frame, entity="wind1")  # long frame, scoped
+record.set("icon", "turbine", entity_type="Generator")  # keyed by entity_type labels
 record.set("efficiency", 0.9, port=["dc_out"])  # one port
 record.set("p_max_pu", 0.5, entity=["wind1"], scenario="high")  # scoped
 record.set("p_max_pu", nw.col("value") * 1.1, entity=["wind1"])  # derived
 ```
 
-**There is no `entity_type` keyword.** An attribute is not narrowed to [types](schema.md#types): an attribute over `entity` can be set on any entity, whatever its type.
-So `set` checks that each name is on the entity axis and that the attribute is declared over the dims the call names ([validation](#validation)), and one call may span types: `set("p_nom", {"wind1": 150.0, "link_dc": 80.0})` stages both.
+`value` takes three forms:
 
-`entity=None` means every entity on the axis. `set("p_max_pu", 0.9)` sets it on every entity, buses included; name the entities to scope it.
+| `value`   | meaning                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------- |
+| scalar    | the value at every coordinate the keywords name                                                   |
+| frame     | long rows: a column per coordinate it names, and `value`                                          |
+| `nw.Expr` | a function of the current value, [derived from](#an-nwexpr-value-derived-from-the-current-one) it |
+
+**A different value per label is a frame.** A mapping, a sequence or a series is refused with a `TypeError` that spells the frame to pass instead.
+A frame says which coordinate each column holds by its column name, so nothing is inferred: a mapping's keys, a series' index or a sequence's position could each hold one of several coordinates, and the rule that picked one was a second vocabulary beside the frame's.
+
+**There is no `entity_type` keyword for an attribute over `entity`.** An attribute is not narrowed to [types](schema.md#types): an attribute over `entity` can be set on any entity, whatever its type.
+So `set` checks that each name is on the entity axis and that the attribute is declared over the dims the call names ([validation](#validation)), and one call may span types.
 
 **Every dim goes through `**dims`**, `entity` included: `port="dc_out"` scopes one port, `scenario="high"` one scenario.
 None has a parameter of its own, because which dims exist is declared rather than fixed.
+A keyword takes one label, or a list of labels along one dim at most; a product of two lists is a frame.
 
-A keyword scopes the edit, and its absence means every value of that dim. So `scenario="high"` patches one scenario, and a `set` of `efficiency` that names no `port` sets every port.
+A keyword scopes the edit, and its absence means every value of that dim. So `scenario="high"` patches one scenario, a `set` of `efficiency` that names no `port` sets every port, and `set("p_max_pu", 0.9)` sets it on every entity, buses included.
 
-**An attribute over one axis alone is keyed by that axis's labels**, not by `entity`: `set("icon", {"Generator": "turbine"})` states one type's icon, and `set("co2_budget", 3.0)` is one broadcast row, which reaches every country.
+**An attribute over one axis alone is keyed by that axis's labels**, not by `entity`: `set("icon", "turbine", entity_type="Generator")` states one type's icon, and `set("co2_budget", 3.0)` is one broadcast row, which reaches every country.
 It stages long rows like any other attribute ([where a value lives](format.md#where-a-value-lives)), so `entity=` is refused — an icon belongs to no component. Where the axis's dtype is an `Enum` the vocabulary is the schema's, so an undeclared label is rejected without reading the axis at all.
 
-`value` takes six forms, because assigning one value to many targets and assigning a different value to each are equally ordinary and neither should require building a frame:
-
-| `value`   | meaning                              | `entity`                                                                     |
-| --------- | ------------------------------------ | ---------------------------------------------------------------------------- |
-| scalar    | broadcast to every name              | required unless `None` means all                                             |
-| sequence  | aligned positionally to `entity`     | required, same length                                                        |
-| mapping   | keys are names                       | ignored if given, else the keys are the names                                |
-| series    | index is names, or one axis's labels | names unless `indexed_by=` or the index's own name says otherwise            |
-| frame     | supplies its own keys                | redundant                                                                    |
-| `nw.Expr` | a function of the current value      | selects what to [derive from](#an-nwexpr-value-derived-from-the-current-one) |
-
-The first four normalise to a long frame before staging, so there is one staging path.
-A length mismatch between a sequence and `entity` is an error at the call, not a silently truncated edit.
-
-Every form is checked against [the components the record resolves](#validation), the frame form included: "supplies its own keys" decides where the names come from, not whether they have to exist.
-
-A one-dimensional labelled series is ambiguous: its index may hold names or axis labels, and neither its dtype nor its values settle it, an axis label being a string like a name.
-**The caller says which** — `indexed_by="snapshot"`, or the series' own `index.name` where it names a coordinate of the attribute, a caller who built the series from a named index having said it already.
-An index that says neither holds names.
-
-Never inferred from the labels themselves: testing them against the axis would make one call mean different things in two records — a scenario labelled `wind1` would silently capture a series meant per component — and a partial overlap would pick a reading without saying so.
-An unnamed index of timestamps is therefore read as names and fails the [member check](#validation), which is the loud version of the same mistake.
-
-`entity=None` means every entity the record currently resolves, which is a read, so it includes earlier pending edits.
+Every form is checked against [the components the record resolves](#validation), the frame form included: a frame supplies its own labels, and they still have to exist.
 
 ## An `nw.Expr` value — derived from the current one
 
@@ -134,8 +118,8 @@ record.set("p_max_pu", nw.col("value") * 1.1)  # scale up every p_max_pu
 record.set("p_max_pu", nw.col("value").clip(upper=0.9), entity=["wind1"])
 ```
 
-A fifth `value` form rather than a second method.
-Nothing else a caller passes is an `nw.Expr`, so the dispatch is unambiguous — unlike the series-versus-mapping tie, which [`set`](#set) has the caller settle rather than guessing at.
+A third `value` form rather than a second method.
+Nothing else a caller passes is an `nw.Expr`, so the dispatch is unambiguous.
 
 What it does differently is read before it stages:
 
@@ -166,8 +150,8 @@ This section is the intended spelling for an accessor over it, not something the
 
 ```python
 record["Generator"]["p_nom"] = 150.0  # every generator
-record["Generator"]["p_nom", ["wind1", "wind2"]] = [150.0, 80.0]
-record["Generator"]["p_max_pu", "wind1"] = series
+record["Generator"]["p_nom", ["wind1", "wind2"]] = 150.0
+record["Generator"]["p_max_pu", "wind1"] = frame
 record["Generator", {"scenario": "high"}]["p_max_pu", "wind1"] = 0.5
 ```
 

@@ -103,9 +103,9 @@ def test_it_reads_back(root):
 
 
 def test_set_states_one_types_value(root, con):
-    """A mapping keyed by label, with every untouched label left alone."""
+    """A keyword names the label, and every untouched label is left alone."""
     staged = WorkingRecord(root.record, con)
-    staged.set("icon", {"Generator": "windmill"})
+    staged.set("icon", "windmill", entity_type="Generator")
     assert _icons(staged) == {"Bus": "node", "Generator": "windmill"}
 
 
@@ -122,7 +122,7 @@ def test_a_child_layer_restates_every_types_icon(root, con):
     owns entirely once it touches it.
     """
     staged = WorkingRecord(root.record, con)
-    staged.set("icon", {"Generator": "windmill"})
+    staged.set("icon", "windmill", entity_type="Generator")
 
     rows = staged.resolver.sources[-1].attribute("icon")
     assert rows is not None
@@ -145,7 +145,7 @@ def test_an_enum_label_the_dtype_does_not_declare_is_refused(root, con):
     """
     staged = WorkingRecord(root.record, con)
     with pytest.raises(ValueError, match="pins the vocabulary"):
-        staged.set("icon", {"Nope": "x"})
+        staged.set("icon", "x", entity_type="Nope")
     assert _icons(staged) == {"Bus": "node", "Generator": "turbine"}, "nothing staged"
 
 

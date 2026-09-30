@@ -253,7 +253,7 @@ def test_set_states_one_labels_value(con, base_uri):
     """A read with pending edits answers the new value; FR keeps the base's."""
     revision = _budget_record(con, _budget_schema())
     staged = WorkingRecord(revision.record, con)
-    staged.set("co2_budget", {"DE": 12.0})
+    staged.set("co2_budget", 12.0, country="DE")
     assert _budgets(staged) == {"DE": 12.0, "FR": 55.0}, (
         "FR is untouched, so it keeps the base value"
     )
@@ -267,7 +267,7 @@ def test_a_child_layer_holds_only_the_labels_it_touched(con, base_uri):
     """
     revision = _budget_record(con, _budget_schema())
     staged = WorkingRecord(revision.record, con)
-    staged.set("co2_budget", {"DE": 12.0})
+    staged.set("co2_budget", 12.0, country="DE")
     patch = staged.resolver.sources[-1].attribute("co2_budget")
     assert patch is not None
     assert patch.df()["country"].tolist() == ["DE"], "only the touched label"
@@ -294,7 +294,7 @@ def test_a_child_layer_restates_a_dim_it_owns_whole(con, base_uri):
         ),
     )
     staged = WorkingRecord(revision.record, con)
-    staged.set("co2_budget", {"DE": 12.0})
+    staged.set("co2_budget", 12.0, country="DE")
     patch = staged.resolver.sources[-1].attribute("co2_budget")
     assert patch is not None
     assert sorted(patch.df()["country"].tolist()) == ["DE", "FR"], (
