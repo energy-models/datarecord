@@ -39,8 +39,9 @@ All notable changes to datarecord are documented here. The format follows
 - A layer that holds a default and its exception side by side, such as
   `set("efficiency", 0.9, port=["dc_out"])` and `set("efficiency", 0.95)`,
   reads one value at each coordinate: the row that names more of the
-  attribute's dims. A write is refused where two rows cover one coordinate and
-  neither names more dims than the other.
+  attribute's dims, and `flags` describes those rows. A write is refused where
+  two rows cover one coordinate and neither names more dims than the other,
+  or where two rows leave the same dims NULL at one coordinate.
 
 ### Removed
 

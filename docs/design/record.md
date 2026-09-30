@@ -121,6 +121,7 @@ The `values` dim of a functional relation is an ordinary axis too: `entity_type`
 One layer may hold a default and its exceptions side by side: an `efficiency` row with `port = NULL` beside one that names `dc_out`.
 Where two rows of the owning layer cover one coordinate, the row that names more of the attribute's dims wins there.
 Two rows that cover one coordinate where neither names a superset of the other's dims are a tie, and `write_record` refuses them: state the value at that coordinate in a row of its own.
+Two rows that leave the same dims NULL at one coordinate are a duplicate, and `write_record` refuses them too: keep one row there.
 A coordinate no row covers — including an attribute with no rows at all — takes that attribute's `default` from [the schema](schema.md#attributespec).
 
 Broadcast form is preserved: a value held once is answered once, so a consumer can reconstruct the constant-versus-varying split from the shape it gets back.
@@ -166,6 +167,9 @@ Only attributes with rows are present, so `set(record.flags(names))` also answer
 
 The sets name dims, so a consumer asks about a **named** axis: `"timestep" in flags["p_max_pu"].varies`.
 `breakpoints` is a boolean rather than a set because a breakpoint is not a dim ([wide and long rows](#wide-and-long-rows)) — it is an abscissa within one row's value, not an axis the value is indexed by.
+
+The flags describe the rows a read returns: a row that another row of its layer outranks at a coordinate ([the broadcast rule](#the-broadcast-rule)) counts for nothing there.
+So `flags(port=["dc_out"])` for an `efficiency` default beside a `dc_out` row puts `port` in `varies` and not in `broadcast`.
 
 **The two sets are not complements.** An attribute may have per-timestep rows for one component and a single NULL-timestep row for another, so `timestep` lands in both.
 That is an instruction to use both containers: `timestep in broadcast` selects the NULL-timestep rows into a constant frame, `timestep in varies` selects the rest into a series frame.

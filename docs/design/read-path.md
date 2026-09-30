@@ -55,6 +55,7 @@ The fold runs live over an unmaterialised tail, cached per connection; since [la
 
 The [flags](record.md#flags) are folded in alongside the ownership group-by, so they cost nothing beyond it.
 They are computed **per key**, so per component: whether _this_ component's `p_max_pu` sets `timestep` is a different question from whether any does.
+They are computed from the rows a read returns, so a row another row of its layer outranks at a key is left out first ([resolving a relation](#resolving-a-relation)).
 
 The structs have a field per declared dim, since every dim [broadcasts](record.md#the-broadcast-rule): "did a row set it" is a question about each of them.
 

@@ -15,8 +15,10 @@ import pytest
 
 from datarecord import Revision
 from datarecord.layered.resolve import write_schema
+from datarecord.layered.write import write_record
 from datarecord.mutable import NewChild, WorkingRecord
 from datarecord.schema import AttributeSpec, Dimension, Schema
+from datarecord.sources import from_sources
 
 LABELS = {
     "entity": ["wind", "gas"],
@@ -168,3 +170,92 @@ def test_a_tie_between_two_broadcast_rows_is_refused(con, base_uri, edits, nulls
         assert f"leaving {pattern} NULL" in message, f"the message names {pattern}"
     assert "entity='wind'" in message, "and the coordinate both rows cover"
     assert "snapshot='s1'" in message, "along every dim either names"
+
+
+@pytest.mark.parametrize(
+    ("edits", "labels", "varies", "broadcast"),
+    [
+        pytest.param(
+            [({"port": ["dc_out"]}, 0.9), ({}, 0.95)],
+            {"port": ["dc_out"]},
+            {"port"},
+            {"snapshot"},
+            id="the-named-port-outranks-the-default",
+        ),
+        pytest.param(
+            [({"port": ["dc_out"]}, 0.9), ({}, 0.95)],
+            {"port": ["ac_in"]},
+            set(),
+            {"port", "snapshot"},
+            id="the-default-still-covers-the-other-port",
+        ),
+        pytest.param(
+            [({"port": ["dc_out"]}, 0.9), ({}, 0.95)],
+            {},
+            {"port"},
+            {"port", "snapshot"},
+            id="the-whole-record-sees-both",
+        ),
+        pytest.param(
+            [({"port": ["dc_out", "ac_in"]}, 0.9), ({}, 0.95)],
+            {},
+            {"port"},
+            {"snapshot"},
+            id="a-default-shadowed-at-every-port",
+        ),
+    ],
+)
+def test_flags_describe_the_rows_that_win(
+    con, base_uri, edits, labels, varies, broadcast
+):
+    """Before the fix `broadcast` held `port` wherever the port-NULL row matched.
+
+    The owner map aggregated every row of the layer at a key, the shadowed
+    default among them, so `flags(port=["dc_out"])` said some row leaves the
+    port NULL where the read returns only the row naming it.
+    """
+    root, staged = _staged(con, base_uri, {"entity", "port"})
+    for dims, value in edits:
+        staged.set("efficiency", value, **dims)
+    child = staged.commit(NewChild(root))
+    flags = child.record.flags(**labels)["efficiency"]
+    assert flags.varies == varies, f"the winning rows name {sorted(varies)}"
+    assert flags.broadcast == broadcast, (
+        f"the winning rows leave {sorted(broadcast)} NULL"
+    )
+
+
+@pytest.mark.parametrize(
+    ("rows", "coordinate"),
+    [
+        pytest.param(
+            {"entity": ["wind", "wind"], "value": [0.5, 0.7]},
+            "entity='wind'",
+            id="one-entity-twice",
+        ),
+        pytest.param(
+            {"entity": ["wind", "wind"], "snapshot": ["s1", "s1"], "value": [0.5, 0.7]},
+            "entity='wind', snapshot='s1'",
+            id="one-entity-and-snapshot-twice",
+        ),
+        pytest.param(
+            {"value": [0.5, 0.7]},
+            "every coordinate",
+            id="two-defaults",
+        ),
+    ],
+)
+def test_a_duplicate_row_is_refused(con, base_uri, rows, coordinate):
+    """Two rows with one NULL pattern at one coordinate: nothing orders them.
+
+    `set` replaces what it staged at a coordinate, so a duplicate comes from a
+    source handed to `write_record`. Before the fix it wrote both, and a read
+    returned both values.
+    """
+    schema = _schema({"entity", "snapshot", "scenario"})
+    write_schema(schema, base_uri)
+    revision = Revision.create(con)
+    tables = {"p_max_pu": pd.DataFrame(rows)}
+    with pytest.raises(ValueError, match=r"p_max_pu.*Keep one row") as info:
+        write_record(revision.id, from_sources(schema, tables), con)
+    assert coordinate in str(info.value), "the message names the coordinate"

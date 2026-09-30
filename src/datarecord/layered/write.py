@@ -24,6 +24,7 @@ from uuid import UUID
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
+from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import as_relation, base_uri_of, ex_all, layer_dir
@@ -76,7 +77,8 @@ def write_record(
         If a long frame is missing a long-schema column, or the schema declares a key
         dim no frame carries - either would make the fold misresolve the layer.
         Also if two rows of one attribute cover one coordinate and neither
-        names more of its dims, which no rule orders.
+        names more of its dims, or both leave the same dims NULL there, which
+        no rule orders.
 
     Notes
     -----
@@ -336,6 +338,8 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
 def _refuse_ties(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
     """Refuse two rows that cover one coordinate with neither naming more dims.
 
+    Duplicates first: two rows that name the same dims name none more.
+
     The read keeps the row that names more of the attribute's dims
     (`resolve._named_most`), which orders two rows only where one names a
     superset of the other's dims. Only pairs of distinct NULL patterns are
@@ -345,7 +349,7 @@ def _refuse_ties(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
     Raises
     ------
     ValueError
-        If two such rows overlap, naming both NULL patterns and a coordinate
+        If two such rows overlap, naming their NULL patterns and a coordinate
         they share.
 
     Notes
@@ -353,6 +357,7 @@ def _refuse_ties(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
     dims = schema.broadcasts_over(attribute)
+    _refuse_duplicates(rel, attribute, dims)
     if len(dims) < 2:
         return
     patterns = [
@@ -378,6 +383,34 @@ def _refuse_ties(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
             f"coordinate in a row of its own (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
         )
         raise ValueError(msg)
+
+
+def _refuse_duplicates(
+    rel: DuckDBPyRelation, attribute: str, dims: tuple[str, ...]
+) -> None:
+    """Refuse two rows at one coordinate that leave the same dims NULL.
+
+    Grouped with `breakpoint`, since a curve is many rows at one coordinate,
+    one per breakpoint. A NULL groups with a NULL, so two rows leaving a dim
+    NULL are at one coordinate along it.
+    """
+    keys = (*dims, "breakpoint")
+    row = (
+        rel.aggregate([*(col(c) for c in keys), sql("count(*)").alias("_rows")])
+        .filter(col("_rows") > lit(1))
+        .limit(1)
+        .fetchone()
+    )
+    if row is None:
+        return
+    named = [f"{c}={v!r}" for c, v in zip(keys, row, strict=False) if v is not None]
+    coordinate = ", ".join(named) or "every coordinate"
+    msg = (
+        f"attributes/{attribute}.parquet has {row[-1]} rows at {coordinate}, "
+        f"each leaving {[d for d, v in zip(dims, row, strict=False) if v is None]} "
+        f"NULL, so no rule picks one. Keep one row at that coordinate (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
+    )
+    raise ValueError(msg)
 
 
 def _overlap(

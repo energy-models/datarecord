@@ -486,11 +486,12 @@ def _named_most(rel: DuckDBPyRelation, coordinates: Sequence[str]) -> DuckDBPyRe
     """Per coordinate, only the rows whose `_unnamed` count is the lowest.
 
     One layer may hold a default and its exceptions side by side, and the owner
-    map matches both at every coordinate the exception names. The partition is
-    the resolved coordinates without `breakpoint`, so a curve is kept or dropped
-    whole: partitioning per breakpoint would leak the default's extra points
-    into the exception's curve. `write_record` refuses the ties this cannot
-    order.
+    map matches both at every coordinate the exception names. The read keeps
+    only the winners, and so do the owner map's flags, which describe the rows
+    a read returns. The partition is the resolved coordinates without
+    `breakpoint`, so a curve is kept or dropped whole: partitioning per
+    breakpoint would leak the default's extra points into the exception's
+    curve. `write_record` refuses the ties this cannot order.
 
     Notes
     -----
@@ -554,7 +555,9 @@ def fold_inputs(
             col("i", "attribute"),
             lit(str(source.layer_id)).cast(LAYER_UUID_TYPE).alias("layer_uuid"),
             col("i", "breakpoint"),
+            _count_unnamed("i", tuple(expanded)).alias("_unnamed"),
         )
+        tagged = _named_most(tagged, (*keys.schema.dims, "attribute"))
         own = tagged.aggregate(
             [
                 *(col(c) for c in (*keys.schema.input_key, "layer_uuid")),
