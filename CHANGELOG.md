@@ -51,3 +51,18 @@ All notable changes to datarecord are documented here. The format follows
 - Outputs: the `outputs/` directory, `Schema.results`, `Record.outputs` and
   `set(kind="outputs")`. A solve's answers are stored as a record of their own,
   whose schema the producer defines.
+
+### Fixed
+
+- `write_record` refuses a relation frame that carries a column beyond the
+  relation's columns and its tombstone, as `add_relation` already does.
+- `set(attribute, expr)` with a narwhals expression derives an attribute over
+  one dim alone, such as `p_nom` over `entity`, from that dim's axis. It raised
+  `KeyError` before (#33).
+- `set(attribute, expr)` with a narwhals expression raises `KeyError` when any
+  label it names has no current value, and names those labels. It derived the
+  labels that had a value and skipped the others without a word, and raised
+  only where none had one.
+- Removing a label also removes the relation rows whose `values` column holds
+  it. A removed entity no longer leaves `port_entity` rows that map its ports to
+  it.

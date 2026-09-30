@@ -572,6 +572,82 @@ def test_an_expression_value_stages_the_whole_series(staged, root):
     assert got["value"].tolist() == (mine["value"] * 2).tolist()
 
 
+@pytest.mark.parametrize(
+    "scope",
+    [
+        pytest.param({"entity": ["Manchester Wind"]}, id="listed-label"),
+        pytest.param({"entity": "Manchester Wind"}, id="one-label"),
+        pytest.param({}, id="every-label"),
+    ],
+)
+def test_an_expression_derives_an_axis_attribute_from_its_axis(staged, root, scope):
+    """`p_nom` is a column of the entity axis, so the current value is read there.
+
+    The derived path read only the long `attributes` frames, so an attribute
+    over one dim alone had no rows to derive from and raised `KeyError` (#33).
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+    """
+    before = _entity_column(staged, "p_nom")
+    targets = {"Manchester Wind"} if scope else set(before)
+    want = {
+        name: value * 2 if name in targets else value for name, value in before.items()
+    }
+
+    staged.set("p_nom", nw.col("value") * 2, **scope)
+    assert _entity_column(staged, "p_nom") == pytest.approx(want, nan_ok=True), (
+        "the targets doubled and every other label kept its value"
+    )
+
+    child = staged.commit(NewChild(root))
+    assert _entity_column(child.record, "p_nom") == pytest.approx(want, nan_ok=True)
+
+
+def test_two_expressions_on_an_axis_attribute_compose(staged):
+    """The second derived edit reads the first one's staged value, not the base's.
+
+    Notes
+    -----
+    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+    """
+    before = _entity_column(staged, "p_nom")["Manchester Wind"]
+
+    staged.set("p_nom", nw.col("value") * 2, entity=["Manchester Wind"])
+    staged.set("p_nom", nw.col("value") + 1, entity=["Manchester Wind"])
+    assert _entity_column(staged, "p_nom")["Manchester Wind"] == before * 2 + 1
+
+
+def test_an_expression_on_an_axis_attribute_refuses_another_dim(staged):
+    """`p_nom` has no `scenario` to scope, so the derived form refuses it too.
+
+    Notes
+    -----
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    """
+    with pytest.raises(ValueError, match="does not vary over"):
+        staged.set(
+            "p_nom",
+            nw.col("value") * 2,
+            entity=["Manchester Wind"],
+            scenario="high",
+        )
+
+
+def test_an_expression_on_an_axis_label_with_no_value_raises(staged):
+    """A label whose axis row holds no `p_nom` has nothing to derive from.
+
+    Notes
+    -----
+    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+    """
+    staged.add("entity", pd.DataFrame([{"entity": "NewWind"}]))
+    with pytest.raises(KeyError, match="no current value to derive from"):
+        staged.set("p_nom", nw.col("value") * 2, entity=["NewWind"])
+
+
 def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     """A staged row's dims join the flags, unioned with the base answer.
 
@@ -1034,6 +1110,81 @@ def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
     assert "Norway Gas" not in _static(child, "p_nom")
 
 
+def _relation_map(record, relation):
+    """One functional relation as a dict, its key label to its `values` label."""
+    (key,) = record.schema.relation_key(relation)
+    values = record.schema.relations[relation].values
+    rows = record.relations[relation].collect().to_native().to_pandas()
+    return dict(zip(rows[key], rows[values], strict=True))
+
+
+@pytest.mark.parametrize(
+    "committed",
+    [pytest.param(False, id="staged"), pytest.param(True, id="committed")],
+)
+def test_a_removed_label_takes_the_relation_rows_that_map_to_it(
+    staged, root, committed
+):
+    """`port_entity` maps a port to its entity, so removing the entity removes that row.
+
+    The row is keyed on the port, not on the entity, so the key-side cascade
+    alone left it behind, mapping the port to an entity that no longer exists.
+    The port itself stays: removing it is `remove("port", ...)`.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    port = "Norway Gas:"
+    assert _relation_map(staged, "port_entity")[port] == "Norway Gas", (
+        "the fixture attaches Norway Gas through this port"
+    )
+
+    staged.remove("entity", ["Norway Gas"])
+    record = staged.commit(NewChild(root)).record if committed else staged
+
+    assert "Norway Gas" not in set(_relation_map(record, "port_entity").values()), (
+        "no `port_entity` row maps a port to the removed entity"
+    )
+    ports = record.dims["port"].collect("pandas").to_native()
+    assert port in set(ports["port"]), "the port stays on its axis"
+
+
+@pytest.mark.parametrize(
+    ("relation", "axis"),
+    [
+        pytest.param("port_bus", None, id="values-dim-without-an-axis"),
+        pytest.param("entity_type", GEN, id="values-dim-outside-partial"),
+    ],
+)
+def test_a_removed_label_leaves_a_relation_whose_values_cannot_lose_one(
+    staged, root, relation, axis
+):
+    """Only the rows keyed on the removed entity go, when `values` has no label to lose.
+
+    `bus` is `partial` but has no axis, so no label of it is removed and a row
+    naming one stands. `entity_type` is outside `partial`, so a layer owns its
+    axis whole and a label is never removed from it; an axis listing only
+    `Generator` does not remove the rows naming other types.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    before = _relation_map(staged, relation)
+    values = staged.schema.relations[relation].values
+    if axis is not None:
+        staged.add(values, pd.DataFrame({values: [axis]}))
+
+    staged.remove("entity", ["Norway Gas"])
+    after = _relation_map(staged.commit(NewChild(root)).record, relation)
+
+    assert after == {k: v for k, v in before.items() if k != "Norway Gas"}, (
+        f"`{relation}` loses only the rows keyed on Norway Gas"
+    )
+
+
 # -- connect and disconnect (https://energy-models.github.io/datarecord/design/working-record/#add-remove, https://energy-models.github.io/datarecord/design/record/#connections) --------------------------------------
 
 
@@ -1378,6 +1529,49 @@ def test_an_expression_over_a_named_target_with_no_rows_raises(staged):
             entity=["Manchester Wind"],
             snapshot="1999-01-01",
         )
+
+
+def _manchester_wind(record, attribute):
+    """Manchester Wind's `attribute` values, wherever the attribute lives."""
+    if attribute in record.attributes:
+        rows = record.attributes[attribute].collect().to_native().to_pandas()
+        rows = rows[rows["entity"] == "Manchester Wind"].sort_values("snapshot")
+        return rows["value"].tolist()
+    return [_entity_column(record, attribute)["Manchester Wind"]]
+
+
+@pytest.mark.parametrize(
+    "attribute",
+    [
+        pytest.param("p_max_pu", id="long-attribute"),
+        pytest.param("p_nom", id="axis-attribute"),
+    ],
+)
+def test_an_expression_naming_one_label_with_no_value_raises(staged, attribute):
+    """Every named label must have a value to derive from, not just one of them.
+
+    `NewWind` holds no value, so the call failed to change it. It raised only
+    where no named label had a value, so here it doubled Manchester Wind and
+    skipped `NewWind` without a word. A failed derived `set` stages nothing.
+
+    Notes
+    -----
+    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+    """
+    staged.add("entity", pd.DataFrame([{"entity": "NewWind"}]))
+    before = _manchester_wind(staged, attribute)
+
+    with pytest.raises(KeyError, match=r"no current value to derive from") as raised:
+        staged.set(
+            attribute, nw.col("value") * 2, entity=["Manchester Wind", "NewWind"]
+        )
+    assert "NewWind" in str(raised.value), "the message names the label with no value"
+    assert "Manchester Wind" not in str(raised.value), (
+        "the message names only the labels with no value"
+    )
+    assert _manchester_wind(staged, attribute) == before, (
+        "a failed derived set stages nothing"
+    )
 
 
 def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(root, con):

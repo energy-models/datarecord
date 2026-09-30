@@ -66,6 +66,8 @@ A `deleted = true` row in `relations/<relation>.parquet` tombstones one row of t
 A tombstone is honoured by the [one fold](read-path.md#one-fold-for-every-axis) that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
 An _attribute's_ orphaned rows stop surfacing the same way: an attribute row is keyed by the labels of the dims in the fold key, and [`fold_inputs`](read-path.md#owner-map) anti-joins the map against each of those axes' `deleted` rows as it folds — so a key whose entity, port or other label was deleted is absent from the resolved map, not filtered at read.
 A removed label also takes the relation rows keyed on it: a removed component loses its connection rows and its `entity_type` row, and a removed bus loses the connection rows that name it.
+It takes the relation rows whose [`values`](schema.md#values-a-relation-that-classifies) column holds it too, where that `values` dim is in the fold key and has an axis: a removed component loses the `port_entity` rows that map its ports to it.
+It goes no further. The port stays on its axis, with its `port_bus` row; removing it is `remove("port", ...)`.
 A tombstone only affects the branch that carries it; sibling branches keep the component.
 
 The fold treats an absent `deleted` column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.
