@@ -122,6 +122,7 @@ One layer may hold a default and its exceptions side by side: an `efficiency` ro
 Where two rows of the owning layer cover one coordinate, the row that names more of the attribute's dims wins there.
 Two rows that cover one coordinate where neither names a superset of the other's dims are a tie, and `write_record` refuses them: state the value at that coordinate in a row of its own.
 Two rows that leave the same dims NULL at one coordinate are a duplicate, and `write_record` refuses them too: keep one row there.
+A curve is one row per distinct breakpoint at its coordinate, so its rows are no duplicate; a scalar row beside a curve there is, and the write keeps either the scalar or the curve.
 A coordinate no row covers — including an attribute with no rows at all — takes that attribute's `default` from [the schema](schema.md#attributespec).
 
 Broadcast form is preserved: a value held once is answered once, so a consumer can reconstruct the constant-versus-varying split from the shape it gets back.

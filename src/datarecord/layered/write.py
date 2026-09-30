@@ -27,7 +27,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import as_relation, base_uri_of, ex_all, layer_dir
+from datarecord.duck import as_relation, base_uri_of, ex_all, fn, layer_dir
 from datarecord.layered.resolve import cast_declared, read_schema, write_schema
 from datarecord.record import Frames, LayerData, RecordLike
 from datarecord.schema import Schema
@@ -390,25 +390,47 @@ def _refuse_duplicates(
 ) -> None:
     """Refuse two rows at one coordinate that leave the same dims NULL.
 
-    Grouped with `breakpoint`, since a curve is many rows at one coordinate,
-    one per breakpoint. A NULL groups with a NULL, so two rows leaving a dim
+    A curve is many rows at one coordinate, one per distinct breakpoint, so
+    those are allowed; a repeated breakpoint, a second scalar, or a scalar
+    beside a curve is not. A NULL groups with a NULL, so two rows leaving a dim
     NULL are at one coordinate along it.
     """
-    keys = (*dims, "breakpoint")
+    breakpoint = col("breakpoint")
     row = (
-        rel.aggregate([*(col(c) for c in keys), sql("count(*)").alias("_rows")])
-        .filter(col("_rows") > lit(1))
+        rel.aggregate(
+            [
+                *(col(d) for d in dims),
+                fn.count_if(breakpoint.isnull()).alias("_scalars"),
+                fn.count(breakpoint).alias("_points"),
+                sql(f"count(DISTINCT {breakpoint})").alias("_distinct"),
+            ]
+        )
+        .filter(
+            (col("_scalars") > lit(1))
+            | (col("_points") > col("_distinct"))
+            | ((col("_scalars") > lit(0)) & (col("_points") > lit(0)))
+        )
         .limit(1)
         .fetchone()
     )
     if row is None:
         return
-    named = [f"{c}={v!r}" for c, v in zip(keys, row, strict=False) if v is not None]
-    coordinate = ", ".join(named) or "every coordinate"
+    values = dict(zip(dims, row, strict=False))
+    coordinate = (
+        ", ".join(f"{d}={v!r}" for d, v in values.items() if v is not None)
+        or "every coordinate"
+    )
+    scalars, points = row[len(dims)], row[len(dims) + 1]
+    if scalars and points:
+        shape, keep = "a scalar row and a curve", "either the scalar or the curve"
+    elif scalars:
+        shape, keep = "two rows", "one row"
+    else:
+        shape, keep = "a curve repeating a breakpoint", "one row per breakpoint"
     msg = (
-        f"attributes/{attribute}.parquet has {row[-1]} rows at {coordinate}, "
-        f"each leaving {[d for d, v in zip(dims, row, strict=False) if v is None]} "
-        f"NULL, so no rule picks one. Keep one row at that coordinate (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
+        f"attributes/{attribute}.parquet has {shape} at {coordinate}, each "
+        f"leaving {[d for d, v in values.items() if v is None]} NULL, so no rule "
+        f"picks one. Keep {keep} at that coordinate (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
     )
     raise ValueError(msg)
 

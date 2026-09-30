@@ -243,6 +243,11 @@ def test_flags_describe_the_rows_that_win(
             "every coordinate",
             id="two-defaults",
         ),
+        pytest.param(
+            {"entity": ["wind", "wind"], "breakpoint": [0.0, 0.0], "value": [0.5, 0.7]},
+            "entity='wind'",
+            id="a-curve-repeating-a-breakpoint",
+        ),
     ],
 )
 def test_a_duplicate_row_is_refused(con, base_uri, rows, coordinate):
@@ -257,5 +262,61 @@ def test_a_duplicate_row_is_refused(con, base_uri, rows, coordinate):
     revision = Revision.create(con)
     tables = {"p_max_pu": pd.DataFrame(rows)}
     with pytest.raises(ValueError, match=r"p_max_pu.*Keep one row") as info:
+        write_record(revision.id, from_sources(schema, tables), con)
+    assert coordinate in str(info.value), "the message names the coordinate"
+
+
+@pytest.mark.parametrize(
+    ("rows", "coordinate"),
+    [
+        pytest.param(
+            {
+                "entity": ["wind", "wind", "wind"],
+                "breakpoint": [None, 0.0, 50.0],
+                "value": [0.5, 0.2, 0.4],
+            },
+            "entity='wind'",
+            id="a-scalar-beside-a-curve",
+        ),
+        pytest.param(
+            {"breakpoint": [None, 0.0], "value": [0.5, 0.2]},
+            "every coordinate",
+            id="a-scalar-default-beside-a-curve-default",
+        ),
+        pytest.param(
+            {
+                "entity": ["wind", "wind", "gas"],
+                "breakpoint": [0.0, 50.0, None],
+                "value": [0.2, 0.4, 0.5],
+            },
+            None,
+            id="a-curve-at-one-entity-a-scalar-at-another",
+        ),
+        pytest.param(
+            {
+                "entity": ["wind", "wind", None],
+                "breakpoint": [0.0, 50.0, None],
+                "value": [0.2, 0.4, 0.5],
+            },
+            None,
+            id="a-curve-beside-a-scalar-default-it-outranks",
+        ),
+    ],
+)
+def test_a_scalar_beside_a_curve_is_refused(con, base_uri, rows, coordinate):
+    """A scalar and a curve with one NULL pattern at one coordinate: neither wins.
+
+    Before the fix the duplicate check grouped by `breakpoint`, so the scalar's
+    NULL breakpoint and the curve's points fell in different groups and both
+    were written. `coordinate` is `None` where the write is accepted.
+    """
+    schema = _schema({"entity", "snapshot", "scenario"})
+    write_schema(schema, base_uri)
+    revision = Revision.create(con)
+    tables = {"p_max_pu": pd.DataFrame(rows)}
+    if coordinate is None:
+        write_record(revision.id, from_sources(schema, tables), con)
+        return
+    with pytest.raises(ValueError, match=r"p_max_pu.*scalar or the curve") as info:
         write_record(revision.id, from_sources(schema, tables), con)
     assert coordinate in str(info.value), "the message names the coordinate"
