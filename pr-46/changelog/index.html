@@ -765,6 +765,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#fixed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -927,6 +938,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#fixed_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -993,6 +1015,10 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><code>set</code>, <code>remove</code> and <code>remove_relation</code> refuse a label whose type is not its
+  dim's declared dtype with a <code>TypeError</code> that names the dim, its dtype, the
+  label and the rewrite, where they failed inside pyarrow or DuckDB. A str is
+  no longer parsed as a <code>Datetime</code> label: pass <code>pd.Timestamp("2030-01-01")</code>.</li>
 <li>A layer that holds a default and its exception side by side, such as
   <code>set("efficiency", 0.9, port=["dc_out"])</code> and <code>set("efficiency", 0.95)</code>,
   reads one value at each coordinate: the row that names more of the
@@ -1011,6 +1037,21 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>Outputs: the <code>outputs/</code> directory, <code>Schema.results</code>, <code>Record.outputs</code> and
   <code>set(kind="outputs")</code>. A solve's answers are stored as a record of their own,
   whose schema the producer defines.</li>
+</ul>
+<h3 id="fixed_1">Fixed<a class="headerlink" href="#fixed_1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>write_record</code> refuses a relation frame that carries a column beyond the
+  relation's columns and its tombstone, as <code>add_relation</code> already does.</li>
+<li><code>set(attribute, expr)</code> with a narwhals expression derives an attribute over
+  one dim alone, such as <code>p_nom</code> over <code>entity</code>, from that dim's axis. It raised
+  <code>KeyError</code> before (#33).</li>
+<li><code>set(attribute, expr)</code> with a narwhals expression raises <code>KeyError</code> when any
+  label it names has no current value, and names those labels. It derived the
+  labels that had a value and skipped the others without a word, and raised
+  only where none had one.</li>
+<li>Removing a label also removes the relation rows whose <code>values</code> column holds
+  it. A removed entity no longer leaves <code>port_entity</code> rows that map its ports to
+  it.</li>
 </ul>
 
 
