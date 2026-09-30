@@ -1100,10 +1100,7 @@ and the column is written NULL.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/sources.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-161">161</a></span>
-<span class="normal"><a href="#__codelineno-0-162">162</a></span>
-<span class="normal"><a href="#__codelineno-0-163">163</a></span>
-<span class="normal"><a href="#__codelineno-0-164">164</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-164">164</a></span>
 <span class="normal"><a href="#__codelineno-0-165">165</a></span>
 <span class="normal"><a href="#__codelineno-0-166">166</a></span>
 <span class="normal"><a href="#__codelineno-0-167">167</a></span>
@@ -1130,37 +1127,40 @@ and the column is written NULL.</p>
 <span class="normal"><a href="#__codelineno-0-188">188</a></span>
 <span class="normal"><a href="#__codelineno-0-189">189</a></span>
 <span class="normal"><a href="#__codelineno-0-190">190</a></span>
-<span class="normal"><a href="#__codelineno-0-191">191</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-161" name="__codelineno-0-161"></a><span class="k">def</span><span class="w"> </span><span class="nf">from_sources</span><span class="p">(</span><span class="n">schema</span><span class="p">:</span> <span class="n">Schema</span><span class="p">,</span> <span class="n">sources</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">RecordLike</span><span class="p">:</span>
-<a id="__codelineno-0-162" name="__codelineno-0-162"></a><span class="w">    </span><span class="sd">"""A record over `sources`, tables keyed by the names `schema` declares.</span>
-<a id="__codelineno-0-163" name="__codelineno-0-163"></a>
-<a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="sd">    What `to_sources` returns, read the other way, and what `write_record`</span>
-<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="sd">    writes. Each value is anything `narwhals.from_native` takes. A dimension's</span>
-<a id="__codelineno-0-166" name="__codelineno-0-166"></a><span class="sd">    table carries its labels; a relation's its rows; a parameter's its</span>
-<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">    coordinates and `value`. A parameter table may leave out a coordinate it</span>
-<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">    broadcasts over - a constant over every snapshot has no `snapshot` column -</span>
-<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">    and the column is written NULL.</span>
-<a id="__codelineno-0-170" name="__codelineno-0-170"></a>
-<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="sd">    Raises</span>
-<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">    ------</span>
-<a id="__codelineno-0-173" name="__codelineno-0-173"></a><span class="sd">    KeyError</span>
-<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">        If a name is none the schema declares, or both a dimension and a relation.</span>
-<a id="__codelineno-0-175" name="__codelineno-0-175"></a>
-<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)</span>
-<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)</span>
-<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">    """</span>
-<a id="__codelineno-0-181" name="__codelineno-0-181"></a>    <span class="n">tables</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">_lazy</span><span class="p">(</span><span class="n">table</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">sources</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
-<a id="__codelineno-0-182" name="__codelineno-0-182"></a>    <span class="n">_ambiguous</span><span class="p">(</span><span class="n">schema</span><span class="p">,</span> <span class="n">tables</span><span class="p">)</span>
-<a id="__codelineno-0-183" name="__codelineno-0-183"></a>    <span class="n">declared</span> <span class="o">=</span> <span class="p">{</span><span class="o">*</span><span class="n">schema</span><span class="o">.</span><span class="n">dimensions</span><span class="p">,</span> <span class="o">*</span><span class="n">schema</span><span class="o">.</span><span class="n">relations</span><span class="p">,</span> <span class="o">*</span><span class="n">schema</span><span class="o">.</span><span class="n">attributes</span><span class="p">}</span>
-<a id="__codelineno-0-184" name="__codelineno-0-184"></a>    <span class="n">unknown</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">tables</span><span class="p">)</span> <span class="o">-</span> <span class="n">declared</span><span class="p">)</span>
-<a id="__codelineno-0-185" name="__codelineno-0-185"></a>    <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
-<a id="__codelineno-0-186" name="__codelineno-0-186"></a>        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-187" name="__codelineno-0-187"></a>            <span class="sa">f</span><span class="s2">"the schema declares no </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; a table is keyed by the name of a "</span>
-<a id="__codelineno-0-188" name="__codelineno-0-188"></a>            <span class="sa">f</span><span class="s2">"dimension, relation or parameter"</span>
-<a id="__codelineno-0-189" name="__codelineno-0-189"></a>        <span class="p">)</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a>        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>    <span class="k">return</span> <span class="n">_Tables</span><span class="p">(</span><span class="n">schema</span><span class="p">,</span> <span class="n">tables</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-164" name="__codelineno-0-164"></a><span class="k">def</span><span class="w"> </span><span class="nf">from_sources</span><span class="p">(</span><span class="n">schema</span><span class="p">:</span> <span class="n">Schema</span><span class="p">,</span> <span class="n">sources</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">RecordLike</span><span class="p">:</span>
+<a id="__codelineno-0-165" name="__codelineno-0-165"></a><span class="w">    </span><span class="sd">"""A record over `sources`, tables keyed by the names `schema` declares.</span>
+<a id="__codelineno-0-166" name="__codelineno-0-166"></a>
+<a id="__codelineno-0-167" name="__codelineno-0-167"></a><span class="sd">    What `to_sources` returns, read the other way, and what `write_record`</span>
+<a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="sd">    writes. Each value is anything `narwhals.from_native` takes. A dimension's</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a><span class="sd">    table carries its labels; a relation's its rows; a parameter's its</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a><span class="sd">    coordinates and `value`. A parameter table may leave out a coordinate it</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a><span class="sd">    broadcasts over - a constant over every snapshot has no `snapshot` column -</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a><span class="sd">    and the column is written NULL.</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="sd">    KeyError</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a><span class="sd">        If a name is none the schema declares, or both a dimension and a relation.</span>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">    """</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a>    <span class="n">tables</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">_lazy</span><span class="p">(</span><span class="n">table</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">table</span> <span class="ow">in</span> <span class="n">sources</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a>    <span class="n">_ambiguous</span><span class="p">(</span><span class="n">schema</span><span class="p">,</span> <span class="n">tables</span><span class="p">)</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a>    <span class="n">declared</span> <span class="o">=</span> <span class="p">{</span><span class="o">*</span><span class="n">schema</span><span class="o">.</span><span class="n">dimensions</span><span class="p">,</span> <span class="o">*</span><span class="n">schema</span><span class="o">.</span><span class="n">relations</span><span class="p">,</span> <span class="o">*</span><span class="n">schema</span><span class="o">.</span><span class="n">attributes</span><span class="p">}</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a>    <span class="n">unknown</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">tables</span><span class="p">)</span> <span class="o">-</span> <span class="n">declared</span><span class="p">)</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a>    <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a>        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a>            <span class="sa">f</span><span class="s2">"the schema declares no </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; a table is keyed by the name of a "</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a>            <span class="sa">f</span><span class="s2">"dimension, relation or parameter"</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a>        <span class="p">)</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>    <span class="k">return</span> <span class="n">_Tables</span><span class="p">(</span><span class="n">schema</span><span class="p">,</span> <span class="n">tables</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

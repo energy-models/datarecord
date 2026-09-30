@@ -1320,7 +1320,7 @@ A type-scoped question goes through that relation — <a href="../record/#flags"
 <p>The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are <a href="../layers/#materialised-node-caches">materialised</a> persists it (and the resolved axes beside it), so a read needs only the ancestry <strong>back to the nearest materialised node</strong> — the key scalability property.
 Every fold-key axis's tombstones reach this map in the fold: <code>fold_inputs</code> anti-joins the parent against the deleted rows of each dim in the fold key, <code>entity</code> among them — read from the same file that axis folds from — so a key whose label on any of those dims was deleted is absent from the resolved map rather than filtered at read.
-A removed label takes the relation rows keyed on it too (<a href="#one-fold-for-every-axis">one fold for every axis</a>), so a removed component loses its connection rows and its <code>entity_type</code> row with it.
+A removed label takes the relation rows keyed on it too (<a href="#one-fold-for-every-axis">one fold for every axis</a>), so a removed component loses its connection rows and its <code>entity_type</code> row with it, and the relation rows whose <code>values</code> column holds it, such as its <code>port_entity</code> rows (<a href="../layers/#deletion">deletion</a>).
 A NULL there is a <a href="../record/#the-broadcast-rule">broadcast</a> over every label rather than a label, so the NULL-safe anti-join never takes it; only a row naming a dead label is dropped.</p>
 <h2 id="one-fold-for-every-axis">One fold for every axis<a class="headerlink" href="#one-fold-for-every-axis" title="Permanent link">&para;</a></h2>
 <p>A dim's coordinates, the entity axis, and a relation are one construct: a keyed table a layer patches per key.
@@ -1332,7 +1332,8 @@ A consumer wanting positional ports numbers a component's ports by this order, s
 Across a materialised parent it still holds: the resolved seed is read in its own row order and a descendant's new rows number after it.</p>
 <p>The fold runs live over an unmaterialised tail, cached per connection; since <a href="../layers/#a-layers-data-is-write-once">layers are write-once</a>, such a cache never needs invalidating.</p>
 <p>The <a href="../record/#flags">flags</a> are folded in alongside the ownership group-by, so they cost nothing beyond it.
-They are computed <strong>per key</strong>, so per component: whether <em>this</em> component's <code>p_max_pu</code> sets <code>timestep</code> is a different question from whether any does.</p>
+They are computed <strong>per key</strong>, so per component: whether <em>this</em> component's <code>p_max_pu</code> sets <code>timestep</code> is a different question from whether any does.
+They are computed from the rows a read returns, so a row another row of its layer outranks at a key is left out first (<a href="#resolving-a-relation">resolving a relation</a>).</p>
 <p>The structs have a field per declared dim, since every dim <a href="../record/#the-broadcast-rule">broadcasts</a>: "did a row set it" is a question about each of them.</p>
 <p>Two <strong>structs</strong> rather than a <code>varies_&lt;dim&gt;</code> column per dim, because which dims exist is <a href="../schema/#dimensions">declared</a> and a flat layout would make the map's <em>column set</em> depend on the schema.
 <a href="../schema/#versioning">Versioning</a> calls adding a dim compatible; that has to hold for a map already persisted at a <a href="../layers/#materialised-node-caches">materialised node</a>, not only for the layers.
@@ -1361,7 +1362,9 @@ That also means the dim namespace lives entirely inside <code>varies</code>/<cod
 The join's columns follow from the same place, so the query shape is derived from the schema rather than spelling any dim as a literal.</p>
 <p>The map already names the winning layer per key, so resolution reads only the owning layers' files.
 There is no per-read <code>MAX</code>/group-by and no tombstone filter — deletions are already absent from the map.</p>
-<p>Each owned-per dim's arm is <strong>NULL-aware</strong>: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.</p>
+<p>Each owned-per dim's arm is <strong>NULL-aware</strong>: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.
+A default and its exception in one layer both join the entry for the label the exception names, so at each coordinate the read keeps the rows that leave the fewest fold-key dims NULL (<a href="../record/#the-broadcast-rule">the broadcast rule</a>).
+The coordinate is the attribute's own dims without <code>breakpoint</code>, so a curve is kept or dropped whole.</p>
 <p>A fold-key dim the attribute is not over is joined <strong>NULL-safely</strong>: it is NULL on both sides, so it matches and expands nothing.
 There is no membership gate at read: an attribute row is keyed by the labels of the fold-key dims it is over, and each of those axes is <a href="#one-fold-for-every-axis">tombstone-pruned in the fold</a>, so a row whose label on one of them was deleted is already gone from the map.
 The fold anti-joins each axis against its own <code>deleted</code> rows, read from the same file that axis folds from.

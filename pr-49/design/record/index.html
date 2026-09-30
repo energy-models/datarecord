@@ -1464,7 +1464,11 @@ A NULL dim means "all values of that dim", not that the attribute lacks the axis
 <p><strong>A NULL expands only for an attribute over that dim.</strong> Every row of the fold carries every dim, so a row of <code>efficiency</code>, which is not over <code>scenario</code>, reads NULL there too. That NULL means "not over this dim", and it expands nothing.</p>
 <p><strong>Every dim an attribute is over broadcasts</strong>, <code>entity</code> and <code>port</code> included: a NULL <code>entity</code> on <code>p_max_pu</code> means every entity, and a NULL <code>port</code> on <code>efficiency</code> means every port.
 The <code>values</code> dim of a functional relation is an ordinary axis too: <code>entity_type</code> and <code>country</code> broadcast like any other.</p>
-<p>Rows never overlap, so at most one covers any coordinate.
+<p>One layer may hold a default and its exceptions side by side: an <code>efficiency</code> row with <code>port = NULL</code> beside one that names <code>dc_out</code>.
+Where two rows of the owning layer cover one coordinate, the row that names more of the attribute's dims wins there.
+Two rows that cover one coordinate where neither names a superset of the other's dims are a tie, and <code>write_record</code> refuses them: state the value at that coordinate in a row of its own.
+Two rows that leave the same dims NULL at one coordinate are a duplicate, and <code>write_record</code> refuses them too: keep one row there.
+A curve is one row per distinct breakpoint at its coordinate, so its rows are no duplicate; a scalar row beside a curve there is, and the write keeps either the scalar or the curve.
 A coordinate no row covers — including an attribute with no rows at all — takes that attribute's <code>default</code> from <a href="../schema/#attributespec">the schema</a>.</p>
 <p>Broadcast form is preserved: a value held once is answered once, so a consumer can reconstruct the constant-versus-varying split from the shape it gets back.</p>
 <h2 id="axis-order">Axis order<a class="headerlink" href="#axis-order" title="Permanent link">&para;</a></h2>
@@ -1493,6 +1497,8 @@ It takes a sequence of names; a bare string raises <code>TypeError</code>.
 Only attributes with rows are present, so <code>set(record.flags(names))</code> also answers which attributes these entities have at all.</p>
 <p>The sets name dims, so a consumer asks about a <strong>named</strong> axis: <code>"timestep" in flags["p_max_pu"].varies</code>.
 <code>breakpoints</code> is a boolean rather than a set because a breakpoint is not a dim (<a href="#wide-and-long-rows">wide and long rows</a>) — it is an abscissa within one row's value, not an axis the value is indexed by.</p>
+<p>The flags describe the rows a read returns: a row that another row of its layer outranks at a coordinate (<a href="#the-broadcast-rule">the broadcast rule</a>) counts for nothing there.
+So <code>flags(port=["dc_out"])</code> for an <code>efficiency</code> default beside a <code>dc_out</code> row puts <code>port</code> in <code>varies</code> and not in <code>broadcast</code>.</p>
 <p><strong>The two sets are not complements.</strong> An attribute may have per-timestep rows for one component and a single NULL-timestep row for another, so <code>timestep</code> lands in both.
 That is an instruction to use both containers: <code>timestep in broadcast</code> selects the NULL-timestep rows into a constant frame, <code>timestep in varies</code> selects the rest into a series frame.
 Per component they would be complements; the aggregation over several entities is what makes the pair carry information.</p>
