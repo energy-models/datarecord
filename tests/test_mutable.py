@@ -943,6 +943,81 @@ def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
     assert "Norway Gas" not in _static(child, "p_nom")
 
 
+def _relation_map(record, relation):
+    """One functional relation as a dict, its key label to its `values` label."""
+    (key,) = record.schema.relation_key(relation)
+    values = record.schema.relations[relation].values
+    rows = record.relations[relation].collect().to_native().to_pandas()
+    return dict(zip(rows[key], rows[values], strict=True))
+
+
+@pytest.mark.parametrize(
+    "committed",
+    [pytest.param(False, id="staged"), pytest.param(True, id="committed")],
+)
+def test_a_removed_label_takes_the_relation_rows_that_map_to_it(
+    staged, root, committed
+):
+    """`port_entity` maps a port to its entity, so removing the entity removes that row.
+
+    The row is keyed on the port, not on the entity, so the key-side cascade
+    alone left it behind, mapping the port to an entity that no longer exists.
+    The port itself stays: removing it is `remove("port", ...)`.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    port = "Norway Gas:"
+    assert _relation_map(staged, "port_entity")[port] == "Norway Gas", (
+        "the fixture attaches Norway Gas through this port"
+    )
+
+    staged.remove("entity", ["Norway Gas"])
+    record = staged.commit(NewChild(root)).record if committed else staged
+
+    assert "Norway Gas" not in set(_relation_map(record, "port_entity").values()), (
+        "no `port_entity` row maps a port to the removed entity"
+    )
+    ports = record.dims["port"].collect("pandas").to_native()
+    assert port in set(ports["port"]), "the port stays on its axis"
+
+
+@pytest.mark.parametrize(
+    ("relation", "axis"),
+    [
+        pytest.param("port_bus", None, id="values-dim-without-an-axis"),
+        pytest.param("entity_type", GEN, id="values-dim-outside-partial"),
+    ],
+)
+def test_a_removed_label_leaves_a_relation_whose_values_cannot_lose_one(
+    staged, root, relation, axis
+):
+    """Only the rows keyed on the removed entity go, when `values` has no label to lose.
+
+    `bus` is `partial` but has no axis, so no label of it is removed and a row
+    naming one stands. `entity_type` is outside `partial`, so a layer owns its
+    axis whole and a label is never removed from it; an axis listing only
+    `Generator` does not remove the rows naming other types.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    before = _relation_map(staged, relation)
+    values = staged.schema.relations[relation].values
+    if axis is not None:
+        staged.add(values, pd.DataFrame({values: [axis]}))
+
+    staged.remove("entity", ["Norway Gas"])
+    after = _relation_map(staged.commit(NewChild(root)).record, relation)
+
+    assert after == {k: v for k, v in before.items() if k != "Norway Gas"}, (
+        f"`{relation}` loses only the rows keyed on Norway Gas"
+    )
+
+
 # -- connect and disconnect (https://energy-models.github.io/datarecord/design/working-record/#add-remove, https://energy-models.github.io/datarecord/design/record/#connections) --------------------------------------
 
 

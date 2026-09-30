@@ -44,3 +44,9 @@ All notable changes to datarecord are documented here. The format follows
 - Outputs: the `outputs/` directory, `Schema.results`, `Record.outputs` and
   `set(kind="outputs")`. A solve's answers are stored as a record of their own,
   whose schema the producer defines.
+
+### Fixed
+
+- Removing a label also removes the relation rows whose `values` column holds
+  it. A removed entity no longer leaves `port_entity` rows that map its ports to
+  it.

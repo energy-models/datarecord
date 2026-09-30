@@ -37,7 +37,7 @@ A type-scoped question goes through that relation — [`flags`](record.md#flags)
 The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
 Every fold-key axis's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of each dim in the fold key, `entity` among them — read from the same file that axis folds from — so a key whose label on any of those dims was deleted is absent from the resolved map rather than filtered at read.
-A removed label takes the relation rows keyed on it too ([one fold for every axis](#one-fold-for-every-axis)), so a removed component loses its connection rows and its `entity_type` row with it.
+A removed label takes the relation rows keyed on it too ([one fold for every axis](#one-fold-for-every-axis)), so a removed component loses its connection rows and its `entity_type` row with it, and the relation rows whose `values` column holds it, such as its `port_entity` rows ([deletion](layers.md#deletion)).
 A NULL there is a [broadcast](record.md#the-broadcast-rule) over every label rather than a label, so the NULL-safe anti-join never takes it; only a row naming a dead label is dropped.
 
 ## One fold for every axis
