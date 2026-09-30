@@ -481,6 +481,82 @@ def test_an_expression_value_stages_the_whole_series(staged, root):
     assert got["value"].tolist() == (mine["value"] * 2).tolist()
 
 
+@pytest.mark.parametrize(
+    "scope",
+    [
+        pytest.param({"entity": ["Manchester Wind"]}, id="listed-label"),
+        pytest.param({"entity": "Manchester Wind"}, id="one-label"),
+        pytest.param({}, id="every-label"),
+    ],
+)
+def test_an_expression_derives_an_axis_attribute_from_its_axis(staged, root, scope):
+    """`p_nom` is a column of the entity axis, so the current value is read there.
+
+    The derived path read only the long `attributes` frames, so an attribute
+    over one dim alone had no rows to derive from and raised `KeyError` (#33).
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+    """
+    before = _entity_column(staged, "p_nom")
+    targets = {"Manchester Wind"} if scope else set(before)
+    want = {
+        name: value * 2 if name in targets else value for name, value in before.items()
+    }
+
+    staged.set("p_nom", nw.col("value") * 2, **scope)
+    assert _entity_column(staged, "p_nom") == pytest.approx(want, nan_ok=True), (
+        "the targets doubled and every other label kept its value"
+    )
+
+    child = staged.commit(NewChild(root))
+    assert _entity_column(child.record, "p_nom") == pytest.approx(want, nan_ok=True)
+
+
+def test_two_expressions_on_an_axis_attribute_compose(staged):
+    """The second derived edit reads the first one's staged value, not the base's.
+
+    Notes
+    -----
+    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+    """
+    before = _entity_column(staged, "p_nom")["Manchester Wind"]
+
+    staged.set("p_nom", nw.col("value") * 2, entity=["Manchester Wind"])
+    staged.set("p_nom", nw.col("value") + 1, entity=["Manchester Wind"])
+    assert _entity_column(staged, "p_nom")["Manchester Wind"] == before * 2 + 1
+
+
+def test_an_expression_on_an_axis_attribute_refuses_another_dim(staged):
+    """`p_nom` has no `scenario` to scope, so the derived form refuses it too.
+
+    Notes
+    -----
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    """
+    with pytest.raises(ValueError, match="does not vary over"):
+        staged.set(
+            "p_nom",
+            nw.col("value") * 2,
+            entity=["Manchester Wind"],
+            scenario="high",
+        )
+
+
+def test_an_expression_on_an_axis_label_with_no_value_raises(staged):
+    """A label whose axis row holds no `p_nom` has nothing to derive from.
+
+    Notes
+    -----
+    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+    """
+    staged.add("entity", pd.DataFrame([{"entity": "NewWind"}]))
+    with pytest.raises(KeyError, match="no current value to derive from"):
+        staged.set("p_nom", nw.col("value") * 2, entity=["NewWind"])
+
+
 def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     """A staged row's dims join the flags, unioned with the base answer.
 
