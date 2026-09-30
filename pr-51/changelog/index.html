@@ -993,8 +993,8 @@ SPDX-License-Identifier: CC-BY-4.0
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>Schema.from_mathspec</code> builds a schema from a mathspec spec's dimensions,
-  relations and parameters, and <code>Schema.to_mathspec</code> writes them back. Both
-  need the <code>mathspec</code> extra: <code>pip install 'datarecord[mathspec]'</code>.</li>
+  relations and parameters. It needs the <code>mathspec</code> extra:
+  <code>pip install 'datarecord[mathspec]'</code>.</li>
 <li><code>datarecord.sources</code>: <code>from_sources</code> reads tables keyed by the names a schema
   declares as a record, and <code>to_sources</code> returns a record as those tables, in
   the shape specsolve's <code>solve</code> takes.</li>
@@ -1019,6 +1019,10 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>attributes/&lt;attr&gt;.parquet</code>. An axis file holds its labels only, so
   <code>dims[dim]</code> carries no attribute column, and <code>attributes</code> and <code>flags</code> answer
   for every attribute.</li>
+<li><code>set</code> takes a scalar, a long frame or an <code>nw.Expr</code>. A different value per
+  label is a frame with a column per coordinate and a <code>value</code> column; a
+  mapping, a sequence or a series is refused with a <code>TypeError</code> that spells the
+  frame, and <code>indexed_by</code> is gone.</li>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
