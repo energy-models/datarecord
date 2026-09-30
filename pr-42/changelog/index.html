@@ -1004,6 +1004,8 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li><code>write_record</code> refuses a relation frame that carries a column beyond the
+  relation's columns and its tombstone, as <code>add_relation</code> already does.</li>
 <li><code>set(attribute, expr)</code> with a narwhals expression derives an attribute over
   one dim alone, such as <code>p_nom</code> over <code>entity</code>, from that dim's axis. It raised
   <code>KeyError</code> before (#33).</li>
