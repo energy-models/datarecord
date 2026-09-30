@@ -149,11 +149,9 @@ class RecordLike(Protocol):
     def dims(self) -> Frames:
         """Axis frames, keyed by dim (`"scenario"` -> `dims/scenarios.parquet`).
 
-        An axis frame is its key column and the attributes addressed by it alone
-        (`Schema.attributes_on`) - so a per-country CO2 budget or a per-type icon
-        is read from here rather than from `attributes`, which holds long frames
-        only. A column absent from the frame is one no layer wrote, whose value
-        is that attribute's `default`.
+        An axis frame is its labels: its key column, and a column per dim it is
+        `within`. No attribute is a column of it - a per-country CO2 budget or
+        a per-type icon is a long frame in `attributes` like any other.
 
         No classification column: which buses a country holds is the relation
         whose `values` it is, read from `relations`.

@@ -80,8 +80,8 @@ The layout is the whole format ([design](../design/format.md)):
 record/
 ├── manifest.json                   # the schema
 ├── dims/
-│   ├── entity.parquet              # entities + attribute columns over entity alone
+│   ├── entity.parquet              # which entities exist
 │   └── <dim>.parquet               # one axis table per declared dim
 ├── relations/<relation>.parquet    # which tuples of the relation exist
-└── attributes/<attr>.parquet       # one varying attribute per file
+└── attributes/<attr>.parquet       # one attribute per file
 ```

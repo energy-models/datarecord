@@ -55,11 +55,16 @@ def parent(con, base_uri, stochastic):
 def test_map_is_scenario_expanded(con, parent, stochastic):
     """A NULL-scenario row becomes one map entry per scenario.
 
+    Only for an attribute over `scenario`: one that is not reads NULL there.
+
     Notes
     -----
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
+    schema = parent.record.schema
+    over = [a for a in schema.attributes if "scenario" in schema.coordinates_of(a)]
     df = parent.resolver.inputs.df()
+    df = df[df["attribute"].astype(str).isin(over)]
     assert set(df["scenario"]) == set(stochastic.scenarios)
 
     solar = df[

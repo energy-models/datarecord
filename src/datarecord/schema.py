@@ -191,9 +191,8 @@ class AttributeSpec(BaseModel):
         `nw.Datetime()`, ...) - translated to its DuckDB name only where a
         column of it is built.
     dims
-        Dims this attribute is over; each a declared dim, never a relation. One
-        dim alone puts it on that dim's axis file rather than in `attributes/`,
-        so the schema decides the file split.
+        Dims this attribute is over; each a declared dim, never a relation.
+        Each is a column of the attribute's own `attributes/<attr>.parquet`.
     default
         The value a coordinate no row covers takes.
     breakpoints
@@ -253,24 +252,6 @@ class AttributeSpec(BaseModel):
             except ValueError:
                 return value
         return value
-
-    @property
-    def varying(self) -> bool:
-        """Whether this attribute's values are long rows rather than a column.
-
-        "Varies beyond its address", not "has dims": exactly one dim is a
-        column of that dim's axis file, so `dims={"entity"}` is a component
-        column. Anything more is `attributes/<attr>.parquet`.
-
-        A bare `bool(dims)` was the test before `entity` was a declared dim,
-        when a component attribute declared none - it would now call every
-        attribute varying and route every constant to `attributes/`.
-
-        Notes
-        -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        """
-        return len(self.dims) > 1
 
 
 class Relation(BaseModel):
@@ -710,24 +691,6 @@ class Schema(BaseModel):
         seen = _ancestors(dim, {d: s.within for d, s in self.dimensions.items()})
         return (*(d for d in self.dims if d in seen), dim)
 
-    def attributes_on(self, dim: str) -> tuple[str, ...]:
-        """Attributes stored as columns of `dims/{dim}.parquet`.
-
-        An attribute over `dim` alone: a per-country CO2 budget, a snapshot
-        weighting, a per-type icon. `AttributeSpec.varying` is False for
-        exactly these, and a component's constant columns live on
-        `dims/entity.parquet` like any other axis's.
-
-        Notes
-        -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        """
-        if dim not in self.dimensions:
-            return ()
-        return tuple(
-            a for a, spec in self.attributes.items() if spec.dims == frozenset({dim})
-        )
-
     # -- key and column sets (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/read-path/#owner-map) -----------------------------------
 
     @property
@@ -807,9 +770,8 @@ class Schema(BaseModel):
     def column_type(self, column: str) -> nw.dtypes.DType | None:
         """The declared type for one column, or None if the schema declares none.
 
-        Covers the structural columns the format fixes, the declared dims, the
-        attributes an axis file carries as columns (`attributes_on`), and the
-        owner map's two flag structs, whose fields follow the schema's dims. A
+        Covers the structural columns the format fixes, the declared dims, and
+        the owner map's two flag structs, whose fields follow the schema's dims. A
         narwhals dtype, translated to DuckDB (`duck.DuckTypes`) only where a
         caller builds a column of it.
 
@@ -817,12 +779,6 @@ class Schema(BaseModel):
         declared, and typed from that declaration. So an `Enum` on the entity-type
         axis pins its vocabulary everywhere the column is built, and an axis a
         schema happens to call `kind` is typed no differently.
-
-        An attribute over one axis alone is a *column* rather than a
-        `value` cell, so this is where its type is read from - `cast_declared`
-        would otherwise leave an axis file's attribute column as whatever the
-        incoming frame happened to carry. An attribute with any other `dims` is
-        `value_type`'s, not this: it is a long row's value.
 
         A schema declaring no dims at all is "no manifest yet" rather
         than a record to fold, and DuckDB has no empty struct - so the flag
@@ -840,11 +796,6 @@ class Schema(BaseModel):
             return self.dimensions[column].dtype
         if column in ("varies", "broadcast"):
             return flag_type(self.broadcast_dims) if self.broadcast_dims else None
-        spec = self.attributes.get(column)
-        if spec is not None and not spec.varying:
-            (dim,) = spec.dims
-            if column in self.attributes_on(dim):
-                return spec.dtype
         return None
 
     def value_type(self, attribute: str) -> nw.dtypes.DType | None:

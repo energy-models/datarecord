@@ -59,12 +59,12 @@ Two properties follow from accumulate-then-commit, and both are the point:
 
 Each edit maps onto exactly one part of the format:
 
-| edit                           | writes                                                                                                 | key it targets                     |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------ | ---------------------------------- |
-| set an attribute               | `attributes/<attr>.parquet` rows                                                                       | `(*partial dims, attribute)`       |
-| add components                 | `dims/entity.parquet` rows, `attributes/` rows for varying attributes, and rows of the relations named | `entity`                           |
-| remove labels                  | a `deleted = true` tombstone on the dim's axis                                                         | the dim's label                    |
-| add_relation / remove_relation | `relations/<relation>.parquet` rows and tombstones                                                     | the relation's own key coordinates |
+| edit                           | writes                                                                          | key it targets                     |
+| ------------------------------ | ------------------------------------------------------------------------------- | ---------------------------------- |
+| set an attribute               | `attributes/<attr>.parquet` rows                                                | `(*partial dims, attribute)`       |
+| add components                 | `dims/entity.parquet` rows, `attributes/` rows, and rows of the relations named | `entity`                           |
+| remove labels                  | a `deleted = true` tombstone on the dim's axis                                  | the dim's label                    |
+| add_relation / remove_relation | `relations/<relation>.parquet` rows and tombstones                              | the relation's own key coordinates |
 
 `add_relation` names no component type: a relation's rows are keyed by its columns and the type is not one of them, so there is nothing for it to scope ([where the rows live](format.md#where-a-value-lives)).
 Nor is there a `connect`/`disconnect` pair beside it — `connection` is one relation among however many the schema declares, and a call naming it would be the record layer holding one framework's vocabulary.
@@ -99,9 +99,8 @@ None has a parameter of its own, because which dims exist is declared rather tha
 
 A keyword scopes the edit, and its absence means every value of that dim. So `scenario="high"` patches one scenario, and a `set` of `efficiency` that names no `port` sets every port.
 
-**An attribute over one axis alone is keyed by that axis's labels**, not by `entity`: `set("icon", {"Generator": "turbine"})` states one type's icon, and `set("co2_budget", 3.0)` reaches every country the axis has.
-The edit stages a row of [that axis's own file](format.md#where-a-value-lives) rather than a long row, so `entity=` is refused — an icon belongs to no component — and a sequence is refused too, there being no name list to align against.
-A label the axis does not have is refused rather than introduced: an axis row is a label's existence, which an axis file states. Where the axis's dtype is an `Enum` the vocabulary is the schema's, so an undeclared label is rejected without reading the axis at all.
+**An attribute over one axis alone is keyed by that axis's labels**, not by `entity`: `set("icon", {"Generator": "turbine"})` states one type's icon, and `set("co2_budget", 3.0)` is one broadcast row, which reaches every country.
+It stages long rows like any other attribute ([where a value lives](format.md#where-a-value-lives)), so `entity=` is refused — an icon belongs to no component. Where the axis's dtype is an `Enum` the vocabulary is the schema's, so an undeclared label is rejected without reading the axis at all.
 
 `value` takes six forms, because assigning one value to many targets and assigning a different value to each are equally ordinary and neither should require building a frame:
 
@@ -147,7 +146,6 @@ What it does differently is read before it stages:
   So a committed layer holds ordinary rows, and nothing in the format records that a value was derived — replaying an edit sequence is not a thing the record supports.
 
 The expression is evaluated by narwhals against the resolved long frame, so it names `value` rather than the attribute: the frame is long, and one attribute per call means the column is always `value`.
-An attribute over one dim alone is a column of that dim's axis ([where a value lives](format.md#where-a-value-lives)), so it is read from the resolved axis as a `(dim, value)` frame and staged back to the axis, and the expression names `value` there too.
 
 **A named target must resolve to a row.**
 If the caller names `entity` or any other dim, every one of those targets must produce a row to derive from, or the call raises.
@@ -194,8 +192,7 @@ record.remove("entity", ["old_coal"])
 
 `add` takes a wide frame keyed by `entity` and splits it by the schema, per [where a value lives](format.md#where-a-value-lives):
 
-- **An attribute over `entity` alone is a column of the entity axis.**
-- **A varying attribute becomes `attributes/` rows.** A constant value of one is a broadcast row, its other dims NULL.
+- **An attribute over `entity` becomes `attributes/` rows.** A column holds one value per entity, so over any other dim of the attribute the row is a broadcast row, that dim NULL.
 - **A relation keyed by `entity` gets a row where the frame carries every other column of it.** An `entity_type` column gives each entity its type; a `bus` column gives it a row of `connection`.
 
 Which is which comes from the schema, so `add` needs no framework registry.
@@ -203,7 +200,7 @@ A column the schema does not name is **rejected**: a [staging table is shaped li
 
 An `add` of a name the record already holds replaces its row on the entity axis, and its row of each relation the frame names, so the name keeps one row and one type.
 
-It is **not** a sequence of `set` calls, even though the varying columns it stages take the same path a `set` would.
+It is **not** a sequence of `set` calls, even though the attribute columns it stages take the same path a `set` would.
 A component exists by virtue of its row on the entity axis, and `set` refuses a name no layer declares ([validation](#validation)).
 Adding a bus with no attributes makes the point — nothing to `set`, yet the bus must exist.
 Membership is not reducible to attribute values.
@@ -255,15 +252,14 @@ The writer cannot tell which it was handed, which is the point: "enumerate what 
 
 An edited axis follows [`partial`](schema.md#partial-the-granularity-of-an-override), exactly as an attribute's rows do.
 A `partial` axis is patched label by label: the layer holds the labels the edit touched, and the fold resolves the rest from the parent, last-writer-wins per [axis key](record.md#axis-order).
-An axis **outside** `partial` is owned whole once touched, so the layer restates every label with the static attributes attached to them — one rule for what non-partial means, rather than an axis-shaped exception to it.
+An axis **outside** `partial` is owned whole once touched, so the layer restates every label — one rule for what non-partial means, rather than an axis-shaped exception to it.
 The fold would resolve the narrower form correctly, since it keys per label and an omitted one keeps its parent's row; what ownership buys is that a layer's axis file says what the axis _is_ there, rather than being readable only against its parent.
 A `Directory` writes the resolved axis whole either way, and an axis nothing touched is written by neither.
 
-Restating on edit is what an axis outside `partial` costs, and it is [the cheaper side of that trade](schema.md#partial-the-granularity-of-an-override) — which is the reason not to reach for `partial` when an axis merely gains an attribute.
+Restating on edit is what an axis outside `partial` costs, and it is [the cheaper side of that trade](schema.md#partial-the-granularity-of-an-override).
 
 An edit **replaces the rows it names** rather than appending beside them: it deletes the rows at the coordinate it writes and inserts the new ones, so a staging table holds one row per coordinate and no fold is needed to read it.
 The key it replaces on is the coordinate — the same one a read would have collapsed — so the delete removes exactly what a last-writer-wins fold would have discarded.
-An axis is the exception in mechanism, not in effect: an axis row's columns are independently editable, so a `set` there patches its one column in place (`UPDATE`) rather than replacing the row, which is what keeps a sibling attribute a different `set` wrote.
 
 Per **coordinate**, not per ownership key: the ownership key excludes the dims an attribute is [not owned per](schema.md#partial-the-granularity-of-an-override), so replacing on it would drop a whole staged series to one row — two edits at different snapshots are two coordinates, not two writes to the same place.
 The same distinction governs [the read overlay](#reading-with-pending-edits) and the restate below, and it is the one thing easy to get wrong here.
@@ -312,8 +308,8 @@ Per attribute both questions are answered by the table's shape, so neither is as
 
 One staging table per declared [relation](schema.md#relations), mirroring [the maps the fold builds](read-path.md#owner-map): `connection` is one instance, so a record declaring a second relation stages it through the same path rather than a second method.
 
-The **entity axis is staged as an axis**, `staged_axis_entity_<id>` like any other dim, and reaches [the fold](read-path.md) as `axis("entity")` with no special case. It holds membership, tombstones and the columns of attributes over `entity` alone, as [`dims/entity.parquet`](format.md#the-entity-axis) does.
-What differs is only how an edit keys it: an ordinary axis patches a column in place, so two `set` calls on one label commute; `add` and `remove` replace on `entity` alone, so a `remove` followed by an `add` of one name resolves to one row.
+The **entity axis is staged as an axis**, `staged_axis_entity_<id>` like any other dim, and reaches [the fold](read-path.md) as `axis("entity")` with no special case. It holds membership and tombstones, as [`dims/entity.parquet`](format.md#the-entity-axis) does.
+`add` and `remove` replace on the label, so a `remove` followed by an `add` of one name resolves to one row.
 An entity's type is staged in the table of the `entity_type` relation, which replaces on `entity` too.
 
 These tables are the **only** place a staged row exists: [the reads](#reading-with-pending-edits) read them rather than holding a copy.
@@ -341,7 +337,3 @@ It costs what one more layer costs, **per read**: a written layer is folded once
 So the fold is materialised up to the last layer that cannot change under the reader, and the staged step on top of it stays a DuckDB relation — which is also why an edit needs no invalidation, there being nothing cached to invalidate.
 
 `flags` follows for free, computed in the fold's own ownership `GROUP BY` as it is for any layer: a staged row setting a dim adds it to `varies`, one leaving it NULL adds it to `broadcast`, and a staged curve sets `breakpoints`.
-It says nothing about an attribute over one axis alone, which has no rows in the owner map; `dims` is where that value is read from, staged edits included, and [`Schema.attributes_on`](format.md#where-a-value-lives) is what names the columns an axis frame carries.
-
-`dims` overlays per column rather than per row: a staged label's edited columns win, and a label the edit did not name keeps the base's whole row.
-So two `set` calls for two attributes on one axis compose instead of the later one blanking the earlier's column.

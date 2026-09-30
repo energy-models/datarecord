@@ -36,6 +36,10 @@ All notable changes to datarecord are documented here. The format follows
   `Schema.from_mathspec` reads it from mathspec and, unless the storage block
   names `partial`, makes every dim not declared `ordered` partial. A relation
   may be keyed by a dim outside `partial`.
+- An attribute over one dim is stored like any other attribute, as rows of
+  `attributes/<attr>.parquet`. An axis file holds its labels only, so
+  `dims[dim]` carries no attribute column, and `attributes` and `flags` answer
+  for every attribute.
 
 ### Fixed
 

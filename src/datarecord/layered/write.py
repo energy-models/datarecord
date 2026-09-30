@@ -298,16 +298,11 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
                 f"its labels identify a point only within them (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)"
             )
             raise ValueError(msg)
-        # An attribute addressed by this axis alone is a column here, and not
-        # required: a record may declare one before any layer sets it, which
-        # resolves to its `default` (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-        #
         # A column no declaration accounts for is rejected, as a long frame's
         # extras are: one riding along uninvited would be read back as data
         # nothing knows the dtype or meaning of.
         known = (
             set(schema.axis_key(key))
-            | set(schema.attributes_on(key))
             # The structural columns an axis file may carry: a tombstone, and an
             # explicit order key. Not every name in `STRUCTURAL_TYPES` - most of
             # those are a long row's, and `attribute` or `breakpoint` here would
@@ -318,8 +313,8 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         if extra:
             msg = (
                 f"dims/{key}.parquet carries columns {extra} the schema does not "
-                f"declare for the {key!r} axis; an axis file holds its key and "
-                f"the attributes addressed by it alone (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+                f"declare for the {key!r} axis; an axis file holds its labels, and "
+                f"an attribute over {key!r} is `attributes/` rows (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
             )
             raise ValueError(msg)
         return

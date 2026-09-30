@@ -335,13 +335,6 @@ class StagedSource:
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """One axis as this layer would write it - `_axis_layer`, exactly.
 
-        Which matters for the columns rather than the labels: the fold is
-        last-writer-wins per *label*, over the whole row, so a source handing
-        over only the column its `set` named would blank every sibling
-        attribute on that label. A `set` on an axis carries the siblings into
-        the staged row when it patches it (`_patch_axis`), so the table is
-        already the row `commit` writes.
-
         `entity` included, staged as an axis like the rest - what differs is
         only the extent `_axis_layer` gives it.
 
@@ -631,161 +624,6 @@ class WorkingRecord(Record):
             raise ValueError(msg)
         return named_dim
 
-    def _axis_of(self, attribute: str) -> str | None:
-        """The dim whose axis file carries `attribute`, or `None`.
-
-        A declared attribute addressed by one dim alone is a column of that
-        dim's axis file rather than a long row, so an edit to it stages an axis
-        row. `attributes_on` is the rule.
-
-        Notes
-        -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        """
-        spec = self.schema.attributes.get(attribute)
-        if spec is None or spec.varying:
-            return None
-        (dim,) = spec.dims
-        return dim if attribute in self.schema.attributes_on(dim) else None
-
-    def _stage_axis(
-        self,
-        dim: str,
-        attribute: str,
-        value: Any,
-        *,
-        labels: Sequence[Any] | None,
-    ) -> None:
-        """Stage one axis-file attribute, keyed by the axis's own labels.
-
-        `value` is a mapping from label to value, or a scalar for every label the
-        axis currently has. A mapping may name a label no layer has written yet,
-        which becomes a row of this layer's axis file - the fold keys per label,
-        so introducing one displaces nothing. A dim that keys a relation is the
-        exception: `set` requires its labels first (`_require_labels`).
-
-        One *complete* row per label: this edit's column over the label's
-        current row - the one already staged where there is one, else the base's
-        - so a second `set` on the same axis replaces the row rather than adding
-        beside it and losing the first's column.
-
-        Notes
-        -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
-        """
-        if labels is not None and not isinstance(value, Mapping):
-            # A scalar broadcast to the named labels, or a sequence aligned to
-            # them - the same two forms `set` takes for a long attribute, folded
-            # to the axis's label->value mapping the rest of this method wants.
-            names = list(labels)
-            vals = (
-                list(value)
-                if isinstance(value, (list, tuple))
-                else [value] * len(names)
-            )
-            if len(vals) != len(names):
-                msg = (
-                    f"`set({attribute!r}, <sequence>, {dim}=...)` has "
-                    f"{len(vals)} values for {len(names)} names"
-                )
-                raise ValueError(msg)
-            value = dict(zip(names, vals, strict=True))
-        elif _is_frame(value) or isinstance(value, (list, tuple)):
-            msg = (
-                f"`set({attribute!r}, <sequence>)` has no labels to align to; "
-                f"{attribute!r} is addressed by {dim!r} alone, so pass a mapping "
-                f"from {dim!r} label to value, or a scalar for every label"
-            )
-            raise ValueError(msg)
-        if len(self.schema.axis_key(dim)) > 1:
-            msg = (
-                f"{attribute!r} is addressed by {dim!r}, which is `within` "
-                f"{sorted(self.schema.dimensions[dim].within)}; a nested axis's "
-                f"labels identify a point only within its parents, which a "
-                f"mapping from label alone cannot name"
-            )
-            raise ValueError(msg)
-
-        table = self._ensure(f"{_AXIS_PREFIX}{dim}", None)
-        if isinstance(value, Mapping):
-            if not value:
-                return
-            edit = self._values_relation(
-                {dim: list(value), attribute: list(value.values())},
-                {
-                    dim: self._column_type(dim),
-                    attribute: self.schema.value_type(attribute),
-                },
-            )
-        else:
-            base_axis = self._base.dims.axes.get(dim)
-            if base_axis is None:
-                msg = (
-                    f"`set({attribute!r}, <scalar>)` reaches every label the "
-                    f"{dim!r} axis has, and it has none; name the labels as a "
-                    f"mapping, or write the axis file first"
-                )
-                raise ValueError(msg)
-            edit = base_axis.project(col(dim), lit(value).alias(attribute))
-
-        self._patch_axis(dim, attribute, table, edit)
-
-    def _patch_axis(
-        self, dim: str, attribute: str, table: str, edit: DuckDBPyRelation
-    ) -> None:
-        """Set `attribute` on each label `edit` names, in place.
-
-        An axis row's columns are independently editable, so this patches the one
-        column rather than replacing the row - a sibling a `set` did not name is
-        never read and so cannot be lost. A label falls to one of two statements
-        by whether a prior `set` already staged it:
-
-        - **INSERT** a label not yet staged, taking its siblings from the base row
-          where the base has one and the edited column from `edit`. Its siblings
-          have to travel with it: the fold is whole-row last-writer-wins per label
-          (`fold_axis`), so a staged patch carrying only its own column would win
-          the label and blank the rest - the resolved row is the layer's, not one
-          the read rebuilds column by column. A label the base also lacks is new,
-          and the edit is the whole of its row.
-        - **UPDATE** a label already staged, patching the one column in place so
-          the siblings an earlier edit carried stay put.
-
-        `partial` decides only the label *extent* the layer carries, which is
-        `_axis_layer`'s business, not this.
-
-        Notes
-        -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
-        """
-        staged = self.con.table(table)
-        base = self._base.dims.axes.get(dim)
-        # Raw SQL because `UPDATE ... FROM` is a join-update, which the relational
-        # `update` cannot express (https://duckdb.org/docs/stable/clients/python/relational_api).
-        self.con.execute(
-            f"UPDATE {table} AS t SET {col(attribute)} = {col('e', attribute)} "
-            f"FROM edit e "
-            f"WHERE {col('t', dim)} IS NOT DISTINCT FROM {col('e', dim)}"
-        )
-        fresh = edit.set_alias("e").join(
-            staged.set_alias("s"), null_safe("e", "s", [dim]), how="anti"
-        )
-        if base is None:
-            rows = fresh.set_alias("e").select(col(dim), col(attribute))
-        else:
-            # A left join, since a fresh label the base also lacks has no row.
-            siblings = [c for c in base.columns if c not in (dim, attribute)]
-            rows = (
-                fresh.set_alias("e")
-                .join(base.set_alias("b"), null_safe("e", "b", [dim]), how="left")
-                .select(
-                    col("e", dim), col("e", attribute), *(col("b", c) for c in siblings)
-                )
-            )
-        self._insert(rows, table, {})
-
     def _require_labels(self, dim: str, labels: Iterable[Any]) -> None:
         """Reject a label of a relation-keying dim its axis does not hold, base plus staged.
 
@@ -903,15 +741,11 @@ class WorkingRecord(Record):
 
         if isinstance(value, nw.Expr):
             self._validate_dims(dims)
+            self._validate_attribute(attribute, dims)
             self._stage_derived(attribute, value, **dims)
             return
 
         listed, labels, fixed = _split_dims(dims)
-        axis = self._axis_of(attribute)
-        if axis is not None:
-            self._set_axis(axis, attribute, value, indexed_by, listed, labels, fixed)
-            return
-
         keyed_by = self._series_axis(attribute, value, indexed_by, named=dims)
         if keyed_by is not None and listed is not None and isinstance(value, Mapping):
             msg = (
@@ -937,36 +771,6 @@ class WorkingRecord(Record):
 
         table = self._ensure("attributes", attribute)
         self._stage_rows(attribute, table, listed, keys, values, per_dim, fixed)
-
-    def _set_axis(
-        self,
-        axis: str,
-        attribute: str,
-        value: Any,
-        indexed_by: str | None,
-        listed: str | None,
-        labels: list[Any],
-        fixed: Mapping[str, Any],
-    ) -> None:
-        """`set` on an attribute stored as a column of `axis`'s file.
-
-        The attribute is keyed by `axis` alone, so a keyword for any other dim
-        has nothing to scope and is refused rather than dropped. A scalar with
-        no labels reaches every label the axis resolves, staged ones included:
-        an axis file has no NULL row to broadcast from.
-        """
-        _refuse_off_axis(axis, attribute, [*fixed, *([listed] if listed else [])])
-        self._series_axis(attribute, value, indexed_by, named=())
-        names: list[Any] | None = (
-            labels if listed == axis else [fixed[axis]] if axis in fixed else None
-        )
-        _require_label_types(
-            self.schema, axis, names if names is not None else _mapping_keys(value)
-        )
-        if names is None and not _mapping_keys(value):
-            names = self._labels(axis)
-        self._require_labels(axis, names if names is not None else _mapping_keys(value))
-        self._stage_axis(axis, attribute, value, labels=names)
 
     def _labels(self, dim: str) -> list[Any]:
         """Every label `dim`'s axis resolves to, staged edits included."""
@@ -1069,9 +873,7 @@ class WorkingRecord(Record):
         out. The match is `null_safe` so a broadcast coordinate's NULL replaces
         the same NULL rather than sitting beside it (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         `rel` is a whole-row edit built from the caller's frame, never from the
-        staged table, so the delete cannot change what the insert then reads -
-        the one path that patches columns in place (`_patch_axis`) does not pass
-        a `key`.
+        staged table, so the delete cannot change what the insert then reads.
 
         Notes
         -----
@@ -1298,24 +1100,19 @@ class WorkingRecord(Record):
         On a layered base the read is a fold, so this is the one edit whose cost
         scales with the ancestry rather than with the rows written.
 
-        Unscoped, this derives from every row of the attribute. An attribute
-        over one dim alone is read from that dim's axis and staged to it, as a
-        plain `set` on it is.
+        The result is collected before it is staged: the read is a relation
+        over the staging table the insert replaces rows of (`_insert`), so left
+        lazy it would re-read the table after the delete and derive from the
+        base instead.
+
+        Unscoped, this derives from every row of the attribute.
 
         Notes
         -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
         """
         listed, labels, fixed = _split_dims(dims)
-        axis = self._axis_of(attribute)
-        if axis is not None:
-            _refuse_off_axis(axis, attribute, dims)
-            frame = self._current_on_axis(axis, attribute)
-        elif attribute in self.attributes:
-            frame = self.attributes[attribute]
-        else:
-            frame = None
+        frame = self.attributes[attribute] if attribute in self.attributes else None
         if frame is not None:
             if listed is not None:
                 self._require_labels(listed, labels)
@@ -1334,35 +1131,8 @@ class WorkingRecord(Record):
             raise KeyError(msg)
         if frame is None:
             return
-        derived = frame.with_columns(expr.alias("value"))
-        if axis is None:
-            self._stage_resolved(derived, attribute)
-            return
-        rows = derived.select(axis, "value").collect()
-        self._stage_axis(
-            axis,
-            attribute,
-            dict(zip(rows[axis].to_list(), rows["value"].to_list(), strict=True)),
-            labels=None,
-        )
-
-    def _current_on_axis(self, dim: str, attribute: str) -> nw.LazyFrame | None:
-        """`attribute`'s current values as `(dim, value)`, read off `dim`'s axis.
-
-        What `_stage_derived` derives from where the value is a column of the
-        axis file rather than long rows: the same frame shape as the long path,
-        so one filter and one expression serve both. A label whose row holds no
-        value is left out, as the long path has no row for it; `None` where no
-        layer wrote the axis or the column.
-        """
-        if dim not in self.dims:
-            return None
-        axis = self.dims[dim]
-        if attribute not in axis.collect_schema().names():
-            return None
-        return axis.select(nw.col(dim), nw.col(attribute).alias("value")).filter(
-            ~nw.col("value").is_null()
-        )
+        derived = frame.with_columns(expr.alias("value")).collect().lazy()
+        self._stage_resolved(derived, attribute)
 
     def _stage_resolved(self, frame: nw.LazyFrame, attribute: str) -> None:
         """Stage an already-long frame carrying every key column.
@@ -1401,10 +1171,10 @@ class WorkingRecord(Record):
         """Stage new labels of `dim` from a wide frame, with the relation rows it names.
 
         `frame` has a `dim` column. Splits the rest by the schema: an attribute
-        over `dim` alone is a column of its axis, one that varies over more is
-        `attributes/` rows, and the other columns of a relation keyed on `dim` -
-        `entity_type` for a type relation, `bus` for `connection` - stage that
-        relation's row where the frame carries every one of them.
+        over `dim` is `attributes/` rows, broadcast over its other dims, and the
+        other columns of a relation keyed on `dim` - `entity_type` for a type
+        relation, `bus` for `connection` - stage that relation's row where the
+        frame carries every one of them.
 
         Not a sequence of `set` calls: a label exists by its axis row, so a
         value for a label no layer declares is what `_require_labels` rejects.
@@ -1427,12 +1197,7 @@ class WorkingRecord(Record):
         if dim not in columns:
             msg = f"`add({dim!r}, frame)` needs a {dim!r} column"
             raise ValueError(msg)
-        declared = {
-            a: spec
-            for a, spec in self.schema.attributes.items()
-            if dim in self.schema.coordinates_of(a)
-        }
-        varying = [c for c in columns if c in declared and declared[c].varying]
+        attributes = [c for c in columns if dim in self.schema.coordinates_of(c)]
         by_relation: dict[str, list[str]] = {}
         for relation in self.schema.relations:
             if dim not in self.schema.relation_key(relation):
@@ -1444,7 +1209,7 @@ class WorkingRecord(Record):
                 by_relation[relation] = coordinates
         in_relations = {c for cols in by_relation.values() for c in cols}
         axis_columns = [
-            c for c in columns if c not in varying and c not in in_relations
+            c for c in columns if c not in attributes and c not in in_relations
         ]
 
         rel = as_relation(lazy, self.con)
@@ -1454,7 +1219,7 @@ class WorkingRecord(Record):
         # `add` after `remove` is one row, the tombstone deleted rather than
         # left to be outranked.
         self._insert(rel, axis, {"deleted": lit(False)}, key=(dim,))  # noqa: FBT003
-        for attribute in varying:
+        for attribute in attributes:
             self._stage_long(
                 attribute,
                 lazy.select(dim, nw.col(attribute).alias("value")),
@@ -1728,15 +1493,13 @@ class WorkingRecord(Record):
     def _axis_layer(self, dim: str) -> DuckDBPyRelation:
         """One axis as this layer writes it, which `partial` decides the extent of.
 
-        The staged table already holds one complete row per label an edit touched
-        (`_patch_axis`), so there is nothing to merge on the way out - what
+        The staged table holds one row per label an edit touched, so what
         `partial` decides is only how many labels are in it:
 
         - **`partial`** - the touched labels alone, the fold resolving the rest
           from the parent. The staged table is exactly that.
         - **not `partial`** - a dim a layer owns whole once it touches it, so the
-          untouched labels are carried from the base, unioned by name so a base
-          row lacking a newly-added column reads NULL there.
+          untouched labels are carried from the base.
 
         Notes
         -----
@@ -1747,9 +1510,6 @@ class WorkingRecord(Record):
         base = self._base.dims.axes.get(dim)
         if base is None or dim in self.schema.partial_dims:
             return staged
-        # The untouched labels the layer owns whole and so must carry, taken from
-        # the base with their whole rows - unioned by name, the staged side
-        # carrying any column the base lacks and the base side the reverse.
         untouched = base.set_alias("b").join(
             staged.set_alias("s"), null_safe("b", "s", [dim]), how="anti"
         )
@@ -1838,26 +1598,6 @@ class WorkingRecord(Record):
         write_record(None, self.resolver, self.con, uri=target.uri)
         self.rollback()
         return None
-
-
-def _refuse_off_axis(axis: str, attribute: str, dims: Iterable[str]) -> None:
-    """Refuse a keyword for any dim but `axis`, which alone keys `attribute`.
-
-    An axis-file attribute has no other dim to scope, so such a keyword is
-    refused rather than dropped.
-
-    Raises
-    ------
-    ValueError
-        If `dims` names a dim other than `axis`.
-    """
-    other = sorted(d for d in set(dims) if d != axis)
-    if other:
-        msg = (
-            f"{attribute} does not vary over {other}; it is a column of "
-            f"dims/{axis}.parquet, keyed by {axis!r} alone"
-        )
-        raise ValueError(msg)
 
 
 def _base_resolver(base: RecordLike, con: DuckDBPyConnection) -> Resolver:
@@ -1989,11 +1729,7 @@ def _relation_columns(schema: Schema, relation: str) -> dict[str, nw.dtypes.DTyp
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
-    """One axis's staged columns: its key, its tombstone, the attributes it carries.
-
-    The shape of `dims/{dim}.parquet` for the attributes addressed by `dim`
-    alone (`attributes_on`), plus `deleted`, which `_validate_frame` admits on
-    any axis.
+    """One axis's staged columns: its key and its tombstone.
 
     Notes
     -----
@@ -2002,7 +1738,6 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
     return {
         **{c: _column_type(schema, c) for c in schema.axis_key(dim)},
         "deleted": nw.Boolean(),
-        **{a: schema.value_type(a) or nw.String() for a in schema.attributes_on(dim)},
     }
 
 
@@ -2010,12 +1745,3 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
 # identifier would need quoting for, and no collision with a relation's name,
 # which `Schema` already rejects for colliding with a declared dim.
 _AXIS_PREFIX = "axis_of_"
-
-"""The entity axis's staging kind - an axis like any other, named like one.
-
-`dims/entity.parquet` is a file a layer holds, so staging it as an axis is what
-makes the staged layer the same shape as every other. What differs is only how an
-edit keys it: membership replaces on `entity` alone, so a `remove` then an `add`
-under another type resolves to one row, where an ordinary axis patches a column
-in place (`_patch_axis`) and keeps its siblings.
-"""

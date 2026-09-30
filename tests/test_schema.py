@@ -104,19 +104,6 @@ def test_partial_dims_is_the_union_over_attributes():
     )
 
 
-def test_file_split_follows_dims():
-    """Varying over nothing is what puts an attribute in `dims/entity_type/`.
-
-    Notes
-    -----
-    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
-    """
-    s = _schema()
-    assert not s.attributes["p_nom"].varying
-    assert not s.attributes["carrier"].varying
-    assert s.attributes["p_max_pu"].varying
-
-
 # -- relation keys (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------------------
 
 
@@ -237,7 +224,7 @@ def test_the_redundant_addressing_rule_covers_every_functional_relation():
 
 
 def test_an_attribute_may_be_addressed_by_the_entity_type_alone():
-    """A per-type icon is a value per type, keyed once - an axis-file column.
+    """A per-type icon is a value per type, keyed once.
 
     The type axis is a dim like any other; what may not key a row alongside it
     is the `entity` the relation maps into it.
@@ -254,8 +241,7 @@ def test_an_attribute_may_be_addressed_by_the_entity_type_alone():
         },
         partial=frozenset({"entity"}),
     )
-    assert s.attributes_on("entity_type") == ("icon",), "a column of the type axis"
-    assert not s.attributes["icon"].varying, "addressed by one dim, so not varying"
+    assert s.coordinates_of("icon") == ("entity_type",), "keyed by the type alone"
 
 
 def test_several_relations_may_map_entity_into_other_dims():
@@ -277,9 +263,10 @@ def test_several_relations_may_map_entity_into_other_dims():
         attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
         partial=frozenset({"entity"}),
     )
-    assert s.attributes_on("entity") == ("p_nom",), (
-        "a constant is an entity-axis column"
-    )
+    assert [s.relation_key(r) for r in ("type_of", "bus_of")] == [
+        ("entity",),
+        ("entity",),
+    ], "both relations classify `entity`"
 
 
 # -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------

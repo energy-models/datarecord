@@ -495,9 +495,9 @@ def test_a_directory_reads_the_ports_a_network_wrote(written, con):
         "the network's connections and both port relations"
     )
 
-    ports = record.dims["port"].collect().to_native().to_pandas()
-    assert set(ports["role"]) == {"input", "output", "attached"}, (
-        "one axis across every type, so a Generator's role sits beside a Link's"
+    roles = record.attributes["role"].collect().to_native().to_pandas()
+    assert set(roles["value"]) == {"input", "output", "attached"}, (
+        "one file across every type, so a Generator's role sits beside a Link's"
     )
 
 

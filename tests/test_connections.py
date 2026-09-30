@@ -68,12 +68,12 @@ def test_ports_resolve_in_order(con, base_uri):
     assert list(_port_buses(revision)["bus"]) == ["h2_north", "iron_ore", "dri"], (
         "`port_bus` rows in the order the layer wrote them"
     )
-    axis = revision.resolver.dims.axes["port"].df()
-    assert dict(zip(axis["port"], axis["role"], strict=True)) == {
+    roles = revision.record.attributes["role"].collect("pandas").to_native()
+    assert dict(zip(roles["port"], roles["value"], strict=True)) == {
         H2: "input",
         ORE: "input",
         DRI: "output",
-    }, "`role` is a column of the `port` axis, one per port"
+    }, "`role` is one row per port"
 
 
 def test_patch_overrides_one_port_only(con, base_uri):

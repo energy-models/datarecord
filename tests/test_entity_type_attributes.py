@@ -4,9 +4,8 @@
 
 """An attribute addressed by the entity-type axis alone.
 
-A per-type `icon` is a value per type, keyed once, and so a column of
-`dims/entity_type.parquet` - the same treatment any functional relation's
-`values` axis gets. What the type axis may *not* do is key a value alongside `entity`,
+A per-type `icon` is a value per type, keyed once: rows of
+`attributes/icon.parquet` keyed by `entity_type`, like any attribute. What the type axis may *not* do is key a value alongside `entity`,
 where the type is determined by the entity and the row would be keyed twice
 over.
 
@@ -26,7 +25,8 @@ from datarecord.duck import layer_dir
 from datarecord.layered.resolve import write_schema
 from datarecord.mutable import NewChild, WorkingRecord
 from datarecord.schema import AttributeSpec, Dimension, Relation, Schema
-from tests.fixtures import write_axis
+from datarecord.sources import to_sources
+from tests.fixtures import write_axis, write_values
 
 TYPES = ["Bus", "Generator"]
 
@@ -66,34 +66,29 @@ def root(con, base_uri, typed_schema):
         pd.DataFrame([{"entity": "g1", "entity_type": "Generator", "p_nom": 1.0}]),
     )
     child = staged.commit(NewChild(revision))
-    write_axis(
+    write_axis(layer_dir(child.id), "entity_type", [{"entity_type": t} for t in TYPES])
+    write_values(
         layer_dir(child.id),
-        "entity_type",
-        [
-            {"entity_type": "Bus", "icon": "node"},
-            {"entity_type": "Generator", "icon": "turbine"},
-        ],
+        "icon",
+        pd.DataFrame({"entity_type": TYPES, "icon": ["node", "turbine"]}),
     )
     return child
 
 
-def _icons(record) -> dict[str, str | None]:
-    frame = record.dims["entity_type"].collect().to_native()
-    return {
-        str(k): (None if v is None else str(v))
-        for k, v in zip(frame["entity_type"], frame["icon"])
-    }
+def _icons(record) -> dict[str, str]:
+    """The icon each type resolves to, a broadcast row expanded to every type."""
+    frame = to_sources(record, ["icon"])["icon"].collect("pandas").to_native()
+    return {str(k): str(v) for k, v in zip(frame["entity_type"], frame["value"])}
 
 
-def test_the_type_axis_carries_it_as_a_column(typed_schema):
-    """One addressing coordinate, so a column on that thing's own table."""
-    s = typed_schema
-    assert s.attributes_on("entity_type") == ("icon",)
-    assert not s.attributes["icon"].varying
-    assert "icon" not in s.long_columns, "not a long row"
-    assert s.column_type("icon") == nw.String(), (
-        "an axis file's attribute column has a declared type, so writes cast it"
-    )
+def test_its_rows_are_keyed_by_the_type_alone(typed_schema):
+    """One addressing coordinate, so one coordinate column."""
+    assert typed_schema.long_columns_for("icon") == (
+        "entity_type",
+        "attribute",
+        "breakpoint",
+        "value",
+    ), "the type, then the columns every long row has"
 
 
 def test_it_belongs_to_no_component(typed_schema):
@@ -103,9 +98,8 @@ def test_it_belongs_to_no_component(typed_schema):
     )
 
 
-def test_it_reads_back_from_the_type_axis(root):
+def test_it_reads_back(root):
     assert _icons(root.record) == {"Bus": "node", "Generator": "turbine"}
-    assert "icon" not in root.record.attributes, "an axis column is no long frame"
 
 
 def test_set_states_one_types_value(root, con):
@@ -121,21 +115,20 @@ def test_a_scalar_reaches_every_type(root, con):
     assert _icons(staged) == {"Bus": "square", "Generator": "square"}
 
 
-def test_a_child_layer_restates_the_type_axis_it_owns_whole(root, con):
-    """`entity_type` is not `partial`, so touching it carries every label.
+def test_a_child_layer_restates_every_types_icon(root, con):
+    """`entity_type` is not `partial`, so touching one icon carries every type's.
 
     No exception for being the type axis: a dim outside `partial` is one a layer
-    owns entirely once it touches it, and its axis file then says what the axis
-    is at that layer rather than being readable only against its parent.
+    owns entirely once it touches it.
     """
     staged = WorkingRecord(root.record, con)
     staged.set("icon", {"Generator": "windmill"})
 
-    axis = staged.resolver.sources[-1].axis("entity_type")
-    assert axis is not None
-    patch = axis.df()
+    rows = staged.resolver.sources[-1].attribute("icon")
+    assert rows is not None
+    patch = rows.df()
     assert sorted(str(t) for t in patch["entity_type"]) == ["Bus", "Generator"], (
-        "the whole axis, not just the edited label"
+        "every type's icon, not just the edited one"
     )
 
     child = staged.commit(NewChild(root))
@@ -153,13 +146,13 @@ def test_an_enum_label_the_dtype_does_not_declare_is_refused(root, con):
     staged = WorkingRecord(root.record, con)
     with pytest.raises(ValueError, match="pins the vocabulary"):
         staged.set("icon", {"Nope": "x"})
-    assert "entity_type" not in staged.resolver.sources[-1].axes(), "nothing staged"
+    assert _icons(staged) == {"Bus": "node", "Generator": "turbine"}, "nothing staged"
 
 
 def test_entity_is_refused_for_a_type_addressed_attribute(root, con):
     """An icon is keyed by its type alone, so `entity=` has nothing to scope."""
     staged = WorkingRecord(root.record, con)
-    with pytest.raises(ValueError, match="keyed by 'entity_type' alone"):
+    with pytest.raises(ValueError, match="does not vary over"):
         staged.set("icon", "x", entity=["g1"])
 
 
