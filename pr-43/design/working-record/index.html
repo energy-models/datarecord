@@ -1618,7 +1618,8 @@ Nothing else a caller passes is an <code>nw.Expr</code>, so the dispatch is unam
 <li>What is staged is the <em>result</em>, not the expression.
   So a committed layer holds ordinary rows, and nothing in the format records that a value was derived — replaying an edit sequence is not a thing the record supports.</li>
 </ul>
-<p>The expression is evaluated by narwhals against the resolved long frame, so it names <code>value</code> rather than the attribute: the frame is long, and one attribute per call means the column is always <code>value</code>.</p>
+<p>The expression is evaluated by narwhals against the resolved long frame, so it names <code>value</code> rather than the attribute: the frame is long, and one attribute per call means the column is always <code>value</code>.
+An attribute over one dim alone is a column of that dim's axis (<a href="../format/#where-a-value-lives">where a value lives</a>), so it is read from the resolved axis as a <code>(dim, value)</code> frame and staged back to the axis, and the expression names <code>value</code> there too.</p>
 <p><strong>A named target must resolve to a row.</strong>
 If the caller names <code>entity</code> or any other dim, every one of those targets must produce a row to derive from, or the call raises.
 The caller asked for those rows to take a new value and there is nothing to compute one from, which is a failed change rather than a no-op — the same class of error as <a href="#validation">naming a component no layer declares</a>, and it was silently staging zero rows before.</p>
