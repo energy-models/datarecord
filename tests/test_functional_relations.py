@@ -2,15 +2,16 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Functional groups: a group declaring `into`, which classifies its coordinates.
+"""Functional relations: a relation declaring `values`, which classifies its key.
 
-`country` over `[bus]` into `country` says every bus is in exactly one country.
-The relation is a file of its own, `groups/country.parquet`, and the dim it is
-`into` keeps an axis file for its order and for attributes addressed by it.
+`country` keyed by `[bus]` with `values` `country` says every bus is in exactly
+one country. The relation is a file of its own, `relations/country.parquet`, and
+its `values` dim keeps an axis file for its order and for attributes addressed
+by it.
 
 Notes
 -----
-- [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+- [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
 - [why `into` is the right field](https://energy-models.github.io/datarecord/design/schema/#why-into-is-the-right-field)
 """
 
@@ -23,8 +24,8 @@ from pydantic import ValidationError
 from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.mutable import NewChild, WorkingRecord
-from datarecord.schema import AttributeSpec, Dimension, Group, Schema
-from tests.fixtures import write_axis, write_group, write_schema
+from datarecord.schema import AttributeSpec, Dimension, Relation, Schema
+from tests.fixtures import write_axis, write_relation, write_schema
 
 
 def _schema(**overrides) -> Schema:
@@ -35,9 +36,9 @@ def _schema(**overrides) -> Schema:
             "state": Dimension(dtype=nw.String()),
             "country": Dimension(dtype=nw.String()),
         },
-        "groups": {
-            "state": Group(over=["bus"], into="state"),
-            "country": Group(over=["state"], into="country"),
+        "relations": {
+            "state": Relation(key=["bus"], values="state"),
+            "country": Relation(key=["state"], values="country"),
         },
         "partial": frozenset({"bus", "state"}),
     }
@@ -48,7 +49,7 @@ def _schema(**overrides) -> Schema:
 # -- the declaration --------------------------------------------------------
 
 
-def test_the_dim_a_group_is_into_is_an_ordinary_dim():
+def test_the_values_dim_of_a_relation_is_an_ordinary_dim():
     """One namespace: the classified axis is addressable as any other is."""
     s = _schema()
     assert s.dims == ("bus", "state", "country")
@@ -56,66 +57,66 @@ def test_the_dim_a_group_is_into_is_an_ordinary_dim():
     assert s.column_type("country") == nw.String()
 
 
-def test_into_becomes_a_coordinate_of_the_group():
-    """`into` is sugar: it folds into `coordinates` and nothing branches on it.
+def test_values_becomes_a_column_of_the_relation():
+    """`values` is sugar: it folds into `columns` and nothing branches on it.
 
-    So `groups/country.parquet` is keyed `state | country` exactly as an
-    `into`-less group is keyed by its `over` alone.
+    So `relations/country.parquet` has columns `state | country` exactly as a
+    `values`-less relation has its `key` alone.
     """
     s = _schema()
-    assert s.group_coordinates("country") == ("state", "country")
-    assert s.group_coordinates("state") == ("bus", "state")
+    assert s.relation_columns("country") == ("state", "country")
+    assert s.relation_columns("state") == ("bus", "state")
 
 
-def test_the_key_is_the_coordinates_minus_into():
-    """What the uniqueness constraint is on: each `over` tuple carries one label."""
+def test_the_key_is_the_columns_minus_values():
+    """What the uniqueness constraint is on: each `key` tuple carries one label."""
     s = _schema()
-    assert s.group_key("country") == ("state",)
-    assert s.group_key("state") == ("bus",)
+    assert s.relation_key("country") == ("state",)
+    assert s.relation_key("state") == ("bus",)
 
 
-def test_a_group_may_share_a_dims_name_and_the_dim_wins():
+def test_a_relation_may_share_a_dims_name_and_the_dim_wins():
     """Addressing resolves the dim namespace first, so the collision is shadowing.
 
     `dims: [country]` is the axis - which is what a genuinely per-country value
-    wants - rather than the group expanded to the states it maps from.
+    wants - rather than the relation expanded to the states it maps from.
     """
     s = _schema(
         attributes={"co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})},
         partial=frozenset({"bus", "state", "country"}),
     )
-    assert s.coordinates_of("co2_budget") == ("country",), "the dim, not the group"
-    assert s.groups_of("co2_budget") == (), "a shadowed group addresses nothing"
+    assert s.coordinates_of("co2_budget") == ("country",), "the dim, not the relation"
+    assert s.relations_of("co2_budget") == (), "a shadowed relation addresses nothing"
 
 
-def test_an_into_less_group_in_dims_expands_to_its_coordinates():
-    """A group no dim shadows has no other spelling, so `dims` expands it."""
+def test_a_values_less_relation_in_dims_expands_to_its_key():
+    """A relation no dim shadows has no other spelling, so `dims` expands it."""
     s = _schema(
-        groups={"connection": Group(over=["bus", "state"])},
+        relations={"connection": Relation(key=["bus", "state"])},
         attributes={"capacity": AttributeSpec(dtype=nw.Float64(), dims={"connection"})},
     )
     assert s.coordinates_of("capacity") == ("bus", "state"), "expanded, not the name"
-    assert s.groups_of("capacity") == ("connection",)
+    assert s.relations_of("capacity") == ("connection",)
 
 
 def test_a_corridor_draws_two_coordinates_from_one_dim():
-    """`over`'s dict form is what a relation between two of one axis needs."""
+    """`key`'s dict form is what a relation between two of one axis needs."""
     s = _schema(
-        groups={"corridor": Group(over={"from": "bus", "to": "bus"})},
+        relations={"corridor": Relation(key={"from": "bus", "to": "bus"})},
         partial=frozenset({"bus"}),
     )
-    assert s.group_coordinates("corridor") == ("from", "to")
-    assert s.group_key("corridor") == ("from", "to"), "no `into`, so all of them"
+    assert s.relation_columns("corridor") == ("from", "to")
+    assert s.relation_key("corridor") == ("from", "to"), "no `values`, so all of them"
 
 
-def test_the_over_list_form_is_sugar_for_the_dict():
+def test_the_key_list_form_is_sugar_for_the_dict():
     """`[bus]` is `{bus: bus}`; the dict is what a corridor needs."""
-    assert Group(over=["bus"]).over == {"bus": "bus"}
-    assert Group(over={"from": "bus", "to": "bus"}).coordinates == ("from", "to")
+    assert Relation(key=["bus"]).key == {"bus": "bus"}
+    assert Relation(key={"from": "bus", "to": "bus"}).columns == ("from", "to")
 
 
-def test_a_functional_group_keys_no_axis():
-    """`into` is not `within`: it classifies, so it does not scope a label.
+def test_a_functional_relation_keys_no_axis():
+    """`values` is not `within`: it classifies, so it does not scope a label.
 
     `country` labels mean the same thing everywhere, so the axis key is the
     label alone - where a nested dim's would be `(parent, label)`.
@@ -128,25 +129,25 @@ def test_a_functional_group_keys_no_axis():
 # -- what the declaration rejects -------------------------------------------
 
 
-def test_a_group_over_an_undeclared_dim_is_refused():
-    with pytest.raises(ValidationError, match="over undeclared dims"):
-        _schema(groups={"country": Group(over=["nope"], into="country")})
+def test_a_relation_keyed_by_an_undeclared_dim_is_refused():
+    with pytest.raises(ValidationError, match="keyed by undeclared dims"):
+        _schema(relations={"country": Relation(key=["nope"], values="country")})
 
 
-def test_into_must_name_a_declared_dim():
+def test_values_must_name_a_declared_dim():
     """Rejected rather than tolerated, the failure being otherwise silent.
 
-    A dim shadows a group of its name, so an `into` naming a dim nobody declared
-    would leave `dims: [country]` quietly expanding to the coordinates instead
+    A dim shadows a relation of its name, so a `values` naming a dim nobody
+    declared would leave `dims: [country]` quietly expanding to the coordinates instead
     of naming the axis it meant.
     """
-    with pytest.raises(ValidationError, match="`into` undeclared dim"):
-        _schema(groups={"c": Group(over=["bus"], into="nope")})
+    with pytest.raises(ValidationError, match="`values` in undeclared dim"):
+        _schema(relations={"c": Relation(key=["bus"], values="nope")})
 
 
-def test_a_group_cannot_map_a_coordinate_to_itself():
-    with pytest.raises(ValidationError, match="also one of its `over` coordinates"):
-        _schema(groups={"c": Group(over=["bus"], into="bus")})
+def test_a_relation_cannot_map_a_column_to_itself():
+    with pytest.raises(ValidationError, match="also one of its `key` columns"):
+        _schema(relations={"c": Relation(key=["bus"], values="bus")})
 
 
 # -- through a real record --------------------------------------------------
@@ -161,7 +162,7 @@ def _budget_schema() -> Schema:
 
 
 def test_a_classified_axis_folds_as_an_ordinary_axis(con, base_uri):
-    """The fold learns nothing new: the `into` dim has an axis file like any dim.
+    """The fold learns nothing new: the `values` dim has an axis file like any dim.
 
     Its own file is what gives it order and a place for `co2_budget`, which no
     bus column could hold.
@@ -177,39 +178,41 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(con, base_uri):
     axes = revision.resolver.dims.axes
     assert sorted(axes["country"].df()["country"]) == ["DE", "FR"]
     assert axes["bus"].df()["bus"].tolist() == ["north"], (
-        "no classification column: the relation is the group's own file"
+        "no classification column: the relation is a file of its own"
     )
 
 
-def test_a_chain_is_a_join_over_two_group_files(con, base_uri):
+def test_a_chain_is_a_join_over_two_relation_files(con, base_uri):
     """bus -> state -> country is one file per hop, never denormalised.
 
     Two files asserting bus->country would let a layer restating the states
-    leave every bus's country stale, with nothing to detect it. A file per group
-    gives that property for free: a layer restating a group restates one file.
+    leave every bus's country stale, with nothing to detect it. A file per relation
+    gives that property for free: a layer restating a relation restates one file.
     """
     revision = Revision.create(con)
     write_schema(_budget_schema())
-    write_group(layer_dir(revision.id), "state", [{"bus": "north", "state": "lower"}])
-    write_group(
+    write_relation(
+        layer_dir(revision.id), "state", [{"bus": "north", "state": "lower"}]
+    )
+    write_relation(
         layer_dir(revision.id), "country", [{"state": "lower", "country": "DE"}]
     )
 
-    groups = revision.record.groups
-    assert groups["state"].collect().to_native().to_pydict() == {
+    relations = revision.record.relations
+    assert relations["state"].collect().to_native().to_pydict() == {
         "bus": ["north"],
         "state": ["lower"],
     }
     assert dict(
         zip(
-            groups["country"].collect().to_native()["state"].to_pylist(),
-            groups["country"].collect().to_native()["country"].to_pylist(),
+            relations["country"].collect().to_native()["state"].to_pylist(),
+            relations["country"].collect().to_native()["country"].to_pylist(),
         )
     ) == {"lower": "DE"}
 
 
 def test_member_order_survives_a_restate_through_a_materialised_parent(con, base_uri):
-    """A group's member order is the resolved file's row order, preserved across a
+    """A relation's member order is the resolved file's row order, preserved across a
     materialised parent: a key introduced at the root stays first, and a
     grandchild's addition sorts after the materialised seed's members.
 
@@ -220,26 +223,28 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(con, base
     write_schema(schema)
 
     root = Revision.create(con)
-    write_group(layer_dir(root.id), "state", [{"bus": "north", "state": "lower"}])
+    write_relation(layer_dir(root.id), "state", [{"bus": "north", "state": "lower"}])
 
     child = root.child()
-    write_group(layer_dir(child.id), "state", [{"bus": "south", "state": "upper"}])
+    write_relation(layer_dir(child.id), "state", [{"bus": "south", "state": "upper"}])
     child.materialise()
 
     grandchild = child.child()
-    write_group(layer_dir(grandchild.id), "state", [{"bus": "east", "state": "lower"}])
+    write_relation(
+        layer_dir(grandchild.id), "state", [{"bus": "east", "state": "lower"}]
+    )
 
-    rows = grandchild.record.groups["state"].collect().to_native().to_pydict()
+    rows = grandchild.record.relations["state"].collect().to_native().to_pydict()
     assert rows["bus"] == ["north", "south", "east"], "member order, seed first"
     assert "order_key" not in rows
 
 
-def test_an_attribute_addressed_by_the_into_dim_alone_is_a_column_of_its_axis(
+def test_an_attribute_addressed_by_the_values_dim_alone_is_a_column_of_its_axis(
     con, base_uri
 ):
     """`co2_budget` is a property of the country, so it rides on the axis file.
 
-    Not `inputs/co2_budget.parquet`: one addressing coordinate is a column on
+    Not `attributes/co2_budget.parquet`: one addressing coordinate is a column on
     that thing's own table, and for a mapping that table is its own axis file.
     """
     revision = Revision.create(con)

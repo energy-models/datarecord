@@ -22,7 +22,7 @@ class RecordLike(Protocol):
     @property
     def dims(self) -> Frames: ...  # axis frames, keyed by dim
     @property
-    def groups(self) -> Frames: ...  # each group's rows, keyed by group
+    def relations(self) -> Frames: ...  # each relation's rows, keyed by relation
     @property
     def attributes(self) -> Frames: ...  # long frames, keyed by attribute
 
@@ -43,8 +43,8 @@ class LayerData(Protocol):
 
     def axes(self) -> Iterable[str]: ...
     def axis(self, dim: str) -> DuckDBPyRelation | None: ...
-    def groups(self) -> Iterable[str]: ...
-    def group(self, name: str) -> DuckDBPyRelation | None: ...
+    def relations(self) -> Iterable[str]: ...
+    def relation(self, name: str) -> DuckDBPyRelation | None: ...
     def attributes(self) -> Iterable[str]: ...
     def attribute(self, name: str) -> DuckDBPyRelation | None: ...
 ```
@@ -52,10 +52,10 @@ class LayerData(Protocol):
 Each pair is an enumerator — the keys of that kind — and a read for one key.
 The enumerators return `Iterable[str]` rather than `set[str]` so a `Resolver`, whose keys carry a stable order a `Record` over it relies on, can return a `list` where a source returns a `set`; the meaning is the same set of keys either way.
 
-One object, two meanings: a [`LayerSource`](read-path.md#owner-map) answers `axis`/`group`/`attribute` for its own layer's rows; a `Resolver` answers the same names for everything folded into it.
+One object, two meanings: a [`LayerSource`](read-path.md#owner-map) answers `axis`/`relation`/`attribute` for its own layer's rows; a `Resolver` answers the same names for everything folded into it.
 `write_record` cannot tell which it holds and does not need to — a staged layer's own rows (`NewChild`) and a resolved whole record (`Directory`) are both a `LayerData`, so [committing](working-record.md#committing) writes either without a third shape adapting one to the other.
 
-`schema` governs which of the other pairs are populated, rather than standing beside them as a peer: `groups`/`group` answer only for the groups it declares.
+`schema` governs which of the other pairs are populated, rather than standing beside them as a peer: `relations`/`relation` answer only for the relations it declares.
 An enumerator answers the **empty set**, never a phantom key, where the schema declares nothing of that kind.
 
 Rows are raw `DuckDBPyRelation`s, not narwhals frames — the write path stays one engine throughout.
@@ -63,19 +63,19 @@ A `RecordLike` over narwhals `Frames` instead, such as the one [`from_sources`](
 
 ## Wide and long rows
 
-`schema` is [the declaration](schema.md): which axes and groups exist, which attributes exist, and over which axes each may vary.
+`schema` is [the declaration](schema.md): which axes and relations exist, which attributes exist, and over which axes each may vary.
 The rest is data, and comes in two shapes.
 
-`dims` and `groups` are **wide** — one row per thing, keyed by the dim or the group:
+`dims` and `relations` are **wide** — one row per thing, keyed by the dim or the relation:
 
 ```text
 dims["scenario"]                       scenario | ...   one row per axis label, in axis order
 dims["entity"]                         entity | <attributes over entity alone>
-groups["connection"]                   entity | bus | <attributes over the group>
-groups["entity_type"]                  entity | entity_type
+relations["connection"]                entity | bus | <attributes over the relation>
+relations["entity_type"]               entity | entity_type
 ```
 
-`groups` is keyed by the group alone, one frame each: a group's rows are keyed by its coordinates and the component type is not one of them, so `groups/connection.parquet` holds every type's attachments ([where the rows live](format.md#where-a-value-lives)).
+`relations` is keyed by the relation alone, one frame each: a relation's rows are keyed by its columns and the component type is not one of them, so `relations/connection.parquet` holds every type's attachments ([where the rows live](format.md#where-a-value-lives)).
 
 `attributes` is **long** — one row per value, keyed by the attribute's name:
 
@@ -86,12 +86,12 @@ attributes["efficiency"]   entity | bus | <...> | attribute | breakpoint | value
 
 A row names what the value belongs to, the coordinate it sits at, and the value there.
 
-**The columns are the attribute's own**, not a fixed set every file carries: an attribute's coordinates are what its [`dims`](schema.md#attributespec) declare, with a [group](schema.md#groups) expanding to its coordinate names.
-So `efficiency` over the `connection` group carries `entity | bus`, `flow` over a `corridor` carries `from | to`, and `objective_weighting` over `snapshot` alone carries no entity column at all — an all-NULL `entity` would be a column claiming a component the value has none of.
+**The columns are the attribute's own**, not a fixed set every file carries: an attribute's coordinates are what its [`dims`](schema.md#attributespec) declare, with a [relation](schema.md#relations) expanding to its column names.
+So `efficiency` over the `connection` relation carries `entity | bus`, `flow` over a `corridor` carries `from | to`, and `objective_weighting` over `snapshot` alone carries no entity column at all — an all-NULL `entity` would be a column claiming a component the value has none of.
 `union_by_name` is what lets the fold union files of differing shape, supplying NULL for a coordinate a given file does not carry.
 
 There is **no `entity_type` column** in that row, and none in the mapping's key either: `attributes["p_max_pu"]` holds every type's `p_max_pu` together, since an `entity` already identifies a component on its own ([what a data record is](index.md#what-a-data-record-is)).
-A consumer that wants one type's rows joins `groups["entity_type"]` on `entity`, and a frame per type is `dims["entity"]` joined to it the same way.
+A consumer that wants one type's rows joins `relations["entity_type"]` on `entity`, and a frame per type is `dims["entity"]` joined to it the same way.
 
 **`breakpoint`** is NULL for the ordinary case. It carries the abscissa of a piecewise-linear value: a curve is one row per breakpoint, `value` the ordinate at each. Convexity is never checked or recorded — that is a framework's judgement.
 
@@ -99,13 +99,13 @@ A consumer that wants one type's rows joins `groups["entity_type"]` on `entity`,
 
 Some attributes belong not to a component but to one of its connections to a bus.
 
-A connection is one row of the **`connection` [group](schema.md#groups)** — `Group(over={"entity": "entity", "bus": "bus"})` — rather than a structural category of its own.
-`groups["connection"]` lists the attachments themselves, one row per `(entity, bus)`, across every component type; `role` — which end of the component it is — describes the connection and identifies nothing, and is an ordinary attribute a schema declares over the group rather than a column the format fixes.
+A connection is one row of the **`connection` [relation](schema.md#relations)** — `Relation(key={"entity": "entity", "bus": "bus"})` — rather than a structural category of its own.
+`relations["connection"]` lists the attachments themselves, one row per `(entity, bus)`, across every component type; `role` — which end of the component it is — describes the connection and identifies nothing, and is an ordinary attribute a schema declares over the relation rather than a column the format fixes.
 
 A connection is identified by **the bus it attaches to**, never by position.
-An attribute is a connection attribute because its `dims` name the group, so a per-connection value is otherwise an ordinary long row: `efficiency` may vary by timestep and scenario like any other attribute, and decodes by the same rules with no special case.
+An attribute is a connection attribute because its `dims` name the relation, so a per-connection value is otherwise an ordinary long row: `efficiency` may vary by timestep and scenario like any other attribute, and decodes by the same rules with no special case.
 
-A record declaring no such group has no connections, and one declaring it with no rows answers `groups["connection"]` empty.
+A record declaring no such relation has no connections, and one declaring it with no rows answers `relations["connection"]` empty.
 Nothing about the mechanism is particular to buses — `corridor` over `(from, to)` is the same machinery, which is why `bus` is a coordinate name here rather than a word the read path knows.
 
 ## The broadcast rule
@@ -118,11 +118,11 @@ A NULL dim means "all values of that dim", not that the attribute lacks the axis
 **Two kinds of coordinate do not broadcast**, and for the same reason — neither has an axis to expand against:
 
 - **`entity`.** A NULL there is a value belonging to no component rather than to every component. It is the one dim the format knows by name ([the entity axis](format.md#the-entity-axis)).
-- **A coordinate some [group](schema.md#groups) is keyed by.** A NULL `bus` on a connection attribute means "every connection of _this_ entity", which is the group's rows — a sparse subset only the group's table knows, not the bus axis.
+- **A coordinate some [relation](schema.md#relations) is keyed by.** A NULL `bus` on a connection attribute means "every connection of _this_ entity", which is the relation's rows — a sparse subset only the relation's table knows, not the bus axis.
 
 Both kinds are compared NULL-safely, and both are in the fold key as membership keys rather than through [`partial`](schema.md#partial-the-granularity-of-an-override): a coordinate addressed individually is one a layer patches row by row.
 
-Every other dim broadcasts, the `into` dim of a functional group included: `entity_type` and `country` are ordinary axes.
+Every other dim broadcasts, the `values` dim of a functional relation included: `entity_type` and `country` are ordinary axes.
 
 Rows never overlap, so at most one covers any coordinate.
 A coordinate no row covers — including an attribute with no rows at all — takes that attribute's `default` from [the schema](schema.md#attributespec).
@@ -133,10 +133,10 @@ Broadcast form is preserved: a value held once is answered once, so a consumer c
 
 An axis's order is the row order of its frame in `dims`.
 
-Components and a group's rows are ordered too, in the order they were introduced ([the owner map](read-path.md#owner-map)).
+Components and a relation's rows are ordered too, in the order they were introduced ([the owner map](read-path.md#owner-map)).
 Order is never a stored column, there as here: a file's row order is the input, and `order_key` is what the fold derives from it to answer "first introduced" across layers.
 
-The distinction is **whether a table gains rows across layers.** A group does, so its map keeps `order_key`; an axis does not, since an axis is [not partial](schema.md#partial-the-granularity-of-an-override) and a layer restating it restates it whole, leaving file order intact.
+The distinction is **whether a table gains rows across layers.** A relation does, so its map keeps `order_key`; an axis does not, since an axis is [not partial](schema.md#partial-the-granularity-of-an-override) and a layer restating it restates it whole, leaving file order intact.
 
 ## `Frames`
 
@@ -179,13 +179,13 @@ Per component they would be complements; the aggregation over several entities i
 Both sets empty for a dim means the attribute has no values along it, so the consumer builds no container there.
 
 **Both sets are scoped to what the attribute is addressed by.** A dim outside its [`dims`](schema.md#attributespec) is in neither, never in `broadcast`.
-The two are easy to conflate because whatever the flags are aggregated from — the [owner map](read-path.md#owner-map), a scan of `inputs/`, a staging table — is one relation over every attribute, so a dim one attribute uses reads NULL for the rows of one that does not; but that NULL means "no such axis", not "every value of it".
+The two are easy to conflate because whatever the flags are aggregated from — the [owner map](read-path.md#owner-map), a scan of `attributes/`, a staging table — is one DuckDB relation over every attribute, so a dim one attribute uses reads NULL for the rows of one that does not; but that NULL means "no such axis", not "every value of it".
 Reporting it as broadcast would answer the question above wrongly for every attribute in the record: a consumer would build a constant container along an axis the attribute has no values on.
 
 So an attribute addressed by `entity` alone reports both sets empty, and that is not the same as having no rows — an attribute with no rows at all is [absent from the mapping](#flags) entirely.
 
 A consumer asks per type, because one file holds every type's rows: unioning across types would report a Generator's per-timestep rows and a Link's single row as one shape, which describes neither.
-So it passes the names of one type, read from `groups["entity_type"]`, and `flags` filters the [owner map](read-path.md#owner-map) on `entity`.
+So it passes the names of one type, read from `relations["entity_type"]`, and `flags` filters the [owner map](read-path.md#owner-map) on `entity`.
 
 ## The protocol names no engine
 

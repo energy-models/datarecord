@@ -21,7 +21,7 @@ from datarecord.duck import DuckTypes
 from datarecord.schema import (
     AttributeSpec,
     Dimension,
-    Group,
+    Relation,
     Schema,
     flag_type,
 )
@@ -38,9 +38,9 @@ def _schema(**overrides) -> Schema:
             "scenario": Dimension(dtype=nw.String()),
             "entity_type": Dimension(dtype=nw.Enum(["Generator", "Link"])),
         },
-        "groups": {
-            "connection": Group(over={"entity": "entity", "bus": "bus"}),
-            "entity_type": Group(over=["entity"], into="entity_type"),
+        "relations": {
+            "connection": Relation(key={"entity": "entity", "bus": "bus"}),
+            "entity_type": Relation(key=["entity"], values="entity_type"),
         },
         # Declared once, record-wide.
         "attributes": {
@@ -52,7 +52,7 @@ def _schema(**overrides) -> Schema:
                 dtype=nw.Float64(), dims={"entity", "scenario"}, breakpoints=True
             ),
             "carrier": AttributeSpec(dtype=nw.String(), dims={"entity"}),
-            # A connection attribute says so by naming the group among its
+            # A connection attribute says so by naming the relation among its
             # dims, rather than by a field of its own.
             "efficiency": AttributeSpec(
                 dtype=nw.Float64(), dims={"connection", "scenario", "timestep"}
@@ -117,7 +117,7 @@ def test_file_split_follows_dims():
     assert s.attributes["p_max_pu"].varying
 
 
-# -- group keys (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------------------
+# -- relation keys (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------------------
 
 
 def test_the_fold_key_is_exactly_partial():
@@ -133,32 +133,32 @@ def test_the_fold_key_is_exactly_partial():
 
 
 @pytest.mark.parametrize(
-    ("groups", "partial", "missing"),
+    ("relations", "partial", "missing"),
     [
         pytest.param(
-            {"connection": Group(over=["entity", "bus"])},
+            {"connection": Relation(key=["entity", "bus"])},
             {"entity"},
             "['bus']",
             id="one-coordinate-of-a-tuple-set",
         ),
         pytest.param(
-            {"entity_type": Group(over=["entity"], into="entity_type")},
+            {"entity_type": Relation(key=["entity"], values="entity_type")},
             set(),
             "['entity']",
-            id="the-key-of-a-functional-group",
+            id="the-key-of-a-functional-relation",
         ),
         pytest.param(
-            {"connection": Group(over=["entity", "bus"])},
+            {"connection": Relation(key=["entity", "bus"])},
             None,
             "['bus', 'entity']",
             id="no-partial-at-all",
         ),
     ],
 )
-def test_a_group_key_missing_from_partial_is_refused(groups, partial, missing):
-    """A layer adds or removes one row of a group, so its key must be `partial`.
+def test_a_relation_key_missing_from_partial_is_refused(relations, partial, missing):
+    """A layer adds or removes one row of a relation, so its key must be `partial`.
 
-    The `into` dim is no key, so `entity_type` need not be named.
+    The `values` dim is no key, so `entity_type` need not be named.
     """
     with pytest.raises(
         ValidationError, match=rf"`partial` must name {re.escape(missing)}"
@@ -169,13 +169,13 @@ def test_a_group_key_missing_from_partial_is_refused(groups, partial, missing):
                 "bus": Dimension(dtype=nw.String()),
                 "entity_type": Dimension(dtype=nw.String()),
             },
-            groups=groups,
+            relations=relations,
             partial=None if partial is None else frozenset(partial),
         )
 
 
 def test_an_attribute_broadcasts_over_the_dims_it_names():
-    """A coordinate reached through a group is the group's rows, not an axis."""
+    """A coordinate reached through a relation is the relation's rows, not an axis."""
     s = _schema()
     assert s.broadcast_dims == s.dims, "any declared dim may broadcast"
     assert s.broadcasts_over("p_max_pu") == ("entity", "timestep", "scenario"), (
@@ -192,8 +192,8 @@ def test_an_attribute_broadcasts_over_the_dims_it_names():
 # -- entity types ----------------------------------------------------------
 
 
-def test_a_functional_group_may_not_key_an_attribute_with_what_it_maps_from():
-    """`into` says the label follows from the key, so the row is keyed twice.
+def test_a_functional_relation_may_not_key_an_attribute_with_what_it_maps_from():
+    """`values` says the label follows from the key, so the row is keyed twice.
 
     Stated for the entity-type axis, which is the case the format names, but
     the rule is general - see the `country`-over-`bus` case below.
@@ -204,7 +204,7 @@ def test_a_functional_group_may_not_key_an_attribute_with_what_it_maps_from():
                 "entity": Dimension(dtype=nw.String()),
                 "entity_type": Dimension(dtype=nw.Enum(["Bus"])),
             },
-            groups={"entity_type": Group(over=["entity"], into="entity_type")},
+            relations={"entity_type": Relation(key=["entity"], values="entity_type")},
             attributes={
                 "p_nom": AttributeSpec(
                     dtype=nw.Float64(), dims={"entity", "entity_type"}
@@ -214,7 +214,7 @@ def test_a_functional_group_may_not_key_an_attribute_with_what_it_maps_from():
         )
 
 
-def test_the_redundant_addressing_rule_covers_every_functional_group():
+def test_the_redundant_addressing_rule_covers_every_functional_relation():
     """Not an `entity_type` special case: `country` over `bus` is the same shape."""
     with pytest.raises(ValidationError, match="keys a row twice over"):
         Schema(
@@ -222,7 +222,7 @@ def test_the_redundant_addressing_rule_covers_every_functional_group():
                 "bus": Dimension(dtype=nw.String()),
                 "country": Dimension(dtype=nw.String()),
             },
-            groups={"in_country": Group(over=["bus"], into="country")},
+            relations={"in_country": Relation(key=["bus"], values="country")},
             attributes={
                 "x": AttributeSpec(dtype=nw.Float64(), dims={"bus", "country"})
             },
@@ -234,14 +234,14 @@ def test_an_attribute_may_be_addressed_by_the_entity_type_alone():
     """A per-type icon is a value per type, keyed once - an axis-file column.
 
     The type axis is a dim like any other; what may not key a row alongside it
-    is the `entity` the group maps into it.
+    is the `entity` the relation maps into it.
     """
     s = Schema(
         dimensions={
             "entity": Dimension(dtype=nw.String()),
             "entity_type": Dimension(dtype=nw.Enum(["Bus", "Generator"])),
         },
-        groups={"entity_type": Group(over=["entity"], into="entity_type")},
+        relations={"entity_type": Relation(key=["entity"], values="entity_type")},
         attributes={
             "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
             "icon": AttributeSpec(dtype=nw.String(), dims={"entity_type"}),
@@ -252,11 +252,11 @@ def test_an_attribute_may_be_addressed_by_the_entity_type_alone():
     assert not s.attributes["icon"].varying, "addressed by one dim, so not varying"
 
 
-def test_several_groups_may_map_entity_into_other_dims():
+def test_several_relations_may_map_entity_into_other_dims():
     """A type relation is a relation like any other, so a record may declare several.
 
-    Refused while a group over `entity` alone made its `into` the one entity-type
-    axis: a component's bus could not also be a functional group.
+    Refused while a relation keyed by `entity` alone made its `values` the one
+    entity-type axis: a component's bus could not also be a functional relation.
     """
     s = Schema(
         dimensions={
@@ -264,9 +264,9 @@ def test_several_groups_may_map_entity_into_other_dims():
             "entity_type": Dimension(dtype=nw.String()),
             "bus": Dimension(dtype=nw.String()),
         },
-        groups={
-            "type_of": Group(over=["entity"], into="entity_type"),
-            "bus_of": Group(over=["entity"], into="bus"),
+        relations={
+            "type_of": Relation(key=["entity"], values="entity_type"),
+            "bus_of": Relation(key=["entity"], values="bus"),
         },
         attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
         partial=frozenset({"entity"}),

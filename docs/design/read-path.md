@@ -9,16 +9,16 @@ SPDX-License-Identifier: CC-BY-4.0
 ## Owner map
 
 The owner map answers, for a node, which layer owns each key.
-**One map: `inputs`.** It is the only relation whose winning _key_ and winning row's _values_ live in different files — an attribute's ownership spans every `inputs/<attr>.parquet`, so the map names the owning layer per key and a read then goes to that layer's file for the value.
-Every axis — a [dim](schema.md#partial-the-granularity-of-an-override)'s coordinates, the entity axis, a [group](schema.md#groups) — is a single keyed file whose winning row _is_ the whole row, so none needs a map; each folds to a [resolved relation](#one-fold-for-every-axis) read inline.
+**One map: `attributes`.** It is the only table whose winning _key_ and winning row's _values_ live in different files — an attribute's ownership spans every `attributes/<attr>.parquet`, so the map names the owning layer per key and a read then goes to that layer's file for the value.
+Every axis — a [dim](schema.md#partial-the-granularity-of-an-override)'s coordinates, the entity axis, a [relation](schema.md#relations) — is a single keyed file whose winning row _is_ the whole row, so none needs a map; each folds to a [resolved relation](#one-fold-for-every-axis) read inline.
 
-The inputs map's columns, keys first:
+The columns of the `attributes` map, keys first:
 
 ```text
-# inputs
+# attributes
 <partial dims>          -- the fold key: membership keys + partial value dims
   entity     -- never NULL
-  <group coordinates>
+  <relation key coordinates>
   <owned_per value dims>
 attribute
 layer_uuid              -- the owning layer
@@ -30,24 +30,24 @@ breakpoints BOOLEAN
 It maps each key to the owning `layer_uuid`, with deletions already applied.
 It carries no `value`, no varying dim's value, and no `breakpoint`, so it stays small regardless of the series data or the size of a curve.
 
-The **inputs key is schema-derived**, not spelled: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`.
-`partial_dims` is the _membership keys_ — `entity` and every group coordinate, which [address a row rather than broadcasting](record.md#the-broadcast-rule) — plus the broadcast value dims a layer may patch per value (`partial`).
+The **key of the `attributes` map is schema-derived**, not spelled: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`.
+`partial_dims` is the _membership keys_ — `entity` and every relation key coordinate, which [address a row rather than broadcasting](record.md#the-broadcast-rule) — plus the broadcast value dims a layer may patch per value (`partial`).
 A coordinate an attribute's own file does not carry reads as NULL, which is what keeps the key one fixed tuple across attributes whose columns differ.
 
-The type is no part of an attribute row's address: an attribute over `entity` is addressed by `entity` alone, and the `entity_type` [group](schema.md#types) says which type an entity is.
-A type-scoped question goes through that group — [`flags`](record.md#flags) over the names of one type, or a consumer that wants the frame of one type.
+The type is no part of an attribute row's address: an attribute over `entity` is addressed by `entity` alone, and the `entity_type` [relation](schema.md#types) says which type an entity is.
+A type-scoped question goes through that relation — [`flags`](record.md#flags) over the names of one type, or a consumer that wants the frame of one type.
 
 The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
-Every membership's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of each group and of each dim in the fold key, `entity` among them — read from the same file that membership folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
-A removed label takes the group rows keyed on it too ([one fold for every axis](#one-fold-for-every-axis)), so a removed component loses its connection rows and its `entity_type` row with it.
+Every membership's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of each relation and of each dim in the fold key, `entity` among them — read from the same file that membership folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
+A removed label takes the relation rows keyed on it too ([one fold for every axis](#one-fold-for-every-axis)), so a removed component loses its connection rows and its `entity_type` row with it.
 The coordinate a membership keys on [never broadcasts](record.md#the-broadcast-rule), so a row not addressed by one carries NULL there and its NULL-safe anti-join never takes it; only a row naming a dead coordinate is dropped.
 
 ## One fold for every axis
 
-A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer patches per key.
-They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), static columns carried on the winning row (`weight` on `dims/scenario.parquet`, `p_nom` on the entity axis, `into` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
-A resolved group keeps only the rows whose key names live labels: a group row keyed on a label removed from a fold-key dim leaves with that label.
+A dim's coordinates, the entity axis, and a relation are one construct: a keyed table a layer patches per key.
+They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), static columns carried on the winning row (`weight` on `dims/scenario.parquet`, `p_nom` on the entity axis, the `values` column on a relation) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
+A resolved relation keeps only the rows whose key names live labels: a relation row keyed on a label removed from a fold-key dim leaves with that label.
 
 The resolved relation is returned **in first-introduced member order** — root first, then file order within a layer — and a node's caches persist it _in that order_, so a reader recovers member order from the resolved file's own row number.
 There is no persisted `order_key` column: member order is the file's row order.
@@ -59,7 +59,7 @@ The fold runs live over an unmaterialised tail, cached per connection; since [la
 The [flags](record.md#flags) are folded in alongside the ownership group-by, so they cost nothing beyond it.
 They are computed **per key**, so per component: whether _this_ component's `p_max_pu` sets `timestep` is a different question from whether any does.
 
-The structs have a field per **broadcast** dim rather than per declared dim: an address coordinate [never broadcasts](record.md#the-broadcast-rule), so "did a row set it" is not a question about it — `entity` and a group's coordinate are always set, by construction.
+The structs have a field per **broadcast** dim rather than per declared dim: an address coordinate [never broadcasts](record.md#the-broadcast-rule), so "did a row set it" is not a question about it — `entity` and a relation's key coordinate are always set, by construction.
 
 Two **structs** rather than a `varies_<dim>` column per dim, because which dims exist is [declared](schema.md#dimensions) and a flat layout would make the map's _column set_ depend on the schema.
 [Versioning](schema.md#versioning) calls adding a dim compatible; that has to hold for a map already persisted at a [materialised node](layers.md#materialised-node-caches), not only for the layers.
@@ -73,18 +73,18 @@ That also means the dim namespace lives entirely inside `varies`/`broadcast`, so
 
 ## Resolving a relation
 
-A resolved relation semi-joins the owning layers' files to the `inputs` map, keeping only owned rows:
+A resolved attribute semi-joins the owning layers' files to the `attributes` map, keeping only owned rows:
 
 ```sql
 SELECT u.entity, u.bus, u.timestep,
        COALESCE(u.scenario, o.scenario) AS scenario,   -- one per owned_per dim
        u.attribute, u.breakpoint, u.value
 FROM ( -- one arm per distinct layer the map names for this attribute
-  SELECT ?::UUID AS layer_uuid, * FROM read_parquet(<layer>/inputs/<attr>.parquet)
+  SELECT ?::UUID AS layer_uuid, * FROM read_parquet(<layer>/attributes/<attr>.parquet)
   UNION ALL BY NAME
   ...
 ) u
-JOIN inputs o
+JOIN attributes o
   ON o.entity      IS NOT DISTINCT FROM u.entity  -- address coordinates: NULL-safe,
  AND o.bus         IS NOT DISTINCT FROM u.bus     -- never expanded against an axis
  AND o.attribute   = u.attribute
@@ -93,15 +93,15 @@ JOIN inputs o
 ```
 
 The projected coordinates are the **attribute's own**, not a fixed prefix: `entity | bus` for a connection attribute, `from | to` for one over a corridor, neither for a record-level weighting ([the long schema](format.md#the-long-schema)).
-The join's address columns follow from the same place, so the query shape is derived from the schema rather than spelling `entity` and `bus` as literals — which is what lets a second group resolve through the identical code.
+The join's address columns follow from the same place, so the query shape is derived from the schema rather than spelling `entity` and `bus` as literals — which is what lets an attribute over a second relation resolve through the identical code.
 
 The map already names the winning layer per key, so resolution reads only the owning layers' files.
 There is no per-read `MAX`/group-by and no tombstone filter — deletions are already absent from the map.
 
 Each owned-per dim's arm is **NULL-aware**: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.
 
-A **group coordinate** like `bus` is joined **NULL-safely** rather than NULL-aware against the map, being [an address rather than a broadcast dim](record.md#the-broadcast-rule).
-There is no membership gate at read: an attribute row is keyed by every membership its coordinates name — the entity, each group tuple, each dim coordinate — and each of those is [tombstone-pruned in the fold](#one-fold-for-every-axis), so a row whose entity, connection tuple or dim coordinate was deleted is already gone from the map.
+A **relation key coordinate** like `bus` is joined **NULL-safely** rather than NULL-aware against the map, being [an address rather than a broadcast dim](record.md#the-broadcast-rule).
+There is no membership gate at read: an attribute row is keyed by every membership its coordinates name — the entity, each relation tuple, each dim coordinate — and each of those is [tombstone-pruned in the fold](#one-fold-for-every-axis), so a row whose entity, connection tuple or dim coordinate was deleted is already gone from the map.
 The fold anti-joins each membership against its own `deleted` rows, read from the same file that membership folds from.
 Because the coordinate a membership keys on [never broadcasts](record.md#the-broadcast-rule), a row not addressed by a membership carries NULL there and its NULL-safe anti-join never takes it — only a row naming a dead coordinate is dropped.
 

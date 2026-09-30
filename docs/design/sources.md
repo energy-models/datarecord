@@ -10,16 +10,16 @@ This page explains how a record meets a solver or a modelling framework, and why
 Data comes in, and a record goes out, as tables keyed by the names its [schema](schema.md) declares.
 `from_sources` and `to_sources` are the two directions ([API](../api/sources.md)).
 
-| declared as                            | its table                             |
-| -------------------------------------- | ------------------------------------- |
-| a dimension                            | its labels, one column named after it |
-| a relation ([group](schema.md#groups)) | its rows, one column per coordinate   |
-| a parameter (attribute)                | its coordinates and `value`           |
+| declared as                       | its table                             |
+| --------------------------------- | ------------------------------------- |
+| a dimension                       | its labels, one column named after it |
+| a [relation](schema.md#relations) | its rows, one column per coordinate   |
+| a parameter (attribute)           | its coordinates and `value`           |
 
 ## Declared names
 
 The names are the contract, and nothing sits between a record and its consumer.
-`Schema.from_mathspec` builds a schema from a mathspec declarations file, so the dims, groups and attributes of a record carry the names of its dimensions, relations and parameters.
+`Schema.from_mathspec` builds a schema from a mathspec declarations file, so the dims, relations and attributes of a record carry the names of its dimensions, relations and parameters.
 A spec that reads those parameters takes the same names in its `sources`.
 So specsolve's `solve(spec, sources)` takes what `to_sources(record)` returns, and the record needs no knowledge of the spec.
 

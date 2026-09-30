@@ -20,7 +20,7 @@ from datarecord import Revision
 from datarecord.duck import layer_dir, resolved_dir, union_all_by_name
 from datarecord.layered.sources import DirectorySource, LayerSource, ParquetLayer
 from datarecord.schema import Schema
-from tests.fixtures import export_network, tombstone, write_input
+from tests.fixtures import export_network, tombstone, write_attribute
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ def keys(revision, con):
     """The inputs map's keys: `(name, attribute)`, no type.
 
     The map is tombstone-pruned in the fold (`fold_inputs` anti-joins each
-    membership's deletions), so a key whose component or group tuple was deleted
+    membership's deletions), so a key whose component or relation tuple was deleted
     is already gone from it - the read needs no further gating.
 
     Notes
@@ -103,7 +103,7 @@ def test_materialise_writes_the_map_under_resolved(con, parent):
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    assert Path(resolved_dir(parent.id), "owner_map", "inputs.parquet").exists()
+    assert Path(resolved_dir(parent.id), "owner_map", "attributes.parquet").exists()
     # The entity axis folds like an axis now, materialised under `dims/`, not as
     # an owner map (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
     assert Path(resolved_dir(parent.id), "dims", "entity.parquet").exists()
@@ -120,7 +120,7 @@ def test_materialise_writes_the_map_under_resolved(con, parent):
         p
         for pattern in (
             "*.parquet",
-            "inputs/*.parquet",
+            "attributes/*.parquet",
             "dims/*.parquet",
             "dims/*/*.parquet",
         )
@@ -133,7 +133,7 @@ def test_materialise_writes_the_map_under_resolved(con, parent):
 def test_last_writer_wins_per_key(con, parent):
     """A child's key overrides the parent's, others stay with the parent."""
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -180,10 +180,10 @@ def test_live_fold_is_cached_per_connection(con, parent):
     child = parent.child()
     om = child.resolver
     om.inputs.fetchall()
-    # Only `inputs` keeps an owner-map table; the entity axis folds like an axis.
+    # Only `attributes` keeps an owner-map table; the entity axis folds like an axis.
     assert con.execute(
         "SELECT 1 FROM duckdb_tables() WHERE table_name = ?",
-        [f"owner_map_inputs_{child.id.hex}"],
+        [f"owner_map_attributes_{child.id.hex}"],
     ).fetchone()
 
 
@@ -195,7 +195,7 @@ def test_materialising_does_not_change_the_map(con, parent):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -217,7 +217,7 @@ def test_a_removed_cache_falls_back_to_the_fold(con, parent):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_min_pu",
         [{"entity": "Norway Gas", "value": 0.1}],
@@ -245,7 +245,7 @@ def test_a_materialised_node_reads_the_same_as_an_unmaterialised_one(con, parent
     - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
     """
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -269,7 +269,7 @@ def test_any_node_may_be_a_parent(con, parent):
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
     """
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -320,7 +320,7 @@ def test_a_parquet_layer_locates_a_layers_files(base_uri):
     """The fold names files and the source says where they are.
 
     `layer_dir` is what a `ParquetLayer` derives from, so this pins the seam
-    rather than the layout: a reader asks for `inputs/p_nom.parquet` and never
+    rather than the layout: a reader asks for `attributes/p_nom.parquet` and never
     builds the path itself.
 
     Notes
@@ -334,11 +334,11 @@ def test_a_parquet_layer_locates_a_layers_files(base_uri):
     )
 
     assert source.uri() == layer_dir(revision_id), "empty is the layer root"
-    assert source.uri("inputs/p_nom.parquet") == (
-        layer_dir(revision_id) + "inputs/p_nom.parquet"
+    assert source.uri("attributes/p_nom.parquet") == (
+        layer_dir(revision_id) + "attributes/p_nom.parquet"
     )
     # A glob is a path like any other: the source neither parses nor validates.
-    assert source.uri("inputs/*.parquet").endswith("inputs/*.parquet")
+    assert source.uri("attributes/*.parquet").endswith("attributes/*.parquet")
 
 
 def test_a_parquet_layer_takes_the_base_it_was_given(tmp_path):

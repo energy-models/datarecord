@@ -21,7 +21,7 @@ from datarecord.record import (
     LazyFrames,
     RecordLike,
 )
-from datarecord.schema import AttributeSpec, Dimension, Group, Schema
+from datarecord.schema import AttributeSpec, Dimension, Relation, Schema
 
 __all__ = [
     "AttributeSpec",
@@ -29,7 +29,7 @@ __all__ = [
     "Directory",
     "Flags",
     "Frames",
-    "Group",
+    "Relation",
     "LazyFrames",
     "NewChild",
     "Record",

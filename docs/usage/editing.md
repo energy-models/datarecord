@@ -28,11 +28,11 @@ w.set("p_max_pu", nw.col("value") * 1.1, entity=["wind1"])  # derived
 
 **There is no `entity_type` keyword.** No attribute is narrowed to a type, so one call may span types. `set` refuses a name that is not on the entity axis — `add` it first — and an attribute that is not declared over the dims the call names ([design](../design/working-record.md#set)).
 
-`entity=None` means every entity on the axis. Every other coordinate goes through `**dims`, a group's included — `bus="north"` addresses one connection, `from=`/`to=` one corridor. A plain dim's absence means "every value of that dim" by the NULL broadcast rule; a group coordinate's means "every row of the group for this entity" ([design](../design/record.md#the-broadcast-rule)).
+`entity=None` means every entity on the axis. Every other coordinate goes through `**dims`, a relation's included — `bus="north"` addresses one connection, `from=`/`to=` one corridor. A plain dim's absence means "every value of that dim" by the NULL broadcast rule; a relation key coordinate's means "every row of the relation for this entity" ([design](../design/record.md#the-broadcast-rule)).
 
 An `nw.Expr` value is a **function of the current value**: it reads the resolved value including earlier pending edits, so two such calls compose, and what gets staged is the result rather than the expression ([design](../design/working-record.md#an-nwexpr-value-derived-from-the-current-one)). A named target that resolves to no row raises — the caller asked for those rows to take a new value and there is nothing to compute one from.
 
-## `add` / `remove` / `add_group` / `remove_group`
+## `add` / `remove` / `add_relation` / `remove_relation`
 
 ```python
 import pandas as pd
@@ -55,7 +55,7 @@ w.add(
 
 w.remove("entity", ["old_coal"])
 
-w.add_group(
+w.add_relation(
     "connection",
     pd.DataFrame(
         {
@@ -65,14 +65,14 @@ w.add_group(
         }
     ),
 )
-w.remove_group("connection", [("dc", "south")])
+w.remove_relation("connection", [("dc", "south")])
 ```
 
-`add` takes a wide frame keyed by `entity` and splits it by the schema: columns addressed by `entity` alone go to the entity axis, ones varying beyond it become `inputs/` rows, and the `entity_type` column becomes rows of the `entity_type` group, which gives each entity its type ([design](../design/working-record.md#add-remove)). A frame that carries every coordinate of a group keyed on `entity` adds that group's rows the same way. A component exists by virtue of its row on the entity axis, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
+`add` takes a wide frame keyed by `entity` and splits it by the schema: columns addressed by `entity` alone go to the entity axis, ones varying beyond it become `attributes/` rows, and the `entity_type` column becomes rows of the `entity_type` relation, which gives each entity its type ([design](../design/working-record.md#add-remove)). A frame that carries every column of a relation keyed by `entity` adds that relation's rows the same way. A component exists by virtue of its row on the entity axis, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
 
-`remove(dim, labels)` stages a tombstone per label on that dim's axis. `dim` may be any dim in the fold key: `entity`, a group key coordinate such as `bus`, or a dim declared `partial`; any other dim is refused. It need not enumerate what it deletes: the fold applies it to every attribute row and every group row keyed on the label, so a removed component takes its connection rows and its `entity_type` row with it ([design](../design/layers.md#deletion)).
+`remove(dim, labels)` stages a tombstone per label on that dim's axis. `dim` may be any dim in the fold key: `entity`, a relation key coordinate such as `bus`, or a dim declared `partial`; any other dim is refused. It need not enumerate what it deletes: the fold applies it to every attribute row and every relation row keyed on the label, so a removed component takes its connection rows and its `entity_type` row with it ([design](../design/layers.md#deletion)).
 
-`add_group`/`remove_group` take no type: a group's rows are keyed by its coordinates ([design](../design/format.md#where-a-value-lives)). Every group is reached the same way — `connection` has no call of its own, being one group among however many the schema declares.
+`add_relation`/`remove_relation` take no type: a relation's rows are keyed by its columns ([design](../design/format.md#where-a-value-lives)). Every relation is reached the same way — `connection` has no call of its own, being one relation among however many the schema declares.
 
 ## Inspecting and rolling back
 

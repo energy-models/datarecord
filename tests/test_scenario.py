@@ -20,7 +20,7 @@ from tests.fixtures import (
     export_network,
     relation,
     rename_components,
-    write_input,
+    write_attribute,
     write_scenarios,
 )
 
@@ -72,7 +72,7 @@ def test_partial_scenario_override(con, parent, stochastic):
     """A child may replace one scenario and leave the others to the parent."""
     scenario = stochastic.scenarios[0]
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [
@@ -119,7 +119,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
             {"scenario": "extra", "weight": 0.1},
         ],
     )
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [
@@ -197,7 +197,7 @@ def test_scenario_axis_survives_closed_grandchild(con, parent, stochastic):
     middle = parent.child()
     middle.materialise()
     grandchild = middle.child()
-    write_input(
+    write_attribute(
         layer_dir(grandchild.id),
         "p_max_pu",
         [{"entity": "solar Gen", "value": 0.88}],
@@ -214,7 +214,7 @@ def test_scenario_axis_survives_closed_grandchild(con, parent, stochastic):
 def test_scenario_null_row_broadcasts(con, parent, stochastic):
     """A child's NULL-scenario row replaces the component in every scenario."""
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [{"entity": "solar Gen", "value": 0.55}],

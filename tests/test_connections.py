@@ -17,9 +17,9 @@ from tests.fixtures import (
     schema,
     tombstone,
     tombstone_connection,
+    write_attribute,
     write_connections,
     write_entity_type,
-    write_input,
     write_schema,
 )
 
@@ -27,12 +27,12 @@ PROCESS = "Process"
 
 
 def _connections(revision):
-    """`group_frame`, asserted non-`None` for tests where a row must exist.
+    """`relation_frame`, asserted non-`None` for tests where a row must exist.
 
-    No type: one `groups/connection.parquet` holds every type's rows, and these
+    No type: one `relations/connection.parquet` holds every type's rows, and these
     tests declare a single one.
     """
-    frame = revision.resolver.group_frame("connection")
+    frame = revision.resolver.relation_frame("connection")
     assert frame is not None
     return frame
 
@@ -51,7 +51,7 @@ def _root(con) -> Revision:
             {"entity": "steel_dri", "bus": "dri", "role": "output"},
         ],
     )
-    write_input(
+    write_attribute(
         layer,
         "efficiency",
         [
@@ -83,7 +83,7 @@ def test_patch_overrides_one_connection_only(con, base_uri):
     root.materialise()
 
     child = root.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "efficiency",
         [
@@ -113,7 +113,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
         layer_dir(middle.id),
         [{"entity": "steel_dri", "bus": "elec_north", "role": "input"}],
     )
-    write_input(
+    write_attribute(
         layer_dir(middle.id),
         "efficiency",
         [
@@ -128,7 +128,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
     middle.materialise()
 
     leaf = middle.child()
-    write_input(
+    write_attribute(
         layer_dir(leaf.id),
         "efficiency",
         [
@@ -152,8 +152,8 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
 def test_component_level_attribute_is_unaffected(con, base_uri):
     """A component attribute carries no `bus` column at all, and resolves as ever.
 
-    `bus` is the `connection` group's coordinate, so it is on the files of the
-    attributes addressed by that group and on no others - where before every
+    `bus` is the `connection` relation's coordinate, so it is on the files of the
+    attributes addressed by that relation and on no others - where before every
     long file carried it, all-NULL, whether or not the attribute could use it.
 
     Notes
@@ -161,7 +161,7 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     root = _root(con)
-    write_input(
+    write_attribute(
         layer_dir(root.id),
         "p_nom",
         [{"entity_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
@@ -169,7 +169,7 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
     root.materialise()
 
     child = root.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_nom",
         [{"entity_type": PROCESS, "entity": "steel_dri", "value": 250.0}],
@@ -177,7 +177,9 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
 
     df = relation(child, "p_nom").df()
     assert list(df["value"]) == [250.0]
-    assert "bus" not in df.columns, "`p_nom` is not addressed by the connection group"
+    assert "bus" not in df.columns, (
+        "`p_nom` is not addressed by the connection relation"
+    )
 
 
 def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri):
@@ -194,7 +196,7 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
     write_connections(
         layer, [{"entity": "steel_dri", "bus": "h2_north", "role": "input"}]
     )
-    write_input(
+    write_attribute(
         layer,
         "efficiency",
         [
@@ -235,7 +237,7 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
 
 
 def test_connection_tombstone_removes_one_connection(con, base_uri):
-    """A connection tombstone drops its connection row and its `inputs/` rows."""
+    """A connection tombstone drops its connection row and its `attributes/` rows."""
     root = _root(con)
     root.materialise()
 
@@ -252,7 +254,7 @@ def test_connection_tombstone_removes_one_connection(con, base_uri):
 def test_component_tombstone_removes_its_connections(con, base_uri):
     """Deleting a component removes its connections with it.
 
-    A component tombstone removes the `entity` label, and every group row keyed
+    A component tombstone removes the `entity` label, and every relation row keyed
     on that label goes with it - the `connection` rows included. Before, the
     connections survived the component, dangling, until the author tombstoned
     them by hand.
@@ -266,6 +268,6 @@ def test_component_tombstone_removes_its_connections(con, base_uri):
 
     child = root.child()
     tombstone(layer_dir(child.id), PROCESS, ["steel_dri"])
-    assert child.resolver.group_frame("connection") is None, (
+    assert child.resolver.relation_frame("connection") is None, (
         "a removed component leaves no connection rows behind"
     )

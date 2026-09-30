@@ -50,7 +50,7 @@ def _static(revision, attribute, ctype=GEN):
     """One entity-axis attribute of one type's live members, per component name.
 
     Through the members rather than `relation()`: a non-varying attribute like
-    `p_nom` lives in `dims/entity.parquet`, so `inputs/` alone would not
+    `p_nom` lives in `dims/entity.parquet`, so `attributes/` alone would not
     show what the record resolves to.
 
     Notes
@@ -86,7 +86,7 @@ def _layer_axis(revision, con):
 
 
 def _layer_rows(revision, attribute, con):
-    """One committed layer's own `inputs/<attribute>.parquet`, as pandas.
+    """One committed layer's own `attributes/<attribute>.parquet`, as pandas.
 
     The single-layer view, read through the `LayerSource` for that layer rather
     than the folding resolver: "what did this patch write" is a question about
@@ -113,8 +113,8 @@ def test_a_working_record_overrides_no_read_member():
         "set",
         "add",
         "remove",
-        "add_group",
-        "remove_group",
+        "add_relation",
+        "remove_relation",
         "rollback",
         "commit",
     }
@@ -592,7 +592,7 @@ def test_a_non_float_attribute_stages_and_commits(root, con):
 
     One staging table holds every attribute's values, so it stages `value` as
     text and casts to the declared dtype where the attribute is known - which
-    is the point at which `inputs/<attr>.parquet` is per-attribute.
+    is the point at which `attributes/<attr>.parquet` is per-attribute.
 
     The schema is amended before the `WorkingRecord` is built: a record carries
     the schema its base was resolved under, so a widening has to be in force
@@ -822,7 +822,7 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     )
     child = staged.commit(NewChild(root))
 
-    rows = child.record.groups["connection"].collect().to_native().to_pandas()
+    rows = child.record.relations["connection"].collect().to_native().to_pandas()
     buses = dict(zip(rows["entity"], rows["bus"], strict=True))
     assert buses["NewSolar"] == "Manchester"
     assert buses["Manchester Wind"] == "Manchester", (
@@ -910,45 +910,45 @@ def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
 # -- connect and disconnect (https://energy-models.github.io/datarecord/design/working-record/#add-remove, https://energy-models.github.io/datarecord/design/record/#connections) --------------------------------------
 
 
-def test_add_group_stages_a_new_connection(staged, root):
+def test_add_relation_stages_a_new_connection(staged, root):
     """A connection is a row keyed by `(name, bus)`, not a positional column.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    staged.add_group(
+    staged.add_relation(
         "connection",
         pd.DataFrame(
             [{"entity": "Manchester Wind", "bus": "Norway", "role": "attached"}]
         ),
     )
-    staged_rows = staged.groups["connection"].collect().to_native().to_pandas()
+    staged_rows = staged.relations["connection"].collect().to_native().to_pandas()
     assert "Norway" in set(
         staged_rows[staged_rows["entity"] == "Manchester Wind"]["bus"]
     ), "the new connection reads back before commit"
 
     child = staged.commit(NewChild(root))
-    rows = child.resolver.group_frame("connection").df()
+    rows = child.resolver.relation_frame("connection").df()
     got = set(rows[rows["entity"] == "Manchester Wind"]["bus"])
     assert "Norway" in got
 
 
-def test_remove_group_stages_a_tombstone(staged, root):
-    """One `deleted` row per `(entity, bus)`, the group's own key.
+def test_remove_relation_stages_a_tombstone(staged, root):
+    """One `deleted` row per `(entity, bus)`, the relation's own key.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    staged.remove_group("connection", [("Norwich Converter", "Norwich")])
-    before = staged.groups["connection"].collect().to_native().to_pandas()
+    staged.remove_relation("connection", [("Norwich Converter", "Norwich")])
+    before = staged.relations["connection"].collect().to_native().to_pandas()
     ports = set(before[before["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in ports, "the removal reads back before commit"
     assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
     child = staged.commit(NewChild(root))
-    rows = child.resolver.group_frame("connection").df()
+    rows = child.resolver.relation_frame("connection").df()
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     # The component's other port survives: deletion is per connection, not per
@@ -956,28 +956,28 @@ def test_remove_group_stages_a_tombstone(staged, root):
     assert "Norwich DC" in left
 
 
-def test_add_group_needs_every_coordinate(staged):
+def test_add_relation_needs_every_coordinate(staged):
     with pytest.raises(ValueError, match="'bus'"):
-        staged.add_group("connection", pd.DataFrame([{"entity": "Manchester Wind"}]))
+        staged.add_relation("connection", pd.DataFrame([{"entity": "Manchester Wind"}]))
 
 
-def test_every_declared_group_reads_its_staged_rows(con, base_uri, ac_dc):
-    """A second group is not silently dropped: the reads are keyed by group.
+def test_every_declared_relation_reads_its_staged_rows(con, base_uri, ac_dc):
+    """A second relation is not silently dropped: the reads are keyed by relation.
 
-    `connection` is the group every fixture has, so a read path naming it rather
+    `connection` is the relation every fixture has, so a read path naming it rather
     than iterating the declared ones would pass everywhere except here - a
     record declaring a `corridor` would read nothing while holding rows to
     commit.
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     write_schema(
         schema(
-            groups={
+            relations={
                 "connection": {"entity": "entity", "bus": "bus"},
                 "corridor": {"from": "entity", "to": "entity"},
             }
@@ -985,22 +985,22 @@ def test_every_declared_group_reads_its_staged_rows(con, base_uri, ac_dc):
     )
     staged = WorkingRecord(revision.record, con)
 
-    staged.add_group(
+    staged.add_relation(
         "connection", pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
     )
-    staged.add_group(
+    staged.add_relation(
         "corridor", pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}])
     )
 
-    connections = staged.groups["connection"].collect().to_native().to_pandas()
+    connections = staged.relations["connection"].collect().to_native().to_pandas()
     assert "Norway" in set(
         connections[connections["entity"] == "Manchester Wind"]["bus"]
     )
 
-    corridors = staged.groups["corridor"].collect().to_native().to_pandas()
+    corridors = staged.relations["corridor"].collect().to_native().to_pandas()
     assert list(zip(corridors["from"], corridors["to"], strict=True)) == [
         ("Manchester Wind", "Norway")
-    ], "the second group reads its own rows, not the first's"
+    ], "the second relation reads its own rows, not the first's"
 
 
 # -- rollback (https://energy-models.github.io/datarecord/design/working-record/#committing) --------------------------------------------------------

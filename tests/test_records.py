@@ -26,12 +26,12 @@ from tests.fixtures import (
     export_network,
     names,
     schema,
+    write_attribute,
     write_entity_type,
-    write_input,
     write_schema,
 )
 
-MEMBERS = ("dims", "groups", "attributes")
+MEMBERS = ("dims", "relations", "attributes")
 
 
 @pytest.fixture
@@ -98,7 +98,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
         con.sql("SELECT 'wind' AS entity, 'Generator' AS entity_type, FALSE AS deleted")
     )
     # `p_nom`'s own coordinates and no others: no `entity_type` in a long
-    # row, and no `bus`, which is the connection group's coordinate rather than
+    # row, and no `bus`, which is the connection relation's coordinate rather than
     # a column every attribute carries.
     long = nw.from_native(
         con.sql(
@@ -113,7 +113,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     class DictRecord:
         schema: Schema
         dims: Frames
-        groups: Frames
+        relations: Frames
         attributes: Frames
 
         def flags(self, **labels) -> dict[str, Flags]:
@@ -152,8 +152,8 @@ def test_constructions_agree_on_every_key_set(both):
 
 
 def _types(record) -> list[str]:
-    """The component types the record's `entity_type` group names, sorted."""
-    kinds = record.groups["entity_type"].collect("pandas").to_native()
+    """The component types the record's `entity_type` relation names, sorted."""
+    kinds = record.relations["entity_type"].collect("pandas").to_native()
     return sorted(kinds["entity_type"].unique())
 
 
@@ -228,7 +228,7 @@ def test_flags_are_per_component_type(con, base_uri):
     write_schema(schema())
     write_entity_type(layer, "Generator", [{"entity": "wind"}])
     write_entity_type(layer, "Link", [{"entity": "dc"}])
-    write_input(
+    write_attribute(
         layer,
         "p_max_pu",
         [
@@ -269,7 +269,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     layer = layer_dir(revision.id)
     write_schema(schema(dims=narrow, partial=set()))
     write_entity_type(layer, "Generator", [{"entity": "wind"}])
-    write_input(
+    write_attribute(
         layer,
         "p_max_pu",
         [
@@ -280,7 +280,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     revision.materialise()
     # The map on disk knows nothing of `scenario` - without that this test
     # would pass whatever the flags' layout.
-    uri = f"{resolved_dir(revision.id)}owner_map/inputs.parquet"
+    uri = f"{resolved_dir(revision.id)}owner_map/attributes.parquet"
     persisted = con.sql(f"SELECT varies FROM read_parquet('{uri}')")
     assert "scenario" not in str(persisted.types[0])
 
@@ -309,7 +309,7 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
     layer = layer_dir(revision.id)
     write_schema(schema())
     write_entity_type(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
-    write_input(
+    write_attribute(
         layer,
         "p_max_pu",
         [
@@ -359,10 +359,10 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
         )
     )
     write_entity_type(layer, "Generator", [{"entity": "wind"}])
-    write_input(
+    write_attribute(
         layer, "capital_cost", [{"entity": "wind", "period": 2030, "value": 1.0}]
     )
-    write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
+    write_attribute(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
 
     record = revision.record
     flags = record.flags(entity=names(record, "Generator"))
@@ -388,7 +388,7 @@ def test_flags_report_a_curve(con, base_uri):
     layer = layer_dir(revision.id)
     write_schema(schema())
     write_entity_type(layer, "Process", [{"entity": "steel"}])
-    write_input(
+    write_attribute(
         layer,
         "marginal_cost",
         [
@@ -411,7 +411,7 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
     root.materialise()
 
     child = root.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Gas", "value": 0.1}],
@@ -469,7 +469,7 @@ def test_a_directory_at_a_uri_reads_a_plain_record(con, base_uri, ac_dc, tmp_pat
 
 
 def test_a_directory_has_no_connections_when_none_were_written(con, base_uri, tmp_path):
-    """A record with no `groups/connection.parquet` has no such key, not an error.
+    """A record with no `relations/connection.parquet` has no such key, not an error.
 
     Notes
     -----
@@ -480,7 +480,7 @@ def test_a_directory_has_no_connections_when_none_were_written(con, base_uri, tm
     write_schema(schema())
     write_entity_type(layer, "Generator", [{"entity": "wind"}])
 
-    assert "connection" not in Record.at(layer, con).groups
+    assert "connection" not in Record.at(layer, con).relations
 
 
 def test_a_directory_reads_connections_blocks_wrote(written, con):
@@ -491,9 +491,9 @@ def test_a_directory_reads_connections_blocks_wrote(written, con):
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     record = Record.at(layer_dir(written.id), con)
-    assert "connection" in record.groups
+    assert "connection" in record.relations
 
-    rows = record.groups["connection"].collect().to_native().to_pandas()
+    rows = record.relations["connection"].collect().to_native().to_pandas()
     assert set(rows["role"]) == {"input", "output", "attached"}, (
         "one file across every type, so a Generator's role rides beside a Link's"
     )

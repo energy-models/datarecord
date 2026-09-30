@@ -32,7 +32,7 @@ from tests.fixtures import (
     names,
     relation,
     tombstone,
-    write_input,
+    write_attribute,
 )
 
 
@@ -52,7 +52,7 @@ def test_child_overwrites_component(con, parent):
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -77,7 +77,7 @@ def test_child_overwrite_reaches_a_consumer(con, parent, ac_dc):
     own series.
     """
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -121,7 +121,7 @@ def test_tombstone_removes_component(con, parent):
 def test_child_adds_attribute(con, parent):
     """A child may write an attribute no ancestor had."""
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_min_pu",
         [{"entity": "Norway Gas", "value": 0.1}],
@@ -151,7 +151,7 @@ def test_sibling_branch_unaffected(con, parent):
 def test_grandchild_resolves_through_ancestry(con, parent):
     """Resolution walks the whole root->node path, nearest layer winning."""
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -159,7 +159,7 @@ def test_grandchild_resolves_through_ancestry(con, parent):
     child.materialise()
 
     grandchild = child.child()
-    write_input(
+    write_attribute(
         layer_dir(grandchild.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.99}],
@@ -183,7 +183,7 @@ def test_closed_child_reads_own_resolver(con, parent):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -207,10 +207,10 @@ def test_resolved_reads_same_as_unresolved(con, parent):
     build one node cache the truncated way (base = the materialised parent) and
     one the long way (every layer as its own `ParquetLayer`, no truncation), and
     assert they agree on the owner map, the entity axis, every attribute
-    relation, and the group frames.
+    relation, and the relation frames.
     """
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -218,7 +218,7 @@ def test_resolved_reads_same_as_unresolved(con, parent):
     child.materialise()
 
     grandchild = child.child()
-    write_input(
+    write_attribute(
         layer_dir(grandchild.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.99}],
@@ -290,7 +290,7 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     write_schema(amended)
 
     child = parent.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "availability",
         [{"entity": "Norway Gas", "value": 0.1}],
@@ -322,7 +322,7 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
 
         schema = narrowed
         dims = EMPTY
-        groups: dict = {}
+        relations: dict = {}
         attributes = EMPTY
 
         def flags(self, **labels):

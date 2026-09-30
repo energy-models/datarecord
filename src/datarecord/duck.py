@@ -133,7 +133,7 @@ def resolved_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
     A subdirectory of `layer_dir`, not a sibling tree: one directory per record
     holds both what the layer wrote and what the fold derived from it. The
     nesting is safe because every glob into a layer is single-level
-    (`inputs/*.parquet`, `dims/*.parquet`), so `resolved/` is invisible to a
+    (`attributes/*.parquet`, `dims/*.parquet`), so `resolved/` is invisible to a
     reader that knows nothing about it - which is what keeps a layer directory a
     plain parquet directory a foreign reader can consume.
 
@@ -488,10 +488,10 @@ def fold_axis(
 ) -> DuckDBPyRelation | None:
     """Fold one keyed relation over each layer's, keyed by `key`, in member order.
 
-    The one fold for every axis - a dim's coordinates, a group, the entity axis.
+    The one fold for every axis - a dim's coordinates, a relation, the entity axis.
     `axes` is root first, one entry per layer - `None` where that layer has no
     rows. Last-writer-wins per `key`, which is `Schema.axis_key` for a dim or
-    `Schema.group_key` for a group, so a nested dim is keyed by `(*parents, dim)`
+    `Schema.relation_key` for a relation, so a nested dim is keyed by `(*parents, dim)`
     and two periods' identically labelled timesteps stay distinct.
 
     A `deleted = true` row is a tombstone: it removes its key unless a still-

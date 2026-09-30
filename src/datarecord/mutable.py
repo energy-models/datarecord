@@ -317,12 +317,12 @@ class StagedSource:
             return None
         return self.record._axis_layer(dim)
 
-    def groups(self) -> set[str]:
-        """Which declared groups have staged rows."""
-        return set(self.record._staged_groups())
+    def relations(self) -> set[str]:
+        """Which declared relations have staged rows."""
+        return set(self.record._staged_relations())
 
-    def group(self, name: str) -> DuckDBPyRelation | None:
-        return self.record._collapsed_group(name)
+    def relation(self, name: str) -> DuckDBPyRelation | None:
+        return self.record._collapsed_relation(name)
 
     def attributes(self) -> set[str]:
         """Which attributes have staged rows."""
@@ -391,7 +391,7 @@ class WorkingRecord(Record):
     #: from are all members of one.
     _base: Resolver
     #: Keyed by `(kind, attribute)`, the attribute being None for an axis or a
-    #: group. `inputs` stages one table per attribute because that is the
+    #: relation. `attributes` stages one table per attribute because that is the
     #: file it stands for: one `value` column at the attribute's own type, and
     #: its own coordinates and no others.
     _staged: dict[tuple[str, str | None], str]
@@ -431,10 +431,10 @@ class WorkingRecord(Record):
     def _ensure(self, kind: str, attribute: str | None = None) -> str:
         """The staging table for `kind`, created on first use.
 
-        `kind` is `inputs`, an axis (`_AXIS_PREFIX`), or a declared group's
-        name - a group gets a table shaped by its own coordinates.
+        `kind` is `attributes`, an axis (`_AXIS_PREFIX`), or a declared relation's
+        name - a relation gets a table shaped by its own columns.
 
-        `inputs` takes an `attribute` and gets a table per attribute, shaped
+        `attributes` takes an `attribute` and gets a table per attribute, shaped
         like the file it becomes: `long_columns_for` for the columns, and the
         declared dtype for `value`.
 
@@ -461,7 +461,7 @@ class WorkingRecord(Record):
         if kind.startswith(_AXIS_PREFIX):
             columns = _axis_columns(self.schema, kind[len(_AXIS_PREFIX) :])
         else:
-            columns = _group_columns(self.schema, kind)
+            columns = _relation_columns(self.schema, kind)
         return DuckTypes(self.con).empty_relation(**columns)
 
     def _empty_long(self, attribute: str) -> DuckDBPyRelation:
@@ -501,14 +501,14 @@ class WorkingRecord(Record):
         The staging map is the answer, so this is not a query: a table exists
         exactly where rows were staged.
         """
-        return tuple(a for (k, a), _ in self._staged.items() if k == "inputs" and a)
+        return tuple(a for (k, a), _ in self._staged.items() if k == "attributes" and a)
 
     def _column_type(self, column: str) -> nw.dtypes.DType:
         return _column_type(self.schema, column)
 
     # -- Record, one fold deeper (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits) --------------------------------
 
-    # `schema`, `dims`, `groups`, `attributes` and `flags` are
+    # `schema`, `dims`, `relations`, `attributes` and `flags` are
     # inherited from `Record` unchanged, which is the property this design
     # exists to have: a staged edit is read by the same fold that reads a
     # committed layer, so there is no second overlay to keep in step.
@@ -624,7 +624,7 @@ class WorkingRecord(Record):
         `value` is a mapping from label to value, or a scalar for every label the
         axis currently has. A mapping may name a label no layer has written yet,
         which becomes a row of this layer's axis file - the fold keys per label,
-        so introducing one displaces nothing. A dim that keys a group is the
+        so introducing one displaces nothing. A dim that keys a relation is the
         exception: `set` requires its labels first (`_require_labels`).
 
         One *complete* row per label: this edit's column over the label's
@@ -750,9 +750,9 @@ class WorkingRecord(Record):
         self._insert(rows, table, {})
 
     def _require_labels(self, dim: str, labels: Iterable[Any]) -> None:
-        """Reject a label of a group-keying dim its axis does not hold, base plus staged.
+        """Reject a label of a relation-keying dim its axis does not hold, base plus staged.
 
-        A dim that keys a group - `entity` for `connection` - names the rows a
+        A dim that keys a relation - `entity` for `connection` - names the rows a
         layer adds and removes, so a value for a label no layer added would
         resolve to a member that does not exist. Other axes take new labels
         from `set`, which is why the check is scoped rather than universal.
@@ -761,7 +761,7 @@ class WorkingRecord(Record):
         -----
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
-        if not any(dim in g.key for g in self.schema.groups.values()):
+        if not any(dim in r.key for r in self.schema.relations.values()):
             return
         wanted = list(dict.fromkeys(str(n) for n in labels))
         if not wanted:
@@ -806,13 +806,13 @@ class WorkingRecord(Record):
                 f"it varies over {list(coordinates) or 'nothing'}"
             )
             raise ValueError(msg)
-        through_group = sorted(
+        through_relation = sorted(
             set(coordinates) - set(self.schema.broadcasts_over(attribute)) - set(dims)
         )
-        if through_group:
+        if through_relation:
             msg = (
-                f"{attribute} is addressed through a group, so each row names "
-                f"{through_group} too; a NULL there cannot mean every row of the group"
+                f"{attribute} is addressed through a relation, so each row names "
+                f"{through_relation} too; a NULL there cannot mean every row of the relation"
             )
             raise ValueError(msg)
 
@@ -831,7 +831,7 @@ class WorkingRecord(Record):
         (`generator=["wind", "gas"]`). A coordinate no keyword names is
         written NULL, which the broadcast rule reads as every label of it -
         including labels a later layer adds. A coordinate the attribute reaches
-        through a group - `bus` for a connection attribute - must be named.
+        through a relation - `bus` for a connection attribute - must be named.
 
         `value` takes five forms: a scalar for every named label, a sequence
         aligned positionally to the listed labels, a mapping or a labelled
@@ -850,9 +850,9 @@ class WorkingRecord(Record):
         ------
         KeyError
             If the attribute is not declared, or a label of a dim that keys a
-            group is on no layer's axis.
+            relation is on no layer's axis.
         ValueError
-            If a keyword names a dim the attribute does not vary over, a group
+            If a keyword names a dim the attribute does not vary over, a relation
             coordinate is left unnamed, two dims are given lists, or the dim a
             mapping or series is keyed by cannot be told.
 
@@ -901,7 +901,7 @@ class WorkingRecord(Record):
         for dim, label in fixed.items():
             self._require_labels(dim, [label])
 
-        table = self._ensure("inputs", attribute)
+        table = self._ensure("attributes", attribute)
         self._stage_rows(attribute, table, listed, keys, values, per_dim, fixed)
 
     def _set_axis(
@@ -947,7 +947,7 @@ class WorkingRecord(Record):
     ) -> None:
         """A long input frame's dims, labels and the attribute's spec.
 
-        The frame supplies its own labels, so each of a group-keying dim must
+        The frame supplies its own labels, so each of a relation-keying dim must
         already be on its axis (`_require_labels`).
 
         Notes
@@ -1245,7 +1245,7 @@ class WorkingRecord(Record):
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        table = self._ensure("inputs", attribute)
+        table = self._ensure("attributes", attribute)
         rel = as_relation(lazy, self.con)
         self._insert_long(
             rel, table, attribute, set(lazy.collect_schema().names()), dims
@@ -1309,7 +1309,7 @@ class WorkingRecord(Record):
         `value` needs no cast: the table is this attribute's own, so its column
         already has the attribute's type (`_empty_long`).
         """
-        table = self._ensure("inputs", attribute)
+        table = self._ensure("attributes", attribute)
         # A coordinate the frame leaves out is one it broadcasts over, so it is
         # filled with a typed NULL rather than left to `INSERT ... BY NAME`:
         # projecting the table's full column list keeps the insert positional
@@ -1341,7 +1341,7 @@ class WorkingRecord(Record):
 
         `frame` has a `dim` column. Splits the rest by the schema: an attribute
         addressed by `dim` alone is a column of its axis, one that varies over
-        more is `inputs/` rows, and the coordinates of a relation keyed on `dim`
+        more is `attributes/` rows, and the coordinates of a relation keyed on `dim`
         - `entity_type` for a type relation, `bus` for `connection` - stage that
         relation's row, with any attribute over it.
 
@@ -1372,22 +1372,26 @@ class WorkingRecord(Record):
             if dim in self.schema.coordinates_of(a)
         }
         varying = [c for c in columns if c in declared and declared[c].varying]
-        by_group: dict[str, list[str]] = {}
-        for group in self.schema.groups:
-            if dim not in self.schema.group_key(group):
+        by_relation: dict[str, list[str]] = {}
+        for relation in self.schema.relations:
+            if dim not in self.schema.relation_key(relation):
                 continue
-            coordinates = [c for c in self.schema.group_coordinates(group) if c != dim]
+            coordinates = [
+                c for c in self.schema.relation_columns(relation) if c != dim
+            ]
             riding = [
                 c
                 for c in columns
                 if c in declared
                 and c not in varying
-                and group in self.schema.groups_of(c)
+                and relation in self.schema.relations_of(c)
             ]
             if riding or (coordinates and all(c in columns for c in coordinates)):
-                by_group[group] = [*coordinates, *riding]
-        in_groups = {c for cols in by_group.values() for c in cols}
-        axis_columns = [c for c in columns if c not in varying and c not in in_groups]
+                by_relation[relation] = [*coordinates, *riding]
+        in_relations = {c for cols in by_relation.values() for c in cols}
+        axis_columns = [
+            c for c in columns if c not in varying and c not in in_relations
+        ]
 
         rel = as_relation(lazy, self.con)
         axis = self._ensure(f"{_AXIS_PREFIX}{dim}")
@@ -1402,10 +1406,10 @@ class WorkingRecord(Record):
                 lazy.select(dim, nw.col(attribute).alias("value")),
                 {},
             )
-        for group, group_columns in by_group.items():
-            self.add_group(
-                group,
-                lazy.select(dim, *(nw.col(c) for c in dict.fromkeys(group_columns))),
+        for relation, carried in by_relation.items():
+            self.add_relation(
+                relation,
+                lazy.select(dim, *(nw.col(c) for c in dict.fromkeys(carried))),
             )
 
     def _reject_undeclared(self, call: str, table: str, columns: Sequence[str]) -> None:
@@ -1453,8 +1457,8 @@ class WorkingRecord(Record):
     ) -> None:
         """Replace one `deleted` row per key.
 
-        Shared by `remove` and `remove_group`, which differ only in their
-        columns - a group's key where `remove` carries the entity. One helper so
+        Shared by `remove` and `remove_relation`, which differ only in their
+        columns - a relation's key where `remove` carries the entity. One helper so
         the shape is derived from the column list rather than restated per
         caller, which is what let the two drift out of step.
 
@@ -1521,45 +1525,47 @@ class WorkingRecord(Record):
             f"{_AXIS_PREFIX}{dim}", key, [[label] for label in labels], key
         )
 
-    def add_group(self, group: str, frame: Any) -> None:
-        """Stage rows of one declared group from a frame carrying its coordinates.
+    def add_relation(self, relation: str, frame: Any) -> None:
+        """Stage rows of one declared relation from a frame carrying its columns.
 
-        The one path every group is added through, a record's `connection`
-        group included.
+        The one path every relation is added through, a record's `connection`
+        relation included.
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         """
-        coordinates = self.schema.group_coordinates(group)
+        coordinates = self.schema.relation_columns(relation)
         lazy = _incoming(frame, self.con)
         columns = lazy.collect_schema().names()
         for required in coordinates:
             if required not in columns:
-                msg = f"`add_group({group!r}, ...)` needs a {required!r} column"
+                msg = f"`add_relation({relation!r}, ...)` needs a {required!r} column"
                 raise ValueError(msg)
-        table = self._ensure(group)
+        table = self._ensure(relation)
         extra = [c for c in columns if c not in coordinates]
-        self._reject_undeclared(f"add_group({group!r}, ...)", table, extra)
+        self._reject_undeclared(f"add_relation({relation!r}, ...)", table, extra)
         self._insert(
             as_relation(lazy, self.con),
             table,
             {"deleted": lit(False)},  # noqa: FBT003
-            key=self.schema.group_key(group),
+            key=self.schema.relation_key(relation),
         )
 
-    def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None:
-        """Stage a tombstone per key, over one declared group's `group_key`.
+    def remove_relation(self, relation: str, keys: Sequence[tuple[Any, ...]]) -> None:
+        """Stage a tombstone per key, over one declared relation's `relation_key`.
 
-        An `into` label is no part of a key: the tuple is removed, whatever
+        A `values` label is no part of a key: the tuple is removed, whatever
         label it carried.
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         """
-        group_key = self.schema.group_key(group)
-        self._stage_tombstones(group, group_key, [list(key) for key in keys], group_key)
+        relation_key = self.schema.relation_key(relation)
+        self._stage_tombstones(
+            relation, relation_key, [list(key) for key in keys], relation_key
+        )
 
     # -- commit / rollback (https://energy-models.github.io/datarecord/design/working-record/#committing) -------------------------
 
@@ -1590,7 +1596,7 @@ class WorkingRecord(Record):
         -----
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        rel = self._rows("inputs", attribute)
+        rel = self._rows("attributes", attribute)
         if rel is None:
             return None
         coordinates = set(self.schema.coordinates_of(attribute))
@@ -1617,18 +1623,18 @@ class WorkingRecord(Record):
             return None
         return rel.filter(col("deleted")).project(col(dim))
 
-    def _collapsed_group(self, group: str) -> DuckDBPyRelation | None:
-        """One group's staged rows - a table scan, one per `group_key`.
+    def _collapsed_relation(self, relation: str) -> DuckDBPyRelation | None:
+        """One relation's staged rows - a table scan, one per `relation_key`.
 
-        Restating a tuple replaced its row (`_replace` on `group_key`), so the
-        table already holds one per key; a different `into` label is that edit,
+        Restating a tuple replaced its row (`_replace` on `relation_key`), so the
+        table already holds one per key; a different `values` label is that edit,
         not a second row.
 
         Notes
         -----
         - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
         """
-        return self._rows(group)
+        return self._rows(relation)
 
     # -- what commit writes (https://energy-models.github.io/datarecord/design/working-record/#committing) -----------------------------------------
 
@@ -1686,19 +1692,21 @@ class WorkingRecord(Record):
         )
         return union_all_by_name([staged, untouched], self.con)
 
-    def _staged_groups(self) -> Frames:
-        """The staged group rows, keyed by group - one frame each.
+    def _staged_relations(self) -> Frames:
+        """The staged relation rows, keyed by relation - one frame each.
 
-        A `Frames` for `StagedSource.groups()`'s key set, not a builder of the
-        rows themselves - `StagedSource.group` reads those directly off
-        `_collapsed_group`.
+        A `Frames` for `StagedSource.relations()`'s key set, not a builder of the
+        rows themselves - `StagedSource.relation` reads those directly off
+        `_collapsed_relation`.
         """
         staged = {
-            g: rel
-            for g in self.schema.groups
-            if (rel := self._collapsed_group(g)) is not None
+            r: rel
+            for r in self.schema.relations
+            if (rel := self._collapsed_relation(r)) is not None
         }
-        return LazyFrames(tuple(staged), lambda group: nw.from_native(staged[group]))
+        return LazyFrames(
+            tuple(staged), lambda relation: nw.from_native(staged[relation])
+        )
 
     def _base_revision(self) -> Revision:
         """The `Revision` this record's base resolves, for `NewChild()`'s default.
@@ -1824,26 +1832,26 @@ def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
     return dtype
 
 
-def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
-    """One group's staged columns: its coordinates, and the fold's own.
+def _relation_columns(schema: Schema, relation: str) -> dict[str, nw.dtypes.DType]:
+    """One relation's staged columns: its own, and the fold's.
 
-    An attribute over the group is a column of the group's file, so it is
+    An attribute over the relation is a column of the relation's file, so it is
     declared here too. `role` on a connection reads as a framework's own label,
     but the framework declaring it is what puts it in the schema - and an
     undeclared one has no dtype to give the column.
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     over = {
         name: schema.value_type(name) or nw.String()
         for name, spec in schema.attributes.items()
-        if not spec.varying and group in schema.groups_of(name)
+        if not spec.varying and relation in schema.relations_of(name)
     }
     return {
-        **{c: _column_type(schema, c) for c in schema.group_coordinates(group)},
+        **{c: _column_type(schema, c) for c in schema.relation_columns(relation)},
         "deleted": nw.Boolean(),
         **over,
     }
@@ -1868,7 +1876,7 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
 
 
 # A staging kind, so it becomes part of a table name: no punctuation a SQL
-# identifier would need quoting for, and no collision with a group's name,
+# identifier would need quoting for, and no collision with a relation's name,
 # which `Schema` already rejects for colliding with a declared dim.
 _AXIS_PREFIX = "axis_of_"
 

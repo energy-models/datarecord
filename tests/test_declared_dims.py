@@ -82,8 +82,8 @@ def test_the_schema_names_no_entity(root):
 
 def test_a_relation_row_is_staged_by_add(root):
     """`add("generator", ...)` writes the generator's rows of both relations."""
-    groups = root.record.groups
-    bus = groups["Generator_bus"].collect().to_native().to_pandas()
+    relations = root.record.relations
+    bus = relations["Generator_bus"].collect().to_native().to_pandas()
     assert dict(zip(bus["generator"], bus["bus"], strict=True)) == {
         "wind": "north",
         "gas": "north",
@@ -148,7 +148,7 @@ def test_removing_a_generator_takes_its_values_and_relation_rows(root, con):
     record = child.record
     axis = record.dims["generator"].collect().to_native().to_pandas()
     assert list(axis["generator"]) == ["wind"], "gas is off the generator axis"
-    bus = record.groups["Generator_bus"].collect().to_native().to_pandas()
+    bus = record.relations["Generator_bus"].collect().to_native().to_pandas()
     assert list(bus["generator"]) == ["wind"], "gas's relation row went with it"
 
 

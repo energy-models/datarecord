@@ -16,9 +16,9 @@ from tests.fixtures import (
     names,
     relation,
     schema,
+    write_attribute,
     write_connections,
     write_entity_type,
-    write_input,
     write_schema,
 )
 
@@ -44,7 +44,7 @@ def _root_with_curve(con) -> Revision:
     layer = layer_dir(revision.id)
     write_schema(schema())
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_input(
+    write_attribute(
         layer,
         "marginal_cost",
         [
@@ -78,7 +78,7 @@ def test_breakpoints_distinguishes_curve_from_scalar(con, base_uri):
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     revision = _root_with_curve(con)
-    write_input(
+    write_attribute(
         layer_dir(revision.id),
         "p_nom",
         [{"entity_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
@@ -102,7 +102,7 @@ def test_patch_replaces_the_whole_curve(con, base_uri):
     root.materialise()
 
     child = root.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "marginal_cost",
         [
@@ -139,7 +139,7 @@ def test_curve_on_a_connection(con, base_uri):
             {"entity": "steel_dri", "bus": "dri", "role": "output"},
         ],
     )
-    write_input(
+    write_attribute(
         layer,
         "efficiency",
         [
@@ -161,7 +161,7 @@ def test_curve_on_a_connection(con, base_uri):
 
     # Each connection owns its own curve, so a patch to one leaves the other.
     child = revision.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "efficiency",
         [
@@ -192,7 +192,7 @@ def test_curve_varying_by_snapshot(con, base_uri):
     layer = layer_dir(revision.id)
     write_schema(schema())
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_input(
+    write_attribute(
         layer,
         "marginal_cost",
         [
@@ -226,7 +226,7 @@ def test_scalar_replaced_by_a_curve(con, base_uri):
     layer = layer_dir(revision.id)
     write_schema(schema())
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_input(
+    write_attribute(
         layer,
         "marginal_cost",
         [{"entity_type": PROCESS, "entity": "steel_dri", "value": 20.0}],
@@ -234,7 +234,7 @@ def test_scalar_replaced_by_a_curve(con, base_uri):
     revision.materialise()
 
     child = revision.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "marginal_cost",
         [

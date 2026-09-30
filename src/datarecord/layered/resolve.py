@@ -5,7 +5,7 @@
 """The owner map, and the resolved reads gated by it.
 
 The map answers which layer owns each key; `Resolver` exposes the reads over
-it - one long relation per attribute, a group's rows.
+it - one long relation per attribute, a relation's rows.
 
 Notes
 -----
@@ -121,71 +121,71 @@ def resolve_coords(
         )
         if rel is not None:
             axes[dim] = rel
-    groups = resolve_groups(schema, base, above, con)
+    relations = resolve_relations(schema, base, above, con)
     return Coords(
         schema=schema,
         axes=axes,
-        groups={g: _live_rows(schema, g, rel, axes) for g, rel in groups.items()},
+        relations={r: _live_rows(schema, r, rel, axes) for r, rel in relations.items()},
     )
 
 
 def _live_rows(
-    schema: Schema, group: str, rel: DuckDBPyRelation, axes: dict[str, DuckDBPyRelation]
+    schema: Schema,
+    relation: str,
+    rel: DuckDBPyRelation,
+    axes: dict[str, DuckDBPyRelation],
 ) -> DuckDBPyRelation:
-    """`group`'s rows whose key names only labels its dims still hold.
+    """`relation`'s rows whose key names only labels its dims still hold.
 
     A removed label takes every row keyed on it: the fold drops its attribute
-    rows by the axis tombstone, and this drops its group rows, which carry no
+    rows by the axis tombstone, and this drops its relation rows, which carry no
     tombstone of their own for it. Only a fold-key dim can lose a label, so only
-    those coordinates are checked.
+    those key columns are checked.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    spec = schema.groups[group]
-    for coordinate in spec.key:
-        dim = spec.over[coordinate]
+    spec = schema.relations[relation]
+    for column, dim in spec.key.items():
         if dim not in schema.partial_dims or dim not in axes:
             continue
-        labels = axes[dim].project(col(dim).alias(coordinate)).set_alias("a")
-        rel = rel.set_alias("g").join(
-            labels, null_safe("g", "a", [coordinate]), how="semi"
-        )
+        labels = axes[dim].project(col(dim).alias(column)).set_alias("a")
+        rel = rel.set_alias("r").join(labels, null_safe("r", "a", [column]), how="semi")
     return rel
 
 
-def resolve_groups(
+def resolve_relations(
     schema: Schema,
     base: Fold | None,
     above: Sequence[LayerSource],
     con: DuckDBPyConnection,
 ) -> dict[str, DuckDBPyRelation]:
-    """Fold every declared group to its resolved relation, keyed by `group_key`.
+    """Fold every declared relation to its resolved rows, keyed by `relation_key`.
 
-    A group folds through `fold_axis` like any axis with a composite key: last-
-    writer-wins per `group_key`, static columns (`into`, group-attributes) on the
-    winning row, its own tombstones honoured, member order the file's row order.
-    The base `Fold`'s resolved group seeds depth 0. Absent from the result where
+    A relation folds through `fold_axis` like any axis with a composite key:
+    last-writer-wins per `relation_key`, static columns (`values`, attributes
+    over the relation) on the winning row, its own tombstones honoured, member order the file's row order.
+    The base `Fold`'s resolved relation seeds depth 0. Absent from the result where
     no layer wrote a row.
 
     Notes
     -----
     - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
     """
-    groups = {}
-    for group in schema.groups:
-        key = schema.group_key(group)
-        seed = None if base is None else base.groups.get(group)
-        rows = [seed, *(source.group(group) for source in above)]
+    relations = {}
+    for relation in schema.relations:
+        key = schema.relation_key(relation)
+        seed = None if base is None else base.relations.get(relation)
+        rows = [seed, *(source.relation(relation) for source in above)]
         if not key or all(rel is None for rel in rows):
             continue
         rel = fold_axis(rows, key, con)
         if rel is not None:
-            groups[group] = rel
-    return groups
+            relations[relation] = rel
+    return relations
 
 
 @dataclass(frozen=True)
@@ -203,9 +203,9 @@ class Coords:
         Each declared dim's folded axis relation, full row rather than the key
         column alone - `scenario`'s carries `weight` too. A dim with no rows
         anywhere is absent rather than present-and-empty.
-    groups : dict of str to DuckDBPyRelation
-        Each declared group's folded relation, keyed by `group_key`, carrying its
-        static columns, in member order - a group folds like an axis with a
+    relations : dict of str to DuckDBPyRelation
+        Each declared relation's folded rows, keyed by `relation_key`, carrying
+        its static columns, in member order - a relation folds like an axis with a
         composite key, no owner map. Absent where no layer wrote a row.
 
     Notes
@@ -217,7 +217,7 @@ class Coords:
 
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
-    groups: dict[str, DuckDBPyRelation] = field(default_factory=dict)
+    relations: dict[str, DuckDBPyRelation] = field(default_factory=dict)
 
     def input_match(
         self,
@@ -226,7 +226,7 @@ class Coords:
         *fixed: str,
         dims: tuple[str, ...] | None = None,
     ) -> Expression:
-        """Match a raw `inputs/` row against an already-resolved key.
+        """Match a raw `attributes/` row against an already-resolved key.
 
         `dims` narrows the broadcast arms to the coordinates the raw side
         actually carries, which one attribute's file is a subset of
@@ -261,9 +261,9 @@ class Coords:
             `schema.partial_dims`.
         addressed
             Per dim, the attributes whose NULL there broadcasts
-            (`Schema.broadcasts_over`). A group's coordinate addresses a row of
-            the group rather than broadcasting over an axis, so an attribute
-            reaching the dim through a group is not listed.
+            (`Schema.broadcasts_over`). A relation's key column addresses a row
+            of the relation rather than broadcasting over an axis, so an attribute
+            reaching the dim through a relation is not listed.
 
         Returns
         -------
@@ -336,9 +336,9 @@ def materialised(revision_id: UUID, con: DuckDBPyConnection) -> bool:
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    # `inputs` answers for the rest: the maps are written together, and it is
-    # the one kind every schema has, whatever groups it declares.
-    return try_read_parquet(_map_uri(revision_id, "inputs"), con) is not None
+    # `attributes` answers for the rest: the maps are written together, and it is
+    # the one kind every schema has, whatever relations it declares.
+    return try_read_parquet(_map_uri(revision_id, "attributes"), con) is not None
 
 
 def sources_to_read(
@@ -401,7 +401,7 @@ def _deleted_relation(
     nothing else: no axis to scope it along, none to expand.
 
     Read from the same source relation the membership itself folds from
-    (`source.axis(dim)`, `source.group(g)`), since reading membership from one
+    (`source.axis(dim)`, `source.relation(r)`), since reading membership from one
     file and deletions from another would resolve a deletion the map never saw.
 
     Parameters
@@ -410,7 +410,7 @@ def _deleted_relation(
         The layer's rows of that membership, or `None` where it has none.
     fixed
         The key columns, compared NULL-safely: `entity` for a component, a
-        group's coordinates for one of its tuples, a dim's `axis_key` for a
+        relation's key columns for one of its rows, a dim's `axis_key` for a
         coordinate.
 
     Notes
@@ -480,7 +480,7 @@ def with_columns(
 def fold_inputs(
     source: LayerSource, keys: Coords, con: DuckDBPyConnection, parent: DuckDBPyRelation
 ) -> DuckDBPyRelation:
-    """This layer's inputs map: its `inputs/` keys, folded over `parent`.
+    """This layer's inputs map: its `attributes/` keys, folded over `parent`.
 
     Notes
     -----
@@ -546,12 +546,12 @@ def fold_inputs(
     # in `input_key` (https://energy-models.github.io/datarecord/design/read-path/#owner-map).
     schema = keys.schema
     keyed = set(schema.input_key)
-    # `optional` where an absent key is legitimate: groups drop out of
+    # `optional` where an absent key is legitimate: relations drop out of
     # `input_key` when a schema declares no dims. A fold-key dim's `axis_key` is
     # always present, so a miss there is a nested dim whose parents the schema
     # failed to keep in the fold key, and the assert names it.
     memberships = [
-        *((source.group(g), schema.group_key(g), True) for g in schema.groups),
+        *((source.relation(r), schema.relation_key(r), True) for r in schema.relations),
         *((source.axis(d), schema.axis_key(d), False) for d in schema.partial_dims),
     ]
     kept = parent.set_alias("p")
@@ -587,7 +587,7 @@ def _fold_map(
 ) -> DuckDBPyRelation:
     """A record's owner map of one kind, folded down over `sources`.
 
-    Only `inputs` remains a kind; the axes fold to a resolved copy instead
+    Only `attributes` remains a kind; the axes fold to a resolved copy instead
     (`resolve_coords`). The deepest materialised source's `Fold` is the fold's
     *seed* rather than a step of it: its `owner_map` is already folded over
     everything at or below it, so it is read as the starting relation and only
@@ -616,8 +616,8 @@ def map_kinds(
 ) -> dict[str, tuple[Callable[[Coords], tuple[str, ...]], Callable]]:
     """This schema's owner maps, each a `kind` -> (column set, fold) pair.
 
-    One kind: `inputs`, the only relation with a genuine key/row split - an
-    attribute's ownership spans every `inputs/<attr>.parquet`. Every axis is a
+    One kind: `attributes`, the only relation with a genuine key/row split - an
+    attribute's ownership spans every `attributes/<attr>.parquet`. Every axis is a
     single keyed file resolved inline (`resolve_coords`), so none needs a map.
 
     Notes
@@ -625,7 +625,7 @@ def map_kinds(
     - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    return {"inputs": (lambda keys: keys.schema.input_columns, fold_inputs)}
+    return {"attributes": (lambda keys: keys.schema.input_columns, fold_inputs)}
 
 
 def _fold_kind(
@@ -766,10 +766,10 @@ def _materialise_dims(
     ensure_local_dir(base)
     for dim, rel in dims.axes.items():
         rel.to_parquet(f"{base}{dim}.parquet")
-    groups = resolved_dir(revision_id) + "groups/"
-    ensure_local_dir(groups)
-    for group, rel in dims.groups.items():
-        rel.to_parquet(f"{groups}{group}.parquet")
+    relations = resolved_dir(revision_id) + "relations/"
+    ensure_local_dir(relations)
+    for relation, rel in dims.relations.items():
+        rel.to_parquet(f"{relations}{relation}.parquet")
 
 
 # -- the schema (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ---------------------------------------------
@@ -827,7 +827,7 @@ class Resolver:
     """A record's resolved view: owner map, dims, schema, and the relations over them.
 
     The cached artifacts and the reads gated by them
-    (`attribute`/`group_frame`/`attributes_of`) live
+    (`attribute`/`relation_frame`/`attributes_of`) live
     together because every one of the latter is a semi-join against the former.
 
     Notes
@@ -912,7 +912,7 @@ class Resolver:
     def fold(self) -> Fold:
         """This node's resolved view as one `Fold`: the folded coords and map.
 
-        Assembled from `dims` (the folded axes and groups) and `_map("inputs")`
+        Assembled from `dims` (the folded axes and relations) and `_map("attributes")`
         (the folded owner map), both of which carry their own frozen-scoped
         cache, so `fold` re-wraps rather than re-folds.
         """
@@ -920,8 +920,8 @@ class Resolver:
         return Fold(
             schema=self.schema,
             axes=coords.axes,
-            groups=coords.groups,
-            owner_map=self._map("inputs"),
+            relations=coords.relations,
+            owner_map=self._map("attributes"),
         )
 
     @property
@@ -929,8 +929,8 @@ class Resolver:
         """The resolved inputs owner map: which layer owns each attribute key.
 
         Ownership only - membership is not gated here. A key whose coordinate is
-        not live (a deleted component, a deleted group tuple) is dropped per
-        attribute in `relation`, where the attribute's own dims say which
+        not live (a deleted component, a deleted relation row) is dropped per
+        attribute in `attribute`, where the attribute's own dims say which
         memberships its rows carry.
 
         Notes
@@ -939,17 +939,17 @@ class Resolver:
         """
         return self.fold.owner_map
 
-    def group(self, name: str) -> DuckDBPyRelation | None:
-        """One declared group's resolved relation, folded like an axis.
+    def relation(self, name: str) -> DuckDBPyRelation | None:
+        """One declared relation's resolved rows, folded like an axis.
 
-        The winning row per `group_key`, static columns carried, in member order.
+        The winning row per `relation_key`, static columns carried, in member order.
         `None` where no layer wrote a row.
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         """
-        return self.dims.groups.get(name)
+        return self.dims.relations.get(name)
 
     @property
     def frozen(self) -> bool:
@@ -1006,14 +1006,14 @@ class Resolver:
         """
         return self.dims.axes.get(dim)
 
-    def groups(self) -> set[str]:
-        """Declared groups with any resolved row.
+    def relations(self) -> set[str]:
+        """Declared relations with any resolved row.
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         """
-        return set(self.dims.groups)
+        return set(self.dims.relations)
 
     def attributes(self) -> list[str]:
         """Every attribute any layer owns a row for, read off the owner map.
@@ -1037,8 +1037,8 @@ class Resolver:
     def attribute(self, attribute: str) -> DuckDBPyRelation:
         """The resolved long relation for one attribute - never `None`.
 
-        Semi-joins the owning layers' `inputs/<attribute>.parquet` to the
-        `inputs` owner map, so only owned rows survive: the map already names
+        Semi-joins the owning layers' `attributes/<attribute>.parquet` to the
+        `attributes` owner map, so only owned rows survive: the map already names
         the winning layer per key, so there is no per-read `MAX`/group-by and
         no tombstone filter (deletions are already absent from the map).
 
@@ -1109,20 +1109,20 @@ class Resolver:
         )
         return resolved
 
-    def group_frame(self, group: str) -> DuckDBPyRelation | None:
-        """One group's resolved rows, folded like an axis, in member order.
+    def relation_frame(self, relation: str) -> DuckDBPyRelation | None:
+        """One relation's resolved rows, folded like an axis, in member order.
 
-        Not per type, which is no coordinate of a group. The folded relation is
-        already the winning row per `group_key`, carrying every non-key column -
-        an attribute over the group, an `into` label - in member order, read
+        Not per type, which is no column of a relation. The folded relation is
+        already the winning row per `relation_key`, carrying every non-key column -
+        an attribute over the relation, a `values` label - in member order, read
         inline with no owner map.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         """
-        rel = self.group(group)
+        rel = self.relation(relation)
         if rel is None or rel.limit(1).fetchone() is None:
             return None
         return rel

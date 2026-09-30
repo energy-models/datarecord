@@ -17,22 +17,22 @@ a comment that re-argues the design is a defect.
 
 Dimensioned attribute data with a declared schema.
 
-A record holds **components** (named members of a type), **groups** of them — connections between components and buses being the one every network has — **attribute values** over both, and the **axes** those values vary along.
+A record holds **components** (named members of a type), **relations** over them — connections between components and buses being the one every network has — **attribute values** over both, and the **axes** those values vary along.
 A schema declares what may exist; the data says what does.
 
 A record exposes five things:
 
 ```text
-record.schema           what may exist: the axes, the groups, the attributes
+record.schema           what may exist: the axes, the relations, the attributes
 record.dims             the axes themselves, keyed by dim
-record.groups           which tuples exist, keyed by group
+record.relations        which tuples exist, keyed by relation
 record.attributes       the values, keyed by attribute name
 record.flags(entities)  which axes an attribute actually uses
 ```
 
 That is the [`Record` protocol](record.md), and [The Record protocol](record.md) gives it precisely.
 
-A component's `entity` identifies it on its own: an entity is one label of [the entity axis](format.md#the-entity-axis), and its type is a row of a [group](schema.md#types).
+A component's `entity` identifies it on its own: an entity is one label of [the entity axis](format.md#the-entity-axis), and its type is a row of a [relation](schema.md#types).
 That is why the values are keyed by attribute and not by type — an attribute row names a component and nothing more, and a component's type is something the record knows about it rather than part of its address.
 
 `Record` is the one class that answers all of this, and it is the narwhals interface over a fold across layers:
