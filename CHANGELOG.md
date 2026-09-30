@@ -50,3 +50,7 @@ All notable changes to datarecord are documented here. The format follows
 - `set(attribute, expr)` with a narwhals expression derives an attribute over
   one dim alone, such as `p_nom` over `entity`, from that dim's axis. It raised
   `KeyError` before (#33).
+- `set(attribute, expr)` with a narwhals expression raises `KeyError` when any
+  label it names has no current value, and names those labels. It derived the
+  labels that had a value and skipped the others without a word, and raised
+  only where none had one.

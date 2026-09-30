@@ -214,6 +214,41 @@ def _listed(names: Sequence[Any] | None) -> list[Any] | None:
     return None if names is None else list(names)
 
 
+def _unresolved_targets(
+    frame: nw.LazyFrame | None,
+    dims: Mapping[str, Any],
+    listed: str | None,
+    labels: list[Any],
+) -> dict[str, Any]:
+    """The keywords of a derived `set` whose targets have no current value.
+
+    A named target with no row is a failed change rather than a no-op: the
+    caller asked for it to take a new value and there is nothing to derive one
+    from. So every label a list names must have a row in the scoped `frame`,
+    not just one of them, and the list comes back cut to the labels with none.
+    A keyword with one label has a row wherever the scoped frame has any. With
+    no keyword the instruction is "whatever resolves", so an empty frame is an
+    answer and nothing comes back.
+
+    Labels compare as strings, as `_require_labels` compares them.
+
+    Notes
+    -----
+    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+    """
+    if not dims:
+        return {}
+    if frame is None:
+        return dict(dims)
+    if listed is None:
+        return dict(dims) if frame.select("value").head(1).collect().is_empty() else {}
+    present = {str(n) for n in frame.select(listed).unique().collect()[listed]}
+    absent = [n for n in labels if str(n) not in present]
+    if absent or not present:
+        return {**dims, listed: absent or labels}
+    return {}
+
+
 def _split_dims(
     dims: Mapping[str, Any],
 ) -> tuple[str | None, list[Any], dict[str, Any]]:
@@ -1276,21 +1311,15 @@ class WorkingRecord(Record):
             for dim, value in fixed.items():
                 frame = frame.filter(nw.col(dim) == value)
 
-        # A named target that resolves to no row is a failed change, not a
-        # no-op: the caller asked for these rows to take a new value and there
-        # is nothing to derive one from. With no scope the instruction is
-        # "whatever resolves", so an empty result is an answer.
-        if dims:
-            # `head(1)`: `is_empty` is a `DataFrame` method, so the question
-            # costs a collect either way - this one collects a single row.
-            if frame is None or frame.select("value").head(1).collect().is_empty():
-                scope = ", ".join(f"{d}={v!r}" for d, v in dims.items())
-                msg = (
-                    f"no {attribute!r} rows resolve for {scope}, so there is "
-                    f"no current value to derive from; `set` a value directly to "
-                    f"create one (https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)"
-                )
-                raise KeyError(msg)
+        unresolved = _unresolved_targets(frame, dims, listed, labels)
+        if unresolved:
+            scope = ", ".join(f"{d}={v!r}" for d, v in unresolved.items())
+            msg = (
+                f"no {attribute!r} rows resolve for {scope}, so there is "
+                f"no current value to derive from; `set` a value directly to "
+                f"create one (https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)"
+            )
+            raise KeyError(msg)
         if frame is None:
             return
         derived = frame.with_columns(expr.alias("value"))

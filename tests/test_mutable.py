@@ -1365,6 +1365,49 @@ def test_an_expression_over_a_named_target_with_no_rows_raises(staged):
         )
 
 
+def _manchester_wind(record, attribute):
+    """Manchester Wind's `attribute` values, wherever the attribute lives."""
+    if attribute in record.attributes:
+        rows = record.attributes[attribute].collect().to_native().to_pandas()
+        rows = rows[rows["entity"] == "Manchester Wind"].sort_values("snapshot")
+        return rows["value"].tolist()
+    return [_entity_column(record, attribute)["Manchester Wind"]]
+
+
+@pytest.mark.parametrize(
+    "attribute",
+    [
+        pytest.param("p_max_pu", id="long-attribute"),
+        pytest.param("p_nom", id="axis-attribute"),
+    ],
+)
+def test_an_expression_naming_one_label_with_no_value_raises(staged, attribute):
+    """Every named label must have a value to derive from, not just one of them.
+
+    `NewWind` holds no value, so the call failed to change it. It raised only
+    where no named label had a value, so here it doubled Manchester Wind and
+    skipped `NewWind` without a word. A failed derived `set` stages nothing.
+
+    Notes
+    -----
+    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+    """
+    staged.add("entity", pd.DataFrame([{"entity": "NewWind"}]))
+    before = _manchester_wind(staged, attribute)
+
+    with pytest.raises(KeyError, match=r"no current value to derive from") as raised:
+        staged.set(
+            attribute, nw.col("value") * 2, entity=["Manchester Wind", "NewWind"]
+        )
+    assert "NewWind" in str(raised.value), "the message names the label with no value"
+    assert "Manchester Wind" not in str(raised.value), (
+        "the message names only the labels with no value"
+    )
+    assert _manchester_wind(staged, attribute) == before, (
+        "a failed derived set stages nothing"
+    )
+
+
 def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(root, con):
     """`entity=None` and no scope means "whatever resolves", so empty is an answer.
 
