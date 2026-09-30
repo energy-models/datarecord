@@ -235,3 +235,51 @@ def test_scalar_replaced_by_a_curve(con, base_uri):
 
     assert _curve(child, "marginal_cost") == [(0.0, 18.0), (40.0, 26.0)]
     assert _flags(child, PROCESS, "marginal_cost").breakpoints
+
+
+def test_a_default_curve_beside_its_exception_is_kept_or_dropped_whole(con, base_uri):
+    """One layer holds a curve for every port and another for one port.
+
+    At the named port the exception wins with all its breakpoints, and none of
+    the default's: the read picks per coordinate, not per breakpoint.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    revision = Revision.create(con)
+    layer = layer_dir(revision.id)
+    write_schema(schema())
+    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_ports(
+        layer,
+        [
+            {"entity": "steel_dri", "port": "0", "bus": "h2_north", "role": "input"},
+            {"entity": "steel_dri", "port": "1", "bus": "dri", "role": "output"},
+        ],
+    )
+    h2, dri = port("steel_dri", "0"), port("steel_dri", "1")
+    write_attribute(
+        layer,
+        "efficiency",
+        [
+            {"port": p, "breakpoint": x, "value": v}
+            for p, x, v in (
+                (None, 0.0, 2.0),
+                (None, 50.0, 2.4),
+                (None, 99.0, 2.8),
+                (dri, 0.0, 1.0),
+                (dri, 50.0, 1.5),
+            )
+        ],
+    )
+
+    df = relation(revision, "efficiency").order("port, breakpoint").df()
+    rows = list(zip(df["port"], df["breakpoint"], df["value"], strict=True))
+    assert rows == [
+        (h2, 0.0, 2.0),
+        (h2, 50.0, 2.4),
+        (h2, 99.0, 2.8),
+        (dri, 0.0, 1.0),
+        (dri, 50.0, 1.5),
+    ], "the named port takes its own two-point curve, the other the default's three"

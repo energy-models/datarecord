@@ -37,7 +37,7 @@ A type-scoped question goes through that relation — [`flags`](record.md#flags)
 The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
 Every fold-key axis's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of each dim in the fold key, `entity` among them — read from the same file that axis folds from — so a key whose label on any of those dims was deleted is absent from the resolved map rather than filtered at read.
-A removed label takes the relation rows keyed on it too ([one fold for every axis](#one-fold-for-every-axis)), so a removed component loses its connection rows and its `entity_type` row with it.
+A removed label takes the relation rows keyed on it too ([one fold for every axis](#one-fold-for-every-axis)), so a removed component loses its connection rows and its `entity_type` row with it, and the relation rows whose `values` column holds it, such as its `port_entity` rows ([deletion](layers.md#deletion)).
 A NULL there is a [broadcast](record.md#the-broadcast-rule) over every label rather than a label, so the NULL-safe anti-join never takes it; only a row naming a dead label is dropped.
 
 ## One fold for every axis
@@ -55,6 +55,7 @@ The fold runs live over an unmaterialised tail, cached per connection; since [la
 
 The [flags](record.md#flags) are folded in alongside the ownership group-by, so they cost nothing beyond it.
 They are computed **per key**, so per component: whether _this_ component's `p_max_pu` sets `timestep` is a different question from whether any does.
+They are computed from the rows a read returns, so a row another row of its layer outranks at a key is left out first ([resolving a relation](#resolving-a-relation)).
 
 The structs have a field per declared dim, since every dim [broadcasts](record.md#the-broadcast-rule): "did a row set it" is a question about each of them.
 
@@ -95,6 +96,8 @@ The map already names the winning layer per key, so resolution reads only the ow
 There is no per-read `MAX`/group-by and no tombstone filter — deletions are already absent from the map.
 
 Each owned-per dim's arm is **NULL-aware**: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.
+A default and its exception in one layer both join the entry for the label the exception names, so at each coordinate the read keeps the rows that leave the fewest fold-key dims NULL ([the broadcast rule](record.md#the-broadcast-rule)).
+The coordinate is the attribute's own dims without `breakpoint`, so a curve is kept or dropped whole.
 
 A fold-key dim the attribute is not over is joined **NULL-safely**: it is NULL on both sides, so it matches and expands nothing.
 There is no membership gate at read: an attribute row is keyed by the labels of the fold-key dims it is over, and each of those axes is [tombstone-pruned in the fold](#one-fold-for-every-axis), so a row whose label on one of them was deleted is already gone from the map.

@@ -159,6 +159,7 @@ No attribute is over a relation, so no attribute is a column of one. Data on a r
 **A relation folds on its own key, whatever `partial` says.** A layer that writes a row replaces the row with the same key and leaves the others ([one fold for every axis](read-path.md#one-fold-for-every-axis)).
 So a relation may be keyed by a dim outside `partial`: `snapshot_period` is keyed by `snapshot`, which is ordered and so restated whole.
 Only a `partial` dim loses a label (`remove` refuses any other), so no relation row is left keyed on a label that is gone.
+Where a relation's `values` dim is `partial`, removing one of its labels removes the rows that map to it ([deletion](layers.md#deletion)); outside `partial`, a layer owns its axis whole and no label of it is removed.
 
 **Connections are one instance**, not a structural category: `Relation(key={"entity": "entity", "bus": "bus"})`. `bus` is one coordinate of one relation rather than a column the format fixes, and neither word appears in the record layer. `connection` is whatever a schema calls it.
 

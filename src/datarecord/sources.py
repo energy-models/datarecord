@@ -126,8 +126,11 @@ def _expanded(
     that matches nothing, so the broadcast the fold keeps implicit has to become
     rows here. Where expansion gives one coordinate two rows, the row that named
     more of the broadcast dims wins: a layer may state a default and its
-    exceptions side by side. Counted before expanding, because a join cannot
-    match on a coordinate both rows leave NULL.
+    exceptions side by side. A layered record's read has already applied that
+    rule along the `partial` dims it fills in, but a NULL along any other dim
+    reaches here unexpanded, and a `RecordLike` need not be layered at all.
+    Counted before expanding, because a join cannot match on a coordinate both
+    rows leave NULL.
     """
     coordinates = list(schema.coordinates_of(attribute)) or [
         c for c in frame.collect_schema().names() if c in schema.dimensions
