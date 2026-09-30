@@ -34,6 +34,13 @@ All notable changes to datarecord are documented here. The format follows
 - An attribute is over dims only. Data on a relation's rows goes over a dim of
   its own, related to the relation's columns.
 
+### Fixed
+
+- `set`, `remove` and `remove_relation` refuse a label whose type is not its
+  dim's declared dtype with a `TypeError` that names the dim, its dtype, the
+  label and the rewrite, where they failed inside pyarrow or DuckDB. A str is
+  no longer parsed as a `Datetime` label: pass `pd.Timestamp("2030-01-01")`.
+
 ### Removed
 
 - Traits, per-type member files, `Record.entity_types`, `Schema.attributes_for`

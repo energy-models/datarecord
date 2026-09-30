@@ -290,6 +290,8 @@ These are caught when the edit is **staged**, not at commit — a caller should 
 
 A `set` refuses a name that is not on the entity axis, and the error says to `add` it first.
 
+A label is not parsed into its dim's dtype. `set`, `remove` and `remove_relation` refuse a label of another type — a str for a `Datetime` dim, an int for a `String` one — with a `TypeError` that names the dim, its dtype and the rewrite.
+
 ## Staging
 
 Staged rows live in DuckDB tables on the record's own connection:

@@ -18,7 +18,9 @@ from __future__ import annotations
 import re
 from collections.abc import Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date, datetime
 from hashlib import sha256
+from numbers import Integral, Real
 from typing import TYPE_CHECKING, Any, overload
 from uuid import UUID, uuid4
 
@@ -841,6 +843,10 @@ class WorkingRecord(Record):
         KeyError
             If the attribute is not declared, or a label of a dim that keys a
             relation is on no layer's axis.
+        TypeError
+            If a label - a keyword's, a mapping's key or a series' index - is not
+            of its dim's declared dtype, such as a str for a `Datetime` dim. A
+            label is never parsed into the dtype.
         ValueError
             If a keyword names a dim the attribute does not vary over, two dims
             are given lists, or the dim a mapping or series is keyed by cannot be
@@ -885,10 +891,13 @@ class WorkingRecord(Record):
         self._validate_dims(named)
         self._validate_attribute(attribute, named)
         for dim, dim_labels in per_dim.items():
+            _require_label_types(self.schema, dim, dim_labels)
             self._require_labels(dim, dim_labels)
         if listed is not None:
+            _require_label_types(self.schema, listed, keys or labels)
             self._require_labels(listed, keys or labels)
         for dim, label in fixed.items():
+            _require_label_types(self.schema, dim, [label])
             self._require_labels(dim, [label])
 
         table = self._ensure("attributes", attribute)
@@ -921,6 +930,9 @@ class WorkingRecord(Record):
         self._series_axis(attribute, value, indexed_by, named=())
         names: list[Any] | None = (
             labels if listed == axis else [fixed[axis]] if axis in fixed else None
+        )
+        _require_label_types(
+            self.schema, axis, names if names is not None else _mapping_keys(value)
         )
         if names is None and not _mapping_keys(value):
             names = self._labels(axis)
@@ -1458,10 +1470,12 @@ class WorkingRecord(Record):
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
+        by_column = dict(zip(fixed, zip(*keys, strict=True), strict=True))
+        for column, labels in by_column.items():
+            _require_label_types(self.schema, column, labels)
         table = self._ensure(kind, attribute)
         if not keys:
             return
-        by_column = dict(zip(fixed, zip(*keys, strict=True), strict=True))
         rel = self._values_relation(by_column, {c: self._column_type(c) for c in fixed})
         self._insert(
             rel,
@@ -1479,6 +1493,8 @@ class WorkingRecord(Record):
 
         Raises
         ------
+        TypeError
+            If a label is not of `dim`'s declared dtype.
         ValueError
             If `dim` is not declared, or is outside the fold key. A dim outside it
             is owned whole by the layer that last wrote an attribute over it, so a
@@ -1540,6 +1556,11 @@ class WorkingRecord(Record):
 
         A `values` label is no part of a key: the tuple is removed, whatever
         label it carried.
+
+        Raises
+        ------
+        TypeError
+            If a key's label is not of its column's declared dtype.
 
         Notes
         -----
@@ -1813,6 +1834,66 @@ def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
         )
         raise ValueError(msg)
     return dtype
+
+
+def _label_type(dtype: nw.dtypes.DType) -> tuple[tuple[type, ...], str] | None:
+    """The Python types a label of `dtype` is passed as, and the call that makes one.
+
+    Stated here rather than left to the builders, because each guesses where
+    the other refuses: pyarrow reads an int as a `Datetime`'s epoch offset and
+    truncates a float to an `Int64`, and DuckDB parses a str as a `Datetime`.
+    A dtype outside this table is left to them.
+    """
+    if isinstance(dtype, nw.String | nw.Enum | nw.Categorical):
+        return (str,), "str"
+    if isinstance(dtype, nw.Datetime):
+        return (datetime,), "pd.Timestamp"
+    if isinstance(dtype, nw.Date):
+        return (date,), "datetime.date.fromisoformat"
+    if dtype.is_integer():
+        return (Integral,), "int"
+    if dtype.is_float():
+        return (Real,), "float"
+    return None
+
+
+def _require_label_types(schema: Schema, dim: str, labels: Iterable[Any]) -> None:
+    """Refuse a caller's label whose Python type is not `dim`'s declared dtype.
+
+    Checked before any relation is built from the labels, so the call fails
+    here, naming the dim, rather than in the builder. A `None` is the
+    broadcast, and a `bool` is no number.
+
+    Raises
+    ------
+    TypeError
+        Naming the dim, its dtype, the first label of another type, and the
+        rewrite.
+    """
+    dtype = _column_type(schema, dim)
+    expected = _label_type(dtype)
+    if expected is None:
+        return
+    types, make = expected
+    wrong = [
+        n
+        for n in labels
+        if n is not None and (isinstance(n, bool) or not isinstance(n, types))
+    ]
+    if not wrong:
+        return
+    first = wrong[0]
+    kind = type(first).__name__
+    article = "an" if kind[0] in "aeiou" else "a"
+    count = f" ({len(wrong)} labels)" if len(wrong) > 1 else ""
+    rewrite = (
+        f"{make}({first!r})" if make == "str" or isinstance(first, str) else f"a {make}"
+    )
+    msg = (
+        f"{dim} is {type(dtype).__name__}, and {first!r} is {article} {kind}"
+        f"{count}; pass {rewrite}"
+    )
+    raise TypeError(msg)
 
 
 def _relation_columns(schema: Schema, relation: str) -> dict[str, nw.dtypes.DType]:
