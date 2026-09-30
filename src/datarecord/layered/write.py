@@ -76,6 +76,8 @@ def write_record(
     ValueError
         If a long frame is missing a long-schema column, or the schema declares a key
         dim no frame carries - either would make the fold misresolve the layer.
+        If a frame carries a column its file does not hold, such as an attribute
+        column on a relation frame.
         Also if two rows of one attribute cover one coordinate and neither
         names more of its dims, or both leave the same dims NULL there, which
         no rule orders.
@@ -326,11 +328,22 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         return
     # A relation's row is keyed by its columns, `values` among them, so a frame
     # lacking one would be keyed by a column that is not there.
-    missing = sorted(set(schema.relation_columns(key)) - columns)
+    own = set(schema.relation_columns(key))
+    missing = sorted(own - columns)
     if missing:
         msg = (
             f"relations/{key}.parquet is missing the relation's columns "
             f"{missing}; the fold would key by a column that is not there (https://energy-models.github.io/datarecord/design/schema/#relations)"
+        )
+        raise ValueError(msg)
+    # An attribute is over dims only, so a column beyond the relation's own and
+    # its tombstone is data no reader knows the meaning of.
+    extra = sorted(columns - own - {"deleted", *DERIVED})
+    if extra:
+        msg = (
+            f"relations/{key}.parquet carries columns {extra} the schema does not "
+            f"declare for the {key!r} relation; a relation file holds its columns "
+            f"{sorted(own)} and its tombstone (https://energy-models.github.io/datarecord/design/schema/#relations)"
         )
         raise ValueError(msg)
 

@@ -18,7 +18,9 @@ from __future__ import annotations
 import re
 from collections.abc import Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date, datetime
 from hashlib import sha256
+from numbers import Integral, Real
 from typing import TYPE_CHECKING, Any, overload
 from uuid import UUID, uuid4
 
@@ -212,6 +214,41 @@ def normalise_value(
 def _listed(names: Sequence[Any] | None) -> list[Any] | None:
     """`names` as a list, keeping None for "no labels listed"."""
     return None if names is None else list(names)
+
+
+def _unresolved_targets(
+    frame: nw.LazyFrame | None,
+    dims: Mapping[str, Any],
+    listed: str | None,
+    labels: list[Any],
+) -> dict[str, Any]:
+    """The keywords of a derived `set` whose targets have no current value.
+
+    A named target with no row is a failed change rather than a no-op: the
+    caller asked for it to take a new value and there is nothing to derive one
+    from. So every label a list names must have a row in the scoped `frame`,
+    not just one of them, and the list comes back cut to the labels with none.
+    A keyword with one label has a row wherever the scoped frame has any. With
+    no keyword the instruction is "whatever resolves", so an empty frame is an
+    answer and nothing comes back.
+
+    Labels compare as strings, as `_require_labels` compares them.
+
+    Notes
+    -----
+    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+    """
+    if not dims:
+        return {}
+    if frame is None:
+        return dict(dims)
+    if listed is None:
+        return dict(dims) if frame.select("value").head(1).collect().is_empty() else {}
+    present = {str(n) for n in frame.select(listed).unique().collect()[listed]}
+    absent = [n for n in labels if str(n) not in present]
+    if absent or not present:
+        return {**dims, listed: absent or labels}
+    return {}
 
 
 def _split_dims(
@@ -841,6 +878,10 @@ class WorkingRecord(Record):
         KeyError
             If the attribute is not declared, or a label of a dim that keys a
             relation is on no layer's axis.
+        TypeError
+            If a label - a keyword's, a mapping's key or a series' index - is not
+            of its dim's declared dtype, such as a str for a `Datetime` dim. A
+            label is never parsed into the dtype.
         ValueError
             If a keyword names a dim the attribute does not vary over, two dims
             are given lists, or the dim a mapping or series is keyed by cannot be
@@ -885,10 +926,13 @@ class WorkingRecord(Record):
         self._validate_dims(named)
         self._validate_attribute(attribute, named)
         for dim, dim_labels in per_dim.items():
+            _require_label_types(self.schema, dim, dim_labels)
             self._require_labels(dim, dim_labels)
         if listed is not None:
+            _require_label_types(self.schema, listed, keys or labels)
             self._require_labels(listed, keys or labels)
         for dim, label in fixed.items():
+            _require_label_types(self.schema, dim, [label])
             self._require_labels(dim, [label])
 
         table = self._ensure("attributes", attribute)
@@ -911,16 +955,13 @@ class WorkingRecord(Record):
         no labels reaches every label the axis resolves, staged ones included:
         an axis file has no NULL row to broadcast from.
         """
-        other = sorted(d for d in {*fixed, *([listed] if listed else [])} if d != axis)
-        if other:
-            msg = (
-                f"{attribute} does not vary over {other}; it is a column of "
-                f"dims/{axis}.parquet, keyed by {axis!r} alone"
-            )
-            raise ValueError(msg)
+        _refuse_off_axis(axis, attribute, [*fixed, *([listed] if listed else [])])
         self._series_axis(attribute, value, indexed_by, named=())
         names: list[Any] | None = (
             labels if listed == axis else [fixed[axis]] if axis in fixed else None
+        )
+        _require_label_types(
+            self.schema, axis, names if names is not None else _mapping_keys(value)
         )
         if names is None and not _mapping_keys(value):
             names = self._labels(axis)
@@ -1257,41 +1298,71 @@ class WorkingRecord(Record):
         On a layered base the read is a fold, so this is the one edit whose cost
         scales with the ancestry rather than with the rows written.
 
-        Unscoped, this derives from every row of the attribute.
+        Unscoped, this derives from every row of the attribute. An attribute
+        over one dim alone is read from that dim's axis and staged to it, as a
+        plain `set` on it is.
 
         Notes
         -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
         """
         listed, labels, fixed = _split_dims(dims)
-        if attribute not in self.attributes:
-            frame = None
-        else:
+        axis = self._axis_of(attribute)
+        if axis is not None:
+            _refuse_off_axis(axis, attribute, dims)
+            frame = self._current_on_axis(axis, attribute)
+        elif attribute in self.attributes:
             frame = self.attributes[attribute]
+        else:
+            frame = None
+        if frame is not None:
             if listed is not None:
                 self._require_labels(listed, labels)
                 frame = frame.filter(nw.col(listed).is_in(labels))
             for dim, value in fixed.items():
                 frame = frame.filter(nw.col(dim) == value)
 
-        # A named target that resolves to no row is a failed change, not a
-        # no-op: the caller asked for these rows to take a new value and there
-        # is nothing to derive one from. With no scope the instruction is
-        # "whatever resolves", so an empty result is an answer.
-        if dims:
-            # `head(1)`: `is_empty` is a `DataFrame` method, so the question
-            # costs a collect either way - this one collects a single row.
-            if frame is None or frame.select("value").head(1).collect().is_empty():
-                scope = ", ".join(f"{d}={v!r}" for d, v in dims.items())
-                msg = (
-                    f"no {attribute!r} rows resolve for {scope}, so there is "
-                    f"no current value to derive from; `set` a value directly to "
-                    f"create one (https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)"
-                )
-                raise KeyError(msg)
+        unresolved = _unresolved_targets(frame, dims, listed, labels)
+        if unresolved:
+            scope = ", ".join(f"{d}={v!r}" for d, v in unresolved.items())
+            msg = (
+                f"no {attribute!r} rows resolve for {scope}, so there is "
+                f"no current value to derive from; `set` a value directly to "
+                f"create one (https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)"
+            )
+            raise KeyError(msg)
         if frame is None:
             return
-        self._stage_resolved(frame.with_columns(expr.alias("value")), attribute)
+        derived = frame.with_columns(expr.alias("value"))
+        if axis is None:
+            self._stage_resolved(derived, attribute)
+            return
+        rows = derived.select(axis, "value").collect()
+        self._stage_axis(
+            axis,
+            attribute,
+            dict(zip(rows[axis].to_list(), rows["value"].to_list(), strict=True)),
+            labels=None,
+        )
+
+    def _current_on_axis(self, dim: str, attribute: str) -> nw.LazyFrame | None:
+        """`attribute`'s current values as `(dim, value)`, read off `dim`'s axis.
+
+        What `_stage_derived` derives from where the value is a column of the
+        axis file rather than long rows: the same frame shape as the long path,
+        so one filter and one expression serve both. A label whose row holds no
+        value is left out, as the long path has no row for it; `None` where no
+        layer wrote the axis or the column.
+        """
+        if dim not in self.dims:
+            return None
+        axis = self.dims[dim]
+        if attribute not in axis.collect_schema().names():
+            return None
+        return axis.select(nw.col(dim), nw.col(attribute).alias("value")).filter(
+            ~nw.col("value").is_null()
+        )
 
     def _stage_resolved(self, frame: nw.LazyFrame, attribute: str) -> None:
         """Stage an already-long frame carrying every key column.
@@ -1458,10 +1529,12 @@ class WorkingRecord(Record):
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
+        by_column = dict(zip(fixed, zip(*keys, strict=True), strict=True))
+        for column, labels in by_column.items():
+            _require_label_types(self.schema, column, labels)
         table = self._ensure(kind, attribute)
         if not keys:
             return
-        by_column = dict(zip(fixed, zip(*keys, strict=True), strict=True))
         rel = self._values_relation(by_column, {c: self._column_type(c) for c in fixed})
         self._insert(
             rel,
@@ -1479,6 +1552,8 @@ class WorkingRecord(Record):
 
         Raises
         ------
+        TypeError
+            If a label is not of `dim`'s declared dtype.
         ValueError
             If `dim` is not declared, or is outside the fold key. A dim outside it
             is owned whole by the layer that last wrote an attribute over it, so a
@@ -1540,6 +1615,11 @@ class WorkingRecord(Record):
 
         A `values` label is no part of a key: the tuple is removed, whatever
         label it carried.
+
+        Raises
+        ------
+        TypeError
+            If a key's label is not of its column's declared dtype.
 
         Notes
         -----
@@ -1760,6 +1840,26 @@ class WorkingRecord(Record):
         return None
 
 
+def _refuse_off_axis(axis: str, attribute: str, dims: Iterable[str]) -> None:
+    """Refuse a keyword for any dim but `axis`, which alone keys `attribute`.
+
+    An axis-file attribute has no other dim to scope, so such a keyword is
+    refused rather than dropped.
+
+    Raises
+    ------
+    ValueError
+        If `dims` names a dim other than `axis`.
+    """
+    other = sorted(d for d in set(dims) if d != axis)
+    if other:
+        msg = (
+            f"{attribute} does not vary over {other}; it is a column of "
+            f"dims/{axis}.parquet, keyed by {axis!r} alone"
+        )
+        raise ValueError(msg)
+
+
 def _base_resolver(base: RecordLike, con: DuckDBPyConnection) -> Resolver:
     """What `base` resolves from, as a `Resolver` a staged layer can extend.
 
@@ -1813,6 +1913,66 @@ def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
         )
         raise ValueError(msg)
     return dtype
+
+
+def _label_type(dtype: nw.dtypes.DType) -> tuple[tuple[type, ...], str] | None:
+    """The Python types a label of `dtype` is passed as, and the call that makes one.
+
+    Stated here rather than left to the builders, because each guesses where
+    the other refuses: pyarrow reads an int as a `Datetime`'s epoch offset and
+    truncates a float to an `Int64`, and DuckDB parses a str as a `Datetime`.
+    A dtype outside this table is left to them.
+    """
+    if isinstance(dtype, nw.String | nw.Enum | nw.Categorical):
+        return (str,), "str"
+    if isinstance(dtype, nw.Datetime):
+        return (datetime,), "pd.Timestamp"
+    if isinstance(dtype, nw.Date):
+        return (date,), "datetime.date.fromisoformat"
+    if dtype.is_integer():
+        return (Integral,), "int"
+    if dtype.is_float():
+        return (Real,), "float"
+    return None
+
+
+def _require_label_types(schema: Schema, dim: str, labels: Iterable[Any]) -> None:
+    """Refuse a caller's label whose Python type is not `dim`'s declared dtype.
+
+    Checked before any relation is built from the labels, so the call fails
+    here, naming the dim, rather than in the builder. A `None` is the
+    broadcast, and a `bool` is no number.
+
+    Raises
+    ------
+    TypeError
+        Naming the dim, its dtype, the first label of another type, and the
+        rewrite.
+    """
+    dtype = _column_type(schema, dim)
+    expected = _label_type(dtype)
+    if expected is None:
+        return
+    types, make = expected
+    wrong = [
+        n
+        for n in labels
+        if n is not None and (isinstance(n, bool) or not isinstance(n, types))
+    ]
+    if not wrong:
+        return
+    first = wrong[0]
+    kind = type(first).__name__
+    article = "an" if kind[0] in "aeiou" else "a"
+    count = f" ({len(wrong)} labels)" if len(wrong) > 1 else ""
+    rewrite = (
+        f"{make}({first!r})" if make == "str" or isinstance(first, str) else f"a {make}"
+    )
+    msg = (
+        f"{dim} is {type(dtype).__name__}, and {first!r} is {article} {kind}"
+        f"{count}; pass {rewrite}"
+    )
+    raise TypeError(msg)
 
 
 def _relation_columns(schema: Schema, relation: str) -> dict[str, nw.dtypes.DType]:
