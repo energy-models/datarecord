@@ -25,8 +25,6 @@ A spec that reads those parameters takes the same names in its `sources`.
 So specsolve's `solve(spec, sources)` takes what `to_sources(record)` returns, and the record needs no knowledge of the spec.
 
 The table follows the declaration, not the file layout.
-On disk, an attribute over one dim alone is a column of that dim's axis file ([where a value lives](format.md#where-a-value-lives)).
-Here it is a `(dim, value)` table like any other parameter, so a consumer does not see how a record stores it.
 The `attribute` and `breakpoint` columns of a [long row](format.md#the-long-schema) are storage too, and the tables do not carry them.
 
 ## Broadcast expansion

@@ -17,14 +17,15 @@ w = WorkingRecord(root.record, con)
 ## `set`
 
 ```python
-w.set("p_nom", 150.0, entity=["wind1", "wind2"])  # broadcast
-w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per name, positional
-w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
-w.set("p_max_pu", frame, entity=["wind1"])  # a long frame
+w.set("p_nom", 150.0, entity=["wind1", "wind2"])  # one value, two names
+w.set("p_nom", pd.DataFrame({"entity": ["wind1", "wind2"], "value": [150.0, 80.0]}))
+w.set("p_max_pu", frame, entity="wind1")  # a long frame, scoped
 w.set("efficiency", 0.9, port=["dc_out"])  # one port
 w.set("p_max_pu", 0.5, entity=["wind1"], scenario="high")  # scoped to one scenario
 w.set("p_max_pu", nw.col("value") * 1.1, entity=["wind1"])  # derived
 ```
+
+`value` is a scalar, a long frame or an `nw.Expr`. A different value per label is a frame, with a column per coordinate and a `value` column; a mapping, a sequence or a series is refused, and the error spells the frame ([design](../design/working-record.md#set)).
 
 **There is no `entity_type` keyword.** No attribute is narrowed to a type, so one call may span types. `set` refuses a name that is not on the entity axis — `add` it first — and an attribute that is not declared over the dims the call names ([design](../design/working-record.md#set)).
 
@@ -71,7 +72,7 @@ w.add_relation("port_bus", pd.DataFrame({"port": ["dc_out"], "bus": ["east"]}))
 w.remove_relation("port_bus", [("dc_out",)])
 ```
 
-`add(dim, frame)` takes a wide frame keyed by `dim` and splits it by the schema. For `entity`, columns over `entity` alone go to the entity axis, ones varying beyond it become `attributes/` rows, and the `entity_type` column becomes rows of the `entity_type` relation, which gives each entity its type ([design](../design/working-record.md#add-remove)). A frame that carries every other column of a relation keyed by its dim adds that relation's rows the same way: the `port` frame above stages each port's `role` on the port axis and its rows of `port_entity` and `port_bus`. A component exists by virtue of its row on the entity axis, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
+`add(dim, frame)` takes a wide frame keyed by `dim` and splits it by the schema. For `entity`, the entity axis gets one row per entity, each attribute column becomes `attributes/` rows, and the `entity_type` column becomes rows of the `entity_type` relation, which gives each entity its type ([design](../design/working-record.md#add-remove)). A frame that carries every other column of a relation keyed by its dim adds that relation's rows the same way: the `port` frame above stages each port's label, its `role` rows, and its rows of `port_entity` and `port_bus`. A component exists by virtue of its row on the entity axis, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
 
 `remove(dim, labels)` stages a tombstone per label on that dim's axis. `dim` may be any dim declared `partial`, which includes every dim a relation is keyed by; any other dim is refused. It need not enumerate what it deletes: the fold applies it to every attribute row and every relation row keyed on the label, so a removed component takes its `entity_type` row with it ([design](../design/layers.md#deletion)).
 

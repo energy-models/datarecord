@@ -18,9 +18,10 @@ from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.layered.revision import Record
 from datarecord.layered.sources import ParquetLayer
-from datarecord.mutable import Directory, NewChild, WorkingRecord, normalise_value
+from datarecord.mutable import Directory, NewChild, WorkingRecord
 from datarecord.record import RecordLike
 from datarecord.schema import AttributeSpec, Schema
+from datarecord.sources import to_sources
 from tests.fixtures import export_network, members, names, schema
 
 GEN = "Generator"
@@ -47,42 +48,17 @@ def written_directory(root):
 
 
 def _static(revision, attribute, ctype=GEN):
-    """One entity-axis attribute of one type's live members, per component name.
-
-    Through the members rather than `relation()`: a non-varying attribute like
-    `p_nom` lives in `dims/entity.parquet`, so `attributes/` alone would not
-    show what the record resolves to.
-
-    Notes
-    -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-    """
-    frame = members(revision.record, ctype)
-    return dict(zip(frame["entity"], frame[attribute], strict=True))
+    """One attribute's value per live member of one type, broadcasts expanded."""
+    mine = set(names(revision.record, ctype))
+    return {
+        e: v for e, v in _entity_column(revision.record, attribute).items() if e in mine
+    }
 
 
 def _entity_column(record, attribute):
-    """One entity-axis column, per entity name, as the record reads it.
-
-    Where a value addressed by `entity` alone lives, so `attributes` does not
-    hold it.
-
-    Notes
-    -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-    """
-    axis = record.dims["entity"].collect("pandas").to_native()
-    return dict(zip(axis["entity"], axis[attribute], strict=True))
-
-
-def _layer_axis(revision, con):
-    """One committed layer's own `dims/entity.parquet`, as pandas.
-
-    The axis-file counterpart of `_layer_rows`, read through that layer's
-    `LayerSource` for the same reason.
-    """
-    rel = ParquetLayer(revision.id, read_schema(con), con).axis("entity")
-    return rel.to_df() if rel is not None else pd.DataFrame()
+    """One attribute over `entity`, per entity name, as the record resolves it."""
+    frame = to_sources(record, [attribute])[attribute].collect("pandas").to_native()
+    return dict(zip(frame["entity"], frame["value"], strict=True))
 
 
 def _layer_rows(revision, attribute, con):
@@ -145,112 +121,21 @@ def test_a_mutable_record_reads_as_a_record(staged):
 # -- value forms (https://energy-models.github.io/datarecord/design/working-record/#set) -----------------------------------------------------
 
 
-def test_scalar_applies_to_every_name():
-    names, values, dims = normalise_value(150.0, ["wind1", "wind2"])
-    assert (names, values, dims) == (["wind1", "wind2"], [150.0, 150.0], {})
-
-
-def test_a_sequence_is_positional():
-    names, values, _ = normalise_value([150.0, 80.0], ["wind1", "wind2"])
-    assert names is not None
-    assert dict(zip(names, values, strict=True)) == {"wind1": 150.0, "wind2": 80.0}
-
-
-def test_a_mapping_supplies_its_own_labels():
-    """The keys are labels along the dim `indexed_by` names, not listed names."""
-    names, values, dims = normalise_value(
-        {"wind1": 150.0, "wind2": 80.0}, None, indexed_by="entity"
-    )
-    assert names is None, "nothing was listed, so no names come back"
-    assert dims == {"entity": ["wind1", "wind2"]}
-    assert dict(zip(dims["entity"], values, strict=True)) == {
-        "wind1": 150.0,
-        "wind2": 80.0,
-    }
-
-
-def test_a_series_indexed_by_names_is_per_name():
-    """A series of names is one more dim series: its index keys `entity`."""
-    series = pd.Series({"wind1": 1.0, "wind2": 2.0})
-    names, values, dims = normalise_value(series, None, indexed_by="entity")
-    assert names is None, "nothing was listed, so no names come back"
-    assert dims == {"entity": ["wind1", "wind2"]}
-    assert dict(zip(dims["entity"], values, strict=True)) == {
-        "wind1": 1.0,
-        "wind2": 2.0,
-    }
-
-
-def test_a_series_indexed_by_an_axis_is_per_coordinate():
-    """The same type read as a dim series - the caller says which, never the labels."""
-    series = pd.Series({"2030-01-01": 0.4, "2030-01-02": 0.6})
-    names, values, dims = normalise_value(series, None, indexed_by="snapshot")
-    assert names is None
-    assert values == [0.4, 0.6]
-    assert dims == {"snapshot": ["2030-01-01", "2030-01-02"]}
-
-
-def test_a_sequence_of_the_wrong_length_is_rejected():
-    with pytest.raises(ValueError, match="2 labels"):
-        normalise_value([1.0, 2.0, 3.0], ["wind1", "wind2"])
-
-
 @pytest.mark.parametrize(
     "value",
     [
-        pytest.param(pd.Series({"Manchester Wind": 1.0}), id="series"),
         pytest.param({"Manchester Wind": 1.0}, id="mapping"),
+        pytest.param([1.0], id="sequence"),
+        pytest.param(pd.Series({"Manchester Wind": 1.0}), id="series"),
     ],
 )
-def test_an_index_that_could_be_either_is_refused(staged, value):
-    """No membership test, so labels spelled like components do not decide.
-
-    `p_max_pu` is over `entity` and `snapshot`, and the call names neither, so
-    the index could hold either. It used to be read as names; with no dim
-    special, nothing makes `entity` the default, and the call says which.
-    """
-    with pytest.raises(ValueError, match="say `indexed_by=`"):
+def test_a_value_per_label_is_a_frame(staged, value):
+    """`set` takes a scalar, a long frame or an `nw.Expr`; the error names the frame."""
+    with pytest.raises(
+        TypeError, match=r"pd\.DataFrame\(\{'entity': \[\.\.\.\], 'snapshot'"
+    ):
         staged.set("p_max_pu", value)
-
-
-def test_indexed_by_names_the_axis_a_series_index_holds(staged):
-    """Said outright, since nothing about the labels themselves could say it."""
-    series = pd.Series({pd.Timestamp("2015-01-01"): 0.4})
-    staged.set("p_max_pu", series, entity=["Manchester Wind"], indexed_by="snapshot")
-    assert "p_max_pu" in staged.attributes
-
-
-def test_an_unnamed_series_index_holds_the_one_unnamed_coordinate(staged):
-    """With `entity` named, the index can only be the `snapshot` it leaves.
-
-    It used to be read as names whatever the call named; now the one
-    coordinate no keyword names is what an unnamed index holds.
-    """
-    when = pd.Timestamp("2015-01-01")
-    staged.set("p_max_pu", pd.Series({when: 0.4}), entity=["Manchester Wind"])
-    rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
-    mine = rows[(rows["entity"] == "Manchester Wind") & (rows["snapshot"] == when)]
-    assert list(mine["value"]) == [0.4], "one row, at the snapshot the index held"
-
-
-def test_an_index_of_entity_labels_is_member_checked(staged):
-    """An index said to hold `entity` fails the member check - a date is no component."""
-    series = pd.Series({"2030-01-01": 0.4})
-    with pytest.raises(KeyError, match="no entity"):
-        staged.set("p_max_pu", series, indexed_by="entity")
-
-
-def test_the_series_index_name_says_what_it_holds(staged):
-    """A caller who named the index has already said it; `indexed_by=` is spare."""
-    index = pd.Index([pd.Timestamp("2015-01-01")], name="snapshot")
-    staged.set("p_max_pu", pd.Series([0.4], index=index), entity=["Manchester Wind"])
-    assert "p_max_pu" in staged.attributes
-
-
-def test_indexed_by_must_be_a_coordinate_of_the_attribute(staged):
-    series = pd.Series({"a": 1.0})
-    with pytest.raises(ValueError, match="no coordinate of"):
-        staged.set("p_nom", series, entity=["Manchester Wind"], indexed_by="snapshot")
+    assert "p_max_pu" not in staged.resolver.sources[-1].attributes(), "nothing staged"
 
 
 # -- set (https://energy-models.github.io/datarecord/design/working-record/#set) -------------------------------------------------------------
@@ -322,9 +207,9 @@ def test_last_write_wins_within_the_staging_area(staged, root):
     staged.set("p_nom", 100.0, entity=["Manchester Wind"])
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
 
-    axis = staged.dims["entity"].collect("pandas").to_native()
-    mine = axis[axis["entity"] == "Manchester Wind"]
-    assert list(mine["p_nom"]) == [150.0], "one row survives the collapse, the later"
+    rows = staged.attributes["p_nom"].collect("pandas").to_native()
+    mine = rows[rows["entity"] == "Manchester Wind"]
+    assert list(mine["value"]) == [150.0], "one row survives the collapse, the later"
 
     child = staged.commit(NewChild(root))
     assert _static(child, "p_nom")["Manchester Wind"] == 150.0
@@ -355,21 +240,12 @@ def test_set_rejects_an_unknown_name(staged):
         pytest.param(
             lambda s: s.set(
                 "p_max_pu",
-                pd.Series({"2030-01-01": 0.4}),
-                entity=["Manchester Wind"],
-            ),
-            r"snapshot is Datetime, and '2030-01-01' is a str; "
-            r"pass pd\.Timestamp\('2030-01-01'\)",
-            id="str-for-datetime-series-index",
-        ),
-        pytest.param(
-            lambda s: s.set(
-                "p_max_pu",
-                {"2030-01-01": 0.4, "2030-01-02": 0.5},
+                0.4,
                 entity="Manchester Wind",
+                snapshot=["2030-01-01", "2030-01-02"],
             ),
             r"snapshot is Datetime, and '2030-01-01' is a str \(2 labels\)",
-            id="str-for-datetime-mapping-key",
+            id="str-for-datetime-keyword-two-labels",
         ),
         pytest.param(
             lambda s: s.set(
@@ -394,21 +270,6 @@ def test_set_rejects_an_unknown_name(staged):
             lambda s: s.set("p_max_pu", 0.4, entity=[1]),
             r"entity is String, and 1 is an int; pass str\(1\)",
             id="int-for-string-keyword-list",
-        ),
-        pytest.param(
-            lambda s: s.set(
-                "p_max_pu",
-                pd.Series({1: 0.4}),
-                indexed_by="entity",
-                snapshot=pd.Timestamp("2015-01-01"),
-            ),
-            r"entity is String, and 1 is an int",
-            id="int-for-string-series-index",
-        ),
-        pytest.param(
-            lambda s: s.set("p_nom", {1: 3.0}),
-            r"entity is String, and 1 is an int",
-            id="int-for-string-axis-mapping-key",
         ),
         pytest.param(
             lambda s: s.remove("entity", [1]),
@@ -440,8 +301,8 @@ def test_a_label_of_another_type_than_its_dim_is_refused(staged, edit, match):
         edit(staged)
 
 
-def test_set_refuses_a_dim_an_entity_axis_attribute_lacks(staged):
-    """`p_nom` is a column of the entity axis, so it has no `scenario` to scope.
+def test_set_refuses_a_dim_an_attribute_is_not_over(staged):
+    """`p_nom` is over `entity` alone, so it has no `scenario` to scope.
 
     The entity-axis path of `set` dropped the keyword and wrote the value for
     every scenario, where the long path refuses it.
@@ -580,15 +441,11 @@ def test_an_expression_value_stages_the_whole_series(staged, root):
         pytest.param({}, id="every-label"),
     ],
 )
-def test_an_expression_derives_an_axis_attribute_from_its_axis(staged, root, scope):
-    """`p_nom` is a column of the entity axis, so the current value is read there.
-
-    The derived path read only the long `attributes` frames, so an attribute
-    over one dim alone had no rows to derive from and raised `KeyError` (#33).
+def test_an_expression_derives_an_attribute_over_one_dim(staged, root, scope):
+    """`p_nom` is over `entity` alone, and derives from its current value.
 
     Notes
     -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
     """
     before = _entity_column(staged, "p_nom")
@@ -606,8 +463,12 @@ def test_an_expression_derives_an_axis_attribute_from_its_axis(staged, root, sco
     assert _entity_column(child.record, "p_nom") == pytest.approx(want, nan_ok=True)
 
 
-def test_two_expressions_on_an_axis_attribute_compose(staged):
+def test_two_expressions_compose(staged):
     """The second derived edit reads the first one's staged value, not the base's.
+
+    The derived frame was a relation over the staging table, and the insert
+    deletes the rows it replaces first, so the second edit re-read the base and
+    returned 81.0 where 161.0 was due.
 
     Notes
     -----
@@ -620,8 +481,10 @@ def test_two_expressions_on_an_axis_attribute_compose(staged):
     assert _entity_column(staged, "p_nom")["Manchester Wind"] == before * 2 + 1
 
 
-def test_an_expression_on_an_axis_attribute_refuses_another_dim(staged):
+def test_an_expression_refuses_a_dim_the_attribute_is_not_over(staged):
     """`p_nom` has no `scenario` to scope, so the derived form refuses it too.
+
+    It raised narwhals' "The selected columns were not found" instead.
 
     Notes
     -----
@@ -636,8 +499,8 @@ def test_an_expression_on_an_axis_attribute_refuses_another_dim(staged):
         )
 
 
-def test_an_expression_on_an_axis_label_with_no_value_raises(staged):
-    """A label whose axis row holds no `p_nom` has nothing to derive from.
+def test_an_expression_on_a_label_with_no_value_raises(staged):
+    """A label with no `p_nom` row has nothing to derive from.
 
     Notes
     -----
@@ -910,9 +773,9 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    rows = _layer_axis(child, con)
+    rows = _layer_rows(child, "p_nom", con)
     assert list(rows["entity"]) == ["Manchester Wind"], (
-        "no extent to restate, so the layer's axis holds the one edited row"
+        "no extent to restate, so the layer holds the one edited row"
     )
 
 
@@ -939,9 +802,8 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
     child = staged.commit(NewChild(root))
     assert "NewSolar" in set(child.resolver.dims.axes["entity"].df()["entity"])
 
-    static = members(child.record, GEN).set_index("entity")
-    assert static.loc["NewSolar", "p_nom"] == 42.0
-    assert static.loc["NewSolar", "carrier"] == "solar"
+    assert _static(child, "p_nom")["NewSolar"] == 42.0
+    assert _static(child, "carrier")["NewSolar"] == "solar"
 
 
 def test_add_accepts_a_name_of_its_own_type(staged, root):
@@ -996,7 +858,7 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
 
 
 def test_add_stages_a_port_with_its_role_and_relations(staged, root):
-    """A port is a label: `role` is a column of its axis, entity and bus its relations.
+    """A port is a label: `role` is a value over it, entity and bus its relations.
 
     Notes
     -----
@@ -1019,8 +881,11 @@ def test_add_stages_a_port_with_its_role_and_relations(staged, root):
     staged.set("efficiency", 0.5, port="Manchester Wind:x")
     child = staged.commit(NewChild(root))
 
-    axis = child.resolver.dims.axes["port"].df().set_index("port")
-    assert axis.loc["Manchester Wind:x", "role"] == "attached", "a port-axis column"
+    roles = to_sources(child.record, ["role"])["role"].collect("pandas").to_native()
+    assert (
+        dict(zip(roles["port"], roles["value"], strict=True))["Manchester Wind:x"]
+        == "attached"
+    ), "a `role` row over the new port"
     for relation, column, label in (
         ("port_entity", "entity", "Manchester Wind"),
         ("port_bus", "bus", "Norway"),
@@ -1053,11 +918,10 @@ def test_add_rejects_a_column_the_schema_does_not_declare(staged):
 
 
 def test_add_fills_a_declared_column_another_add_omitted(staged):
-    """A frame omitting a declared column stages it as NULL rather than failing.
+    """A frame omitting a declared attribute stages no value for it rather than failing.
 
-    The table's columns are the schema's, not any one frame's, so an `add`
-    naming a subset of them is ordinary: what it did not carry is NULL, and an
-    earlier `add` is unaffected by a later one naming more.
+    An `add` naming a subset of the declared attributes is ordinary: what it did
+    not carry has no row, and an earlier `add` is unaffected by a later one.
 
     Notes
     -----
@@ -1067,7 +931,7 @@ def test_add_fills_a_declared_column_another_add_omitted(staged):
     staged.add("entity", pd.DataFrame([{"entity": "NewWind"}]))
 
     p_nom = _entity_column(staged, "p_nom")
-    assert pd.isna(p_nom["NewWind"]), "not carried, so NULL"
+    assert "NewWind" not in p_nom, "not carried, so no value"
     assert p_nom["NewSolar"] == 1234.5, "unaffected by the later add"
 
 
@@ -1320,7 +1184,7 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    rows = _layer_axis(child, con)
+    rows = _layer_rows(child, "p_nom", con)
     assert list(rows["entity"]) == ["Manchester Wind"], "the edited entity alone"
     assert len(_static(child, "p_nom")) > 1, (
         "yet the resolved record reads every generator's value"
@@ -1532,19 +1396,17 @@ def test_an_expression_over_a_named_target_with_no_rows_raises(staged):
 
 
 def _manchester_wind(record, attribute):
-    """Manchester Wind's `attribute` values, wherever the attribute lives."""
-    if attribute in record.attributes:
-        rows = record.attributes[attribute].collect().to_native().to_pandas()
-        rows = rows[rows["entity"] == "Manchester Wind"].sort_values("snapshot")
-        return rows["value"].tolist()
-    return [_entity_column(record, attribute)["Manchester Wind"]]
+    """Manchester Wind's `attribute` values, in coordinate order."""
+    rows = record.attributes[attribute].collect("pandas").to_native()
+    rows = rows[rows["entity"] == "Manchester Wind"]
+    return rows.sort_values(list(rows.columns[:-3]))["value"].tolist()
 
 
 @pytest.mark.parametrize(
     "attribute",
     [
         pytest.param("p_max_pu", id="long-attribute"),
-        pytest.param("p_nom", id="axis-attribute"),
+        pytest.param("p_nom", id="entity-attribute"),
     ],
 )
 def test_an_expression_naming_one_label_with_no_value_raises(staged, attribute):
@@ -1631,13 +1493,18 @@ def test_one_call_spans_component_types(staged):
     """One edit may cross types: an attribute is declared once, over `entity`.
 
     `Manchester Wind` is a `Generator` and `DC link` a `Link`, and `p_nom` is
-    one column of the entity axis for both - one call, two types, no keyword.
+    one attribute over `entity` for both - one call, two types, no keyword.
 
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
-    staged.set("p_nom", {"Manchester Wind": 150.0, "DC link": 80.0})
+    staged.set(
+        "p_nom",
+        pd.DataFrame(
+            {"entity": ["Manchester Wind", "DC link"], "value": [150.0, 80.0]}
+        ),
+    )
     got = _entity_column(staged, "p_nom")
     assert got["Manchester Wind"] == 150.0
     assert got["DC link"] == 80.0

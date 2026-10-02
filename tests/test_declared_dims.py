@@ -161,8 +161,8 @@ def test_flags_narrow_by_the_declared_dim(root, con):
     staged = WorkingRecord(root.record, con)
     staged.set(
         "Generator_p_max_pu",
-        pd.Series([0.2, 0.9], index=pd.Index(SNAPSHOTS, name="snapshot")),
-        generator=["wind"],
+        pd.DataFrame({"snapshot": SNAPSHOTS, "value": [0.2, 0.9]}),
+        generator="wind",
     )
     staged.set("Generator_p_max_pu", 1.0, generator=["gas"])
     child = staged.commit(NewChild(root))

@@ -70,8 +70,8 @@ The rest is data, and comes in two shapes.
 
 ```text
 dims["scenario"]                       scenario | ...   one row per axis label, in axis order
-dims["entity"]                         entity | <attributes over entity alone>
-dims["port"]                           port | <attributes over port alone>
+dims["entity"]                         entity
+dims["port"]                           port
 relations["connection"]                entity | bus
 relations["port_bus"]                  port | bus
 relations["entity_type"]               entity | entity_type
@@ -101,7 +101,7 @@ A consumer that wants one type's rows joins `relations["entity_type"]` on `entit
 
 A component attaches to buses, and some attributes are per attachment rather than per component.
 Each attachment is one label of a dim of its own, `port` in the PyPSA-shaped schema, and two functional [relations](schema.md#relations) tie it to its component and its bus: `port_entity` keyed by `port` with values `entity`, and `port_bus` keyed by `port` with values `bus`.
-`role`, which end of the component a port is, is an attribute over `port` alone, so it is a column of `dims["port"]`. `efficiency` is over `port` and `timestep`, so it is long rows like any other attribute, and decodes by the same rules with no special case ([data on a relation's rows](schema.md#data-on-a-relations-rows)).
+`role`, which end of the component a port is, is an attribute over `port`, and `efficiency` is over `port` and `timestep`. Both are long rows like any other attribute, and decode by the same rules with no special case ([data on a relation's rows](schema.md#data-on-a-relations-rows)).
 
 A port is identified by **its own label**, never by position. A patch layer that adds a port adds a label, and no other port is renumbered.
 

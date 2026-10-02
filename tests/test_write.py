@@ -457,28 +457,24 @@ def test_write_record_rejects_an_undeclared_axis_column(con, base_uri, dim, colu
     assert not Path(layer_dir(revision.id)).exists()
 
 
-def test_an_axis_carries_the_attributes_addressed_by_it_alone(con, base_uri):
-    """`weight` over `scenario` alone is a column of that axis's file.
+def test_an_axis_refuses_a_declared_attributes_column(con, base_uri):
+    """`weight` over `scenario` alone is `attributes/` rows, not an axis column.
 
-    Declared, so it round-trips with a dtype - which is what distinguishes it
-    from the undeclared column above.
+    Refused with the rewrite named, rather than written where no read looks.
 
     Notes
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     revision = Revision.create(con)
-    declared = schema()
-    assert "weight" in declared.attributes_on("scenario")
-
     source = _Source(
-        declared,
+        schema(),
         dims={"scenario": pd.DataFrame({"scenario": ["high"], "weight": [0.4]})},
     )
-    write_record(revision.id, source, con)
-
-    axis = revision.resolver.dims.axes["scenario"].df()
-    assert dict(zip(axis["scenario"], axis["weight"])) == {"high": 0.4}
+    with pytest.raises(
+        ValueError, match=r"an attribute over 'scenario' is `attributes/` rows"
+    ):
+        write_record(revision.id, source, con)
 
 
 def test_written_layer_overlays(con, base_uri, ac_dc):

@@ -13,10 +13,10 @@ A record that is never written has no directory, and answers [the protocol](reco
 record/
 ├── manifest.json                   # the schema
 ├── dims/
-│   ├── entity.parquet              # which entities exist, and their constant values
+│   ├── entity.parquet              # which entities exist
 │   └── <dim>.parquet               # one axis table per declared dim
 ├── relations/<relation>.parquet    # which tuples of the relation exist
-└── attributes/<attr>.parquet       # one varying attribute per file
+└── attributes/<attr>.parquet       # one attribute per file
 ```
 
 Every file under `dims/` and `relations/` is named for what it holds, singular: `dims/scenario.parquet` for the `scenario` axis, as `attributes/p_nom.parquet` is for `p_nom`.
@@ -24,19 +24,18 @@ A dim's file is its name and nothing else — no pluralisation, which would be E
 
 ## The entity axis
 
-`dims/entity.parquet` is what an entity's identity **is**: which entities the layer names, which are tombstoned, and the value of each attribute declared over `entity` alone.
+`dims/entity.parquet` is what an entity's identity **is**: which entities the layer names, and which are tombstoned.
 
 ```text
-entity | deleted | <attr> ...
+entity | deleted
 ```
 
 It is **an axis file like any other**: a `Record` hands it over as `dims["entity"]` and [`write_record`](writing.md) writes it, with no derivation step of its own.
 
 - **Membership.** An entity exists because it has a row here.
 - **Its tombstone.** Removing an entity is a `deleted` row here, so the fold reads every entity tombstone from this file.
-- **Its constant values.** An attribute over `entity` alone is a column of this file ([where a value lives](#where-a-value-lives)).
 
-**One row per entity.** An entity is one label of one axis, so a name has one row and one set of constant values.
+**One row per entity.** An entity is one label of one axis, so a name has one row.
 Its type is a row of the `entity_type` [relation](schema.md#types), keyed by `entity` in `relations/entity_type.parquet`. The relation is functional, so an entity has one type, and a `Bus` and a `Generator` cannot share a name.
 
 The [entity axis](#the-entity-axis) folds from `dims/entity.parquet`, and so do entity tombstones. Both must read the same source: membership from one and deletions from another would resolve a deletion the fold never saw.
@@ -48,28 +47,17 @@ The record layer does not rename to hide a clash: a record's `entity` is the fra
 
 ## Where a value lives
 
-Decided by the attribute's [declared `dims`](schema.md#attributespec), not by a particular value.
+The rule: **every attribute is long rows in its own `attributes/<attr>.parquet`, whatever its [`dims`](schema.md#attributespec).** An axis file holds labels and never a value.
 
-The rule: **an attribute over exactly one dim is a column of that dim's own file; anything more is long rows in `attributes/`.**
+| `dims`                   | lands in                                          |
+| ------------------------ | ------------------------------------------------- |
+| `{"entity"}`             | `attributes/<attr>.parquet`: `entity`             |
+| `{"port"}`               | `attributes/<attr>.parquet`: `port`               |
+| `{"snapshot"}`           | `attributes/<attr>.parquet`: `snapshot`           |
+| `{"entity", "snapshot"}` | `attributes/<attr>.parquet`: `entity \| snapshot` |
 
-| `dims`                   | lands in                                                   |
-| ------------------------ | ---------------------------------------------------------- |
-| `{"entity"}`             | `dims/entity.parquet` — a column of the entity axis itself |
-| `{"entity_type"}`        | `dims/entity_type.parquet` — the axis file                 |
-| `{"port"}`               | `dims/port.parquet` — the axis file                        |
-| `{"scenario"}`           | `dims/scenario.parquet` — the axis file                    |
-| `{"country"}`            | `dims/country.parquet` — the axis file                     |
-| `{"entity", "snapshot"}` | `attributes/<attr>.parquet`                                |
-| `{"port", "snapshot"}`   | `attributes/<attr>.parquet`                                |
-
-So "varying" is not "has dims" but **"has more than one dim"**, and one rule covers a component's constant columns, a port's `role`, and an axis's payload.
-
-- **[The entity axis](#the-entity-axis)** — attributes over `entity` alone: one column per attribute, beside `entity` and `deleted`.
-- **An axis file** — attributes over one dim alone. PyPSA's `role` is over `port` alone, so it is a column of `dims/port.parquet` ([data on a relation's rows](schema.md#data-on-a-relations-rows)). A snapshot weighting is a number per snapshot and belongs to no component, so `dims/snapshot.parquet` carries it as a declared column with a `dtype`, a `default` and a `description`. A per-type icon is a column of `dims/entity_type.parquet` in the same way.
-- **`attributes/<attr>.parquet`** — every attribute over more than one dim, even where a given component's value happens to be constant.
-  That component is then a broadcast row, with the varying dims NULL.
-
-So the constant values of an entity come from both: its columns on the entity axis, and its broadcast rows in the varying files.
+A component's `p_nom`, a port's `role`, a snapshot weighting and a per-type icon are each one file, read the same way and folded by the same owner map. So [`flags`](record.md#flags) answers for every attribute, and an edit to one attribute never rewrites another's row.
+A value that is constant along a dim is a broadcast row, with that dim NULL.
 
 A [relation](schema.md#relations)'s rows are in `relations/<relation>.parquet`, keyed by that relation's columns and carrying their own tombstones — `relations/connection.parquet` for the `connection` relation keyed by `(entity, bus)`.
 A relation's file carries no attribute: no attribute is over a relation.
@@ -89,7 +77,6 @@ Every `attributes/` file carries its attribute's own coordinates, then the colum
 ```
 
 The coordinates are the dims the attribute's [`dims`](schema.md#attributespec) name — so `attributes/efficiency.parquet` over `port` and `snapshot` carries `port | snapshot`, and `attributes/p_max_pu.parquet` over `entity` and `snapshot` carries `entity | snapshot` and no `port`.
-An attribute over one dim alone has no file here at all: it is [a column of that dim's own table](#where-a-value-lives).
 
 **Per attribute rather than schema-wide.** One attribute is one file, so one column set per file; a fixed prefix of `entity` would put an all-NULL `entity` on a record-level weighting, claiming a component the value has none of.
 

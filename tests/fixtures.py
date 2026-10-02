@@ -135,7 +135,8 @@ def write_ports(layer: str, rows: list[dict]) -> None:
         df["role"] = None
     df["role"] = df["role"].astype("string")
     df["deleted"] = False
-    _append(Path(layer, "dims", "port.parquet"), df[["port", "role", "deleted"]])
+    _append(Path(layer, "dims", "port.parquet"), df[["port", "deleted"]])
+    write_values(layer, "role", df[["port", "role"]].dropna())
     for relation, column in (("port_entity", "entity"), ("port_bus", "bus")):
         _append(
             Path(layer, "relations", f"{relation}.parquet"),
@@ -143,25 +144,12 @@ def write_ports(layer: str, rows: list[dict]) -> None:
         )
 
 
-# The attributes `_default_attributes` declares over more than `entity`: a
-# component's constant value of one is a row per entity with every other dim
-# NULL, not an entity-axis column.
-LONG_ATTRIBUTES = {
-    "p_nom",
-    "e_nom",
-    "p_max_pu",
-    "p_min_pu",
-    "marginal_cost",
-    "efficiency",
-}
-
-
 def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:
     """Write components of one type: entity rows, their type, and their constants.
 
-    The entity axis holds membership, tombstones and every other column; the
-    `entity_type` relation holds each entity's type; a constant of an attribute
-    declared over more than `entity` is a broadcast row in `attributes/`.
+    The entity axis holds membership and tombstones; the `entity_type` relation
+    holds each entity's type; every other column is an attribute, written as
+    rows of `attributes/`.
 
     Notes
     -----
@@ -171,7 +159,7 @@ def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
-    long = [c for c in df.columns if c in LONG_ATTRIBUTES]
+    long = [c for c in df.columns if c not in ("entity", "deleted")]
     for attribute in long:
         values = df[["entity", attribute]].dropna()
         if not values.empty:
@@ -183,6 +171,21 @@ def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:
     _append(Path(layer, "dims", "entity.parquet"), df.drop(columns=long))
     kinds = df[["entity", "deleted"]].assign(entity_type=ctype)
     _append(Path(layer, "relations", "entity_type.parquet"), kinds[~kinds["deleted"]])
+
+
+def write_values(layer: str, attribute: str, df: pd.DataFrame) -> None:
+    """Write `attributes/<attribute>.parquet` from a `(dim, attribute)` frame.
+
+    For an attribute over one dim, whose value is not a float.
+    """
+    ((dim, _),) = [(c, None) for c in df.columns if c != attribute]
+    rows = df.rename(columns={attribute: "value"}).assign(
+        attribute=attribute, breakpoint=pd.Series(dtype="float64")
+    )
+    _append(
+        Path(layer, "attributes", f"{attribute}.parquet"),
+        rows[[dim, "attribute", "breakpoint", "value"]],
+    )
 
 
 def _append(path: Path, df: pd.DataFrame) -> None:
@@ -220,11 +223,13 @@ def names(record, ctype: str) -> list[str]:
 
 
 def write_scenarios(layer: str, rows: list[dict]) -> None:
-    """Write `dims/scenario.parquet`; each row needs `scenario` and `weight`."""
+    """Write `dims/scenario.parquet`, and `weight` where a row carries one."""
     df = pd.DataFrame(rows)
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / "scenario.parquet", index=False)
+    df[["scenario"]].to_parquet(target / "scenario.parquet", index=False)
+    if "weight" in df:
+        write_values(layer, "weight", df[["scenario", "weight"]])
 
 
 def write_periods(layer: str, rows: list[dict]) -> None:
@@ -258,8 +263,7 @@ def write_axis(layer: str, dim: str, rows: list[dict]) -> None:
     """Write `dims/<dim>.parquet` from plain rows, whatever columns they carry.
 
     The generic form of `write_scenarios`/`write_periods`: an axis file is its
-    key column plus whatever else it holds - a mapping's column, an attribute
-    addressed by the axis alone.
+    key column plus whatever else the rows carry.
 
     Notes
     -----
@@ -313,9 +317,9 @@ SERIES = ("p_max_pu", "p_min_pu", "marginal_cost")
 def network_schema(n) -> Schema:
     """`schema()`, with the network attributes the tests read declared as PyPSA types them.
 
-    `p_nom` and `carrier` are entity-axis columns; `SERIES` and the per-port
+    `p_nom` and `carrier` are over `entity` alone; `SERIES` and the per-port
     `efficiency` vary over `snapshot`, and over `scenario` too where `n` has
-    one; `role` is a column of the `port` axis.
+    one; `role` is over `port` alone.
     """
     varying = {"snapshot", "scenario"} if n.has_scenarios else {"snapshot"}
     declared = {
@@ -542,12 +546,7 @@ def _default_attributes(dims: dict[str, nw.dtypes.DType], *, ports: bool):
     shape and so the one that accepts any row a test writes. `efficiency` is
     the exception, being over `port` rather than `entity` where ports are
     declared - and not over `bus`, which `port_bus` maps a port to - and
-    `role` a column of the `port` axis.
-
-    `weight` is the other, addressed by `scenario` alone - so it is a column of
-    `dims/scenario.parquet` rather than a long row, and it is declared because
-    `write_scenarios` writes that column and an axis file rejects one no
-    declaration accounts for.
+    `role` and `weight` are over `port` and `scenario` alone.
     """
     varying = {"entity", *dims}
     per_port = {"port", *dims} - {"bus"} if ports else varying

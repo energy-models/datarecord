@@ -103,7 +103,7 @@ Data on a relation's rows goes over a dim of its own: `efficiency` is per port b
 
 `breakpoints` answers what a bare column set cannot: whether it may carry a piecewise-linear curve, so a curve on an attribute that takes one value is rejected on write rather than reported unbuildable later ([wide and long rows](record.md#wide-and-long-rows)).
 
-An attribute over exactly one dim is a column of that dim's own file, and anything more is long rows in `attributes/` — [where a value lives](format.md#where-a-value-lives) is the rule, and it is the schema that decides the file split rather than a writer guessing it.
+Every attribute is long rows in its own `attributes/<attr>.parquet`, one column per dim in `dims` — [where a value lives](format.md#where-a-value-lives).
 
 ## Types
 
@@ -129,8 +129,8 @@ An `Enum` dtype pins the vocabulary and makes an unknown type a write-time error
 **An attribute may not be over both the entity and its type.** The schema rejects an attribute that names both `entity` and `entity_type` in its `dims`: `values` says the type follows from the entity, so the row would be keyed twice over and the two could disagree.
 This is the general rule for [a functional relation and its key](#values-a-relation-that-classifies); `country` keyed by `bus` is rejected the same way.
 
-**A value per type is ordinary.** A per-type `icon` is an attribute over `entity_type` alone, so it is a column of `dims/entity_type.parquet`, like any [attribute over one dim alone](format.md#where-a-value-lives).
-`entity_type` is an ordinary broadcast dim. Outside [`partial`](#partial-the-granularity-of-an-override), a layer that touches one type's icon restates the whole axis.
+**A value per type is ordinary.** A per-type `icon` is an attribute over `entity_type`, so it is `attributes/icon.parquet` keyed by `entity_type`, like [any attribute](format.md#where-a-value-lives).
+`entity_type` is an ordinary broadcast dim.
 
 **Entirely optional.** A schema that declares no type relation has entities with no types.
 A schema that needs types declares the relation.
@@ -169,7 +169,7 @@ Where a relation's `values` dim is `partial`, removing one of its labels removes
 
 It is a declaration a relation without `values` cannot make. Such a relation can only _happen_ to be single-valued, which leaves a duplicate row a data error the schema has no name for; `values` names it, so the constraint is declared and checkable on write. No existing system declares it — GAMS's `map(b,c)` is a set over a tuple of sets with single-valuedness left to convention, and a duplicated `b` silently double-counts — which is the argument for the field rather than against it, a schema whose purpose is making shape checkable having no reason to inherit that gap.
 
-**`values` must name a declared dim.** That is what keeps the axis file, and the axis file is the whole of what a functional relation has over a bare tuple set: `dims/country.parquet` gives `country` its [order](record.md#axis-order) and somewhere for a per-country CO2 budget to live.
+**`values` must name a declared dim.** That is what keeps the axis file, and the axis file is the whole of what a functional relation has over a bare tuple set: `dims/country.parquet` gives `country` its [order](record.md#axis-order) and the labels a per-country CO2 budget is over.
 
 **`values` is sugar, resolved once at parse.** It folds into the relation's columns, so `relations/country.parquet` has the columns `bus | country` exactly as `connection` has `entity | bus`, and no read path, file layout or fold key branches on whether a relation has one. The field stays for the three things that still need it: the uniqueness constraint (the key being the columns minus `values`), a consumer's aggregation, and round-tripping the manifest — writing back `key: [bus, country]` where the author wrote `values:` would silently rewrite their schema.
 
@@ -203,7 +203,7 @@ partial = {"port"}  # a layer patches one port at a time
 
 mathspec's [PyPSA example](https://github.com/energy-models/mathspec/blob/main/examples/pypsa.yaml) declares the same shape: `link_output` is the dim, `Link_output_link` and `Link_output_bus` are the relations, and `Link_efficiency` is over `link_output`.
 
-- **A port is an ordinary label.** `role` is over `port` alone, so it is a column of `dims/port.parquet`. `efficiency` is over `port` and `timestep`, so it is long rows in `attributes/efficiency.parquet`, keyed by `port | timestep` ([where a value lives](format.md#where-a-value-lives)).
+- **A port is an ordinary label.** `role` is over `port`, so it is `attributes/role.parquet` keyed by `port`. `efficiency` is over `port` and `timestep`, so it is `attributes/efficiency.parquet`, keyed by `port | timestep` ([where a value lives](format.md#where-a-value-lives)).
 - **A NULL `port` broadcasts** like a NULL in any other dim: the row covers every port ([the broadcast rule](record.md#the-broadcast-rule)).
 - **A port is keyed by its own label, never by position.** A patch layer that adds a port adds a label, so no other port changes its name ([connections](record.md#connections)).
 - **A `connection` relation holds topology alone.** A relation keyed by `(entity, bus)` says which components attach to which buses. No attribute is over it.
@@ -310,8 +310,8 @@ And a `p_nom` row carrying a non-NULL `scenario` becomes a write-time violation 
 What the fold does with this is unchanged: the key of `attributes/` is one fixed tuple over all attributes, and an attribute not varying over a dim writes NULL there.
 So the declarations constrain and validate; they do not make the key vary per row.
 
-**An axis file is owned the same way**, and the [attributes it carries](format.md#where-a-value-lives) do not argue for adding it.
-Outside `partial`, a layer touching an axis restates it whole — every label, with the static attributes attached to them — because a layer holding one label is not saying the others are unchanged but that they are not there: the fold keys by the axis key, so what this layer carries is what the axis has here.
+**An axis file is owned the same way.**
+Outside `partial`, a layer touching an axis restates it whole — every label — because a layer holding one label is not saying the others are unchanged but that they are not there: the fold keys by the axis key, so what this layer carries is what the axis has here.
 That is the same "no half-owned extent" rule a series obeys, applied to a set of labels rather than a curve.
 
 **Keep it small.** Every `partial` value dim widens the fold key, and the key is paid for by every read of every attribute.

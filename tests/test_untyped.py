@@ -5,7 +5,7 @@
 """A record whose schema declares no relation classifying its components.
 
 A type is an ordinary relation, so a schema that declares none is a whole record:
-a component's constant columns live on `dims/entity.parquet`, and `add`, `set`,
+a component's values are rows of `attributes/` keyed by `entity`, and `add`, `set`,
 `remove` and materialisation need nothing more. A tool that needs types declares
 the relation in the schema it builds; the record layer does not require one.
 
@@ -23,6 +23,7 @@ from datarecord.layered.resolve import write_schema
 from datarecord.layered.write import write_record
 from datarecord.mutable import NewChild, WorkingRecord
 from datarecord.schema import AttributeSpec, Dimension, Schema
+from datarecord.sources import to_sources
 
 
 @pytest.fixture
@@ -66,22 +67,13 @@ def root(con, base_uri, untyped_schema):
 
 
 def _entities(record) -> dict:
-    """The record's `dims["entity"]` frame as an `entity -> p_nom` mapping."""
-    frame = record.dims["entity"].collect().to_native().to_pandas()
-    return dict(zip(frame["entity"], frame["p_nom"], strict=True))
+    """`p_nom` per live entity, a broadcast row expanded to every entity."""
+    frame = to_sources(record, ["p_nom"])["p_nom"].collect("pandas").to_native()
+    return dict(zip(frame["entity"], frame["value"], strict=True))
 
 
-def test_the_constant_entity_attribute_is_a_column_of_the_entity_axis(
-    untyped_schema,
-):
-    """`p_nom` is addressed by `entity` alone; `p_max_pu` also varies by `timestep`."""
-    assert untyped_schema.attributes_on("entity") == ("p_nom",), (
-        "the non-varying entity-addressed attribute is a column of the entity axis"
-    )
-
-
-def test_a_component_round_trips_through_the_entity_axis(root):
-    """`add` and commit with no type: the value reads back off the entity axis."""
+def test_a_component_round_trips(root):
+    """`add` and commit with no type: the value reads back."""
     assert _entities(root.record) == {"a": 1.0, "b": 2.0}
 
 
@@ -129,11 +121,7 @@ def test_an_entity_type_column_is_rejected(con, base_uri, untyped_schema):
 
 
 def test_set_reaches_a_named_entity(root, con):
-    """`set(..., entity=[...])` patches the named rows of the entity axis.
-
-    `p_nom` is a column of `dims/entity.parquet`, so the edit selects labels of
-    that axis and the unnamed component keeps its value.
-    """
+    """`set(..., entity=[...])` patches the named entity; the other keeps its value."""
     staged = WorkingRecord(root.record, con)
     staged.set("p_nom", 5.0, entity=["a"])
     child = staged.commit(NewChild(root))
@@ -141,7 +129,7 @@ def test_set_reaches_a_named_entity(root, con):
 
 
 def test_set_with_no_names_reaches_every_entity(root, con):
-    """A scalar with no `entity=` broadcasts to every label the axis has."""
+    """A scalar with no `entity=` is one broadcast row, which reaches every entity."""
     staged = WorkingRecord(root.record, con)
     staged.set("p_nom", 9.0)
     child = staged.commit(NewChild(root))
@@ -175,7 +163,7 @@ def test_a_resolved_record_reads_the_same_as_an_unresolved_one(
 
     A component's value read through the unmaterialised layer and through the
     materialised node cache agree - the assertion the `ResolvedLayer`
-    prerequisite exists to protect, now that the entity axis carries the value.
+    prerequisite exists to protect.
     """
     write_schema(untyped_schema, base_uri)
     revision = Revision.create(con)

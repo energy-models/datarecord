@@ -29,12 +29,9 @@ SPDX-License-Identifier: CC-BY-4.0
   What is open is the granularity: "which types have live rows" and "how many members a type has" are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
   Whatever is chosen, it has to be answerable off the resolved axes and relations, which is where a record's membership lives.
 
-- **Whether [`flags`](record.md#flags) needs a counterpart for an attribute stored as a column.** `flags` reads the owner map, so an attribute over one axis alone, which is a column of that axis's file, is not reachable through it.
-
-  A second method keyed by attribute and scoped record-wide would answer it: which attributes have values at all, and which coordinates they use.
-  What is unsettled is whether that replaces `flags` or sits beside it.
-
 ## Settled
+
+- **Whether [`flags`](record.md#flags) needs a counterpart for an attribute stored as a column** — no; no attribute is a column. Every attribute is `attributes/` rows ([where a value lives](format.md#where-a-value-lives)), so the owner map, and `flags` with it, covers every attribute.
 
 - **Whether `within` should subsume `bus`** — no; [relations](schema.md#relations) do it.
   `bus` is an ordinary dim, and a NULL `bus` [broadcasts](record.md#the-broadcast-rule) like a NULL in any other dim.

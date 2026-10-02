@@ -56,7 +56,6 @@ def to_sources(
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     schema = record.schema
     wanted = None if names is None else set(names)
@@ -70,11 +69,6 @@ def to_sources(
         axis = _typed(schema, dims[dim])
         labels[dim] = axis.select(dim)
         out[dim] = labels[dim]
-        for attribute in schema.attributes_on(dim):
-            if attribute in axis.collect_schema().names():
-                out[attribute] = axis.select(
-                    dim, nw.col(attribute).alias("value")
-                ).filter(~nw.col("value").is_null())
     for relation in record.relations:
         out[relation] = _typed(schema, record.relations[relation]).select(
             *schema.relation_columns(relation)
@@ -209,10 +203,9 @@ def _lazy(table: Any) -> nw.LazyFrame:
 class _Tables:
     """`RecordLike` over declared-name tables, built on read.
 
-    The shaping `write_record` needs and a declared-name table lacks - an
-    axis attribute joined onto its dim's labels, the `attribute` and
-    `breakpoint` columns of a long row, a NULL for a coordinate left out - is
-    done here, so the writer's own checks see what they would see from any
+    The shaping `write_record` needs and a declared-name table lacks - the
+    `attribute` and `breakpoint` columns of a long row, a NULL for a coordinate
+    left out - is done here, so the writer's own checks see what they would see from any
     other source.
     """
 
@@ -227,17 +220,7 @@ class _Tables:
     @property
     def dims(self) -> Frames:
         present = tuple(d for d in self._schema.dims if d in self._tables)
-        return LazyFrames(present, self._axis) if present else EMPTY
-
-    def _axis(self, dim: str) -> nw.LazyFrame:
-        axis = self._tables[dim]
-        for attribute in self._schema.attributes_on(dim):
-            if attribute in self._tables:
-                values = self._tables[attribute].select(
-                    dim, nw.col("value").alias(attribute)
-                )
-                axis = axis.join(values, on=dim, how="left")
-        return axis
+        return LazyFrames(present, self._tables.__getitem__) if present else EMPTY
 
     @property
     def relations(self) -> Frames:
@@ -246,14 +229,7 @@ class _Tables:
 
     @property
     def attributes(self) -> Frames:
-        axis_attributes = {
-            a for d in self._schema.dims for a in self._schema.attributes_on(d)
-        }
-        present = tuple(
-            a
-            for a in self._schema.attributes
-            if a in self._tables and a not in axis_attributes
-        )
+        present = tuple(a for a in self._schema.attributes if a in self._tables)
         return LazyFrames(present, self._long_frame) if present else EMPTY
 
     def _long_frame(self, attribute: str) -> nw.LazyFrame:
