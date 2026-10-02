@@ -44,3 +44,11 @@ All notable changes to datarecord are documented here. The format follows
 - Outputs: the `outputs/` directory, `Schema.results`, `Record.outputs` and
   `set(kind="outputs")`. A solve's answers are stored as a record of their own,
   whose schema the producer defines.
+
+### Fixed
+
+- `write_record` refuses a relation frame that carries a column beyond the
+  relation's columns and its tombstone, as `add_relation` already does.
+- `set(attribute, expr)` with a narwhals expression derives an attribute over
+  one dim alone, such as `p_nom` over `entity`, from that dim's axis. It raised
+  `KeyError` before (#33).

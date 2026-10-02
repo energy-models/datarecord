@@ -911,13 +911,7 @@ class WorkingRecord(Record):
         no labels reaches every label the axis resolves, staged ones included:
         an axis file has no NULL row to broadcast from.
         """
-        other = sorted(d for d in {*fixed, *([listed] if listed else [])} if d != axis)
-        if other:
-            msg = (
-                f"{attribute} does not vary over {other}; it is a column of "
-                f"dims/{axis}.parquet, keyed by {axis!r} alone"
-            )
-            raise ValueError(msg)
+        _refuse_off_axis(axis, attribute, [*fixed, *([listed] if listed else [])])
         self._series_axis(attribute, value, indexed_by, named=())
         names: list[Any] | None = (
             labels if listed == axis else [fixed[axis]] if axis in fixed else None
@@ -1257,17 +1251,25 @@ class WorkingRecord(Record):
         On a layered base the read is a fold, so this is the one edit whose cost
         scales with the ancestry rather than with the rows written.
 
-        Unscoped, this derives from every row of the attribute.
+        Unscoped, this derives from every row of the attribute. An attribute
+        over one dim alone is read from that dim's axis and staged to it, as a
+        plain `set` on it is.
 
         Notes
         -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
         """
         listed, labels, fixed = _split_dims(dims)
-        if attribute not in self.attributes:
-            frame = None
-        else:
+        axis = self._axis_of(attribute)
+        if axis is not None:
+            _refuse_off_axis(axis, attribute, dims)
+            frame = self._current_on_axis(axis, attribute)
+        elif attribute in self.attributes:
             frame = self.attributes[attribute]
+        else:
+            frame = None
+        if frame is not None:
             if listed is not None:
                 self._require_labels(listed, labels)
                 frame = frame.filter(nw.col(listed).is_in(labels))
@@ -1291,7 +1293,35 @@ class WorkingRecord(Record):
                 raise KeyError(msg)
         if frame is None:
             return
-        self._stage_resolved(frame.with_columns(expr.alias("value")), attribute)
+        derived = frame.with_columns(expr.alias("value"))
+        if axis is None:
+            self._stage_resolved(derived, attribute)
+            return
+        rows = derived.select(axis, "value").collect()
+        self._stage_axis(
+            axis,
+            attribute,
+            dict(zip(rows[axis].to_list(), rows["value"].to_list(), strict=True)),
+            labels=None,
+        )
+
+    def _current_on_axis(self, dim: str, attribute: str) -> nw.LazyFrame | None:
+        """`attribute`'s current values as `(dim, value)`, read off `dim`'s axis.
+
+        What `_stage_derived` derives from where the value is a column of the
+        axis file rather than long rows: the same frame shape as the long path,
+        so one filter and one expression serve both. A label whose row holds no
+        value is left out, as the long path has no row for it; `None` where no
+        layer wrote the axis or the column.
+        """
+        if dim not in self.dims:
+            return None
+        axis = self.dims[dim]
+        if attribute not in axis.collect_schema().names():
+            return None
+        return axis.select(nw.col(dim), nw.col(attribute).alias("value")).filter(
+            ~nw.col("value").is_null()
+        )
 
     def _stage_resolved(self, frame: nw.LazyFrame, attribute: str) -> None:
         """Stage an already-long frame carrying every key column.
@@ -1758,6 +1788,26 @@ class WorkingRecord(Record):
         write_record(None, self.resolver, self.con, uri=target.uri)
         self.rollback()
         return None
+
+
+def _refuse_off_axis(axis: str, attribute: str, dims: Iterable[str]) -> None:
+    """Refuse a keyword for any dim but `axis`, which alone keys `attribute`.
+
+    An axis-file attribute has no other dim to scope, so such a keyword is
+    refused rather than dropped.
+
+    Raises
+    ------
+    ValueError
+        If `dims` names a dim other than `axis`.
+    """
+    other = sorted(d for d in set(dims) if d != axis)
+    if other:
+        msg = (
+            f"{attribute} does not vary over {other}; it is a column of "
+            f"dims/{axis}.parquet, keyed by {axis!r} alone"
+        )
+        raise ValueError(msg)
 
 
 def _base_resolver(base: RecordLike, con: DuckDBPyConnection) -> Resolver:
