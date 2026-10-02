@@ -56,3 +56,6 @@ All notable changes to datarecord are documented here. The format follows
   label it names has no current value, and names those labels. It derived the
   labels that had a value and skipped the others without a word, and raised
   only where none had one.
+- Removing a label also removes the relation rows whose `values` column holds
+  it. A removed entity no longer leaves `port_entity` rows that map its ports to
+  it.

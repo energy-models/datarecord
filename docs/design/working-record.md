@@ -213,6 +213,7 @@ Membership is not reducible to attribute values.
 Any other dim is refused, with an error that names `partial`: a layer owns such a dim whole, so a tombstone has no key to remove. A dim `within` another is refused too.
 
 It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute row and every relation row keyed on the label, so a removed component takes its connection rows and its `entity_type` row with it.
+It also removes the relation rows whose `values` column holds the label, where that `values` dim is `partial` and has an axis: a removed component takes the `port_entity` rows that map its ports to it, and leaves the ports.
 A tombstone on the [entity axis](format.md#the-entity-axis) has no dim scope: a component [exists or it does not](schema.md#existence-does-not-vary-along-a-dim).
 
 ## `add_relation` / `remove_relation`

@@ -135,19 +135,23 @@ def _live_rows(
     rel: DuckDBPyRelation,
     axes: dict[str, DuckDBPyRelation],
 ) -> DuckDBPyRelation:
-    """`relation`'s rows whose key names only labels its dims still hold.
+    """`relation`'s rows whose key and `values` name only labels their dims still hold.
 
-    A removed label takes every row keyed on it: the fold drops its attribute
-    rows by the axis tombstone, and this drops its relation rows, which carry no
-    tombstone of their own for it. Only a fold-key dim can lose a label, so only
-    those key columns are checked.
+    A removed label takes every row keyed on it or mapping to it: the fold drops
+    its attribute rows by the axis tombstone, and this drops its relation rows,
+    which carry no tombstone of their own for it. Only a fold-key dim with an
+    axis can lose a label, so only those columns are checked. It goes no
+    further: a row that mapped to the label leaves its key's label standing.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     spec = schema.relations[relation]
-    for column, dim in spec.key.items():
+    columns = dict(spec.key)
+    if spec.values is not None:
+        columns[spec.values] = spec.values
+    for column, dim in columns.items():
         if dim not in schema.partial_dims or dim not in axes:
             continue
         labels = axes[dim].project(col(dim).alias(column)).set_alias("a")
