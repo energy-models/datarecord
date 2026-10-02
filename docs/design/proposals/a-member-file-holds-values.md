@@ -11,7 +11,7 @@ Status: **Landed** · Drafted 2026-09-02 · Landed 2026-09-04
 > The construct below is now the behaviour. The authoritative account is [the
 > entity axis](../format.md#the-entity-axis), [where a value
 > lives](../format.md#where-a-value-lives) and [the entity-type
-> axis](../schema.md#entity_type-the-axis-of-kinds); this page is kept as the
+> axis](../schema.md#types); this page is kept as the
 > argument that led there. It keys on `entity_type_dim is None` (no group over
 > `entity` alone), leaving a `String`-typed **declared** axis on today's per-type
 > layout — the [open question](#what-it-opens-rather-than-settles) below was
@@ -30,7 +30,7 @@ The related concern — `entity_type` asserted rather than derived in the read p
 
 ## What starts it
 
-[The schema](../schema.md#entity_type-the-axis-of-kinds) is explicit that the axis is optional, and that omitting it makes the labels data:
+[The schema](../schema.md#types) is explicit that the axis is optional, and that omitting it makes the labels data:
 
 > The entity-type axis's enum categories, so a schema declaring it as a plain `String` has none: the labels are then data rather than declarations, and `attributes_for` accepts any of them.
 

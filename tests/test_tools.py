@@ -113,7 +113,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
 
     Notes
     -----
-    - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
+    - [entity types](https://energy-models.github.io/datarecord/design/schema/#types)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = Revision.create(con)
@@ -151,14 +151,14 @@ _DIMS = {
 }
 
 
-def _without_default(revision, ctype: str, attribute: str) -> None:
+def _without_default(attribute: str) -> None:
     """Drop one attribute's declared default, leaving the rest of the schema.
 
-    `ctype` says which type the caller means it for; the spec itself is
-    declared once record-wide, so dropping the default drops it everywhere.
+    The spec is declared once record-wide, so dropping the default drops it
+    for every type that carries the attribute.
     """
     was = read_schema()
-    assert attribute in was.attributes_for(ctype)
+    assert attribute in was.attributes, f"{attribute} is not declared"
     spec = was.attributes[attribute]
     was.attributes[attribute] = spec.model_copy(update={"default": None})
     write_schema(was)
@@ -180,7 +180,6 @@ def _with_schema(revision, **kwargs) -> None:
         update={
             "attributes": was.attributes,
             "groups": was.groups,
-            "traits": was.traits,
             "meta": was.meta,
         }
     )
@@ -214,19 +213,24 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
 
 
 def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
-    """A component type with no `bus` anywhere - not in the frame, not in the catalog."""
+    """A component type with no `bus` anywhere - not in the frame, not in the catalog.
+
+    A Generator carries no `bus` column, no connection row supplies one - the
+    connection group is one file across every type, so the Generators' rows are
+    dropped from it - and the schema declares no default for it either.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    # A Generator member carrying no `bus` column at all, no connection row
-    # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
     write_entity_type(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
-    # One file across every type, so the Generators' rows are dropped from it
-    # rather than a per-type file being unlinked.
     path = Path(layer_dir(revision.id), "groups", "connection.parquet")
     rows = pd.read_parquet(path)
     generators = set(ac_dc.c["Generator"].static.index) | {"g1"}
     rows[~rows["entity"].isin(generators)].to_parquet(path, index=False)
-    _without_default(revision, "Generator", "bus")
+    _without_default("bus")
 
     missing = PyPSA.verify(revision.record)
     assert ("Generator", "bus") in missing.attributes

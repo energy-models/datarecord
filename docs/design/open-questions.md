@@ -29,16 +29,15 @@ SPDX-License-Identifier: CC-BY-4.0
 - **Registering a record's relations as named views.** A frontend issuing ad-hoc SQL needs names in a catalog rather than Python objects, which `CREATE VIEW` against a file-backed catalog provides — each view's definition being the resolved overlay, materialising nothing.
   Creating a view binds its schema, so registering N attributes costs N footer reads; and catalog reopen cost is linear in view count, which argues for one catalog per record rather than one shared.
 
-- **What else a `Record` should answer about its entities without handing over a frame.** [`flags`](record.md#flags) sets the shape — cheap derived metadata a consumer plans against without opening a file — but answers only per attribute, per type.
-  The entity-level case is `entity -> entity_type`: a question a record can answer, [names being unique record-wide](format.md#entity-is-unique-across-types), and one the layered `components` owner map is keyed by before it opens a file.
-  Asking it through the protocol costs a frame per type instead, which `WorkingRecord` pays on every [`set`](working-record.md#validation).
+- **What else a `Record` should answer about its entities without handing over a frame.** [`flags`](record.md#flags) sets the shape — cheap derived metadata a consumer plans against without opening a file — but answers only per attribute.
+  The entity-level case is `entity -> entity_type`, which a record answers with a read of the `entity_type` [group](schema.md#types).
   What is open is the granularity: "which types have live rows" and "how many members a type has" are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
-  Whatever is chosen, it has to be answerable off the owner map, which is where a record's membership already lives.
+  Whatever is chosen, it has to be answerable off the resolved axes and groups, which is where a record's membership lives.
 
-- **Whether [`flags(ctype)`](record.md#flags) needs a record-level counterpart.** It takes a component type, which two kinds of attribute do not have: one addressed by an axis alone, and one addressed by a [group](schema.md#groups)'s coordinates. Neither has a `ctype` to ask about, so neither is reachable through it.
+- **Whether [`flags`](record.md#flags) needs a counterpart for an attribute stored as a column.** `flags` reads the owner map, so an attribute addressed by an axis alone or by a [group](schema.md#groups) alone, which is a column of that file, is not reachable through it.
 
-  A second method keyed by attribute and scoped record-wide would answer it — which attributes have rows at all, which coordinates they use, which types they touch — and the [owner map](read-path.md#owner-map) already computes the material, so it costs a projection rather than a scan.
-  What is unsettled is whether that replaces `flags` or sits beside it. `flags` is per type _by construction_, its union deliberately stopping at the type boundary, and a record-level answer filtered by type would have to reproduce that.
+  A second method keyed by attribute and scoped record-wide would answer it: which attributes have values at all, and which coordinates they use.
+  What is unsettled is whether that replaces `flags` or sits beside it.
 
 ## Settled
 

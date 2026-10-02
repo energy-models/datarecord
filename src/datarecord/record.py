@@ -16,9 +16,9 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 import narwhals as nw
 
@@ -125,25 +125,6 @@ class Flags:
     breakpoints: bool = False
 
 
-def collision_detail(rows: Iterable[tuple[Any, Any]]) -> str:
-    """`(entity, entity_type)` pairs as the detail of a name-collision message.
-
-    Sorted here rather than in the query the pairs came from: the message must
-    be deterministic, and a collision is a handful of rows.
-
-    Notes
-    -----
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-    """
-    by_name: dict[str, list[str]] = {}
-    for name, ctype in rows:
-        by_name.setdefault(str(name), []).append(str(ctype))
-    return "; ".join(
-        f"{name!r} is a {' and a '.join(sorted(types))}"
-        for name, types in sorted(by_name.items())
-    )
-
-
 @runtime_checkable
 class RecordLike(Protocol):
     """What a record answers, however it is backed, as narwhals frames.
@@ -189,25 +170,12 @@ class RecordLike(Protocol):
         ...
 
     @property
-    def entity_types(self) -> Frames:
-        """Wide member frames, keyed by component type, in member order.
-
-        Notes
-        -----
-        - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
-        - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
-        """
-        ...
-
-    @property
     def groups(self) -> Frames:
         """Each declared group's rows, keyed by group - one frame each.
 
         A group declares which tuples over several dims exist - `connection`
         over `(entity, bus)` is the one every record with connections has, and
         it is one instance rather than a member of its own.
-
-        Not split by component type, which is no coordinate of a group.
 
         Notes
         -----
@@ -221,15 +189,13 @@ class RecordLike(Protocol):
     def attributes(self) -> Frames:
         """Long input frames, keyed by attribute name - one per file.
 
-        Not by component type: one `inputs/p_max_pu.parquet` holds every type's
-        rows, keyed by `entity` alone. A row carries no `entity_type` - entities
-        are unique across every type - so a reader wanting one type joins `entity_types`
-        on `name`.
+        One `inputs/p_max_pu.parquet` holds every entity's rows, keyed by
+        `entity`; a reader wanting some entities - one type's, say - filters on
+        it with names read from the `entity_type` group.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         ...
 
@@ -249,11 +215,13 @@ class RecordLike(Protocol):
         """
         ...
 
-    def flags(self, ctype: str) -> dict[str, Flags]:
-        """Every attribute of `ctype`, mapped to the shape its rows take.
+    def flags(self, **labels: Sequence[str]) -> dict[str, Flags]:
+        """Every attribute, mapped to the shape its rows take - over `labels`, or all.
 
-        Only attributes with rows are present, so the key set also answers
-        which attributes this type has at all.
+        `labels` narrows by any fold-key dim, `generator=["wind", "gas"]`. Only
+        attributes with rows are present, so the key set also answers which
+        attributes these labels have at all. A consumer grouping labels by a
+        relation (a type, a carrier) passes each group's labels.
 
         Notes
         -----
@@ -276,10 +244,9 @@ class LayerData(Protocol):
     `write_record` adapts.
 
     `schema` is not a peer of the other members but what decides which of them
-    exist: `entity_types`/`entity_type` are populated exactly where the schema
-    declares the axis, and `groups`/`group` only for the groups it declares - an
-    enumerator answers the empty set rather than a phantom key where the schema
-    declares nothing.
+    exist: `groups`/`group` only for the groups it declares - an enumerator
+    answers the empty set rather than a phantom key where the schema declares
+    nothing.
 
     Notes
     -----
@@ -294,9 +261,6 @@ class LayerData(Protocol):
 
     def axes(self) -> Iterable[str]: ...
     def axis(self, dim: str) -> DuckDBPyRelation | None: ...
-
-    def entity_types(self) -> Iterable[str]: ...
-    def entity_type(self, name: str) -> DuckDBPyRelation | None: ...
 
     def groups(self) -> Iterable[str]: ...
     def group(self, name: str) -> DuckDBPyRelation | None: ...

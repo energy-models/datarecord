@@ -9,10 +9,9 @@ that maps a record UUID to its record location. The connection is passed as a
 parameter throughout, never a module global, so each test can open its own
 `:memory:` connection.
 
-Nothing here knows about a modelling framework: the entity-type axis is typed
-as the *schema* declares it, whatever a tool's registry holds, so a record whose
-types no tool recognises still reads and it is a tool's `verify` that reports
-them.
+Nothing here knows about a modelling framework: every dim is typed as the
+*schema* declares it, whatever a tool's registry holds, so a record whose types
+no tool recognises still reads and it is a tool's `verify` that reports them.
 
 Notes
 -----

@@ -12,7 +12,7 @@ over.
 
 Notes
 -----
-- [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
+- [entity types](https://energy-models.github.io/datarecord/design/schema/#types)
 - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
 """
 
@@ -50,7 +50,7 @@ def typed_schema():
         # map and the resolution it keys, so it is kept to what a layer really
         # patches value by value. A layer touching one type's icon therefore owns
         # the whole type axis and restates it.
-        partial=frozenset(),
+        partial=frozenset({"entity"}),
     )
 
 
@@ -60,8 +60,11 @@ def root(con, base_uri, typed_schema):
     write_schema(typed_schema, base_uri)
     revision = Revision.create(con)
     staged = WorkingRecord(revision.record, con)
-    staged.add("Bus", pd.DataFrame([{"entity": "b1"}]))
-    staged.add("Generator", pd.DataFrame([{"entity": "g1", "p_nom": 1.0}]))
+    staged.add("entity", pd.DataFrame([{"entity": "b1", "entity_type": "Bus"}]))
+    staged.add(
+        "entity",
+        pd.DataFrame([{"entity": "g1", "entity_type": "Generator", "p_nom": 1.0}]),
+    )
     child = staged.commit(NewChild(revision))
     write_axis(
         layer_dir(child.id),
@@ -94,11 +97,10 @@ def test_the_type_axis_carries_it_as_a_column(typed_schema):
 
 
 def test_it_belongs_to_no_component(typed_schema):
-    """A value per type is not a value per entity, so no type carries it."""
-    s = typed_schema
-    assert not s.addresses_entity("icon")
-    for ctype in TYPES:
-        assert "icon" not in s.attributes_for(ctype)
+    """A value per type is not a value per entity."""
+    assert typed_schema.coordinates_of("icon") == ("entity_type",), (
+        "keyed by the type alone, with no `entity` column"
+    )
 
 
 def test_it_reads_back_from_the_type_axis(root):
@@ -155,9 +157,9 @@ def test_an_enum_label_the_dtype_does_not_declare_is_refused(root, con):
 
 
 def test_entity_is_refused_for_a_type_addressed_attribute(root, con):
-    """`entity=` names components, and an icon belongs to none."""
+    """An icon is keyed by its type alone, so `entity=` has nothing to scope."""
     staged = WorkingRecord(root.record, con)
-    with pytest.raises(ValueError, match="belongs to no component"):
+    with pytest.raises(ValueError, match="keyed by 'entity_type' alone"):
         staged.set("icon", "x", entity=["g1"])
 
 
@@ -175,5 +177,5 @@ def test_naming_the_type_alongside_entity_is_refused():
                     dtype=nw.Float64(), dims={"entity", "entity_type"}
                 )
             },
-            partial=frozenset(),
+            partial=frozenset({"entity"}),
         )

@@ -18,7 +18,7 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import wraps
 from typing import Self, cast
@@ -323,11 +323,6 @@ class Record:
         return LazyFrames(tuple(axes), lambda dim: nw.from_native(axes[dim]))
 
     @_stable_cache
-    def entity_types(self) -> LazyFrames:
-        types = tuple(sorted(self.resolver.entity_types()))
-        return LazyFrames(types, self._entity_type_frame)
-
-    @_stable_cache
     def groups(self) -> LazyFrames:
         """Each declared group's rows, keyed by group - one frame each.
 
@@ -357,19 +352,16 @@ class Record:
             names, lambda attr: nw.from_native(self.resolver.attribute(attr, "outputs"))
         )
 
-    def flags(self, ctype: str) -> dict[str, Flags]:
+    def flags(self, **labels: Sequence[str]) -> dict[str, Flags]:
         """Straight off the `inputs` owner map, which folded these in for free.
 
         Notes
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return self.resolver.attributes_of(ctype)
+        return self.resolver.attributes_of(**labels)
 
     # -- frames, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) --
-
-    def _entity_type_frame(self, ctype: str) -> nw.LazyFrame:
-        return self._frame(self.resolver.entity_type(ctype), ctype)
 
     def _group_frame(self, group: str) -> nw.LazyFrame:
         return self._frame(self.resolver.group_frame(group), group)

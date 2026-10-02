@@ -65,9 +65,9 @@ A `deleted = true` row in `groups/<group>.parquet` tombstones one row of that gr
 
 A tombstone is honoured by the [one fold](read-path.md#one-fold-for-every-axis) that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
 An _attribute's_ orphaned rows stop surfacing the same way, for every membership: an attribute row is keyed by the entity, group tuple and dim coordinates its `dims` name, and [`fold_inputs`](read-path.md#owner-map) anti-joins the map against each membership's `deleted` rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map, not filtered at read.
-Each membership honours only its **own** tombstones, read from the same file it folds from: deletion is never a cascade, so deleting a component drops its own row but leaves its connection tuples until they are deleted in turn.
+A removed label also takes the group rows keyed on it: a removed component loses its connection rows and its `entity_type` row, and a removed bus loses the connection rows that name it.
 A tombstone only affects the branch that carries it; sibling branches keep the component.
 
 The fold treats an absent `deleted` column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.
-Every derived cache lives under `resolved/` for the same reason: every glob the read path issues into a layer is single-level — `inputs/*.parquet`, `dims/*.parquet`, `dims/*/*.parquet` — so nothing under `resolved/` is reachable by one.
+Every derived cache lives under `resolved/` for the same reason: every glob the read path issues into a layer is single-level — `inputs/*.parquet`, `dims/*.parquet` — so nothing under `resolved/` is reachable by one.
 A reader pointed at a layer directory therefore sees exactly what that layer wrote, and materialising a node's caches never changes what it sees.

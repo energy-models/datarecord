@@ -5,7 +5,7 @@
 """A node's resolved view: the folded axes, groups and owner map, and the reads.
 
 A `Fold` is what `materialise` wrote and what a live resolution computes: the
-folded axes, groups, per-type wide frames, and the `inputs` owner map, each
+folded axes, groups, and the `inputs` owner map, each
 folded over the node's whole ancestry. `Resolver.fold` takes the deepest
 materialised source's `Fold` as its base and folds the layers below it on top,
 so a `Fold` read from disk is the prior incarnation of one computed live - the
@@ -43,7 +43,7 @@ from datarecord.duck import (
 from datarecord.record import Flags
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
 
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
@@ -110,8 +110,6 @@ class Fold:
         Each resolved dim's axis relation, keyed by dim; `entity` among them.
     groups
         Each resolved group's relation, keyed by group.
-    entity_types
-        Each type's resolved wide static frame, keyed by type.
     owner_map
         The resolved `inputs` owner map: `(input_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per owned key.
@@ -120,13 +118,7 @@ class Fold:
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
     groups: dict[str, DuckDBPyRelation]
-    entity_types: dict[str, DuckDBPyRelation]
     owner_map: DuckDBPyRelation
-
-    @property
-    def entity_axis(self) -> DuckDBPyRelation | None:
-        """The resolved entity axis, or `None` where no layer wrote a component."""
-        return self.axes.get("entity")
 
     def attributes(self) -> list[str]:
         """Every input attribute any layer owns a row for, from the owner map.
@@ -150,55 +142,38 @@ class Fold:
         """
         return self.owner_map.filter(col("attribute") == lit(attribute))
 
-    def flags(self, entity_type: str | None = None) -> dict[str, Flags]:
-        """Per attribute, which dims its rows use - whole-record, or one type.
+    def flags(self, **labels: Sequence[str]) -> dict[str, Flags]:
+        """Per attribute, which dims its rows use - whole-record, or over `labels`.
 
-        Whole-record when `entity_type` is `None`; scoped to a type's components
-        when named, by a semi-join to the resolved entity axis. A type whose
-        components disagree yields a dim in both sets - the instruction to use
-        both containers, each taking the rows it matches. The union stops at the
-        type boundary: across types it would describe neither.
+        `labels` narrows by any fold-key dim, `generator=["wind", "gas"]`.
+        Labels that disagree yield a dim in both sets - the instruction to use
+        both containers, each taking the rows it matches.
+
+        Raises
+        ------
+        TypeError
+            If a dim's labels are one string rather than a sequence of them.
+        ValueError
+            If a dim is not in the fold key, so the map holds no column for it.
 
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
-        # The flags have a field per *broadcast* dim: an address coordinate never
-        # broadcasts, so "did a row set it" is not a question about it.
         dims = self.schema.broadcast_dims
-        rows = self._flag_rows(entity_type, dims)
-        if rows is None:
-            return {}
-        # The structs come back as dicts keyed by dim, so each set is a filter by
-        # name rather than a positional slice.
-        return flags_from_rows(self.schema, dims, rows)
-
-    def _flag_rows(
-        self, entity_type: str | None, dims: tuple[str, ...]
-    ) -> list[tuple[Any, ...]] | None:
-        """The aggregated flag rows, scoped to `entity_type` if named.
-
-        `None` when a type is named but no entity axis exists, so `flags` returns
-        empty rather than aggregating an unscoped map.
-
-        A named type where the schema declares no type axis scopes to the whole
-        axis - every component - since "which dims does type X use" has no
-        narrower meaning without types, and the axis carries no `entity_type`
-        column to filter on (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-        """
-        rel = self.owner_map.set_alias("i")
-        if entity_type is not None and self.schema.entity_type_dim is not None:
-            axis = self.entity_axis
-            if axis is None:
-                return None
-            of_type = axis.filter(col("entity_type") == lit(entity_type)).project(
-                "entity"
-            )
-            rel = rel.join(
-                of_type.distinct().set_alias("e"), "i.entity = e.entity", how="semi"
-            )
-        return rel.aggregate(
+        rel = self.owner_map
+        for dim, wanted in labels.items():
+            if isinstance(wanted, str):
+                msg = f"`flags({dim}=...)` takes labels, not one string; pass [{wanted!r}]"
+                raise TypeError(msg)
+            if dim not in self.schema.partial_dims:
+                msg = (
+                    f"`flags` cannot narrow by {dim!r}: the fold key is "
+                    f"{list(self.schema.partial_dims)}; declare it `partial`"
+                )
+                raise ValueError(msg)
+            rel = rel.filter(col(dim).isin(*(lit(w) for w in wanted)))
+        rows = rel.aggregate(
             [
                 col("attribute"),
                 struct_of({d: fn.bool_or(col("varies", d)) for d in dims}).alias(
@@ -210,6 +185,7 @@ class Fold:
                 fn.bool_or(col("breakpoints")).alias("breakpoints"),
             ]
         ).fetchall()
+        return flags_from_rows(self.schema, dims, rows)
 
     @classmethod
     def read(
@@ -221,8 +197,8 @@ class Fold:
     ) -> Fold | None:
         """This node's `Fold`, or `None` if it is not materialised.
 
-        The `inputs` owner map is the presence marker: the maps, dims, groups and
-        per-type frames are written together (`resolve.materialise`), so if the
+        The `inputs` owner map is the presence marker: the maps, dims and groups
+        are written together (`resolve.materialise`), so if the
         map is absent the node has no `resolved/` cache at all.
         """
         base = resolved_dir(revision_id, base_uri)
@@ -233,7 +209,6 @@ class Fold:
             schema=schema,
             axes=_read_dir(f"{base}dims/", con),
             groups=_read_dir(f"{base}groups/", con),
-            entity_types=_read_dir(f"{base}dims/entity_type/", con),
             owner_map=owner_map,
         )
 

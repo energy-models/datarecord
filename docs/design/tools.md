@@ -26,7 +26,7 @@ So a tool's results go straight to [`write_record`](writing.md), or one at a tim
 
 A framework holds its results per component type, so reaching this shape means concatenating each attribute's types into one frame.
 That is free: the frames are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller collects.
-The concatenation needs no `entity_type` column to distinguish the arms, since [`entity` is unique across them](format.md#entity-is-unique-across-types) — which is what makes the union a plain one rather than a tagged one.
+The concatenation needs no `entity_type` column to distinguish the arms, since [`entity` is unique across them](format.md#the-entity-axis) — which is what makes the union a plain one rather than a tagged one.
 
 Lazy is what the protocol asks for rather than what any implementation must do.
 A tool reshaping a solved model's in-memory containers has nothing to defer and wraps its eager frames with `.lazy()`; one that could fetch a result attribute from a solver on demand is free to, and a caller wanting three of forty then pays for three.
@@ -37,10 +37,14 @@ A record is the input to a translation, not the owner of one, so there is no reg
 `build` takes a [`Record`](record.md) rather than a record, so a tool builds from a directory as readily as from an overlay and has no reason to know layering exists.
 
 A tool's `verify` catches what the record layer cannot: a component type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks the framework's constant-versus-varying split.
-It is also where a framework scoping names **per type** meets [a record scoping them record-wide](format.md#entity-is-unique-across-types).
+Which attributes a type carries comes from the framework too: PyPSA reads it from its component registry, since a record does not narrow an attribute to [types](schema.md#types).
+It is also where a framework scoping names **per type** meets [a record scoping them record-wide](format.md#the-entity-axis).
 PyPSA permits a `Bus` and a `Generator` both called `north`, so `to_datarecord` reports such a network as unbuildable rather than writing a record whose two components share one key.
 Reported rather than repaired: renaming to `Generator:north` would hand back a network whose components the framework can no longer find by their own names, and the record layer does not own a framework's vocabulary.
 PyPSA is itself moving to record-wide unique names, so this is a constraint that resolves rather than one to design around.
+PyPSA's `to_datarecord` writes each component's static columns on [the entity axis](format.md#the-entity-axis), its type as a row of the `entity_type` group, and the static value of a time-varying attribute as a broadcast row in `inputs/`.
+A custom column the registry does not declare becomes a declared attribute. A static column whose name the record already declares for a different quantity, such as `efficiency` on a `Carrier` and on a `Link`, is written as `<Type>__<column>`.
+
 It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by [`order_key`](read-path.md#owner-map), and where a curve is either translated or reported unbuildable.
 
 The tool's own `Schema` reconciles vocabularies: per component type, which record attribute a tool's attribute is renamed from, or which several it is computed from.

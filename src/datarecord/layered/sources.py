@@ -121,24 +121,6 @@ class LayerSource(Protocol):
         """
         ...
 
-    def entity_types(self) -> set[str]:
-        """Which types this layer has a member file for.
-
-        For `write_record`'s benefit, not the fold's: a read learns which types
-        exist from the resolved entity axis, never by listing a source's files.
-        A directory listing, like `axes()` - empty wherever no member file
-        exists, which for a schema declaring no entity-type axis is always.
-        """
-        ...
-
-    def entity_type(self, name: str) -> DuckDBPyRelation | None:
-        """`dims/entity_type/<name>.parquet` - one type's wide member rows.
-
-        A different thing from `axis("entity")`: read after the map named a
-        winner, rather than folded to find one.
-        """
-        ...
-
     def groups(self) -> set[str]:
         """Which groups this layer has a row for, by file - like `axes()`.
 
@@ -228,15 +210,6 @@ class _FileLayer:
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         return self._read(f"dims/{dim}.parquet", union_by_name=True)
-
-    def entity_types(self) -> set[str]:
-        return {
-            name.removesuffix(".parquet")
-            for name in parquet_names(self.uri("dims/entity_type/"), self._con)
-        }
-
-    def entity_type(self, name: str) -> DuckDBPyRelation | None:
-        return self._read(f"dims/entity_type/{name}.parquet")
 
     def groups(self) -> set[str]:
         return {

@@ -82,7 +82,7 @@ def keys(revision, con):
 
 
 def entity_names(revision):
-    return set(revision.resolver.entity_axis.df()["entity"])
+    return set(revision.resolver.dims.axes["entity"].df()["entity"])
 
 
 def test_root_map_is_its_own_layer(con, parent):
@@ -93,7 +93,7 @@ def test_root_map_is_its_own_layer(con, parent):
     """
     om = parent.resolver
     assert set(om.inputs.df()["layer_uuid"]) == {parent.id}
-    assert "layer_uuid" not in om.entity_axis.columns
+    assert "layer_uuid" not in om.dims.axes["entity"].columns
     assert ("Manchester Wind", "p_max_pu") in keys(parent, con)
 
 

@@ -89,9 +89,9 @@ def test_tombstone_removes_component(con, parent):
     child = parent.child()
     tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
 
-    om = child.resolver.entity_axis.df()
+    om = child.resolver.dims.axes["entity"].df()
     assert "Norway Gas" not in set(om["entity"])
-    assert "Norway Gas" in set(parent.resolver.entity_axis.df()["entity"])
+    assert "Norway Gas" in set(parent.resolver.dims.axes["entity"].df()["entity"])
 
     n = PyPSA.build(child.record)
     assert "Norway Gas" not in n.c["Generator"].static.index
@@ -124,8 +124,8 @@ def test_sibling_branch_unaffected(con, parent):
     tombstone(layer_dir(deleting.id), "Generator", ["Norway Gas"])
     sibling = parent.child()
 
-    assert "Norway Gas" not in set(deleting.resolver.entity_axis.df()["entity"])
-    assert "Norway Gas" in set(sibling.resolver.entity_axis.df()["entity"])
+    assert "Norway Gas" not in set(deleting.resolver.dims.axes["entity"].df()["entity"])
+    assert "Norway Gas" in set(sibling.resolver.dims.axes["entity"].df()["entity"])
 
 
 def test_grandchild_resolves_through_ancestry(con, parent):
@@ -240,7 +240,7 @@ def test_resolved_reads_same_as_unresolved(con, parent):
         "the owner map folded through the base matches folding from the root"
     )
 
-    t_axis, u_axis = truncated.entity_axis, unresolved.entity_axis
+    t_axis, u_axis = truncated.dims.axes["entity"], unresolved.dims.axes["entity"]
     assert t_axis is not None and u_axis is not None
     assert set(t_axis.df()["entity"]) == set(u_axis.df()["entity"]), (
         "the resolved entity axis is the same either way"
@@ -269,33 +269,30 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
+    before = read_schema()
+    assert "availability" not in before.attributes, "the attribute must be new"
     amended = read_schema()
-    # Declared once, record-wide, then narrowed to the type that carries it -
-    # the two halves an amendment now has.
-    amended.attributes["p_min_pu"] = AttributeSpec(
+    amended.attributes["availability"] = AttributeSpec(
         dtype=nw.Float64(), dims={"entity", "snapshot"}, default=0.25
     )
-    was = amended.traits["Generator"]
-    amended.traits["Generator"] = was.model_copy(
-        update={"attributes": was.attributes | {"p_min_pu"}}
+    assert amended.compatible_with(before) == [], (
+        "adding an attribute leaves the layers written before it readable"
     )
     write_schema(amended)
-
-    # Adding an attribute is compatible, so the layers written before the
-    # amendment stay readable (https://energy-models.github.io/datarecord/design/schema/#versioning).
-    assert amended.compatible_with(read_schema()) == []
 
     child = parent.child()
     write_input(
         layer_dir(child.id),
-        "p_min_pu",
+        "availability",
         [{"entity": "Norway Gas", "value": 0.1}],
     )
-    n = PyPSA.build(child.record)
-    assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
-    # And the amendment is visible from the record, not just from the layer
-    # that happens to carry a row for it.
-    assert "p_min_pu" in child.record.schema.attributes_for("Generator")
+    rows = child.record.attributes["availability"].collect().to_pandas()
+    assert rows.set_index("entity")["value"].to_dict() == {"Norway Gas": 0.1}, (
+        "a layer written after the amendment carries the new attribute"
+    )
+    assert "availability" in parent.record.schema.attributes, (
+        "a layer written before the amendment is read under the amended schema"
+    )
 
 
 def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
@@ -316,12 +313,11 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
 
         schema = narrowed
         dims = EMPTY
-        entity_types = EMPTY
         groups: dict = {}
         attributes = EMPTY
         outputs = EMPTY
 
-        def flags(self, ctype):
+        def flags(self, **labels):
             return {}
 
     child = parent.child()
