@@ -11,14 +11,17 @@ Notes
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
+import json
 import shutil
 from pathlib import Path
 from uuid import uuid4
 
+import pandas as pd
 import pytest
 
-from datarecord import Revision
+from datarecord import NewChild, Revision, WorkingRecord
 from datarecord.duck import layer_dir, resolved_dir, union_all_by_name
+from datarecord.layered.resolve import write_schema
 from datarecord.layered.sources import DirectorySource, LayerSource, ParquetLayer
 from datarecord.schema import Schema
 from tests.fixtures import export_network, tombstone, write_input
@@ -378,3 +381,68 @@ def test_a_directory_source_derives_its_layer_id_from_where_it_is():
     # the old one.
     assert str(a.layer_id) == "dbc5401e-335a-506d-89db-395e6ea37662"
     assert isinstance(a, LayerSource), "structural, with `layer_id` a property"
+
+
+def _largest_intermediate(con, rel):
+    """The most rows any operator produced while DuckDB executed `rel`."""
+    profile = json.loads(
+        con.sql("EXPLAIN (ANALYZE, FORMAT JSON) FROM rel").fetchall()[0][1]
+    )
+
+    def largest(node):
+        return max(
+            [node.get("operator_cardinality") or 0]
+            + [largest(child) for child in node.get("children", [])]
+        )
+
+    return largest(profile)
+
+
+def test_a_read_joins_no_more_rows_than_the_layers_hold(con, base_uri):
+    """The owner-map join is keyed on a partial dim, not filtered on it afterwards.
+
+    The join matched a partial dim with `raw IS NULL OR raw IS NOT DISTINCT FROM
+    owned`, which DuckDB cannot hash. It joined on `entity` and `layer_uuid`
+    only and filtered on `snapshot` after the join, so one layer of `T`
+    snapshots per entity produced `T * T` rows per entity before the filter,
+    and a read slowed with the square of the series length.
+
+    Notes
+    -----
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
+    """
+    write_schema(
+        Schema(
+            dimensions={
+                "entity": {"dtype": "String"},
+                "entity_type": {"dtype": "String"},
+                "snapshot": {"dtype": "Int64"},
+            },
+            groups={"entity_type": {"over": ["entity"], "into": "entity_type"}},
+            attributes={
+                "p_max_pu": {"dtype": "Float64", "dims": ["entity", "snapshot"]}
+            },
+            partial=frozenset({"snapshot"}),
+        )
+    )
+    names, snapshots = ["wind", "solar"], 200
+    staged = WorkingRecord(Revision.create(con).record, con)
+    staged.add("Generator", pd.DataFrame({"entity": names}))
+    staged.set(
+        "p_max_pu",
+        pd.DataFrame(
+            {
+                "entity": [n for n in names for _ in range(snapshots)],
+                "snapshot": list(range(snapshots)) * len(names),
+                "value": 0.5,
+            }
+        ),
+    )
+    revision = staged.commit(NewChild())
+
+    rel = revision.record.attributes["p_max_pu"].to_native()
+    stored = len(names) * snapshots
+    assert rel.count("*").fetchone() == (stored,), "one row per stored value"
+    assert _largest_intermediate(con, rel) <= stored, (
+        "no operator produces more rows than the layer holds"
+    )

@@ -19,6 +19,7 @@ Notes
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -36,9 +37,9 @@ from duckdb import StarExpression as star
 from datarecord.duck import (
     DuckTypes,
     base_uri_of,
-    broadcast_match,
     distinct_values,
     ensure_local_dir,
+    ex_all,
     fn,
     fold_axis,
     null_safe,
@@ -196,27 +197,6 @@ class Coords:
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
     groups: dict[str, DuckDBPyRelation] = field(default_factory=dict)
-
-    def input_match(
-        self,
-        alias_a: str,
-        alias_b: str,
-        *fixed: str,
-        dims: tuple[str, ...] | None = None,
-    ) -> Expression:
-        """Match a raw `inputs/` row against an already-resolved key.
-
-        `dims` narrows the broadcast arms to the coordinates the raw side
-        actually carries, which one attribute's file is a subset of
-        (`long_columns_for`). Defaults to every partial dim, for a caller
-        matching against a relation carrying all of them.
-        """
-        return broadcast_match(
-            alias_a,
-            alias_b,
-            fixed,
-            self.schema.partial_dims if dims is None else dims,
-        )
 
     def expand_dims(
         self, rel: DuckDBPyRelation, layer_keys: tuple[str, ...]
@@ -431,6 +411,39 @@ def with_columns(
         duck_types.null(schema.column_type(c) or nw.String()).alias(c) for c in missing
     ]
     return rel.project(star(), *added)
+
+
+def _by_broadcast_pattern(
+    rel: DuckDBPyRelation, dims: tuple[str, ...]
+) -> list[tuple[DuckDBPyRelation, tuple[str, ...]]]:
+    """`rel` split by which of `dims` a row leaves NULL, each part with the dims it sets.
+
+    A stored NULL in a broadcast dim matches every value it is owned for, and a
+    set value matches NULL-safely. One join condition for both,
+    `raw IS NULL OR raw IS NOT DISTINCT FROM owned`, is no hash key: DuckDB
+    joins on the other columns and filters the dim afterwards, which costs the
+    square of the dim's length per key. Each part joins on exactly the dims it
+    sets, which hashes.
+
+    One part per NULL pattern, `2 ** len(dims)` of them, each rescanning `rel`;
+    a pattern no row has joins nothing.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
+    """
+    parts = []
+    for sets in itertools.product((True, False), repeat=len(dims)):
+        pattern = list(zip(dims, sets, strict=True))
+        if pattern:
+            rel_part = rel.filter(
+                ex_all(col(d).isnotnull() if s else col(d).isnull() for d, s in pattern)
+            )
+        else:
+            rel_part = rel
+        parts.append((rel_part, tuple(d for d, s in pattern if s)))
+    return parts
 
 
 def fold_inputs(
@@ -1122,23 +1135,26 @@ class Resolver:
         if not layers:
             return _empty_relation(keys.schema, con, *columns)
 
-        resolved = (
-            union_all_by_name(layers, con)
-            .set_alias("l")
-            .join(
-                om.set_alias("o"),
-                keys.input_match("l", "o", *address, "layer_uuid", dims=broadcast_over),
-            )
-            .project(
-                *(
-                    coalesce(col("l", dim), col("o", dim)).alias(dim)
-                    if dim in partial_dims
-                    else col("l", dim)
-                    for dim in columns
+        raw = union_all_by_name(layers, con)
+        return union_all_by_name(
+            [
+                part.set_alias("l")
+                .join(
+                    om.set_alias("o"),
+                    null_safe("l", "o", (*address, "layer_uuid", *sets)),
                 )
-            )
+                .project(
+                    *(
+                        coalesce(col("l", dim), col("o", dim)).alias(dim)
+                        if dim in partial_dims
+                        else col("l", dim)
+                        for dim in columns
+                    )
+                )
+                for part, sets in _by_broadcast_pattern(raw, broadcast_over)
+            ],
+            con,
         )
-        return resolved
 
     def _outputs(self, attribute: str) -> DuckDBPyRelation:
         """A result attribute from this record's own layer; outputs do not overlay.

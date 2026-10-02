@@ -10,3 +10,8 @@ All notable changes to datarecord are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+### Fixed
+
+- Reading an attribute over a `partial` dim no longer slows with the square
+  of that dim's length.

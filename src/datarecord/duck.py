@@ -329,30 +329,6 @@ def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
     )
 
 
-def broadcast_match(
-    alias_a: str, alias_b: str, fixed: Iterable[str], dims: Iterable[str]
-) -> Expression:
-    """NULL-safe equality on `fixed`, broadcast-OR on `dims`.
-
-    A raw row's `dim = NULL` means "every value of `dim`", so it must match
-    regardless of the resolved side's value there, unlike the `IS NOT DISTINCT
-    FROM` of `null_safe` which only matches NULL against NULL. `alias_a` is the
-    broadcasting side.
-
-    Notes
-    -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-    """
-    match = null_safe(alias_a, alias_b, fixed)
-    for dim in dims:
-        match = match & (
-            col(alias_a, dim).isnull()
-            | sql(f"{col(alias_a, dim)} IS NOT DISTINCT FROM {col(alias_b, dim)}")
-        )
-    return match
-
-
 def distinct_values(
     rel: DuckDBPyRelation, column: str, *, order: bool = True
 ) -> tuple[Any, ...]:
