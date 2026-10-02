@@ -8,9 +8,9 @@ SPDX-License-Identifier: CC-BY-4.0
 
 Status: **Accepted** · Drafted 2026-08-27 · Implemented 2026-09-01
 
-Landed in [the schema](../schema.md#groups) and [the record format](../format.md#where-a-value-lives); this page is kept as the argument for the change rather than as the current description.
+Landed in [the schema](../schema.md#relations) and [the record format](../format.md#where-a-value-lives); this page is kept as the argument for the change rather than as the current description.
 
-Supersedes the split between [groups](../schema.md#groups) and [`on`](dims-groups-traits.md#mappings) that [dims, mappings, groups and traits](dims-groups-traits.md) landed.
+Supersedes the split between [groups](../schema.md#relations) and [`on`](dims-groups-traits.md#mappings) that [dims, mappings, groups and traits](dims-groups-traits.md) landed.
 Those two are one mechanism with one field's difference, and the field is worth having where the two models are not.
 
 ## What starts it
@@ -79,7 +79,7 @@ Not a name the group invents.
 That is what keeps the axis file, and the axis file is the whole of what a functional group has over a bare tuple set: `dims/country.parquet` gives `country` its [order](../record.md#axis-order) and somewhere for a per-country CO2 budget to live.
 A group whose `into` named nothing would be a tuple set with a labelled column — expressible, and it loses the axis, which is [the argument the superseded page makes](dims-groups-traits.md#mappings) and which survives this refactor unchanged.
 
-**A group may share its name with a dim**, and the [existing prohibition](../schema.md#groups) on the two colliding is dropped rather than narrowed.
+**A group may share its name with a dim**, and the [existing prohibition](../schema.md#relations) on the two colliding is dropped rather than narrowed.
 
 For a group with `into` the sharing is the natural spelling: the dim is the axis of labels, the group is the relation between it and `over`, and they are reached by different syntax — [`dims: [country]`](#addressing-dims-x) finds the dim, [`by=country`](#aggregation) finds the group. Keeping the prohibition would cost a name (`country_map`) invented only to satisfy it.
 
@@ -137,7 +137,7 @@ attributes:
     dims: [contract] # seller | buyer
 ```
 
-The declaration is [already possible](../schema.md#groups) and this proposal does not introduce it — `over`'s dict form is what lets two coordinates draw on one dim, and [addressing](#addressing-dims-x) expands `contract` to `seller | buyer` as it always did.
+The declaration is [already possible](../schema.md#relations) and this proposal does not introduce it — `over`'s dict form is what lets two coordinates draw on one dim, and [addressing](#addressing-dims-x) expands `contract` to `seller | buyer` as it always did.
 What changes is that the shape stops being second-class:
 
 - **It has a file of its own.** `groups/contract.parquet`, keyed `(seller, buyer)`. The [`<Type>` split](#where-the-rows-live) had no type to split on here — a contract is not a component and has no `entity_type` — so it never described this case at all, which is what shows the split was wrong rather than merely awkward.

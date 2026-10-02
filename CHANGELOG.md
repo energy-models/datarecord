@@ -28,6 +28,9 @@ All notable changes to datarecord are documented here. The format follows
   every dim a group is keyed by.
 - A component's type is an ordinary group, `groups/entity_type.parquet`, and
   removing a label removes the group rows keyed on it.
+- Groups are relations: `Relation(key, values)`, `Schema.relations`,
+  `record.relations` and `add_relation`. A relation's rows are stored under
+  `relations/`, and attribute values under `attributes/`.
 
 ### Removed
 

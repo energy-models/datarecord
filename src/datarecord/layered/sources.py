@@ -4,7 +4,7 @@
 
 """Where a layer's rows come from, behind a protocol the fold reads them through.
 
-The fold names files, not locations: `inputs/p_nom.parquet` is what it wants
+The fold names files, not locations: `attributes/p_nom.parquet` is what it wants
 and a source hands over its rows. Three answer - a parquet directory under
 `layers/<uuid>/`, a plain directory read as one layer, and a staging area whose
 rows are tables rather than files (`mutable.StagedSource`) - so the fold is
@@ -120,8 +120,8 @@ class LayerSource(Protocol):
         """
         ...
 
-    def groups(self) -> set[str]:
-        """Which groups this layer has a row for, by file - like `axes()`.
+    def relations(self) -> set[str]:
+        """Which relations this layer has a row for, by file - like `axes()`.
 
         For `write_record`'s benefit; not scoped to a schema, which a
         `LayerSource` does not carry - a file some other source's declaration
@@ -129,12 +129,12 @@ class LayerSource(Protocol):
         """
         ...
 
-    def group(self, name: str) -> DuckDBPyRelation | None:
-        """`groups/<name>.parquet` - one group's rows, tombstones included."""
+    def relation(self, name: str) -> DuckDBPyRelation | None:
+        """`relations/<name>.parquet` - one relation's rows, tombstones included."""
         ...
 
     def attributes(self) -> set[str]:
-        """Which `inputs/*.parquet` files this layer has, by name.
+        """Which `attributes/*.parquet` files this layer has, by name.
 
         For `write_record`'s benefit: a read learns owned attributes from the
         owner map, never by listing a source's own files.
@@ -142,7 +142,7 @@ class LayerSource(Protocol):
         ...
 
     def attribute(self, name: str) -> DuckDBPyRelation | None:
-        """`inputs/<name>.parquet` - one attribute's own columns, unpadded.
+        """`attributes/<name>.parquet` - one attribute's own columns, unpadded.
 
         Not the singular of `all_attributes`: this is the *owned* read, and it
         must keep exactly the columns the file has, a padded one being ambiguous
@@ -155,11 +155,11 @@ class LayerSource(Protocol):
         ...
 
     def all_attributes(self) -> DuckDBPyRelation | None:
-        """Every `inputs/*.parquet` unioned by name, unprojected.
+        """Every `attributes/*.parquet` unioned by name, unprojected.
 
         Only the attributes have one: they share `input_key`, so a single scan
         answers the ownership `GROUP BY` for every attribute at once. An axis or
-        a group folds on a key of its own, so a union across them would have
+        a relation folds on a key of its own, so a union across them would have
         nothing to fold on.
         """
         ...
@@ -210,26 +210,26 @@ class _FileLayer:
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         return self._read(f"dims/{dim}.parquet", union_by_name=True)
 
-    def groups(self) -> set[str]:
+    def relations(self) -> set[str]:
         return {
             name.removesuffix(".parquet")
-            for name in parquet_names(self.uri("groups/"), self._con)
+            for name in parquet_names(self.uri("relations/"), self._con)
         }
 
-    def group(self, name: str) -> DuckDBPyRelation | None:
-        return self._read(f"groups/{name}.parquet", union_by_name=True)
+    def relation(self, name: str) -> DuckDBPyRelation | None:
+        return self._read(f"relations/{name}.parquet", union_by_name=True)
 
     def attributes(self) -> set[str]:
         return {
             name.removesuffix(".parquet")
-            for name in parquet_names(self.uri("inputs/"), self._con)
+            for name in parquet_names(self.uri("attributes/"), self._con)
         }
 
     def attribute(self, name: str) -> DuckDBPyRelation | None:
-        return self._read(f"inputs/{name}.parquet")
+        return self._read(f"attributes/{name}.parquet")
 
     def all_attributes(self) -> DuckDBPyRelation | None:
-        return self._read("inputs/*.parquet", union_by_name=True)
+        return self._read("attributes/*.parquet", union_by_name=True)
 
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """No cache by default: only a `ParquetLayer` has a revision to key one by."""

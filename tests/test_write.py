@@ -32,13 +32,13 @@ class _Source:
         self,
         schema,
         attributes=None,
-        groups=None,
+        relations=None,
         dims=None,
     ):
         self._schema = schema
         self.built: list[str] = []
         self._attributes = attributes or {}
-        self._groups = groups or {}
+        self._relations = relations or {}
         self._dims = dims or {}
 
     @property
@@ -57,8 +57,8 @@ class _Source:
         return self._frames(self._dims, "dims") if self._dims else EMPTY
 
     @property
-    def groups(self):
-        return self._frames(self._groups, "groups")
+    def relations(self):
+        return self._frames(self._relations, "relations")
 
     @property
     def attributes(self):
@@ -127,7 +127,7 @@ def test_write_record_builds_each_key_once(con, base_uri):
         _SCHEMA,
         attributes={"p_nom": _long(), "e_nom": _long(attribute="e_nom")},
         dims={"entity": pd.DataFrame({"entity": ["steel_dri"]})},
-        groups={
+        relations={
             "entity_type": pd.DataFrame(
                 {"entity": ["steel_dri"], "entity_type": ["Process"]}
             )
@@ -139,7 +139,7 @@ def test_write_record_builds_each_key_once(con, base_uri):
         "attributes:e_nom",
         "attributes:p_nom",
         "dims:entity",
-        "groups:entity_type",
+        "relations:entity_type",
     ], "each key the source lists is built exactly once"
 
 
@@ -161,7 +161,7 @@ def test_write_record_creates_a_new_layer(con, base_uri):
     write_record(revision.id, _Source(_SCHEMA, attributes={"p_nom": _long()}), con)
 
     base = Path(layer_dir(revision.id))
-    assert (base / "inputs" / "p_nom.parquet").exists()
+    assert (base / "attributes" / "p_nom.parquet").exists()
     assert not (base / "manifest.json").exists()
     # Written once for the whole tree, and it is what the layer is read under.
     assert read_schema() == _SCHEMA
@@ -254,10 +254,12 @@ def test_a_file_carries_only_its_own_attributes_coordinates(con, base_uri, ac_dc
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    inputs = Path(layer_dir(revision.id), "inputs")
+    attribute_dir = Path(layer_dir(revision.id), "attributes")
 
     def columns(attribute: str) -> set[str]:
-        return set(con.read_parquet(str(inputs / f"{attribute}.parquet")).columns)
+        return set(
+            con.read_parquet(str(attribute_dir / f"{attribute}.parquet")).columns
+        )
 
     assert columns("p_max_pu") == {
         "entity",
@@ -265,10 +267,12 @@ def test_a_file_carries_only_its_own_attributes_coordinates(con, base_uri, ac_dc
         "attribute",
         "breakpoint",
         "value",
-    }, "a component attribute carries `entity`, not the connection group's `bus`"
+    }, "a component attribute carries `entity`, not the connection relation's `bus`"
 
     efficiency = columns("efficiency")
-    assert "bus" in efficiency, "a connection attribute carries the group's coordinates"
+    assert "bus" in efficiency, (
+        "a connection attribute carries the relation's coordinates"
+    )
     assert "period" not in efficiency, "and no dim it is not addressed by"
 
 
@@ -279,7 +283,7 @@ def test_write_record_rejects_an_undeclared_attribute(con, base_uri):
     """An attribute with no spec has no shape, so there is nothing to write it as.
 
     Its `dims` are what say which columns the file carries, so writing one the
-    schema does not declare would put a file in `inputs/` whose column set no
+    schema does not declare would put a file in `attributes/` whose column set no
     reader could derive.
 
     Notes
@@ -326,20 +330,20 @@ def test_write_record_rejects_a_missing_long_column(con, base_uri):
     assert not Path(layer_dir(revision.id)).exists()
 
 
-def test_write_record_rejects_a_group_frame_missing_a_coordinate(con, base_uri):
-    """A group's row is keyed by its coordinates, so one lacking them misresolves.
+def test_write_record_rejects_a_relation_frame_missing_a_column(con, base_uri):
+    """A relation's row is keyed by its columns, so one lacking them misresolves.
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
     """
     revision = Revision.create(con)
     source = _Source(
         _SCHEMA,
-        groups={"connection": pd.DataFrame({"entity": ["steel_dri"]})},
+        relations={"connection": pd.DataFrame({"entity": ["steel_dri"]})},
     )
 
-    with pytest.raises(ValueError, match="coordinates.*bus"):
+    with pytest.raises(ValueError, match="columns.*bus"):
         write_record(revision.id, source, con)
 
 
@@ -378,7 +382,7 @@ def test_write_record_rejects_an_undeclared_axis_column(con, base_uri, dim, colu
 
     A column no declaration accounts for would be read back with no dtype and
     no meaning. A column the schema declares over more dims, as `p_max_pu` is
-    over `(entity, snapshot)`, belongs in `inputs/` as long rows: on the entity
+    over `(entity, snapshot)`, belongs in `attributes/` as long rows: on the entity
     axis it would shadow nothing and be read by nothing. Both are refused
     rather than carried along.
 
@@ -423,14 +427,14 @@ def test_an_axis_carries_the_attributes_addressed_by_it_alone(con, base_uri):
 
 def test_written_layer_overlays(con, base_uri, ac_dc):
     """A written layer is an ordinary layer: a child patches it as any other."""
-    from tests.fixtures import write_input
+    from tests.fixtures import write_attribute
 
     root = Revision.create(con)
     export_network(ac_dc, root, con)
     root.materialise()
 
     child = root.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_nom",
         [{"entity": "Manchester Wind", "value": 999.0}],

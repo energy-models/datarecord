@@ -24,7 +24,7 @@ from tests.fixtures import (
     relation,
     schema,
     tombstone,
-    write_input,
+    write_attribute,
     write_periods,
     write_schema,
     write_snapshots,
@@ -39,7 +39,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     revision.materialise()
 
     child = revision.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [
@@ -83,7 +83,7 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(
     export_network(ac_dc, revision, con)
     write_schema(schema(partial={"period"}))
     write_periods(layer_dir(revision.id), [{"period": 2020}, {"period": 2030}])
-    write_input(
+    write_attribute(
         layer_dir(revision.id),
         "p_max_pu",
         [
@@ -147,7 +147,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
     write_schema(schema(partial={"scenario", "period"}))
-    write_input(
+    write_attribute(
         layer_dir(revision.id),
         "p_max_pu",
         [
@@ -162,7 +162,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     revision.materialise()
 
     child = revision.child()
-    write_input(
+    write_attribute(
         layer_dir(child.id),
         "p_max_pu",
         [
@@ -274,7 +274,7 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     """`entity` names the component in every frame the protocol hands back.
 
     The one axis the format knows by name: the component axis, which the type
-    relation and every other group over components are keyed by.
+    relation and every other relation over components are keyed by.
 
     Notes
     -----
@@ -285,7 +285,7 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
 
     record = revision.record
     assert "entity" in record.dims["entity"].collect_schema().names()
-    assert "entity" in record.groups["entity_type"].collect_schema().names()
+    assert "entity" in record.relations["entity_type"].collect_schema().names()
     assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
     # And in the owner map the fold builds over them.
     ea = revision.resolver.dims.axes["entity"]
@@ -296,7 +296,7 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
 def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
     """`dims/entity.parquet` says which entities exist, once each.
 
-    What type each is lives in the `entity_type` group, keyed by the same
+    What type each is lives in the `entity_type` relation, keyed by the same
     names. The components map folds from the axis file alone.
 
     Notes
@@ -309,7 +309,7 @@ def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
     axis = con.read_parquet(layer_dir(revision.id) + "dims/entity.parquet").df()
     assert {"entity", "deleted"} <= set(axis.columns)
     assert not axis["entity"].duplicated().any()
-    kinds = con.read_parquet(layer_dir(revision.id) + "groups/entity_type.parquet")
+    kinds = con.read_parquet(layer_dir(revision.id) + "relations/entity_type.parquet")
     assert "Generator" in set(kinds.df()["entity_type"])
 
     # And it is what the fold reads: the map's entities are the axis's.

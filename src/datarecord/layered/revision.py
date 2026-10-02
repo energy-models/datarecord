@@ -323,20 +323,22 @@ class Record:
         return LazyFrames(tuple(axes), lambda dim: nw.from_native(axes[dim]))
 
     @_stable_cache
-    def groups(self) -> LazyFrames:
-        """Each declared group's rows, keyed by group - one frame each.
+    def relations(self) -> LazyFrames:
+        """Each declared relation's rows, keyed by relation - one frame each.
 
-        Only groups some layer wrote a row of; a declared group nothing
+        Only relations some layer wrote a row of; a declared relation nothing
         populates is absent rather than present-and-empty.
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         """
-        groups = tuple(
-            g for g in self.resolver.schema.groups if self.resolver.group(g) is not None
+        relations = tuple(
+            r
+            for r in self.resolver.schema.relations
+            if self.resolver.relation(r) is not None
         )
-        return LazyFrames(groups, self._group_frame)
+        return LazyFrames(relations, self._relation_frame)
 
     @_stable_cache
     def attributes(self) -> LazyFrames:
@@ -346,7 +348,7 @@ class Record:
         )
 
     def flags(self, **labels: Sequence[str]) -> dict[str, Flags]:
-        """Straight off the `inputs` owner map, which folded these in for free.
+        """Straight off the `attributes` owner map, which folded these in for free.
 
         Notes
         -----
@@ -356,8 +358,8 @@ class Record:
 
     # -- frames, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) --
 
-    def _group_frame(self, group: str) -> nw.LazyFrame:
-        return self._frame(self.resolver.group_frame(group), group)
+    def _relation_frame(self, relation: str) -> nw.LazyFrame:
+        return self._frame(self.resolver.relation_frame(relation), relation)
 
     def _frame(self, rel: DuckDBPyRelation | None, key: str) -> nw.LazyFrame:
         """`rel` as a frame; it already carries member order as its row order.
@@ -369,7 +371,7 @@ class Record:
         Parameters
         ----------
         key
-            What the frame was looked up by - a component type or a group name -
+            What the frame was looked up by - a component type or a relation name -
             so a miss raises the `KeyError` the caller asked with.
 
         Notes

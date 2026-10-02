@@ -51,7 +51,7 @@ def to_sources(
     Raises
     ------
     KeyError
-        If a name to return is both a dimension and a group.
+        If a name to return is both a dimension and a relation.
 
     Notes
     -----
@@ -75,9 +75,9 @@ def to_sources(
                 out[attribute] = axis.select(
                     dim, nw.col(attribute).alias("value")
                 ).filter(~nw.col("value").is_null())
-    for group in record.groups:
-        out[group] = _typed(schema, record.groups[group]).select(
-            *schema.group_coordinates(group)
+    for relation in record.relations:
+        out[relation] = _typed(schema, record.relations[relation]).select(
+            *schema.relation_columns(relation)
         )
     for attribute in record.attributes:
         if wanted is None or attribute in wanted:
@@ -88,17 +88,17 @@ def to_sources(
 
 
 def _ambiguous(schema: Schema, names: Collection[str]) -> None:
-    """Refuse a name that is both a dimension and a group.
+    """Refuse a name that is both a dimension and a relation.
 
     The tables are keyed by name alone, so the two would share one key.
     mathspec keeps every declaration in one namespace and refuses the same
     collision, which is why this refuses rather than picks one.
     """
-    both = sorted(set(names) & set(schema.dimensions) & set(schema.groups))
+    both = sorted(set(names) & set(schema.dimensions) & set(schema.relations))
     if both:
         msg = (
-            f"{both} name both a dimension and a group; tables are keyed by one "
-            f"flat namespace, so rename the group"
+            f"{both} name both a dimension and a relation; tables are keyed by one "
+            f"flat namespace, so rename the relation"
         )
         raise KeyError(msg)
 
@@ -171,7 +171,7 @@ def from_sources(schema: Schema, sources: Mapping[str, Any]) -> RecordLike:
     Raises
     ------
     KeyError
-        If a name is none the schema declares, or both a dimension and a group.
+        If a name is none the schema declares, or both a dimension and a relation.
 
     Notes
     -----
@@ -180,7 +180,7 @@ def from_sources(schema: Schema, sources: Mapping[str, Any]) -> RecordLike:
     """
     tables = {name: _lazy(table) for name, table in sources.items()}
     _ambiguous(schema, tables)
-    declared = {*schema.dimensions, *schema.groups, *schema.attributes}
+    declared = {*schema.dimensions, *schema.relations, *schema.attributes}
     unknown = sorted(set(tables) - declared)
     if unknown:
         msg = (
@@ -237,8 +237,8 @@ class _Tables:
         return axis
 
     @property
-    def groups(self) -> Frames:
-        present = tuple(g for g in self._schema.groups if g in self._tables)
+    def relations(self) -> Frames:
+        present = tuple(r for r in self._schema.relations if r in self._tables)
         return LazyFrames(present, self._tables.__getitem__) if present else EMPTY
 
     @property

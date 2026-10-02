@@ -90,7 +90,7 @@ def _parse_dtype(value: Any) -> nw.dtypes.DType:
 
 
 # Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Not the
-# dims: `entity`, a group's `bus` and `entity_type` are declared like any
+# dims: `entity`, a relation's `bus` and `entity_type` are declared like any
 # other axis and typed from that declaration, which is what lets an `Enum` there
 # pin its vocabulary. These are the ones no schema names - `breakpoint` is NULL
 # for the ordinary component-level scalar, so one column set serves every row.
@@ -187,7 +187,7 @@ class AttributeSpec(BaseModel):
         column of it is built.
     dims
         Dims this attribute may vary over; a subset of those declared. One dim
-        alone puts it on that dim's axis file rather than in `inputs/`, so the
+        alone puts it on that dim's axis file rather than in `attributes/`, so the
         schema decides the file split.
     default
         The value a coordinate no row covers takes.
@@ -257,11 +257,11 @@ class AttributeSpec(BaseModel):
         "Varies beyond its address", not "has dims": naming exactly one
         addressing coordinate is a column on that thing's own table, so
         `dims={"entity"}` is a component column and `dims={"connection"}` a
-        column of the group's table. Anything more is `inputs/<attr>.parquet`.
+        column of the relation's table. Anything more is `attributes/<attr>.parquet`.
 
         A bare `bool(dims)` was the test before `entity` was a declared dim,
         when a component attribute declared none - it would now call every
-        attribute varying and route every constant to `inputs/`.
+        attribute varying and route every constant to `attributes/`.
 
         Notes
         -----
@@ -270,71 +270,59 @@ class AttributeSpec(BaseModel):
         return len(self.dims) > 1
 
 
-class Group(BaseModel):
-    """Which tuples over several dims exist: a sparse subset of a dim product.
+class Relation(BaseModel):
+    """Which tuples over several dims exist: rows unique per key, a sparse subset of a dim product.
 
     Not a dim. A dim declares an axis of labels and NULL in its column means
-    "every value of it"; a group declares *which combinations are there*, which
-    no axis can say because the product is sparse - a component attaches to two
-    buses out of a thousand.
+    "every value of it"; a relation declares *which combinations are there*,
+    which no axis can say because the product is sparse - a component attaches
+    to two buses out of a thousand.
 
-    An attribute names the group in its `dims` and its rows carry the group's
-    *coordinate* names as columns, never the group's own name. Coordinates
-    rather than dims because two of them may draw on the same axis: a corridor
-    between two entities is `(from, to)`, which a set of dims could not spell.
+    An attribute names the relation in its `dims` and its rows carry the
+    relation's key column names, never the relation's own name. Columns rather
+    than dims because two of them may draw on the same axis: a corridor between
+    two entities is `(from, to)`, which a set of dims could not spell.
 
     Attributes
     ----------
-    over
-        Coordinate name -> the dim it draws its labels from. A list is sugar for
+    key
+        Key column name -> the dim it draws its labels from. A list is sugar for
         the dict with identical keys and values; the dict form is what lets two
-        coordinates draw on one dim, as `corridor`'s `{from: bus, to: bus}` does.
-    into
-        The dim each tuple of `over` carries exactly one label of, or `None` for
-        a bare tuple set. Must name a declared dim.
+        columns draw on one dim, as `corridor`'s `{from: bus, to: bus}` does.
+    values
+        The dim each row carries exactly one label of, a column named after it,
+        or `None` for a bare tuple set. Must name a declared dim.
     description
-        What the group is, in prose. Never interpreted.
+        What the relation is, in prose. Never interpreted.
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
     """
 
-    over: dict[str, str]
-    into: str | None = None
+    key: dict[str, str]
+    values: str | None = None
     description: str | None = None
 
-    @field_validator("over", mode="before")
+    @field_validator("key", mode="before")
     @classmethod
-    def _parse_over(cls, value: Any) -> Any:
+    def _parse_key(cls, value: Any) -> Any:
         """Expand the list form to the dict it is sugar for."""
         if isinstance(value, (list, tuple)):
             return {c: c for c in value}
         return value
 
     @property
-    def coordinates(self) -> tuple[str, ...]:
-        """This group's columns in declaration order, `into` last where declared.
+    def columns(self) -> tuple[str, ...]:
+        """This relation's columns: the key in declaration order, then `values` where declared.
 
         Notes
         -----
-        - [into](https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)
+        - [values](https://energy-models.github.io/datarecord/design/schema/#values-a-relation-that-classifies)
         """
-        if self.into is None:
-            return tuple(self.over)
-        return (*self.over, self.into)
-
-    @property
-    def key(self) -> tuple[str, ...]:
-        """The coordinates a row is unique over: `coordinates` minus `into`.
-
-        Every coordinate for a group without one.
-
-        Notes
-        -----
-        - [into](https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)
-        """
-        return tuple(self.over)
+        if self.values is None:
+            return tuple(self.key)
+        return (*self.key, self.values)
 
 
 class Schema(BaseModel):
@@ -349,11 +337,11 @@ class Schema(BaseModel):
         Every declared axis, keyed by dim name.
     attributes
         Attribute -> spec, flat and record-wide. One attribute is one spec and
-        one `inputs/<attr>.parquet`, so a dtype cannot differ per type.
-    groups
-        Group name -> which tuples over several dims exist. `connection` is
+        one `attributes/<attr>.parquet`, so a dtype cannot differ per type.
+    relations
+        Relation name -> which tuples over several dims exist. `connection` is
         the one every record with connections declares, and the entity-type
-        axis is the group `into` that axis over `[entity]`.
+        axis is the `values` of the relation keyed by `[entity]`.
     partial
         Which dims a layer may patch value by value. `None` for a record
         with no layers, since nothing overrides anything. A dim outside it is
@@ -373,7 +361,7 @@ class Schema(BaseModel):
     version: int = 1
     dimensions: dict[str, Dimension] = Field(default_factory=dict)
     attributes: dict[str, AttributeSpec] = Field(default_factory=dict)
-    groups: dict[str, Group] = Field(default_factory=dict)
+    relations: dict[str, Relation] = Field(default_factory=dict)
     partial: frozenset[str] | None = None
     meta: dict[str, Any] = Field(default_factory=dict)
 
@@ -384,7 +372,7 @@ class Schema(BaseModel):
         Notes
         -----
         - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
         """
         declared = set(self.dimensions)
@@ -418,47 +406,56 @@ class Schema(BaseModel):
             msg = f"`within` is cyclic: {' -> '.join(e.args[1])}"
             raise ValueError(msg) from e
 
-        # A group's coordinates draw their labels from declared dims, and so
-        # does `into`. No check that the name is free of the dims: a collision
+        # A relation's key columns draw their labels from declared dims, and so
+        # does `values`. No check that the name is free of the dims: a collision
         # is shadowing rather than an ambiguity (https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x).
-        for group, group_spec in self.groups.items():
-            unknown = sorted(set(group_spec.over.values()) - declared)
+        for relation, relation_spec in self.relations.items():
+            unknown = sorted(set(relation_spec.key.values()) - declared)
             if unknown:
-                msg = f"group {group!r} is over undeclared dims {unknown}"
+                msg = f"relation {relation!r} is keyed by undeclared dims {unknown}"
                 raise ValueError(msg)
-            if group_spec.into is not None and group_spec.into not in declared:
+            if (
+                relation_spec.values is not None
+                and relation_spec.values not in declared
+            ):
                 msg = (
-                    f"group {group!r} is `into` undeclared dim "
-                    f"{group_spec.into!r}; `into` names the axis whose labels "
-                    f"the group's tuples carry (https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)"
+                    f"relation {relation!r} has `values` in undeclared dim "
+                    f"{relation_spec.values!r}; `values` names the axis whose labels "
+                    f"the relation's rows carry (https://energy-models.github.io/datarecord/design/schema/#values-a-relation-that-classifies)"
                 )
                 raise ValueError(msg)
-            if group_spec.into is not None and group_spec.into in group_spec.over:
+            if (
+                relation_spec.values is not None
+                and relation_spec.values in relation_spec.key
+            ):
                 msg = (
-                    f"group {group!r} is `into` {group_spec.into!r}, which is "
-                    f"also one of its `over` coordinates; a group cannot map a "
-                    f"coordinate to itself"
+                    f"relation {relation!r} has `values` {relation_spec.values!r}, which "
+                    f"is also one of its `key` columns; a relation cannot map a "
+                    f"column to itself"
                 )
                 raise ValueError(msg)
 
-        addressable = declared | set(self.groups)
+        addressable = declared | set(self.relations)
         for attr, attr_spec in self.attributes.items():
             unknown = sorted(attr_spec.dims - addressable)
             if unknown:
                 msg = (
                     f"attribute {attr!r} is addressed by undeclared "
-                    f"dims or groups {unknown}"
+                    f"dims or relations {unknown}"
                 )
                 raise ValueError(msg)
-            for group, group_spec in self.groups.items():
-                if group_spec.into is None or group_spec.into not in attr_spec.dims:
+            for relation, relation_spec in self.relations.items():
+                if (
+                    relation_spec.values is None
+                    or relation_spec.values not in attr_spec.dims
+                ):
                     continue
-                both = sorted(set(group_spec.over) & attr_spec.dims)
+                both = sorted(set(relation_spec.key) & attr_spec.dims)
                 if both:
                     msg = (
                         f"attribute {attr!r} is addressed by "
-                        f"{group_spec.into!r} and {both}, which the group "
-                        f"{group!r} maps it from; `into` says the first follows "
+                        f"{relation_spec.values!r} and {both}, which the relation "
+                        f"{relation!r} maps it from; `values` says the first follows "
                         f"from the second, so naming both keys a row twice over"
                     )
                     raise ValueError(msg)
@@ -468,11 +465,11 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"`partial` names undeclared dims {unknown}"
                 raise ValueError(msg)
-        keys = {g.over[c] for g in self.groups.values() for c in g.key}
+        keys = {dim for r in self.relations.values() for dim in r.key.values()}
         missing = sorted(keys - (self.partial or frozenset()))
         if missing:
             msg = (
-                f"`partial` must name {missing}: a group is keyed by them, and "
+                f"`partial` must name {missing}: a relation is keyed by them, and "
                 f"a layer adds or removes one of its rows at a time"
             )
             raise ValueError(msg)
@@ -494,7 +491,7 @@ class Schema(BaseModel):
         spec
             What `mathspec.to_spec` takes - a `Spec`, a path, YAML text or a
             dict. Its `dimensions`, `relations` and `parameters` become dims,
-            groups and attributes; its math, if it has any, is not read.
+            relations and attributes; its math, if it has any, is not read.
         storage
             `partial` and `meta` as `Schema` takes them, and under
             `dimensions` and `parameters` the fields mathspec has no place for:
@@ -528,7 +525,9 @@ class Schema(BaseModel):
             )
             for d, b in spec.dimensions.items()
         }
-        groups = {r: _group_from_relation(r, b) for r, b in spec.relations.items()}
+        relations = {
+            r: _relation_from_mathspec(r, b) for r, b in spec.relations.items()
+        }
         attributes = {
             a: AttributeSpec(
                 dtype=_FROM_MATHSPEC[b.dtype](),
@@ -541,10 +540,12 @@ class Schema(BaseModel):
         rest = {
             k: v for k, v in storage.items() if k not in ("dimensions", "parameters")
         }
-        return cls(dimensions=dimensions, groups=groups, attributes=attributes, **rest)
+        return cls(
+            dimensions=dimensions, relations=relations, attributes=attributes, **rest
+        )
 
     def to_mathspec(self) -> dict[str, Any]:
-        """This schema's dims, groups and attributes as a mathspec declarations file.
+        """This schema's dims, relations and attributes as a mathspec declarations file.
 
         What `from_mathspec` reads back, less the storage block. A model spec
         merges with it (`mathspec.merge`) and reads its parameters as `given:`.
@@ -553,22 +554,24 @@ class Schema(BaseModel):
         ------
         ValueError
             If a dtype has no mathspec form, or an attribute is addressed by a
-            group, which a mathspec parameter cannot be.
+            relation, which a mathspec parameter cannot be.
         """
         relations = {}
-        for g, group in self.groups.items():
+        for r, relation in self.relations.items():
             key: Any = (
-                dict(group.over)
-                if any(k != v for k, v in group.over.items())
-                else list(group.over)
+                dict(relation.key)
+                if any(k != v for k, v in relation.key.items())
+                else list(relation.key)
             )
             if isinstance(key, list) and len(key) == 1:
                 key = key[0]
-            relations[g] = {"key": key} | ({"values": group.into} if group.into else {})
+            relations[r] = {"key": key} | (
+                {"values": relation.values} if relation.values else {}
+            )
         parameters = {}
         for a, spec in self.attributes.items():
-            if spec.dims & set(self.groups):
-                msg = f"attribute {a!r} is addressed by a group; a mathspec parameter is over dims only"
+            if spec.dims & set(self.relations):
+                msg = f"attribute {a!r} is addressed by a relation; a mathspec parameter is over dims only"
                 raise ValueError(msg)
             parameters[a] = {
                 "dims": [d for d in self.dimensions if d in spec.dims],
@@ -603,15 +606,15 @@ class Schema(BaseModel):
         A NULL here means "every value of this dim", which the fold expands
         against the axis - but only for an attribute that names the dim in its
         own `dims` (`broadcasts_over`). A coordinate an attribute reaches
-        through a group never broadcasts, because "every bus of this component"
-        is the group's rows, not the bus axis.
+        through a relation never broadcasts, because "every bus of this component"
+        is the relation's rows, not the bus axis.
 
         What the `varies`/`broadcast` structs have a field per.
 
         Notes
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         """
         return self.dims
 
@@ -619,8 +622,8 @@ class Schema(BaseModel):
         """The dims a NULL in `attribute`'s rows means "every value" of.
 
         The dims its spec names directly, in declaration order. A coordinate it
-        reaches through a group is not among them: the domain there is the
-        group's rows, which a NULL cannot name. An undeclared attribute
+        reaches through a relation is not among them: the domain there is the
+        relation's rows, which a NULL cannot name. An undeclared attribute
         broadcasts over nothing.
 
         Notes
@@ -633,13 +636,13 @@ class Schema(BaseModel):
         return tuple(d for d in self.dims if d in spec.dims)
 
     def coordinates_of(self, attribute: str) -> tuple[str, ...]:
-        """The dim columns one attribute's rows carry, groups expanded.
+        """The dim columns one attribute's rows carry, relations expanded.
 
         One rule resolves a name in `dims`: **it is the dim of that name if one
-        is declared, and otherwise the group of that name expanded to its
+        is declared, and otherwise the relation of that name expanded to its
         coordinates**. So `dims={"connection", "snapshot"}` gives `("entity",
         "bus", "snapshot")` where no dim `connection` exists, and
-        `dims={"country"}` gives `("country",)` - the dim, where a group of that
+        `dims={"country"}` gives `("country",)` - the dim, where a relation of that
         name is shadowed.
 
         Per attribute rather than schema-wide: one file per attribute means one
@@ -648,7 +651,7 @@ class Schema(BaseModel):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
@@ -657,8 +660,8 @@ class Schema(BaseModel):
             return ()
         named: set[str] = set()
         for d in spec.dims:
-            group = None if d in self.dimensions else self.groups.get(d)
-            named.update(group.coordinates if group is not None else (d,))
+            relation = None if d in self.dimensions else self.relations.get(d)
+            named.update(relation.columns if relation is not None else (d,))
         # Declaration order, so every consumer sees one column order.
         return tuple(d for d in self.dims if d in named)
 
@@ -700,7 +703,7 @@ class Schema(BaseModel):
         """The fold key's dims, in declaration order.
 
         The dims a layer patches one value or one row at a time (`partial`),
-        which include every group key. The fold's key is one fixed tuple over all
+        which include every relation key. The fold's key is one fixed tuple over all
         attributes, so it carries every axis *any* layer may patch by value or
         by row, not only those some currently declared attribute varies over. An
         attribute not owned per one of them writes NULL there, the "NULL means
@@ -738,11 +741,11 @@ class Schema(BaseModel):
         `addresses_entity`: a component's constant columns live on
         `dims/entity.parquet` like any other axis's.
 
-        Keyed off `dims` rather than `coordinates_of`, because a group with one
+        Keyed off `dims` rather than `coordinates_of`, because a relation with one
         coordinate is indistinguishable there: `dims={"connection"}` over a
         single `bus` coordinate also yields `("bus",)`, and it belongs in the
-        group's file rather than on the bus axis. A group over `entity` alone is
-        keyed by the group name, not `entity`, so its `into` label and any
+        relation's file rather than on the bus axis. A relation over `entity` alone is
+        keyed by the relation name, not `entity`, so its `values` label and any
         attribute it bundles never match here.
 
         Notes
@@ -776,7 +779,7 @@ class Schema(BaseModel):
     def input_key(self) -> tuple[str, ...]:
         """Inputs-map key columns, compared NULL-safely when folding.
 
-        `partial_dims`, plus `attribute`. `entity` and a group's coordinates are
+        `partial_dims`, plus `attribute`. `entity` and a relation's coordinates are
         in it as membership keys - a layer may patch one component's value, or
         one connection's, without restating every other's - and the broadcast
         `partial` value dims beside them.
@@ -793,14 +796,14 @@ class Schema(BaseModel):
         """
         return (*self.partial_dims, "attribute")
 
-    def groups_of(self, attribute: str) -> tuple[str, ...]:
-        """Which declared groups address `attribute`, in declaration order.
+    def relations_of(self, attribute: str) -> tuple[str, ...]:
+        """Which declared relations address `attribute`, in declaration order.
 
         An attribute is a connection attribute because its `dims` name the
-        `connection` group - not because a separate field says so. That is
-        what lets a second group exist without a second field.
+        `connection` relation - not because a separate field says so. That is
+        what lets a second relation exist without a second field.
 
-        A group a dim shadows is not one of them, `dims: [country]` naming the
+        A relation a dim shadows is not one of them, `dims: [country]` naming the
         axis.
 
         Notes
@@ -811,35 +814,35 @@ class Schema(BaseModel):
         if spec is None:
             return ()
         return tuple(
-            g for g in self.groups if g in spec.dims and g not in self.dimensions
+            r for r in self.relations if r in spec.dims and r not in self.dimensions
         )
 
-    def group_coordinates(self, group: str) -> tuple[str, ...]:
-        """One group's columns, or `()` if it is not declared.
+    def relation_columns(self, relation: str) -> tuple[str, ...]:
+        """One relation's columns, or `()` if it is not declared.
 
-        Every column of the group's file, `into` included. Coordinate names
+        Every column of the relation's file, `values` included. Column names
         rather than dim names, so two drawing on one axis stay two columns.
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         """
-        spec = self.groups.get(group)
-        return () if spec is None else spec.coordinates
+        spec = self.relations.get(relation)
+        return () if spec is None else spec.columns
 
-    def group_key(self, group: str) -> tuple[str, ...]:
-        """One group's key columns, or `()` if it is not declared.
+    def relation_key(self, relation: str) -> tuple[str, ...]:
+        """One relation's key columns, or `()` if it is not declared.
 
-        `group_coordinates` minus `into` - what the fold keys ownership by and
+        `relation_columns` minus `values` - what the fold keys ownership by and
         what a tombstone names.
 
         Notes
         -----
-        - [into](https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)
+        - [values](https://energy-models.github.io/datarecord/design/schema/#values-a-relation-that-classifies)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        spec = self.groups.get(group)
-        return () if spec is None else spec.key
+        spec = self.relations.get(relation)
+        return () if spec is None else tuple(spec.key)
 
     @property
     def input_columns(self) -> tuple[str, ...]:
@@ -862,7 +865,7 @@ class Schema(BaseModel):
         narwhals dtype, translated to DuckDB (`duck.DuckTypes`) only where a
         caller builds a column of it.
 
-        No dim is structural - `entity` and a group's `bus` included: each is
+        No dim is structural - `entity` and a relation's `bus` included: each is
         declared, and typed from that declaration. So an `Enum` on the entity-type
         axis pins its vocabulary everywhere the column is built, and an axis a
         schema happens to call `kind` is typed no differently.
@@ -899,7 +902,7 @@ class Schema(BaseModel):
     def value_type(self, attribute: str) -> nw.dtypes.DType | None:
         """The `value` column's type for one attribute.
 
-        No `ctype`: one attribute is one `inputs/<attr>.parquet` with one
+        No `ctype`: one attribute is one `attributes/<attr>.parquet` with one
         `value` column, so the dtype is the attribute's alone. A narwhals
         dtype, translated to DuckDB (`duck.DuckTypes`) only where a caller builds
         a column of it.
@@ -1003,15 +1006,15 @@ def _to_mathspec(dtype: nw.dtypes.DType, where: str) -> str:
     raise ValueError(msg)
 
 
-def _group_from_relation(name: str, block: Any) -> Group:
-    """A mathspec relation as a group: `key` becomes `over`, one `values` column `into`.
+def _relation_from_mathspec(name: str, block: Any) -> Relation:
+    """A mathspec relation as a `Relation`, which determines at most one column.
 
-    A group determines at most one column, named after its dim; a relation may
-    determine several, under any role, and those have no group form.
+    A `Relation`'s `values` column is named after its dim; a mathspec relation
+    may determine several, under any role, and those have no `Relation` form.
     """
-    over = dict(block.pairs[: len(block.key_roles)])
+    key = dict(block.pairs[: len(block.key_roles)])
     values = block.pairs[len(block.key_roles) :]
     if len(values) > 1 or any(role != dim for role, dim in values):
-        msg = f"relation {name!r} determines {values}; a group is `into` one dim, named after it"
+        msg = f"relation {name!r} determines {values}; a datarecord relation has one `values` dim, named after it"
         raise ValueError(msg)
-    return Group(over=over, into=values[0][1] if values else None)
+    return Relation(key=key, values=values[0][1] if values else None)

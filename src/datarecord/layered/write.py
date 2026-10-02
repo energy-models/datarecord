@@ -116,11 +116,11 @@ def write_record(
             with open(staging + "manifest.json", "w") as fh:
                 fh.write(schema.model_dump_json())
         kinds = [
-            ("dims", data.axes(), data.axis, "dims"),
-            ("groups", data.groups(), data.group, "groups"),
-            ("attributes", data.attributes(), data.attribute, "inputs"),
+            ("dims", data.axes(), data.axis),
+            ("relations", data.relations(), data.relation),
+            ("attributes", data.attributes(), data.attribute),
         ]
-        for kind, keys, read, subdir in kinds:
+        for kind, keys, read in kinds:
             for key in keys:
                 rel = read(
                     key
@@ -128,7 +128,7 @@ def write_record(
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
-                _write_frame(rel, f"{staging}{subdir}/{key}.parquet", schema)
+                _write_frame(rel, f"{staging}{kind}/{key}.parquet", schema)
     except BaseException:
         if local:
             shutil.rmtree(staging, ignore_errors=True)
@@ -241,10 +241,10 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
     if kind == "attributes":
         # An attribute's shape comes from its spec, so one the schema does not
         # declare has no shape to check it against - and writing it would put a
-        # file in `inputs/` that no read path knows the columns of.
+        # file in `attributes/` that no read path knows the columns of.
         if key not in schema.attributes:
             msg = (
-                f"inputs/{key}.parquet is not a declared attribute; its `dims` "
+                f"attributes/{key}.parquet is not a declared attribute; its `dims` "
                 f"are what say which columns the file carries (https://energy-models.github.io/datarecord/design/schema/#attributespec)"
             )
             raise ValueError(msg)
@@ -252,7 +252,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         missing = sorted(required - columns)
         if missing:
             msg = (
-                f"inputs/{key}.parquet is missing long-schema columns {missing}; "
+                f"attributes/{key}.parquet is missing long-schema columns {missing}; "
                 f"the resolved relation needs {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
             )
             raise ValueError(msg)
@@ -264,7 +264,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         extra = sorted(columns - required)
         if extra:
             msg = (
-                f"inputs/{key}.parquet carries columns {extra} the attribute is "
+                f"attributes/{key}.parquet carries columns {extra} the attribute is "
                 f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
             )
             raise ValueError(msg)
@@ -313,15 +313,15 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             raise ValueError(msg)
         return
 
-    if kind != "groups" or key not in schema.groups:
+    if kind != "relations" or key not in schema.relations:
         return
-    # A group's row is keyed by its coordinates, `into` among them, so a frame
+    # A relation's row is keyed by its columns, `values` among them, so a frame
     # lacking one would be keyed by a column that is not there.
-    missing = sorted(set(schema.group_coordinates(key)) - columns)
+    missing = sorted(set(schema.relation_columns(key)) - columns)
     if missing:
         msg = (
-            f"groups/{key}.parquet is missing the group's coordinates "
-            f"{missing}; the fold would key by a column that is not there (https://energy-models.github.io/datarecord/design/schema/#groups)"
+            f"relations/{key}.parquet is missing the relation's columns "
+            f"{missing}; the fold would key by a column that is not there (https://energy-models.github.io/datarecord/design/schema/#relations)"
         )
         raise ValueError(msg)
 
@@ -365,11 +365,11 @@ class _RecordLikeAsLayerData:
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         return self._read(self._source.dims, dim)
 
-    def groups(self) -> set[str]:
-        return set(self._source.groups)
+    def relations(self) -> set[str]:
+        return set(self._source.relations)
 
-    def group(self, name: str) -> DuckDBPyRelation | None:
-        return self._read(self._source.groups, name)
+    def relation(self, name: str) -> DuckDBPyRelation | None:
+        return self._read(self._source.relations, name)
 
     def attributes(self) -> set[str]:
         return set(self._source.attributes)

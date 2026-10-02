@@ -20,7 +20,7 @@ from datarecord.layered.write import write_record
 from datarecord.schema import (
     AttributeSpec,
     Dimension,
-    Group,
+    Relation,
     Schema,
 )
 from datarecord.sources import from_sources
@@ -39,10 +39,10 @@ LONG_COLUMNS = [
 ]
 
 
-def write_input(
+def write_attribute(
     layer: str, attribute: str, rows: list[dict], *, snapshot_dtype="datetime64[ns]"
 ) -> None:
-    """Write `inputs/<attribute>.parquet` in the long schema.
+    """Write `attributes/<attribute>.parquet` in the long schema.
 
     Each row needs at least `name` and `value`; missing dimension columns
     default to NULL, i.e. "applies to the whole axis".
@@ -67,7 +67,7 @@ def write_input(
     df["breakpoint"] = df["breakpoint"].astype("float64")
     df["value"] = df["value"].astype("float64")
 
-    target = Path(layer, "inputs")
+    target = Path(layer, "attributes")
     target.mkdir(parents=True, exist_ok=True)
     path = target / f"{attribute}.parquet"
     df = df[LONG_COLUMNS]
@@ -76,10 +76,10 @@ def write_input(
     df.to_parquet(path, index=False)
 
 
-def write_group(layer: str, group: str, rows: list[dict]) -> None:
-    """Write `groups/<group>.parquet` from plain rows, whatever columns they carry.
+def write_relation(layer: str, name: str, rows: list[dict]) -> None:
+    """Write `relations/<name>.parquet` from plain rows, whatever columns they carry.
 
-    The generic form of `write_connections`: one file per group, keyed by its
+    The generic form of `write_connections`: one file per relation, keyed by its
     coordinates, with `deleted` supplied where a row does not carry it.
 
     Notes
@@ -90,13 +90,13 @@ def write_group(layer: str, group: str, rows: list[dict]) -> None:
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
-    target = Path(layer, "groups")
+    target = Path(layer, "relations")
     target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / f"{group}.parquet", index=False)
+    df.to_parquet(target / f"{name}.parquet", index=False)
 
 
 def write_connections(layer: str, rows: list[dict]) -> None:
-    """Write `groups/connection.parquet`, including the `deleted` tombstone.
+    """Write `relations/connection.parquet`, including the `deleted` tombstone.
 
     Each row needs `entity` and `bus`; `role` describes the connection and keys
     nothing, so it is optional here.
@@ -120,7 +120,7 @@ def write_connections(layer: str, rows: list[dict]) -> None:
 
     lead = ["entity", "bus", "role", "scenario", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
-    target = Path(layer, "groups")
+    target = Path(layer, "relations")
     target.mkdir(parents=True, exist_ok=True)
     path = target / "connection.parquet"
     out = df[ordered]
@@ -159,8 +159,8 @@ def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:
     """Write components of one type: entity rows, their type, and their constants.
 
     The entity axis holds membership, tombstones and every other column; the
-    `entity_type` group holds each entity's type; a constant of an attribute
-    declared over more than `entity` is a broadcast row in `inputs/`.
+    `entity_type` relation holds each entity's type; a constant of an attribute
+    declared over more than `entity` is a broadcast row in `attributes/`.
 
     Notes
     -----
@@ -174,14 +174,14 @@ def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:
     for attribute in long:
         values = df[["entity", attribute]].dropna()
         if not values.empty:
-            write_input(
+            write_attribute(
                 layer,
                 attribute,
                 values.rename(columns={attribute: "value"}).to_dict("records"),
             )
     _append(Path(layer, "dims", "entity.parquet"), df.drop(columns=long))
     kinds = df[["entity", "deleted"]].assign(entity_type=ctype)
-    _append(Path(layer, "groups", "entity_type.parquet"), kinds[~kinds["deleted"]])
+    _append(Path(layer, "relations", "entity_type.parquet"), kinds[~kinds["deleted"]])
 
 
 def _append(path: Path, df: pd.DataFrame) -> None:
@@ -206,9 +206,9 @@ def tombstone(layer: str, ctype: str, names: list[str]) -> None:
 
 
 def members(record, ctype: str) -> pd.DataFrame:
-    """One type's entity-axis rows: the entities the `entity_type` group names `ctype`."""
+    """One type's entity-axis rows: the entities the `entity_type` relation names `ctype`."""
     axis = record.dims["entity"].collect("pandas").to_native()
-    kinds = record.groups["entity_type"].collect("pandas").to_native()
+    kinds = record.relations["entity_type"].collect("pandas").to_native()
     mine = kinds.loc[kinds["entity_type"] == ctype, ["entity"]]
     return axis.merge(mine, on="entity").reset_index(drop=True)
 
@@ -314,7 +314,7 @@ def network_schema(n) -> Schema:
 
     `p_nom` and `carrier` are entity-axis columns; `SERIES` and the per-port
     `efficiency` vary over `snapshot`, and over `scenario` too where `n` has
-    one; `role` is a column of the `connection` group.
+    one; `role` is a column of the `connection` relation.
     """
     varying = {"snapshot", "scenario"} if n.has_scenarios else {"snapshot"}
     declared = {
@@ -333,10 +333,10 @@ def network_schema(n) -> Schema:
 def network_tables(n) -> dict[str, pd.DataFrame]:
     """`n` as tables keyed by the names `network_schema(n)` declares.
 
-    Every one but the `entity_type` group, which is `network_kinds(n)`: it
+    Every one but the `entity_type` relation, which is `network_kinds(n)`: it
     shares its name with the `entity_type` dim, and `from_sources` reads a
     table of that name as the dim's labels as well
-    (`test_a_group_named_after_its_into_dim_is_written`).
+    (`test_a_relation_named_after_its_values_dim_is_written`).
 
     Standard types are left out: PyPSA fills them on every network, so they are
     its catalogue rather than this network's components. A stochastic network
@@ -384,7 +384,7 @@ def network_tables(n) -> dict[str, pd.DataFrame]:
 
 
 def network_kinds(n) -> pd.DataFrame:
-    """The `entity_type` group of `n`: each entity and its component type, once."""
+    """The `entity_type` relation of `n`: each entity and its component type, once."""
     return pd.concat(
         [
             c.static.reset_index()[["name"]]
@@ -488,7 +488,7 @@ def export_network(n, revision, con) -> None:
     - [sources](https://energy-models.github.io/datarecord/design/sources/)
     """
     write_record(revision.id, from_sources(network_schema(n), network_tables(n)), con)
-    write_group(
+    write_relation(
         layer_dir(revision.id), "entity_type", network_kinds(n).to_dict("records")
     )
 
@@ -518,7 +518,7 @@ def write_directory_schema(directory: str, schema: Schema) -> None:
 
 
 def _default_attributes(
-    dims: dict[str, nw.dtypes.DType], groups: dict[str, dict[str, str]]
+    dims: dict[str, nw.dtypes.DType], relations: dict[str, dict[str, str]]
 ):
     """The attributes tests write, declared over whichever dims are in play.
 
@@ -528,7 +528,7 @@ def _default_attributes(
 
     Addressed over every declared dim rather than a narrower set, which is the
     widest shape and so the one that accepts any row a test writes.
-    `efficiency` is the exception, being over the `connection` group where one
+    `efficiency` is the exception, being over the `connection` relation where one
     is declared: that is what puts a `bus` column on its file.
 
     `weight` is the other, addressed by `scenario` alone - so it is a column of
@@ -537,7 +537,7 @@ def _default_attributes(
     declaration accounts for.
     """
     varying = {"entity", *dims}
-    connection = "connection" if "connection" in groups else "entity"
+    connection = "connection" if "connection" in relations else "entity"
     declared = {
         "p_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
         "e_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
@@ -566,19 +566,19 @@ def schema(
         "period": nw.Int64(),
         "scenario": nw.String(),
     },
-    groups: dict[str, dict[str, str]] = {
+    relations: dict[str, dict[str, str]] = {
         "connection": {"entity": "entity", "bus": "bus"}
     },
     within: dict[str, set[str]] | None = None,
 ) -> Schema:
     """A schema shaped like the PyPSA records most tests build on.
 
-    The `entity` axis and a `connection` group over `(entity, bus)`, and three
+    The `entity` axis and a `connection` relation over `(entity, bus)`, and three
     declared dims. Override `partial` to pin a different layering granularity,
-    `dims` to declare another axis, `groups` to declare a different sparse
+    `dims` to declare another axis, `relations` to declare a different sparse
     relation, and `within` to nest one axis inside another.
 
-    `entity` and every group coordinate are declared dims and are `partial`:
+    `entity` and every relation coordinate are declared dims and are `partial`:
     a layer patches one component's value, or one connection's, without
     restating the rest, which is what `partial` means. The schema requires it,
     so this supplies it rather than leaving each caller to.
@@ -586,7 +586,7 @@ def schema(
     Notes
     -----
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
     nesting = within or {}
@@ -599,20 +599,20 @@ def schema(
     # Declared whether or not a caller named them: a test writing `p_max_pu`
     # needs it declared, and one passing `attributes=` is narrowing what a type
     # *carries* rather than shortening the record's vocabulary.
-    for attr, spec in _default_attributes(dims, groups).items():
+    for attr, spec in _default_attributes(dims, relations).items():
         flat.setdefault(attr, spec)
-    # A group's coordinates are dims like any other, so they are declared here
-    # rather than assumed - which is what lets a caller pass a group over
+    # A relation's coordinates are dims like any other, so they are declared here
+    # rather than assumed - which is what lets a caller pass a relation over
     # coordinates that are not called `bus`.
-    coordinates = {c for over in groups.values() for c in over}
+    coordinates = {c for key in relations.values() for c in key}
     declared = {
         "entity": nw.String(),
         **{c: nw.String() for c in coordinates},
         **dims,
     }
     return Schema(
-        groups={g: Group(over=over) for g, over in groups.items()}
-        | {"entity_type": Group(over=["entity"], into="entity_type")},
+        relations={r: Relation(key=key) for r, key in relations.items()}
+        | {"entity_type": Relation(key=["entity"], values="entity_type")},
         dimensions={
             d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))
             for d, t in declared.items()

@@ -13,7 +13,7 @@ Everything a consumer codes against. It is read-only, and structural — a plain
 ```python
 record.schema  # what may exist: the axes, the attributes
 record.dims["scenario"]  # axis frames, keyed by dim
-record.groups["connection"]  # group rows, keyed by group — one frame each
+record.relations["connection"]  # relation rows, keyed by relation — one frame each
 record.attributes["p_max_pu"]  # long frames, keyed by attribute
 record.flags(["wind1", "wind2"])  # which axes each attribute uses, over these entities
 ```
@@ -26,7 +26,7 @@ entities = record.dims["entity"].collect().to_pandas()
 
 ## Wide and long
 
-`dims` and `groups` are **wide** — one row per thing. `attributes` is **long** — one row per value:
+`dims` and `relations` are **wide** — one row per thing. `attributes` is **long** — one row per value:
 
 ```text
 <coordinate> ... | attribute | breakpoint | value
@@ -34,14 +34,14 @@ entities = record.dims["entity"].collect().to_pandas()
 
 The coordinates are the attribute's own, from its declared `dims` — `entity` for `p_max_pu`, `entity | bus` for a connection attribute like `efficiency`, and no entity column at all for one addressed by an axis alone ([design](../design/format.md#the-long-schema)).
 
-A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). Two coordinates are the exception and never broadcast — `entity`, and a group's key coordinate such as `bus`, where a NULL means "every connection of this entity" rather than every bus. `breakpoint` carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's `default` from the schema.
+A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). Two coordinates are the exception and never broadcast — `entity`, and a relation's key coordinate such as `bus`, where a NULL means "every connection of this entity" rather than every bus. `breakpoint` carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's `default` from the schema.
 
-There is no `entity_type` column in an attribute's key or in a connection's — `attributes["p_max_pu"]` and `groups["connection"]` each hold the rows of every type together. An entity's type is a row of the `entity_type` group, so the type is something the record knows about a name rather than part of its address ([design](../design/schema.md#types)). To scope to one type, join `groups["entity_type"]` on `entity`:
+There is no `entity_type` column in an attribute's key or in a connection's — `attributes["p_max_pu"]` and `relations["connection"]` each hold the rows of every type together. An entity's type is a row of the `entity_type` relation, so the type is something the record knows about a name rather than part of its address ([design](../design/schema.md#types)). To scope to one type, join `relations["entity_type"]` on `entity`:
 
 ```python
 import narwhals as nw
 
-types = record.groups["entity_type"]
+types = record.relations["entity_type"]
 generators = record.dims["entity"].join(
     types.filter(nw.col("entity_type") == "Generator"), on="entity"
 )
@@ -82,6 +82,6 @@ record/
 ├── dims/
 │   ├── entity.parquet              # entities + attribute columns over entity alone
 │   └── <dim>.parquet               # one axis table per declared dim
-├── groups/<group>.parquet          # which tuples of the group exist
-└── inputs/<attr>.parquet           # one varying attribute per file
+├── relations/<relation>.parquet    # which tuples of the relation exist
+└── attributes/<attr>.parquet       # one varying attribute per file
 ```

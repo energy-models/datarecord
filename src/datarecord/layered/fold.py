@@ -2,10 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""A node's resolved view: the folded axes, groups and owner map, and the reads.
+"""A node's resolved view: the folded axes, relations and owner map, and the reads.
 
 A `Fold` is what `materialise` wrote and what a live resolution computes: the
-folded axes, groups, and the `inputs` owner map, each
+folded axes, relations, and the `attributes` owner map, each
 folded over the node's whole ancestry. `Resolver.fold` takes the deepest
 materialised source's `Fold` as its base and folds the layers below it on top,
 so a `Fold` read from disk is the prior incarnation of one computed live - the
@@ -108,23 +108,23 @@ class Fold:
         The record's one schema, which says which broadcast dims the flags carry.
     axes
         Each resolved dim's axis relation, keyed by dim; `entity` among them.
-    groups
-        Each resolved group's relation, keyed by group.
+    relations
+        Each resolved relation's rows, keyed by relation name.
     owner_map
-        The resolved `inputs` owner map: `(input_key, layer_uuid, varies,
+        The resolved `attributes` owner map: `(input_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per owned key.
     """
 
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
-    groups: dict[str, DuckDBPyRelation]
+    relations: dict[str, DuckDBPyRelation]
     owner_map: DuckDBPyRelation
 
     def attributes(self) -> list[str]:
         """Every input attribute any layer owns a row for, from the owner map.
 
         Across component types, matching the file layout: one
-        `inputs/<attr>.parquet` holds every type's rows. Ordered, so a `Record`
+        `attributes/<attr>.parquet` holds every type's rows. Ordered, so a `Record`
         over this has a stable key order.
 
         Notes
@@ -197,18 +197,18 @@ class Fold:
     ) -> Fold | None:
         """This node's `Fold`, or `None` if it is not materialised.
 
-        The `inputs` owner map is the presence marker: the maps, dims and groups
+        The `attributes` owner map is the presence marker: the maps, dims and relations
         are written together (`resolve.materialise`), so if the
         map is absent the node has no `resolved/` cache at all.
         """
         base = resolved_dir(revision_id, base_uri)
-        owner_map = try_read_parquet(f"{base}owner_map/inputs.parquet", con)
+        owner_map = try_read_parquet(f"{base}owner_map/attributes.parquet", con)
         if owner_map is None:
             return None
         return cls(
             schema=schema,
             axes=_read_dir(f"{base}dims/", con),
-            groups=_read_dir(f"{base}groups/", con),
+            relations=_read_dir(f"{base}relations/", con),
             owner_map=owner_map,
         )
 

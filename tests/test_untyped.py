@@ -4,10 +4,10 @@
 
 """A record whose schema declares no relation classifying its components.
 
-A type is an ordinary group, so a schema that declares none is a whole record:
+A type is an ordinary relation, so a schema that declares none is a whole record:
 a component's constant columns live on `dims/entity.parquet`, and `add`, `set`,
 `remove` and materialisation need nothing more. A tool that needs types declares
-the group in the schema it builds; the record layer does not require one.
+the relation in the schema it builds; the record layer does not require one.
 
 Notes
 -----
@@ -27,7 +27,7 @@ from datarecord.schema import AttributeSpec, Dimension, Schema
 
 @pytest.fixture
 def untyped_schema():
-    """Two attributes over `entity`, and no group classifying it.
+    """Two attributes over `entity`, and no relation classifying it.
 
     `entity` is `partial`, so a layer adds or removes one component without
     restating the rest.
@@ -109,10 +109,10 @@ def test_an_entity_type_column_is_rejected(con, base_uri, untyped_schema):
                 "FALSE AS deleted, 1.0 AS p_nom"
             )
 
-        def groups(self):
+        def relations(self):
             return ()
 
-        def group(self, name):
+        def relation(self, name):
             return None
 
         def attributes(self):

@@ -155,8 +155,8 @@ class RecordLike(Protocol):
         only. A column absent from the frame is one no layer wrote, whose value
         is that attribute's `default`.
 
-        No classification column: which buses a country holds is the group
-        `into` it, read from `groups`.
+        No classification column: which buses a country holds is the relation
+        whose `values` it is, read from `relations`.
 
         Notes
         -----
@@ -166,17 +166,17 @@ class RecordLike(Protocol):
         ...
 
     @property
-    def groups(self) -> Frames:
-        """Each declared group's rows, keyed by group - one frame each.
+    def relations(self) -> Frames:
+        """Each declared relation's rows, keyed by relation - one frame each.
 
-        A group declares which tuples over several dims exist - `connection`
+        A relation declares which tuples over several dims exist - `connection`
         over `(entity, bus)` is the one every record with connections has, and
         it is one instance rather than a member of its own.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         - [where the rows live](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
         ...
@@ -185,9 +185,9 @@ class RecordLike(Protocol):
     def attributes(self) -> Frames:
         """Long input frames, keyed by attribute name - one per file.
 
-        One `inputs/p_max_pu.parquet` holds every entity's rows, keyed by
+        One `attributes/p_max_pu.parquet` holds every entity's rows, keyed by
         `entity`; a reader wanting some entities - one type's, say - filters on
-        it with names read from the `entity_type` group.
+        it with names read from the `entity_type` relation.
 
         Notes
         -----
@@ -201,7 +201,7 @@ class RecordLike(Protocol):
         `labels` narrows by any fold-key dim, `generator=["wind", "gas"]`. Only
         attributes with rows are present, so the key set also answers which
         attributes these labels have at all. A consumer grouping labels by a
-        relation (a type, a carrier) passes each group's labels.
+        relation (a type, a carrier) passes each relation's labels.
 
         Notes
         -----
@@ -224,7 +224,7 @@ class LayerData(Protocol):
     `write_record` adapts.
 
     `schema` is not a peer of the other members but what decides which of them
-    exist: `groups`/`group` only for the groups it declares - an enumerator
+    exist: `relations`/`relation` only for the relations it declares - an enumerator
     answers the empty set rather than a phantom key where the schema declares
     nothing.
 
@@ -242,8 +242,8 @@ class LayerData(Protocol):
     def axes(self) -> Iterable[str]: ...
     def axis(self, dim: str) -> DuckDBPyRelation | None: ...
 
-    def groups(self) -> Iterable[str]: ...
-    def group(self, name: str) -> DuckDBPyRelation | None: ...
+    def relations(self) -> Iterable[str]: ...
+    def relation(self, name: str) -> DuckDBPyRelation | None: ...
 
     def attributes(self) -> Iterable[str]: ...
     def attribute(self, name: str) -> DuckDBPyRelation | None: ...
