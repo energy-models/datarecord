@@ -349,6 +349,97 @@ def test_set_rejects_an_unknown_name(staged):
         staged.set("p_nom", 1.0, entity=["Nope"])
 
 
+@pytest.mark.parametrize(
+    ("edit", "match"),
+    [
+        pytest.param(
+            lambda s: s.set(
+                "p_max_pu",
+                pd.Series({"2030-01-01": 0.4}),
+                entity=["Manchester Wind"],
+            ),
+            r"snapshot is Datetime, and '2030-01-01' is a str; "
+            r"pass pd\.Timestamp\('2030-01-01'\)",
+            id="str-for-datetime-series-index",
+        ),
+        pytest.param(
+            lambda s: s.set(
+                "p_max_pu",
+                {"2030-01-01": 0.4, "2030-01-02": 0.5},
+                entity="Manchester Wind",
+            ),
+            r"snapshot is Datetime, and '2030-01-01' is a str \(2 labels\)",
+            id="str-for-datetime-mapping-key",
+        ),
+        pytest.param(
+            lambda s: s.set(
+                "p_max_pu", 0.4, entity="Manchester Wind", snapshot="2030-01-01"
+            ),
+            r"snapshot is Datetime, and '2030-01-01' is a str",
+            id="str-for-datetime-keyword",
+        ),
+        pytest.param(
+            lambda s: s.set(
+                "p_max_pu", 0.4, entity="Manchester Wind", snapshot=["2030-01-01"]
+            ),
+            r"snapshot is Datetime, and '2030-01-01' is a str",
+            id="str-for-datetime-keyword-list",
+        ),
+        pytest.param(
+            lambda s: s.set("p_max_pu", 0.4, entity="Manchester Wind", snapshot=5),
+            r"snapshot is Datetime, and 5 is an int; pass a pd\.Timestamp",
+            id="int-for-datetime-keyword",
+        ),
+        pytest.param(
+            lambda s: s.set("p_max_pu", 0.4, entity=[1]),
+            r"entity is String, and 1 is an int; pass str\(1\)",
+            id="int-for-string-keyword-list",
+        ),
+        pytest.param(
+            lambda s: s.set(
+                "p_max_pu",
+                pd.Series({1: 0.4}),
+                indexed_by="entity",
+                snapshot=pd.Timestamp("2015-01-01"),
+            ),
+            r"entity is String, and 1 is an int",
+            id="int-for-string-series-index",
+        ),
+        pytest.param(
+            lambda s: s.set("p_nom", {1: 3.0}),
+            r"entity is String, and 1 is an int",
+            id="int-for-string-axis-mapping-key",
+        ),
+        pytest.param(
+            lambda s: s.remove("entity", [1]),
+            r"entity is String, and 1 is an int",
+            id="int-for-string-remove",
+        ),
+        pytest.param(
+            lambda s: s.remove_relation("connection", [(1, "London")]),
+            r"entity is String, and 1 is an int",
+            id="int-for-string-remove-relation",
+        ),
+    ],
+)
+def test_a_label_of_another_type_than_its_dim_is_refused(staged, edit, match):
+    """A label is checked against its dim's dtype before any relation is built.
+
+    Each of these reached the builder and failed there - as pyarrow's `object of
+    type <class 'str'> cannot be converted to int` or `Expected bytes, got a
+    'int' object`, or DuckDB's `Unimplemented type for cast (INTEGER ->
+    TIMESTAMP)` - naming neither the dim nor what it declares. A scalar
+    keyword `snapshot="2030-01-01"` did not fail at all: DuckDB parsed it as a
+    date, a guess the list form of the same call refused.
+
+    Notes
+    -----
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    """
+    with pytest.raises(TypeError, match=match):
+        edit(staged)
+
+
 def test_set_refuses_a_dim_an_entity_axis_attribute_lacks(staged):
     """`p_nom` is a column of the entity axis, so it has no `scenario` to scope.
 
