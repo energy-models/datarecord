@@ -5,14 +5,12 @@
 """The owner map, and the resolved reads gated by it.
 
 The map answers which layer owns each key; `Resolver` exposes the reads over
-it - one long relation per attribute, a group's rows, this layer's own
-outputs.
+it - one long relation per attribute, a group's rows.
 
 Notes
 -----
 - [the DuckDB read path](https://energy-models.github.io/datarecord/design/read-path/)
 - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
-- [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
 - [consuming a record](https://energy-models.github.io/datarecord/design/sources/)
 """
 
@@ -35,7 +33,6 @@ from datarecord.duck import (
     DuckTypes,
     base_uri_of,
     broadcast_match,
-    distinct_values,
     ensure_local_dir,
     fn,
     fold_axis,
@@ -489,7 +486,7 @@ def fold_inputs(
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    rel = source.all_attributes("inputs")
+    rel = source.all_attributes()
     if rel is None:
         own = _empty_relation(keys.schema, con, *keys.schema.input_columns)
     else:
@@ -830,7 +827,7 @@ class Resolver:
     """A record's resolved view: owner map, dims, schema, and the relations over them.
 
     The cached artifacts and the reads gated by them
-    (`relation`/`outputs`/`group_frame`/`attributes_of`) live
+    (`attribute`/`group_frame`/`attributes_of`) live
     together because every one of the latter is a semi-join against the former.
 
     Notes
@@ -1018,24 +1015,15 @@ class Resolver:
         """
         return set(self.dims.groups)
 
-    def attributes(self, kind: str = "inputs") -> list[str]:
-        """Every attribute of `kind` any layer owns a row for.
-
-        `inputs` reads the owner map, already folded over every layer;
-        `outputs` reads this record's own layer alone, results not overlaying.
+    def attributes(self) -> list[str]:
+        """Every attribute any layer owns a row for, read off the owner map.
 
         Notes
         -----
         - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
-        if kind == "inputs":
-            return self.fold.attributes()
-        rel = self.sources[-1].all_attributes("outputs")
-        if rel is None:
-            return []
-        return list(distinct_values(rel, "attribute"))
+        return self.fold.attributes()
 
     def attributes_of(self, **labels: Sequence[str]) -> dict[str, Flags]:
         """Per attribute, which dims its rows use - over `labels`, or all.
@@ -1046,27 +1034,8 @@ class Resolver:
         """
         return self.fold.flags(**labels)
 
-    def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation:
-        """The resolved long relation for one attribute of `kind`.
-
-        The shared `LayerData` name for `relation`/`outputs`: `inputs` folds
-        over every layer, `outputs` reads this record's own layer alone,
-        results not overlaying. Never `None`, unlike a `LayerSource`'s own
-        read - an attribute with no owning layer still resolves to an empty
-        relation in the long schema, which lets the catalog `default` apply
-        uniformly.
-
-        Notes
-        -----
-        - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-        """
-        if kind == "inputs":
-            return self._relation(name)
-        return self._outputs(name)
-
-    def _relation(self, attribute: str) -> DuckDBPyRelation:
-        """The resolved long relation for one input attribute.
+    def attribute(self, attribute: str) -> DuckDBPyRelation:
+        """The resolved long relation for one attribute - never `None`.
 
         Semi-joins the owning layers' `inputs/<attribute>.parquet` to the
         `inputs` owner map, so only owned rows survive: the map already names
@@ -1139,21 +1108,6 @@ class Resolver:
             )
         )
         return resolved
-
-    def _outputs(self, attribute: str) -> DuckDBPyRelation:
-        """A result attribute from this record's own layer; outputs do not overlay.
-
-        No fold and no owner map: if this layer has no `outputs/`, the record
-        has no results - an ancestor's are not inherited.
-
-        Notes
-        -----
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-        """
-        rel = self.sources[-1].attribute(attribute, "outputs")
-        if rel is not None:
-            return rel
-        return _empty_relation(self.schema, self.con, *self.schema.long_columns)
 
     def group_frame(self, group: str) -> DuckDBPyRelation | None:
         """One group's resolved rows, folded like an axis, in member order.

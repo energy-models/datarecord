@@ -166,7 +166,7 @@ def from_sources(schema: Schema, sources: Mapping[str, Any]) -> RecordLike:
     table carries its labels; a relation's its rows; a parameter's its
     coordinates and `value`. A parameter table may leave out a coordinate it
     broadcasts over - a constant over every snapshot has no `snapshot` column -
-    and the column is written NULL. A result's table goes to `outputs/`.
+    and the column is written NULL.
 
     Raises
     ------
@@ -180,17 +180,12 @@ def from_sources(schema: Schema, sources: Mapping[str, Any]) -> RecordLike:
     """
     tables = {name: _lazy(table) for name, table in sources.items()}
     _ambiguous(schema, tables)
-    declared = {
-        *schema.dimensions,
-        *schema.groups,
-        *schema.attributes,
-        *schema.results,
-    }
+    declared = {*schema.dimensions, *schema.groups, *schema.attributes}
     unknown = sorted(set(tables) - declared)
     if unknown:
         msg = (
             f"the schema declares no {unknown}; a table is keyed by the name of a "
-            f"dimension, relation, parameter or result"
+            f"dimension, relation or parameter"
         )
         raise KeyError(msg)
     return _Tables(schema, tables)
@@ -248,18 +243,13 @@ class _Tables:
 
     @property
     def attributes(self) -> Frames:
-        return self._long(self._schema.attributes)
-
-    @property
-    def outputs(self) -> Frames:
-        return self._long(self._schema.results)
-
-    def _long(self, declared: Mapping[str, Any]) -> Frames:
         axis_attributes = {
             a for d in self._schema.dims for a in self._schema.attributes_on(d)
         }
         present = tuple(
-            a for a in declared if a in self._tables and a not in axis_attributes
+            a
+            for a in self._schema.attributes
+            if a in self._tables and a not in axis_attributes
         )
         return LazyFrames(present, self._long_frame) if present else EMPTY
 

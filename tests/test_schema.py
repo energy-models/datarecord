@@ -184,7 +184,9 @@ def test_an_attribute_broadcasts_over_the_dims_it_names():
     assert s.broadcasts_over("efficiency") == ("timestep", "scenario"), (
         "`entity` and `bus` come through `connection`, so they do not broadcast"
     )
-    assert s.broadcasts_over("undeclared") == (), "a result broadcasts over nothing"
+    assert s.broadcasts_over("undeclared") == (), (
+        "an undeclared attribute broadcasts over nothing"
+    )
 
 
 # -- entity types ----------------------------------------------------------

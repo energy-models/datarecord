@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import narwhals as nw
 
@@ -25,9 +25,6 @@ from datarecord.schema import Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyRelation
-
-Kind = Literal["inputs", "outputs"]
-"""Which long directory an attribute lives in - the alias `set` takes."""
 
 Frames = Mapping[str, "nw.LazyFrame"]
 """What a `Record` hands over: named frames, each an unmaterialised plan.
@@ -198,22 +195,6 @@ class RecordLike(Protocol):
         """
         ...
 
-    @property
-    def outputs(self) -> Frames:
-        """Long result frames, keyed by attribute name.
-
-        Empty for a record carrying no results.
-
-        Unlike its neighbours, this does **not** overlay on a layered record: a
-        record's results are its own layer's, never a resolution over its
-        ancestors'.
-
-        Notes
-        -----
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-        """
-        ...
-
     def flags(self, **labels: Sequence[str]) -> dict[str, Flags]:
         """Every attribute, mapped to the shape its rows take - over `labels`, or all.
 
@@ -233,7 +214,7 @@ class RecordLike(Protocol):
 class LayerData(Protocol):
     """The rows of one thing - a layer, or a fold - enumerated and read.
 
-    `write_record`'s input: it needs `schema` and, per kind, which keys this
+    `write_record`'s input: it needs `schema` and, per member, which keys this
     thing holds and each one's rows - the enumerate-and-read pairs below, no
     more. `layered.sources.LayerSource` and `layered.resolve.Resolver` both
     satisfy this structurally, one answering for its own layer and the other
@@ -264,7 +245,5 @@ class LayerData(Protocol):
     def groups(self) -> Iterable[str]: ...
     def group(self, name: str) -> DuckDBPyRelation | None: ...
 
-    def attributes(self, kind: Kind = "inputs") -> Iterable[str]: ...
-    def attribute(
-        self, name: str, kind: Kind = "inputs"
-    ) -> DuckDBPyRelation | None: ...
+    def attributes(self) -> Iterable[str]: ...
+    def attribute(self, name: str) -> DuckDBPyRelation | None: ...

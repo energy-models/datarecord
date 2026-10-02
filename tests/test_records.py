@@ -20,14 +20,11 @@ from datarecord.layered.revision import Record
 from datarecord.layered.sources import ParquetLayer
 from datarecord.layered.write import write_record
 from datarecord.mutable import WorkingRecord
-from datarecord.record import EMPTY, Flags, Frames, RecordLike
+from datarecord.record import Flags, Frames, RecordLike
 from datarecord.schema import AttributeSpec, Schema
-from datarecord.sources import from_sources
 from tests.fixtures import (
     export_network,
     names,
-    network_schema,
-    network_tables,
     schema,
     write_entity_type,
     write_input,
@@ -118,7 +115,6 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
         dims: Frames
         groups: Frames
         attributes: Frames
-        outputs: Frames
 
         def flags(self, **labels) -> dict[str, Flags]:
             return {}
@@ -128,12 +124,8 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
         {"entity": entity_axis},
         {"entity_type": kinds},
         {"p_nom": long},
-        EMPTY,
     )
     assert isinstance(record, RecordLike)
-    # Results absent, spelled as an empty mapping rather than a protocol a
-    # consumer has to test for (https://energy-models.github.io/datarecord/design/record/#frames).
-    assert list(record.outputs) == []
     assert record.attributes["p_nom"].implementation == nw.Implementation.DUCKDB
 
     # And `write_record` consumes it, which is the point of widening the type:
@@ -512,65 +504,6 @@ def test_missing_key_raises(both):
     for record in both:
         with pytest.raises(KeyError):
             record.attributes["not_an_attribute"]
-
-
-def test_outputs_are_empty_until_solved(both):
-    """An unsolved network's results are absent rather than defaults.
-
-    Notes
-    -----
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-    """
-    for record in both:
-        assert list(record.outputs) == []
-
-
-def test_outputs_is_an_ordinary_record_member(both, con, base_uri):
-    """`outputs` is on `Record`; emptiness is the existence answer.
-
-    Notes
-    -----
-    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-    """
-    # No separate protocol to satisfy: an unsolved record answers with an empty
-    # mapping, the same way every other member answers for what it lacks.
-    for record in both:
-        assert isinstance(record, RecordLike)
-        assert list(record.outputs) == []
-
-
-def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc):
-    """A source with no results produces a layer with no `outputs/`.
-
-    Notes
-    -----
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
-    """
-    from datarecord.duck import try_read_parquet
-
-    solved = from_sources(network_schema(ac_dc), network_tables(ac_dc))
-
-    class Unsolved:
-        """The same record, with no results: `outputs` answers empty."""
-
-        schema = solved.schema
-        dims = solved.dims
-        groups = solved.groups
-        attributes = solved.attributes
-        outputs = EMPTY
-        flags = solved.flags
-
-    source = Unsolved()
-    assert isinstance(source, RecordLike)
-
-    revision = Revision.create(con)
-    # An empty `outputs` writes no `outputs/` at all, rather than an empty
-    # directory (https://energy-models.github.io/datarecord/design/writing/).
-    write_record(revision.id, source, con)
-    layer = layer_dir(revision.id)
-    assert try_read_parquet(layer + "outputs/*.parquet", con) is None
-    assert "p_max_pu" in Record.at(layer, con).attributes
 
 
 # -- one schema per record root (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ----------------------------------------

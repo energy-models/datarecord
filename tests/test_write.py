@@ -33,14 +33,12 @@ class _Source:
         schema,
         attributes=None,
         groups=None,
-        outputs=None,
         dims=None,
     ):
         self._schema = schema
         self.built: list[str] = []
         self._attributes = attributes or {}
         self._groups = groups or {}
-        self._outputs = outputs or {}
         self._dims = dims or {}
 
     @property
@@ -65,10 +63,6 @@ class _Source:
     @property
     def attributes(self):
         return self._frames(self._attributes, "attributes")
-
-    @property
-    def outputs(self):
-        return self._frames(self._outputs, "outputs")
 
     def flags(self, **labels):
         return {}
@@ -286,8 +280,7 @@ def test_write_record_rejects_an_undeclared_attribute(con, base_uri):
 
     Its `dims` are what say which columns the file carries, so writing one the
     schema does not declare would put a file in `inputs/` whose column set no
-    reader could derive. A *result* is exempt - a tool derives those from its
-    own registry, never from the schema.
+    reader could derive.
 
     Notes
     -----

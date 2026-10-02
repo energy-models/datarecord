@@ -121,7 +121,6 @@ def test_materialise_writes_the_map_under_resolved(con, parent):
         for pattern in (
             "*.parquet",
             "inputs/*.parquet",
-            "outputs/*.parquet",
             "dims/*.parquet",
             "dims/*/*.parquet",
         )

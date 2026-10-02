@@ -120,18 +120,6 @@ def write_record(
             ("groups", data.groups(), data.group, "groups"),
             ("attributes", data.attributes(), data.attribute, "inputs"),
         ]
-        # `outputs/` only for a source carrying results, so a record with none
-        # produces a layer without the directory rather than an empty one (https://energy-models.github.io/datarecord/design/writing/).
-        output_names = data.attributes("outputs")
-        if output_names:
-            kinds.append(
-                (
-                    "outputs",
-                    output_names,
-                    lambda name: data.attribute(name, "outputs"),
-                    "outputs",
-                )
-            )
         for kind, keys, read, subdir in kinds:
             for key in keys:
                 rel = read(
@@ -236,9 +224,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
     knows none.
 
     An attribute's coordinates are what its `dims` declare, so one file's column
-    set is not another's and neither is every declared dim. A result the schema
-    does not declare has no coordinates to derive, so it falls back to the fixed
-    columns every long row has.
+    set is not another's and neither is every declared dim.
 
     Reads the schema rather than the rows, so validating an unmaterialised
     relation costs nothing.
@@ -252,48 +238,33 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
     """
     columns = set(rel.columns)
 
-    # `outputs/` uses the same long schema as `inputs/`; it just does not
-    # overlay (https://energy-models.github.io/datarecord/design/read-path/#outputs), which is a read-path property rather than a shape one.
-    if kind in ("attributes", "outputs"):
-        subdir = "inputs" if kind == "attributes" else "outputs"
-        # An input's shape comes from its spec, so one the schema does not
+    if kind == "attributes":
+        # An attribute's shape comes from its spec, so one the schema does not
         # declare has no shape to check it against - and writing it would put a
         # file in `inputs/` that no read path knows the columns of.
-        if kind == "attributes" and key not in schema.attributes:
+        if key not in schema.attributes:
             msg = (
                 f"inputs/{key}.parquet is not a declared attribute; its `dims` "
                 f"are what say which columns the file carries (https://energy-models.github.io/datarecord/design/schema/#attributespec)"
             )
             raise ValueError(msg)
-        # A result's shape is not the schema's to fix, even where its name
-        # matches a declared attribute: `outputs/control.parquet` may vary over
-        # axes the *input* `control` does not. So only the fixed columns every
-        # long row has are required of one (https://energy-models.github.io/datarecord/design/read-path/#outputs).
-        required = (
-            set(schema.long_columns_for(key))
-            if kind == "attributes"
-            else {"attribute", "breakpoint", "value"}
-        )
+        required = set(schema.long_columns_for(key))
         missing = sorted(required - columns)
         if missing:
             msg = (
-                f"{subdir}/{key}.parquet is missing long-schema columns {missing}; "
+                f"inputs/{key}.parquet is missing long-schema columns {missing}; "
                 f"the resolved relation needs {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
             )
             raise ValueError(msg)
-        # And an *input* carries nothing else: a coordinate the attribute is
-        # not addressed by would be a column the read path never projects,
-        # written as a fact about a value that does not have one. Reported
-        # rather than dropped, since a source emitting one disagrees with the
-        # schema about what the attribute is - the source's bug to fix.
-        #
-        # A result is exempt for the same reason it need not be declared: its
-        # shape is a framework's business, and a name it shares with an input
-        # says nothing about which coordinates the *result* varies over.
-        extra = sorted(columns - required) if kind == "attributes" else []
+        # And an attribute carries nothing else: a coordinate it is not
+        # addressed by would be a column the read path never projects, written
+        # as a fact about a value that does not have one. Reported rather than
+        # dropped, since a source emitting one disagrees with the schema about
+        # what the attribute is - the source's bug to fix.
+        extra = sorted(columns - required)
         if extra:
             msg = (
-                f"{subdir}/{key}.parquet carries columns {extra} the attribute is "
+                f"inputs/{key}.parquet carries columns {extra} the attribute is "
                 f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
             )
             raise ValueError(msg)
@@ -400,10 +371,8 @@ class _RecordLikeAsLayerData:
     def group(self, name: str) -> DuckDBPyRelation | None:
         return self._read(self._source.groups, name)
 
-    def attributes(self, kind: str = "inputs") -> set[str]:
-        frames = self._source.attributes if kind == "inputs" else self._source.outputs
-        return set(frames)
+    def attributes(self) -> set[str]:
+        return set(self._source.attributes)
 
-    def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation | None:
-        frames = self._source.attributes if kind == "inputs" else self._source.outputs
-        return self._read(frames, name)
+    def attribute(self, name: str) -> DuckDBPyRelation | None:
+        return self._read(self._source.attributes, name)

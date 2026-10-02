@@ -122,8 +122,3 @@ So a directory takes the same properties as a tree node, rather than its own col
 - **`schema.partial`** is the granularity of a patch, and one layer patches nothing, so it is inert rather than absent.
 
 Being a node in a layer tree is not what the fold requires; being a layer _layout_ is, and that is what a record directory is. A directory copied out of any tree, with no `revisions` row, reads identically.
-
-## Outputs
-
-`outputs/<attr>.parquet` does not overlay.
-An output relation reads the node's own layer only: if that layer has no `outputs/`, the record has no results, and an ancestor's are not inherited.

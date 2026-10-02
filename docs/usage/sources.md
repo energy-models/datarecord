@@ -6,14 +6,13 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Tables in and out
 
-This page shows how to fill a record from a framework's data, solve it with specsolve, and store the results. A record meets both through tables keyed by the names its schema declares ([design](../design/sources.md), [API](../api/sources.md)).
+This page shows how to fill a record from a framework's data and solve it with specsolve. A record meets both through tables keyed by the names its schema declares ([design](../design/sources.md), [API](../api/sources.md)).
 
-| declared as | its table                                  |
-| ----------- | ------------------------------------------ |
-| a dimension | its labels, one column named after it      |
-| a relation  | its rows, one column per coordinate        |
-| a parameter | its coordinates and `value`                |
-| a result    | its coordinates and `value`, in `outputs/` |
+| declared as | its table                             |
+| ----------- | ------------------------------------- |
+| a dimension | its labels, one column named after it |
+| a relation  | its rows, one column per coordinate   |
+| a parameter | its coordinates and `value`           |
 
 A schema built with `Schema.from_mathspec` carries the names of a mathspec declarations file, so these are the names and the shapes that specsolve's `solve(spec, sources)` takes.
 
@@ -45,19 +44,9 @@ result = specsolve.solve(spec, sources)
 
 `record` may be a `WorkingRecord`, so a solve reads pending edits before they are committed.
 
-## Results
+## Answers
 
-Each result goes back as a table of its coordinates and `value`, and a commit writes it in the same layer as the inputs it was solved from:
-
-```python
-from datarecord import NewChild, WorkingRecord
-
-w = WorkingRecord(record, con)
-w.set("p", result.primal("p"), kind="outputs")
-w.commit(NewChild(revision))
-```
-
-The schema declares each result name under `results` ([design](../design/working-record.md#results-through-kindoutputs)).
+A solve's answers are stored as a record of their own, whose schema the producer defines. That record is linked to the input record by the revision id of the input node ([design](../design/sources.md#answers)).
 
 ## Framework objects
 

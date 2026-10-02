@@ -24,7 +24,6 @@ w.set("p_max_pu", frame, entity=["wind1"])  # a long frame
 w.set("efficiency", 0.9, entity=["dc"], bus="north")  # a connection
 w.set("p_max_pu", 0.5, entity=["wind1"], scenario="high")  # scoped to one scenario
 w.set("p_max_pu", nw.col("value") * 1.1, entity=["wind1"])  # derived
-w.set("p", solved_frame, kind="outputs")  # a result
 ```
 
 **There is no `entity_type` keyword.** No attribute is narrowed to a type, so one call may span types. `set` refuses a name that is not on the entity axis — `add` it first — and an attribute that is not declared over the dims the call names ([design](../design/working-record.md#set)).
@@ -105,7 +104,5 @@ new.record.attributes["p_max_pu"].collect()
 `NewChild()` branches from whichever node the `WorkingRecord` was built over, which is what a caller means every time. Pass one explicitly — `NewChild(other_revision)` — only to re-parent the edits elsewhere; a `WorkingRecord` over a base that is not a node in a layer tree — a `Record.at(uri)` over a plain directory — has nothing to default to and must supply one.
 
 An edit replaces the rows it names, so restating a coordinate overwrites it and the last write is what stands. A `remove` after a `set` wins regardless of order — a deleted component has no attributes — and an `add` after a `remove` brings the component back.
-
-Neither target carries a **base's** results across: an edit changes the inputs a result was computed from. What a commit does carry is results staged into this record through `set(..., kind="outputs")`, which were computed against these pending inputs ([design](../design/working-record.md#results-through-kindoutputs)).
 
 Edit-level mistakes are caught when the edit is **staged**, not at commit, so a typo is reported at the line that typed it ([design](../design/working-record.md#validation)).

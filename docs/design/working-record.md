@@ -21,7 +21,6 @@ class WorkingRecord:
         value: Any,  # scalar | sequence | mapping | series | frame | nw.Expr
         *,
         entity: Sequence[str] | None = None,
-        kind: Literal["inputs", "outputs"] = "inputs",
         indexed_by: str | None = None,  # what a series' index holds
         **dims: Any,
     ) -> None: ...
@@ -87,7 +86,6 @@ record.set("icon", {"Generator": "turbine"})  # keyed by entity_type labels
 record.set("efficiency", 0.9, entity=["dc"], bus="north")  # a connection
 record.set("p_max_pu", 0.5, entity=["wind1"], scenario="high")  # scoped
 record.set("p_max_pu", nw.col("value") * 1.1, entity=["wind1"])  # derived
-record.set("p", solved, kind="outputs")  # a result
 ```
 
 **There is no `entity_type` keyword.** An attribute is not narrowed to [types](schema.md#types): every declared attribute can be set on any entity its `dims` address.
@@ -104,9 +102,6 @@ A group coordinate does not broadcast that way: omitting `bus` means "every conn
 **An attribute addressed by one axis alone is keyed by that axis's labels**, not by `entity`: `set("icon", {"Generator": "turbine"})` states one type's icon, and `set("co2_budget", 3.0)` reaches every country the axis has.
 The edit stages a row of [that axis's own file](format.md#where-a-value-lives) rather than a long row, so `entity=` is refused — an icon belongs to no component — and a sequence is refused too, there being no name list to align against.
 A label the axis does not have is refused rather than introduced: an axis row is a label's existence, which an axis file states. Where the axis's dtype is an `Enum` the vocabulary is the schema's, so an undeclared label is rejected without reading the axis at all.
-
-`kind` names the destination in the format's own terms — [the shape of an edit](#the-shape-of-an-edit) is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
-`"outputs"` stages into `outputs/` instead of `inputs/`, which is how a solver [hands results back](#results-through-kindoutputs) to a record before it is committed.
 
 `value` takes six forms, because assigning one value to a group and assigning a different value to each member are equally ordinary and neither should require building a frame:
 
@@ -160,35 +155,10 @@ The caller asked for those rows to take a new value and there is nothing to comp
 With `entity=None` and no scope the instruction is "whatever resolves", so an empty result is an answer rather than a failure.
 That asymmetry is the whole of the rule: a broad derived edit where only some entities hold a value is ordinary, while a targeted one that hits nothing is a typo.
 
-## Results through `kind="outputs"`
+## Answers
 
-A solver reads a record and hands back what it computed ([tables by declared name](sources.md#results)):
-
-```python
-record = WorkingRecord(record, con)
-record.set("p_max_pu", 0.8, entity=["wind1"])
-sources = {name: frame.collect() for name, frame in to_sources(record).items()}
-result = specsolve.solve(spec, sources)  # solve the edited record
-record.set("p", result.primal("p"), kind="outputs")
-record.commit(NewChild())  # one layer, inputs and results together
-```
-
-In memory only: the results live in the staging area beside the input edits and become part of the same layer at commit, so a solve produces one new record rather than a record plus a separate results record.
-Nothing on disk is mutated, and [write-once](layers.md#a-layers-data-is-write-once) stands unchanged.
-
-Two things differ from an input edit, both following from [outputs](read-path.md#outputs):
-
-- **The name is checked against `results`, not `attributes`.**
-  A result attribute is [declared](schema.md#results) in its own vocabulary, so an unknown name is an error exactly as it is for an input — what differs is which mapping answers.
-  The dim vocabulary is checked for both, and a result's coordinates are its own rather than every declared dim.
-- **No membership check on `entity`.**
-  An input value for a name no layer declares is [rejected](#validation), because it would resolve to nothing.
-  A result may legitimately name a component the record never declared: PyPSA's `SubNetwork` exists only after a solve, so rejecting it would refuse a real result.
-- **No extent completion when staged.**
-  Results are complete as produced rather than [a partial override of a parent's](schema.md#partial-the-granularity-of-an-override), so there is nothing to carry forward from the base.
-
-Keeping results coherent with the inputs they were computed from is the caller's business.
-Editing an input after attaching results leaves results describing a record that no longer exists, and nothing here silently discards them — a record that dropped them on the next `set` would be guessing at which of the two the caller meant to keep.
+A solve's answers are stored as a record of their own, whose schema the producer defines.
+That record is linked to the input record by the revision id of the input node ([tables by declared name](sources.md#answers)).
 
 ## Accessors — **not implemented**
 
@@ -290,12 +260,6 @@ A `Directory` writes the resolved axis whole either way, and an axis nothing tou
 
 Restating on edit is what an axis outside `partial` costs, and it is [the cheaper side of that trade](schema.md#partial-the-granularity-of-an-override) — which is the reason not to reach for `partial` when an axis merely gains an attribute.
 
-Neither carries the **base's** results across.
-An edit changes the inputs a result was computed from, so a parent's `outputs/` says nothing about the child — results belong to the node that was solved, and a node with different inputs is a different node.
-
-What a commit does carry is results **staged into this record** through [`set(..., kind="outputs")`](#results-through-kindoutputs).
-Those were computed against these pending inputs, so they describe exactly the layer being written, and both readings write them: a `NewChild` layer holds its edits and the results computed from them together.
-
 An edit **replaces the rows it names** rather than appending beside them: it deletes the rows at the coordinate it writes and inserts the new ones, so a staging table holds one row per coordinate and no fold is needed to read it.
 The key it replaces on is the coordinate — the same one a read would have collapsed — so the delete removes exactly what a last-writer-wins fold would have discarded.
 An axis is the exception in mechanism, not in effect: an axis row's columns are independently editable, so a `set` there patches its one column in place (`UPDATE`) rather than replacing the row, which is what keeps a sibling attribute a different `set` wrote.
@@ -333,7 +297,6 @@ Staged rows live in DuckDB tables on the record's own connection:
 
 ```sql
 CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>);
-CREATE TABLE staged_outputs_<attr>_<id>  (<that attribute's long columns>);
 CREATE TABLE staged_axis_<dim>_<id>      (<the axis key>, ..., deleted BOOLEAN);
 CREATE TABLE staged_<group>_<id>         (<group coordinates>, ..., deleted BOOLEAN);
 ```
@@ -343,8 +306,6 @@ CREATE TABLE staged_<group>_<id>         (<group coordinates>, ..., deleted BOOL
 **One table per staged attribute**, because that is the file it becomes: its columns are [the attribute's own coordinates](format.md#the-long-schema) and `value` has the attribute's declared type.
 A shared table would have to widen `value` to text and carry every declared dim, which costs twice: the value needs casting back on the way out, and a NULL in a dim column becomes ambiguous between "this attribute has no such axis" and [the broadcast rule](record.md#the-broadcast-rule)'s "every value of it".
 Per attribute both questions are answered by the table's shape, so neither is asked.
-
-A result the schema never declares has no declared type to take; the table records the one its frame arrived with, settled once at creation rather than guessed per read.
 
 One staging table per declared [group](schema.md#groups), mirroring [the maps the fold builds](read-path.md#owner-map): `connection` is one instance, so a record declaring a second group stages it through the same path rather than a second method.
 

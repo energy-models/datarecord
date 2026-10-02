@@ -19,7 +19,7 @@ import re
 from collections.abc import Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, overload
 from uuid import UUID, uuid4
 
 import duckdb
@@ -40,12 +40,11 @@ from datarecord.layered.resolve import Resolver
 from datarecord.layered.revision import Record, Revision
 from datarecord.layered.write import write_record
 from datarecord.record import (
-    EMPTY,
     Frames,
     LazyFrames,
     RecordLike,
 )
-from datarecord.schema import LONG_TAIL, Schema
+from datarecord.schema import Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
@@ -325,19 +324,15 @@ class StagedSource:
     def group(self, name: str) -> DuckDBPyRelation | None:
         return self.record._collapsed_group(name)
 
-    def attributes(self, kind: str = "inputs") -> set[str]:
-        """Which attributes of `kind` have staged rows."""
-        return set(self.record._staged_attributes_of(kind))
+    def attributes(self) -> set[str]:
+        """Which attributes have staged rows."""
+        return set(self.record._staged_attributes())
 
-    def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation | None:
-        if kind == "outputs":
-            # Results do not overlay, so the table is already what is written -
-            # one row per coordinate (`_replace`) and no fold to apply.
-            return self.record._rows("outputs", name)
+    def attribute(self, name: str) -> DuckDBPyRelation | None:
         return self.record._collapsed_inputs(name)
 
-    def all_attributes(self, kind: str = "inputs") -> DuckDBPyRelation | None:
-        """Every staged attribute of `kind`, unioned by name and unprojected.
+    def all_attributes(self) -> DuckDBPyRelation | None:
+        """Every staged attribute, unioned by name and unprojected.
 
         By name because the tables carry per-attribute column variation exactly
         as the files do - one attribute's coordinates and no others - which is
@@ -349,8 +344,8 @@ class StagedSource:
         """
         arms = [
             rel
-            for name in self.record._staged_attributes_of(kind)
-            if (rel := self.attribute(name, kind)) is not None
+            for name in self.record._staged_attributes()
+            if (rel := self.attribute(name)) is not None
         ]
         if not arms:
             return None
@@ -366,9 +361,8 @@ class WorkingRecord(Record):
     A `Record` in the type as well as in the fold: what it reads is the data
     *with its pending edits applied*, and it reads it by being one layer deeper
     than its base rather than by overlaying anything of its own. Every read
-    member is inherited unchanged - `outputs` alone is overridden, results not
-    overlaying - so an edit reads back through the same code path a committed
-    layer would.
+    member is inherited unchanged, so an edit reads back through the same code
+    path a committed layer would.
 
     Staged rows live in connection-scoped DuckDB tables, the *only* place a
     staged row exists: the reads fold them rather than holding a copy, so what
@@ -396,8 +390,8 @@ class WorkingRecord(Record):
     #: schema, one dim's axis, one attribute's rows and the revision to branch
     #: from are all members of one.
     _base: Resolver
-    #: Keyed by `(kind, attribute)`, the attribute being None for the entity
-    #: kinds. A long kind stages one table per attribute because that is the
+    #: Keyed by `(kind, attribute)`, the attribute being None for an axis or a
+    #: group. `inputs` stages one table per attribute because that is the
     #: file it stands for: one `value` column at the attribute's own type, and
     #: its own coordinates and no others.
     _staged: dict[tuple[str, str | None], str]
@@ -437,10 +431,10 @@ class WorkingRecord(Record):
     def _ensure(self, kind: str, attribute: str | None = None) -> str:
         """The staging table for `kind`, created on first use.
 
-        `kind` is one of the fixed three, or a declared group's name - a group
-        gets a table shaped by its own coordinates.
+        `kind` is `inputs`, an axis (`_AXIS_PREFIX`), or a declared group's
+        name - a group gets a table shaped by its own coordinates.
 
-        A long kind takes an `attribute` and gets a table per attribute, shaped
+        `inputs` takes an `attribute` and gets a table per attribute, shaped
         like the file it becomes: `long_columns_for` for the columns, and the
         declared dtype for `value`.
 
@@ -477,9 +471,7 @@ class WorkingRecord(Record):
         projection rather than assembled DDL - the same expressions the inserts
         then project, which is what keeps the two from drifting.
 
-        `value` takes the attribute's declared type, results being declared
-        beside inputs. A name neither vocabulary holds falls back to a string,
-        which is the widest thing a value column can be.
+        `value` takes the attribute's declared type.
 
         Notes
         -----
@@ -503,41 +495,23 @@ class WorkingRecord(Record):
         name = self._staged.get((kind, attribute))
         return None if name is None else self.con.table(name)
 
-    def _staged_attributes_of(self, kind: str) -> tuple[str, ...]:
-        """Which attributes `kind` has staged rows for, in insertion order.
+    def _staged_attributes(self) -> tuple[str, ...]:
+        """Which attributes have staged rows, in insertion order.
 
         The staging map is the answer, so this is not a query: a table exists
         exactly where rows were staged.
         """
-        return tuple(a for (k, a), _ in self._staged.items() if k == kind and a)
+        return tuple(a for (k, a), _ in self._staged.items() if k == "inputs" and a)
 
     def _column_type(self, column: str) -> nw.dtypes.DType:
         return _column_type(self.schema, column)
-
-    def _staged_coordinates(self, attribute: str) -> tuple[str, ...]:
-        """The dim columns one attribute's staging table has, in table order.
-
-        `long_columns_for` minus the fixed tail, rather than `coordinates_of`:
-        the two disagree for an *undeclared* attribute, where the first widens
-        to every declared dim and the second answers none. The table is built
-        from the first, so an insert deriving its columns from the second would
-        supply too few - which is the shape a result arrives in.
-
-        Notes
-        -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        """
-        return tuple(
-            c for c in self.schema.long_columns_for(attribute) if c not in LONG_TAIL
-        )
 
     # -- Record, one fold deeper (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits) --------------------------------
 
     # `schema`, `dims`, `groups`, `attributes` and `flags` are
     # inherited from `Record` unchanged, which is the property this design
     # exists to have: a staged edit is read by the same fold that reads a
-    # committed layer, so there is no second overlay to keep in step. Only
-    # `outputs` below differs, and only because results do not overlay.
+    # committed layer, so there is no second overlay to keep in step.
 
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
         """`AttributeSpec.dims` minus the fold key - the value axes owned whole.
@@ -558,37 +532,6 @@ class WorkingRecord(Record):
             frozenset() if spec is None else spec.dims - set(self.schema.partial_dims)
         )
         return tuple(d for d in self.schema.dims if d in whole)
-
-    @property
-    def outputs(self) -> Frames:
-        """Staged results, keyed by attribute - what a solve handed back.
-
-        Results reach a record through `set(..., kind="outputs")`, so a caller can
-        solve against this record's pending inputs and attach what it computed
-        without committing first. The base's results are *not* included: they
-        were computed from inputs these edits may have changed, and results do
-        not overlay, so what is staged is the whole answer.
-
-        Keeping them coherent with the inputs is the caller's business - editing
-        an input after attaching results leaves results describing a record that
-        no longer exists, and nothing here silently discards them.
-
-        Notes
-        -----
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
-        """
-        names = tuple(sorted(self._staged_attributes_of("outputs")))
-        if not names:
-            return EMPTY
-
-        def frame(attr: str) -> nw.LazyFrame:
-            rel = cast("DuckDBPyRelation", self._rows("outputs", attr))
-            # The table is already the shape of the file: results do not overlay,
-            # so there is nothing to collapse them against (https://energy-models.github.io/datarecord/design/read-path/#outputs).
-            return nw.from_native(rel)
-
-        return LazyFrames(names, frame)
 
     # -- edits (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one, https://energy-models.github.io/datarecord/design/working-record/#add-remove) ----------------------------------------
 
@@ -630,7 +573,9 @@ class WorkingRecord(Record):
                 )
                 raise ValueError(msg)
             return None
-        coordinates = [c for c in self._staged_coordinates(attribute) if c not in named]
+        coordinates = [
+            c for c in self.schema.coordinates_of(attribute) if c not in named
+        ]
         told = indexed_by if indexed_by is not None else _series_index_name(value)
         if told is None or (indexed_by is None and told not in coordinates):
             if len(coordinates) == 1:
@@ -654,8 +599,7 @@ class WorkingRecord(Record):
 
         A declared attribute addressed by one dim alone is a column of that
         dim's axis file rather than a long row, so an edit to it stages an axis
-        row. `attributes_on` is the rule. An undeclared attribute is never one -
-        only a result is undeclared, and a result is always long.
+        row. `attributes_on` is the rule.
 
         Notes
         -----
@@ -832,47 +776,16 @@ class WorkingRecord(Record):
             raise KeyError(msg)
 
     def _validate_dims(self, dims: Collection[str]) -> None:
-        """The dim vocabulary, checked for either `kind`.
+        """The dim vocabulary.
 
         Notes
         -----
-        - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         unknown = sorted(set(dims) - set(self.schema.dims))
         if unknown:
             msg = f"the schema declares no dims {unknown}"
             raise KeyError(msg)
-
-    def _validate_result(self, attribute: str, dims: Collection[str]) -> None:
-        """A result's name and dims, against the schema's `results`.
-
-        The attribute check only - not membership, which stays relaxed for a
-        result: a solve may produce rows for a component type it derived rather
-        than read, and rejecting those would refuse a legitimate result.
-
-        Notes
-        -----
-        - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
-        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
-        """
-        self._validate_dims(dims)
-        spec = self.schema.results.get(attribute)
-        if spec is None:
-            known = sorted(self.schema.results)
-            msg = (
-                f"the schema declares no result {attribute!r}; it declares "
-                f"{known or 'none'}. A result is declared like an input, so a "
-                f"tool states its vocabulary before attaching what it computed"
-            )
-            raise KeyError(msg)
-        outside = sorted(set(dims) - spec.dims)
-        if outside:
-            msg = (
-                f"result {attribute!r} does not vary over {outside}; "
-                f"it varies over {sorted(spec.dims) or 'nothing'}"
-            )
-            raise ValueError(msg)
 
     def _validate_attribute(self, attribute: str, dims: Collection[str]) -> None:
         """An input attribute's declaration and the dims an edit names for it.
@@ -908,7 +821,6 @@ class WorkingRecord(Record):
         attribute: str,
         value: Any,
         *,
-        kind: Literal["inputs", "outputs"] = "inputs",
         indexed_by: str | None = None,
         **dims: Any,
     ) -> None:
@@ -934,16 +846,6 @@ class WorkingRecord(Record):
         label may be a string just like another's, so that would make one call
         mean different things in two records.
 
-        `kind` names the destination in the format's own terms:
-        `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a
-        tool hands results back. Results use the same long schema; what differs
-        is that they do not overlay.
-
-        A result is declared under `Schema.results`, and its labels are not
-        checked against the axes: a solve may produce rows for a component it
-        derived rather than read, and rejecting those would refuse a legitimate
-        result. An *input* for an undeclared label stays an error.
-
         Raises
         ------
         KeyError
@@ -956,7 +858,6 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
@@ -965,23 +866,17 @@ class WorkingRecord(Record):
         is_long_frame = _is_frame(value) and _series_index(value) is None
         if is_long_frame:
             lazy = _incoming(value, self.con)
-            if kind == "inputs":
-                self._validate_frame(lazy, attribute, dims)
-            else:
-                self._validate_result(attribute, dims)
-            self._stage_long(attribute, lazy, kind, dims)
+            self._validate_frame(lazy, attribute, dims)
+            self._stage_long(attribute, lazy, dims)
             return
 
         if isinstance(value, nw.Expr):
-            if kind == "inputs":
-                self._validate_dims(dims)
-            else:
-                self._validate_result(attribute, dims)
-            self._stage_derived(attribute, value, kind=kind, **dims)
+            self._validate_dims(dims)
+            self._stage_derived(attribute, value, **dims)
             return
 
         listed, labels, fixed = _split_dims(dims)
-        axis = self._axis_of(attribute) if kind == "inputs" else None
+        axis = self._axis_of(attribute)
         if axis is not None:
             self._set_axis(axis, attribute, value, indexed_by, listed, labels, fixed)
             return
@@ -997,19 +892,16 @@ class WorkingRecord(Record):
             value, labels if listed is not None else None, indexed_by=keyed_by
         )
         named = {*dims, *per_dim}
-        if kind == "inputs":
-            self._validate_dims(named)
-            self._validate_attribute(attribute, named)
-            for dim, dim_labels in per_dim.items():
-                self._require_labels(dim, dim_labels)
-            if listed is not None:
-                self._require_labels(listed, keys or labels)
-            for dim, label in fixed.items():
-                self._require_labels(dim, [label])
-        else:
-            self._validate_result(attribute, named)
+        self._validate_dims(named)
+        self._validate_attribute(attribute, named)
+        for dim, dim_labels in per_dim.items():
+            self._require_labels(dim, dim_labels)
+        if listed is not None:
+            self._require_labels(listed, keys or labels)
+        for dim, label in fixed.items():
+            self._require_labels(dim, [label])
 
-        table = self._ensure(kind, attribute)
+        table = self._ensure("inputs", attribute)
         self._stage_rows(attribute, table, listed, keys, values, per_dim, fixed)
 
     def _set_axis(
@@ -1225,7 +1117,7 @@ class WorkingRecord(Record):
                 col(d)
                 if d in present
                 else duck_types.lit(dims.get(d), self._column_type(d)).alias(d)
-                for d in self._staged_coordinates(attribute)
+                for d in self.schema.coordinates_of(attribute)
             ),
             lit(attribute).alias("attribute"),
             duck_types.null(nw.Float64()).alias("breakpoint"),
@@ -1324,10 +1216,9 @@ class WorkingRecord(Record):
         Column-wise, so nothing here is per-row: a caller's product of entities
         and labels never becomes Python objects.
 
-        A `None` in `schema` is inferred, which an undeclared result's value
-        column needs. An `Enum` is built as its `String` and cast by the insert -
-        narwhals cannot construct an arrow enum - which is also what rejects a
-        label the dtype does not declare.
+        A `None` in `schema` is inferred. An `Enum` is built as its `String` and
+        cast by the insert - narwhals cannot construct an arrow enum - which is
+        also what rejects a label the dtype does not declare.
         """
         buildable = {
             name: (nw.String() if isinstance(dtype, nw.Enum) else dtype)
@@ -1341,7 +1232,7 @@ class WorkingRecord(Record):
         )
 
     def _stage_long(
-        self, attribute: str, lazy: nw.LazyFrame, kind: str, dims: dict[str, Any]
+        self, attribute: str, lazy: nw.LazyFrame, dims: dict[str, Any]
     ) -> None:
         """Stage a long frame that supplies its own keys.
 
@@ -1354,7 +1245,7 @@ class WorkingRecord(Record):
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        table = self._ensure(kind, attribute)
+        table = self._ensure("inputs", attribute)
         rel = as_relation(lazy, self.con)
         self._insert_long(
             rel, table, attribute, set(lazy.collect_schema().names()), dims
@@ -1364,8 +1255,6 @@ class WorkingRecord(Record):
         self,
         attribute: str,
         expr: nw.Expr,
-        *,
-        kind: str = "inputs",
         **dims: Any,
     ) -> None:
         """Stage a value derived from the current one - the `Expr` form.
@@ -1384,15 +1273,13 @@ class WorkingRecord(Record):
         -----
         - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
         """
-        source = self.outputs if kind == "outputs" else self.attributes
         listed, labels, fixed = _split_dims(dims)
-        if attribute not in source:
+        if attribute not in self.attributes:
             frame = None
         else:
-            frame = source[attribute]
+            frame = self.attributes[attribute]
             if listed is not None:
-                if kind == "inputs":
-                    self._require_labels(listed, labels)
+                self._require_labels(listed, labels)
                 frame = frame.filter(nw.col(listed).is_in(labels))
             for dim, value in fixed.items():
                 frame = frame.filter(nw.col(dim) == value)
@@ -1414,17 +1301,15 @@ class WorkingRecord(Record):
                 raise KeyError(msg)
         if frame is None:
             return
-        self._stage_resolved(frame.with_columns(expr.alias("value")), attribute, kind)
+        self._stage_resolved(frame.with_columns(expr.alias("value")), attribute)
 
-    def _stage_resolved(
-        self, frame: nw.LazyFrame, attribute: str, kind: str = "inputs"
-    ) -> None:
+    def _stage_resolved(self, frame: nw.LazyFrame, attribute: str) -> None:
         """Stage an already-long frame carrying every key column.
 
         `value` needs no cast: the table is this attribute's own, so its column
         already has the attribute's type (`_empty_long`).
         """
-        table = self._ensure(kind, attribute)
+        table = self._ensure("inputs", attribute)
         # A coordinate the frame leaves out is one it broadcasts over, so it is
         # filled with a typed NULL rather than left to `INSERT ... BY NAME`:
         # projecting the table's full column list keeps the insert positional
@@ -1445,8 +1330,8 @@ class WorkingRecord(Record):
         shaped = rel.project(
             *(column(c) for c in self.schema.long_columns_for(attribute))
         )
-        # Keyed the same whether input or result: a repeat coordinate is the
-        # caller restating one, and replacing it is the answer folding it gave.
+        # A repeat coordinate is the caller restating one, and replacing it is
+        # the answer folding it gave.
         # No `_complete_owned_whole`: the derived frame resolved the current
         # value, so it already carries the extent an edit would have to.
         self._insert(shaped, table, {}, key=self._long_key(attribute))
@@ -1515,7 +1400,6 @@ class WorkingRecord(Record):
             self._stage_long(
                 attribute,
                 lazy.select(dim, nw.col(attribute).alias("value")),
-                "inputs",
                 {},
             )
         for group, group_columns in by_group.items():
