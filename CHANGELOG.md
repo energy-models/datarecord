@@ -40,6 +40,13 @@ All notable changes to datarecord are documented here. The format follows
   dim's declared dtype with a `TypeError` that names the dim, its dtype, the
   label and the rewrite, where they failed inside pyarrow or DuckDB. A str is
   no longer parsed as a `Datetime` label: pass `pd.Timestamp("2030-01-01")`.
+- A layer that holds a default and its exception side by side, such as
+  `set("efficiency", 0.9, port=["dc_out"])` and `set("efficiency", 0.95)`,
+  reads one value at each coordinate: the row that names more of the
+  attribute's dims, and `flags` describes those rows. A write is refused where
+  two rows cover one coordinate and neither names more dims than the other,
+  or where two rows leave the same dims NULL at one coordinate, a scalar beside
+  a curve included.
 
 ### Removed
 
