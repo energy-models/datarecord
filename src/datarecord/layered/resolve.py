@@ -19,7 +19,6 @@ Notes
 
 from __future__ import annotations
 
-import itertools
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -39,7 +38,6 @@ from datarecord.duck import (
     base_uri_of,
     distinct_values,
     ensure_local_dir,
-    ex_all,
     fn,
     fold_axis,
     null_safe,
@@ -413,37 +411,38 @@ def with_columns(
     return rel.project(star(), *added)
 
 
-def _by_broadcast_pattern(
-    rel: DuckDBPyRelation, dims: tuple[str, ...]
-) -> list[tuple[DuckDBPyRelation, tuple[str, ...]]]:
-    """`rel` split by which of `dims` a row leaves NULL, each part with the dims it sets.
+def _owned(dim: str) -> str:
+    return f"__owned_{dim}"
 
-    A stored NULL in a broadcast dim matches every value it is owned for, and a
-    set value matches NULL-safely. One join condition for both,
-    `raw IS NULL OR raw IS NOT DISTINCT FROM owned`, is no hash key: DuckDB
-    joins on the other columns and filters the dim afterwards, which costs the
-    square of the dim's length per key. Each part joins on exactly the dims it
-    sets, which hashes.
 
-    One part per NULL pattern, `2 ** len(dims)` of them, each rescanning `rel`;
-    a pattern no row has joins nothing.
+def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
+    """`om` with each of `dims` as its owning layer stored it, the owned value in `__owned_<dim>`.
+
+    A raw row then finds its owned keys by NULL-safe equality, which hashes where
+    `raw IS NULL OR raw IS NOT DISTINCT FROM owned` does not. A key its layer
+    wrote both ways appears once per way. A flag field NULL from
+    `UNION ALL BY NAME` is a dim no row set: `varies` false, `broadcast` true.
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
     """
-    parts = []
-    for sets in itertools.product((True, False), repeat=len(dims)):
-        pattern = list(zip(dims, sets, strict=True))
-        if pattern:
-            rel_part = rel.filter(
-                ex_all(col(d).isnotnull() if s else col(d).isnull() for d, s in pattern)
-            )
-        else:
-            rel_part = rel
-        parts.append((rel_part, tuple(d for d, s in pattern if s)))
-    return parts
+    types = dict(zip(om.columns, om.types, strict=True))
+    for d in dims:
+        stored = fn.list_concat(
+            duckdb.CaseExpression(
+                coalesce(fn.struct_extract(col("varies"), lit(d)), lit(False)),
+                fn.list_value(col(d)),
+            ),
+            duckdb.CaseExpression(
+                coalesce(fn.struct_extract(col("broadcast"), lit(d)), lit(True)),
+                fn.list_value(lit(None).cast(types[d])),
+            ),
+        )
+        om = om.project(
+            star(exclude=(d,)), col(d).alias(_owned(d)), fn.unnest(stored).alias(d)
+        )
+    return om
 
 
 def fold_inputs(
@@ -1081,14 +1080,8 @@ class Resolver:
     def _relation(self, attribute: str) -> DuckDBPyRelation:
         """The resolved long relation for one input attribute.
 
-        Semi-joins the owning layers' `inputs/<attribute>.parquet` to the
-        `inputs` owner map, so only owned rows survive: the map already names
-        the winning layer per key, so there is no per-read `MAX`/group-by and
-        no tombstone filter (deletions are already absent from the map).
-
-        A stored NULL for an `input_key` dim means "all values" and may be
-        owned for only some of them, so each key dim's join arm is
-        NULL-aware and the row takes the value it is owned for.
+        Joins the owning layers' rows to the `inputs` map; a broadcast dim
+        stored NULL takes each value it is owned for.
 
         Returns
         -------
@@ -1135,25 +1128,21 @@ class Resolver:
         if not layers:
             return _empty_relation(keys.schema, con, *columns)
 
-        raw = union_all_by_name(layers, con)
-        return union_all_by_name(
-            [
-                part.set_alias("l")
-                .join(
-                    om.set_alias("o"),
-                    null_safe("l", "o", (*address, "layer_uuid", *sets)),
+        return (
+            union_all_by_name(layers, con)
+            .set_alias("l")
+            .join(
+                _as_stored(om, broadcast_over).set_alias("o"),
+                null_safe("l", "o", (*address, "layer_uuid", *broadcast_over)),
+            )
+            .project(
+                *(
+                    coalesce(col("l", dim), col("o", _owned(dim))).alias(dim)
+                    if dim in broadcast_over
+                    else col("l", dim)
+                    for dim in columns
                 )
-                .project(
-                    *(
-                        coalesce(col("l", dim), col("o", dim)).alias(dim)
-                        if dim in partial_dims
-                        else col("l", dim)
-                        for dim in columns
-                    )
-                )
-                for part, sets in _by_broadcast_pattern(raw, broadcast_over)
-            ],
-            con,
+            )
         )
 
     def _outputs(self, attribute: str) -> DuckDBPyRelation:
