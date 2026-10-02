@@ -133,48 +133,6 @@ def test_the_fold_key_is_exactly_partial():
 
 
 @pytest.mark.parametrize(
-    ("relations", "partial", "missing"),
-    [
-        pytest.param(
-            {"connection": Relation(key=["entity", "bus"])},
-            {"entity"},
-            "['bus']",
-            id="one-coordinate-of-a-tuple-set",
-        ),
-        pytest.param(
-            {"entity_type": Relation(key=["entity"], values="entity_type")},
-            set(),
-            "['entity']",
-            id="the-key-of-a-functional-relation",
-        ),
-        pytest.param(
-            {"connection": Relation(key=["entity", "bus"])},
-            None,
-            "['bus', 'entity']",
-            id="no-partial-at-all",
-        ),
-    ],
-)
-def test_a_relation_key_missing_from_partial_is_refused(relations, partial, missing):
-    """A layer adds or removes one row of a relation, so its key must be `partial`.
-
-    The `values` dim is no key, so `entity_type` need not be named.
-    """
-    with pytest.raises(
-        ValidationError, match=rf"`partial` must name {re.escape(missing)}"
-    ):
-        Schema(
-            dimensions={
-                "entity": Dimension(dtype=nw.String()),
-                "bus": Dimension(dtype=nw.String()),
-                "entity_type": Dimension(dtype=nw.String()),
-            },
-            relations=relations,
-            partial=None if partial is None else frozenset(partial),
-        )
-
-
-@pytest.mark.parametrize(
     ("attribute", "dims"),
     [
         pytest.param("p_nom", ("entity",), id="one-dim"),

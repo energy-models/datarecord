@@ -33,9 +33,9 @@ mypy = "*"
 pandas = "*"
 pyarrow = "*"
 pypsa = "*"
-# The `mathspec` extra, from its tag: PyPI's 0.2.0 is still inside `exclude-newer`.
+# The `mathspec` extra, at energy-models/mathspec#793: a dimension declares `ordered`.
 [feature.test.pypi-dependencies]
-mathspec = { git = "https://github.com/energy-models/mathspec.git", tag = "v0.2.0" }
+mathspec = { git = "https://github.com/energy-models/mathspec.git", rev = "e21bcc65fce1d36069b0a1c0210111ff0fed6549" }
 
 [feature.test.tasks]
 test = "pytest"

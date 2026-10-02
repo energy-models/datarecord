@@ -24,8 +24,7 @@ All notable changes to datarecord are documented here. The format follows
 
 - The core names no dim. Any dim in `partial` can have labels added and
   removed, a NULL broadcasts over the dims an attribute names, and `set`,
-  `add(dim, frame)` and `flags(**labels)` take any dim. `partial` must name
-  every dim a group is keyed by.
+  `add(dim, frame)` and `flags(**labels)` take any dim.
 - A component's type is an ordinary group, `groups/entity_type.parquet`, and
   removing a label removes the group rows keyed on it.
 - Groups are relations: `Relation(key, values)`, `Schema.relations`,
@@ -33,6 +32,10 @@ All notable changes to datarecord are documented here. The format follows
   `relations/`, and attribute values under `attributes/`.
 - An attribute is over dims only. Data on a relation's rows goes over a dim of
   its own, related to the relation's columns.
+- A dim declares `ordered` where its labels' order is part of the data.
+  `Schema.from_mathspec` reads it from mathspec and, unless the storage block
+  names `partial`, makes every dim not declared `ordered` partial. A relation
+  may be keyed by a dim outside `partial`.
 
 ### Fixed
 

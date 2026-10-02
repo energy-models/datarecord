@@ -65,9 +65,30 @@ def test_a_full_spec_gives_its_data_declarations(con):
     assert full == data, "variables, constraints and the objective add nothing"
 
 
-def test_the_declarations_round_trip():
+@pytest.mark.parametrize(
+    "storage",
+    [
+        pytest.param(STORAGE, id="partial-given"),
+        pytest.param(None, id="partial-inferred"),
+    ],
+)
+def test_the_declarations_round_trip(storage):
     """`to_mathspec` gives back what `from_mathspec` read, less the storage block."""
-    schema = Schema.from_mathspec(DECLARATIONS, storage=STORAGE)
-    assert Schema.from_mathspec(schema.to_mathspec(), storage=STORAGE) == schema, (
-        "the round trip loses nothing a mathspec file can say"
+    schema = Schema.from_mathspec(DECLARATIONS, storage=storage)
+    assert Schema.from_mathspec(schema.to_mathspec(), storage=storage) == schema, (
+        "the round trip loses nothing a mathspec file can say, `ordered` included"
     )
+
+
+def test_partial_defaults_to_every_dim_not_declared_ordered():
+    """A layer patches one generator or one scenario, and restates a series along `snapshot` whole."""
+    schema = Schema.from_mathspec(DECLARATIONS)
+    assert schema.partial == {"scenario", "bus", "carrier", "generator"}, (
+        "`snapshot` is the one dim declared ordered"
+    )
+    assert schema.dimensions["snapshot"].ordered, "the flag is kept on the dim"
+
+
+def test_storage_partial_replaces_the_default():
+    schema = Schema.from_mathspec(DECLARATIONS, storage=STORAGE)
+    assert schema.partial == {"generator", "scenario"}, "storage names partial exactly"

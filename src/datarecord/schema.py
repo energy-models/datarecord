@@ -134,8 +134,8 @@ class Dimension(BaseModel):
     """One axis attribute data may vary over: its shape, not its data.
 
     Not which dims an *attribute* varies over (`AttributeSpec.dims`), nor the
-    patch granularity (`Schema.partial`), nor order - an axis is ordered by its
-    file's row order, undeclared.
+    patch granularity (`Schema.partial`). An axis is in its file's row order;
+    `ordered` says whether that order is part of the data.
 
     Attributes
     ----------
@@ -145,6 +145,10 @@ class Dimension(BaseModel):
         column of it is built.
     within
         Dims this one's labels identify a point only *within*; transitive.
+    ordered
+        Whether the labels' order is part of the data - a snapshot follows the
+        one before it, a generator follows nothing. `Schema.from_mathspec`
+        leaves an ordered dim out of `partial` unless told otherwise.
     unit
         What this axis's *labels* measure, if anything - `None` is undeclared,
         `""` genuinely dimensionless.
@@ -163,6 +167,7 @@ class Dimension(BaseModel):
 
     dtype: nw.dtypes.DType
     within: frozenset[str] = frozenset()
+    ordered: bool = False
     unit: str | None = None
     description: str | None = None
 
@@ -467,15 +472,6 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"`partial` names undeclared dims {unknown}"
                 raise ValueError(msg)
-        keys = {dim for r in self.relations.values() for dim in r.key.values()}
-        missing = sorted(keys - (self.partial or frozenset()))
-        if missing:
-            msg = (
-                f"`partial` must name {missing}: a relation is keyed by them, and "
-                f"a layer adds or removes one of its rows at a time"
-            )
-            raise ValueError(msg)
-
         return self
 
     # -- declarations in mathspec's vocabulary --------------------------------
@@ -498,7 +494,9 @@ class Schema(BaseModel):
             `partial` and `meta` as `Schema` takes them, and under
             `dimensions` and `parameters` the fields mathspec has no place for:
             `unit` and `within` on a dim, `default`, `unit` and `breakpoints` on a
-            parameter.
+            parameter. Without `partial`, every dim the spec does not declare
+            `ordered` is partial: a layer patches one generator or one scenario,
+            and restates a series along an ordered dim whole.
 
         Raises
         ------
@@ -522,6 +520,7 @@ class Schema(BaseModel):
         dimensions = {
             d: Dimension(
                 dtype=_FROM_MATHSPEC[b.dtype](),
+                ordered=b.ordered,
                 description=b.description,
                 **dim_extra.get(d, {}),
             )
@@ -540,8 +539,8 @@ class Schema(BaseModel):
             for a, b in spec.parameters.items()
         }
         rest = {
-            k: v for k, v in storage.items() if k not in ("dimensions", "parameters")
-        }
+            "partial": frozenset(d for d, b in spec.dimensions.items() if not b.ordered)
+        } | {k: v for k, v in storage.items() if k not in ("dimensions", "parameters")}
         return cls(
             dimensions=dimensions, relations=relations, attributes=attributes, **rest
         )
@@ -578,6 +577,7 @@ class Schema(BaseModel):
         return {
             "dimensions": {
                 d: {"dtype": _to_mathspec(s.dtype, f"dim {d!r}")}
+                | ({"ordered": True} if s.ordered else {})
                 | ({"description": s.description} if s.description else {})
                 for d, s in self.dimensions.items()
             },

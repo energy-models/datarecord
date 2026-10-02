@@ -25,7 +25,7 @@ The node metadata — `(id, parent)` — is persisted in the `revisions` table, 
 
 Two of [the protocol's](record.md) columns take their meaning from the overlay key.
 
-The dims a [relation](schema.md#relations) is keyed by are part of the key of `attributes/`, `(*partial dims, attribute)`, because [`partial`](schema.md#partial-the-granularity-of-an-override) must name them — `port` among them for the `port_bus` relation. An attribute not over `port` is NULL there, and the key is compared NULL-safely, so that case is unaffected.
+A member dim such as `port` is part of the key of `attributes/`, `(*partial dims, attribute)`, because it is declared [`partial`](schema.md#partial-the-granularity-of-an-override). An attribute not over `port` is NULL there, and the key is compared NULL-safely, so that case is unaffected.
 That is what makes a per-port attribute owned _per port_: without it, a patch changing one port's `efficiency` would own — and so have to restate — every port's.
 It is also why a port is keyed by its own label rather than by position: a patch layer would otherwise have to know a port's current index, so an ancestor inserting one earlier would silently redirect that patch to a different bus.
 
