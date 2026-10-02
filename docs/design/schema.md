@@ -22,7 +22,7 @@ class AttributeSpec(BaseModel):
     """What shape one attribute's data may take."""
 
     dtype: str  # value column type
-    dims: frozenset[str] = frozenset()  # what addresses it: dims and relations
+    dims: frozenset[str] = frozenset()  # the dims it is over
     default: Any | None = None
     breakpoints: bool = False  # may carry a piecewise-linear curve
     unit: str | None = None  # what the values measure
@@ -81,28 +81,28 @@ attributes = {
         dtype="float64", dims={"entity", "scenario"}, breakpoints=True
     ),
     "carrier": AttributeSpec(dtype="str", dims={"entity"}),
-    # addressed by a relation rather than by the entity axis
-    "efficiency": AttributeSpec(dtype="float64", dims={"connection", "timestep"}),
-    # addressed by an axis alone: a weighting belongs to no component
+    # over a dim of its own: one port per attachment of a component to a bus
+    "efficiency": AttributeSpec(dtype="float64", dims={"port", "timestep"}),
+    # over an axis alone: a weighting belongs to no component
     "objective_weighting": AttributeSpec(dtype="float64", dims={"snapshot"}),
 }
 ```
 
-**Flat, one spec per attribute.** An attribute belongs to no [type](#types): every declared attribute can be set on any entity its `dims` address.
+**Flat, one spec per attribute.** An attribute belongs to no [type](#types): an attribute over `entity` can be set on any entity.
 `attributes/p_max_pu.parquet` holds the rows of every entity in one file with one `value` dtype, so one attribute is one spec, one file and one dtype.
 
-`dims` is the **only addressing mechanism**, and it names dims and [relations](#relations) alike, resolved by [one rule](#addressing-dims-x): a name is the dim of that name if one is declared, and otherwise the relation of that name expanded to its columns.
-Whether a coordinate is the entity axis, a relation or a plain axis changes where the labels come from, not how the attribute is declared or stored.
-There is no `bus` field: an attribute is a [connection](record.md#connections) attribute because its `dims` name the `connection` relation, which is what lets a second relation exist without a second field.
+**`dims` names dims only**, as the `dims` of a mathspec parameter do. The schema refuses a [relation](#relations) there.
+Every coordinate of an attribute is a dim, the entity axis included, and a NULL in any of them [broadcasts](record.md#the-broadcast-rule).
+Data on a relation's rows goes over a dim of its own: `efficiency` is per port because its `dims` name `port`, a dim with one label per attachment of a component to a bus ([data on a relation's rows](#data-on-a-relations-rows)).
 
 `dims` is also what makes a scenario-varying `p_nom` a schema violation: a capacity is a first-stage decision, one value taken before the scenario is known, which is the point of stochastic scenarios differing only in dispatch.
 
 `p_nom` and `carrier` have the same `dims` and are not the same kind of thing — one is a label, the other a number an optimiser decides.
-`dims` says only which coordinates address a value.
+`dims` says only which dims a value is over.
 
 `breakpoints` answers what a bare column set cannot: whether it may carry a piecewise-linear curve, so a curve on an attribute that takes one value is rejected on write rather than reported unbuildable later ([wide and long rows](record.md#wide-and-long-rows)).
 
-An attribute naming exactly one addressing coordinate is a column on that thing's own table, and anything more is long rows in `attributes/` — [where a value lives](format.md#where-a-value-lives) is the rule, and it is the schema that decides the file split rather than a writer guessing it.
+An attribute over exactly one dim is a column of that dim's own file, and anything more is long rows in `attributes/` — [where a value lives](format.md#where-a-value-lives) is the rule, and it is the schema that decides the file split rather than a writer guessing it.
 
 ## Types
 
@@ -123,12 +123,12 @@ An `Enum` dtype pins the vocabulary and makes an unknown type a write-time error
 
 **No relation is special.** Several functional relations keyed by `entity` may exist side by side, a type and a carrier for example, and the record treats each the same way. The name `entity_type` is the convention of the schema that declares it, not a word the record layer reads.
 
-**A type does not narrow an attribute.** Every declared attribute can be set on any entity its `dims` address. Which attributes a type uses is the business of the spec that reads the record ([requirements](sources.md#requirements)).
+**A type does not narrow an attribute.** An attribute over `entity` can be set on any entity, whatever its type. Which attributes a type uses is the business of the spec that reads the record ([requirements](sources.md#requirements)).
 
-**The type may not address a value alongside the entity.** The schema rejects an attribute that names both `entity` and `entity_type` in its `dims`: `values` says the type follows from the entity, so the row would be keyed twice over and the two could disagree.
+**An attribute may not be over both the entity and its type.** The schema rejects an attribute that names both `entity` and `entity_type` in its `dims`: `values` says the type follows from the entity, so the row would be keyed twice over and the two could disagree.
 This is the general rule for [a functional relation and its key](#values-a-relation-that-classifies); `country` keyed by `bus` is rejected the same way.
 
-**A value per type is ordinary.** A per-type `icon` is an attribute over `entity_type` alone, so it is a column of `dims/entity_type.parquet`, like any [attribute addressed by one dim alone](format.md#where-a-value-lives).
+**A value per type is ordinary.** A per-type `icon` is an attribute over `entity_type` alone, so it is a column of `dims/entity_type.parquet`, like any [attribute over one dim alone](format.md#where-a-value-lives).
 `entity_type` is an ordinary broadcast dim. Outside [`partial`](#partial-the-granularity-of-an-override), a layer that touches one type's icon restates the whole axis.
 
 **Entirely optional.** A schema that declares no type relation has entities with no types.
@@ -152,26 +152,13 @@ Not a dim. A dim declares an axis of labels and a NULL in its column means "ever
 `key` maps **coordinate name → dim** rather than naming a bare set of dims, because two coordinates may draw on the same axis: a corridor between two nodes is `(from, to)`, which a set could not spell.
 A list is sugar for the dict with identical keys and values, so `key=["bus"]` is `key={"bus": "bus"}`.
 
-An attribute over a relation carries the relation's _column_ names as columns, never the relation's own name:
+**A relation's file holds the relation's columns and its tombstones, and nothing else.** `relations/connection.parquet` is `entity | bus`, and `relations/corridor.parquet` is `from | to` ([where a value lives](format.md#where-a-value-lives)).
+No attribute is over a relation, so no attribute is a column of one. Data on a relation's rows goes over a dim of its own ([data on a relation's rows](#data-on-a-relations-rows)).
 
-```text
-attributes/efficiency.parquet   entity | bus | timestep | attribute | breakpoint | value
-attributes/flow.parquet         from | to | timestep | attribute | breakpoint | value
-```
+**`partial` names every dim a relation is keyed by.** A layer adds or removes one relation row at a time, so the fold keys by those dims, and the schema refuses a `partial` that leaves one out ([`partial`](#partial-the-granularity-of-an-override)).
+The `values` dim of a functional relation is not in its key, so the rule does not reach it: `country` is an ordinary axis whose NULL means "every country" like any other dim's.
 
-The relation name appears only in the schema. A reader goes attribute → relation → columns, never the reverse, so two relations may share a column set without ambiguity — the attribute names which relation constrains it.
-
-**A relation in `dims` expands to its columns** where no dim shadows it, so `dims={"connection", "timestep"}` gives the columns `entity | bus | timestep` — [addressing](#addressing-dims-x) states the full rule.
-The fold's key therefore does not vary per attribute: [`partial_dims`](#partial-the-granularity-of-an-override) is one fixed tuple, the union of plain dims and relation key coordinates.
-
-The other columns of a relation's file are **not declared here.** They are the attributes whose `dims` name exactly this relation ([where a value lives](format.md#where-a-value-lives)) — PyPSA's `role` on a connection is `AttributeSpec(dtype="VARCHAR", dims={"connection"})`, declared by the schema whose vocabulary the word is.
-Declaring them a second time on the `Relation` would be two ways to say one thing, disagreeing eventually.
-
-**A relation's key coordinate [never broadcasts](record.md#the-broadcast-rule)**, so it is a _membership key_: it lands in the fold's key by being membership, not by being declared `partial`.
-`partial` is for value dims a layer patches per value (see [`partial`](#partial-the-granularity-of-an-override)); a membership key — `entity`, a relation's key coordinate — is patched per row by every layer already, so naming it `partial` is a category error the schema rejects.
-The `values` dim of a functional relation is not a membership key: it is an ordinary axis whose NULL means "every country" like any other dim's.
-
-**Connections are one instance**, not a structural category: `Relation(key={"entity": "entity", "bus": "bus"})`, with `role` an ordinary attribute over it. `bus` is accordingly one coordinate of one relation rather than a column the format fixes, and neither word appears in the record layer — `connection` is whatever a schema calls it, and `role` is the schema's declaration.
+**Connections are one instance**, not a structural category: `Relation(key={"entity": "entity", "bus": "bus"})`. `bus` is one coordinate of one relation rather than a column the format fixes, and neither word appears in the record layer. `connection` is whatever a schema calls it.
 
 ### `values` — a relation that classifies
 
@@ -183,26 +170,51 @@ It is a declaration a relation without `values` cannot make. Such a relation can
 
 **`values` is sugar, resolved once at parse.** It folds into the relation's columns, so `relations/country.parquet` has the columns `bus | country` exactly as `connection` has `entity | bus`, and no read path, file layout or fold key branches on whether a relation has one. The field stays for the three things that still need it: the uniqueness constraint (the key being the columns minus `values`), a consumer's aggregation, and round-tripping the manifest — writing back `key: [bus, country]` where the author wrote `values:` would silently rewrite their schema.
 
-**It may not address an attribute alongside its key.** `dims={"bus", "country"}` is rejected: `values` says the country follows from the bus, so the row would be keyed twice over and the two free to disagree.
+**An attribute may not be over both the key and the `values` dim.** `dims={"bus", "country"}` is rejected: `values` says the country follows from the bus, so the row would be keyed twice over and the two free to disagree.
 
 **Nothing assumes one coordinate.** `key: [bus, scenario]` with `values: country` — a bus whose country varies per scenario — is allowed, the constraint being per-tuple already. It costs nothing in storage because [every relation is a file](format.md#where-a-value-lives).
 
-### Addressing: `dims: [X]`
+### Data on a relation's rows
 
-An attribute names a relation in its `dims` exactly as it names a dim, and one rule resolves both:
+An attribute is over dims only, as a mathspec parameter is. To hold data on the rows of a relation, give each row a dim of its own, relate that dim to the relation's columns, and declare the attribute over the dim.
 
-**`X` is the dim `X` if one is declared, and otherwise the relation `X` expanded to its columns.**
+In a PyPSA-shaped schema the rows are the attachments of components to buses. Each attachment is one label of a `port` dim, and two functional relations tie a port to its component and to its bus:
 
 ```python
-"efficiency": AttributeSpec(dims={"connection", "timestep"}),  # entity | bus | timestep
-"co2_budget": AttributeSpec(dims={"country"}),  # country: the dim, not the relation
+dimensions = {
+    "entity": Dimension(dtype="str"),
+    "bus": Dimension(dtype="str"),
+    "port": Dimension(dtype="str"),  # one label per attachment of a component to a bus
+    "timestep": Dimension(dtype="datetime64[us]"),
+}
+relations = {
+    "port_entity": Relation(key=["port"], values="entity"),
+    "port_bus": Relation(key=["port"], values="bus"),
+}
+attributes = {
+    "role": AttributeSpec(dtype="str", dims={"port"}),  # dims/port.parquet
+    "efficiency": AttributeSpec(dtype="float64", dims={"port", "timestep"}),
+}
+partial = {"port"}  # both relations are keyed by it
 ```
 
-A relation with no dim of its name has no other spelling, so expanding it is the only way to declare an attribute over it, and the expansion is what keeps [the fold's key](#partial-the-granularity-of-an-override) one fixed tuple.
+mathspec's [PyPSA example](https://github.com/energy-models/mathspec/blob/main/examples/pypsa.yaml) declares the same shape: `link_output` is the dim, `Link_output_link` and `Link_output_bus` are the relations, and `Link_efficiency` is over `link_output`.
 
-**A relation may share a dim's name**, and there the dim wins. For a functional relation that is the natural spelling: the dim is the axis of labels, the relation maps its `key` to it, and shadowing is what should happen — a value that is genuinely per-country is `dims: [country]`, the dim, which is what the axis file exists for. Expanding instead would give `dims: [bus]` written so the reader has to look up the relation's `key` to see it.
+- **A port is an ordinary label.** `role` is over `port` alone, so it is a column of `dims/port.parquet`. `efficiency` is over `port` and `timestep`, so it is long rows in `attributes/efficiency.parquet`, keyed by `port | timestep` ([where a value lives](format.md#where-a-value-lives)).
+- **A NULL `port` broadcasts** like a NULL in any other dim: the row covers every port ([the broadcast rule](record.md#the-broadcast-rule)).
+- **A port is keyed by its own label, never by position.** A patch layer that adds a port adds a label, so no other port changes its name ([connections](record.md#connections)).
+- **A `connection` relation holds topology alone.** A relation keyed by `(entity, bus)` says which components attach to which buses. No attribute is over it.
+- **A relation may share a dim's name.** A name in `dims` is always the dim, so `dims={"country"}` is over the `country` dim whether or not a relation of that name exists. The `entity_type` relation and dim in [types](#types) are the common case.
 
-Nothing then justifies prohibiting the collision for a relation without `values` either: the dim namespace resolving first means a dim and a relation both called `connection` is not ambiguous, and one rule covers every collision instead of a rule plus a guard. What it gives up is a schema error — a shadowed relation without `values` loses its only spelling in `dims` and no longer says so at load time. That is not worth a second rule: the collision has to be authored deliberately, both entries are visible in one file, and [a lint would recover it](open-questions.md) without also rejecting the harmless case.
+The schema refuses an attribute over a relation, and the message names the rewrite:
+
+```python
+"efficiency": AttributeSpec(dtype="float64", dims={"connection", "timestep"})
+```
+
+```text
+attribute 'efficiency' is over the relation 'connection'; an attribute is over dims only - give each row of 'connection' a dim of its own, relate that dim to 'connection''s columns, and declare 'efficiency' over it
+```
 
 ## Existence does not vary along a dim
 
@@ -282,10 +294,10 @@ The dims a layer owns an attribute per follow from the declarations:
 
 ```text
 owned_per(attribute) = attribute.dims ∩ partial_dims
-partial_dims         = membership_keys ∪ (broadcast dims ∩ schema.partial)
+partial_dims         = schema.partial, in declaration order
 ```
 
-`partial_dims` is the fold key: the membership keys (`entity`, relation key coordinates — patched per row by every layer) plus the broadcast value dims declared `partial`.
+`partial_dims` is the fold key: the dims declared `partial`, which include every dim a [relation](#relations) is keyed by — `entity` for the `entity_type` relation, `port` for `port_bus`.
 So `p_max_pu` is owned per entity and per scenario — `timestep` is not partial, so a patch to one hour restates that entity-scenario's whole series; `marginal_cost` per entity and scenario; `p_nom` and `carrier` per entity, once across everything else.
 
 Two things this buys.
@@ -301,8 +313,7 @@ That is the same "no half-owned extent" rule a series obeys, applied to a set of
 
 **Keep it small.** Every `partial` value dim widens the fold key, and the key is paid for by every read of every attribute.
 The cost of leaving a value dim out is paid once per edit and bounded by the axis; the cost of putting it in is paid by every read forever.
-So `partial` names only the broadcast value dims a layer genuinely patches value by value — `scenario`, not `timestep`.
-The membership keys are in the key already, by being membership; `partial` neither adds nor may name them.
+So `partial` names the dims a relation is keyed by, and beside them only the value dims a layer patches value by value — `scenario`, not `timestep`.
 
 ## One schema per record
 
@@ -348,7 +359,6 @@ One schema outlives many layers ([above](#one-schema-per-record)), so a change t
 - changing a `dtype`
 - removing from `partial`: a layer that patched one value along that axis is now a partial override of an axis owned whole, which is exactly the hole [`partial`](#partial-the-granularity-of-an-override) forbids
 - changing `within`, since the axis key changes shape
-- adding a dim that does not broadcast, since the fold's ownership key changes shape
 
 Adding a functional relation is compatible in the same sense adding any relation is: the record gains a file, and until some layer writes it every coordinate reads as unclassified — no row, which is what "no country assigned" means anyway.
 

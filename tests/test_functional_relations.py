@@ -76,27 +76,16 @@ def test_the_key_is_the_columns_minus_values():
 
 
 def test_a_relation_may_share_a_dims_name_and_the_dim_wins():
-    """Addressing resolves the dim namespace first, so the collision is shadowing.
+    """A name in `dims` that is a declared dim is that dim, so the collision is shadowing.
 
     `dims: [country]` is the axis - which is what a genuinely per-country value
-    wants - rather than the relation expanded to the states it maps from.
+    wants - and not refused as an attribute over the relation `country`.
     """
     s = _schema(
         attributes={"co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})},
         partial=frozenset({"bus", "state", "country"}),
     )
     assert s.coordinates_of("co2_budget") == ("country",), "the dim, not the relation"
-    assert s.relations_of("co2_budget") == (), "a shadowed relation addresses nothing"
-
-
-def test_a_values_less_relation_in_dims_expands_to_its_key():
-    """A relation no dim shadows has no other spelling, so `dims` expands it."""
-    s = _schema(
-        relations={"connection": Relation(key=["bus", "state"])},
-        attributes={"capacity": AttributeSpec(dtype=nw.Float64(), dims={"connection"})},
-    )
-    assert s.coordinates_of("capacity") == ("bus", "state"), "expanded, not the name"
-    assert s.relations_of("capacity") == ("connection",)
 
 
 def test_a_corridor_draws_two_coordinates_from_one_dim():

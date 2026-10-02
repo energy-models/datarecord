@@ -186,9 +186,9 @@ class AttributeSpec(BaseModel):
         `nw.Datetime()`, ...) - translated to its DuckDB name only where a
         column of it is built.
     dims
-        Dims this attribute may vary over; a subset of those declared. One dim
-        alone puts it on that dim's axis file rather than in `attributes/`, so the
-        schema decides the file split.
+        Dims this attribute is over; each a declared dim, never a relation. One
+        dim alone puts it on that dim's axis file rather than in `attributes/`,
+        so the schema decides the file split.
     default
         The value a coordinate no row covers takes.
     breakpoints
@@ -202,7 +202,6 @@ class AttributeSpec(BaseModel):
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
@@ -254,10 +253,9 @@ class AttributeSpec(BaseModel):
     def varying(self) -> bool:
         """Whether this attribute's values are long rows rather than a column.
 
-        "Varies beyond its address", not "has dims": naming exactly one
-        addressing coordinate is a column on that thing's own table, so
-        `dims={"entity"}` is a component column and `dims={"connection"}` a
-        column of the relation's table. Anything more is `attributes/<attr>.parquet`.
+        "Varies beyond its address", not "has dims": exactly one dim is a
+        column of that dim's axis file, so `dims={"entity"}` is a component
+        column. Anything more is `attributes/<attr>.parquet`.
 
         A bare `bool(dims)` was the test before `entity` was a declared dim,
         when a component attribute declared none - it would now call every
@@ -278,10 +276,10 @@ class Relation(BaseModel):
     which no axis can say because the product is sparse - a component attaches
     to two buses out of a thousand.
 
-    An attribute names the relation in its `dims` and its rows carry the
-    relation's key column names, never the relation's own name. Columns rather
-    than dims because two of them may draw on the same axis: a corridor between
-    two entities is `(from, to)`, which a set of dims could not spell.
+    No attribute is over a relation. Data on a relation's rows is over a dim
+    of its own, one label per row, which relations map to the columns. Columns
+    rather than dims because two of them may draw on the same axis: a corridor
+    between two entities is `(from, to)`, which a set of dims could not spell.
 
     Attributes
     ----------
@@ -408,7 +406,7 @@ class Schema(BaseModel):
 
         # A relation's key columns draw their labels from declared dims, and so
         # does `values`. No check that the name is free of the dims: a collision
-        # is shadowing rather than an ambiguity (https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x).
+        # is shadowing rather than an ambiguity (https://energy-models.github.io/datarecord/design/schema/#data-on-a-relations-rows).
         for relation, relation_spec in self.relations.items():
             unknown = sorted(set(relation_spec.key.values()) - declared)
             if unknown:
@@ -435,14 +433,18 @@ class Schema(BaseModel):
                 )
                 raise ValueError(msg)
 
-        addressable = declared | set(self.relations)
         for attr, attr_spec in self.attributes.items():
-            unknown = sorted(attr_spec.dims - addressable)
-            if unknown:
+            for relation in sorted((attr_spec.dims & set(self.relations)) - declared):
                 msg = (
-                    f"attribute {attr!r} is addressed by undeclared "
-                    f"dims or relations {unknown}"
+                    f"attribute {attr!r} is over the relation {relation!r}; an "
+                    f"attribute is over dims only - give each row of {relation!r} "
+                    f"a dim of its own, relate that dim to {relation!r}'s columns, "
+                    f"and declare {attr!r} over it"
                 )
+                raise ValueError(msg)
+            unknown = sorted(attr_spec.dims - declared)
+            if unknown:
+                msg = f"attribute {attr!r} is over undeclared dims {unknown}"
                 raise ValueError(msg)
             for relation, relation_spec in self.relations.items():
                 if (
@@ -553,8 +555,7 @@ class Schema(BaseModel):
         Raises
         ------
         ValueError
-            If a dtype has no mathspec form, or an attribute is addressed by a
-            relation, which a mathspec parameter cannot be.
+            If a dtype has no mathspec form.
         """
         relations = {}
         for r, relation in self.relations.items():
@@ -570,9 +571,6 @@ class Schema(BaseModel):
             )
         parameters = {}
         for a, spec in self.attributes.items():
-            if spec.dims & set(self.relations):
-                msg = f"attribute {a!r} is addressed by a relation; a mathspec parameter is over dims only"
-                raise ValueError(msg)
             parameters[a] = {
                 "dims": [d for d in self.dimensions if d in spec.dims],
                 "dtype": _to_mathspec(spec.dtype, f"attribute {a!r}"),
@@ -604,66 +602,46 @@ class Schema(BaseModel):
         """The dims a NULL may broadcast over: every declared dim.
 
         A NULL here means "every value of this dim", which the fold expands
-        against the axis - but only for an attribute that names the dim in its
-        own `dims` (`broadcasts_over`). A coordinate an attribute reaches
-        through a relation never broadcasts, because "every bus of this component"
-        is the relation's rows, not the bus axis.
+        against the axis - but only for an attribute over the dim
+        (`broadcasts_over`).
 
         What the `varies`/`broadcast` structs have a field per.
 
         Notes
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         """
         return self.dims
 
     def broadcasts_over(self, attribute: str) -> tuple[str, ...]:
         """The dims a NULL in `attribute`'s rows means "every value" of.
 
-        The dims its spec names directly, in declaration order. A coordinate it
-        reaches through a relation is not among them: the domain there is the
-        relation's rows, which a NULL cannot name. An undeclared attribute
+        Every dim it is over (`coordinates_of`). An undeclared attribute
         broadcasts over nothing.
 
         Notes
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         """
-        spec = self.attributes.get(attribute)
-        if spec is None:
-            return ()
-        return tuple(d for d in self.dims if d in spec.dims)
+        return self.coordinates_of(attribute)
 
     def coordinates_of(self, attribute: str) -> tuple[str, ...]:
-        """The dim columns one attribute's rows carry, relations expanded.
-
-        One rule resolves a name in `dims`: **it is the dim of that name if one
-        is declared, and otherwise the relation of that name expanded to its
-        coordinates**. So `dims={"connection", "snapshot"}` gives `("entity",
-        "bus", "snapshot")` where no dim `connection` exists, and
-        `dims={"country"}` gives `("country",)` - the dim, where a relation of that
-        name is shadowed.
+        """The dims `attribute` is over, in declaration order - its rows' dim columns.
 
         Per attribute rather than schema-wide: one file per attribute means one
         column set per attribute, and an all-NULL `entity` on a record-level
         weighting would be a column claiming a component the value has none of.
+        An undeclared attribute has none.
 
         Notes
         -----
-        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
-        - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
+        - [data on a relation's rows](https://energy-models.github.io/datarecord/design/schema/#data-on-a-relations-rows)
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
         spec = self.attributes.get(attribute)
         if spec is None:
             return ()
-        named: set[str] = set()
-        for d in spec.dims:
-            relation = None if d in self.dimensions else self.relations.get(d)
-            named.update(relation.columns if relation is not None else (d,))
-        # Declaration order, so every consumer sees one column order.
-        return tuple(d for d in self.dims if d in named)
+        return tuple(d for d in self.dims if d in spec.dims)
 
     def long_columns_for(self, attribute: str) -> tuple[str, ...]:
         """One attribute's full long column set, in order.
@@ -735,18 +713,10 @@ class Schema(BaseModel):
     def attributes_on(self, dim: str) -> tuple[str, ...]:
         """Attributes stored as columns of `dims/{dim}.parquet`.
 
-        An attribute addressed by `dim` alone: a per-country CO2 budget, a
-        snapshot weighting, a per-type icon. `AttributeSpec.varying` is False
-        for exactly these, and this is the axis-side counterpart of
-        `addresses_entity`: a component's constant columns live on
+        An attribute over `dim` alone: a per-country CO2 budget, a snapshot
+        weighting, a per-type icon. `AttributeSpec.varying` is False for
+        exactly these, and a component's constant columns live on
         `dims/entity.parquet` like any other axis's.
-
-        Keyed off `dims` rather than `coordinates_of`, because a relation with one
-        coordinate is indistinguishable there: `dims={"connection"}` over a
-        single `bus` coordinate also yields `("bus",)`, and it belongs in the
-        relation's file rather than on the bus axis. A relation over `entity` alone is
-        keyed by the relation name, not `entity`, so its `values` label and any
-        attribute it bundles never match here.
 
         Notes
         -----
@@ -779,9 +749,9 @@ class Schema(BaseModel):
     def input_key(self) -> tuple[str, ...]:
         """Inputs-map key columns, compared NULL-safely when folding.
 
-        `partial_dims`, plus `attribute`. `entity` and a relation's coordinates are
-        in it as membership keys - a layer may patch one component's value, or
-        one connection's, without restating every other's - and the broadcast
+        `partial_dims`, plus `attribute`. `entity` and every dim keying a
+        relation are in it as membership keys - a layer may patch one
+        component's value without restating every other's - and the broadcast
         `partial` value dims beside them.
 
         A coordinate an attribute's own file does not carry reads as NULL,
@@ -790,32 +760,10 @@ class Schema(BaseModel):
 
         Notes
         -----
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         return (*self.partial_dims, "attribute")
-
-    def relations_of(self, attribute: str) -> tuple[str, ...]:
-        """Which declared relations address `attribute`, in declaration order.
-
-        An attribute is a connection attribute because its `dims` name the
-        `connection` relation - not because a separate field says so. That is
-        what lets a second relation exist without a second field.
-
-        A relation a dim shadows is not one of them, `dims: [country]` naming the
-        axis.
-
-        Notes
-        -----
-        - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
-        """
-        spec = self.attributes.get(attribute)
-        if spec is None:
-            return ()
-        return tuple(
-            r for r in self.relations if r in spec.dims and r not in self.dimensions
-        )
 
     def relation_columns(self, relation: str) -> tuple[str, ...]:
         """One relation's columns, or `()` if it is not declared.
@@ -870,7 +818,7 @@ class Schema(BaseModel):
         axis pins its vocabulary everywhere the column is built, and an axis a
         schema happens to call `kind` is typed no differently.
 
-        An attribute addressed by one axis alone is a *column* rather than a
+        An attribute over one axis alone is a *column* rather than a
         `value` cell, so this is where its type is read from - `cast_declared`
         would otherwise leave an axis file's attribute column as whatever the
         incoming frame happened to carry. An attribute with any other `dims` is

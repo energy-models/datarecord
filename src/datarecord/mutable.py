@@ -806,15 +806,6 @@ class WorkingRecord(Record):
                 f"it varies over {list(coordinates) or 'nothing'}"
             )
             raise ValueError(msg)
-        through_relation = sorted(
-            set(coordinates) - set(self.schema.broadcasts_over(attribute)) - set(dims)
-        )
-        if through_relation:
-            msg = (
-                f"{attribute} is addressed through a relation, so each row names "
-                f"{through_relation} too; a NULL there cannot mean every row of the relation"
-            )
-            raise ValueError(msg)
 
     def set(
         self,
@@ -830,8 +821,7 @@ class WorkingRecord(Record):
         (`scenario="high"`), or a list of labels along one dim at most
         (`generator=["wind", "gas"]`). A coordinate no keyword names is
         written NULL, which the broadcast rule reads as every label of it -
-        including labels a later layer adds. A coordinate the attribute reaches
-        through a relation - `bus` for a connection attribute - must be named.
+        including labels a later layer adds.
 
         `value` takes five forms: a scalar for every named label, a sequence
         aligned positionally to the listed labels, a mapping or a labelled
@@ -852,9 +842,9 @@ class WorkingRecord(Record):
             If the attribute is not declared, or a label of a dim that keys a
             relation is on no layer's axis.
         ValueError
-            If a keyword names a dim the attribute does not vary over, a relation
-            coordinate is left unnamed, two dims are given lists, or the dim a
-            mapping or series is keyed by cannot be told.
+            If a keyword names a dim the attribute does not vary over, two dims
+            are given lists, or the dim a mapping or series is keyed by cannot be
+            told.
 
         Notes
         -----
@@ -1340,10 +1330,10 @@ class WorkingRecord(Record):
         """Stage new labels of `dim` from a wide frame, with the relation rows it names.
 
         `frame` has a `dim` column. Splits the rest by the schema: an attribute
-        addressed by `dim` alone is a column of its axis, one that varies over
-        more is `attributes/` rows, and the coordinates of a relation keyed on `dim`
-        - `entity_type` for a type relation, `bus` for `connection` - stage that
-        relation's row, with any attribute over it.
+        over `dim` alone is a column of its axis, one that varies over more is
+        `attributes/` rows, and the other columns of a relation keyed on `dim` -
+        `entity_type` for a type relation, `bus` for `connection` - stage that
+        relation's row where the frame carries every one of them.
 
         Not a sequence of `set` calls: a label exists by its axis row, so a
         value for a label no layer declares is what `_require_labels` rejects.
@@ -1359,7 +1349,7 @@ class WorkingRecord(Record):
         Notes
         -----
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+        - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
         """
         lazy = _incoming(frame, self.con)
         columns = lazy.collect_schema().names()
@@ -1379,15 +1369,8 @@ class WorkingRecord(Record):
             coordinates = [
                 c for c in self.schema.relation_columns(relation) if c != dim
             ]
-            riding = [
-                c
-                for c in columns
-                if c in declared
-                and c not in varying
-                and relation in self.schema.relations_of(c)
-            ]
-            if riding or (coordinates and all(c in columns for c in coordinates)):
-                by_relation[relation] = [*coordinates, *riding]
+            if coordinates and all(c in columns for c in coordinates):
+                by_relation[relation] = coordinates
         in_relations = {c for cols in by_relation.values() for c in cols}
         axis_columns = [
             c for c in columns if c not in varying and c not in in_relations
@@ -1409,7 +1392,7 @@ class WorkingRecord(Record):
         for relation, carried in by_relation.items():
             self.add_relation(
                 relation,
-                lazy.select(dim, *(nw.col(c) for c in dict.fromkeys(carried))),
+                lazy.select(dim, *(nw.col(c) for c in carried)),
             )
 
     def _reject_undeclared(self, call: str, table: str, columns: Sequence[str]) -> None:
@@ -1833,27 +1816,15 @@ def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
 
 
 def _relation_columns(schema: Schema, relation: str) -> dict[str, nw.dtypes.DType]:
-    """One relation's staged columns: its own, and the fold's.
-
-    An attribute over the relation is a column of the relation's file, so it is
-    declared here too. `role` on a connection reads as a framework's own label,
-    but the framework declaring it is what puts it in the schema - and an
-    undeclared one has no dtype to give the column.
+    """One relation's staged columns: its own, and its tombstone.
 
     Notes
     -----
     - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    over = {
-        name: schema.value_type(name) or nw.String()
-        for name, spec in schema.attributes.items()
-        if not spec.varying and relation in schema.relations_of(name)
-    }
     return {
         **{c: _column_type(schema, c) for c in schema.relation_columns(relation)},
         "deleted": nw.Boolean(),
-        **over,
     }
 
 

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Connections as bus-keyed rows, and `bus` in the inputs key.
+"""Ports: a dim of attachments, related to their entity and bus, keying per-port values.
 
 Notes
 -----
@@ -12,149 +12,110 @@ Notes
 from datarecord.duck import layer_dir
 from datarecord.layered.revision import Revision
 from tests.fixtures import (
-    names,
+    port,
     relation,
     schema,
     tombstone,
-    tombstone_connection,
     write_attribute,
+    write_axis,
     write_connections,
     write_entity_type,
+    write_ports,
     write_schema,
 )
 
 PROCESS = "Process"
+H2, ORE, DRI = (port("steel_dri", p) for p in ("0", "1", "2"))
 
 
-def _connections(revision):
-    """`relation_frame`, asserted non-`None` for tests where a row must exist.
-
-    No type: one `relations/connection.parquet` holds every type's rows, and these
-    tests declare a single one.
-    """
-    frame = revision.resolver.relation_frame("connection")
+def _port_buses(revision):
+    """The resolved `port_bus` relation, asserted non-`None` for tests where a row must exist."""
+    frame = revision.resolver.relation_frame("port_bus")
     assert frame is not None
-    return frame
+    return frame.df()
 
 
 def _root(con) -> Revision:
-    """A record whose layer has one Process with three connections."""
+    """A record whose layer has one Process with three ports."""
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_connections(
+    write_ports(
         layer,
         [
-            {"entity": "steel_dri", "bus": "h2_north", "role": "input"},
-            {"entity": "steel_dri", "bus": "iron_ore", "role": "input"},
-            {"entity": "steel_dri", "bus": "dri", "role": "output"},
+            {"entity": "steel_dri", "port": "0", "bus": "h2_north", "role": "input"},
+            {"entity": "steel_dri", "port": "1", "bus": "iron_ore", "role": "input"},
+            {"entity": "steel_dri", "port": "2", "bus": "dri", "role": "output"},
         ],
     )
     write_attribute(
         layer,
         "efficiency",
-        [
-            {"entity_type": PROCESS, "entity": "steel_dri", "bus": b, "value": v}
-            for b, v in (("h2_north", 2.1), ("iron_ore", 1.6), ("dri", 1.0))
-        ],
+        [{"port": p, "value": v} for p, v in ((H2, 2.1), (ORE, 1.6), (DRI, 1.0))],
     )
     return revision
 
 
 def _efficiencies(revision) -> dict[str, float]:
     df = relation(revision, "efficiency").df()
-    return dict(zip(df["bus"], df["value"], strict=True))
+    return dict(zip(df["port"], df["value"], strict=True))
 
 
-def test_connections_resolve_in_order(con, base_uri):
-    """A component's connections come back in first-introduced order."""
+def test_ports_resolve_in_order(con, base_uri):
+    """A component's ports come back in first-introduced order, each with its role."""
     revision = _root(con)
-    frame = _connections(revision).df()
-    assert list(frame["bus"]) == ["h2_north", "iron_ore", "dri"]
-    # `role` describes the connection rather than keying it, so it rides along
-    # from the owning layer's file (https://energy-models.github.io/datarecord/design/record/#connections).
-    assert list(frame["role"]) == ["input", "input", "output"]
+    assert list(_port_buses(revision)["bus"]) == ["h2_north", "iron_ore", "dri"], (
+        "`port_bus` rows in the order the layer wrote them"
+    )
+    axis = revision.resolver.dims.axes["port"].df()
+    assert dict(zip(axis["port"], axis["role"], strict=True)) == {
+        H2: "input",
+        ORE: "input",
+        DRI: "output",
+    }, "`role` is a column of the `port` axis, one per port"
 
 
-def test_patch_overrides_one_connection_only(con, base_uri):
-    """The sibling-clobbering case: `bus` in `input_key` scopes ownership per connection."""
+def test_patch_overrides_one_port_only(con, base_uri):
+    """The sibling-clobbering case: `port` in `input_key` scopes ownership per port."""
     root = _root(con)
     root.materialise()
 
     child = root.child()
-    write_attribute(
-        layer_dir(child.id),
-        "efficiency",
-        [
-            {
-                "entity_type": PROCESS,
-                "entity": "steel_dri",
-                "bus": "h2_north",
-                "value": 9.9,
-            }
-        ],
+    write_attribute(layer_dir(child.id), "efficiency", [{"port": H2, "value": 9.9}])
+
+    assert _efficiencies(child) == {H2: 9.9, ORE: 1.6, DRI: 1.0}, (
+        "the patched port takes the child's value; its siblings keep the root's"
     )
 
-    # The patched connection takes the child's value; its siblings keep the
-    # root's rather than vanishing.
-    assert _efficiencies(child) == {"h2_north": 9.9, "iron_ore": 1.6, "dri": 1.0}
 
-
-def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
-    """An intermediate layer inserting a connection does not redirect a later patch."""
+def test_patch_hits_the_port_it_named(con, base_uri):
+    """An intermediate layer adding a port does not redirect a later patch."""
     root = _root(con)
     root.materialise()
 
-    # A middle layer prepends a connection, which under a positional encoding
-    # would shift every later index by one.
     middle = root.child()
-    write_connections(
+    write_ports(
         layer_dir(middle.id),
-        [{"entity": "steel_dri", "bus": "elec_north", "role": "input"}],
+        [{"entity": "steel_dri", "port": "3", "bus": "elec_north", "role": "input"}],
     )
-    write_attribute(
-        layer_dir(middle.id),
-        "efficiency",
-        [
-            {
-                "entity_type": PROCESS,
-                "entity": "steel_dri",
-                "bus": "elec_north",
-                "value": 0.4,
-            }
-        ],
-    )
+    elec = port("steel_dri", "3")
+    write_attribute(layer_dir(middle.id), "efficiency", [{"port": elec, "value": 0.4}])
     middle.materialise()
 
     leaf = middle.child()
-    write_attribute(
-        layer_dir(leaf.id),
-        "efficiency",
-        [
-            {
-                "entity_type": PROCESS,
-                "entity": "steel_dri",
-                "bus": "dri",
-                "value": 7.7,
-            }
-        ],
-    )
+    write_attribute(layer_dir(leaf.id), "efficiency", [{"port": DRI, "value": 7.7}])
 
-    assert _efficiencies(leaf) == {
-        "h2_north": 2.1,
-        "iron_ore": 1.6,
-        "dri": 7.7,  # the bus the patch named
-        "elec_north": 0.4,
-    }
+    assert _efficiencies(leaf) == {H2: 2.1, ORE: 1.6, DRI: 7.7, elec: 0.4}, (
+        "the leaf's patch lands on the port it named, and the middle's port stays"
+    )
 
 
 def test_component_level_attribute_is_unaffected(con, base_uri):
-    """A component attribute carries no `bus` column at all, and resolves as ever.
+    """A component attribute carries no `port` column at all, and resolves as ever.
 
-    `bus` is the `connection` relation's coordinate, so it is on the files of the
-    attributes addressed by that relation and on no others - where before every
-    long file carried it, all-NULL, whether or not the attribute could use it.
+    `port` is a dim like any other, so it is on the files of the attributes over
+    it and on no others.
 
     Notes
     -----
@@ -162,108 +123,88 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
     """
     root = _root(con)
     write_attribute(
-        layer_dir(root.id),
-        "p_nom",
-        [{"entity_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
+        layer_dir(root.id), "p_nom", [{"entity": "steel_dri", "value": 100.0}]
     )
     root.materialise()
 
     child = root.child()
     write_attribute(
-        layer_dir(child.id),
-        "p_nom",
-        [{"entity_type": PROCESS, "entity": "steel_dri", "value": 250.0}],
+        layer_dir(child.id), "p_nom", [{"entity": "steel_dri", "value": 250.0}]
     )
 
     df = relation(child, "p_nom").df()
     assert list(df["value"]) == [250.0]
-    assert "bus" not in df.columns, (
-        "`p_nom` is not addressed by the connection relation"
-    )
+    assert "port" not in df.columns, "`p_nom` is not over `port`"
 
 
-def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri):
-    """`bus` extends the key; it does not displace the dims.
+def test_per_port_attribute_varies_by_snapshot(con, base_uri):
+    """`port` extends the key; it does not displace the dims.
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
     revision = Revision.create(con)
     layer = layer_dir(revision.id)
     write_schema(schema())
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_connections(
-        layer, [{"entity": "steel_dri", "bus": "h2_north", "role": "input"}]
+    write_ports(
+        layer,
+        [
+            {"entity": "steel_dri", "port": "0", "bus": "h2_north"},
+            {"entity": "steel_dri", "port": "1", "bus": "dri"},
+        ],
     )
     write_attribute(
         layer,
         "efficiency",
         [
-            # one static row, and a two-snapshot series for the same connection
-            {
-                "entity_type": PROCESS,
-                "entity": "steel_dri",
-                "bus": "h2_north",
-                "value": 2.0,
-            },
-            {
-                "entity_type": PROCESS,
-                "entity": "steel_dri",
-                "bus": "h2_north",
-                "snapshot": "2030-01-01",
-                "value": 2.5,
-            },
-            {
-                "entity_type": PROCESS,
-                "entity": "steel_dri",
-                "bus": "h2_north",
-                "snapshot": "2030-01-02",
-                "value": 2.7,
-            },
+            {"port": H2, "value": 2.0},
+            {"port": ORE, "snapshot": "2030-01-01", "value": 2.5},
+            {"port": ORE, "snapshot": "2030-01-02", "value": 2.7},
         ],
     )
 
-    record = revision.record
-    flags = record.flags(entity=names(record, PROCESS))["efficiency"]
-    # Both sets hold `snapshot`: one connection's efficiency is per-snapshot,
-    # another's is a single broadcast row, and the union over the type's names
-    # reports both - which is what tells a consumer one container will not do
-    # (https://energy-models.github.io/datarecord/design/record/#flags). A per-connection attribute needs no special case for this.
-    assert "snapshot" in flags.varies
-    assert "snapshot" in flags.broadcast
+    flags = revision.record.flags(port=[H2, ORE])["efficiency"]
+    assert "snapshot" in flags.varies, "one port's efficiency is per-snapshot"
+    assert "snapshot" in flags.broadcast, "the other's is a single broadcast row"
     assert not flags.breakpoints
-    assert len(relation(revision, "efficiency").df()) == 3
+    assert len(relation(revision, "efficiency").df()) == 3, (
+        "one broadcast row and a two-snapshot series"
+    )
 
 
-def test_connection_tombstone_removes_one_connection(con, base_uri):
-    """A connection tombstone drops its connection row and its `attributes/` rows."""
+def test_port_tombstone_removes_one_port(con, base_uri):
+    """A port tombstone drops its relation rows and its `attributes/` rows."""
     root = _root(con)
     root.materialise()
 
     child = root.child()
-    tombstone_connection(layer_dir(child.id), [("steel_dri", "iron_ore")])
+    write_axis(layer_dir(child.id), "port", [{"port": ORE, "deleted": True}])
 
-    frame = _connections(child).df()
-    assert set(frame["bus"]) == {"h2_north", "dri"}
-    # ... and the attribute rows go with it, which the map can scope per
-    # connection only because `bus` is in `input_key`.
-    assert _efficiencies(child) == {"h2_north": 2.1, "dri": 1.0}
+    assert set(_port_buses(child)["bus"]) == {"h2_north", "dri"}, (
+        "the removed port's `port_bus` row goes with its label"
+    )
+    assert _efficiencies(child) == {H2: 2.1, DRI: 1.0}, (
+        "and so do its efficiency rows, `port` being in `input_key`"
+    )
 
 
 def test_component_tombstone_removes_its_connections(con, base_uri):
     """Deleting a component removes its connections with it.
 
     A component tombstone removes the `entity` label, and every relation row keyed
-    on that label goes with it - the `connection` rows included. Before, the
-    connections survived the component, dangling, until the author tombstoned
-    them by hand.
+    on that label goes with it - the `connection` rows included.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     root = _root(con)
+    write_connections(
+        layer_dir(root.id),
+        [{"entity": "steel_dri", "bus": b} for b in ("h2_north", "iron_ore", "dri")],
+    )
     root.materialise()
 
     child = root.child()

@@ -13,7 +13,7 @@ Everything a consumer codes against. It is read-only, and structural — a plain
 ```python
 record.schema  # what may exist: the axes, the attributes
 record.dims["scenario"]  # axis frames, keyed by dim
-record.relations["connection"]  # relation rows, keyed by relation — one frame each
+record.relations["port_bus"]  # relation rows, keyed by relation — one frame each
 record.attributes["p_max_pu"]  # long frames, keyed by attribute
 record.flags(["wind1", "wind2"])  # which axes each attribute uses, over these entities
 ```
@@ -32,11 +32,11 @@ entities = record.dims["entity"].collect().to_pandas()
 <coordinate> ... | attribute | breakpoint | value
 ```
 
-The coordinates are the attribute's own, from its declared `dims` — `entity` for `p_max_pu`, `entity | bus` for a connection attribute like `efficiency`, and no entity column at all for one addressed by an axis alone ([design](../design/format.md#the-long-schema)).
+The coordinates are the attribute's own, from its declared `dims` — `entity | scenario | timestep` for `p_max_pu`, `port | timestep` for `efficiency`, and no entity column at all for an attribute that is not over `entity` ([design](../design/format.md#the-long-schema)).
 
-A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). Two coordinates are the exception and never broadcast — `entity`, and a relation's key coordinate such as `bus`, where a NULL means "every connection of this entity" rather than every bus. `breakpoint` carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's `default` from the schema.
+A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). Every dim an attribute is over broadcasts this way, `entity` and `port` included. `breakpoint` carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's `default` from the schema.
 
-There is no `entity_type` column in an attribute's key or in a connection's — `attributes["p_max_pu"]` and `relations["connection"]` each hold the rows of every type together. An entity's type is a row of the `entity_type` relation, so the type is something the record knows about a name rather than part of its address ([design](../design/schema.md#types)). To scope to one type, join `relations["entity_type"]` on `entity`:
+There is no `entity_type` column in an attribute's key or in a relation's — `attributes["p_max_pu"]` and `relations["port_entity"]` each hold the rows of every type together. An entity's type is a row of the `entity_type` relation, so the type is something the record knows about a name rather than part of its address ([design](../design/schema.md#types)). To scope to one type, join `relations["entity_type"]` on `entity`:
 
 ```python
 import narwhals as nw

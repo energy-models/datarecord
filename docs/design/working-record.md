@@ -61,7 +61,7 @@ Each edit maps onto exactly one part of the format:
 
 | edit                           | writes                                                                                                 | key it targets                     |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------ | ---------------------------------- |
-| set an attribute on a relation | `attributes/<attr>.parquet` rows                                                                       | `(*partial dims, attribute)`       |
+| set an attribute               | `attributes/<attr>.parquet` rows                                                                       | `(*partial dims, attribute)`       |
 | add components                 | `dims/entity.parquet` rows, `attributes/` rows for varying attributes, and rows of the relations named | `entity`                           |
 | remove labels                  | a `deleted = true` tombstone on the dim's axis                                                         | the dim's label                    |
 | add_relation / remove_relation | `relations/<relation>.parquet` rows and tombstones                                                     | the relation's own key coordinates |
@@ -69,8 +69,7 @@ Each edit maps onto exactly one part of the format:
 `add_relation` names no component type: a relation's rows are keyed by its columns and the type is not one of them, so there is nothing for it to scope ([where the rows live](format.md#where-a-value-lives)).
 Nor is there a `connect`/`disconnect` pair beside it — `connection` is one relation among however many the schema declares, and a call naming it would be the record layer holding one framework's vocabulary.
 
-The key of `attributes/` is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: the fold key contains `entity` and every [relation](schema.md#relations) key coordinate, since neither broadcasts.
-Every key is `entity`-based, because `entity` is [what identifies a component](format.md#the-entity-axis).
+The key of `attributes/` is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: the fold key is the dims declared `partial`, which include every dim a [relation](schema.md#relations) is keyed by.
 No edit names a type. An `add` gives an entity its type through an `entity_type` column, which stages a row of the `entity_type` [relation](schema.md#types) keyed by `entity`, so one name has one type.
 
 The crucial property: **an edit is expressed in the format's own terms.** Setting a constant `p_max_pu` on twenty components _is_ twenty broadcast rows of `attributes/p_max_pu.parquet`, which is what a patch layer would hold anyway.
@@ -85,23 +84,22 @@ record.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
 record.set("p_max_pu", frame, entity=["wind1"])  # long frame
 record.set("p_max_pu", series, entity=["wind1"], indexed_by="snapshot")  # a series
 record.set("icon", {"Generator": "turbine"})  # keyed by entity_type labels
-record.set("efficiency", 0.9, entity=["dc"], bus="north")  # a connection
+record.set("efficiency", 0.9, port=["dc_out"])  # one port
 record.set("p_max_pu", 0.5, entity=["wind1"], scenario="high")  # scoped
 record.set("p_max_pu", nw.col("value") * 1.1, entity=["wind1"])  # derived
 ```
 
-**There is no `entity_type` keyword.** An attribute is not narrowed to [types](schema.md#types): every declared attribute can be set on any entity its `dims` address.
+**There is no `entity_type` keyword.** An attribute is not narrowed to [types](schema.md#types): an attribute over `entity` can be set on any entity, whatever its type.
 So `set` checks that each name is on the entity axis and that the attribute is declared over the dims the call names ([validation](#validation)), and one call may span types: `set("p_nom", {"wind1": 150.0, "link_dc": 80.0})` stages both.
 
 `entity=None` means every entity on the axis. `set("p_max_pu", 0.9)` sets it on every entity, buses included; name the entities to scope it.
 
-**Every coordinate but `entity` goes through `**dims`**, a [relation](schema.md#relations)'s included: `bus="north"` addresses one connection, `from=`/`to=` one corridor.
-None has a parameter of its own, because which coordinates exist is declared rather than fixed — a `bus=` keyword would spell one relation's coordinate and be unable to name a two-coordinate relation at all.
+**Every dim goes through `**dims`**, `entity` included: `port="dc_out"` scopes one port, `scenario="high"` one scenario.
+None has a parameter of its own, because which dims exist is declared rather than fixed.
 
-A plain dim keyword scopes the edit and its absence means "every value" by the NULL broadcast rule, so `scenario="high"` patches one scenario.
-A relation key coordinate does not broadcast that way: omitting `bus` means "every connection of this entity" — [the relation's rows](record.md#the-broadcast-rule), not the bus axis.
+A keyword scopes the edit, and its absence means every value of that dim. So `scenario="high"` patches one scenario, and a `set` of `efficiency` that names no `port` sets every port.
 
-**An attribute addressed by one axis alone is keyed by that axis's labels**, not by `entity`: `set("icon", {"Generator": "turbine"})` states one type's icon, and `set("co2_budget", 3.0)` reaches every country the axis has.
+**An attribute over one axis alone is keyed by that axis's labels**, not by `entity`: `set("icon", {"Generator": "turbine"})` states one type's icon, and `set("co2_budget", 3.0)` reaches every country the axis has.
 The edit stages a row of [that axis's own file](format.md#where-a-value-lives) rather than a long row, so `entity=` is refused — an icon belongs to no component — and a sequence is refused too, there being no name list to align against.
 A label the axis does not have is refused rather than introduced: an axis row is a label's existence, which an axis file states. Where the axis's dtype is an `Enum` the vocabulary is the schema's, so an undeclared label is rejected without reading the axis at all.
 
@@ -151,7 +149,7 @@ What it does differently is read before it stages:
 The expression is evaluated by narwhals against the resolved long frame, so it names `value` rather than the attribute: the frame is long, and one attribute per call means the column is always `value`.
 
 **A named target must resolve to a row.**
-If the caller names `entity`, a relation key coordinate or any dim scope, every one of those targets must produce a row to derive from, or the call raises.
+If the caller names `entity` or any other dim, every one of those targets must produce a row to derive from, or the call raises.
 The caller asked for those rows to take a new value and there is nothing to compute one from, which is a failed change rather than a no-op — the same class of error as [naming a component no layer declares](#validation), and it was silently staging zero rows before.
 
 With `entity=None` and no scope the instruction is "whatever resolves", so an empty result is an answer rather than a failure.
@@ -171,7 +169,6 @@ This section is the intended spelling for an accessor over it, not something the
 record["Generator"]["p_nom"] = 150.0  # every generator
 record["Generator"]["p_nom", ["wind1", "wind2"]] = [150.0, 80.0]
 record["Generator"]["p_max_pu", "wind1"] = series
-record["Link", "north"]["efficiency", "dc"] = 0.9  # a connection
 record["Generator", {"scenario": "high"}]["p_max_pu", "wind1"] = 0.5
 ```
 
@@ -198,7 +195,7 @@ record.remove("entity", ["old_coal"])
 
 - **An attribute over `entity` alone is a column of the entity axis.**
 - **A varying attribute becomes `attributes/` rows.** A constant value of one is a broadcast row, its other dims NULL.
-- **A relation keyed by `entity` gets a row where the frame carries every other column of it**, with any attribute over that relation. An `entity_type` column gives each entity its type; a `bus` column gives it a connection.
+- **A relation keyed by `entity` gets a row where the frame carries every other column of it.** An `entity_type` column gives each entity its type; a `bus` column gives it a row of `connection`.
 
 Which is which comes from the schema, so `add` needs no framework registry.
 A column the schema does not name is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column and no reader that would know what it means. A caller that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
@@ -211,8 +208,8 @@ Adding a bus with no attributes makes the point — nothing to `set`, yet the bu
 Membership is not reducible to attribute values.
 
 `remove(dim, labels)` stages a tombstone per label on that dim's axis.
-`dim` may be any dim in the fold key (`Schema.partial_dims`): `entity`, a relation key coordinate such as `bus`, or a dim declared `partial`.
-A dim outside the fold key is refused, with an error that names `partial`: a layer owns such a dim whole, so a tombstone has no key to remove. A dim `within` another is refused too.
+`dim` may be any dim declared `partial` (`Schema.partial_dims`), which includes every dim a relation is keyed by, such as `entity`, `bus` and `port`.
+Any other dim is refused, with an error that names `partial`: a layer owns such a dim whole, so a tombstone has no key to remove. A dim `within` another is refused too.
 
 It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute row and every relation row keyed on the label, so a removed component takes its connection rows and its `entity_type` row with it.
 A tombstone on the [entity axis](format.md#the-entity-axis) has no dim scope: a component [exists or it does not](schema.md#existence-does-not-vary-along-a-dim).
@@ -226,7 +223,7 @@ record.remove_relation("connection", [("dc", "north")])
 
 The one staging path every declared [relation](schema.md#relations) writes through. There is no `connect`/`disconnect` beside it: `connection` is one relation among however many a schema declares, and a call naming it would put one framework's vocabulary in the record layer.
 
-`frame` carries the own columns of `relation` (`entity` and `bus` for `connection`, `from` and `to` for a `corridor`) plus whatever else the relation's file holds — an attribute [addressed by the relation](format.md#where-a-value-lives), such as PyPSA's `role`. `keys` is a tuple per row in the order of the relation's [key](schema.md#values-a-relation-that-classifies).
+`frame` carries the columns of `relation`: `entity` and `bus` for `connection`, `port` and `bus` for `port_bus`, `from` and `to` for a `corridor`. A relation's file holds no attribute ([where a value lives](format.md#where-a-value-lives)), so the frame holds nothing else. `keys` is a tuple per row in the order of the relation's [key](schema.md#values-a-relation-that-classifies).
 
 [`add`](#add-remove) calls `add_relation` too, but only for a relation whose **key** includes `entity` — the case where the row belongs to the component being added (`bus` for `connection`, `entity_type` for the type relation).
 A relation like `corridor`, relating two entities neither of which is "the" one being added, has no such row to derive from a single component's wide frame and is staged through `add_relation` directly.
@@ -340,7 +337,7 @@ It costs what one more layer costs, **per read**: a written layer is folded once
 So the fold is materialised up to the last layer that cannot change under the reader, and the staged step on top of it stays a DuckDB relation — which is also why an edit needs no invalidation, there being nothing cached to invalidate.
 
 `flags` follows for free, computed in the fold's own ownership `GROUP BY` as it is for any layer: a staged row setting a dim adds it to `varies`, one leaving it NULL adds it to `broadcast`, and a staged curve sets `breakpoints`.
-It says nothing about an attribute addressed by one axis alone, which has no rows in the owner map; `dims` is where that value is read from, staged edits included, and [`Schema.attributes_on`](format.md#where-a-value-lives) is what names the columns an axis frame carries.
+It says nothing about an attribute over one axis alone, which has no rows in the owner map; `dims` is where that value is read from, staged edits included, and [`Schema.attributes_on`](format.md#where-a-value-lives) is what names the columns an axis frame carries.
 
 `dims` overlays per column rather than per row: a staged label's edited columns win, and a label the edit did not name keeps the base's whole row.
 So two `set` calls for two attributes on one axis compose instead of the later one blanking the earlier's column.

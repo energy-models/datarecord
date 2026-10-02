@@ -25,9 +25,9 @@ The node metadata — `(id, parent)` — is persisted in the `revisions` table, 
 
 Two of [the protocol's](record.md) columns take their meaning from the overlay key.
 
-The key coordinates of a [relation](schema.md#relations) are part of the key of `attributes/`, `(*partial dims, attribute)` — `bus` among them for the `connection` relation, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
-That is what makes a per-connection attribute owned _per connection_: without it, a patch changing one connection's `efficiency` would own — and so have to restate — every connection's.
-It is also why a connection is keyed by its bus rather than by position: a patch layer would otherwise have to know a connection's current index, so an ancestor inserting one earlier would silently redirect that patch to a different bus.
+The dims a [relation](schema.md#relations) is keyed by are part of the key of `attributes/`, `(*partial dims, attribute)`, because [`partial`](schema.md#partial-the-granularity-of-an-override) must name them — `port` among them for the `port_bus` relation. An attribute not over `port` is NULL there, and the key is compared NULL-safely, so that case is unaffected.
+That is what makes a per-port attribute owned _per port_: without it, a patch changing one port's `efficiency` would own — and so have to restate — every port's.
+It is also why a port is keyed by its own label rather than by position: a patch layer would otherwise have to know a port's current index, so an ancestor inserting one earlier would silently redirect that patch to a different bus.
 
 `breakpoint` ([wide and long rows](record.md#wide-and-long-rows)), by contrast, is deliberately **not** part of the overlay key.
 A layer owns a whole curve, the same rule a non-`partial` dim follows ([partial](schema.md#partial-the-granularity-of-an-override)), so a parent's breakpoints and a descendant's can never resolve into one curve with a hole.
@@ -64,7 +64,7 @@ A `deleted = true` row on [the entity axis](format.md#the-entity-axis) tombstone
 A `deleted = true` row in `relations/<relation>.parquet` tombstones one row of that relation — the row itself and its `attributes/` rows — leaving the component and its other rows intact, so a connection is removed without touching the component it attached.
 
 A tombstone is honoured by the [one fold](read-path.md#one-fold-for-every-axis) that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
-An _attribute's_ orphaned rows stop surfacing the same way, for every membership: an attribute row is keyed by the entity, relation tuple and dim coordinates its `dims` name, and [`fold_inputs`](read-path.md#owner-map) anti-joins the map against each membership's `deleted` rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map, not filtered at read.
+An _attribute's_ orphaned rows stop surfacing the same way: an attribute row is keyed by the labels of the dims in the fold key, and [`fold_inputs`](read-path.md#owner-map) anti-joins the map against each of those axes' `deleted` rows as it folds — so a key whose entity, port or other label was deleted is absent from the resolved map, not filtered at read.
 A removed label also takes the relation rows keyed on it: a removed component loses its connection rows and its `entity_type` row, and a removed bus loses the connection rows that name it.
 A tombstone only affects the branch that carries it; sibling branches keep the component.
 

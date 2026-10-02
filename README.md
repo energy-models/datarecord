@@ -14,7 +14,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 Dimensioned attribute data with a declared schema.
 
-A record holds **components** (named members of a type), **connections** between components and buses, **attribute values** over both, and the **axes** those values vary along. A schema declares what may exist; the data says what does.
+A record holds **components** (named members of a type), **relations** such as which buses a component attaches to, **attribute values**, and the **axes** those values vary along. A schema declares what may exist; the data says what does.
 
 Records stack: a layer is a partial record on top of a parent, resolved last-writer-wins, so a scenario variant costs the rows it changes rather than a copy of everything. On disk a record is a plain parquet directory that a tool knowing nothing about this package can read.
 

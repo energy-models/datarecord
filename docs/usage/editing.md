@@ -21,14 +21,14 @@ w.set("p_nom", 150.0, entity=["wind1", "wind2"])  # broadcast
 w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per name, positional
 w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
 w.set("p_max_pu", frame, entity=["wind1"])  # a long frame
-w.set("efficiency", 0.9, entity=["dc"], bus="north")  # a connection
+w.set("efficiency", 0.9, port=["dc_out"])  # one port
 w.set("p_max_pu", 0.5, entity=["wind1"], scenario="high")  # scoped to one scenario
 w.set("p_max_pu", nw.col("value") * 1.1, entity=["wind1"])  # derived
 ```
 
 **There is no `entity_type` keyword.** No attribute is narrowed to a type, so one call may span types. `set` refuses a name that is not on the entity axis — `add` it first — and an attribute that is not declared over the dims the call names ([design](../design/working-record.md#set)).
 
-`entity=None` means every entity on the axis. Every other coordinate goes through `**dims`, a relation's included — `bus="north"` addresses one connection, `from=`/`to=` one corridor. A plain dim's absence means "every value of that dim" by the NULL broadcast rule; a relation key coordinate's means "every row of the relation for this entity" ([design](../design/record.md#the-broadcast-rule)).
+Every dim goes through `**dims` — `entity=["wind1"]`, `port=["dc_out"]`, `scenario="high"`. A dim the call does not name means every value of that dim, so `entity=None` means every entity on the axis ([design](../design/working-record.md#set)).
 
 An `nw.Expr` value is a **function of the current value**: it reads the resolved value including earlier pending edits, so two such calls compose, and what gets staged is the result rather than the expression ([design](../design/working-record.md#an-nwexpr-value-derived-from-the-current-one)). A named target that resolves to no row raises — the caller asked for those rows to take a new value and there is nothing to compute one from.
 
@@ -53,26 +53,29 @@ w.add(
     ),
 )
 
-w.remove("entity", ["old_coal"])
-
-w.add_relation(
-    "connection",
+w.add(
+    "port",
     pd.DataFrame(
         {
+            "port": ["dc_in", "dc_out"],
             "entity": ["dc", "dc"],
             "bus": ["north", "south"],
-            "role": ["bus0", "bus1"],
+            "role": ["input", "output"],
         }
     ),
 )
-w.remove_relation("connection", [("dc", "south")])
+
+w.remove("entity", ["old_coal"])
+
+w.add_relation("port_bus", pd.DataFrame({"port": ["dc_out"], "bus": ["east"]}))
+w.remove_relation("port_bus", [("dc_out",)])
 ```
 
-`add` takes a wide frame keyed by `entity` and splits it by the schema: columns addressed by `entity` alone go to the entity axis, ones varying beyond it become `attributes/` rows, and the `entity_type` column becomes rows of the `entity_type` relation, which gives each entity its type ([design](../design/working-record.md#add-remove)). A frame that carries every column of a relation keyed by `entity` adds that relation's rows the same way. A component exists by virtue of its row on the entity axis, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
+`add(dim, frame)` takes a wide frame keyed by `dim` and splits it by the schema. For `entity`, columns over `entity` alone go to the entity axis, ones varying beyond it become `attributes/` rows, and the `entity_type` column becomes rows of the `entity_type` relation, which gives each entity its type ([design](../design/working-record.md#add-remove)). A frame that carries every other column of a relation keyed by its dim adds that relation's rows the same way: the `port` frame above stages each port's `role` on the port axis and its rows of `port_entity` and `port_bus`. A component exists by virtue of its row on the entity axis, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
 
-`remove(dim, labels)` stages a tombstone per label on that dim's axis. `dim` may be any dim in the fold key: `entity`, a relation key coordinate such as `bus`, or a dim declared `partial`; any other dim is refused. It need not enumerate what it deletes: the fold applies it to every attribute row and every relation row keyed on the label, so a removed component takes its connection rows and its `entity_type` row with it ([design](../design/layers.md#deletion)).
+`remove(dim, labels)` stages a tombstone per label on that dim's axis. `dim` may be any dim declared `partial`, which includes every dim a relation is keyed by; any other dim is refused. It need not enumerate what it deletes: the fold applies it to every attribute row and every relation row keyed on the label, so a removed component takes its `entity_type` row with it ([design](../design/layers.md#deletion)).
 
-`add_relation`/`remove_relation` take no type: a relation's rows are keyed by its columns ([design](../design/format.md#where-a-value-lives)). Every relation is reached the same way — `connection` has no call of its own, being one relation among however many the schema declares.
+`add_relation`/`remove_relation` take no type: a relation's rows are keyed by its columns ([design](../design/format.md#where-a-value-lives)). Every relation is reached the same way — `port_bus` has no call of its own, being one relation among however many the schema declares.
 
 ## Inspecting and rolling back
 

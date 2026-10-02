@@ -33,13 +33,15 @@ def _schema(**overrides) -> Schema:
         "dimensions": {
             "entity": Dimension(dtype=nw.String()),
             "bus": Dimension(dtype=nw.String()),
+            "port": Dimension(dtype=nw.String()),
             "period": Dimension(dtype=nw.Int64()),
             "timestep": Dimension(dtype=nw.Datetime(), within={"period"}),
             "scenario": Dimension(dtype=nw.String()),
             "entity_type": Dimension(dtype=nw.Enum(["Generator", "Link"])),
         },
         "relations": {
-            "connection": Relation(key={"entity": "entity", "bus": "bus"}),
+            "port_entity": Relation(key=["port"], values="entity"),
+            "port_bus": Relation(key=["port"], values="bus"),
             "entity_type": Relation(key=["entity"], values="entity_type"),
         },
         # Declared once, record-wide.
@@ -52,13 +54,11 @@ def _schema(**overrides) -> Schema:
                 dtype=nw.Float64(), dims={"entity", "scenario"}, breakpoints=True
             ),
             "carrier": AttributeSpec(dtype=nw.String(), dims={"entity"}),
-            # A connection attribute says so by naming the relation among its
-            # dims, rather than by a field of its own.
             "efficiency": AttributeSpec(
-                dtype=nw.Float64(), dims={"connection", "scenario", "timestep"}
+                dtype=nw.Float64(), dims={"port", "scenario", "timestep"}
             ),
         },
-        "partial": frozenset({"entity", "bus", "scenario"}),
+        "partial": frozenset({"entity", "port", "scenario"}),
     }
     kwargs.update(overrides)
     return Schema(**kwargs)
@@ -94,12 +94,12 @@ def test_a_scenario_varying_capacity_is_a_schema_violation():
 def test_partial_dims_is_the_union_over_attributes():
     """The fold's key is one fixed tuple, so an unowned dim is NULL rather than absent."""
     s = _schema()
-    assert s.partial_dims == ("entity", "bus", "scenario"), (
+    assert s.partial_dims == ("entity", "port", "scenario"), (
         "the declared order, not the order `partial` names them"
     )
 
-    wider = _schema(partial=frozenset({"entity", "bus", "scenario", "timestep"}))
-    assert wider.partial_dims == ("entity", "bus", "timestep", "scenario"), (
+    wider = _schema(partial=frozenset({"entity", "port", "scenario", "timestep"}))
+    assert wider.partial_dims == ("entity", "port", "timestep", "scenario"), (
         "a dim made `partial` joins the key"
     )
 
@@ -174,19 +174,67 @@ def test_a_relation_key_missing_from_partial_is_refused(relations, partial, miss
         )
 
 
-def test_an_attribute_broadcasts_over_the_dims_it_names():
-    """A coordinate reached through a relation is the relation's rows, not an axis."""
+@pytest.mark.parametrize(
+    ("attribute", "dims"),
+    [
+        pytest.param("p_nom", ("entity",), id="one-dim"),
+        pytest.param(
+            "p_max_pu", ("entity", "timestep", "scenario"), id="declaration-order"
+        ),
+        pytest.param(
+            "efficiency", ("port", "timestep", "scenario"), id="a-dim-a-relation-keys"
+        ),
+        pytest.param("undeclared", (), id="undeclared"),
+    ],
+)
+def test_an_attribute_is_over_its_own_dims_and_broadcasts_over_each(attribute, dims):
+    """`coordinates_of` and `broadcasts_over` are the dims the spec names, nothing more.
+
+    `port` keys `port_entity` and `port_bus`, and `efficiency` is still over
+    `port` alone: a relation maps a dim's labels, it adds no coordinate.
+    """
     s = _schema()
     assert s.broadcast_dims == s.dims, "any declared dim may broadcast"
-    assert s.broadcasts_over("p_max_pu") == ("entity", "timestep", "scenario"), (
-        "the dims its spec names, in declaration order"
+    assert s.coordinates_of(attribute) == dims, (
+        "the attribute's own dims, in declaration order"
     )
-    assert s.broadcasts_over("efficiency") == ("timestep", "scenario"), (
-        "`entity` and `bus` come through `connection`, so they do not broadcast"
+    assert s.broadcasts_over(attribute) == dims, "every dim an attribute is over"
+
+
+@pytest.mark.parametrize(
+    ("dims", "relation"),
+    [
+        pytest.param({"connection"}, "connection", id="the-relation-alone"),
+        pytest.param({"connection", "scenario"}, "connection", id="beside-a-dim"),
+        pytest.param({"corridor", "scenario"}, "corridor", id="columns-on-one-dim"),
+    ],
+)
+def test_an_attribute_over_a_relation_is_refused(dims, relation):
+    """An attribute is over dims only; the message names the rewrite.
+
+    Notes
+    -----
+    - [relations](https://energy-models.github.io/datarecord/design/schema/#relations)
+    """
+    expected = (
+        f"attribute 'x' is over the relation {relation!r}; an attribute is over "
+        f"dims only - give each row of {relation!r} a dim of its own, relate that "
+        f"dim to {relation!r}'s columns, and declare 'x' over it"
     )
-    assert s.broadcasts_over("undeclared") == (), (
-        "an undeclared attribute broadcasts over nothing"
-    )
+    with pytest.raises(ValidationError, match=re.escape(expected)):
+        Schema(
+            dimensions={
+                "entity": Dimension(dtype=nw.String()),
+                "bus": Dimension(dtype=nw.String()),
+                "scenario": Dimension(dtype=nw.String()),
+            },
+            relations={
+                "connection": Relation(key=["entity", "bus"]),
+                "corridor": Relation(key={"from": "bus", "to": "bus"}),
+            },
+            attributes={"x": AttributeSpec(dtype=nw.Float64(), dims=dims)},
+            partial=frozenset({"entity", "bus"}),
+        )
 
 
 # -- entity types ----------------------------------------------------------
@@ -392,7 +440,7 @@ def test_widening_dims_is_compatible():
 def test_widening_partial_is_compatible():
     """Ownership becomes finer; an old row is owned at the coarser granularity."""
     old = _schema()
-    new = _schema(partial=frozenset({"entity", "bus", "scenario", "timestep"}))
+    new = _schema(partial=frozenset({"entity", "port", "scenario", "timestep"}))
     assert new.compatible_with(old) == []
 
 
@@ -417,7 +465,7 @@ def test_changing_a_dtype_is_incompatible():
 
 def test_removing_from_partial_is_incompatible():
     """A layer that patched one value is now a partial override of a whole axis."""
-    old = _schema(partial=frozenset({"entity", "bus", "scenario", "timestep"}))
+    old = _schema(partial=frozenset({"entity", "port", "scenario", "timestep"}))
     new = _schema()
     reasons = new.compatible_with(old)
     assert any("no longer `partial`" in r for r in reasons)
