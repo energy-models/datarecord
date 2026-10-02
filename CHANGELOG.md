@@ -13,8 +13,9 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Added
 
-- `Schema.from_declarations` builds a schema from mathspec declarations, and
-  `Schema.to_declarations` writes one back.
+- `Schema.from_mathspec` builds a schema from a mathspec spec's dimensions,
+  relations and parameters, and `Schema.to_mathspec` writes them back. Both
+  need the `mathspec` extra: `pip install 'datarecord[mathspec]'`.
 - `datarecord.sources`: `from_sources` reads tables keyed by the names a schema
   declares as a record, and `to_sources` returns a record as those tables, in
   the shape specsolve's `solve` takes.

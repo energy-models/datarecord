@@ -78,7 +78,7 @@ on-disk form. Two implementations serve that protocol — `DirectoryRecord` over
 single directory, and `LayeredRecord` over a tree of layers resolved
 last-writer-wins — so a consumer cannot tell which it holds. Queries are built
 with `narwhals` and executed by `duckdb`, staying lazy until collected. Beyond
-those, `pydantic` and `mathspec`, core depends on nothing. Keep new features consistent with
+those and `pydantic`, core depends on nothing; `mathspec` is an optional extra. Keep new features consistent with
 this schema-declared, backend-agnostic, lazily-evaluated design.
 
 ## Releasing

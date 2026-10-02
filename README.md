@@ -18,7 +18,7 @@ A record holds **components** (named members of a type), **connections** between
 
 Records stack: a layer is a partial record on top of a parent, resolved last-writer-wins, so a scenario variant costs the rows it changes rather than a copy of everything. On disk a record is a plain parquet directory that a tool knowing nothing about this package can read.
 
-`datarecord` depends only on `duckdb`, `mathspec`, `narwhals` and `pydantic`. It names no modelling framework — a framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
+`datarecord` depends only on `duckdb`, `narwhals` and `pydantic`. It names no modelling framework — a framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
 
 ## Documentation
 
@@ -32,6 +32,7 @@ Full documentation is at **<https://energy-models.github.io/datarecord/>**:
 
 ```bash
 pip install datarecord
+pip install 'datarecord[mathspec]'   # Schema.from_mathspec
 ```
 
 ## A taste

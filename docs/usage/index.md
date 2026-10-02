@@ -13,6 +13,7 @@ How to use the package. [Design](../design/index.md) is what it is and why;
 
 ```bash
 pip install datarecord
+pip install 'datarecord[mathspec]'   # Schema.from_mathspec
 ```
 
 Or with conda/mamba, from conda-forge:

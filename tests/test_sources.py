@@ -23,7 +23,7 @@ from tests.test_declared_dims import DECLARATIONS, SNAPSHOTS, STORAGE
 
 @pytest.fixture
 def declared():
-    return Schema.from_declarations(DECLARATIONS, storage=STORAGE)
+    return Schema.from_mathspec(DECLARATIONS, storage=STORAGE)
 
 
 @pytest.fixture
@@ -119,7 +119,7 @@ def test_an_integer_coordinate_left_out_of_a_pandas_table_is_written_null(
     `Load_p_set` leaves out `snapshot`, an `int` dim; building its NULL column
     on the pandas frame itself raised before any row was written.
     """
-    schema = Schema.from_declarations(
+    schema = Schema.from_mathspec(
         {
             "dimensions": {"snapshot": {"dtype": "int"}, "bus": {}},
             "parameters": {"Load_p_set": {"dims": ["snapshot", "bus"]}},

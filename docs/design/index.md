@@ -48,7 +48,7 @@ A consumer cannot tell which it holds, so a framework reads a hundred-layer over
 
 Neither the concept nor this package names a modelling framework.
 A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
-`datarecord` depends only on `duckdb`, `mathspec`, `narwhals` and `pydantic`.
+`datarecord` depends only on `duckdb`, `narwhals` and `pydantic`.
 
 ## Scope
 
