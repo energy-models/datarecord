@@ -67,7 +67,7 @@ The two views stay separable, which is the property worth keeping: `tools/` buil
 
 ### What happens to the protocol
 
-`Record` is a `Protocol` today because several things satisfy it. That stays true and stays load-bearing — a framework object presenting itself as a record is the case [`tools`](../tools.md) is built on, and structural typing is what lets it do so without depending on this package.
+`Record` is a `Protocol` today because several things satisfy it. That stays true and stays load-bearing — a framework object presenting itself as a record is the case [`tools`](../sources.md) is built on, and structural typing is what lets it do so without depending on this package.
 
 So the name has to split. **Settled: `Record` is the class, `RecordLike` the protocol.** The concrete thing gets the short name because it is what a caller constructs and holds; the protocol is read at a signature, where the longer name says what it means — "anything shaped like a record", which is exactly the set a framework object joins.
 

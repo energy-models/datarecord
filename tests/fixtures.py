@@ -2,11 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Hand-built patch layers, since the v2 write path does not exist.
+"""Hand-built patch layers, and PyPSA example networks as a record's first layer.
 
 Notes
 -----
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [sources](https://energy-models.github.io/datarecord/design/sources/)
 """
 
 from pathlib import Path
@@ -14,13 +14,16 @@ from pathlib import Path
 import narwhals as nw
 import pandas as pd
 
+from datarecord.duck import layer_dir
 from datarecord.layered.resolve import write_schema as record_write_schema
+from datarecord.layered.write import write_record
 from datarecord.schema import (
     AttributeSpec,
     Dimension,
     Group,
     Schema,
 )
+from datarecord.sources import from_sources
 
 # No `entity_type`: an attribute row is keyed by `name`, unique across every type
 # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
@@ -271,25 +274,18 @@ def rename_components(n, ctype: str, suffix: str) -> None:
 
     PyPSA's example networks scope names per component type - a `Load` named
     after its `Bus`, a `Generator` after its `Carrier` - which a record cannot
-    represent, names being unique across types.
-    `PyPSA.to_datarecord` rejects such a network rather than renaming it,
-    so the suffix here is the test suite standing in for the caller that has to
-    reconcile the two vocabularies.
+    represent, names being unique across types. The suffix here is the test
+    suite standing in for the caller that has to reconcile the two
+    vocabularies.
 
     Both containers, because they are keyed by the same names: renaming only
     `static` would orphan every dynamic column, and so silently drop that
     attribute from the record. A stochastic network is keyed by
     `(scenario, name)`, so only the `name` level moves.
 
-    The renamed level is cast back to the dtype it had: `rename` yields an
-    `object` index where PyPSA's own is `str`, and `assert_networks_equal`
-    compares index dtypes exactly - so without this the helper, not the code
-    under test, would fail the round-trip.
-
     Notes
     -----
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     c = n.c[ctype]
     index = c.static.index
@@ -298,10 +294,6 @@ def rename_components(n, ctype: str, suffix: str) -> None:
         level = index.get_level_values("name")
         renamed = {name: f"{name}{suffix}" for name in level}
         c.static.rename(index=renamed, level="name", inplace=True)
-        c.static.index = c.static.index.set_levels(
-            c.static.index.levels[index.names.index("name")].astype(level.dtype),
-            level="name",
-        )
         # Per *level*, which is what `rename` does on a MultiIndex - a
         # tuple-keyed mapping matches nothing and silently leaves the columns
         # pointing at names `static` no longer has.
@@ -310,27 +302,201 @@ def rename_components(n, ctype: str, suffix: str) -> None:
         return
     renamed = {name: f"{name}{suffix}" for name in index}
     c.static.rename(index=renamed, inplace=True)
-    c.static.index = c.static.index.astype(index.dtype)
     for frame in c.dynamic.values():
         frame.rename(columns=renamed, inplace=True)
 
 
-def export_network(n, revision, con) -> None:
-    """Write `n` as `revision`'s layer, through the record layer's own writer.
+SERIES = ("p_max_pu", "p_min_pu", "marginal_cost")
 
-    Not `n.export_to_parquet`: that emits PyPSA's upstream manifest format,
-    which is a different vocabulary from the schema a record declares.
-    Going through `write_record` means a test record is written exactly as
-    `blocks` writes one.
+
+def network_schema(n) -> Schema:
+    """`schema()`, with the network attributes the tests read declared as PyPSA types them.
+
+    `p_nom` and `carrier` are entity-axis columns; `SERIES` and the per-port
+    `efficiency` vary over `snapshot`, and over `scenario` too where `n` has
+    one; `role` is a column of the `connection` group. The results are the ones
+    tests stage.
+    """
+    varying = {"snapshot", "scenario"} if n.has_scenarios else {"snapshot"}
+    declared = {
+        "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+        "carrier": AttributeSpec(dtype=nw.String(), dims={"entity"}),
+        **{
+            a: AttributeSpec(dtype=nw.Float64(), dims={"entity", *varying})
+            for a in SERIES
+        },
+        "efficiency": AttributeSpec(dtype=nw.Float64(), dims={"connection", *varying}),
+        "role": AttributeSpec(dtype=nw.String(), dims={"connection"}),
+    }
+    results = {
+        "p": AttributeSpec(dtype=nw.Float64(), dims={"entity", *varying}),
+        "p_nom_opt": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+        "sub_network": AttributeSpec(dtype=nw.String(), dims={"entity"}),
+    }
+    return schema(attributes={"network": declared}, results=results)
+
+
+def network_tables(n) -> dict[str, pd.DataFrame]:
+    """`n` as tables keyed by the names `network_schema(n)` declares.
+
+    Every one but the `entity_type` group, which is `network_kinds(n)`: it
+    shares its name with the `entity_type` dim, and `from_sources` reads a
+    table of that name as the dim's labels as well
+    (`test_a_group_named_after_its_into_dim_is_written`).
+
+    Standard types are left out: PyPSA fills them on every network, so they are
+    its catalogue rather than this network's components. A stochastic network
+    repeats a component per scenario, which collapses to one entity.
+    """
+    types = _types(n)
+    static = {
+        c.name: c.static.reset_index().rename(columns={"name": "entity"}) for c in types
+    }
+    ports = pd.concat([_ports(c) for c in types], ignore_index=True)
+    tables = {
+        "snapshot": pd.DataFrame({"snapshot": n.snapshots}),
+        "entity": network_kinds(n)[["entity"]].assign(deleted=False),
+        "connection": ports[["entity", "bus", "role"]],
+        "efficiency": pd.concat(
+            [
+                _per_port(n.c[t], "efficiency", rows)
+                for t, rows in ports.groupby("type")
+            ],
+            ignore_index=True,
+        ),
+    }
+    for attribute in ("p_nom", "carrier"):
+        tables[attribute] = (
+            pd.concat(
+                [
+                    static[c.name][["entity", attribute]]
+                    for c in types
+                    if _has(c, attribute)
+                ]
+            )
+            .drop_duplicates("entity", ignore_index=True)
+            .rename(columns={attribute: "value"})
+        )
+    for attribute in SERIES:
+        tables[attribute] = pd.concat(
+            [_series(c, attribute) for c in types if _has(c, attribute)],
+            ignore_index=True,
+        )
+    if n.has_scenarios:
+        weights = n.scenario_weightings.reset_index()
+        tables["scenario"] = weights[["scenario"]]
+        tables["weight"] = weights.rename(columns={"weight": "value"})
+    return tables
+
+
+def network_kinds(n) -> pd.DataFrame:
+    """The `entity_type` group of `n`: each entity and its component type, once."""
+    return pd.concat(
+        [
+            c.static.reset_index()[["name"]]
+            .rename(columns={"name": "entity"})
+            .assign(entity_type=c.name)
+            for c in _types(n)
+        ]
+    ).drop_duplicates(ignore_index=True)
+
+
+def _types(n) -> list:
+    """The component types of `n` with members, standard types left out."""
+    return [
+        c
+        for c in n.components
+        if not c.static.empty and c.name not in n.standard_type_components
+    ]
+
+
+def _has(c, attribute: str) -> bool:
+    """Whether `c` holds `attribute` as PyPSA's registry declares it for the type.
+
+    Not every static column of that name: `ac_dc_meshed` adds a
+    `Carrier.marginal_cost`, a different quantity from a generator's.
+    """
+    return attribute in c.static and attribute in c.defaults.index
+
+
+def _port_name(stem: str, port: str) -> str:
+    """PyPSA's column for `stem` at `port`: `bus0`, `efficiency`, `efficiency2`.
+
+    `bus` is suffixed from `0`, every other per-port column from `2`.
+    """
+    if stem == "bus":
+        return f"bus{port}"
+    return stem if port in ("", "1") else f"{stem}{port}"
+
+
+def _ports(c) -> pd.DataFrame:
+    """One type's attachments, `(type, port, entity, bus, role)`, one per bus it names.
+
+    `role` is PyPSA's sign convention written out: a one-port component is
+    `attached`, port `0` the `input`, every later port an `output`.
+    """
+    static = c.static.reset_index().rename(columns={"name": "entity"})
+    frames = []
+    for port in c.ports:
+        column = _port_name("bus", port)
+        if column not in static:
+            continue
+        rows = static[["entity", column]].rename(columns={column: "bus"})
+        role = "attached" if port == "" else "input" if port == "0" else "output"
+        frames.append(rows[rows["bus"] != ""].assign(type=c.name, port=port, role=role))
+    columns = ["type", "port", "entity", "bus", "role"]
+    return (
+        pd.concat(frames)[columns].drop_duplicates()
+        if frames
+        else pd.DataFrame(columns=columns)
+    )
+
+
+def _per_port(c, stem: str, ports: pd.DataFrame) -> pd.DataFrame:
+    """One type's per-port `stem` as long rows, each carrying the bus of its port."""
+    return pd.concat(
+        [
+            _series(c, _port_name(stem, port)).merge(
+                rows[["entity", "bus"]], on="entity"
+            )
+            for port, rows in ports.groupby("port")
+            if _has(c, _port_name(stem, port))
+        ]
+        or [pd.DataFrame(columns=["entity", "bus", "value"])],
+        ignore_index=True,
+    )
+
+
+def _series(c, column: str) -> pd.DataFrame:
+    """One type's `column` as long rows: a row per snapshot where it has a series.
+
+    A component with no series holds a constant, a row with `snapshot` NULL;
+    `scenario` is a column where the network has one.
+    """
+    wide = c.dynamic[column] if column in c.dynamic else pd.DataFrame()
+    series = (
+        wide.rename_axis(index="snapshot", columns=c.static.index.names)
+        .melt(ignore_index=False, value_name="value")
+        .reset_index()
+    )
+    constant = c.static.loc[~c.static.index.isin(wide.columns), column]
+    rows = pd.concat(
+        [series, constant.rename("value").reset_index()], ignore_index=True
+    )
+    return rows.rename(columns={"name": "entity"})
+
+
+def export_network(n, revision, con) -> None:
+    """Write `n` as `revision`'s layer: `network_tables` through `from_sources`.
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [sources](https://energy-models.github.io/datarecord/design/sources/)
     """
-    from datarecord.layered.write import write_record
-    from datarecord.tools.pypsa import PyPSA
-
-    write_record(revision.id, PyPSA.to_datarecord(n), con)
+    write_record(revision.id, from_sources(network_schema(n), network_tables(n)), con)
+    write_group(
+        layer_dir(revision.id), "entity_type", network_kinds(n).to_dict("records")
+    )
 
 
 def write_schema(schema: Schema, base_uri: str | None = None) -> None:
@@ -410,14 +576,15 @@ def schema(
         "connection": {"entity": "entity", "bus": "bus"}
     },
     within: dict[str, set[str]] | None = None,
+    results: dict[str, AttributeSpec] | None = None,
 ) -> Schema:
     """A schema shaped like the PyPSA records most tests build on.
 
-    Defaults match `PyPSA.to_datarecord`: the `entity` axis and a `connection`
-    group over `(entity, bus)`, and three declared dims. Override `partial` to
-    pin a different layering granularity, `dims` to declare another axis,
-    `groups` to declare a different sparse relation, `within` to nest one axis
-    inside another.
+    The `entity` axis and a `connection` group over `(entity, bus)`, and three
+    declared dims. Override `partial` to pin a different layering granularity,
+    `dims` to declare another axis, `groups` to declare a different sparse
+    relation, `within` to nest one axis inside another, `results` to declare
+    what a solve writes back.
 
     `entity` and every group coordinate are declared dims and are `partial`:
     a layer patches one component's value, or one connection's, without
@@ -460,6 +627,7 @@ def schema(
         }
         | {"entity_type": Dimension(dtype=nw.String())},
         attributes=flat,
+        results=results or {},
         partial=frozenset({"entity", *coordinates, *partial}),
     )
 

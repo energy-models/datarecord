@@ -10,13 +10,12 @@ parameter throughout, never a module global, so each test can open its own
 `:memory:` connection.
 
 Nothing here knows about a modelling framework: every dim is typed as the
-*schema* declares it, whatever a tool's registry holds, so a record whose types
-no tool recognises still reads and it is a tool's `verify` that reports them.
+*schema* declares it.
 
 Notes
 -----
 - [the schema](https://energy-models.github.io/datarecord/design/schema/)
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [tables by declared name](https://energy-models.github.io/datarecord/design/sources/)
 - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
 """
 

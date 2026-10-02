@@ -5,16 +5,15 @@
 """The owner map, and the resolved reads gated by it.
 
 The map answers which layer owns each key; `Resolver` exposes the reads over
-it - one long relation per attribute, a type's member frame, this
-layer's own outputs. Tool-agnostic: turning these into a framework's
-object is `datarecord.tools`.
+it - one long relation per attribute, a group's rows, this layer's own
+outputs.
 
 Notes
 -----
 - [the DuckDB read path](https://energy-models.github.io/datarecord/design/read-path/)
 - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
 - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [consuming a record](https://energy-models.github.io/datarecord/design/sources/)
 """
 
 from __future__ import annotations
@@ -833,8 +832,6 @@ class Resolver:
     The cached artifacts and the reads gated by them
     (`relation`/`outputs`/`group_frame`/`attributes_of`) live
     together because every one of the latter is a semi-join against the former.
-    Tool-agnostic throughout: the long relations here are what a tool
-    (`datarecord.tools`) builds its own object from.
 
     Notes
     -----

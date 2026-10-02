@@ -106,7 +106,7 @@ The edit stages a row of [that axis's own file](format.md#where-a-value-lives) r
 A label the axis does not have is refused rather than introduced: an axis row is a label's existence, which an axis file states. Where the axis's dtype is an `Enum` the vocabulary is the schema's, so an undeclared label is rejected without reading the axis at all.
 
 `kind` names the destination in the format's own terms — [the shape of an edit](#the-shape-of-an-edit) is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
-`"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool [hands results back](#results-through-kindoutputs) to a record before it is committed.
+`"outputs"` stages into `outputs/` instead of `inputs/`, which is how a solver [hands results back](#results-through-kindoutputs) to a record before it is committed.
 
 `value` takes six forms, because assigning one value to a group and assigning a different value to each member are equally ordinary and neither should require building a frame:
 
@@ -162,15 +162,14 @@ That asymmetry is the whole of the rule: a broad derived edit where only some en
 
 ## Results through `kind="outputs"`
 
-A tool solves against a record and hands back what it computed:
+A solver reads a record and hands back what it computed ([tables by declared name](sources.md#results)):
 
 ```python
 record = WorkingRecord(record, con)
 record.set("p_max_pu", 0.8, entity=["wind1"])
-model = PyPSA.build(record)  # solve the edited record
-model.optimize()
-for attr, frame in PyPSA.results(model).items():
-    record.set(attr, frame, kind="outputs")
+sources = {name: frame.collect() for name, frame in to_sources(record).items()}
+result = specsolve.solve(spec, sources)  # solve the edited record
+record.set("p", result.primal("p"), kind="outputs")
 record.commit(NewChild())  # one layer, inputs and results together
 ```
 
@@ -181,7 +180,6 @@ Two things differ from an input edit, both following from [outputs](read-path.md
 
 - **The name is checked against `results`, not `attributes`.**
   A result attribute is [declared](schema.md#results) in its own vocabulary, so an unknown name is an error exactly as it is for an input — what differs is which mapping answers.
-  A tool reads its result vocabulary off the same registry it reads its inputs from, so declaring them costs it no list of its own: PyPSA's `status` field marks them, and the [tool](tools.md) forwards what it finds.
   The dim vocabulary is checked for both, and a result's coordinates are its own rather than every declared dim.
 - **No membership check on `entity`.**
   An input value for a name no layer declares is [rejected](#validation), because it would resolve to nothing.
@@ -231,7 +229,7 @@ record.remove("entity", ["old_coal"])
 - **A group keyed on `entity` gets a row where the frame carries every other coordinate of it**, with any attribute over that group. An `entity_type` column gives each entity its type; a `bus` column gives it a connection.
 
 Which is which comes from the schema, so `add` needs no framework registry.
-A column the schema does not name is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column and no reader that would know what it means. A tool that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
+A column the schema does not name is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column and no reader that would know what it means. A caller that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
 
 An `add` of a name the record already holds replaces its row on the entity axis, and its row of each group the frame names, so the name keeps one row and one type.
 

@@ -15,6 +15,9 @@ All notable changes to datarecord are documented here. The format follows
 
 - `Schema.from_declarations` builds a schema from mathspec declarations, and
   `Schema.to_declarations` writes one back.
+- `datarecord.sources`: `from_sources` reads tables keyed by the names a schema
+  declares as a record, and `to_sources` returns a record as those tables, in
+  the shape specsolve's `solve` takes.
 
 ### Changed
 
@@ -29,3 +32,6 @@ All notable changes to datarecord are documented here. The format follows
 
 - Traits, per-type member files, `Record.entity_types`, `Schema.attributes_for`
   and the check that names are unique across types.
+- `datarecord.tools`, with the `Tool` protocol and the PyPSA tool, and the
+  `pypsa` extra. A converter outside datarecord produces the tables that
+  `from_sources` reads.

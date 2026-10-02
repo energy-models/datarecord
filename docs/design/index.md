@@ -42,13 +42,13 @@ That is why the values are keyed by attribute and not by type — an attribute r
 - **One parquet directory**, via `Record.at(uri)` — folded over the single layer it is, which [degenerates to a scan of it](read-path.md#one-record-over-one-fold). Not a second implementation.
 - **[`WorkingRecord`](working-record.md)** — a `Record` whose last layer is a staging area, so pending edits read back before anything is written.
 
-`RecordLike` is the protocol all of these satisfy, and so does **a framework's own object** — a PyPSA `Network` presenting itself as a record, without depending on this package at all.
+`RecordLike` is the protocol all of these satisfy, and so does the record [`from_sources`](sources.md) reads from **tables keyed by declared names**.
 
 A consumer cannot tell which it holds, so a framework reads a hundred-layer overlay through the same call it would use for a single directory.
 
 Neither the concept nor this package names a modelling framework.
 A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
-`datarecord` depends only on `duckdb`, `narwhals` and `pydantic`.
+`datarecord` depends only on `duckdb`, `mathspec`, `narwhals` and `pydantic`.
 
 ## Scope
 
@@ -57,15 +57,15 @@ A framework consumes a record, a workflow engine produces one, and neither needs
 
 ## The pages
 
-| page                                 | what it settles                                       |
-| ------------------------------------ | ----------------------------------------------------- |
-| [The Record protocol](record.md)     | what a consumer codes against, and what it may assume |
-| [The record format](format.md)       | the parquet directory a record is stored as           |
-| [The schema](schema.md)              | what may exist: dims, attributes, patch granularity   |
-| [Layered resolution](layers.md)      | a tree of layers, folded last-writer-wins             |
-| [The DuckDB read path](read-path.md) | the owner map and how a relation resolves             |
-| [Writing a record](writing.md)       | `write_record`, and what it validates                 |
-| [`WorkingRecord`](working-record.md) | editing: staging, committing, reading back            |
-| [Consuming a record](tools.md)       | tools, and the seam a framework meets                 |
-| [Module layout](module-layout.md)    | where the code lives, and the one-way dependency      |
-| [Open questions](open-questions.md)  | what is deliberately unsettled                        |
+| page                                  | what it settles                                       |
+| ------------------------------------- | ----------------------------------------------------- |
+| [The Record protocol](record.md)      | what a consumer codes against, and what it may assume |
+| [The record format](format.md)        | the parquet directory a record is stored as           |
+| [The schema](schema.md)               | what may exist: dims, attributes, patch granularity   |
+| [Layered resolution](layers.md)       | a tree of layers, folded last-writer-wins             |
+| [The DuckDB read path](read-path.md)  | the owner map and how a relation resolves             |
+| [Writing a record](writing.md)        | `write_record`, and what it validates                 |
+| [`WorkingRecord`](working-record.md)  | editing: staging, committing, reading back            |
+| [Tables by declared name](sources.md) | the seam a solver or a framework meets                |
+| [Module layout](module-layout.md)     | where the code lives, and the one-way dependency      |
+| [Open questions](open-questions.md)   | what is deliberately unsettled                        |

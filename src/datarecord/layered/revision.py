@@ -138,12 +138,12 @@ class Revision(BaseModel):
 
         The framework-agnostic view: narwhals frames, with no sign of how many
         layers were folded to produce them. `resolver` remains the
-        DuckDB-shaped view, which `datarecord.tools` still builds from.
+        DuckDB-shaped view.
 
         Notes
         -----
         - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
-        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        - [consuming a record](https://energy-models.github.io/datarecord/design/sources/)
         """
         return Record(self.resolver)
 

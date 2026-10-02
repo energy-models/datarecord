@@ -20,9 +20,8 @@ from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema
 from datarecord.layered.revision import Record
 from datarecord.layered.write import write_record
-from datarecord.record import EMPTY, LazyFrames, RecordLike
+from datarecord.record import EMPTY, LazyFrames
 from datarecord.schema import Schema
-from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network, relation, schema
 
 
@@ -191,7 +190,7 @@ def test_no_layer_file_carries_order_key(con, base_uri, ac_dc, tmp_path):
     from datarecord.mutable import Directory, WorkingRecord
 
     revision = Revision.create(con)
-    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+    export_network(ac_dc, revision, con)
 
     staged = WorkingRecord(revision.record, con)
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
@@ -429,128 +428,12 @@ def test_an_axis_carries_the_attributes_addressed_by_it_alone(con, base_uri):
     assert dict(zip(axis["scenario"], axis["weight"])) == {"high": 0.4}
 
 
-# -- the PyPSA source (https://energy-models.github.io/datarecord/design/format/) ------------------------------------------------
-
-
-def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
-    """Key sets come off the network and its registry, so listing is cheap.
-
-    Notes
-    -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    """
-    source = PyPSA.to_datarecord(ac_dc)
-
-    assert isinstance(source, RecordLike)
-    assert "entity" in source.dims
-    assert "entity_type" in source.groups, "a component's type is a group"
-    assert "connection" in source.groups
-    assert "p_max_pu" in source.attributes
-    assert "v_nom" not in source.attributes, (
-        "a static attribute is an entity-axis column, not a file in `inputs/`"
-    )
-    assert "efficiency" in source.attributes
-    assert "efficiency2" not in source.attributes, (
-        "a port attribute is one bus-keyed attribute, not one per port"
-    )
-
-
-def test_write_then_build_round_trips(con, base_uri, ac_dc):
-    """A network written by blocks and read back through `build` is unchanged.
-
-    Distinct from `test_roundtrip.py`, which reads an `export_to_parquet`
-    record: this exercises the writer and the connection collapse in one pass.
-
-    Notes
-    -----
-    - [the record format](https://energy-models.github.io/datarecord/design/format/)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-    """
-    revision = Revision.create(con)
-    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
-
-    assert not PyPSA.verify(revision.record)
-    back = PyPSA.build(revision.record)
-
-    for ctype in ("Bus", "Generator", "Link", "Line", "Load"):
-        original, rebuilt = ac_dc.c[ctype].static, back.c[ctype].static
-        assert list(rebuilt.index) == list(original.index), ctype
-        # Every column survives, custom ones included (`Bus.country` has no
-        # registry entry and must not be silently dropped).
-        assert set(rebuilt.columns) == set(original.columns), ctype
-        for column in original.columns:
-            assert rebuilt[column].astype(str).equals(original[column].astype(str)), (
-                ctype,
-                column,
-            )
-
-
-def test_multi_port_links_round_trip_through_connections(con, base_uri, ac_dc):
-    """`bus0`/`bus1` become connection rows and come back as columns.
-
-    Notes
-    -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-    """
-    revision = Revision.create(con)
-    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
-
-    # Stored bus-keyed, with a role from PyPSA's sign convention. One file for
-    # every type, so the Links are reached by their entities.
-    rows = con.read_parquet(layer_dir(revision.id) + "groups/connection.parquet").df()
-    links = rows[rows["entity"].isin(ac_dc.c["Link"].static.index)]
-    assert set(links["role"]) == {"input", "output"}
-    assert set(links["bus"]) >= set(ac_dc.c["Link"].static["bus0"])
-
-    back = PyPSA.build(revision.record)
-    assert list(back.c["Link"].static["bus0"]) == list(ac_dc.c["Link"].static["bus0"])
-    assert list(back.c["Link"].static["bus1"]) == list(ac_dc.c["Link"].static["bus1"])
-
-
-def test_single_port_components_keep_their_unsuffixed_bus(con, base_uri, ac_dc):
-    """A Generator's one `bus` is a connection too, and stays `bus`.
-
-    Notes
-    -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    """
-    revision = Revision.create(con)
-    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
-
-    rows = con.read_parquet(layer_dir(revision.id) + "groups/connection.parquet").df()
-    mine = rows[rows["entity"].isin(ac_dc.c["Generator"].static.index)]
-    assert set(mine["role"]) == {"attached"}
-
-    back = PyPSA.build(revision.record)
-    assert list(back.c["Generator"].static["bus"]) == list(
-        ac_dc.c["Generator"].static["bus"]
-    )
-
-
-def test_static_series_split_survives_the_writer(con, base_uri, ac_dc):
-    """Only the components with a series get a `dynamic` column.
-
-    Notes
-    -----
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-    """
-    revision = Revision.create(con)
-    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
-    back = PyPSA.build(revision.record)
-
-    assert sorted(back.c["Generator"].dynamic["p_max_pu"].columns) == sorted(
-        ac_dc.c["Generator"].dynamic["p_max_pu"].columns
-    )
-
-
 def test_written_layer_overlays(con, base_uri, ac_dc):
     """A written layer is an ordinary layer: a child patches it as any other."""
     from tests.fixtures import write_input
 
     root = Revision.create(con)
-    write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
+    export_network(ac_dc, root, con)
     root.materialise()
 
     child = root.child()

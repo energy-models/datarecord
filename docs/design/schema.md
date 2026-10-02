@@ -56,7 +56,7 @@ class Schema(BaseModel):
 Everything else describes the data and is always present.
 
 `entity` and `attribute` are `VARCHAR`: those vocabularies belong to a modelling framework, and this package knows none.
-A [type](#types) is a label of a declared dim, typed as the schema declares it. So a type _the schema declares_ but no tool recognises reads back fine, and the tool that cannot build it reports it.
+A [type](#types) is a label of a declared dim, typed as the schema declares it. So a type _the schema declares_ but no model uses reads back fine; which types a model uses is the spec's to say ([requirements](sources.md#requirements)).
 
 `meta` is where a framework's own top-level data goes — network attributes, coordinate reference system, free-form metadata.
 It is stored and never interpreted, since none of it describes the dimensioned data.
@@ -118,9 +118,7 @@ A name in both is rejected: one name is one file with one `value` column, so it 
 The questions the long schema asks of a _stored_ attribute — its dtype, its coordinates — span both, since `outputs/` and `inputs/` share a layout.
 Those go through one lookup that consults each in turn.
 
-**A tool declares its results from the same registry it declares its inputs from.**
-PyPSA marks them with `status` starting `"Output"`, so the vocabulary is read rather than kept as a list, and an upgrade that adds a result is picked up.
-That is what keeps declaration from becoming a maintenance burden on the tool: the alternative — a tool attaching whatever its registry produced, unchecked — buys nothing a caller can rely on, since a consumer reading `outputs/` still needs a dtype to read it at.
+**`Schema.from_declarations` takes results in its `storage` block**, because a mathspec declarations file holds data only.
 
 Results version like inputs ([versioning](#versioning)): removing one, changing its dtype, or narrowing its `dims` makes existing layers unreadable for the same reasons.
 
@@ -141,9 +139,9 @@ groups = {
 `into` makes the group functional, so each entity has one type. The rows `(entity, entity_type)` live in `groups/entity_type.parquet`, like the rows of any group ([where a value lives](format.md#where-a-value-lives)).
 An `Enum` dtype pins the vocabulary and makes an unknown type a write-time error; a plain `str` leaves the labels as data, which is the right declaration for a record whose types are not known up front.
 
-**No group is special.** Several functional groups over `entity` may exist side by side, a type and a carrier for example, and the record treats each the same way. The name `entity_type` is the convention of the tool that declares it, not a word the record layer reads.
+**No group is special.** Several functional groups over `entity` may exist side by side, a type and a carrier for example, and the record treats each the same way. The name `entity_type` is the convention of the schema that declares it, not a word the record layer reads.
 
-**A type does not narrow an attribute.** Every declared attribute can be set on any entity its `dims` address. Which attributes a type uses is the business of the tool that reads the record: [PyPSA](tools.md) reads it from its component registry.
+**A type does not narrow an attribute.** Every declared attribute can be set on any entity its `dims` address. Which attributes a type uses is the business of the spec that reads the record ([requirements](sources.md#requirements)).
 
 **The type may not address a value alongside the entity.** The schema rejects an attribute that names both `entity` and `entity_type` in its `dims`: `into` says the type follows from the entity, so the row would be keyed twice over and the two could disagree.
 This is the general rule for [a functional group and what it maps from](#into-a-group-that-classifies); `country` over `bus` is rejected the same way.
@@ -152,7 +150,7 @@ This is the general rule for [a functional group and what it maps from](#into-a-
 `entity_type` is an ordinary broadcast dim. Outside [`partial`](#partial-the-granularity-of-an-override), a layer that touches one type's icon restates the whole axis.
 
 **Entirely optional.** A schema that declares no type group has entities with no types.
-A tool that needs types declares the group in the schema it builds, as [PyPSA does](tools.md).
+A schema that needs types declares the group.
 
 ## Groups
 
@@ -183,14 +181,14 @@ The group name appears only in the schema. A reader goes attribute → group →
 **A group in `dims` expands to its coordinates** where no dim shadows it, so `dims={"connection", "timestep"}` gives the columns `entity | bus | timestep` — [addressing](#addressing-dims-x) states the full rule.
 The fold's key therefore does not vary per attribute: [`partial_dims`](#partial-the-granularity-of-an-override) is one fixed tuple, now the union of plain dims and group coordinate names.
 
-A group's file columns are **not declared here.** They are the attributes whose `dims` name exactly this group ([where a value lives](format.md#where-a-value-lives)) — PyPSA's `role` on a connection is `AttributeSpec(dtype="VARCHAR", dims={"connection"})`, declared by [the tool](tools.md) whose vocabulary the word is.
+A group's file columns are **not declared here.** They are the attributes whose `dims` name exactly this group ([where a value lives](format.md#where-a-value-lives)) — PyPSA's `role` on a connection is `AttributeSpec(dtype="VARCHAR", dims={"connection"})`, declared by the schema whose vocabulary the word is.
 Declaring them a second time on the `Group` would be two ways to say one thing, disagreeing eventually.
 
 **A group's key coordinate [never broadcasts](record.md#the-broadcast-rule)**, so it is a _membership key_: it lands in the fold's key by being membership, not by being declared `partial`.
 `partial` is for value dims a layer patches per value (see [`partial`](#partial-the-granularity-of-an-override)); a membership key — `entity`, a group's coordinate — is patched per row by every layer already, so naming it `partial` is a category error the schema rejects.
 A functional group's `into` dim is not a membership key: it is an ordinary axis whose NULL means "every country" like any other dim's.
 
-**Connections are one instance**, not a structural category: `Group(over={"entity": "entity", "bus": "bus"})`, with `role` an ordinary attribute over it. `bus` is accordingly one coordinate of one group rather than a column the format fixes, and neither word appears in the record layer — `connection` is whatever a schema calls it, and `role` is [a tool's declaration](tools.md).
+**Connections are one instance**, not a structural category: `Group(over={"entity": "entity", "bus": "bus"})`, with `role` an ordinary attribute over it. `bus` is accordingly one coordinate of one group rather than a column the format fixes, and neither word appears in the record layer — `connection` is whatever a schema calls it, and `role` is the schema's declaration.
 
 ### `into` — a group that classifies
 

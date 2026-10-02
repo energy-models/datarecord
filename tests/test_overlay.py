@@ -7,7 +7,6 @@
 Notes
 -----
 - [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
 import narwhals as nw
@@ -27,8 +26,15 @@ from datarecord.layered.sources import ParquetLayer
 from datarecord.layered.write import write_record
 from datarecord.record import EMPTY
 from datarecord.schema import AttributeSpec
-from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network, outputs, relation, tombstone, write_input
+from datarecord.sources import to_sources
+from tests.fixtures import (
+    export_network,
+    names,
+    outputs,
+    relation,
+    tombstone,
+    write_input,
+)
 
 
 @pytest.fixture
@@ -64,8 +70,13 @@ def test_child_overwrites_component(con, parent):
     assert len(df[df["entity"] == "Norway Wind"]) == 10
 
 
-def test_child_overwrite_reaches_model(con, parent):
-    """The overwrite turns a series component into a static one in the model."""
+def test_child_overwrite_reaches_a_consumer(con, parent, ac_dc):
+    """The overwrite turns a series component into a constant one for a consumer.
+
+    `to_sources` expands the child's one NULL-snapshot row to every snapshot,
+    so the constant is what a consumer reads at each, while a sibling keeps its
+    own series.
+    """
     child = parent.child()
     write_input(
         layer_dir(child.id),
@@ -73,10 +84,20 @@ def test_child_overwrite_reaches_model(con, parent):
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
 
-    n = PyPSA.build(child.record)
-    assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
-    assert "Manchester Wind" not in n.c["Generator"].dynamic["p_max_pu"].columns
-    assert "Norway Wind" in n.c["Generator"].dynamic["p_max_pu"].columns
+    rows = (
+        to_sources(child.record, names=["p_max_pu"])["p_max_pu"]
+        .collect()
+        .to_native()
+        .to_pandas()
+    )
+    manchester = rows[rows["entity"] == "Manchester Wind"]
+    assert len(manchester) == len(ac_dc.snapshots), "one row per snapshot"
+    assert set(manchester["value"]) == {0.42}, "the constant at every snapshot"
+    norway = rows[rows["entity"] == "Norway Wind"].sort_values("snapshot")
+    assert (
+        norway["value"].tolist()
+        == ac_dc.c["Generator"].dynamic["p_max_pu"]["Norway Wind"].tolist()
+    ), "the sibling keeps its series"
 
 
 def test_tombstone_removes_component(con, parent):
@@ -93,9 +114,9 @@ def test_tombstone_removes_component(con, parent):
     assert "Norway Gas" not in set(om["entity"])
     assert "Norway Gas" in set(parent.resolver.dims.axes["entity"].df()["entity"])
 
-    n = PyPSA.build(child.record)
-    assert "Norway Gas" not in n.c["Generator"].static.index
-    assert "Norway Wind" in n.c["Generator"].static.index
+    generators = names(child.record, "Generator")
+    assert "Norway Gas" not in generators
+    assert "Norway Wind" in generators
 
 
 def test_child_adds_attribute(con, parent):
@@ -107,10 +128,10 @@ def test_child_adds_attribute(con, parent):
         [{"entity": "Norway Gas", "value": 0.1}],
     )
 
-    n = PyPSA.build(child.record)
-    assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
-    # Untouched generators keep the catalog default.
-    assert n.c["Generator"].static.loc["Norway Wind", "p_min_pu"] == 0.0
+    rows = child.record.attributes["p_min_pu"].collect().to_native().to_pandas()
+    values = rows.groupby("entity")["value"].apply(list).to_dict()
+    assert values["Norway Gas"] == [0.1]
+    assert values["Norway Wind"] == [0.0], "an untouched generator keeps its value"
 
 
 def test_sibling_branch_unaffected(con, parent):
@@ -171,8 +192,8 @@ def test_closed_child_reads_own_resolver(con, parent):
     child.materialise()
 
     reloaded = Revision.get(child.id, con)
-    n = PyPSA.build(reloaded.record)
-    assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
+    rows = reloaded.record.attributes["p_max_pu"].collect().to_native().to_pandas()
+    assert rows[rows["entity"] == "Manchester Wind"]["value"].tolist() == [0.42]
 
     df = relation(reloaded, "p_max_pu").df()
     assert df[df["entity"] == "Manchester Wind"]["value"].tolist() == [0.42]
@@ -342,9 +363,6 @@ def test_member_order_survives_closed_intermediate(con, parent, ac_dc):
     middle.materialise()
     grandchild = middle.child()
 
-    n = PyPSA.build(grandchild.record)
-    pd.testing.assert_index_equal(
-        n.c["Generator"].static.index,
-        ac_dc.c["Generator"].static.index,
-        check_names=False,
-    )
+    assert names(grandchild.record, "Generator") == list(
+        ac_dc.c["Generator"].static.index
+    ), "the root's member order"
