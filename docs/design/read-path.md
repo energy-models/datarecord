@@ -75,26 +75,30 @@ That also means the dim namespace lives entirely inside `varies`/`broadcast`, so
 
 ## Resolving a relation
 
-A resolved relation semi-joins the owning layers' files to the `inputs` map, keeping only owned rows:
+A resolved relation joins the owning layers' files to the `inputs` map, keeping only owned rows:
 
 ```sql
 SELECT u.entity, u.bus, u.timestep,
-       COALESCE(u.scenario, o.scenario) AS scenario,   -- one per owned_per dim
+       COALESCE(u.scenario, o.__owned_scenario) AS scenario,   -- one per owned_per dim
        u.attribute, u.breakpoint, u.value
 FROM ( -- one arm per distinct layer the map names for this attribute
   SELECT ?::UUID AS layer_uuid, * FROM read_parquet(<layer>/inputs/<attr>.parquet)
   UNION ALL BY NAME
   ...
 ) u
-JOIN inputs o
-  ON o.entity      IS NOT DISTINCT FROM u.entity  -- address coordinates: NULL-safe,
- AND o.bus         IS NOT DISTINCT FROM u.bus     -- never expanded against an axis
- AND o.attribute   = u.attribute
- AND o.layer_uuid  = u.layer_uuid
- AND o.scenario    IS NOT DISTINCT FROM u.scenario  -- owned-per dims: only the rows that set one
-WHERE u.scenario IS NOT NULL
-UNION ALL BY NAME
--- the same join without the scenario arm, WHERE u.scenario IS NULL
+JOIN ( -- the map keyed as its owning layer stored each key
+  SELECT * EXCLUDE (scenario), scenario AS __owned_scenario,
+         UNNEST(list_concat(
+           CASE WHEN COALESCE(varies.scenario, false)   THEN [scenario] END,
+           CASE WHEN COALESCE(broadcast.scenario, true) THEN [NULL] END
+         )) AS scenario
+  FROM inputs
+) o
+  ON o.entity     IS NOT DISTINCT FROM u.entity    -- address coordinates: NULL-safe,
+ AND o.bus        IS NOT DISTINCT FROM u.bus       -- never expanded against an axis
+ AND o.attribute  = u.attribute
+ AND o.layer_uuid = u.layer_uuid
+ AND o.scenario   IS NOT DISTINCT FROM u.scenario  -- owned-per dims: as stored, NULL included
 ```
 
 The projected coordinates are the **attribute's own**, not a fixed prefix: `entity | bus` for a connection attribute, `from | to` for one over a corridor, neither for a record-level weighting ([the long schema](format.md#the-long-schema)).
@@ -104,9 +108,11 @@ The map already names the winning layer per key, so resolution reads only the ow
 There is no per-read `MAX`/group-by and no tombstone filter — deletions are already absent from the map.
 
 Each owned-per dim's arm is **NULL-aware**: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.
-The arm is spelled as a split rather than one condition.
-`u.scenario IS NULL OR u.scenario IS NOT DISTINCT FROM o.scenario` is no hash key: DuckDB joins on the other columns and filters the dim afterwards, which costs the square of the dim's length per key.
-So the rows are split by which owned-per dims they leave NULL, each part joins on exactly the dims it sets, and the parts are unioned — one part per NULL pattern, each a hash join.
+The arm cannot be the obvious condition: `u.scenario IS NULL OR u.scenario IS NOT DISTINCT FROM o.scenario` is no hash key, so DuckDB joins on the other columns and filters the dim afterwards, which costs the square of the dim's length per key.
+So the map is keyed the way its owning layer stored each key, which its [flags](#owner-map) record: a map row keeps its value where the layer's row set the dim (`varies`) and holds NULL where the row left it NULL (`broadcast`), with the owned value carried beside it.
+A layer row then finds its owned keys by its stored values, NULLs included, on NULL-safe equality — one hash join, scanning the layers and the map once each; the keyed map holds one row per owned key, two for a key its layer wrote both ways.
+A map row NULL in the dim itself, broadcast over an empty axis, has `varies` false, so only its NULL form exists and it matches once.
+A flag field missing from a map persisted before the dim was declared counts as `broadcast` here, unlike in the flags a consumer reads: the layers' rows hold NULL there.
 
 A **group coordinate** like `bus` is joined **NULL-safely** rather than NULL-aware against the map, being [an address rather than a broadcast dim](record.md#the-broadcast-rule).
 There is no membership gate at read: an attribute row is keyed by every membership its coordinates name — the entity, each group tuple, each dim coordinate — and each of those is [tombstone-pruned in the fold](#one-fold-for-every-axis), so a row whose entity, connection tuple or dim coordinate was deleted is already gone from the map.
