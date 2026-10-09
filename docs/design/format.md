@@ -111,7 +111,7 @@ An attribute addressed by a group alone is not here either: it is a column of th
 ## `entity` is unique across types
 
 An `entity` identifies one component across the whole record.
-Two types may not share one: a `Bus` and a `Generator` both called `north` are a collision, not two components.
+Two types may not share one: a `Generator` and a `Load` both called `north` are a collision, not two components.
 
 That is what removes `entity_type` from every attribute key.
 An `inputs/` row addresses `(entity, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.

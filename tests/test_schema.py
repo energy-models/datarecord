@@ -209,7 +209,7 @@ def test_a_group_addressed_attribute_reaches_the_types_it_coordinates():
 
 def test_a_trait_may_only_be_scoped_by_an_entity_type_axis():
     """Any other classification would make the vocabulary a per-entity data lookup."""
-    with pytest.raises(ValidationError, match="does not classify `entity`"):
+    with pytest.raises(ValidationError, match="not the entity-type axis"):
         Schema(
             dimensions={
                 "entity": Dimension(dtype=nw.String()),
@@ -351,22 +351,27 @@ def test_an_attribute_may_be_addressed_by_the_entity_type_alone():
     assert "icon" not in s.attributes_for("Bus"), "it belongs to no component"
 
 
-def test_only_one_group_may_classify_entity():
-    """A component has one type, so two vocabularies have no resolved answer."""
-    with pytest.raises(ValidationError, match="all classify `entity`"):
-        Schema(
-            dimensions={
-                "entity": Dimension(dtype=nw.String()),
-                "entity_type": Dimension(dtype=nw.Enum(["Bus"])),
-                "kind": Dimension(dtype=nw.Enum(["thing"])),
-            },
-            groups={
-                "entity_type": Group(over=["entity"], into="entity_type"),
-                "kind": Group(over=["entity"], into="kind"),
-            },
-            attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
-            partial=frozenset(),
-        )
+def test_several_groups_may_classify_entity():
+    """Only the group into `entity_type` is the type axis; others are classifications.
+
+    A carrier or a technology group is a function of the component too, and
+    being over `entity` alone does not make it a second type vocabulary.
+    """
+    s = Schema(
+        dimensions={
+            "entity": Dimension(dtype=nw.String()),
+            "entity_type": Dimension(dtype=nw.Enum(["Generator"])),
+            "carrier": Dimension(dtype=nw.String()),
+        },
+        groups={
+            "carrier": Group(over=["entity"], into="carrier"),
+            "entity_type": Group(over=["entity"], into="entity_type"),
+        },
+        attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
+        partial=frozenset(),
+    )
+    assert s.entity_type_dim == "entity_type", "identified by name, not position"
+    assert "carrier" in s.broadcast_dims, "an `into` dim is an ordinary axis"
 
 
 def test_an_entity_type_axis_is_no_long_schema_coordinate():

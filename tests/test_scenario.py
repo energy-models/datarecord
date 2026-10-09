@@ -123,10 +123,10 @@ def test_child_adds_new_scenario(con, parent, stochastic):
     write_scenarios(
         layer_dir(child.id),
         [
-            {"scenario": "high", "weight": 0.27},
-            {"scenario": "low", "weight": 0.36},
-            {"scenario": "med", "weight": 0.27},
-            {"scenario": "extra", "weight": 0.1},
+            {"scenario": "high", "scenario_weight": 0.27},
+            {"scenario": "low", "scenario_weight": 0.36},
+            {"scenario": "med", "scenario_weight": 0.27},
+            {"scenario": "extra", "scenario_weight": 0.1},
         ],
     )
     write_input(
@@ -169,7 +169,9 @@ def test_scenario_order_survives_a_chain_of_closed_layers(con, parent, stochasti
     for i in range(5):
         rec = rec.child()
         name = f"extra{i}"
-        write_scenarios(layer_dir(rec.id), [{"scenario": name, "weight": 0.01}])
+        write_scenarios(
+            layer_dir(rec.id), [{"scenario": name, "scenario_weight": 0.01}]
+        )
         rec.materialise()
         added.append(name)
 

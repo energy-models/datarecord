@@ -316,7 +316,7 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
     -----
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
-    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "carrier": "solar"}]))
+    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "p_nom": 1.0}]))
     staged.set("p_nom", 7.0, entity=["NewSolar"])
 
     child = staged.commit(NewChild(root))
@@ -530,18 +530,18 @@ def test_a_non_float_attribute_stages_and_commits(root, con):
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
     amended = read_schema()
-    amended.attributes["carrier"] = AttributeSpec(
+    amended.attributes["label"] = AttributeSpec(
         dtype=nw.String(), dims={"entity", "scenario"}
     )
     write_schema(amended)
 
     staged = WorkingRecord(root.record, con)
-    staged.set("carrier", "solar", entity=["Manchester Wind"])
-    rows = staged.attributes["carrier"].collect().to_native().to_pandas()
+    staged.set("label", "solar", entity=["Manchester Wind"])
+    rows = staged.attributes["label"].collect().to_native().to_pandas()
     assert rows[rows["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
 
     child = staged.commit(NewChild(root))
-    got = child.record.attributes["carrier"].collect().to_native().to_pandas()
+    got = child.record.attributes["label"].collect().to_native().to_pandas()
     assert got[got["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
 
 
@@ -683,7 +683,6 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
                     "entity": "NewSolar",
                     "bus": "Manchester",
                     "role": "attached",
-                    "carrier": "solar",
                     "p_nom": 42.0,
                 }
             ]
@@ -697,7 +696,6 @@ def test_add_then_commit_makes_a_component_exist(staged, root):
 
     static = PyPSA.build(child.record).c[GEN].static
     assert static.loc["NewSolar", "p_nom"] == 42.0
-    assert static.loc["NewSolar", "carrier"] == "solar"
 
 
 def test_add_rejects_a_name_another_type_already_holds(staged):
@@ -711,8 +709,8 @@ def test_add_rejects_a_name_another_type_already_holds(staged):
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
     """
-    with pytest.raises(ValueError, match=r"'Manchester' is already a Bus"):
-        staged.add(GEN, pd.DataFrame([{"entity": "Manchester", "carrier": "solar"}]))
+    with pytest.raises(ValueError, match=r"'Manchester Load' is already a Load"):
+        staged.add(GEN, pd.DataFrame([{"entity": "Manchester Load", "p_nom": 1.0}]))
 
 
 def test_add_accepts_a_name_of_its_own_type(staged, root):
@@ -761,7 +759,7 @@ def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
 
     The staged entity rows are keyed without `entity_type`, so one name has
     one answer. Partitioning on the type as well would keep both the Generator
-    tombstone and the Bus member row, and commit would write a record whose two
+    tombstone and the Load member row, and commit would write a record whose two
     types share a name - the collision `write_record` rejects.
 
     Notes
@@ -770,12 +768,12 @@ def test_a_freed_name_may_be_reclaimed_by_another_type(staged, root):
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     staged.remove(GEN, ["Manchester Wind"])
-    staged.add("Bus", pd.DataFrame([{"entity": "Manchester Wind"}]))
+    staged.add("Load", pd.DataFrame([{"entity": "Manchester Wind"}]))
 
     axis = staged._collapsed_entities().df()
     rows = axis[axis["entity"] == "Manchester Wind"]
     assert len(rows) == 1, "one name, one row - the type is not part of the key"
-    assert list(rows["entity_type"]) == ["Bus"], "the later op wins"
+    assert list(rows["entity_type"]) == ["Load"], "the later op wins"
 
     # And it commits: a record with two rows for the name would be rejected.
     child = staged.commit(NewChild(root))
@@ -863,7 +861,7 @@ def test_add_after_remove_leaves_the_component_alive(staged, root):
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     staged.remove(GEN, ["Norway Gas"])
-    staged.add(GEN, pd.DataFrame([{"entity": "Norway Gas", "carrier": "gas"}]))
+    staged.add(GEN, pd.DataFrame([{"entity": "Norway Gas", "p_nom": 1.0}]))
 
     child = staged.commit(NewChild(root))
     assert "Norway Gas" in set(child.resolver.entity_axis.df()["entity"])
@@ -1040,7 +1038,7 @@ def test_a_staged_member_frame_does_not_repeat_its_type(staged):
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "carrier": "solar"}]))
+    staged.add(GEN, pd.DataFrame([{"entity": "NewSolar", "p_nom": 1.0}]))
 
     rel = staged.resolver.sources[-1].entity_type(GEN)
     columns = rel.columns

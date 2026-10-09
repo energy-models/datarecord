@@ -19,7 +19,7 @@ from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
-from datarecord.tools.pypsa import ENTITY_TYPE, PyPSA, _colliding_names
+from datarecord.tools.pypsa import ENTITY_TYPE, REQUIRED_DIMS, PyPSA, _colliding_names
 from tests.fixtures import (
     export_network,
     relation,
@@ -176,9 +176,23 @@ def _with_schema(revision, **kwargs) -> None:
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     was = read_schema()
-    now = schema(**kwargs).model_copy(
+    now = schema(**kwargs)
+    # The tool's own axes (`carrier`, ...) stay, since its groups map into them.
+    kept = {
+        d: spec
+        for d, spec in was.dimensions.items()
+        if d not in now.dimensions and d not in REQUIRED_DIMS
+    }
+    dimensions = {**kept, **now.dimensions}
+    addressable = set(dimensions) | set(was.groups)
+    now = now.model_copy(
         update={
-            "attributes": was.attributes,
+            "dimensions": dimensions,
+            "attributes": {
+                a: spec
+                for a, spec in was.attributes.items()
+                if spec.dims <= addressable
+            },
             "groups": was.groups,
             "traits": was.traits,
             "meta": was.meta,
@@ -306,6 +320,7 @@ def test_to_datarecord_rejects_a_cross_type_name_collision():
     n = pypsa.Network()
     n.add("Bus", "north")
     n.add("Generator", "north", bus="north")
+    n.add("Load", "north", bus="north")
 
     with pytest.raises(UnsupportedRecordError, match="more than one component type"):
         PyPSA.to_datarecord(n)
@@ -524,3 +539,204 @@ def test_schema_dims_stay_generic(con, base_uri, ac_dc):
     # simply not something the tool looks at.
     assert not PyPSA.verify(revision.record)
     assert "vintage" in dims.schema.long_columns
+
+
+# -- axes, classifications and the spec (https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool) --
+
+
+@pytest.fixture
+def multiperiod_revision(con, base_uri, multiperiod):
+    revision = Revision.create(con)
+    export_network(multiperiod, revision, con)
+    return revision
+
+
+def _parquet(revision, path: str) -> pd.DataFrame:
+    return pd.read_parquet(Path(layer_dir(revision.id), path))
+
+
+def test_buses_and_carriers_are_axes_not_entities(multiperiod_revision):
+    """Bus and Carrier rows are `dims/` files; no `Bus`, `Carrier`, `Shape` or
+    `GlobalConstraint` entity is written.
+
+    Notes
+    -----
+    - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
+    """
+    entities = _parquet(multiperiod_revision, "dims/entity.parquet")
+    assert not set(entities["entity_type"]) & {
+        "Bus",
+        "Carrier",
+        "Shape",
+        "GlobalConstraint",
+    }
+    bus = _parquet(multiperiod_revision, "dims/bus.parquet")
+    assert {"busmap_all", "busmap_5", "busmap_10", "country", "v_nom"} <= set(
+        bus.columns
+    )
+    assert {"bus_x", "y", "bus_geometry"} <= set(bus.columns), (
+        "a Bus column another type also names is prefixed"
+    )
+    assert "carrier" not in bus.columns, "a bus's carrier is a group"
+    carrier = _parquet(multiperiod_revision, "dims/carrier.parquet")
+    assert {"carrier", "co2_emissions", "color", "nice_name"} <= set(carrier.columns)
+
+
+def test_a_bus_series_is_keyed_by_bus(multiperiod_revision):
+    rows = _parquet(multiperiod_revision, "inputs/v_mag_pu_set.parquet")
+    assert "bus" in rows.columns
+    assert "entity" not in rows.columns
+
+
+@pytest.mark.parametrize(
+    ("group", "key", "expected"),
+    [
+        ("entity_carrier", "Manchester Wind", "wind"),
+        ("bus_carrier", "Norway DC", "DC"),
+        ("entity_technology_group", "Norway Gas", "OCGT"),
+        ("technology_group_carrier", "onwind", "wind"),
+    ],
+)
+def test_classifications_are_groups(multiperiod_revision, group, key, expected):
+    rows = _parquet(multiperiod_revision, f"groups/{group}.parquet")
+    by_key = dict(zip(rows.iloc[:, 0], rows.iloc[:, 1], strict=True))
+    assert by_key[key] == expected
+
+
+def test_a_technology_group_carries_its_resource_class(multiperiod_revision):
+    axis = _parquet(multiperiod_revision, "dims/technology_group.parquet")
+    classes = dict(zip(axis["technology_group"], axis["resource_class"], strict=True))
+    assert classes["onwind"] == 1
+    assert pd.isna(classes["OCGT"])
+    members = _parquet(multiperiod_revision, "dims/entity_type/Generator.parquet")
+    assert "resource_class" not in members.columns, "it moved to the group's axis"
+
+
+def test_geometry_is_wkt_with_its_crs_in_meta(multiperiod_revision, multiperiod):
+    bus = _parquet(multiperiod_revision, "dims/bus.parquet").set_index("bus")
+    assert bus.loc["Manchester", "region_onshore"].startswith("POLYGON")
+    assert bus.loc["Norway", "region_offshore"].startswith("POLYGON")
+    assert read_schema().meta["crs"] == multiperiod.crs.to_string()
+
+
+def test_a_multiperiod_snapshot_is_within_its_period(multiperiod_revision):
+    schema = read_schema()
+    assert schema.dimensions["snapshot"].within == {"period"}
+    axis = _parquet(multiperiod_revision, "dims/snapshot.parquet")
+    assert {"period", "snapshot", "snapshot_weighting_objective"} <= set(axis.columns)
+    periods = _parquet(multiperiod_revision, "dims/period.parquet")
+    assert periods["period_year"].tolist() == [2030, 2040, 2050]
+
+
+def _with_generators(n, **columns):
+    m = n.copy()
+    for column, values in columns.items():
+        m.c["Generator"].static[column] = values
+    return m
+
+
+@pytest.mark.parametrize(
+    ("columns", "match"),
+    [
+        ({"technology_group": "all"}, "exactly one carrier"),
+        (
+            {
+                "technology_group": ["onwind", "OCGT"] * 3,
+                "resource_class": [1, None, 2, None, 1, None],
+            },
+            "more than one 'resource_class'",
+        ),
+        (
+            {
+                "technology_group": [None, "gas"] * 3,
+                "resource_class": [1, None] * 3,
+            },
+            "no technology group",
+        ),
+    ],
+)
+def test_technology_groups_must_be_functions_of_their_members(
+    multiperiod, columns, match
+):
+    n = _with_generators(multiperiod, **columns)
+    with pytest.raises(ValueError, match=match):
+        PyPSA.to_datarecord(n)
+
+
+def test_a_shape_the_record_cannot_place_is_rejected(multiperiod):
+    n = multiperiod.copy()
+    import shapely
+
+    n.add(
+        "Shape",
+        ["admin"],
+        geometry=[shapely.Point(0, 0)],
+        idx=["London"],
+        component=["Bus"],
+        type=["admin"],
+    )
+    with pytest.raises(ValueError, match="neither a bus's onshore or offshore"):
+        PyPSA.to_datarecord(n)
+
+
+def test_the_shipped_spec_binds_to_the_record(multiperiod):
+    """The base mathspec spec loads, prints, and names only what the record has.
+
+    Notes
+    -----
+    - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
+    """
+    import mathspec
+
+    from datarecord.tools.pypsa import MATHSPEC
+
+    spec = mathspec.to_spec(str(MATHSPEC))
+    assert "balance" in mathspec.to_markdown(spec)
+    record = PyPSA.to_datarecord(multiperiod)
+    PyPSA.check_spec(spec, record)
+
+    extra = mathspec.merge(
+        [
+            spec,
+            {
+                "dimensions": {"entity": {}},
+                "parameters": {"nowhere": {"dims": ["entity"]}},
+            },
+        ]
+    )
+    with pytest.raises(ValueError, match=r"parameters \['nowhere'\]"):
+        PyPSA.check_spec(extra, record)
+
+
+@pytest.mark.parametrize(
+    ("component", "column", "other"),
+    [
+        ("Bus", "asset_status", "Generator"),
+        ("Carrier", "country", "bus"),
+    ],
+)
+def test_a_custom_axis_column_clashing_with_another_owner_is_reported(
+    multiperiod, component, column, other
+):
+    """A clash between custom columns is reported, never renamed by the data.
+
+    Renaming on clash would give one column a different record name in
+    another network, which a fixed spec could not bind to.
+
+    Notes
+    -----
+    - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
+    """
+    n = multiperiod.copy()
+    n.c[component].static[column] = "x"
+    with pytest.raises(UnsupportedRecordError, match=rf"'{column}' on .*{other}"):
+        PyPSA.to_datarecord(n)
+
+
+def test_an_axis_name_does_not_depend_on_the_network(ac_dc, multiperiod):
+    """`country` is `country` on the bus axis whatever the entities carry."""
+    names = [
+        PyPSA.to_datarecord(n).schema.meta["names"]["bus"] for n in (ac_dc, multiperiod)
+    ]
+    assert names[0]["country"] == names[1]["country"] == "country"
+    assert names[0]["bus_x"] == "x", "a registry clash is prefixed in every network"

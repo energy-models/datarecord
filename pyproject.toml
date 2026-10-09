@@ -70,9 +70,9 @@ no_implicit_optional = true
 check_untyped_defs = true
 files = "src/"
 
-# pandas ships no stubs.
+# pandas, shapely and geopandas ship no stubs.
 [[tool.mypy.overrides]]
-module = ["pandas.*"]
+module = ["pandas.*", "shapely.*", "geopandas.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

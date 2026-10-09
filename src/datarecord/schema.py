@@ -108,6 +108,11 @@ STRUCTURAL_TYPES = {
 LONG_TAIL = ("attribute", "breakpoint", "value")
 
 
+#: The entity-type axis's name: the dim a group over `entity` alone classifies
+#: every component into, and the only one `Trait.on` may key.
+ENTITY_TYPE = "entity_type"
+
+
 # The owner map's flag columns: two structs with a field per declared dim, so
 # the map's column set does not depend on the schema and adding a dim stays the
 # compatible change versioning calls it. `breakpoints` is outside both, being no dim
@@ -503,20 +508,7 @@ class Schema(BaseModel):
                 )
                 raise ValueError(msg)
 
-        # One group may classify `entity`, or none: every caller of
-        # `attributes_for` asks for exactly one vocabulary.
-        classifying = sorted(
-            g.into
-            for g in self.groups.values()
-            if g.into is not None and tuple(g.over.values()) == ("entity",)
-        )
-        if len(classifying) > 1:
-            msg = (
-                f"{classifying} all classify `entity`; a component has one type, "
-                f"so at most one group may be `into` a dim over `entity` alone"
-            )
-            raise ValueError(msg)
-        entity_type = classifying[0] if classifying else None
+        entity_type = self.entity_type_dim
 
         # One name means one file with one `value` column, so a name declared as
         # both would have to be an input and a result at once - two files, two
@@ -567,9 +559,9 @@ class Schema(BaseModel):
             for dim in trait_spec.on:
                 if dim != entity_type:
                     msg = (
-                        f"trait {trait!r} is `on` {dim!r}, which does not classify "
-                        f"`entity`; only the entity-type axis partitions an "
-                        f"attribute vocabulary"
+                        f"trait {trait!r} is `on` {dim!r}, which is not the "
+                        f"entity-type axis {ENTITY_TYPE!r}; only that axis "
+                        f"partitions an attribute vocabulary"
                     )
                     raise ValueError(msg)
             if trait_spec.switch is not None:
@@ -731,23 +723,21 @@ class Schema(BaseModel):
 
     @property
     def entity_type_dim(self) -> str | None:
-        """The dim classifying `entity`, or `None` where none does.
+        """`entity_type`, where a group classifies `entity` into it; else `None`.
 
-        The `into` of the group over `entity` alone, of which the schema admits
-        at most one.
+        Identified by name: other groups may be `into` a dim over `entity` alone
+        too (a carrier, a technology group), and only this one partitions the
+        attribute vocabulary.
 
         Notes
         -----
         - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
         """
-        return next(
-            (
-                g.into
-                for g in self.groups.values()
-                if g.into is not None and tuple(g.over.values()) == ("entity",)
-            ),
-            None,
+        classifies = any(
+            g.into == ENTITY_TYPE and tuple(g.over.values()) == ("entity",)
+            for g in self.groups.values()
         )
+        return ENTITY_TYPE if classifies else None
 
     @property
     def entity_types(self) -> frozenset[str]:
