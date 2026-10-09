@@ -24,6 +24,11 @@ record/
 Every file under `dims/` and `groups/` is named for what it holds, singular: `dims/scenario.parquet` for the `scenario` axis, as `inputs/p_nom.parquet` is for `p_nom`.
 A dim's file is its name and nothing else — no pluralisation, which would be English grammar applied to a declared identifier and would spell a dim named `bus` as `buss.parquet`.
 
+## Packed into a zip
+
+The same tree can be stored as a zip archive: `write_record(..., uri="record.zip", zip=True)` writes it and `Record.at("zip://record.zip/")` reads it through DuckDB's `zipfs` extension.
+Every entry is **stored uncompressed**, so a reader range-reads each parquet as it would a bare file.
+
 ## The entity axis
 
 `dims/entity.parquet` is what a component's identity **is**: which entities the layer names, what type each is, and which are tombstoned.

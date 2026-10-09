@@ -17,6 +17,8 @@ Notes
 from __future__ import annotations
 
 import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -40,6 +42,7 @@ def write_record(
     con: DuckDBPyConnection,
     *,
     uri: str | None = None,
+    zip: bool = False,  # noqa: A002 - the file format's name, not the builtin
 ) -> None:
     """Write `source` as `revision_id`'s layer, which must not exist yet.
 
@@ -58,6 +61,8 @@ def write_record(
     uri
         Write here instead of at the revision's own layer - how a `Directory`
         commit target produces a record outside the layer tree.
+    zip
+        Write a zip archive at `uri` (local, required) instead of a directory.
     source
         The layer's contents: a `LayerData` - a `StagedSource` for a `NewChild`
         commit, a `Resolver` for a `Directory` one - or a framework's own
@@ -70,9 +75,9 @@ def write_record(
     Raises
     ------
     FileExistsError
-        If the layer directory already exists.
+        If the layer directory or archive already exists.
     ValueError
-        If a long frame is missing a long-schema column, or the schema declares a key
+        If `zip` is set without a local `uri`, a long frame is missing a long-schema column, or the schema declares a key
         dim no frame carries - either would make the fold misresolve the layer.
 
     Notes
@@ -80,8 +85,12 @@ def write_record(
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+    - [packed into a zip](https://energy-models.github.io/datarecord/design/format/#packed-into-a-zip)
     - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
     """
+    if zip:
+        _write_zip_record(revision_id, source, con, uri)
+        return
     if uri is None:
         if revision_id is None:
             msg = "write_record needs a revision_id or a uri"
@@ -166,6 +175,41 @@ def write_record(
         raise
     if local:
         Path(staging).rename(base.rstrip("/"))
+
+
+def _write_zip_record(
+    revision_id: UUID | None,
+    source: LayerData | RecordLike,
+    con: DuckDBPyConnection,
+    uri: str | None,
+) -> None:
+    """Write the record to a temp directory, then store it into the zip at `uri`.
+
+    The zipfs reader is read-only, so the directory writer builds the tree and
+    stdlib `zipfile` packs it. Entries are `ZIP_STORED` so a reader can
+    range-read each parquet; the archive is staged and renamed like a layer.
+    """
+    if uri is None or "://" in uri:
+        msg = f"write_record(zip=True) needs a local uri for the archive, got {uri!r}"
+        raise ValueError(msg)
+    archive = Path(uri)
+    if archive.exists():
+        msg = f"archive {uri} already exists; write_record creates a new record (https://energy-models.github.io/datarecord/design/writing/)"
+        raise FileExistsError(msg)
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    staging = archive.with_name(archive.name + ".staging")
+    with tempfile.TemporaryDirectory() as tmp:
+        tree = Path(tmp) / "record"
+        write_record(revision_id, source, con, uri=str(tree))
+        try:
+            with zipfile.ZipFile(staging, "w", zipfile.ZIP_STORED) as zf:
+                for path in sorted(tree.rglob("*")):
+                    if path.is_file():
+                        zf.write(path, path.relative_to(tree).as_posix())
+            staging.rename(archive)
+        except BaseException:
+            staging.unlink(missing_ok=True)
+            raise
 
 
 def _reconcile_schema(schema: Schema, con: DuckDBPyConnection) -> None:
