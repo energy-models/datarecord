@@ -305,7 +305,7 @@ class Record:
         # connection root's, and either way the schema must be in hand before the
         # source that carries it is built.
         base = uri if uri.endswith("/") else uri + "/"
-        raw = read_json(base + "manifest.json")
+        raw = read_json(base + "manifest.json", con)
         schema = resolve.read_schema(con) if raw is None else Schema.model_validate(raw)
         return cls.over(DirectorySource(base, schema, con), con=con)
 

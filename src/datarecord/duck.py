@@ -28,10 +28,8 @@ from functools import partial, reduce
 from glob import glob
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError
-from urllib.request import urlopen
 from uuid import UUID
-from weakref import WeakKeyDictionary
+from weakref import WeakKeyDictionary, WeakSet
 
 import duckdb
 import narwhals as nw
@@ -219,6 +217,39 @@ def default_connection() -> DuckDBPyConnection:
     return _default_con
 
 
+def ensure_zipfs(uri: str, con: DuckDBPyConnection) -> None:
+    """Load the `zipfs` extension on `con` once, if `uri` reads inside a zip.
+
+    Keyed on the URI, not the connection's base: a zip record is usually read
+    on an otherwise-local connection.
+    """
+    if not uri.startswith("zip://") or con in _ZIPFS_LOADED:
+        return
+    try:
+        con.execute("INSTALL zipfs FROM community; LOAD zipfs;")
+    except duckdb.Error:
+        pass  # as for httpfs in `connect`: the read that needs it raises clearer
+    _ZIPFS_LOADED.add(con)
+
+
+_ZIPFS_LOADED: WeakSet[DuckDBPyConnection] = WeakSet()
+
+
+def _is_miss(e: duckdb.Error) -> bool:
+    """Whether a DuckDB read failure means the file does not exist.
+
+    This duckdb build exposes no status code, only the message. 403 counts as a
+    miss: S3 signals a missing key that way when the caller lacks ListBucket.
+    "No files found" is a glob matching nothing, "Failed to find file" a named
+    entry a `zip://` reader cannot resolve.
+    """
+    if isinstance(e, duckdb.HTTPException):
+        return "HTTP 404" in str(e) or "HTTP 403" in str(e)
+    if isinstance(e, duckdb.IOException):
+        return "No files found" in str(e) or "Failed to find file" in str(e)
+    return False
+
+
 def try_read_parquet(
     uri: str, con: DuckDBPyConnection, **kwargs: object
 ) -> DuckDBPyRelation | None:
@@ -258,17 +289,11 @@ def try_read_parquet(
         glob(uri) if any(c in uri for c in "*?[") else Path(uri).exists()
     ):
         return None
+    ensure_zipfs(uri, con)
     try:
         return con.read_parquet(uri, **kwargs)  # type: ignore[arg-type]
-    except duckdb.HTTPException as e:
-        # This duckdb build exposes no status code, only the message ("HTTP
-        # Error: ... (HTTP 404 Not Found)"). 403 also counts as a miss: S3
-        # signals a missing key that way when the caller lacks ListBucket.
-        if "HTTP 404" in str(e) or "HTTP 403" in str(e):
-            return None
-        raise
-    except duckdb.IOException as e:
-        if "No files found" in str(e):
+    except duckdb.Error as e:
+        if _is_miss(e):
             return None
         raise
 
@@ -280,6 +305,7 @@ def parquet_names(dir_uri: str, con: DuckDBPyConnection) -> set[str]:
     what a caller otherwise probing one filename at a time (`try_read_parquet`
     per candidate) should glob instead.
     """
+    ensure_zipfs(dir_uri, con)
     rows = con.sql(
         "SELECT file FROM glob(?)", params=[f"{dir_uri}*.parquet"]
     ).fetchall()
@@ -540,21 +566,31 @@ def fold_axis(
     return winners.order("_first").project(star(exclude=scaffold))
 
 
-def read_json(uri: str) -> dict[str, Any] | None:
+def read_json(uri: str, con: DuckDBPyConnection | None = None) -> dict[str, Any] | None:
     """Read one JSON file, or `None` if it doesn't exist (e.g. an undeclared schema).
 
-    Only a genuine miss (local `FileNotFoundError`, remote 404/403) maps to
-    `None` - any other failure raises rather than silently reading as absent.
+    A `://` URI is read through `con`, so any scheme DuckDB serves works; any
+    failure other than a miss raises.
+
+    Raises
+    ------
+    ValueError
+        If `uri` is remote and `con` is `None`.
     """
-    try:
-        if "://" in uri:
-            with urlopen(uri) as fh:  # noqa: S310 - record URIs are derived, not user input
+    if "://" not in uri:
+        try:
+            with open(uri) as fh:
                 return json.load(fh)
-        with open(uri) as fh:
-            return json.load(fh)
-    except FileNotFoundError:
-        return None
-    except HTTPError as e:
-        if e.code in (403, 404):  # 403: S3's "missing key" without ListBucket
+        except FileNotFoundError:
+            return None
+    if con is None:
+        msg = f"reading a remote manifest {uri!r} needs a connection"
+        raise ValueError(msg)
+    ensure_zipfs(uri, con)
+    try:
+        rows = con.sql("SELECT content FROM read_text(?)", params=[uri]).fetchall()
+    except duckdb.Error as e:
+        if _is_miss(e):
             return None
         raise
+    return json.loads(rows[0][0]) if rows else None

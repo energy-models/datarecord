@@ -776,7 +776,7 @@ def read_schema(con: DuckDBPyConnection | None = None) -> Schema:
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     base = None if con is None else base_uri_of(con)
-    raw = read_json(schema_uri(base))
+    raw = read_json(schema_uri(base), con)
     return Schema() if raw is None else Schema.model_validate(raw)
 
 
@@ -793,6 +793,12 @@ def write_schema(schema: Schema, base_uri: str | None = None) -> None:
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     uri = schema_uri(base_uri)
+    if "://" in uri:
+        msg = (
+            f"cannot write a manifest to remote {uri!r}; build the record "
+            "locally (or as a zip) and copy it up"
+        )
+        raise NotImplementedError(msg)
     ensure_local_dir(uri, parent=True)
     with open(uri, "w") as fh:
         fh.write(schema.model_dump_json())
