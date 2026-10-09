@@ -94,6 +94,12 @@ def write_record(
         msg = f"layer {base} already exists; write_record creates a new layer (https://energy-models.github.io/datarecord/design/writing/)"
         raise FileExistsError(msg)
 
+    # A source may build its frames on a connection - a tool that melts wide
+    # data to long does, so its relations land on `con` and pass through
+    # `as_relation` without a copy. It opts in by `on_connection`; core names no
+    # tool, so this is structural, not an isinstance on one.
+    if not isinstance(source, LayerData) and hasattr(source, "on_connection"):
+        source = source.on_connection(con)
     data = (
         source if isinstance(source, LayerData) else _RecordLikeAsLayerData(source, con)
     )

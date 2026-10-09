@@ -176,11 +176,28 @@ def _with_schema(revision, **kwargs) -> None:
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     was = read_schema()
-    now = schema(**kwargs).model_copy(
+    now = schema(**kwargs)
+    # Keep the old attributes, but drop any dim a redeclaration removed from
+    # their address - an attribute over a dim the schema no longer declares is
+    # rejected at construction, and the point here is the redeclared dims, not a
+    # stale attribute reference to a gone one.
+    addressable = set(now.dimensions) | set(was.groups)
+    attributes = {
+        name: pruned
+        for name, spec in was.attributes.items()
+        if (pruned := spec.model_copy(update={"dims": spec.dims & addressable})).dims
+    }
+    traits = {
+        ctype: trait.model_copy(
+            update={"attributes": trait.attributes & attributes.keys()}
+        )
+        for ctype, trait in was.traits.items()
+    }
+    now = now.model_copy(
         update={
-            "attributes": was.attributes,
+            "attributes": attributes,
             "groups": was.groups,
-            "traits": was.traits,
+            "traits": traits,
             "meta": was.meta,
         }
     )
@@ -307,7 +324,7 @@ def test_to_datarecord_rejects_a_cross_type_name_collision():
     n.add("Bus", "north")
     n.add("Generator", "north", bus="north")
 
-    with pytest.raises(UnsupportedRecordError, match="more than one entity type"):
+    with pytest.raises(UnsupportedRecordError, match="more than one entity"):
         PyPSA.to_datarecord(n)
 
 
@@ -455,6 +472,58 @@ def test_results_skips_outputs_still_at_their_default(single_revision):
     results = PyPSA.results(n)
     assert "p" not in results
     assert "p_nom_opt" not in results
+
+
+def _three_port_link():
+    import pypsa
+
+    n = pypsa.Network()
+    n.set_snapshots(range(2))
+    for bus in ("a", "b", "c"):
+        n.add("Bus", bus)
+    n.add("Link", "split", bus0="a", bus1="b", bus2="c")
+    return n
+
+
+def test_a_third_port_result_stays_an_output():
+    """`p2` exists only on a network with a `bus2` Link, not in the bare registry.
+
+    Notes
+    -----
+    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+    """
+    n = _three_port_link()
+    n.c["Link"].dynamic["p2"] = pd.DataFrame({"split": [1.0, 2.0]}, index=n.snapshots)
+
+    assert "p2" in PyPSA.results(n), "a third port's flow is a result"
+    assert "p" not in PyPSA.to_datarecord(n).attributes, "p2 must not land in inputs"
+
+
+def test_a_nan_in_a_series_survives_the_melt():
+    """`UNPIVOT` drops nulls unless told otherwise; a NaN cell is still a row."""
+    import numpy as np
+
+    n = _three_port_link()
+    n.c["Link"].dynamic["p_max_pu"] = pd.DataFrame(
+        {"split": [1.0, np.nan]}, index=n.snapshots
+    )
+
+    rows = PyPSA.to_datarecord(n).attributes["p_max_pu"].collect()
+    split = rows.filter(nw.col("entity") == "split")
+    assert len(split) == 2, "one row per snapshot, NaN included"
+
+
+def test_to_datarecord_rejects_names_differing_only_by_case():
+    """DuckDB identifiers ignore case, so the melt would merge `Gen` and `gen`."""
+    import pypsa
+
+    n = pypsa.Network()
+    n.add("Bus", "north")
+    n.add("Generator", ["Gen", "gen"], bus="north")
+
+    assert _colliding_names(n) == {"Gen", "gen"}
+    with pytest.raises(UnsupportedRecordError, match="ignoring case"):
+        PyPSA.to_datarecord(n)
 
 
 def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):

@@ -304,6 +304,7 @@ def test_a_file_carries_only_its_own_attributes_coordinates(con, base_uri, ac_dc
     assert columns("p_max_pu") == {
         "entity",
         "snapshot",
+        "scenario",
         "attribute",
         "breakpoint",
         "value",
