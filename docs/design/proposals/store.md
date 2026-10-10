@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Proposal: a `Workspace` holds the connection, a `Store` holds a location
 
-Status: **Landing** — steps 1 and 2 of 4 landed ([landing](#landing)) · Drafted 2026-10-09
+Status: **Landing** — steps 1–3 of 4 landed ([landing](#landing)) · Drafted 2026-10-09
 
 One claim: **what a process now gets from `duck`'s module globals is two objects' state, not one.** A `Workspace` holds the DuckDB connection and the means to reach files, local or remote, which is all a standalone directory needs. A `Store` holds one store location — the directory with its manifest, its revision tree, its layers — and works through a workspace, which several stores share. Every `Revision`, `Record` and `WorkingRecord` reaches its connection and its paths through the object it came from, and a revision crosses a process boundary as its store's location.
 

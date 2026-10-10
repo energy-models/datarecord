@@ -120,6 +120,10 @@ class Files(Protocol):
 
 `expect` is the precondition: `Absent` writes only if nothing is there, a `Version` only if the object is unchanged since it was read, `None` unconditionally. Locally every write lands under a temporary name and is moved into place, so a reader meets a whole file or none: `Absent` is a hard link, which the OS refuses over an existing file, and a `Version` — the content's SHA-256 — is checked and replaced while holding a lock on a sibling `<name>.lock`, which is what makes the check and the write one step.
 
+Remotely, `Files` is on [boto3](https://boto3.amazonaws.com/), behind the optional extra `datarecord[remote]`. `expect` maps to `put_object`'s conditional headers — `IfNoneMatch="*"` for `Absent`, `IfMatch` for a `Version`, which is the object's ETag — and a refused write (`412`, or `409` for a racing one) raises `PreconditionFailedError`. They guard the revision files, create-only by the server's guarantee, and the [manifest's compare-and-swap](writing.md#the-manifests-compare-and-swap); not the layer's parquet, which DuckDB's `httpfs` writes unconditionally under a fresh UUID. They hold only as far as the server honours them: SeaweedFS checks them atomically from 4.18, AWS S3 since November 2024.
+
+The configuration is the AWS environment and config files, and nothing datarecord-specific. boto3 reads it itself; DuckDB gets `CREATE SECRET (TYPE s3, PROVIDER credential_chain)`, to which a set `AWS_ENDPOINT_URL` adds its `ENDPOINT`, `URL_STYLE 'path'`, `USE_SSL` per its scheme and `CHAIN 'env;config'`, since a self-hosted server has no bucket-subdomain DNS and no instance-metadata service to probe. Both are set up on the first `s3://` URI a workspace is handed, so a purely local one never pays for either.
+
 ### Crossing a process boundary
 
 `Revision` serialises its store as its location, `{"id": …, "parent": …, "store": "/data/a"}`, and validates back through `Workspace.process().store(uri).revision(id)`, reading the revision file and each parent the process lacks — so `ancestry()` answers in a fresh process. `Store` pickles the same way.

@@ -21,16 +21,20 @@ import pytest
 
 from datarecord import Revision, Workspace
 from datarecord.files import Absent, PreconditionFailedError
+from datarecord.layered.resolve import read_schema
 from datarecord.mutable import WorkingRecord
 from tests.fixtures import (
+    RivalWrite,
     empty_child,
     empty_root,
     export_network,
     schema,
+    widened,
     write_entity_type,
     write_input,
     write_schema,
 )
+from tests.test_write import _SCHEMA, _long, _Source
 
 
 @pytest.fixture
@@ -102,6 +106,54 @@ def test_a_revision_file_is_written_once(store, tree):
     root, _ = tree
     with pytest.raises(PreconditionFailedError):
         store.files.write_text(store._revision_uri(root.id), "{}", expect=Absent())
+
+
+def test_a_stale_version_is_refused(store):
+    """A `Version` write holds only while the file is as it was read.
+
+    Notes
+    -----
+    - [files, local and remote](https://energy-models.github.io/datarecord/design/layers/#files-local-and-remote)
+    """
+    uri = f"{store.uri}/note.txt"
+    read = store.files.write_text(uri, "first", expect=None)
+    store.files.write_text(uri, "second", expect=read)
+    with pytest.raises(PreconditionFailedError):
+        store.files.write_text(uri, "third", expect=read)
+    assert store.files.read_text(uri)[0] == "second", "the refused write left no trace"
+
+
+def test_a_widening_that_lost_the_race_reads_again(workspace, store, monkeypatch):
+    """The loser re-reads the rival's manifest, and its superset still lands.
+
+    Notes
+    -----
+    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
+    """
+    write_schema(_SCHEMA, store)
+    rival = widened(_SCHEMA, "rival")
+    mine = widened(rival, "mine")
+    files = RivalWrite(workspace._local, store.manifest_uri, rival.model_dump_json())
+    monkeypatch.setattr(workspace, "_local", files)
+
+    store.root(_Source(mine, attributes={"p_nom": _long()}))
+    assert files.raced, "the rival wrote between the read and the write"
+    assert read_schema(store) == mine, "both widenings end in the manifest"
+
+
+def test_a_widening_the_race_made_incompatible_is_reported(
+    workspace, store, monkeypatch
+):
+    """Re-checked against the rival's manifest, it fails rather than drops it."""
+    write_schema(_SCHEMA, store)
+    rival = widened(_SCHEMA, "rival")
+    files = RivalWrite(workspace._local, store.manifest_uri, rival.model_dump_json())
+    monkeypatch.setattr(workspace, "_local", files)
+
+    with pytest.raises(ValueError, match="'rival' removed"):
+        store.root(_Source(widened(_SCHEMA, "mine"), attributes={"p_nom": _long()}))
+    assert read_schema(store) == rival, "the rival's widening is kept"
+    assert store.revisions() == [], "the losing layer is unreachable"
 
 
 def test_a_revision_crosses_a_process_boundary(tree):

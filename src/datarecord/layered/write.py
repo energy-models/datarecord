@@ -25,8 +25,8 @@ from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 
 from datarecord.duck import as_relation, fn, union_all_by_name
-from datarecord.files import Absent
-from datarecord.layered.resolve import cast_declared, read_schema, write_schema
+from datarecord.files import Absent, PreconditionFailedError, Version
+from datarecord.layered.resolve import cast_declared
 from datarecord.record import Frames, LayerData, RecordLike, collision_detail
 from datarecord.schema import Schema
 
@@ -175,6 +175,11 @@ def reconcile_schema(schema: Schema, store: Store) -> None:
     states it and the rest must be `compatible_with` it. Read and written beside
     `store`'s own layers, so one record never consults another's manifest.
 
+    A compare-and-swap: the manifest is written only if unchanged since it was
+    read, and a writer that lost re-reads and checks again, so two writers
+    widening at once end with both widenings or an incompatibility reported,
+    never one silently lost.
+
     Raises
     ------
     ValueError
@@ -185,23 +190,30 @@ def reconcile_schema(schema: Schema, store: Store) -> None:
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
     """
-    existing = read_schema(store)
-    if not (existing.dimensions or existing.attributes):
-        write_schema(schema, store)
+    files = store.files
+    while True:
+        found = files.read_text(store.manifest_uri)
+        expect: Version | Absent = Absent() if found is None else found[1]
+        existing = Schema() if found is None else Schema.model_validate_json(found[0])
+        if existing.dimensions or existing.attributes:
+            if schema == existing:
+                return
+            problems = schema.compatible_with(existing)
+            if problems:
+                msg = (
+                    f"this layer's schema is incompatible with the record's: "
+                    f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/schema/#versioning)"
+                )
+                raise ValueError(msg)
+        try:
+            files.write_text(
+                store.manifest_uri, schema.model_dump_json(), expect=expect
+            )
+        except PreconditionFailedError:
+            continue
         return
-    if schema == existing:
-        return
-    problems = schema.compatible_with(existing)
-    if problems:
-        msg = (
-            f"this layer's schema is incompatible with the record's: "
-            f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/schema/#versioning)"
-        )
-        raise ValueError(msg)
-    # Compatible, so it supersedes: a widened schema still reads every layer
-    # written under the narrower one.
-    write_schema(schema, store)
 
 
 DERIVED = ("order_key",)

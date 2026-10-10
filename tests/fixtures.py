@@ -14,6 +14,7 @@ from pathlib import Path
 import narwhals as nw
 import pandas as pd
 
+from datarecord.files import Files, Version
 from datarecord.layered.resolve import write_schema as record_write_schema
 from datarecord.layered.revision import Revision
 from datarecord.schema import (
@@ -326,6 +327,44 @@ def write_schema(schema: Schema, store: Store) -> None:
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     record_write_schema(schema, store)
+
+
+def widened(base: Schema, attribute: str) -> Schema:
+    """`base` declaring one more attribute, shaped like its `p_nom`."""
+    return Schema(
+        **{
+            **dict(base),
+            "attributes": {**base.attributes, attribute: base.attributes["p_nom"]},
+        }
+    )
+
+
+class RivalWrite:
+    """`Files` where a rival replaces `uri` right after this writer reads it.
+
+    Two writers racing on the manifest, made deterministic: the read hands back
+    a version the rival's write has already made stale, once.
+
+    Notes
+    -----
+    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
+    """
+
+    def __init__(self, inner: Files, uri: str, text: str) -> None:
+        self._inner = inner
+        self._uri = uri
+        self._text = text
+        self.raced = False
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+    def read_text(self, uri: str) -> tuple[str, Version] | None:
+        found = self._inner.read_text(uri)
+        if uri == self._uri and not self.raced:
+            self.raced = True
+            self._inner.write_text(uri, self._text, expect=None)
+        return found
 
 
 def write_directory_schema(directory: str, schema: Schema) -> None:

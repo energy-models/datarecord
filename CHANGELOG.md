@@ -28,6 +28,14 @@ All notable changes to datarecord are documented here. The format follows
   `commit` are gone. A tree write writes its revision file last, so a failed write leaves
   no revision and never widens the manifest.
 
+### Added
+
+- A store or standalone directory on `s3://`, through boto3 behind the
+  `datarecord[remote]` extra and configured by the AWS environment alone.
+  Revision files are written create-only and the manifest by
+  compare-and-swap, so two writers widening one schema never silently lose
+  a widening.
+
 ### Fixed
 
 - `materialise()` writes `owner_map/inputs.parquet` last, each file through

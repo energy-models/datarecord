@@ -48,6 +48,10 @@ Locally a failed write leaves nothing, the layer being staged and renamed. Remot
 
 The manifest check comes after the layer, so a layer whose schema turns out incompatible, or whose write fails, leaves the manifest untouched as well as unreachable: the manifest is never widened for a layer that does not exist.
 
+### The manifest's compare-and-swap
+
+Two writers creating a location's first layers, or widening its schema, at once race on `manifest.json`. So the manifest is written through a [conditional write](layers.md#files-local-and-remote): read with its version — `Absent` where there is none — checked for compatibility, and written only if still at that version. A writer that lost re-reads and checks again, so two writers widening at once end with both widenings, where the later one's schema includes the earlier's, or with the later one's incompatibility reported, never one silently lost.
+
 `materialise()` follows the same rule. `owner_map/inputs.parquet` is what [says a node is materialised](layers.md#materialised-node-caches), so it is written last, after the other maps, the resolved dims and groups. Locally each file is written under a temporary name and renamed, because a parquet file appears at its final path before it is complete and a reader meeting it mid-write fails rather than misses. Two writers materialising one node write the same content, so that race is harmless.
 
 ## A standalone directory

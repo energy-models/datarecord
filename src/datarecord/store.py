@@ -17,16 +17,18 @@ Notes
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import duckdb
 from duckdb import DuckDBPyConnection
 
-from datarecord.files import Absent, Files, LocalFiles
+from datarecord.files import Absent, Files, LocalFiles, RemoteFiles
 from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver, read_schema
 from datarecord.layered.sources import DirectorySource, LayerSource
@@ -130,20 +132,37 @@ class Workspace:
             return self._remote
 
     def _connect_remote(self) -> Files:
-        """Load `httpfs` and the S3 secret, once, on the first remote URI.
+        """Set up boto3 and DuckDB's `httpfs` from the AWS environment, once.
 
         Never for a local workspace: `PROVIDER credential_chain` probes
         instance-metadata endpoints that hang for minutes where none exist.
+        With `AWS_ENDPOINT_URL` set, the secret adds what the chain does not
+        supply - the endpoint, path-style addressing, SSL per its scheme - and
+        skips that probe, a self-hosted server having no metadata service.
+
+        Raises
+        ------
+        ImportError
+            If boto3, from `datarecord[remote]`, is missing.
+
+        Notes
+        -----
+        - [files, local and remote](https://energy-models.github.io/datarecord/design/layers/#files-local-and-remote)
         """
-        try:
-            self._db.execute("INSTALL httpfs; LOAD httpfs;")
-            self._db.execute(
-                "CREATE SECRET IF NOT EXISTS (TYPE s3, PROVIDER credential_chain)"
-            )
-        except duckdb.Error:
-            pass
-        msg = "remote files are not supported yet"
-        raise NotImplementedError(msg)
+        files = RemoteFiles()
+        options = ["TYPE s3", "PROVIDER credential_chain"]
+        endpoint = os.environ.get("AWS_ENDPOINT_URL")
+        if endpoint:
+            url = urlparse(endpoint)
+            options += [
+                f"ENDPOINT '{url.netloc}'",
+                "URL_STYLE 'path'",
+                f"USE_SSL {str(url.scheme == 'https').lower()}",
+                "CHAIN 'env;config'",
+            ]
+        self._db.execute("INSTALL httpfs; LOAD httpfs;")
+        self._db.execute(f"CREATE OR REPLACE SECRET ({', '.join(options)})")
+        return files
 
     def store(self, uri: str) -> Store:
         """This workspace's store at `uri`, one object per normalised location.

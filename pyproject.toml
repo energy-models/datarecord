@@ -29,6 +29,8 @@ dependencies = ["duckdb>=1.5.4", "narwhals>=2,<3,!=2.21.0", "pydantic>=2"]
 
 [project.optional-dependencies]
 pypsa = ["pypsa"]
+# `IfMatch` on `put_object` needs botocore 1.35.69, `IfNoneMatch` 1.35.2.
+remote = ["boto3>=1.35.69"]
 
 [project.urls]
 repository = "https://github.com/energy-models/datarecord"
@@ -70,9 +72,9 @@ no_implicit_optional = true
 check_untyped_defs = true
 files = "src/"
 
-# pandas ships no stubs.
+# pandas and boto3 ship no stubs.
 [[tool.mypy.overrides]]
-module = ["pandas.*"]
+module = ["pandas.*", "boto3.*", "botocore.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

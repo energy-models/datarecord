@@ -33,6 +33,7 @@ Full documentation is at **<https://energy-models.github.io/datarecord/>**:
 ```bash
 pip install datarecord           # core
 pip install datarecord[pypsa]    # with the PyPSA tool
+pip install datarecord[remote]   # with records on S3
 ```
 
 ## A taste
