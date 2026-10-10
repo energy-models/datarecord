@@ -177,7 +177,7 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
 
 ## Running the tests
 
-The suite takes ~90s, which is long enough that reading it as it scrolls wastes
+The suite takes ~3 minutes, which is long enough that reading it as it scrolls wastes
 the wait. Redirect it to a file and grep the file instead:
 
 ```console
