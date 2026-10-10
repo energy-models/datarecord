@@ -465,11 +465,12 @@ def test_results_skips_outputs_still_at_their_default(single_revision):
 
 
 def test_results_set_on_the_working_record_they_were_planned_on(single_revision):
-    """Frames planned on `w.con` land as outputs with no cross-connection error.
+    """Every result lands as an output on `w.con`, as the documented loop sets it.
 
     Notes
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
     """
     from datarecord.mutable import WorkingRecord
 
@@ -477,8 +478,13 @@ def test_results_set_on_the_working_record_they_were_planned_on(single_revision)
     n.optimize(solver_name="highs")
 
     w = WorkingRecord(single_revision.record)
-    w.set("p", PyPSA.results(n, w.con)["p"], kind="outputs")
+    results = PyPSA.results(n, w.con)
+    undeclared = set(results) - set(w.schema.results)
+    assert not undeclared, f"results the schema does not declare: {sorted(undeclared)}"
+    for attr, frame in results.items():
+        w.set(attr, frame, kind="outputs")
 
+    assert {"p0", "p1"} <= set(results), "a two-port flow keeps PyPSA's port names"
     p = w.outputs["p"].collect()
     gens = list(n.c["Generator"].static.index)
     assert len(p.filter(nw.col("entity").is_in(gens))) == len(n.snapshots) * len(gens)

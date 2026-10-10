@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from collections.abc import Sequence
+from collections.abc import Container, Sequence
 from dataclasses import dataclass
 from functools import cache, cached_property
 from typing import TYPE_CHECKING, Any
@@ -607,6 +607,25 @@ def _output_attributes(c: pypsa.Components) -> frozenset[str]:
     return frozenset(defaults.index[is_output])
 
 
+def _result_attributes(c: pypsa.Components, inputs: Container[str]) -> frozenset[str]:
+    """`c`'s results as a record declares them, the one rule schema and frames share.
+
+    PyPSA's outputs under PyPSA's own name - `p0`, `p1` and `p2` stay apart,
+    since a result comes from a per-entity container and has no port to key it
+    by. Dropped: `name`, which is the member list rather than a value, and any
+    name in `inputs`, the record's input declarations: one attribute holds one
+    spec record-wide, and PyPSA registers some names (`Bus.control`,
+    `SubNetwork.carrier`) as an output on one type and an input on another.
+
+    Notes
+    -----
+    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+    """
+    return frozenset(
+        attr for attr in _output_attributes(c) if attr != "name" and attr not in inputs
+    )
+
+
 # -- network -> layer (https://energy-models.github.io/datarecord/design/format/) ------------------------------------------------
 
 # Which end of the component a port is. PyPSA encodes this only by sign
@@ -969,7 +988,9 @@ class PyPSATool(Tool):
         `attributes` presents `inputs/`. The union needs no
         `entity_type` to tell the arms apart. Which attributes count as
         results comes from PyPSA's registry, so an upgrade that adds one is
-        picked up.
+        picked up, by the same rule the schema declares `results` by: a result
+        keeps PyPSA's own name (`p0`, `p1`), and a name PyPSA also registers as
+        an input (`Bus.control`) is none.
 
         Each frame is a lazy DuckDB relation on `con` over the network's
         containers, melted wide->long by `UNPIVOT`, so nothing is computed until
@@ -1058,8 +1079,9 @@ def _registry_schema() -> RecordSchema:
     it rather than restating it. Results go to `results` rather than
     `attributes`, read off the same registry (`status` starting "Output"), so a
     PyPSA upgrade adding one is picked up rather than needing a list kept here;
-    they carry no trait, a trait being the input vocabulary a type is validated
-    and split against, which a result is not.
+    which names they are is `_result_attributes`, the rule `PyPSA.results`
+    keys its frames by. They carry no trait, a trait being the input vocabulary
+    a type is validated and split against, which a result is not.
 
     Notes
     -----
@@ -1094,16 +1116,17 @@ def _registry_schema() -> RecordSchema:
             description="How much this scenario counts in the expectation.",
         ),
     }
-    results: dict[str, AttributeSpec] = {}
+    outputs: dict[str, AttributeSpec] = {}
     carries: dict[str, frozenset[str]] = {}
-    for ctype in sorted(n.all_components - n.standard_type_components):
+    ctypes = sorted(n.all_components - n.standard_type_components)
+    for ctype in ctypes:
         c = n.components[ctype]
         defaults = c.defaults
-        # Per-port columns collapse to their stem, which a record keys by bus
-        # rather than by position (https://energy-models.github.io/datarecord/design/record/#connections); `efficiency2` and `efficiency`
-        # agree on every declaration, so either row answers.
-        per_port = _port_stems(c)
-        outputs = set(_output_attributes(c))
+        # Per-port input columns collapse to their stem, which a record keys by
+        # bus rather than by position (https://energy-models.github.io/datarecord/design/record/#connections); `efficiency2` and
+        # `efficiency` agree on every declaration, so either row answers.
+        is_output = _output_attributes(c)
+        per_port = {a: s for a, s in _port_stems(c).items() if a not in is_output}
         carried: set[str] = set()
         for attr in defaults.index:
             if attr == "name":
@@ -1132,11 +1155,11 @@ def _registry_schema() -> RecordSchema:
             # so the first type to declare one wins and a later disagreement is a
             # schema error rather than a silent per-type divergence the storage
             # could not have honoured.
-            if attr in outputs:
+            if attr in is_output:
                 # A result is declared but not carried: it belongs to no trait,
                 # `attributes_for` being the input vocabulary a type is validated
                 # and split against.
-                results.setdefault(stem, spec)
+                outputs.setdefault(attr, spec)
                 continue
             if stem in carried:
                 continue
@@ -1144,10 +1167,11 @@ def _registry_schema() -> RecordSchema:
             attributes.setdefault(stem, spec)
         if carried:
             carries[c.name] = frozenset(carried)
-    # A name PyPSA registers as an output on one type and an input on another
-    # would be both here; the input declaration wins, one file holding one
-    # `value` column either way.
-    results = {a: s for a, s in results.items() if a not in attributes}
+    results = {
+        attr: outputs[attr]
+        for ctype in ctypes
+        for attr in sorted(_result_attributes(n.components[ctype], attributes))
+    }
     # PyPSA's registry is per type - a `Line` has no `efficiency` - so every
     # attribute is narrowed to the types that declare it, and none is left
     # carried by all. One trait per type is the faithful translation of a
@@ -1526,12 +1550,13 @@ class _NetworkSource:
         )
 
     def _output_names(self) -> dict[str, list[str]]:
-        """Result attribute -> the exported types declaring it, PyPSA's registry."""
+        """Result attribute -> the exported types declaring it, as the schema does."""
+        inputs = _registry_schema().attributes
         names: dict[str, list[str]] = {}
         for c in self.n.components:
             if not _exported(c):
                 continue
-            for attr in _output_attributes(c):
+            for attr in sorted(_result_attributes(c, inputs)):
                 names.setdefault(attr, []).append(c.name)
         return names
 

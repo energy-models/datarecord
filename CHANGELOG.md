@@ -91,3 +91,8 @@ All notable changes to datarecord are documented here. The format follows
 - `PyPSA.to_datarecord` accepts components whose names differ only by case,
   such as `Gen` and `gen`, rather than reporting them as one name: neither
   the melt nor the pivot folds case any more.
+- `PyPSA.results` and a network's `outputs` key exactly the results the
+  PyPSA schema declares, so setting each one with `kind="outputs"` no longer
+  raises `KeyError`: `p0` is now declared under its own name, like `p1`, and
+  `Bus.control` and `SubNetwork.carrier`, which PyPSA also registers as
+  inputs, are no longer emitted as results.
