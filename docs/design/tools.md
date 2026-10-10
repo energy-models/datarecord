@@ -17,8 +17,20 @@ class Tool(Protocol):
     def requires(self, record: Record) -> Requirements: ...
     def verify(self, record: Record) -> Requirements: ...  # falsy when usable
     def build(self, record: Record) -> Any: ...
-    def to_datarecord(self, model: Any) -> Record: ...  # inverse of build
-    def results(self, model: Any) -> Frames: ...
+    def to_datarecord(self, model: Any, con: DuckDBPyConnection) -> Record: ...
+    def results(self, model: Any, con: DuckDBPyConnection) -> Frames: ...
+```
+
+`to_datarecord` is the inverse of `build`. It and `results` take the connection their frames are planned on, required; in practice `ws.con` of the [workspace](layers.md#the-store) that writes them, or the `con` of the record they are `set` on.
+A tool is handed a connection, not a workspace or a store: it plans relations and has no business with directories, locations or the tree.
+A frame planned on another connection is [rejected at the boundary](read-path.md#a-relation-from-another-connection-is-rejected), so a tool that picked its own would fail on the first write.
+`build` takes none: it reads `record.con`.
+
+```python
+root = store.root(PyPSA.to_datarecord(n, ws.con))
+w = WorkingRecord(root.record)
+for attr, frame in PyPSA.results(n, w.con).items():
+    w.set(attr, frame, kind="outputs")
 ```
 
 `results` returns [`Frames`](record.md#frames) — the same type `Record.outputs` presents, keyed by attribute, each frame in [the long schema](format.md#the-long-schema).

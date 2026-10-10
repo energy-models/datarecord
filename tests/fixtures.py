@@ -313,7 +313,7 @@ def export_network(n, store: Store) -> Revision:
     """
     from datarecord.tools.pypsa import PyPSA
 
-    return store.root(PyPSA.to_datarecord(n))
+    return store.root(PyPSA.to_datarecord(n, store.workspace.con))
 
 
 def write_schema(schema: Schema, store: Store) -> None:

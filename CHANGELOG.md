@@ -27,6 +27,10 @@ All notable changes to datarecord are documented here. The format follows
   `ws.write(w, uri)` the flattened record, and `NewChild`, `Directory` and
   `commit` are gone. A tree write writes its revision file last, so a failed write leaves
   no revision and never widens the manifest.
+- `Tool.to_datarecord(model, con)` and `Tool.results(model, con)` take the
+  connection their frames are planned on, so `PyPSA.results(n, w.con)` sets
+  straight onto `w` rather than failing on a relation from DuckDB's default
+  connection; `on_connection` is gone.
 
 ### Added
 

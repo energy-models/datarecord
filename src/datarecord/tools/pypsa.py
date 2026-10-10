@@ -20,7 +20,7 @@ from __future__ import annotations
 import math
 import warnings
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from functools import cache, cached_property, reduce
 from typing import TYPE_CHECKING, Any
 
@@ -965,7 +965,7 @@ class PyPSATool(Tool):
         _broadcast_standard_types(n)
         return n
 
-    def results(self, model: pypsa.Network) -> Frames:
+    def results(self, model: pypsa.Network, con: DuckDBPyConnection) -> Frames:
         """A solved network's result attributes in the record's long form.
 
         Keyed by attribute, matching `outputs/<attr>.parquet`: every component
@@ -975,8 +975,9 @@ class PyPSATool(Tool):
         results comes from PyPSA's registry, so an upgrade that adds one is
         picked up.
 
-        Each frame is a lazy DuckDB relation over the network's containers,
-        melted wide->long by `UNPIVOT`, so nothing is computed until collected.
+        Each frame is a lazy DuckDB relation on `con` over the network's
+        containers, melted wide->long by `UNPIVOT`, so nothing is computed until
+        collected.
 
         Rows still at the attribute's default are dropped: a static output like
         `Bus.control` carries its default whether or not the network was solved,
@@ -993,7 +994,7 @@ class PyPSATool(Tool):
         # keys every registry result; a result absent on this network unions to
         # `None` and is dropped here rather than surfaced, since a reader takes
         # the default for it (the outputs default rule) - no key, no collect.
-        source = _NetworkSource(model)
+        source = _NetworkSource(model, con)
         names = source._output_names()
         columns = ["entity", *source._DIMS, "attribute", "breakpoint", "value"]
         frames = {
@@ -1004,13 +1005,16 @@ class PyPSATool(Tool):
         }
         return {attr: nw.from_native(rel).lazy() for attr, rel in frames.items()}
 
-    def to_datarecord(self, model: pypsa.Network) -> RecordLike:
+    def to_datarecord(
+        self, model: pypsa.Network, con: DuckDBPyConnection
+    ) -> RecordLike:
         """Present a `Network` as the `Record` `write_layer` persists.
 
         The inverse of `build`, and the only place PyPSA's shape is undone:
-        `c.static`/`c.dynamic` become long rows, and `bus0`/`bus1`/`efficiency2`
-        become connection rows carrying a `role`. Key sets are read off the
-        network, so listing unpivots nothing and a lookup only what is asked for.
+        `c.static`/`c.dynamic` become long rows on `con`, and
+        `bus0`/`bus1`/`efficiency2` become connection rows carrying a `role`.
+        Key sets are read off the network, so listing unpivots nothing and a
+        lookup only what is asked for.
 
         Raises
         ------
@@ -1028,7 +1032,7 @@ class PyPSATool(Tool):
         clashing = _colliding_names(model)
         if clashing:
             raise UnsupportedRecordError(self.name, Requirements(names=clashing))
-        return _NetworkSource(model)
+        return _NetworkSource(model, con)
 
 
 def _port_stems(c: pypsa.Components) -> dict[str, str]:
@@ -1222,35 +1226,12 @@ class _NetworkSource:
     """
 
     n: pypsa.Network
-    # The connection the wide->long melt runs on, so its relations pass through
-    # `write_layer`'s `as_relation` without a copy (same connection) and stay
-    # lazy. `None` off the write path - `to_datarecord(n)` stays con-free and
-    # backend-agnostic - where the module default connection answers instead.
-    con: DuckDBPyConnection | None = None
+    #: The connection the wide->long melt runs on.
+    con: DuckDBPyConnection
 
     # The dims a PyPSA network has axes for; `Coords` stays generic, this tool
     # decides these three are what a network is shaped by (https://energy-models.github.io/datarecord/design/tools/).
     _DIMS = (SNAPSHOT, PERIOD, SCENARIO)
-
-    def on_connection(self, con: DuckDBPyConnection) -> _NetworkSource:
-        """This source with its melt bound to `con`, for `write_layer`.
-
-        The write path calls this so a melted relation lands on the writer's own
-        connection and passes through `as_relation` without a copy.
-        """
-        return replace(self, con=con)
-
-    @property
-    def _melt_con(self) -> DuckDBPyConnection:
-        """The connection the wide->long melt runs on.
-
-        `write_layer`'s connection where it threaded one in, so a melted
-        relation passes through `as_relation` on the same connection without a
-        copy; the module default otherwise, off the write path.
-        """
-        import duckdb
-
-        return self.con if self.con is not None else duckdb.default_connection()
 
     @property
     def schema(self) -> RecordSchema:
@@ -1395,7 +1376,7 @@ class _NetworkSource:
         - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
-        con = self._melt_con
+        con = self.con
         varying = attr in c.dynamic or (
             attr in c.defaults.index and bool(c.defaults.at[attr, "varying"])
         )
@@ -1736,7 +1717,7 @@ class _NetworkSource:
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         """
-        con = self._melt_con
+        con = self.con
         static = c.static
         rels = []
         for port in c.ports:

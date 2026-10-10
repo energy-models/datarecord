@@ -556,7 +556,7 @@ def test_an_axis_carries_the_attributes_addressed_by_it_alone(store):
 
 def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
     """Key sets come off the network and its registry, so listing is cheap."""
-    source = PyPSA.to_datarecord(ac_dc)
+    source = PyPSA.to_datarecord(ac_dc, store.workspace.con)
 
     assert isinstance(source, RecordLike)
     assert "Generator" in source.entity_types

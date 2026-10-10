@@ -6,11 +6,15 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Proposal: a `Workspace` holds the connection, a `Store` holds a location
 
-Status: **Landing** — steps 1–3 of 4 landed ([landing](#landing)) · Drafted 2026-10-09
+Status: **Implemented** · Drafted 2026-10-09 · Implemented 2026-10-10
+
+Landed in four steps ([landing](#landing)) on [layers](../layers.md#the-store), [writing](../writing.md), [the working record](../working-record.md#edits), [the read path](../read-path.md#a-cursor-per-thread), [consuming a record](../tools.md) and [the module layout](../module-layout.md); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
+
+The departures are all in the remote `Files`. boto3 uses path-style addressing whenever `AWS_ENDPOINT_URL` is set, as DuckDB's secret does, since a self-hosted server has no bucket-subdomain DNS. A failure setting up `httpfs` raises rather than leaving a workspace that fails on its first remote read. A `403` on a read or an `exists` counts as a miss, since S3 answers one for an absent key the caller may not list, and a `409` counts as a refused write alongside `412`, since that is how a server reports a racing conditional write.
 
 One claim: **what a process now gets from `duck`'s module globals is two objects' state, not one.** A `Workspace` holds the DuckDB connection and the means to reach files, local or remote, which is all a standalone directory needs. A `Store` holds one store location — the directory with its manifest, its revision tree, its layers — and works through a workspace, which several stores share. Every `Revision`, `Record` and `WorkingRecord` reaches its connection and its paths through the object it came from, and a revision crosses a process boundary as its store's location.
 
-Changes [layered resolution](../layers.md), [writing a whole record](../writing.md), [the working record](../working-record.md#edits), [the read path](../read-path.md#owner-map), [consuming a record](../tools.md), [the module layout](../module-layout.md) and [what a data record is](../index.md#what-a-data-record-is), for the optional remote dependency; those pages are authoritative until this lands.
+Changes [layered resolution](../layers.md), [writing a whole record](../writing.md), [the working record](../working-record.md#edits), [the read path](../read-path.md#owner-map), [consuming a record](../tools.md), [the module layout](../module-layout.md) and [what a data record is](../index.md#what-a-data-record-is), for the optional remote dependency.
 
 ## What starts it
 

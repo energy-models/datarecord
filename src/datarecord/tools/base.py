@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from duckdb import DuckDBPyRelation
+from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -276,11 +276,17 @@ class Tool(Protocol):
         """The tool's model object, built from the resolved record."""
         ...
 
-    def to_datarecord(self, model: Any) -> RecordLike:
+    def to_datarecord(self, model: Any, con: DuckDBPyConnection) -> RecordLike:
         """`model` presented as a layer `write_layer` can persist.
 
         The inverse of `build`. Framework-specific: undoing a framework's own
         shape is exactly what a tool knows and the record layer does not.
+
+        Parameters
+        ----------
+        con
+            The connection the frames are planned on - in practice `ws.con` of
+            the workspace that will write them.
 
         Notes
         -----
@@ -288,7 +294,7 @@ class Tool(Protocol):
         """
         ...
 
-    def results(self, model: Any) -> Frames:
+    def results(self, model: Any, con: DuckDBPyConnection) -> Frames:
         """This model's result attributes in the record's long form.
 
         Keyed by attribute, each frame in the long schema - `name`, the dim
@@ -299,6 +305,12 @@ class Tool(Protocol):
         Narwhals frames, so the seam names no one dataframe library, and lazy so
         an implementation may fetch a result attribute on demand rather than
         materialising every one.
+
+        Parameters
+        ----------
+        con
+            The connection the frames are planned on - in practice the `con` of
+            the record they are `set` on.
 
         Notes
         -----

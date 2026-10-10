@@ -214,7 +214,7 @@ def test_verify_reports_a_snapshot_key(store, ac_dc):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    write_schema(PyPSA.to_datarecord(ac_dc).schema, store)
+    write_schema(PyPSA.to_datarecord(ac_dc, store.workspace.con).schema, store)
     revision = export_network(ac_dc, store)
     _with_schema(revision, partial={"scenario", "snapshot"})
 
@@ -296,7 +296,7 @@ def test_verify_accepts_a_scalar_attribute(single_revision):
     assert not PyPSA.verify(single_revision.record).unsupported_values
 
 
-def test_to_datarecord_rejects_a_cross_type_name_collision():
+def test_to_datarecord_rejects_a_cross_type_name_collision(workspace):
     """PyPSA scopes names per type; a record scopes them across every type.
 
     Reported rather than repaired: renaming to `Generator:north` would hand back
@@ -315,10 +315,10 @@ def test_to_datarecord_rejects_a_cross_type_name_collision():
     n.add("Generator", "north", bus="north")
 
     with pytest.raises(UnsupportedRecordError, match="more than one entity"):
-        PyPSA.to_datarecord(n)
+        PyPSA.to_datarecord(n, workspace.con)
 
 
-def test_to_datarecord_accepts_distinct_names():
+def test_to_datarecord_accepts_distinct_names(workspace):
     """The negative half: the same network with distinct names is buildable."""
     import pypsa
 
@@ -327,7 +327,7 @@ def test_to_datarecord_accepts_distinct_names():
     n.add("Generator", "north gen", bus="north")
 
     assert not _colliding_names(n)
-    assert PyPSA.to_datarecord(n) is not None
+    assert PyPSA.to_datarecord(n, workspace.con) is not None
 
 
 def test_a_stochastic_network_is_not_a_false_collision():
@@ -398,7 +398,7 @@ def test_results_extracts_long_form_outputs(single_revision):
     n = PyPSA.build(single_revision.record)
     n.optimize(solver_name="highs")
 
-    results = PyPSA.results(n)
+    results = PyPSA.results(n, single_revision.record.con)
     assert "p" in results
     assert "p_nom_opt" in results
 
@@ -436,7 +436,7 @@ def test_results_concatenate_every_type_under_one_attribute(single_revision):
     n = PyPSA.build(single_revision.record)
     n.optimize(solver_name="highs")
 
-    p = PyPSA.results(n)["p"].collect()
+    p = PyPSA.results(n, single_revision.record.con)["p"].collect()
     names = set(p["entity"].to_list())
     # `p` is a result of several types, so the concat is what is being tested;
     # keying by `(type, attribute)` would have split these into separate frames.
@@ -459,9 +459,29 @@ def test_results_skips_outputs_still_at_their_default(single_revision):
     - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
     """
     n = PyPSA.build(single_revision.record)
-    results = PyPSA.results(n)
+    results = PyPSA.results(n, single_revision.record.con)
     assert "p" not in results
     assert "p_nom_opt" not in results
+
+
+def test_results_set_on_the_working_record_they_were_planned_on(single_revision):
+    """Frames planned on `w.con` land as outputs with no cross-connection error.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    """
+    from datarecord.mutable import WorkingRecord
+
+    n = PyPSA.build(single_revision.record)
+    n.optimize(solver_name="highs")
+
+    w = WorkingRecord(single_revision.record)
+    w.set("p", PyPSA.results(n, w.con)["p"], kind="outputs")
+
+    p = w.outputs["p"].collect()
+    gens = list(n.c["Generator"].static.index)
+    assert len(p.filter(nw.col("entity").is_in(gens))) == len(n.snapshots) * len(gens)
 
 
 def _three_port_link():
@@ -475,7 +495,7 @@ def _three_port_link():
     return n
 
 
-def test_a_third_port_result_stays_an_output():
+def test_a_third_port_result_stays_an_output(workspace):
     """`p2` exists only on a network with a `bus2` Link, not in the bare registry.
 
     Notes
@@ -485,11 +505,12 @@ def test_a_third_port_result_stays_an_output():
     n = _three_port_link()
     n.c["Link"].dynamic["p2"] = pd.DataFrame({"split": [1.0, 2.0]}, index=n.snapshots)
 
-    assert "p2" in PyPSA.results(n), "a third port's flow is a result"
-    assert "p" not in PyPSA.to_datarecord(n).attributes, "p2 must not land in inputs"
+    assert "p2" in PyPSA.results(n, workspace.con), "a third port's flow is a result"
+    inputs = PyPSA.to_datarecord(n, workspace.con).attributes
+    assert "p" not in inputs, "p2 must not land in inputs"
 
 
-def test_a_nan_in_a_series_survives_the_melt():
+def test_a_nan_in_a_series_survives_the_melt(workspace):
     """`UNPIVOT` drops nulls unless told otherwise; a NaN cell is still a row."""
     import numpy as np
 
@@ -498,12 +519,12 @@ def test_a_nan_in_a_series_survives_the_melt():
         {"split": [1.0, np.nan]}, index=n.snapshots
     )
 
-    rows = PyPSA.to_datarecord(n).attributes["p_max_pu"].collect()
+    rows = PyPSA.to_datarecord(n, workspace.con).attributes["p_max_pu"].collect()
     split = rows.filter(nw.col("entity") == "split")
     assert len(split) == 2, "one row per snapshot, NaN included"
 
 
-def test_to_datarecord_rejects_names_differing_only_by_case():
+def test_to_datarecord_rejects_names_differing_only_by_case(workspace):
     """DuckDB identifiers ignore case, so the melt would merge `Gen` and `gen`."""
     import pypsa
 
@@ -513,7 +534,7 @@ def test_to_datarecord_rejects_names_differing_only_by_case():
 
     assert _colliding_names(n) == {"Gen", "gen"}
     with pytest.raises(UnsupportedRecordError, match="ignoring case"):
-        PyPSA.to_datarecord(n)
+        PyPSA.to_datarecord(n, workspace.con)
 
 
 def test_a_second_tool_needs_no_record_change(store, ac_dc):
@@ -542,10 +563,10 @@ def test_a_second_tool_needs_no_record_change(store, ac_dc):
         def build(self, record):
             return "fake-model"
 
-        def results(self, model):
+        def results(self, model, con):
             return {("Thing", "x"): model}
 
-        def to_datarecord(self, model):
+        def to_datarecord(self, model, con):
             return f"layer-of-{model}"
 
     fake = FakeTool()
@@ -556,8 +577,8 @@ def test_a_second_tool_needs_no_record_change(store, ac_dc):
     assert fake.requires(revision.record).dims == {"snapshot"}
     assert fake.verify(revision.record).entity_types == {"Nope"}
     assert fake.build(revision.record) == "fake-model"
-    assert fake.results("m") == {("Thing", "x"): "m"}
-    assert fake.to_datarecord("m") == "layer-of-m"
+    assert fake.results("m", store.workspace.con) == {("Thing", "x"): "m"}
+    assert fake.to_datarecord("m", store.workspace.con) == "layer-of-m"
     # The record itself knows nothing of either tool.
     assert not hasattr(revision, "to_model")
     assert not PyPSA.verify(revision.record)

@@ -178,7 +178,7 @@ record = WorkingRecord(record)
 record.set("p_max_pu", 0.8, entity=["wind1"])
 model = PyPSA.build(record)  # solve the edited record
 model.optimize()
-for attr, frame in PyPSA.results(model).items():
+for attr, frame in PyPSA.results(model, record.con).items():
     record.set(attr, frame, kind="outputs")
 rev.child(record.edits)  # one layer, inputs and results together
 ```

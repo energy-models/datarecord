@@ -80,9 +80,9 @@ def test_every_construction_satisfies_the_protocol(both):
         assert isinstance(record, RecordLike)
 
 
-def test_a_network_source_is_a_record(ac_dc):
+def test_a_network_source_is_a_record(store, ac_dc):
     """`to_datarecord` returns one too, which is what puts read and write on one seam."""
-    assert isinstance(PyPSA.to_datarecord(ac_dc), RecordLike)
+    assert isinstance(PyPSA.to_datarecord(ac_dc, store.workspace.con), RecordLike)
 
 
 def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
@@ -551,8 +551,7 @@ def test_write_record_omits_outputs_for_an_unsolved_source(store, ac_dc):
     """
     from datarecord.duck import try_read_parquet
 
-    network = PyPSA.to_datarecord(ac_dc)
-    solved = network.on_connection(store.workspace.con)  # type: ignore[attr-defined]  # the PyPSA source, not the protocol
+    solved = PyPSA.to_datarecord(ac_dc, store.workspace.con)
 
     class Unsolved:
         """The same record, with no results: `outputs` answers empty."""

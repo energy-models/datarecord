@@ -46,12 +46,6 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     -----
     - [LayerData](https://energy-models.github.io/datarecord/design/record/#layerdata)
     """
-    # A source may build its frames on a connection - a tool that melts wide
-    # data to long does, so its relations land on `con` and pass through
-    # `as_relation` without a copy. It opts in by `on_connection`; core names no
-    # tool, so this is structural, not an isinstance on one.
-    if not isinstance(source, LayerData) and hasattr(source, "on_connection"):
-        source = source.on_connection(con)
     if isinstance(source, LayerData):
         return source
     return _RecordLikeAsLayerData(source, con)
