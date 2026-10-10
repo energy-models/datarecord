@@ -8,12 +8,14 @@ Skipped unless `DATARECORD_TEST_S3_ENDPOINT` names an S3 endpoint honouring
 conditional writes atomically - SeaweedFS 4.18 or later, which Manta deploys.
 A mock would pass exactly the tests the headers exist for. To run them::
 
-    docker run --rm -p 8333:8333 chrislusf/seaweedfs:4.18 server -s3
+    docker run --rm -p 8333:8333 -e AWS_ACCESS_KEY_ID=datarecord \
+        -e AWS_SECRET_ACCESS_KEY=datarecord chrislusf/seaweedfs:4.18 server -s3
     DATARECORD_TEST_S3_ENDPOINT=http://localhost:8333 pixi run pytest tests/test_remote.py
 
 Each test creates its own bucket. The credentials are `AWS_ACCESS_KEY_ID` and
-`AWS_SECRET_ACCESS_KEY` where set, and a placeholder SeaweedFS without an
-identity configuration accepts otherwise.
+`AWS_SECRET_ACCESS_KEY` where set, and `datarecord` otherwise, which the server
+above is started with: SeaweedFS 4.18 refuses an unknown key. `AWS_PROFILE`
+must be unset, or botocore reads that profile instead.
 
 Notes
 -----
@@ -80,7 +82,7 @@ def test_a_standalone_directory_writes_and_reads_its_manifest(workspace, bucket)
         record = elsewhere.at(out)
         assert record.schema == _SCHEMA
         rows = record.attributes["p_nom"].collect().to_native()
-        assert list(rows["value"]) == [1.0]
+        assert rows["value"].to_pylist() == [1.0]
     finally:
         elsewhere.close()
 
