@@ -49,6 +49,10 @@ All notable changes to datarecord are documented here. The format follows
   sign, and likewise `q`. `Bus.p` and `Bus.q`, the sum of those rows at a
   bus, are no longer written, and `Link.p`/`Process.p` are `p_internal`. A
   three-port Link's `p2` is now a declared result.
+- The PyPSA tool stores a Process's `rate0`, `rate1`, `rate2`, ... as one
+  input `rate` over the `connection` group, like `efficiency`, and `build`
+  puts each row back in its port's column, static or per snapshot. `rate`
+  declares no default, its ports defaulting to `-1` and `1`.
 
 ### Added
 

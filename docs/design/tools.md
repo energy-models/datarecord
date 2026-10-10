@@ -57,6 +57,8 @@ Reported rather than repaired: renaming to `Generator:north` would hand back a n
 PyPSA is itself moving to record-wide unique names, so this is a constraint that resolves rather than one to design around.
 It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by [`order_key`](read-path.md#owner-map), and where a curve is either translated or reported unbuildable.
 A per-connection input follows its connection's position: `efficiency` on a Link's `bus2` connection is PyPSA's `efficiency2`, static or per snapshot.
+A Process's `rate0`, `rate1`, `rate2`, … are likewise the one input `rate`, numbered from `0` because PyPSA registers `rate0` where it leaves port `1`'s `efficiency` unsuffixed.
+Its ports default differently, `-1` at the input end and `1` at the others, so `rate` declares no default and a port with no row keeps PyPSA's own.
 
 The tool's own `Schema` reconciles vocabularies: per entity type, which record attribute a tool's attribute is renamed from, or which several it is computed from.
 Since [the schema](schema.md) makes a record's attribute names _declared_ rather than conventional, this maps one declared vocabulary to another.

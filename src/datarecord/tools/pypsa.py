@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from collections.abc import Container, Sequence
+from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache, cached_property
 from typing import TYPE_CHECKING, Any
@@ -671,7 +671,7 @@ _ROLES = (_INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT)
 # Attribute stems that exist once per port, inputs and results alike. A record
 # stores each as one bus-keyed attribute (https://energy-models.github.io/datarecord/design/record/#connections), so these are the names
 # whose port suffix is undone on write.
-_PORT_STEMS = ("bus", "efficiency", "p", "q")
+_PORT_STEMS = ("bus", "efficiency", "rate", "p", "q")
 
 
 def _port_role(port: str) -> str:
@@ -693,7 +693,7 @@ def _port_role(port: str) -> str:
 def _port_attribute(stem: str, port: str, registered: Container[str]) -> str:
     """PyPSA's name for `stem` at `port`: `bus0`, `p1`, `efficiency`, `efficiency2`, ...
 
-    A stem PyPSA registers at port `0` (`bus0`, `p0`, `q0`) is suffixed from
+    A stem PyPSA registers at port `0` (`bus0`, `p0`, `q0`, `rate0`) is suffixed from
     `0`; one it does not (`efficiency`) leaves port `1` unsuffixed and is
     suffixed from `2`. A one-port type's port `""` is the bare stem. That quirk
     is why a record keys connections by bus instead.
@@ -1144,6 +1144,35 @@ def _attribute_spec(row: pd.Series, *, per_port: bool) -> AttributeSpec:
     )
 
 
+def _port_spec(
+    defaults: pd.DataFrame, stem: str, per_port: Mapping[str, str]
+) -> AttributeSpec:
+    """A per-port stem's spec, from its first port's row.
+
+    The stem's port rows agree but for the default: a Process's `rate0` is
+    `-1` and `rate1` `1`, the input and output ends. One stem-wide default
+    would misstate a port, so where they differ none is declared, and `build`
+    leaves an uncovered port to PyPSA's own.
+
+    Parameters
+    ----------
+    defaults
+        The type's `c.defaults`.
+    per_port
+        Per-port attribute name -> its stem, as `_port_stems` returns it.
+
+    Notes
+    -----
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
+    columns = [name for name, of in per_port.items() if of == stem]
+    spec = _attribute_spec(defaults.loc[columns[0]], per_port=True)
+    if len({_default(defaults.at[name, "default"]) for name in columns}) > 1:
+        return spec.model_copy(update={"default": None})
+    return spec
+
+
 @cache
 def _registry_schema() -> RecordSchema:
     """The record schema PyPSA's whole component registry declares.
@@ -1206,8 +1235,8 @@ def _registry_schema() -> RecordSchema:
         c = n.components[ctype]
         defaults = c.defaults
         # Per-port columns collapse to their stem, which a record keys by bus
-        # rather than by position (https://energy-models.github.io/datarecord/design/record/#connections); `efficiency2` and `efficiency`
-        # agree on every declaration, so either row answers.
+        # rather than by position (https://energy-models.github.io/datarecord/design/record/#connections); a stem's port rows
+        # agree on every declaration but the default (`_port_spec`).
         per_port = _port_stems(c)
         is_output = _output_attributes(c)
         carried: set[str] = set()
@@ -1228,7 +1257,10 @@ def _registry_schema() -> RecordSchema:
             # schema error rather than a silent per-type divergence the storage
             # could not have honoured.
             attributes.setdefault(
-                stem, _attribute_spec(defaults.loc[attr], per_port=attr in per_port)
+                stem,
+                _port_spec(defaults, stem, per_port)
+                if attr in per_port
+                else _attribute_spec(defaults.loc[attr], per_port=False),
             )
         if carried:
             carries[c.name] = frozenset(carried)

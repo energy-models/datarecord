@@ -684,6 +684,76 @@ def test_a_stochastic_third_port_efficiency_survives_a_round_trip(store):
     }, "each scenario's port values land in their own columns"
 
 
+def _three_port_process():
+    import pypsa
+
+    n = pypsa.Network()
+    n.set_snapshots(pd.date_range("2020-01-01", periods=2, freq="h"))
+    for bus in ("a", "b", "c"):
+        n.add("Bus", bus)
+    n.add("Process", "dri", bus0="a", bus1="b", bus2="c")
+    return n
+
+
+def test_process_rate_is_one_attribute_on_its_connections(workspace):
+    """`rate0`, `rate1`, `rate2` are one `rate`, a row per connection with its bus.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
+    n = _three_port_process()
+    n.c["Process"].static.loc["dri", ["rate0", "rate1", "rate2"]] = [-2.0, 1.5, 0.3]
+
+    inputs = PyPSA.to_datarecord(n, workspace.con).attributes
+    assert not {"rate0", "rate1", "rate2"} & set(inputs), "no positional names"
+    rate = inputs["rate"].collect().to_pandas()
+    assert rate.set_index("bus")["value"].to_dict() == {"a": -2.0, "b": 1.5, "c": 0.3}
+    spec = _registry_schema().attributes["rate"]
+    assert "connection" in spec.dims
+    assert spec.default is None, "rate0 and rate1 default differently"
+
+
+def test_process_rates_survive_a_round_trip(store):
+    """Each port's `rate` comes back in its own column, not as PyPSA's default.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
+    n = _three_port_process()
+    n.c["Process"].static.loc["dri", ["rate0", "rate1", "rate2"]] = [-2.0, 1.5, 0.3]
+
+    built = PyPSA.build(export_network(n, store).record)
+
+    process = built.c["Process"].static.loc["dri"]
+    assert (process["rate0"], process["rate1"], process["rate2"]) == (-2.0, 1.5, 0.3), (
+        "each port's rate lands in its own column"
+    )
+    assert_networks_equal(built, n)
+
+
+def test_a_time_varying_process_rate_survives_a_round_trip(store):
+    """A series on bus1 is `rate1`'s series, beside a static `rate0`.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
+    n = _three_port_process()
+    n.c["Process"].static.loc["dri", "rate0"] = -2.0
+    n.c["Process"].dynamic["rate1"] = pd.DataFrame(
+        {"dri": [0.8, 1.2]}, index=n.snapshots
+    ).rename_axis(columns="name")
+
+    built = PyPSA.build(export_network(n, store).record)
+
+    assert built.c["Process"].dynamic["rate0"].empty, "port 0 stays static"
+    assert built.c["Process"].static.at["dri", "rate0"] == -2.0
+    assert built.c["Process"].dynamic["rate1"]["dri"].to_list() == [0.8, 1.2]
+    assert_networks_equal(built, n)
+
+
 def test_a_nan_in_a_series_survives_the_melt(workspace):
     """`UNPIVOT` drops nulls unless told otherwise; a NaN cell is still a row."""
     import numpy as np
