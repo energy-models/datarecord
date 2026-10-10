@@ -40,6 +40,8 @@ A framework holds its results per entity type, so reaching this shape means conc
 That is free: the frames are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller collects.
 The concatenation needs no `entity_type` column to distinguish the arms, since [`entity` is unique across them](format.md#entity-is-unique-across-types) — which is what makes the union a plain one rather than a tagged one.
 
+A framework's per-port results are [stored on connections](#results-on-connections), like its per-port inputs.
+
 Lazy is what the protocol asks for rather than what any implementation must do.
 A tool reshaping a solved model's in-memory containers has nothing to defer and wraps its eager frames with `.lazy()`; one that could fetch a result attribute from a solver on demand is free to, and a caller wanting three of forty then pays for three.
 That is [the `Frames` argument](record.md#frames), on the write side.
@@ -59,3 +61,17 @@ The tool's own `Schema` reconciles vocabularies: per entity type, which record a
 Since [the schema](schema.md) makes a record's attribute names _declared_ rather than conventional, this maps one declared vocabulary to another.
 
 Frames are built and handed over one entity type at a time, so peak memory is one type's frames rather than the whole model.
+
+## Results on connections
+
+A per-port result is stored exactly like a per-port input: one attribute over the [`connection` group](record.md#connections), one row per `(entity, bus)`.
+PyPSA's `p0`, `p1`, `p2`, … on a Line, Transformer, Link or Process and the one-port `p` on a Generator, Load, Store, StorageUnit or ShuntImpedance are all the result `p`, each row on the connection its port attaches to and keeping PyPSA's sign for that port; `q0`, `q1` and the one-port `q` are `q`.
+So a third port needs no declaration of its own: a Link's `p2` is `p` on its `bus2` connection, which the schema built from the bare registry already declares.
+
+Two results do not follow that rule, and the tool names both rather than inferring them:
+
+- **`Bus.p` and `Bus.q` are not written.** Each is the signed sum of the connection `p`/`q` at that bus, so it is derivable, and as an entity-level `p` it would collide with the connection-level one.
+- **`Link.p` and `Process.p` are `p_internal`.** PyPSA's "internal power" is at no bus, so it is an entity-level result, renamed because one name holds one spec record-wide.
+
+The schema's `results` and the frames `results` returns are read off one rule, so every frame is set with `kind="outputs"` under a name the schema declares.
+`build` reads only inputs, so no result is turned back into PyPSA's per-port columns.

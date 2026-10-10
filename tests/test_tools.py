@@ -12,14 +12,21 @@ Notes
 from pathlib import Path
 
 import narwhals as nw
+import numpy as np
 import pandas as pd
 import pytest
 
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
-from datarecord.tools.pypsa import ENTITY_TYPE, PyPSA, _colliding_names
+from datarecord.tools.pypsa import (
+    ENTITY_TYPE,
+    PyPSA,
+    _colliding_names,
+    _registry_schema,
+)
 from tests.fixtures import (
     export_network,
+    outputs,
     relation,
     schema,
     write_entity_type,
@@ -484,36 +491,135 @@ def test_results_set_on_the_working_record_they_were_planned_on(single_revision)
     for attr, frame in results.items():
         w.set(attr, frame, kind="outputs")
 
-    assert {"p0", "p1"} <= set(results), "a two-port flow keeps PyPSA's port names"
+    assert not {"p0", "p1"} & set(results), "port flows land in `p`, not per port"
     p = w.outputs["p"].collect()
     gens = list(n.c["Generator"].static.index)
     assert len(p.filter(nw.col("entity").is_in(gens))) == len(n.snapshots) * len(gens)
+    assert "bus" in p.columns, "a staged `p` keeps the bus of its connection"
+
+
+def test_a_solved_p_is_one_row_per_connection(single_revision):
+    """`p` holds a row per `(entity, bus)` per snapshot, each port's own sign.
+
+    Notes
+    -----
+    - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
+    """
+    n = PyPSA.build(single_revision.record)
+    n.optimize(solver_name="highs")
+
+    p = PyPSA.results(n, single_revision.record.con)["p"].collect(backend="pandas")
+    p = p.to_native()
+    connections = (
+        single_revision.record.groups["connection"]
+        .collect(backend="pandas")
+        .to_native()
+    )
+    assert "bus" in p.columns
+    per_connection = p.groupby(["entity", "bus"]).size()
+    assert set(per_connection.index) == set(
+        zip(connections["entity"], connections["bus"])
+    ), "every connection carries `p`, and nothing else does"
+    assert (per_connection == len(n.snapshots)).all(), "one row per snapshot"
+
+    lines = n.c["Line"]
+    line = lines.static.index[0]
+    for port in ("0", "1"):
+        bus = lines.static.at[line, f"bus{port}"]
+        rows = p[(p["entity"] == line) & (p["bus"] == bus)].set_index("snapshot")
+        expected = lines.dynamic[f"p{port}"][line]
+        assert np.allclose(rows["value"].reindex(expected.index), expected), (
+            f"`p{port}` lands on the line's bus{port} connection"
+        )
+
+
+def test_bus_power_is_not_a_result(single_revision):
+    """`Bus.p`/`q` sum the connections at a bus, so neither is written.
+
+    Notes
+    -----
+    - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
+    """
+    n = PyPSA.build(single_revision.record)
+    n.optimize(solver_name="highs")
+
+    p = PyPSA.results(n, single_revision.record.con)["p"].collect()
+    buses = list(n.c["Bus"].static.index)
+    assert p.filter(nw.col("entity").is_in(buses)).is_empty()
+    assert not n.c["Bus"].dynamic["p"].empty, "PyPSA did compute a `Bus.p`"
+
+
+def test_link_internal_power_is_p_internal(single_revision):
+    """`Link.p` is power at no bus: an entity-level `p_internal`, no `bus`.
+
+    Notes
+    -----
+    - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
+    """
+    n = PyPSA.build(single_revision.record)
+    n.optimize(solver_name="highs")
+
+    results = PyPSA.results(n, single_revision.record.con)
+    internal = results["p_internal"].collect()
+    links = list(n.c["Link"].static.index)
+    assert "bus" not in internal.columns
+    assert set(internal["entity"].to_list()) == set(links)
+    assert len(internal) == len(n.snapshots) * len(links)
+    assert "p_internal" in _registry_schema().results
 
 
 def _three_port_link():
     import pypsa
 
     n = pypsa.Network()
-    n.set_snapshots(range(2))
+    n.set_snapshots(pd.date_range("2020-01-01", periods=2, freq="h"))
     for bus in ("a", "b", "c"):
         n.add("Bus", bus)
     n.add("Link", "split", bus0="a", bus1="b", bus2="c")
     return n
 
 
-def test_a_third_port_result_stays_an_output(workspace):
-    """`p2` exists only on a network with a `bus2` Link, not in the bare registry.
+def test_a_third_port_result_lands_on_its_connection(workspace):
+    """`p2` is `p` on the bus2 connection, declared though the bare registry has no `p2`.
 
     Notes
     -----
     - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+    - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
     """
     n = _three_port_link()
     n.c["Link"].dynamic["p2"] = pd.DataFrame({"split": [1.0, 2.0]}, index=n.snapshots)
 
-    assert "p2" in PyPSA.results(n, workspace.con), "a third port's flow is a result"
+    results = PyPSA.results(n, workspace.con)
+    assert "p2" not in results
+    assert "p" in _registry_schema().results, "the bare registry declares `p`"
+    p = results["p"].collect()
+    assert p["bus"].to_list() == ["c", "c"], "a third port's flow is on bus2"
+    assert p["value"].to_list() == [1.0, 2.0]
     inputs = PyPSA.to_datarecord(n, workspace.con).attributes
     assert "p" not in inputs, "p2 must not land in inputs"
+
+
+def test_a_three_port_record_writes_p_on_each_connection(store):
+    """Writing a three-port network puts every port's flow on its connection.
+
+    Notes
+    -----
+    - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
+    """
+    n = _three_port_link()
+    flows = {"p0": [3.0, 4.0], "p1": [-1.0, -2.0], "p2": [-1.5, -1.5]}
+    for attr, values in flows.items():
+        n.c["Link"].dynamic[attr] = pd.DataFrame({"split": values}, index=n.snapshots)
+
+    revision = export_network(n, store)
+
+    p = outputs(revision, "p").df().sort_values(["bus", "snapshot"])
+    assert p.groupby("bus")["value"].apply(list).to_dict() == {
+        "a": flows["p0"],
+        "b": flows["p1"],
+        "c": flows["p2"],
+    }
 
 
 def test_a_nan_in_a_series_survives_the_melt(workspace):

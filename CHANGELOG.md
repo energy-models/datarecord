@@ -43,6 +43,12 @@ All notable changes to datarecord are documented here. The format follows
   Such a name used to collide silently: a dim named `deleted` read every
   label as a tombstone. A manifest declaring one no longer loads; rename it.
   Based on #26 by @FBumann.
+- The PyPSA tool stores per-port results on connections, like per-port
+  inputs: `p0`, `p1`, `p2`, ... and a one-port type's `p` are one result `p`
+  over the `connection` group, a row per `(entity, bus)` keeping each port's
+  sign, and likewise `q`. `Bus.p` and `Bus.q`, the sum of those rows at a
+  bus, are no longer written, and `Link.p`/`Process.p` are `p_internal`. A
+  three-port Link's `p2` is now a declared result.
 
 ### Added
 
@@ -93,6 +99,5 @@ All notable changes to datarecord are documented here. The format follows
   the melt nor the pivot folds case any more.
 - `PyPSA.results` and a network's `outputs` key exactly the results the
   PyPSA schema declares, so setting each one with `kind="outputs"` no longer
-  raises `KeyError`: `p0` is now declared under its own name, like `p1`, and
-  `Bus.control` and `SubNetwork.carrier`, which PyPSA also registers as
-  inputs, are no longer emitted as results.
+  raises `KeyError`: `Bus.control` and `SubNetwork.carrier`, which PyPSA
+  also registers as inputs, are no longer emitted as results.
