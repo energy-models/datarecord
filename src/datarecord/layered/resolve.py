@@ -44,6 +44,7 @@ from datarecord.duck import (
     fn,
     fold_axis,
     null_safe,
+    struct_field,
     struct_of,
     try_read_parquet,
     union_all_by_name,
@@ -466,7 +467,8 @@ def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
     A raw row then finds its owned keys by NULL-safe equality, which hashes where
     `raw IS NULL OR raw IS NOT DISTINCT FROM owned` does not. A key its layer
     wrote both ways appears once per way. A flag field NULL from
-    `UNION ALL BY NAME` is a dim no row set: `varies` false, `broadcast` true.
+    `UNION ALL BY NAME`, or missing from a map folded before the dim was
+    declared, is a dim no row set: `varies` false, `broadcast` true.
 
     Notes
     -----
@@ -476,11 +478,11 @@ def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
     for d in dims:
         stored = fn.list_concat(
             duckdb.CaseExpression(
-                coalesce(fn.struct_extract(col("varies"), lit(d)), lit(False)),
+                struct_field(om, "varies", d, lit(False)),
                 fn.list_value(col(d)),
             ),
             duckdb.CaseExpression(
-                coalesce(fn.struct_extract(col("broadcast"), lit(d)), lit(True)),
+                struct_field(om, "broadcast", d, lit(True)),
                 fn.list_value(lit(None).cast(types[d])),
             ),
         )
@@ -709,11 +711,15 @@ def _frozen_table(
     Keyed by `revision_id` rather than by the prefix: the prefix *is* what that
     node resolves from, a staged source only ever being appended after it. The
     table is shared by every cursor on the workspace and carries no schema in
-    its name, so it is read through `cast_declared` like a materialised map.
+    its name, so a schema widened since the fold reads it as it is: a widening
+    only adds, and the one thing it adds here - a flag field for a new dim -
+    reads as unset where it is missing. A persisted map is cast, parquet not
+    carrying the declared types.
 
     Notes
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     last = sources[-1] if sources else None
     if isinstance(last, ParquetLayer) and last.revision_id == revision_id:
@@ -728,12 +734,11 @@ def _frozen_table(
         columns, _ = map_kinds(schema)[kind]
         return _empty_relation(schema, con, *columns(Coords(schema=schema, axes={})))
 
-    table = _shared(
+    return _shared(
         con,
         _table_name(revision_id, kind),
         lambda: _fold_kind(kind, sources, con, schema),
     )
-    return cast_declared(schema, table)
 
 
 def _frozen_coords(
@@ -1079,21 +1084,21 @@ class Resolver:
         Where every source is frozen the fold cannot go stale, so each axis and
         group is a shared table (`_frozen_coords`), the same rule `_map`
         applies; a relation over one is built per call on the calling thread's
-        cursor, read through `cast_declared` as the schema may have widened
-        since. Past a staging area the whole fold is redone per call.
+        cursor. A schema widened since the fold reads it as it is, a compatible
+        widening changing no column an axis or group already has. Past a
+        staging area the whole fold is redone per call.
 
         Notes
         -----
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+        - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
         """
         con = self.con
         if not self.frozen:
             return resolve_coords(self.schema, self.sources, con)
         tables = {
-            (kind, name): cast_declared(
-                self.schema, con.table(_coord_table(kind, name, self.revision_id))
-            )
+            (kind, name): con.table(_coord_table(kind, name, self.revision_id))
             for kind, name in self._coord_names
         }
         return Coords(

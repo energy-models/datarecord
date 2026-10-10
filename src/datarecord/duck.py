@@ -249,6 +249,21 @@ def struct_of(fields: Mapping[str, Expression]) -> Expression:
     return sql(f"struct_pack({packed})")
 
 
+def struct_field(
+    rel: DuckDBPyRelation, column: str, name: str, default: Expression
+) -> Expression:
+    """Struct `column`'s field `name` in `rel`, `default` where NULL or absent.
+
+    Whether the field exists is read off `rel`'s type as the plan is built, so
+    a struct lacking it costs nothing per row - where `struct_extract` would
+    fail to bind.
+    """
+    fields = dict(rel.types[rel.columns.index(column)].children)
+    if name not in fields:
+        return default
+    return coalesce(fn.struct_extract(col(column), lit(name)), default)
+
+
 class DuckTypes:
     """Builds DuckDB types and typed shapes from narwhals dtypes, just in time.
 

@@ -36,6 +36,7 @@ from datarecord.duck import (
     distinct_values,
     fn,
     parquet_names,
+    struct_field,
     struct_of,
     try_read_parquet,
 )
@@ -198,15 +199,17 @@ class Fold:
             rel = rel.join(
                 of_type.distinct().set_alias("e"), "i.entity = e.entity", how="semi"
             )
+        flag = {
+            c: struct_of(
+                {d: fn.bool_or(struct_field(rel, c, d, lit(False))) for d in dims}
+            ).alias(c)
+            for c in ("varies", "broadcast")
+        }
         return rel.aggregate(
             [
                 col("attribute"),
-                struct_of({d: fn.bool_or(col("varies", d)) for d in dims}).alias(
-                    "varies"
-                ),
-                struct_of({d: fn.bool_or(col("broadcast", d)) for d in dims}).alias(
-                    "broadcast"
-                ),
+                flag["varies"],
+                flag["broadcast"],
                 fn.bool_or(col("breakpoints")).alias("breakpoints"),
             ]
         ).fetchall()

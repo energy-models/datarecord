@@ -32,6 +32,7 @@ from tests.fixtures import (
     widened,
     write_entity_type,
     write_input,
+    write_scenarios,
     write_schema,
 )
 from tests.test_write import _SCHEMA, _long, _Source
@@ -232,15 +233,12 @@ def test_a_record_built_in_one_thread_reads_in_another(tree):
     assert names == list(record.attributes)
 
 
-def test_a_fold_table_reads_under_a_widened_schema(store):
-    """The table carries no schema in its name, so it is cast on the way out.
+_NARROW = {"snapshot": nw.Datetime(), "period": nw.Int64()}
 
-    Notes
-    -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    """
-    narrow = {"snapshot": nw.Datetime(), "period": nw.Int64()}
-    write_schema(schema(dims=narrow, partial=set()), store)
+
+def _folded_then_widened(store, partial=frozenset()):
+    """A root whose shared fold predates `scenario`, read under a schema declaring it."""
+    write_schema(schema(dims=_NARROW, partial=set(partial)), store)
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_entity_type(layer, "Generator", [{"entity": "wind"}])
@@ -248,13 +246,121 @@ def test_a_fold_table_reads_under_a_widened_schema(store):
     before = revision.resolver.inputs
     assert "scenario" not in str(before.types[before.columns.index("varies")])
 
-    write_schema(schema(dims={**narrow, "scenario": nw.String()}, partial=set()), store)
+    wide = {**_NARROW, "scenario": nw.String()}
+    write_schema(schema(dims=wide, partial=set(partial)), store)
     after = store.revision(revision.id)
     assert after.resolver is not revision.resolver
     inputs = after.resolver.inputs
-    assert "scenario" in str(inputs.types[inputs.columns.index("varies")]), (
+    assert "scenario" not in str(inputs.types[inputs.columns.index("varies")]), (
+        "the fold table is read as it was folded, not re-folded or cast"
+    )
+    return after
+
+
+def test_a_fold_table_reads_under_a_widened_schema(store):
+    """The table carries no schema in its name, so it is read as it was folded.
+
+    A compatible widening only adds; the dim it adds has no field in the flag
+    structs, which reads as unset.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    """
+    after = _folded_then_widened(store)
+    rows = after.record.attributes["p_max_pu"].collect()
+    assert rows["value"].to_list() == [0.4], (
         "a fold made under the narrower schema reads under the wider one"
     )
+
+
+def test_a_dim_declared_after_the_fold_table_is_in_neither_flag_set(store):
+    """No row mentions `scenario`, so it is unset - as for a materialised map.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    """
+    flags = _folded_then_widened(store).record.flags("Generator")["p_max_pu"]
+    assert "scenario" not in flags.varies
+    assert "scenario" not in flags.broadcast, "a missing flag field reads as unset"
+    assert "snapshot" in flags.broadcast, "a field the fold had still reads"
+
+
+def test_a_staged_tail_folds_onto_a_fold_table_from_before_a_widening(store):
+    """The tail's flag structs carry `scenario`, the frozen table's do not.
+
+    The two shapes meet in one map, unioned by name; the resolved read and the
+    flags both go through it.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
+    """
+    after = _folded_then_widened(store, partial={"period"})
+    w = WorkingRecord(after.record)
+    w.set("p_max_pu", 0.7, entity=["wind"], period=2030, scenario="high")
+
+    inputs = w.resolver.inputs
+    assert "scenario" in str(inputs.types[inputs.columns.index("varies")])
+    rows = (
+        w.attributes["p_max_pu"]
+        .collect()
+        .select("period", "scenario", "value")
+        .sort("period", nulls_last=True)
+        .rows()
+    )
+    assert rows == [(2030, "high", 0.7), (None, None, 0.4)], (
+        "the staged row and the frozen one both resolve"
+    )
+    flags = w.flags("Generator")["p_max_pu"]
+    assert "scenario" in flags.varies, "the staged row sets it"
+    assert "scenario" not in flags.broadcast, "the frozen row's missing field is unset"
+
+
+def test_an_enum_dim_resolves_from_fold_tables_after_a_widening(store):
+    """The axis table holds `scenario` as its file did, a layer row as declared.
+
+    A broadcast row expands against the axis, so the two types meet in one
+    key, and neither fold table is cast on the way out.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    dims = {**_NARROW, "scenario": nw.Enum(["low", "high"])}
+    write_schema(schema(dims=dims), store)
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_entity_type(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
+    write_scenarios(
+        layer,
+        [{"scenario": "low", "weight": 0.5}, {"scenario": "high", "weight": 0.5}],
+    )
+    write_input(
+        layer,
+        "p_max_pu",
+        [
+            {"entity": "wind", "value": 0.4},
+            {"entity": "gas", "scenario": "high", "value": 0.9},
+        ],
+    )
+    expected = [("gas", "high", 0.9), ("wind", "high", 0.4), ("wind", "low", 0.4)]
+
+    def resolved(revision):
+        frame = revision.record.attributes["p_max_pu"].collect()
+        return sorted(frame.select("entity", "scenario", "value").rows())
+
+    assert resolved(revision) == expected
+    write_schema(schema(dims={**dims, "region": nw.String()}), store)
+    after = store.revision(revision.id)
+    assert resolved(after) == expected, "the cached fold reads under the wider schema"
+    labels = after.record.dims["scenario"].collect()["scenario"].to_list()
+    assert sorted(labels) == ["high", "low"]
 
 
 def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkeypatch):
