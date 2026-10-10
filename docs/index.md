@@ -20,10 +20,10 @@ pip install datarecord[pypsa]    # with the PyPSA tool
 ```
 
 ```python
-from datarecord import Record, connect
+from datarecord import Workspace
 
-con = connect()
-record = Record.at("s3://bucket/my-record/", con)
+ws = Workspace()
+record = ws.at("s3://bucket/my-record/")
 
 record.entity_types["Generator"].collect()  # wide member rows
 record.attributes["p_max_pu"].collect()  # long value rows

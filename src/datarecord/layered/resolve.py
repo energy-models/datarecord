@@ -19,9 +19,12 @@ Notes
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
+from hashlib import sha256
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import duckdb
@@ -35,15 +38,11 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import (
     DuckTypes,
-    base_uri_of,
     distinct_values,
     ensure_local_dir,
     fn,
     fold_axis,
     null_safe,
-    read_json,
-    resolved_dir,
-    schema_uri,
     struct_of,
     try_read_parquet,
     union_all_by_name,
@@ -52,6 +51,9 @@ from datarecord.layered.fold import Fold
 from datarecord.layered.sources import LayerSource, ParquetLayer
 from datarecord.record import Flags
 from datarecord.schema import Schema
+
+if TYPE_CHECKING:
+    from datarecord.store import Store, Workspace
 
 # The owner map's `layer_uuid` column type - a layering mechanism, not
 # something a schema declares.
@@ -245,17 +247,7 @@ class Coords:
 # -- paths and probes -------------------------------------------------------
 
 
-def _map_uri(revision_id: UUID, kind: str) -> str:
-    """Where a record's `kind` owner map is materialised, under `resolved/`.
-
-    Notes
-    -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    """
-    return resolved_dir(revision_id) + f"owner_map/{kind}.parquet"
-
-
-def materialised(revision_id: UUID, con: DuckDBPyConnection) -> bool:
+def materialised(revision_id: UUID, store: Store) -> bool:
     """Whether `revision_id`'s node caches are materialised.
 
     A node's caches are written together (`materialise`), so one map answers
@@ -272,11 +264,12 @@ def materialised(revision_id: UUID, con: DuckDBPyConnection) -> bool:
     """
     # `inputs` answers for the rest: the maps are written together, and it is
     # the one kind every schema has, whatever groups it declares.
-    return try_read_parquet(_map_uri(revision_id, "inputs"), con) is not None
+    uri = store.owner_map_uri(revision_id, "inputs")
+    return try_read_parquet(uri, store.workspace.con) is not None
 
 
 def sources_to_read(
-    ancestry: list[UUID], con: DuckDBPyConnection, schema: Schema
+    ancestry: list[UUID], store: Store, schema: Schema
 ) -> list[LayerSource]:
     """`ancestry` as the sources to fold, truncated at the deepest materialised node.
 
@@ -294,7 +287,8 @@ def sources_to_read(
     ----------
     ancestry
         Root-first, ending in the node being resolved (`records.ancestry`).
-    con : DuckDBPyConnection
+    store
+        Where the layers are.
     schema
         The record's one manifest, carried by every source so `write_record`
         can read it off the layer it is handed.
@@ -309,13 +303,57 @@ def sources_to_read(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     for depth in range(len(ancestry) - 2, -1, -1):
-        if materialised(ancestry[depth], con):
-            return [ParquetLayer(uid, schema, con) for uid in ancestry[depth:]]
-    return [ParquetLayer(uid, schema, con) for uid in ancestry]
+        if materialised(ancestry[depth], store):
+            return [ParquetLayer(uid, schema, store) for uid in ancestry[depth:]]
+    return [ParquetLayer(uid, schema, store) for uid in ancestry]
 
 
 def _table_name(revision_id: UUID, kind: str) -> str:
     return f"owner_map_{kind}_{revision_id.hex}"
+
+
+def _coord_table(kind: str, name: str, revision_id: UUID) -> str:
+    """The shared table one folded axis or group is kept in.
+
+    The name is hashed rather than spelled, being a caller's string that becomes
+    an identifier.
+    """
+    digest = sha256(name.encode()).hexdigest()[:16]
+    return f"{kind}_{digest}_{revision_id.hex}"
+
+
+def _shared(
+    con: DuckDBPyConnection, name: str, build: Callable[[], DuckDBPyRelation]
+) -> DuckDBPyRelation:
+    """Table `name`, built by whichever cursor misses it first.
+
+    Two cursors missing at once both build, and DuckDB fails the second
+    `create` with a write-write conflict rather than a name clash; what it
+    would have created is the winner's table, so that is read instead. The
+    conflict can come before the winner commits, when its table is not yet
+    visible, so the `create` is retried until it either lands or meets the
+    committed table.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    """
+    try:
+        return con.table(name)
+    except duckdb.CatalogException:
+        pass
+    rel = build()
+    while True:
+        try:
+            rel.create(name)
+        except duckdb.TransactionException as e:
+            if "conflict" not in str(e).lower():
+                raise
+            time.sleep(0.001)
+            continue
+        except duckdb.CatalogException:
+            pass
+        return con.table(name)
 
 
 # -- fold relations -----------------------------------------------------
@@ -662,11 +700,20 @@ def _frozen_table(
     """The frozen prefix's owner map, its own materialised one or a cached fold.
 
     Keyed by `revision_id` rather than by the prefix: the prefix *is* what that
-    node resolves from, a staged source only ever being appended after it.
+    node resolves from, a staged source only ever being appended after it. The
+    table is shared by every cursor on the workspace and carries no schema in
+    its name, so it is read through `cast_declared` like a materialised map.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
     """
-    persisted = try_read_parquet(_map_uri(revision_id, kind), con)
-    if persisted is not None:
-        return cast_declared(schema, persisted)
+    last = sources[-1] if sources else None
+    if isinstance(last, ParquetLayer) and last.revision_id == revision_id:
+        uri = last.store.owner_map_uri(revision_id, kind)
+        persisted = try_read_parquet(uri, con)
+        if persisted is not None:
+            return cast_declared(schema, persisted)
 
     if not sources:
         # Nothing frozen to fold, which is a `WorkingRecord` over a base that is
@@ -674,16 +721,50 @@ def _frozen_table(
         columns, _ = map_kinds(schema)[kind]
         return _empty_relation(schema, con, *columns(Coords(schema=schema, axes={})))
 
-    name = _table_name(revision_id, kind)
-    try:
-        return con.table(name)
-    except duckdb.CatalogException:
-        _fold_kind(kind, sources, con, schema).create(name)
-        return con.table(name)
+    table = _shared(
+        con,
+        _table_name(revision_id, kind),
+        lambda: _fold_kind(kind, sources, con, schema),
+    )
+    return cast_declared(schema, table)
+
+
+def _frozen_coords(
+    revision_id: UUID,
+    sources: Sequence[LayerSource],
+    con: DuckDBPyConnection,
+    schema: Schema,
+) -> list[tuple[str, str]]:
+    """The `(kind, name)` of every axis and group this frozen fold resolved.
+
+    Each is a shared table (`_coord_table`); the list is one more, created after
+    them, so a reader finding it finds every table it names.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    """
+
+    def fold() -> DuckDBPyRelation:
+        coords = resolve_coords(schema, sources, con)
+        made = [
+            *(("dims", dim, rel) for dim, rel in coords.axes.items()),
+            *(("group", group, rel) for group, rel in coords.groups.items()),
+        ]
+        for kind, name, rel in made:
+            table = _coord_table(kind, name, revision_id)
+            _shared(con, table, lambda: rel)  # noqa: B023 - called before `rel` moves on
+        return con.sql(
+            "SELECT unnest($kinds::VARCHAR[]) AS kind, unnest($names::VARCHAR[]) AS name",
+            params={"kinds": [k for k, _, _ in made], "names": [n for _, n, _ in made]},
+        )
+
+    rows = _shared(con, f"coords_{revision_id.hex}", fold).fetchall()
+    return [(kind, name) for kind, name in rows]
 
 
 def materialise(
-    revision_id: UUID, sources: Sequence[LayerSource], con: DuckDBPyConnection
+    revision_id: UUID, sources: Sequence[LayerSource], store: Store
 ) -> None:
     """Write `revision_id`'s node caches: owner maps and resolved dims.
 
@@ -699,18 +780,19 @@ def materialise(
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    schema = read_schema(con)
-    base = resolved_dir(revision_id) + "owner_map/"
-    ensure_local_dir(base)
+    schema = read_schema(store)
+    con = store.workspace.con
+    ensure_local_dir(store.resolved_dir(revision_id) + "owner_map/")
     for kind in map_kinds(schema):
-        _fold_kind(kind, sources, con, schema).to_parquet(_map_uri(revision_id, kind))
-    _materialise_dims(revision_id, sources, con, schema)
+        uri = store.owner_map_uri(revision_id, kind)
+        _fold_kind(kind, sources, con, schema).to_parquet(uri)
+    _materialise_dims(revision_id, sources, store, schema)
 
 
 def _materialise_dims(
     revision_id: UUID,
     sources: Sequence[LayerSource],
-    con: DuckDBPyConnection,
+    store: Store,
     schema: Schema,
 ) -> None:
     """Fold this node's resolved axes into its node cache, not its layer.
@@ -719,12 +801,13 @@ def _materialise_dims(
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
+    con = store.workspace.con
     dims = resolve_coords(schema, sources, con)
-    base = resolved_dir(revision_id) + "dims/"
+    base = store.resolved_dir(revision_id) + "dims/"
     ensure_local_dir(base)
     for dim, rel in dims.axes.items():
         rel.to_parquet(f"{base}{dim}.parquet")
-    groups = resolved_dir(revision_id) + "groups/"
+    groups = store.resolved_dir(revision_id) + "groups/"
     ensure_local_dir(groups)
     for group, rel in dims.groups.items():
         rel.to_parquet(f"{groups}{group}.parquet")
@@ -738,7 +821,7 @@ def _materialise_dims(
     axis = dims.axes.get("entity")
     if schema.entity_type_dim is None or axis is None:
         return
-    types = resolved_dir(revision_id) + "dims/entity_type/"
+    types = store.resolved_dir(revision_id) + "dims/entity_type/"
     ensure_local_dir(types)
     live = set(distinct_values(axis, "entity_type", order=False))
     seed_base, above = _base_and_above(sources, con, schema)
@@ -754,33 +837,23 @@ def _materialise_dims(
 # -- the schema (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ---------------------------------------------
 
 
-def read_schema(con: DuckDBPyConnection | None = None) -> Schema:
-    """The record's one schema, read from beside the layers.
+def read_schema(store: Store) -> Schema:
+    """The record's one schema, read from beside `store`'s layers.
 
     No fold and no ancestry: a schema is not layered data. One file makes it a
     property of the record, knowable before any layer is read and stated once
     for a hundred-layer tree. A record that declares none reads as an empty
     `Schema`, which declares no dims and no attributes.
 
-    Parameters
-    ----------
-    con
-        Read the manifest beside *this* connection's layers. A connection is
-        already scoped to one record root (`connect(base_uri=...)`), so the
-        schema follows from it rather than from a separate parameter. `None`
-        reads the process default, which is what a caller holding no
-        connection gets.
-
     Notes
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    base = None if con is None else base_uri_of(con)
-    raw = read_json(schema_uri(base))
-    return Schema() if raw is None else Schema.model_validate(raw)
+    found = store.files.read_text(store.manifest_uri)
+    return Schema() if found is None else Schema.model_validate_json(found[0])
 
 
-def write_schema(schema: Schema, base_uri: str | None = None) -> None:
+def write_schema(schema: Schema, store: Store) -> None:
     """Write the record's one schema, beside the layers.
 
     Amending it is a schema change rather than a patch, so this replaces the
@@ -792,10 +865,7 @@ def write_schema(schema: Schema, base_uri: str | None = None) -> None:
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
-    uri = schema_uri(base_uri)
-    ensure_local_dir(uri, parent=True)
-    with open(uri, "w") as fh:
-        fh.write(schema.model_dump_json())
+    store.files.write_text(store.manifest_uri, schema.model_dump_json(), expect=None)
 
 
 # -- public API -------------------------------------------------------------
@@ -836,15 +906,14 @@ class Resolver:
 
     revision_id: UUID
     sources: list[LayerSource]
-    con: DuckDBPyConnection
+    workspace: Workspace
     schema: Schema
     """This record's one manifest, resolved by the caller and passed in.
 
     A plain field, not a lazy read: every fold needs it, both construction sites
-    already hold it (a tree node reads the root's, `Record.over` has the
-    manifest), and each source carries the same reference so `write_record` can
-    read one off the layer it is handed. A standalone record's own manifest
-    reaches here the same way - `Record.at` reads it and passes it down.
+    already hold it (a tree node reads its store's, a standalone directory its
+    own), and each source carries the same reference so `write_record` can
+    read one off the layer it is handed.
 
     Notes
     -----
@@ -865,8 +934,18 @@ class Resolver:
         - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
         """
         return Resolver(
-            self.revision_id, [*self.sources, source], self.con, self.schema
+            self.revision_id, [*self.sources, source], self.workspace, self.schema
         )
+
+    @property
+    def con(self) -> DuckDBPyConnection:
+        """The calling thread's cursor: every relation this builds lands on it.
+
+        Notes
+        -----
+        - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+        """
+        return self.workspace.con
 
     def _map(self, kind: str) -> DuckDBPyRelation:
         return _table(self.revision_id, self.sources, self.con, self.schema, kind=kind)
@@ -886,8 +965,9 @@ class Resolver:
                 return source
         # A layer the map names but the source list does not hold: the map was
         # materialised over a longer ancestry than this node reads, so the
-        # winning row is still in that layer's own directory.
-        return ParquetLayer(layer_uuid, self.schema, self.con)
+        # winning row is still in that layer's own directory, in the same store.
+        store = next(s.store for s in self.sources if isinstance(s, ParquetLayer))
+        return ParquetLayer(layer_uuid, self.schema, store)
 
     @property
     def fold(self) -> Fold:
@@ -969,22 +1049,36 @@ class Resolver:
     def dims(self) -> Coords:
         """Every declared dim's folded axis relation.
 
-        A plain property rather than a `cached_property`: the fold is only
-        cacheable where every source is frozen, which is the same rule `_map`
-        applies - one concept twice rather than a special case.
+        Where every source is frozen the fold cannot go stale, so each axis and
+        group is a shared table (`_frozen_coords`), the same rule `_map`
+        applies; a relation over one is built per call on the calling thread's
+        cursor, read through `cast_declared` as the schema may have widened
+        since. Past a staging area the whole fold is redone per call.
 
         Notes
         -----
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+        - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
         """
-        if self.frozen:
-            return self._cached_dims
-        return resolve_coords(self.schema, self.sources, self.con)
+        con = self.con
+        if not self.frozen:
+            return resolve_coords(self.schema, self.sources, con)
+        tables = {
+            (kind, name): cast_declared(
+                self.schema, con.table(_coord_table(kind, name, self.revision_id))
+            )
+            for kind, name in self._coord_names
+        }
+        return Coords(
+            schema=self.schema,
+            axes={n: rel for (k, n), rel in tables.items() if k == "dims"},
+            groups={n: rel for (k, n), rel in tables.items() if k == "group"},
+        )
 
     @cached_property
-    def _cached_dims(self) -> Coords:
-        """`dims` where every source is frozen, so the fold cannot go stale."""
-        return resolve_coords(self.schema, self.sources, self.con)
+    def _coord_names(self) -> list[tuple[str, str]]:
+        """Which axes and groups the frozen fold resolved - plain data, any thread."""
+        return _frozen_coords(self.revision_id, self.sources, self.con, self.schema)
 
     def axes(self) -> set[str]:
         """Which dims this fold has an axis for - the shared `LayerData` name.

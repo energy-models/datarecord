@@ -36,8 +36,10 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.layered.fold import Fold
+from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver
-from datarecord.layered.revision import Record, Revision
+from datarecord.layered.revision import Revision
+from datarecord.layered.sources import ParquetLayer
 from datarecord.layered.write import write_record
 from datarecord.record import (
     EMPTY,
@@ -379,13 +381,13 @@ class WorkingRecord(Record):
     #: its own coordinates and no others.
     _staged: dict[tuple[str, str | None], str]
 
-    def __init__(self, base: RecordLike, con: DuckDBPyConnection) -> None:
+    def __init__(self, base: RecordLike) -> None:
         # `object.__setattr__` throughout: the base is a frozen dataclass, and
         # these are set before `super().__init__` because the `StagedSource`
         # below reads them off `self`.
         object.__setattr__(self, "_layer_id", uuid4())
         object.__setattr__(self, "_staged", {})
-        base_cache = _base_resolver(base, con)
+        base_cache = _base_resolver(base)
         object.__setattr__(self, "_base", base_cache)
         # This record *is* the fold one layer deeper, and that layer is the
         # staging area - so the field the base class holds is that fold, whose
@@ -2032,18 +2034,17 @@ class WorkingRecord(Record):
     def _base_revision(self) -> Revision:
         """The `Revision` this record's base resolves, for `NewChild()`'s default.
 
-        Only a base that is a node in the tree has one, which is asked of the
-        `revisions` table rather than of the base's type: a directory's
-        `revision_id` is derived from where it is, so it names no row, and that
-        - not which class the base was - is what makes it unbranchable.
-
-        A missing row and a missing table are the same answer here: `connect`
-        creates the table, so a connection without one was made by hand and has
-        no tree in it either.
+        Only a base that is a node in a tree has one, which is asked of its
+        store rather than of the base's type: a directory's `revision_id` is
+        derived from where it is, so it names no revision, and that - not which
+        class the base was - is what makes it unbranchable.
         """
+        last = self._base.sources[-1]
         try:
-            return Revision.get(self._base.revision_id, self.con)
-        except (KeyError, duckdb.Error):
+            if not isinstance(last, ParquetLayer):
+                raise KeyError(self._base.revision_id)
+            return last.store.revision(self._base.revision_id)
+        except KeyError:
             msg = (
                 "`NewChild()` needs a revision to branch from, and this "
                 "`WorkingRecord`'s base is no node in a layer tree; pass one as "
@@ -2087,22 +2088,24 @@ class WorkingRecord(Record):
             # The staged layer's own rows - the fold's last source, a `LayerData`
             # like any other - so only the edits are written, the fold resolving
             # the rest from the parent (https://energy-models.github.io/datarecord/design/working-record/#committing).
-            write_record(child.id, self.resolver.sources[-1], self.con)
+            write_record(child, self.resolver.sources[-1])
             self.rollback()
             return child
         # The `Resolver`, not `self`: it is the same `LayerData` a fold answers
         # for everything folded in, which is exactly base-plus-staged flattened
         # (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits).
-        write_record(None, self.resolver, self.con, uri=target.uri)
+        write_record(
+            None, self.resolver, workspace=self.resolver.workspace, uri=target.uri
+        )
         self.rollback()
         return None
 
 
-def _base_resolver(base: RecordLike, con: DuckDBPyConnection) -> Resolver:
+def _base_resolver(base: RecordLike) -> Resolver:
     """What `base` resolves from, as a `Resolver` a staged layer can extend.
 
     A `Record` is one already - whether it came from a revision or from
-    `Record.at(uri)`, since a directory read as its one layer is a fold like
+    `Workspace.at(uri)`, since a directory read as its one layer is a fold like
     any other.
 
     Raises
@@ -2113,23 +2116,14 @@ def _base_resolver(base: RecordLike, con: DuckDBPyConnection) -> Resolver:
         `RecordLike` exposes `entity_types` keyed by type, so synthesising one
         would be rebuilding the format from a protocol that deliberately lacks
         it.
-    ValueError
-        For a `Record` on another connection, which would read its rows through
-        one connection and stage them on another.
     """
     if not isinstance(base, Record):
         msg = (
             f"a `WorkingRecord` reads by folding its staged rows over the base's, "
             f"and a {type(base).__name__} has no layer layout to fold - pass a "
-            f"`Record`, which `Revision.record` and `Record.at(uri)` both give"
+            f"`Record`, which `Revision.record` and `Workspace.at(uri)` both give"
         )
         raise TypeError(msg)
-    if base.con is not con:
-        msg = (
-            "a `WorkingRecord` stages its rows on the connection it reads the "
-            "base through, and this base reads through another one"
-        )
-        raise ValueError(msg)
     return base.resolver
 
 

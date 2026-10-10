@@ -16,9 +16,8 @@ import tracemalloc
 
 import pytest
 
-from datarecord import Revision
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network
+from tests.fixtures import empty_root, export_network
 
 pytestmark = pytest.mark.slow
 
@@ -41,10 +40,10 @@ def carbon():
     return n
 
 
-def test_to_model_peaks_near_one_component_type(con, base_uri, carbon):
+def test_to_model_peaks_near_one_component_type(store, carbon):
     """Peak memory stays near the largest single type, not the whole network."""
-    revision = Revision.create(con)
-    export_network(carbon, revision, con)
+    revision = empty_root(store)
+    export_network(carbon, revision)
 
     tracemalloc.start()
     n = PyPSA.build(revision.record)

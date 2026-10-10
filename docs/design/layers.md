@@ -13,15 +13,16 @@ Each node adds one layer; a node's data is its layer resolved over its ancestors
 class Revision(BaseModel):
     id: UUID
     parent: UUID | None  # None for a root
+    store: Store  # serialised as its location
 ```
 
-Each record has one layer at `layers/<id>/`; the path derives from the UUID rather than being stored.
+Each revision has one layer at `<location>/layers/<id>/`; the path derives from the UUID and its [store](#the-store) rather than being stored.
 Caches derived from the ancestry rather than from layer data live in a `resolved/` subdirectory of it, so the layer's own top level stays exactly what that layer wrote.
 
 Nodes form a tree: branching is several children sharing a parent, and they share the parent's layer and all further ancestry by pointing at it, not by duplication.
 Resolution order along a root→node path is ancestry order; a node's own layer is last and wins.
 
-The node metadata — `(id, parent)` — is persisted in the `revisions` table, so a revision id resolves to its ancestry, and thus its layer set, through it.
+The node metadata — `(id, parent)` — is persisted [beside the layers](#the-tree-beside-the-layers), one file per revision, so a revision id resolves to its ancestry, and thus its layer set, from the location alone.
 
 Two of [the protocol's](record.md) columns take their meaning from the overlay key.
 
@@ -71,3 +72,56 @@ A tombstone only affects the branch that carries it; sibling branches keep the e
 The fold treats an absent `deleted` column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.
 Every derived cache lives under `resolved/` for the same reason: every glob the read path issues into a layer is single-level — `inputs/*.parquet`, `dims/*.parquet`, `dims/*/*.parquet` — so nothing under `resolved/` is reachable by one.
 A reader pointed at a layer directory therefore sees exactly what that layer wrote, and materialising a node's caches never changes what it sees.
+
+## The store
+
+What a process holds is two objects' state. A **`Workspace`** holds the DuckDB database and the means to reach files, local or remote, which is all a standalone directory needs. A **`Store`** holds one store location — its manifest, its revision tree, its layers — and works through a workspace, which several stores share so that records from them join.
+
+```python
+ws = Workspace()  # ":memory:" by default
+store = ws.store("/data/a")  # one Store per normalised location
+rev = store.revision(rid)  # look one up
+record = ws.at("out/")  # a standalone directory, read under its own manifest
+layer = store.layer(rid)  # one layer read alone, under the store's manifest
+```
+
+A call reaches the workspace explicitly only where nothing in hand carries one: `ws.store`, `ws.at`, and the `con` a tool converting a framework object is handed. Everything built _from_ something takes it from that: a revision from its store, a `Record` from its `Resolver`, a `WorkingRecord` from its base record.
+
+**The location is required and absolute.** `ws.store("")` raises, and a local path is resolved, so neither a later `chdir` nor a process with another cwd moves it — there is no default location left to fall back to. `layer_dir`, `resolved_dir` and the manifest's location derive from it and nothing else.
+
+**The location is authoritative, the database is disposable.** What lives in a workspace's `database` is never the record: deleting it loses at most uncommitted edits. A file-backed one keeps staged edits across a crash, the `revisions` cache across runs, and gives DuckDB room to spill. A location is not reused: every cache keyed by id assumes what an id names never changes, which a fresh UUID over write-once files guarantees and a location wiped and written again does not.
+
+### The tree beside the layers
+
+```text
+<location>/
+├── manifest.json
+├── revisions/<id>.json        # {"id": ..., "parent": ...}
+└── layers/<id>/
+```
+
+Beside `layers/` rather than inside a layer, so a layer directory stays exactly what the layer wrote and listing the tree is one listing over small files. One file per revision because a file named by a fresh UUID is write-once like a layer, so two processes creating revisions in one location never write the same object; it is written create-only through [files](#files-local-and-remote), so that is enforced rather than assumed.
+
+The workspace's `revisions` table is a cache of those files for every store on it, keyed by `(location, id)`. It cannot go stale, only incomplete, since a revision's parent never changes, so it is only ever added to: `revisions()` lists `revisions/` once and reads only the files the table lacks, and `revision(id)` that misses reads the file and each parent not yet held, raising `KeyError` where the first is absent. Two cursors adding one row at once conflict, and the row is the same whoever wins, so the loser moves on.
+
+### Files, local and remote
+
+Tables go through DuckDB. Everything else — the manifest, the revision files, listing them — goes through the workspace's `Files`, picked by the URI's scheme: a URI without `://` is local, and any scheme but `s3://` raises.
+
+```python
+class Files(Protocol):
+    def read_text(self, uri: str) -> tuple[str, Version] | None: ...  # None on a miss
+    def write_text(
+        self, uri: str, text: str, *, expect: Version | Absent | None
+    ) -> Version: ...
+    def list(self, prefix: str) -> list[str]: ...  # names directly under prefix
+    def exists(self, uri: str) -> bool: ...
+```
+
+`expect` is the precondition: `Absent` writes only if nothing is there, a `Version` only if the object is unchanged since it was read, `None` unconditionally. Locally every write lands under a temporary name and is moved into place, so a reader meets a whole file or none: `Absent` is a hard link, which the OS refuses over an existing file, and a `Version` — the content's SHA-256 — is checked and replaced while holding a lock on a sibling `<name>.lock`, which is what makes the check and the write one step.
+
+### Crossing a process boundary
+
+`Revision` serialises its store as its location, `{"id": …, "parent": …, "store": "/data/a"}`, and validates back through `Workspace.process().store(uri).revision(id)`, reading the revision file and each parent the process lacks — so `ancestry()` answers in a fresh process. `Store` pickles the same way.
+
+That is the one default that survives, and nothing reaches it implicitly but deserialisation: `Workspace.process()` is created on first use, on `:memory:`, and code wanting its own records joinable with deserialised ones names it.

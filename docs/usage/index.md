@@ -22,22 +22,23 @@ Or with conda/mamba, from conda-forge:
 conda install -c conda-forge datarecord
 ```
 
-## Connections
+## Workspaces and stores
 
-Every entry point takes a DuckDB connection. It is passed as a parameter
-throughout, never a module global, and is scoped to one record root — which is
-how [the schema beside its layers](../design/schema.md#one-schema-per-record)
-is found without a separate argument.
+A `Workspace` holds the DuckDB database and reaches files; a `Store` is one
+location — its [schema](../design/schema.md#one-schema-per-record), its
+revisions, its layers — on a workspace several stores share
+([design](../design/layers.md#the-store)).
 
 ```python
-from datarecord import connect
+from datarecord import Workspace
 
-con = connect(":memory:", base_uri="s3://bucket/my-record")
+ws = Workspace()  # ":memory:" by default
+store = ws.store("/data/my-record")  # absolute; never empty
+record = ws.at("out/")  # a standalone directory
 ```
 
-`connect` opens a connection carrying the `revisions` table and the path macros,
-loading `httpfs` and S3 credentials only for a remote `base_uri`. `base_uri`
-defaults to the `DATARECORD_BASE_URI` environment variable.
+`ws.con` is the calling thread's DuckDB cursor, so one workspace serves every
+thread; a frame belongs to the thread that built it.
 
 ## The pages
 

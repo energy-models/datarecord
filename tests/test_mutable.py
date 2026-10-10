@@ -13,38 +13,40 @@ import narwhals as nw
 import pandas as pd
 import pytest
 
-from datarecord import Revision, duck
-from datarecord.duck import layer_dir
+from datarecord import Workspace
+from datarecord.layered.record import Record
 from datarecord.layered.resolve import read_schema, write_schema
-from datarecord.layered.revision import Record
 from datarecord.layered.sources import ParquetLayer
+from datarecord.layered.write import write_record
 from datarecord.mutable import Directory, NewChild, WorkingRecord, normalise_value
 from datarecord.record import RecordLike
 from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network, schema
+from tests.fixtures import empty_root, export_network, schema
 
 GEN = "Generator"
 
 
 @pytest.fixture
-def root(con, base_uri, ac_dc):
+def root(store, ac_dc):
     """A materialised record to branch edits from."""
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
     revision.materialise()
     return revision
 
 
 @pytest.fixture
-def staged(root, con):
-    return WorkingRecord(root.record, con)
+def staged(root, store):
+    return WorkingRecord(root.record)
 
 
 @pytest.fixture
-def written_directory(root):
-    """One layer's own directory, as a URI a caller could pass to `Record.at`."""
-    return layer_dir(root.id)
+def written_directory(root, tmp_path):
+    """A standalone directory, as a URI a caller could pass to `Workspace.at`."""
+    out = str(tmp_path / "standalone")
+    write_record(None, root.record, workspace=root.store.workspace, uri=out)
+    return out
 
 
 def _static(revision, attribute, ctype=GEN):
@@ -61,15 +63,17 @@ def _static(revision, attribute, ctype=GEN):
     return PyPSA.build(revision.record).c[ctype].static[attribute].to_dict()
 
 
-def _layer_rows(revision, attribute, con, kind="inputs"):
+def _layer_rows(revision, attribute, kind="inputs"):
     """One committed layer's own `<kind>/<attribute>.parquet`, as pandas.
 
     The single-layer view, read through the `LayerSource` for that layer rather
     than the folding resolver: "what did this patch write" is a question about
-    one layer's file, not the resolved record, so `Record.at` - which folds a
+    one layer's file, not the resolved record, so `Store.layer` - which folds a
     source through the whole-tree machinery - is the wrong lens for it.
     """
-    rel = ParquetLayer(revision.id, read_schema(con), con).attribute(attribute, kind)
+    rel = ParquetLayer(
+        revision.id, read_schema(revision.store), revision.store
+    ).attribute(attribute, kind)
     return rel.to_df() if rel is not None else pd.DataFrame()
 
 
@@ -240,7 +244,7 @@ def test_a_staged_edit_is_visible_through_the_record(staged):
     assert set(rows["entity"]) > {"Manchester Wind"}
 
 
-def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, con):
+def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, store):
     """A `Record` hands over unmaterialised frames, so two must not alias.
 
     The read path composes relations by replacement scan, which binds each one
@@ -266,7 +270,12 @@ def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, con):
     assert set(got_second["attribute"]) == {"p_min_pu"}
 
     # And nothing was left behind in the catalog to leak into the next read.
-    views = {v for (v,) in con.sql("SELECT view_name FROM duckdb_views()").fetchall()}
+    views = {
+        v
+        for (v,) in store.workspace.con.sql(
+            "SELECT view_name FROM duckdb_views()"
+        ).fetchall()
+    }
     assert not {v for v in views if v.startswith("_")}
 
 
@@ -514,7 +523,7 @@ def test_flags_do_not_depend_on_the_maps_grouping_grain(staged, ac_dc):
 # -- value dtypes (https://energy-models.github.io/datarecord/design/record/#flags, https://energy-models.github.io/datarecord/design/schema/#attributespec) -----------------------------------------------
 
 
-def test_a_non_float_attribute_stages_and_commits(root, con):
+def test_a_non_float_attribute_stages_and_commits(root, store):
     """`value` carries the attribute's declared dtype, not always `DOUBLE`.
 
     One staging table holds every attribute's values, so it stages `value` as
@@ -529,13 +538,13 @@ def test_a_non_float_attribute_stages_and_commits(root, con):
     -----
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
-    amended = read_schema()
+    amended = read_schema(store)
     amended.attributes["carrier"] = AttributeSpec(
         dtype=nw.String(), dims={"entity", "scenario"}
     )
-    write_schema(amended)
+    write_schema(amended, store)
 
-    staged = WorkingRecord(root.record, con)
+    staged = WorkingRecord(root.record)
     staged.set("carrier", "solar", entity=["Manchester Wind"])
     rows = staged.attributes["carrier"].collect().to_native().to_pandas()
     assert rows[rows["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
@@ -592,7 +601,7 @@ def test_a_non_partial_axis_is_restated_whole(staged, root):
     assert got.iloc[1:]["value"].tolist() == mine.iloc[1:]["value"].tolist()
 
 
-def test_the_restated_series_is_in_the_layer_itself(staged, root, con):
+def test_the_restated_series_is_in_the_layer_itself(staged, root, store):
     """The layer carries the whole extent, not a parent lookup at read time.
 
     A patch layer holds only edits - except along an axis owned whole,
@@ -610,14 +619,14 @@ def test_the_restated_series_is_in_the_layer_itself(staged, root, con):
     staged.set("p_max_pu", one, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    rows = _layer_rows(child, "p_max_pu", con)
+    rows = _layer_rows(child, "p_max_pu")
     assert len(rows[rows["entity"] == "Manchester Wind"]) == len(mine)
     # Only the touched component: an axis owned whole obliges the layer to
     # carry that key's extent, not every key's.
     assert set(rows["entity"]) == {"Manchester Wind"}
 
 
-def test_two_edits_on_one_whole_owned_series_both_land(staged, root, con):
+def test_two_edits_on_one_whole_owned_series_both_land(staged, root, store):
     """A second `set` replaces its own fill without disturbing the first edit's.
 
     The case `staging-without-seq` leans on hardest: a `set` on a whole-owned
@@ -642,7 +651,7 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root, con):
     staged.set("p_max_pu", second, entity=["Manchester Wind"])
 
     child = staged.commit(NewChild(root))
-    rows = _layer_rows(child, "p_max_pu", con)
+    rows = _layer_rows(child, "p_max_pu")
     got = rows[rows["entity"] == "Manchester Wind"].sort_values("snapshot")
 
     assert len(got) == len(mine), "the whole extent is carried, once per snapshot"
@@ -653,7 +662,7 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root, con):
     )
 
 
-def test_a_partial_axis_stays_a_patch(staged, root, con):
+def test_a_partial_axis_stays_a_patch(staged, root, store):
     """`scenario` *is* partial, so one value may be patched alone.
 
     Notes
@@ -666,7 +675,7 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    rows = _layer_rows(child, "p_nom", con)
+    rows = _layer_rows(child, "p_nom")
     # `p_nom` varies over nothing, so there is no extent to restate: one row.
     assert len(rows) == 1
 
@@ -937,7 +946,7 @@ def test_add_group_needs_every_coordinate(staged):
         staged.add_group("connection", pd.DataFrame([{"entity": "Manchester Wind"}]))
 
 
-def test_every_declared_group_reads_its_staged_rows(con, base_uri, ac_dc):
+def test_every_declared_group_reads_its_staged_rows(store, ac_dc):
     """A second group is not silently dropped: the reads are keyed by group.
 
     `connection` is the group every fixture has, so a read path naming it rather
@@ -949,17 +958,18 @@ def test_every_declared_group_reads_its_staged_rows(con, base_uri, ac_dc):
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
     write_schema(
         schema(
             groups={
                 "connection": {"entity": "entity", "bus": "bus"},
                 "corridor": {"from": "entity", "to": "entity"},
             }
-        )
+        ),
+        store,
     )
-    staged = WorkingRecord(revision.record, con)
+    staged = WorkingRecord(revision.record)
 
     staged.add_group(
         "connection", pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
@@ -1005,14 +1015,14 @@ def test_commit_clears_the_staging_area(staged, root):
     staged.commit(NewChild(root))
 
     again = staged.commit(NewChild(root))
-    layer = Record.at(layer_dir(again.id), con=staged.con)
+    layer = root.store.layer(again.id)
     assert "p_nom" not in layer.attributes
 
 
 # -- commit targets (https://energy-models.github.io/datarecord/design/working-record/#committing) --------------------------------------------------
 
 
-def test_a_child_layer_holds_only_the_edits(staged, root, con):
+def test_a_child_layer_holds_only_the_edits(staged, root, store):
     """A patch layer is the edits alone; the fold resolves the rest.
 
     Notes
@@ -1022,7 +1032,7 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    rows = _layer_rows(child, "p_nom", con)
+    rows = _layer_rows(child, "p_nom")
     assert list(rows["entity"]) == ["Manchester Wind"]
     # Yet the resolved record reads every generator's value.
     assert len(_static(child, "p_nom")) > 1
@@ -1048,7 +1058,7 @@ def test_a_staged_member_frame_does_not_repeat_its_type(staged):
     assert "entity" in columns, "the member key is still there"
 
 
-def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root, con):
+def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root, store):
     """Owning `snapshot` whole completes the edited series, not every series.
 
     `p_max_pu` varies over a non-partial `snapshot`, so touching one of
@@ -1070,7 +1080,7 @@ def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root, con
     staged.set("p_max_pu", one, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
-    rows = _layer_rows(child, "p_max_pu", con)
+    rows = _layer_rows(child, "p_max_pu")
     assert set(rows["entity"]) == {"Manchester Wind"}, (
         "only the touched key's extent is carried"
     )
@@ -1094,7 +1104,7 @@ def test_new_child_defaults_to_the_node_the_record_was_built_over(staged, root):
     assert _static(child, "p_nom")["Manchester Wind"] == 150.0
 
 
-def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root, con):
+def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root, store):
     """Layers are write-once, so the parent still reads its own values.
 
     Notes
@@ -1110,7 +1120,7 @@ def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root, co
     assert _static(root, "p_nom")["Manchester Wind"] == before
 
 
-def test_an_edit_over_a_directory_base_reads_back(con, base_uri, ac_dc):
+def test_an_edit_over_a_directory_base_reads_back(store, ac_dc):
     """A staged edit must win over a directory base, as it does over a layered one.
 
     The two are separate sources of one fold, and `source_for` tells them apart
@@ -1124,9 +1134,9 @@ def test_an_edit_over_a_directory_base_reads_back(con, base_uri, ac_dc):
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
-    staged = WorkingRecord(Record.at(layer_dir(revision.id), con), con)
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
+    staged = WorkingRecord(store.layer(revision.id))
 
     def marginal_cost() -> list[float]:
         frame = staged.attributes["marginal_cost"].collect().to_native().to_pandas()
@@ -1141,28 +1151,28 @@ def test_an_edit_over_a_directory_base_reads_back(con, base_uri, ac_dc):
 
     # The base's id is derived from where it is rather than allocated, so two
     # readers of one directory agree on which layer they are reading.
-    other = WorkingRecord(Record.at(layer_dir(revision.id), con), con)
+    other = WorkingRecord(store.layer(revision.id))
     assert other._base.revision_id == staged._base.revision_id
     assert other._layer_id != staged._layer_id, "each staging area is its own layer"
 
 
-def test_new_child_without_a_layered_base_says_what_to_pass(con, base_uri, tmp_path):
+def test_new_child_without_a_layered_base_says_what_to_pass(store, tmp_path):
     """A directory is no node in a tree, so there is nothing to branch from.
 
     Notes
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    revision = Revision.create(con)
-    write_schema(read_schema(con), base_uri)
-    over_a_directory = WorkingRecord(Record.at(layer_dir(revision.id), con), con)
+    revision = empty_root(store)
+    write_schema(read_schema(store), store)
+    over_a_directory = WorkingRecord(store.layer(revision.id))
 
     with pytest.raises(ValueError, match="needs a revision to branch from"):
         over_a_directory.commit(NewChild())
 
 
 def test_a_directory_uri_reads_the_same_with_or_without_a_trailing_slash(
-    written_directory, con
+    written_directory, workspace
 ):
     """Every member path is appended to the URI, so the slash cannot be optional.
 
@@ -1173,8 +1183,8 @@ def test_a_directory_uri_reads_the_same_with_or_without_a_trailing_slash(
     bare = written_directory.rstrip("/")
     assert not bare.endswith("/"), "otherwise this asserts nothing"
 
-    with_slash = Record.at(bare + "/", con)
-    without = Record.at(bare, con)
+    with_slash = workspace.at(bare + "/")
+    without = workspace.at(bare)
     assert list(without.attributes) == list(with_slash.attributes)
     assert list(without.attributes), "the fixture must have written attributes"
     assert without.resolver.revision_id == with_slash.resolver.revision_id, (
@@ -1182,14 +1192,8 @@ def test_a_directory_uri_reads_the_same_with_or_without_a_trailing_slash(
     )
 
 
-def test_edits_read_under_the_base_records_schema(staged, con, tmp_path):
-    """A staging area declares nothing; it edits under the base's declaration.
-
-    Which matters for a standalone base, whose schema is its own directory's
-    rather than the connection root's: the staged layer is one more source over
-    that base, so `with_source` has to carry the schema along. Reading the edit
-    back under the connection's schema instead would resolve it against
-    different dims than the rows it is overlaying.
+def test_a_standalone_directory_reads_through_another_workspace(staged, tmp_path):
+    """A standalone record carries its own schema, so any workspace reads it.
 
     Notes
     -----
@@ -1198,23 +1202,41 @@ def test_edits_read_under_the_base_records_schema(staged, con, tmp_path):
     out = str(tmp_path / "standalone")
     staged.commit(Directory(out))
 
-    elsewhere = duck.connect(base_uri=str(tmp_path / "unrelated"))
+    elsewhere = Workspace()
     try:
-        assert read_schema(elsewhere) == Schema(), "the other root declares nothing"
-        base = Record.at(out, elsewhere)
-        assert base.schema.dims, "the standalone record carries its own schema"
-
-        editing = WorkingRecord(base, elsewhere)
-        assert editing.schema == base.schema, "an edit declares nothing of its own"
-        editing.set("p_nom", 999.0, entity=["Manchester Wind"])
-        rows = editing.attributes["p_nom"].collect().to_native().to_pandas()
-        got = dict(zip(rows["entity"], rows["value"], strict=True))
-        assert got["Manchester Wind"] == 999.0
+        assert elsewhere.at(out).schema == staged.schema
     finally:
         elsewhere.close()
 
 
-def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_path):
+def test_edits_read_under_the_base_records_schema(staged, workspace, tmp_path):
+    """A staging area declares nothing; it edits under the base's declaration.
+
+    Which matters for a standalone base, whose schema is its own directory's
+    rather than any store's: the staged layer is one more source over that
+    base, so `with_source` has to carry the schema along. A store on the same
+    workspace declaring something else must not reach the edit.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    """
+    out = str(tmp_path / "standalone")
+    staged.commit(Directory(out))
+    unrelated = workspace.store(str(tmp_path / "unrelated"))
+    write_schema(Schema(), unrelated)
+
+    base = workspace.at(out)
+    assert base.schema.dims, "the standalone record carries its own schema"
+    editing = WorkingRecord(base)
+    assert editing.schema == base.schema, "an edit declares nothing of its own"
+    editing.set("p_nom", 999.0, entity=["Manchester Wind"])
+    rows = editing.attributes["p_nom"].collect().to_native().to_pandas()
+    got = dict(zip(rows["entity"], rows["value"], strict=True))
+    assert got["Manchester Wind"] == 999.0
+
+
+def test_a_directory_target_writes_a_flattened_record(staged, root, store, tmp_path):
     """No parent to resolve against, so the whole record is written.
 
     Notes
@@ -1225,7 +1247,7 @@ def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_pat
     out = str(tmp_path / "flat")
     assert staged.commit(Directory(out)) is None
 
-    record = Record.at(out, con)
+    record = store.workspace.at(out)
     rows = record.attributes["p_nom"].collect().to_native().to_pandas()
     got = dict(zip(rows["entity"], rows["value"], strict=True))
     assert got["Manchester Wind"] == 150.0
@@ -1303,7 +1325,7 @@ def test_results_stage_and_read_back_without_committing(staged):
     assert "p" not in staged.attributes
 
 
-def test_results_survive_a_commit_into_the_new_layer(staged, root, con):
+def test_results_survive_a_commit_into_the_new_layer(staged, root, store):
     """Staged results land in the child's `outputs/`, alongside its inputs.
 
     Notes
@@ -1314,10 +1336,10 @@ def test_results_survive_a_commit_into_the_new_layer(staged, root, con):
     staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
     child = staged.commit(NewChild(root))
 
-    rows = _layer_rows(child, "p", con, kind="outputs")
+    rows = _layer_rows(child, "p", kind="outputs")
     assert rows["value"].tolist() == [42.0]
     # And the inputs went where inputs go.
-    assert not _layer_rows(child, "p_nom", con).empty
+    assert not _layer_rows(child, "p_nom").empty
 
 
 def test_results_accept_a_component_type_the_record_never_declared(staged):
@@ -1398,7 +1420,7 @@ def test_a_results_value_keeps_its_declared_type(staged):
     assert numeric["value"].tolist() == [42.0], "a numeric result comes back a number"
 
 
-def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
+def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, store):
     """One frame spanning types is one call, keyed by name alone.
 
     `Tool.results` hands over one frame per attribute carrying every type's rows; with names unique there is no type to stamp, so the frame needs no
@@ -1426,13 +1448,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, con):
 
     # And it survives the commit into the layer's own `outputs/`.
     child = staged.commit(NewChild(root))
-    got = (
-        Record.at(layer_dir(child.id), con)
-        .outputs["p"]
-        .collect()
-        .to_native()
-        .to_pandas()
-    )
+    got = store.layer(child.id).outputs["p"].collect().to_native().to_pandas()
     assert set(got["entity"]) == {"Manchester Wind", "0"}
     assert "entity_type" not in got.columns
 

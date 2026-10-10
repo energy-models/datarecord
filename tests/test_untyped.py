@@ -24,12 +24,11 @@ import narwhals as nw
 import pandas as pd
 import pytest
 
-from datarecord import Revision
-from datarecord.duck import layer_dir, resolved_dir
 from datarecord.layered.resolve import write_schema
 from datarecord.layered.write import write_record
 from datarecord.mutable import NewChild, WorkingRecord
 from datarecord.schema import AttributeSpec, Dimension, Schema
+from tests.fixtures import empty_root
 
 # The label every component here is added under. Free-form: with no enum to
 # check it against, it is data the record carries rather than a declaration.
@@ -56,11 +55,11 @@ def untyped_schema():
 
 
 @pytest.fixture
-def root(con, base_uri, untyped_schema):
+def root(store, untyped_schema):
     """A committed, materialised record holding two untyped components."""
-    write_schema(untyped_schema, base_uri)
-    revision = Revision.create(con)
-    staged = WorkingRecord(revision.record, con)
+    write_schema(untyped_schema, store)
+    revision = empty_root(store)
+    staged = WorkingRecord(revision.record)
     staged.add(
         KIND,
         pd.DataFrame(
@@ -101,31 +100,31 @@ def test_a_component_round_trips_through_the_entity_axis(root):
     assert _entities(root.record) == {"a": 1.0, "b": 2.0}
 
 
-def test_no_entity_type_directory_is_written(con, base_uri, untyped_schema):
+def test_no_entity_type_directory_is_written(store, untyped_schema):
     """A written untyped layer has no `dims/entity_type/` at all.
 
     Where today an `add` under each label wrote one member file per label, the
     constant columns are on the entity axis and no per-type directory exists.
     """
-    write_schema(untyped_schema, base_uri)
-    revision = Revision.create(con)
-    staged = WorkingRecord(revision.record, con)
+    write_schema(untyped_schema, store)
+    revision = empty_root(store)
+    staged = WorkingRecord(revision.record)
     staged.add(KIND, pd.DataFrame([{"entity": "a", "p_nom": 1.0}]))
     staged.add("other", pd.DataFrame([{"entity": "c", "p_nom": 3.0}]))
     child = staged.commit(NewChild(revision))
 
-    assert not Path(layer_dir(child.id) + "dims/entity_type").exists()
+    assert not Path(store.layer_dir(child.id) + "dims/entity_type").exists()
     assert _entities(child.record) == {"a": 1.0, "c": 3.0}
 
 
-def test_an_entity_type_column_is_rejected(con, base_uri, untyped_schema):
+def test_an_entity_type_column_is_rejected(store, untyped_schema):
     """An `entity_type` on the untyped entity axis is refused, not relocated.
 
     The `_validate_frame` special case that admitted the column is gone where no
     group declares the axis, so a source handing one over disagrees with the
     schema about what the file holds.
     """
-    write_schema(untyped_schema, base_uri)
+    write_schema(untyped_schema, store)
 
     class WithEntityType:
         """A source whose entity axis carries an undeclared `entity_type`."""
@@ -138,7 +137,7 @@ def test_an_entity_type_column_is_rejected(con, base_uri, untyped_schema):
         def axis(self, dim):
             if dim != "entity":
                 return None
-            return con.sql(
+            return store.workspace.con.sql(
                 "SELECT 'a' AS entity, 'thing' AS entity_type, "
                 "FALSE AS deleted, 1.0 AS p_nom"
             )
@@ -163,48 +162,48 @@ def test_an_entity_type_column_is_rejected(con, base_uri, untyped_schema):
 
         frozen = True
 
-    revision = Revision.create(con)
+    revision = empty_root(store)
     with pytest.raises(ValueError, match="entity_type"):
-        write_record(revision.id, WithEntityType(), con)
+        write_record(revision, WithEntityType())
 
 
-def test_set_reaches_a_named_entity(root, con):
+def test_set_reaches_a_named_entity(root, store):
     """`set(..., entity=[...])` patches the named rows of the entity axis.
 
     `p_nom` is a column of `dims/entity.parquet` untyped, so the edit selects
     labels of that axis - the same names a member-file edit would - and the
     unnamed component keeps its value.
     """
-    staged = WorkingRecord(root.record, con)
+    staged = WorkingRecord(root.record)
     staged.set("p_nom", 5.0, entity=["a"])
     child = staged.commit(NewChild(root))
     assert _entities(child.record) == {"a": 5.0, "b": 2.0}
 
 
-def test_set_with_no_names_reaches_every_entity(root, con):
+def test_set_with_no_names_reaches_every_entity(root, store):
     """A scalar with no `entity=` broadcasts to every label the axis has."""
-    staged = WorkingRecord(root.record, con)
+    staged = WorkingRecord(root.record)
     staged.set("p_nom", 9.0)
     child = staged.commit(NewChild(root))
     assert _entities(child.record) == {"a": 9.0, "b": 9.0}
 
 
-def test_an_unknown_label_is_accepted(root, con):
+def test_an_unknown_label_is_accepted(root, store):
     """No enum to check against, so any label is data rather than an error.
 
     Two labels, one axis: neither is a type, so the components sit together on
     `dims/entity.parquet` and `entity_types` stays empty.
     """
-    staged = WorkingRecord(root.record, con)
+    staged = WorkingRecord(root.record)
     staged.add("other", pd.DataFrame([{"entity": "c", "p_nom": 3.0}]))
     child = staged.commit(NewChild(root))
     assert list(child.record.entity_types) == []
     assert _entities(child.record) == {"a": 1.0, "b": 2.0, "c": 3.0}
 
 
-def test_remove_drops_a_component_through_the_axis_alone(root, con):
+def test_remove_drops_a_component_through_the_axis_alone(root, store):
     """`remove` writes one tombstone, on the entity axis, and the fold honours it."""
-    staged = WorkingRecord(root.record, con)
+    staged = WorkingRecord(root.record)
     staged.remove(KIND, ["a"])
     child = staged.commit(NewChild(root))
     assert _entities(child.record) == {"b": 2.0}
@@ -222,22 +221,22 @@ def test_the_resolved_axis_has_no_entity_type_column(root):
     assert "entity_type" not in axis.columns
     assert "p_nom" in axis.columns
 
-    persisted = pd.read_parquet(resolved_dir(root.id) + "dims/entity.parquet")
+    persisted = pd.read_parquet(
+        root.store.resolved_dir(root.id) + "dims/entity.parquet"
+    )
     assert "entity_type" not in persisted.columns
 
 
-def test_a_resolved_record_reads_the_same_as_an_unresolved_one(
-    con, base_uri, untyped_schema
-):
+def test_a_resolved_record_reads_the_same_as_an_unresolved_one(store, untyped_schema):
     """Materialising a node changes no value an untyped record reports.
 
     A component's value read through the unmaterialised layer and through the
     materialised node cache agree - the assertion the `ResolvedLayer`
     prerequisite exists to protect, now that the entity axis carries the value.
     """
-    write_schema(untyped_schema, base_uri)
-    revision = Revision.create(con)
-    staged = WorkingRecord(revision.record, con)
+    write_schema(untyped_schema, store)
+    revision = empty_root(store)
+    staged = WorkingRecord(revision.record)
     staged.add(
         KIND,
         pd.DataFrame([{"entity": "a", "p_nom": 1.0}, {"entity": "b", "p_nom": 2.0}]),

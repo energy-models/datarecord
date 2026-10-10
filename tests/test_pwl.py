@@ -9,10 +9,11 @@ Notes
 - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
 """
 
-from datarecord.duck import layer_dir
 from datarecord.layered.revision import Revision
 from datarecord.record import Flags
 from tests.fixtures import (
+    empty_child,
+    empty_root,
     relation,
     schema,
     write_connections,
@@ -37,10 +38,10 @@ def _flags(revision, ctype: str, attribute: str) -> Flags:
     return flags[attribute]
 
 
-def _root_with_curve(con) -> Revision:
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema())
+def _root_with_curve(store) -> Revision:
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_input(
         layer,
@@ -58,9 +59,9 @@ def _root_with_curve(con) -> Revision:
     return revision
 
 
-def test_curve_resolves_as_breakpoint_rows(con, base_uri):
+def test_curve_resolves_as_breakpoint_rows(store):
     """A curve is N rows of one key, ordered by sorting on `breakpoint`."""
-    revision = _root_with_curve(con)
+    revision = _root_with_curve(store)
     assert _curve(revision, "marginal_cost") == [
         (0.0, 20.0),
         (50.0, 35.0),
@@ -68,16 +69,16 @@ def test_curve_resolves_as_breakpoint_rows(con, base_uri):
     ]
 
 
-def test_breakpoints_distinguishes_curve_from_scalar(con, base_uri):
+def test_breakpoints_distinguishes_curve_from_scalar(store):
     """The owner map says which keys are curves, without opening the file.
 
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    revision = _root_with_curve(con)
+    revision = _root_with_curve(store)
     write_input(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         "p_nom",
         [{"entity_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
     )
@@ -94,14 +95,14 @@ def test_breakpoints_distinguishes_curve_from_scalar(con, base_uri):
     assert not scalar.breakpoints
 
 
-def test_patch_replaces_the_whole_curve(con, base_uri):
+def test_patch_replaces_the_whole_curve(store):
     """`breakpoint` is not in `input_key`: one layer owns every breakpoint of a key."""
-    root = _root_with_curve(con)
+    root = _root_with_curve(store)
     root.materialise()
 
-    child = root.child()
+    child = empty_child(root)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "marginal_cost",
         [
             {
@@ -119,16 +120,16 @@ def test_patch_replaces_the_whole_curve(con, base_uri):
     assert _curve(child, "marginal_cost") == [(0.0, 25.0), (90.0, 70.0)]
 
 
-def test_curve_on_a_connection(con, base_uri):
+def test_curve_on_a_connection(store):
     """`bus` and `breakpoint` compose: one keys, the other does not.
 
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
     """
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema())
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer,
@@ -158,9 +159,9 @@ def test_curve_on_a_connection(con, base_uri):
     revision.materialise()
 
     # Each connection owns its own curve, so a patch to one leaves the other.
-    child = revision.child()
+    child = empty_child(revision)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "efficiency",
         [
             {
@@ -184,11 +185,11 @@ def test_curve_on_a_connection(con, base_uri):
     ]
 
 
-def test_curve_varying_by_snapshot(con, base_uri):
+def test_curve_varying_by_snapshot(store):
     """A curve per snapshot: `breakpoint` multiplies by the dims like anything else."""
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema())
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_input(
         layer,
@@ -218,11 +219,11 @@ def test_curve_varying_by_snapshot(con, base_uri):
     assert len(relation(revision, "marginal_cost").df()) == 4
 
 
-def test_scalar_replaced_by_a_curve(con, base_uri):
+def test_scalar_replaced_by_a_curve(store):
     """A child may turn a scalar into a curve; it is one key either way."""
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema())
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_input(
         layer,
@@ -231,9 +232,9 @@ def test_scalar_replaced_by_a_curve(con, base_uri):
     )
     revision.materialise()
 
-    child = revision.child()
+    child = empty_child(revision)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "marginal_cost",
         [
             {

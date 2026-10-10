@@ -8,7 +8,11 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ```python
 def write_record(
-    revision_id: UUID, source: LayerData, con: DuckDBPyConnection
+    revision: Revision | None,
+    source: LayerData | RecordLike,
+    *,
+    workspace: Workspace | None = None,  # for a standalone directory
+    uri: str | None = None,
 ) -> None: ...
 ```
 

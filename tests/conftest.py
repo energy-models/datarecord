@@ -4,21 +4,19 @@
 
 import pytest
 
-from datarecord import duck
+from datarecord import Workspace
 
 
 @pytest.fixture
-def base_uri(tmp_path, monkeypatch):
-    """Point layer_dir at a temporary directory for the whole test."""
-    monkeypatch.setattr(duck, "DEFAULT_BASE_URI", str(tmp_path))
-    return str(tmp_path)
+def workspace():
+    ws = Workspace()
+    yield ws
+    ws.close()
 
 
 @pytest.fixture
-def con(base_uri):
-    connection = duck.connect(base_uri=base_uri)
-    yield connection
-    connection.close()
+def store(workspace, tmp_path):
+    return workspace.store(str(tmp_path))
 
 
 @pytest.fixture(scope="session")

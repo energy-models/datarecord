@@ -38,10 +38,10 @@ pip install datarecord[pypsa]    # with the PyPSA tool
 ## A taste
 
 ```python
-from datarecord import Record, connect
+from datarecord import Workspace
 
-con = connect()
-record = Record.at("s3://bucket/my-record/", con)
+ws = Workspace()
+record = ws.at("s3://bucket/my-record/")
 
 record.entity_types["Generator"].collect()  # wide member rows
 record.attributes["p_max_pu"].collect()  # long value rows, one per value
@@ -55,7 +55,7 @@ Records stack, and a `WorkingRecord` accumulates edits that become one layer at 
 ```python
 from datarecord import WorkingRecord, NewChild
 
-w = WorkingRecord(revision.record, con)
+w = WorkingRecord(revision.record)
 w.set("p_nom", 150.0, entity=["wind1", "wind2"])
 child = w.commit(NewChild())
 ```

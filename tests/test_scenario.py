@@ -15,10 +15,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from datarecord import Revision
-from datarecord.duck import layer_dir, resolved_dir
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
+    empty_child,
+    empty_root,
     export_network,
     relation,
     rename_components,
@@ -48,21 +48,21 @@ def stochastic():
 
 
 @pytest.fixture
-def parent(con, base_uri, stochastic):
-    revision = Revision.create(con)
-    export_network(stochastic, revision, con)
+def parent(store, stochastic):
+    revision = empty_root(store)
+    export_network(stochastic, revision)
     revision.materialise()
     return revision
 
 
-def test_scenario_roundtrip(con, parent, stochastic):
+def test_scenario_roundtrip(store, parent, stochastic):
     """A stochastic record round-trips through our reader."""
     n = PyPSA.build(parent.record)
     assert list(n.scenarios) == list(stochastic.scenarios)
     assert_networks_equal(n, stochastic)
 
 
-def test_map_is_scenario_expanded(con, parent, stochastic):
+def test_map_is_scenario_expanded(store, parent, stochastic):
     """A NULL-scenario row becomes one map entry per scenario.
 
     Notes
@@ -78,12 +78,12 @@ def test_map_is_scenario_expanded(con, parent, stochastic):
     assert set(solar["scenario"]) == set(stochastic.scenarios)
 
 
-def test_partial_scenario_override(con, parent, stochastic):
+def test_partial_scenario_override(store, parent, stochastic):
     """A child may replace one scenario and leave the others to the parent."""
     scenario = stochastic.scenarios[0]
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [
             {
@@ -111,7 +111,7 @@ def test_partial_scenario_override(con, parent, stochastic):
     assert set(solar_rows[solar_rows["scenario"] != scenario]["value"]) != {0.77}
 
 
-def test_child_adds_new_scenario(con, parent, stochastic):
+def test_child_adds_new_scenario(store, parent, stochastic):
     """A child may add a scenario the root never declared.
 
     Notes
@@ -119,9 +119,9 @@ def test_child_adds_new_scenario(con, parent, stochastic):
     - [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    child = parent.child()
+    child = empty_child(parent)
     write_scenarios(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         [
             {"scenario": "high", "scenario_weight": 0.27},
             {"scenario": "low", "scenario_weight": 0.36},
@@ -130,7 +130,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
         ],
     )
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [
             {
@@ -149,7 +149,7 @@ def test_child_adds_new_scenario(con, parent, stochastic):
     assert set(extra_solar["value"]) == {0.33}
 
 
-def test_scenario_order_survives_a_chain_of_closed_layers(con, parent, stochastic):
+def test_scenario_order_survives_a_chain_of_closed_layers(store, parent, stochastic):
     """Axis row order stays root-first, then each layer's own append order.
 
     `fold_axis` tags each layer's row order (`_row`) before the cross-layer
@@ -167,10 +167,10 @@ def test_scenario_order_survives_a_chain_of_closed_layers(con, parent, stochasti
     rec = parent
     added = []
     for i in range(5):
-        rec = rec.child()
+        rec = empty_child(rec)
         name = f"extra{i}"
         write_scenarios(
-            layer_dir(rec.id), [{"scenario": name, "scenario_weight": 0.01}]
+            store.layer_dir(rec.id), [{"scenario": name, "scenario_weight": 0.01}]
         )
         rec.materialise()
         added.append(name)
@@ -179,26 +179,26 @@ def test_scenario_order_survives_a_chain_of_closed_layers(con, parent, stochasti
     assert scenarios == list(stochastic.scenarios) + added
 
 
-def test_resolved_dims_are_node_scoped(con, parent, stochastic):
+def test_resolved_dims_are_node_scoped(store, parent, stochastic):
     """Closing writes the resolved scenario axis to the node cache, not the layer.
 
     Notes
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    middle = parent.child()
+    middle = empty_child(parent)
     middle.materialise()
 
-    resolved = Path(resolved_dir(middle.id), "dims", "scenario.parquet")
+    resolved = Path(store.resolved_dir(middle.id), "dims", "scenario.parquet")
     assert resolved.exists()
     assert set(pd.read_parquet(resolved)["scenario"]) == set(stochastic.scenarios)
 
     # `middle` wrote nothing itself, so its layer directory has no dims at
     # all - the resolved axis must not have been written there.
-    assert not Path(layer_dir(middle.id), "dims", "scenario.parquet").exists()
+    assert not Path(store.layer_dir(middle.id), "dims", "scenario.parquet").exists()
 
 
-def test_scenario_axis_survives_closed_grandchild(con, parent, stochastic):
+def test_scenario_axis_survives_closed_grandchild(store, parent, stochastic):
     """The scenario axis still comes from the root when a closed node sits in between.
 
     `middle` is closed but writes nothing scenario-related, so its persisted
@@ -206,11 +206,11 @@ def test_scenario_axis_survives_closed_grandchild(con, parent, stochastic):
     this NULL-scenario row itself, which requires the axis from the true
     root, not just from the nearest closed ancestor.
     """
-    middle = parent.child()
+    middle = empty_child(parent)
     middle.materialise()
-    grandchild = middle.child()
+    grandchild = empty_child(middle)
     write_input(
-        layer_dir(grandchild.id),
+        store.layer_dir(grandchild.id),
         "p_max_pu",
         [{"entity": "solar Gen", "value": 0.88}],
     )
@@ -223,11 +223,11 @@ def test_scenario_axis_survives_closed_grandchild(con, parent, stochastic):
     assert set(solar["layer_uuid"]) == {grandchild.id}
 
 
-def test_scenario_null_row_broadcasts(con, parent, stochastic):
+def test_scenario_null_row_broadcasts(store, parent, stochastic):
     """A child's NULL-scenario row replaces the component in every scenario."""
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "solar Gen", "value": 0.55}],
     )

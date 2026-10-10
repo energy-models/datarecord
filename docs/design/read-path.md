@@ -56,7 +56,7 @@ Across a materialised parent it still holds: the resolved seed is read in its ow
 
 An entity's wide static columns are the one axis value that lives in another file — per type, in `dims/entity_type/<ctype>.parquet`, not on the entity axis — so a node materialises the resolved per-type frames beside the axis, and [`entity_type`](#resolving-a-relation) reads them and gates against the resolved entity axis.
 
-The fold runs live over an unmaterialised tail, cached per connection; since [layers are write-once](layers.md#a-layers-data-is-write-once), such a cache never needs invalidating.
+The fold runs live over an unmaterialised tail, cached in the workspace's database as [shared tables](#a-cursor-per-thread); since [layers are write-once](layers.md#a-layers-data-is-write-once), such a cache never needs invalidating.
 
 The [flags](record.md#flags) are folded in alongside the ownership group-by, so they cost nothing beyond it.
 They are computed **per key**, so per entity: whether _this_ entity's `p_max_pu` sets `timestep` is a different question from whether any does.
@@ -127,7 +127,7 @@ An attribute no layer wrote is absent from the map; its relation is empty, and t
 
 ## One record over one fold
 
-There is one `Record`, and it is the narwhals interface over a [`Resolver`](#owner-map). A plain parquet directory is not a second implementation of it: `Record.at(uri)` folds over a single [`DirectorySource`](format.md), and over one source the fold degenerates to a scan of it — there is one layer, so every key is owned by it and the anti-join has nothing to evict.
+There is one `Record`, and it is the narwhals interface over a [`Resolver`](#owner-map). A plain parquet directory is not a second implementation of it: `Workspace.at(uri)` folds over a single [`DirectorySource`](format.md), and over one source the fold degenerates to a scan of it — there is one layer, so every key is owned by it and the anti-join has nothing to evict.
 
 So a directory takes the same properties as a tree node, rather than its own column of exceptions:
 
@@ -135,7 +135,24 @@ So a directory takes the same properties as a tree node, rather than its own col
 - **Member order** is `order_key`, which over one source is `(0, file order)` — file order, arrived at by the general rule.
 - **`schema.partial`** is the granularity of a patch, and one layer patches nothing, so it is inert rather than absent.
 
-Being a node in a layer tree is not what the fold requires; being a layer _layout_ is, and that is what a record directory is. A directory copied out of any tree, with no `revisions` row, reads identically.
+Being a node in a layer tree is not what the fold requires; being a layer _layout_ is, and that is what a record directory is. A directory copied out of any tree, with no revision file, reads identically.
+
+## A cursor per thread
+
+A DuckDB connection is not safe to use from two threads at once. DuckDB's answer is a cursor per thread, so the workspace's `con` is **the calling thread's cursor** on its one database, made on first use in that thread by a `threading.local` subclass — which reruns its `__init__` in each new thread, so there is no existence check and no lock, and a thread's cursor is dropped with the thread. A dict keyed by thread id would reuse ids; a `ContextVar` is copied into a task runner's workers, which would share the parent's cursor.
+
+Tables are shared between cursors — the `revisions` cache, the staging tables, the folded caches. A `DuckDBPyRelation` is not: it is bound to the cursor that built it. So the line runs around relations alone:
+
+- **Nothing but a relation holds a cursor.** A store, a revision, a `Resolver` and a layer source hold their workspace and look up `workspace.con` per call, so every relation they build lands on the calling thread's cursor, and a `Record` is usable from any thread. What they cache besides is plain data any thread computes the same.
+- **A relation, a narwhals frame over one, and a `WorkingRecord` belong to the thread that built them.** One reaching another thread's write path is rejected as [a relation from another connection](#a-relation-from-another-connection-is-rejected) is.
+
+**What a fold caches is shared, not held.** The frozen prefix's folded axes and groups are tables, `dims_<dim>_<id>` and `group_<name>_<id>`, beside the `owner_map_<kind>_<id>` [owner map](#owner-map); a last `coords_<id>` table lists them and is created after them, so a reader finding it finds them all. A dim or group name is hashed into the table name, being a caller's string. `<id>` is the node whose frozen layers were folded: a revision's id, the base's for a `WorkingRecord`, `uuid5` of the URI for a standalone directory. The schema is not in the key, so every table is read through `cast_declared` under the schema the reader holds, as a materialised map is — a fold made before the manifest widened then reads under the wider one.
+
+A fold one thread builds serves every thread. Two threads missing at once both fold and both create, and DuckDB fails the second with a write-write conflict rather than a name clash; the miss path catches that and reads the winner's table. The duplicate fold is wasted, not wrong.
+
+### A relation from another connection is rejected
+
+Copying a relation onto the target connection would collect it on its own — a full materialisation the caller never asked for, which fails anyway if that connection has been closed. So `as_relation`, the boundary every frame handed to a write or an edit crosses, binds it to the target cursor first, which costs no read and fails for a relation from another connection or another thread's cursor, and re-raises that as a `ValueError` naming the fix: build the frame on `record.con` in this thread, or hand over a non-DuckDB frame to land.
 
 ## Outputs
 

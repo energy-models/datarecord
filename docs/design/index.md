@@ -40,7 +40,7 @@ That is why the values are keyed by attribute and not by type — an attribute r
 `Record` is the one class that answers all of this, and it is the narwhals interface over a fold across layers:
 
 - **A tree of layers**, each adding a partial record on top of its parent, resolved last-writer-wins. No single directory is the record; the answer is the fold across them. `Revision.record` gives one.
-- **One parquet directory**, via `Record.at(uri)` — folded over the single layer it is, which [degenerates to a scan of it](read-path.md#one-record-over-one-fold). Not a second implementation.
+- **One parquet directory**, via `Workspace.at(uri)` — folded over the single layer it is, which [degenerates to a scan of it](read-path.md#one-record-over-one-fold). Not a second implementation.
 - **[`WorkingRecord`](working-record.md)** — a `Record` whose last layer is a staging area, so pending edits read back before anything is written.
 
 `RecordLike` is the protocol all of these satisfy, and so does **a framework's own object** — a PyPSA `Network` presenting itself as a record, without depending on this package at all.

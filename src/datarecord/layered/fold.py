@@ -36,7 +36,6 @@ from datarecord.duck import (
     distinct_values,
     fn,
     parquet_names,
-    resolved_dir,
     struct_of,
     try_read_parquet,
 )
@@ -48,6 +47,7 @@ if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
     from datarecord.schema import Schema
+    from datarecord.store import Store
 
 
 def flags_from_rows(
@@ -217,7 +217,7 @@ class Fold:
         revision_id: UUID,
         con: DuckDBPyConnection,
         schema: Schema,
-        base_uri: str | None = None,
+        store: Store,
     ) -> Fold | None:
         """This node's `Fold`, or `None` if it is not materialised.
 
@@ -225,7 +225,7 @@ class Fold:
         per-type frames are written together (`resolve.materialise`), so if the
         map is absent the node has no `resolved/` cache at all.
         """
-        base = resolved_dir(revision_id, base_uri)
+        base = store.resolved_dir(revision_id)
         owner_map = try_read_parquet(f"{base}owner_map/inputs.parquet", con)
         if owner_map is None:
             return None

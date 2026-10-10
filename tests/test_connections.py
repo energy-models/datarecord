@@ -9,9 +9,10 @@ Notes
 - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
 """
 
-from datarecord.duck import layer_dir
 from datarecord.layered.revision import Revision
 from tests.fixtures import (
+    empty_child,
+    empty_root,
     relation,
     schema,
     tombstone,
@@ -43,11 +44,11 @@ def _entity_type_frame(revision, ctype=PROCESS):
     return frame
 
 
-def _root(con) -> Revision:
+def _root(store) -> Revision:
     """A record whose layer has one Process with three connections."""
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema())
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer,
@@ -73,9 +74,9 @@ def _efficiencies(revision) -> dict[str, float]:
     return dict(zip(df["bus"], df["value"], strict=True))
 
 
-def test_connections_resolve_in_order(con, base_uri):
+def test_connections_resolve_in_order(store):
     """A component's connections come back in first-introduced order."""
-    revision = _root(con)
+    revision = _root(store)
     frame = _connections(revision).df()
     assert list(frame["bus"]) == ["h2_north", "iron_ore", "dri"]
     # `role` describes the connection rather than keying it, so it rides along
@@ -83,14 +84,14 @@ def test_connections_resolve_in_order(con, base_uri):
     assert list(frame["role"]) == ["input", "input", "output"]
 
 
-def test_patch_overrides_one_connection_only(con, base_uri):
+def test_patch_overrides_one_connection_only(store):
     """The sibling-clobbering case: `bus` in `input_key` scopes ownership per connection."""
-    root = _root(con)
+    root = _root(store)
     root.materialise()
 
-    child = root.child()
+    child = empty_child(root)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "efficiency",
         [
             {
@@ -107,20 +108,20 @@ def test_patch_overrides_one_connection_only(con, base_uri):
     assert _efficiencies(child) == {"h2_north": 9.9, "iron_ore": 1.6, "dri": 1.0}
 
 
-def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
+def test_patch_hits_the_bus_it_named_not_a_position(store):
     """An intermediate layer inserting a connection does not redirect a later patch."""
-    root = _root(con)
+    root = _root(store)
     root.materialise()
 
     # A middle layer prepends a connection, which under a positional encoding
     # would shift every later index by one.
-    middle = root.child()
+    middle = empty_child(root)
     write_connections(
-        layer_dir(middle.id),
+        store.layer_dir(middle.id),
         [{"entity": "steel_dri", "bus": "elec_north", "role": "input"}],
     )
     write_input(
-        layer_dir(middle.id),
+        store.layer_dir(middle.id),
         "efficiency",
         [
             {
@@ -133,9 +134,9 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
     )
     middle.materialise()
 
-    leaf = middle.child()
+    leaf = empty_child(middle)
     write_input(
-        layer_dir(leaf.id),
+        store.layer_dir(leaf.id),
         "efficiency",
         [
             {
@@ -155,7 +156,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(con, base_uri):
     }
 
 
-def test_component_level_attribute_is_unaffected(con, base_uri):
+def test_component_level_attribute_is_unaffected(store):
     """A component attribute carries no `bus` column at all, and resolves as ever.
 
     `bus` is the `connection` group's coordinate, so it is on the files of the
@@ -166,17 +167,17 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    root = _root(con)
+    root = _root(store)
     write_input(
-        layer_dir(root.id),
+        store.layer_dir(root.id),
         "p_nom",
         [{"entity_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
     )
     root.materialise()
 
-    child = root.child()
+    child = empty_child(root)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_nom",
         [{"entity_type": PROCESS, "entity": "steel_dri", "value": 250.0}],
     )
@@ -186,16 +187,16 @@ def test_component_level_attribute_is_unaffected(con, base_uri):
     assert "bus" not in df.columns, "`p_nom` is not addressed by the connection group"
 
 
-def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri):
+def test_per_connection_attribute_varies_by_snapshot_and_scenario(store):
     """`bus` extends the key; it does not displace the dims.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema())
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer, [{"entity": "steel_dri", "bus": "h2_north", "role": "input"}]
@@ -239,13 +240,13 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(con, base_uri)
     assert len(relation(revision, "efficiency").df()) == 3
 
 
-def test_connection_tombstone_removes_one_connection(con, base_uri):
+def test_connection_tombstone_removes_one_connection(store):
     """A connection tombstone drops its connection row and its `inputs/` rows."""
-    root = _root(con)
+    root = _root(store)
     root.materialise()
 
-    child = root.child()
-    tombstone_connection(layer_dir(child.id), [("steel_dri", "iron_ore")])
+    child = empty_child(root)
+    tombstone_connection(store.layer_dir(child.id), [("steel_dri", "iron_ore")])
 
     frame = _connections(child).df()
     assert set(frame["bus"]) == {"h2_north", "dri"}
@@ -254,7 +255,7 @@ def test_connection_tombstone_removes_one_connection(con, base_uri):
     assert _efficiencies(child) == {"h2_north": 2.1, "dri": 1.0}
 
 
-def test_component_tombstone_does_not_cascade_to_its_connections(con, base_uri):
+def test_component_tombstone_does_not_cascade_to_its_connections(store):
     """Deleting a component does not auto-remove its connections; the author does.
 
     A component tombstone drops the component from the entity axis, but its
@@ -266,19 +267,19 @@ def test_component_tombstone_does_not_cascade_to_its_connections(con, base_uri):
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    root = _root(con)
+    root = _root(store)
     root.materialise()
 
     # The component alone: its connections survive, dangling.
-    child = root.child()
-    tombstone(layer_dir(child.id), PROCESS, ["steel_dri"])
+    child = empty_child(root)
+    tombstone(store.layer_dir(child.id), PROCESS, ["steel_dri"])
     assert child.resolver.group_frame("connection") is not None
 
     # The connections too: now both are gone.
-    both = root.child()
-    tombstone(layer_dir(both.id), PROCESS, ["steel_dri"])
+    both = empty_child(root)
+    tombstone(store.layer_dir(both.id), PROCESS, ["steel_dri"])
     tombstone_connection(
-        layer_dir(both.id),
+        store.layer_dir(both.id),
         [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
     )
     assert both.resolver.group_frame("connection") is None

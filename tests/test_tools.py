@@ -15,12 +15,11 @@ import narwhals as nw
 import pandas as pd
 import pytest
 
-from datarecord import Revision
-from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import ENTITY_TYPE, PyPSA, _colliding_names
 from tests.fixtures import (
+    empty_root,
     export_network,
     relation,
     schema,
@@ -30,9 +29,9 @@ from tests.fixtures import (
 
 
 @pytest.fixture
-def single_revision(con, base_uri, ac_dc):
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+def single_revision(store, ac_dc):
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
     return revision
 
 
@@ -83,15 +82,15 @@ def test_requires_reports_the_records_own_types(single_revision):
     assert not [a for a in req.attributes if a[1] == "entity"]
 
 
-def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
+def test_verify_reports_a_missing_dim(store, ac_dc):
     """A schema that declares no `scenario` dim cannot build a network.
 
     Notes
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
     _with_schema(revision, dims={"snapshot": nw.Datetime()}, partial=set())
 
     missing = PyPSA.verify(revision.record)
@@ -102,7 +101,7 @@ def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
         PyPSA.build(revision.record)
 
 
-def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
+def test_verify_reports_a_type_the_tool_does_not_know(store, ac_dc):
     """A type outside PyPSA's registry is reported by `verify`, not raised in the fold.
 
     The type must be one the *schema* declares - the entity-type axis is an
@@ -116,10 +115,10 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
     # Declared alongside PyPSA's own types, since the axis pins the vocabulary.
-    declared = read_schema(con)
+    declared = read_schema(store)
     axis = declared.dimensions[ENTITY_TYPE]
     assert isinstance(axis.dtype, nw.Enum), "PyPSA declares its types as an enum"
     write_schema(
@@ -132,9 +131,10 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
                     ),
                 }
             }
-        )
+        ),
+        revision.store,
     )
-    write_entity_type(layer_dir(revision.id), "Widget", [{"entity": "w1"}])
+    write_entity_type(store.layer_dir(revision.id), "Widget", [{"entity": "w1"}])
 
     missing = PyPSA.verify(revision.record)
     assert missing.entity_types == {"Widget"}
@@ -157,11 +157,11 @@ def _without_default(revision, ctype: str, attribute: str) -> None:
     `ctype` says which type the caller means it for; the spec itself is
     declared once record-wide, so dropping the default drops it everywhere.
     """
-    was = read_schema()
+    was = read_schema(revision.store)
     assert attribute in was.attributes_for(ctype)
     spec = was.attributes[attribute]
     was.attributes[attribute] = spec.model_copy(update={"default": None})
-    write_schema(was)
+    write_schema(was, revision.store)
 
 
 def _with_schema(revision, **kwargs) -> None:
@@ -175,7 +175,7 @@ def _with_schema(revision, **kwargs) -> None:
     -----
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
-    was = read_schema()
+    was = read_schema(revision.store)
     now = schema(**kwargs)
     # Keep the old attributes, but drop any dim a redeclaration removed from
     # their address - an attribute over a dim the schema no longer declares is
@@ -201,10 +201,10 @@ def _with_schema(revision, **kwargs) -> None:
             "meta": was.meta,
         }
     )
-    write_schema(now)
+    write_schema(now, revision.store)
 
 
-def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
+def test_verify_reports_a_snapshot_key(store, ac_dc):
     """`snapshot` as a key is reported, not crashed on.
 
     A limit of this tool's *representation*, not of the layer format: PyPSA's
@@ -218,9 +218,9 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    revision = Revision.create(con)
-    write_schema(PyPSA.to_datarecord(ac_dc).schema)
-    export_network(ac_dc, revision, con)
+    revision = empty_root(store)
+    write_schema(PyPSA.to_datarecord(ac_dc).schema, store)
+    export_network(ac_dc, revision)
     _with_schema(revision, partial={"scenario", "snapshot"})
 
     missing = PyPSA.verify(revision.record)
@@ -230,16 +230,16 @@ def test_verify_reports_a_snapshot_key(con, base_uri, ac_dc):
         PyPSA.build(revision.record)
 
 
-def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
+def test_verify_reports_a_missing_required_attribute(store, ac_dc):
     """A component type with no `bus` anywhere - not in the frame, not in the catalog."""
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
     # A Generator member carrying no `bus` column at all, no connection row
     # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
-    write_entity_type(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    write_entity_type(store.layer_dir(revision.id), "Generator", [{"entity": "g1"}])
     # One file across every type, so the Generators' rows are dropped from it
     # rather than a per-type file being unlinked.
-    path = Path(layer_dir(revision.id), "groups", "connection.parquet")
+    path = Path(store.layer_dir(revision.id), "groups", "connection.parquet")
     rows = pd.read_parquet(path)
     generators = set(ac_dc.c["Generator"].static.index) | {"g1"}
     rows[~rows["entity"].isin(generators)].to_parquet(path, index=False)
@@ -249,35 +249,33 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     assert ("Generator", "bus") in missing.attributes
 
 
-def test_verify_accepts_a_declared_default_for_a_required_attribute(
-    con, base_uri, ac_dc
-):
+def test_verify_accepts_a_declared_default_for_a_required_attribute(store, ac_dc):
     """A declared default makes an attribute resolvable with no row anywhere.
 
     Notes
     -----
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
-    write_entity_type(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
+    write_entity_type(store.layer_dir(revision.id), "Generator", [{"entity": "g1"}])
 
     # PyPSA's own registry already declares `bus` with a `""` default, which
     # is exactly the case this pins - so the record is left as written.
     assert ("Generator", "bus") not in PyPSA.verify(revision.record).attributes
 
 
-def test_verify_reports_a_piecewise_linear_attribute(con, base_uri, ac_dc):
+def test_verify_reports_a_piecewise_linear_attribute(store, ac_dc):
     """A curve is stored correctly; it is the PyPSA translation that cannot express it.
 
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
     write_input(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         "marginal_cost",
         [
             {
@@ -299,7 +297,7 @@ def test_verify_reports_a_piecewise_linear_attribute(con, base_uri, ac_dc):
 def test_verify_accepts_a_scalar_attribute(single_revision):
     """The same attribute without breakpoints is not reported (the negative half)."""
     write_input(
-        layer_dir(single_revision.id),
+        single_revision.store.layer_dir(single_revision.id),
         "marginal_cost",
         [{"entity": "Manchester Wind", "value": 20.0}],
     )
@@ -526,7 +524,7 @@ def test_to_datarecord_rejects_names_differing_only_by_case():
         PyPSA.to_datarecord(n)
 
 
-def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
+def test_a_second_tool_needs_no_record_change(store, ac_dc):
     """A tool is a plain object taking a record; adding one changes nothing here.
 
     No registration and no name dispatch: conformance to `Tool` is structural,
@@ -561,8 +559,8 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
     fake = FakeTool()
     assert isinstance(fake, Tool)
 
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
 
     assert fake.requires(revision.record).dims == {"snapshot"}
     assert fake.verify(revision.record).entity_types == {"Nope"}
@@ -574,15 +572,15 @@ def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
     assert not PyPSA.verify(revision.record)
 
 
-def test_schema_dims_stay_generic(con, base_uri, ac_dc):
+def test_schema_dims_stay_generic(store, ac_dc):
     """`Coords` carries a dim PyPSA knows nothing about; axis names live in the tool.
 
     Declared but not `partial`, so the record's files need no column for it.
     Keying it would be a different matter, reported by the tool against the
     real record - see `test_verify_reports_unsupported_keys`.
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
     _with_schema(revision, dims={**_DIMS, "vintage": nw.String()})
     dims = revision.resolver.dims
     assert "vintage" in dims.schema.dims

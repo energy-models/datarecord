@@ -29,7 +29,7 @@ results = PyPSA.results(n)  # Frames, in the long schema
 `results` returns the same `Frames` type `Record.outputs` presents, so a solve's output goes straight back:
 
 ```python
-w = WorkingRecord(record, con)
+w = WorkingRecord(record)
 w.set("p_max_pu", 0.8, entity=["wind1"])
 n = PyPSA.build(w)  # a WorkingRecord is a Record
 n.optimize()

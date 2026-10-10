@@ -21,12 +21,10 @@ import pandas as pd
 import pytest
 from pydantic import ValidationError
 
-from datarecord import Revision
-from datarecord.duck import layer_dir
 from datarecord.layered.resolve import write_schema
 from datarecord.mutable import NewChild, WorkingRecord
 from datarecord.schema import AttributeSpec, Dimension, Group, Schema
-from tests.fixtures import write_axis
+from tests.fixtures import empty_root, write_axis
 
 TYPES = ["Bus", "Generator"]
 
@@ -55,16 +53,16 @@ def typed_schema():
 
 
 @pytest.fixture
-def root(con, base_uri, typed_schema):
+def root(store, typed_schema):
     """A record with both types, and an icon for each."""
-    write_schema(typed_schema, base_uri)
-    revision = Revision.create(con)
-    staged = WorkingRecord(revision.record, con)
+    write_schema(typed_schema, store)
+    revision = empty_root(store)
+    staged = WorkingRecord(revision.record)
     staged.add("Bus", pd.DataFrame([{"entity": "b1"}]))
     staged.add("Generator", pd.DataFrame([{"entity": "g1", "p_nom": 1.0}]))
     child = staged.commit(NewChild(revision))
     write_axis(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "entity_type",
         [
             {"entity_type": "Bus", "icon": "node"},
@@ -106,27 +104,27 @@ def test_it_reads_back_from_the_type_axis(root):
     assert "icon" not in root.record.attributes, "an axis column is no long frame"
 
 
-def test_set_states_one_types_value(root, con):
+def test_set_states_one_types_value(root, store):
     """A mapping keyed by label, with every untouched label left alone."""
-    staged = WorkingRecord(root.record, con)
+    staged = WorkingRecord(root.record)
     staged.set("icon", {"Generator": "windmill"})
     assert _icons(staged) == {"Bus": "node", "Generator": "windmill"}
 
 
-def test_a_scalar_reaches_every_type(root, con):
-    staged = WorkingRecord(root.record, con)
+def test_a_scalar_reaches_every_type(root, store):
+    staged = WorkingRecord(root.record)
     staged.set("icon", "square")
     assert _icons(staged) == {"Bus": "square", "Generator": "square"}
 
 
-def test_a_child_layer_restates_the_type_axis_it_owns_whole(root, con):
+def test_a_child_layer_restates_the_type_axis_it_owns_whole(root, store):
     """`entity_type` is not `partial`, so touching it carries every label.
 
     No exception for being the type axis: a dim outside `partial` is one a layer
     owns entirely once it touches it, and its axis file then says what the axis
     is at that layer rather than being readable only against its parent.
     """
-    staged = WorkingRecord(root.record, con)
+    staged = WorkingRecord(root.record)
     staged.set("icon", {"Generator": "windmill"})
 
     axis = staged.resolver.sources[-1].axis("entity_type")
@@ -142,21 +140,21 @@ def test_a_child_layer_restates_the_type_axis_it_owns_whole(root, con):
     )
 
 
-def test_an_enum_label_the_dtype_does_not_declare_is_refused(root, con):
+def test_an_enum_label_the_dtype_does_not_declare_is_refused(root, store):
     """The staging column is the axis's `Enum`, so the insert itself rejects it.
 
     Wrapped rather than surfaced: DuckDB says "could not convert to UINT8",
     naming the enum's storage type instead of the dim or its vocabulary.
     """
-    staged = WorkingRecord(root.record, con)
+    staged = WorkingRecord(root.record)
     with pytest.raises(ValueError, match="pins the vocabulary"):
         staged.set("icon", {"Nope": "x"})
     assert "entity_type" not in staged.resolver.sources[-1].axes(), "nothing staged"
 
 
-def test_entity_is_refused_for_a_type_addressed_attribute(root, con):
+def test_entity_is_refused_for_a_type_addressed_attribute(root, store):
     """`entity=` names components, and an icon belongs to none."""
-    staged = WorkingRecord(root.record, con)
+    staged = WorkingRecord(root.record)
     with pytest.raises(ValueError, match="belongs to no entity"):
         staged.set("icon", "x", entity=["g1"])
 

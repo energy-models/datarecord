@@ -11,7 +11,7 @@ SPDX-License-Identifier: CC-BY-4.0
 ```python
 from datarecord import WorkingRecord, NewChild, Directory
 
-w = WorkingRecord(root.record, con)
+w = WorkingRecord(root.record)
 ```
 
 ## `set`

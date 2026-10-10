@@ -9,8 +9,8 @@ SPDX-License-Identifier: CC-BY-4.0
 ```python
 from datarecord import write_record
 
-write_record(revision.id, source, con)  # as a revision's layer
-write_record(None, source, con, uri="out/")  # as a standalone directory
+write_record(revision, source)  # as a revision's layer
+write_record(None, source, workspace=ws, uri="out/")  # as a standalone directory
 ```
 
 `source` is anything satisfying `Record` — including a framework object presenting itself as one, which is what puts read and write on a single seam. An existing layer directory is an error rather than an overwrite: frames are staged into a sibling path and renamed on success, so a source that fails validation leaves no layer rather than half of one ([design](../design/writing.md)).

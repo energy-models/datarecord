@@ -9,14 +9,11 @@ Notes
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
-from pathlib import Path
-
 import pandas as pd
 import pytest
 
-from datarecord import Revision
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network
+from tests.fixtures import empty_root, export_network
 
 
 def _has_export_to_parquet() -> bool:
@@ -74,14 +71,14 @@ def assert_networks_equal(got, expected):
 
 
 @pytest.fixture
-def single_revision(con, base_uri, ac_dc):
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+def single_revision(store, ac_dc):
+    revision = empty_root(store)
+    export_network(ac_dc, revision)
     return revision
 
 
 @needs_export_to_parquet
-def test_roundtrip_matches_pypsa_reader(con, base_uri, single_revision, ac_dc):
+def test_roundtrip_matches_pypsa_reader(tmp_path, single_revision, ac_dc):
     """Our reader agrees with `import_from_parquet` on the network each produces.
 
     Not over the same directory: a record blocks writes declares its schema in
@@ -96,7 +93,7 @@ def test_roundtrip_matches_pypsa_reader(con, base_uri, single_revision, ac_dc):
     """
     import pypsa
 
-    plain = str(Path(base_uri) / "pypsa-written")
+    plain = str(tmp_path / "pypsa-written")
     ac_dc.export_to_parquet(plain)
     reference = pypsa.Network()
     reference.import_from_parquet(plain)  # type: ignore[attr-defined]
@@ -104,12 +101,12 @@ def test_roundtrip_matches_pypsa_reader(con, base_uri, single_revision, ac_dc):
     assert_networks_equal(PyPSA.build(single_revision.record), reference)
 
 
-def test_roundtrip_matches_original(con, base_uri, single_revision, ac_dc):
+def test_roundtrip_matches_original(store, single_revision, ac_dc):
     """Genuine data loss surfaces here even if it is shared with upstream."""
     assert_networks_equal(PyPSA.build(single_revision.record), ac_dc)
 
 
-def test_static_series_split_preserved(con, base_uri, single_revision):
+def test_static_series_split_preserved(store, single_revision):
     """A static-valued varying attribute stays out of `dynamic`.
 
     Notes

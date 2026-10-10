@@ -19,13 +19,12 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 
-from datarecord.duck import as_relation, base_uri_of, fn, layer_dir, union_all_by_name
+from datarecord.duck import as_relation, fn, union_all_by_name
 from datarecord.layered.resolve import cast_declared, read_schema, write_schema
 from datarecord.record import Frames, LayerData, RecordLike, collision_detail
 from datarecord.schema import Schema
@@ -33,12 +32,15 @@ from datarecord.schema import Schema
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
+    from datarecord.layered.revision import Revision
+    from datarecord.store import Store, Workspace
+
 
 def write_record(
-    revision_id: UUID | None,
+    revision: Revision | None,
     source: LayerData | RecordLike,
-    con: DuckDBPyConnection,
     *,
+    workspace: Workspace | None = None,
     uri: str | None = None,
 ) -> None:
     """Write `source` as `revision_id`'s layer, which must not exist yet.
@@ -51,10 +53,12 @@ def write_record(
 
     Parameters
     ----------
-    revision_id
-        The record whose layer this is; `layer_dir` derives the path.
-        `None` only together with `uri`, for a standalone record that belongs
-        to no record.
+    revision
+        The revision whose layer this is; its store's `layer_dir` derives the
+        path. `None` only together with `uri`, for a standalone record that
+        belongs to no tree.
+    workspace
+        What a standalone record is written through, there being no store.
     uri
         Write here instead of at the revision's own layer - how a `Directory`
         commit target produces a record outside the layer tree.
@@ -64,8 +68,6 @@ def write_record(
         `RecordLike`, wrapped in a thin adapter reading its `Frames` through the
         same enumerate-and-read pairs. Validated against its own schema before
         anything is written.
-    con
-        Connection to write through.
 
     Raises
     ------
@@ -82,13 +84,20 @@ def write_record(
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
     """
+    store = None
     if uri is None:
-        if revision_id is None:
-            msg = "write_record needs a revision_id or a uri"
+        if revision is None:
+            msg = "write_record needs a revision or a uri"
             raise ValueError(msg)
-        base = layer_dir(revision_id)
+        store = revision.store
+        workspace = store.workspace
+        base = store.layer_dir(revision.id)
     else:
+        if workspace is None:
+            msg = "a standalone write_record needs the workspace to write through"
+            raise ValueError(msg)
         base = uri if uri.endswith("/") else uri + "/"
+    con = workspace.con
     local = "://" not in base
     if local and Path(base).exists():
         msg = f"layer {base} already exists; write_record creates a new layer (https://energy-models.github.io/datarecord/design/writing/)"
@@ -104,11 +113,11 @@ def write_record(
         source if isinstance(source, LayerData) else _RecordLikeAsLayerData(source, con)
     )
     schema = data.schema
-    if uri is None:
+    if store is not None:
         # One schema for the whole tree (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record). The first layer written
         # declares it; every later one is checked against it, so a layer
         # cannot quietly redefine what an attribute means.
-        _reconcile_schema(schema, con)
+        _reconcile_schema(schema, store)
 
     # Staged then renamed, so a frame that fails validation part-way through
     # leaves no layer rather than half of one (https://energy-models.github.io/datarecord/design/writing/). Validation happens as each
@@ -174,12 +183,12 @@ def write_record(
         Path(staging).rename(base.rstrip("/"))
 
 
-def _reconcile_schema(schema: Schema, con: DuckDBPyConnection) -> None:
+def _reconcile_schema(schema: Schema, store: Store) -> None:
     """Declare the record's schema, or check this layer agrees with it.
 
     A schema is not layered data, so there is nothing to fold: the first writer
     states it and the rest must be `compatible_with` it. Read and written beside
-    `con`'s own layers, so one record never consults another's manifest.
+    `store`'s own layers, so one record never consults another's manifest.
 
     Raises
     ------
@@ -192,10 +201,9 @@ def _reconcile_schema(schema: Schema, con: DuckDBPyConnection) -> None:
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
-    base = base_uri_of(con)
-    existing = read_schema(con)
+    existing = read_schema(store)
     if not (existing.dimensions or existing.attributes):
-        write_schema(schema, base)
+        write_schema(schema, store)
         return
     if schema == existing:
         return
@@ -208,7 +216,7 @@ def _reconcile_schema(schema: Schema, con: DuckDBPyConnection) -> None:
         raise ValueError(msg)
     # Compatible, so it supersedes: a widened schema still reads every layer
     # written under the narrower one.
-    write_schema(schema, base)
+    write_schema(schema, store)
 
 
 DERIVED = ("order_key",)

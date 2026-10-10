@@ -15,6 +15,7 @@ import narwhals as nw
 import pandas as pd
 
 from datarecord.layered.resolve import write_schema as record_write_schema
+from datarecord.layered.revision import Revision
 from datarecord.schema import (
     AttributeSpec,
     Dimension,
@@ -22,6 +23,7 @@ from datarecord.schema import (
     Schema,
     Trait,
 )
+from datarecord.store import Store
 
 # No `entity_type`: an attribute row is keyed by `name`, unique across every type
 # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
@@ -282,7 +284,21 @@ def rename_components(n, ctype: str, suffix: str) -> None:
         frame.rename(columns=renamed, inplace=True)
 
 
-def export_network(n, revision, con) -> None:
+def empty_root(store: Store) -> Revision:
+    """A new root revision with no layer, for a test to hand-write one into.
+
+    No public API makes an empty revision; this is the store's private
+    revision-file write.
+    """
+    return store._create(None)
+
+
+def empty_child(parent: Revision) -> Revision:
+    """A new child of `parent` with no layer, like `empty_root`."""
+    return parent.store._create(parent.id)
+
+
+def export_network(n, revision) -> None:
     """Write `n` as `revision`'s layer, through the record layer's own writer.
 
     Not `n.export_to_parquet`: that emits PyPSA's upstream manifest format,
@@ -297,10 +313,10 @@ def export_network(n, revision, con) -> None:
     from datarecord.layered.write import write_record
     from datarecord.tools.pypsa import PyPSA
 
-    write_record(revision.id, PyPSA.to_datarecord(n), con)
+    write_record(revision, PyPSA.to_datarecord(n))
 
 
-def write_schema(schema: Schema, base_uri: str | None = None) -> None:
+def write_schema(schema: Schema, store: Store) -> None:
     """Declare the record's one schema, beside the layers.
 
     Not per layer: a layer holds only data, so this writes the record-level
@@ -310,7 +326,7 @@ def write_schema(schema: Schema, base_uri: str | None = None) -> None:
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    record_write_schema(schema, base_uri)
+    record_write_schema(schema, store)
 
 
 def write_directory_schema(directory: str, schema: Schema) -> None:

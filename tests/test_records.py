@@ -14,8 +14,6 @@ from dataclasses import dataclass
 import narwhals as nw
 import pytest
 
-from datarecord import Revision
-from datarecord.duck import layer_dir, resolved_dir
 from datarecord.layered.revision import Record
 from datarecord.layered.sources import ParquetLayer
 from datarecord.layered.write import write_record
@@ -23,21 +21,28 @@ from datarecord.mutable import WorkingRecord
 from datarecord.record import EMPTY, Flags, Frames, RecordLike
 from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import schema, write_entity_type, write_input, write_schema
+from tests.fixtures import (
+    empty_child,
+    empty_root,
+    schema,
+    write_entity_type,
+    write_input,
+    write_schema,
+)
 
 MEMBERS = ("dims", "entity_types", "attributes")
 
 
 @pytest.fixture
-def written(con, base_uri, ac_dc):
+def written(store, ac_dc):
     """A record of one layer, so every construction below reads the same files."""
-    revision = Revision.create(con)
-    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+    revision = empty_root(store)
+    write_record(revision, PyPSA.to_datarecord(ac_dc))
     return revision
 
 
 @pytest.fixture
-def both(written, con):
+def both(written, store):
     """One record, every way of constructing a `Record` over it.
 
     The same files reached by two source constructions: as the layer of a
@@ -53,12 +58,12 @@ def both(written, con):
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
     """
     node = Record(written.resolver)
-    directory = Record.at(layer_dir(written.id), con)
+    directory = store.layer(written.id)
     return (
         node,
         directory,
-        WorkingRecord(node, con),
-        WorkingRecord(directory, con),
+        WorkingRecord(node),
+        WorkingRecord(directory),
     )
 
 
@@ -81,7 +86,7 @@ def test_a_network_source_is_a_record(ac_dc):
     assert isinstance(PyPSA.to_datarecord(ac_dc), RecordLike)
 
 
-def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
+def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
     """`Frames` is the `Mapping` ABC, so eager `dict` values are a valid backing.
 
     The protocol asks for named lazy frames, not for a mapping that defers
@@ -93,7 +98,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
     """
     members = nw.from_native(
-        con.sql(
+        store.workspace.con.sql(
             "SELECT 'Generator' AS entity_type, 'wind' AS entity,"
             " NULL::VARCHAR AS scenario"
         )
@@ -103,13 +108,15 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
     # per-type frames, which are optional (a tombstone-only or all-long component
     # has none).
     entity_axis = nw.from_native(
-        con.sql("SELECT 'wind' AS entity, 'Generator' AS entity_type, FALSE AS deleted")
+        store.workspace.con.sql(
+            "SELECT 'wind' AS entity, 'Generator' AS entity_type, FALSE AS deleted"
+        )
     )
     # `p_nom`'s own coordinates and no others: no `entity_type` in a long
     # row, and no `bus`, which is the connection group's coordinate rather than
     # a column every attribute carries.
     long = nw.from_native(
-        con.sql(
+        store.workspace.con.sql(
             "SELECT 'wind' AS entity, 'p_nom' AS attribute,"
             " NULL::DOUBLE AS breakpoint, 100.0 AS value,"
             " NULL::VARCHAR AS snapshot, NULL::VARCHAR AS scenario,"
@@ -145,9 +152,9 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(con):
 
     # And `write_record` consumes it, which is the point of widening the type:
     # it iterates and looks up, both of which a `dict` answers.
-    revision = Revision.create(con)
-    write_record(revision.id, record, con)
-    assert "p_nom" in Record.at(layer_dir(revision.id), con).attributes
+    revision = empty_root(store)
+    write_record(revision, record)
+    assert "p_nom" in store.layer(revision.id).attributes
 
 
 def test_revision_exposes_its_record(written):
@@ -229,11 +236,11 @@ def test_keys_list_without_building(both):
 # -- flags, the one non-frame member (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) ----------------------------------
 
 
-def test_flags_are_per_component_type(con, base_uri):
+def test_flags_are_per_component_type(store):
     """One file, two types, different shapes - OR-ing across them would lose both."""
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema())
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
     write_entity_type(layer, "Generator", [{"entity": "wind"}])
     write_entity_type(layer, "Link", [{"entity": "dc"}])
     write_input(
@@ -258,7 +265,7 @@ def test_flags_are_per_component_type(con, base_uri):
     assert "snapshot" not in link.varies
 
 
-def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
+def test_a_materialised_map_survives_a_dim_being_declared(store):
     """Adding a dim is compatible, and the persisted owner map too.
 
     The flags live in two structs rather than a `varies_<dim>` column each, so
@@ -273,9 +280,9 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     narrow = {"snapshot": nw.Datetime(), "period": nw.Int64()}
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema(dims=narrow, partial=set()))
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(dims=narrow, partial=set()), store)
     write_entity_type(layer, "Generator", [{"entity": "wind"}])
     write_input(
         layer,
@@ -288,20 +295,20 @@ def test_a_materialised_map_survives_a_dim_being_declared(con, base_uri):
     revision.materialise()
     # The map on disk knows nothing of `scenario` - without that this test
     # would pass whatever the flags' layout.
-    uri = f"{resolved_dir(revision.id)}owner_map/inputs.parquet"
-    persisted = con.sql(f"SELECT varies FROM read_parquet('{uri}')")
+    uri = f"{store.resolved_dir(revision.id)}owner_map/inputs.parquet"
+    persisted = store.workspace.con.sql(f"SELECT varies FROM read_parquet('{uri}')")
     assert "scenario" not in str(persisted.types[0])
 
     # The dim arrives after the map is on disk.
-    write_schema(schema(dims={**narrow, "scenario": nw.String()}, partial=set()))
-    child = revision.child()
+    write_schema(schema(dims={**narrow, "scenario": nw.String()}, partial=set()), store)
+    child = empty_child(revision)
     flags = Record(child.resolver).flags("Generator")["p_max_pu"]
     assert "snapshot" in flags.varies
     assert "scenario" not in flags.varies
     assert "scenario" not in flags.broadcast
 
 
-def test_flags_report_both_sets_where_components_disagree(con, base_uri):
+def test_flags_report_both_sets_where_components_disagree(store):
     """A mixed type puts `snapshot` in both sets, which is the split.
 
     Two generators, one with a series and one with a single value. Both
@@ -312,9 +319,9 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
     -----
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema())
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
     write_entity_type(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
     write_input(
         layer,
@@ -332,7 +339,7 @@ def test_flags_report_both_sets_where_components_disagree(con, base_uri):
     assert "snapshot" in combined.broadcast
 
 
-def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
+def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
     """A dim an attribute has no column for is in neither set, not in `broadcast`.
 
     `varies | broadcast` is the test for whether an attribute touches a dim at
@@ -348,8 +355,8 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
     write_schema(
         schema(
             attributes={
@@ -361,7 +368,8 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
                     ),
                 }
             }
-        )
+        ),
+        store,
     )
     write_entity_type(layer, "Generator", [{"entity": "wind"}])
     write_input(layer, "p_nom", [{"entity": "wind", "value": 100.0}])
@@ -379,16 +387,16 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(con, base_uri):
     assert "snapshot" in flags["p_max_pu"].broadcast
 
 
-def test_flags_report_a_curve(con, base_uri):
+def test_flags_report_a_curve(store):
     """`breakpoints` distinguishes a curve from a scalar, from either backing.
 
     Notes
     -----
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema())
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
     write_entity_type(layer, "Process", [{"entity": "steel"}])
     write_input(
         layer,
@@ -406,15 +414,15 @@ def test_flags_report_a_curve(con, base_uri):
 # -- more than one layer, which is where the fold stops being a scan ---------
 
 
-def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
+def test_node_record_resolves_the_overlay(store, ac_dc):
     """One layer read alone against the same layer folded onto its parent."""
-    root = Revision.create(con)
-    write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
+    root = empty_root(store)
+    write_record(root, PyPSA.to_datarecord(ac_dc))
     root.materialise()
 
-    child = root.child()
+    child = empty_child(root)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Gas", "value": 0.1}],
     )
@@ -423,7 +431,7 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
     # The single-layer view is the raw file, read through the `LayerSource`: the
     # folding resolver (`Record.at`) is the whole-tree lens, wrong for "what does
     # this one patch hold".
-    layer_only = ParquetLayer(child.id, child.resolver.schema, con).attribute(
+    layer_only = ParquetLayer(child.id, child.resolver.schema, child.store).attribute(
         "p_max_pu"
     )
 
@@ -435,19 +443,19 @@ def test_node_record_resolves_the_overlay(con, base_uri, ac_dc):
     assert patched == [0.1]
 
 
-def test_node_record_orders_members(con, base_uri, ac_dc):
+def test_node_record_orders_members(store, ac_dc):
     """A `Record` promises member order; for an overlay that means `order_key`.
 
     Notes
     -----
     - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
     """
-    root = Revision.create(con)
-    write_record(root.id, PyPSA.to_datarecord(ac_dc), con)
+    root = empty_root(store)
+    write_record(root, PyPSA.to_datarecord(ac_dc))
     root.materialise()
 
-    child = root.child()
-    write_entity_type(layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
+    child = empty_child(root)
+    write_entity_type(store.layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
     names = list(
         Record(child.resolver)
@@ -463,41 +471,41 @@ def test_node_record_orders_members(con, base_uri, ac_dc):
 # -- one layer read at its URI, with no tree around it -----------------------
 
 
-def test_a_directory_at_a_uri_reads_a_plain_record(con, base_uri, ac_dc, tmp_path):
+def test_a_directory_at_a_uri_reads_a_plain_record(store, ac_dc, tmp_path):
     """No revision and no tree: any parquet directory blocks wrote is a `Record`."""
-    revision = Revision.create(con)
-    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+    revision = empty_root(store)
+    write_record(revision, PyPSA.to_datarecord(ac_dc))
 
-    record = Record.at(layer_dir(revision.id), con)
+    record = store.layer(revision.id)
     assert isinstance(record, RecordLike)
     assert "Generator" in record.entity_types
     assert "p_max_pu" in record.attributes
     assert record.schema.attributes
 
 
-def test_a_directory_has_no_connections_when_none_were_written(con, base_uri, tmp_path):
+def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
     """A record with no `groups/connection.parquet` has no such key, not an error.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    revision = Revision.create(con)
-    layer = layer_dir(revision.id)
-    write_schema(schema())
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
     write_entity_type(layer, "Generator", [{"entity": "wind"}])
 
-    assert "connection" not in Record.at(layer, con).groups
+    assert "connection" not in store.layer(revision.id).groups
 
 
-def test_a_directory_reads_connections_blocks_wrote(written, con):
+def test_a_directory_reads_connections_blocks_wrote(written, store):
     """A record blocks wrote has them, with the roles the collapse assigned.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    record = Record.at(layer_dir(written.id), con)
+    record = store.layer(written.id)
     assert "connection" in record.groups
 
     rows = record.groups["connection"].collect().to_native().to_pandas()
@@ -524,7 +532,7 @@ def test_outputs_are_empty_until_solved(both):
         assert list(record.outputs) == []
 
 
-def test_outputs_is_an_ordinary_record_member(both, con, base_uri):
+def test_outputs_is_an_ordinary_record_member(both):
     """`outputs` is on `Record`; emptiness is the existence answer.
 
     Notes
@@ -539,7 +547,7 @@ def test_outputs_is_an_ordinary_record_member(both, con, base_uri):
         assert list(record.outputs) == []
 
 
-def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc):
+def test_write_record_omits_outputs_for_an_unsolved_source(store, ac_dc):
     """A source with no results produces a layer with no `outputs/`.
 
     Notes
@@ -548,7 +556,8 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
     """
     from datarecord.duck import try_read_parquet
 
-    solved = PyPSA.to_datarecord(ac_dc)
+    network = PyPSA.to_datarecord(ac_dc)
+    solved = network.on_connection(store.workspace.con)  # type: ignore[attr-defined]  # the PyPSA source, not the protocol
 
     class Unsolved:
         """The same record, with no results: `outputs` answers empty."""
@@ -564,50 +573,50 @@ def test_write_record_omits_outputs_for_an_unsolved_source(con, base_uri, ac_dc)
     source = Unsolved()
     assert isinstance(source, RecordLike)
 
-    revision = Revision.create(con)
+    revision = empty_root(store)
     # An empty `outputs` writes no `outputs/` at all, rather than an empty
     # directory (https://energy-models.github.io/datarecord/design/writing/).
-    write_record(revision.id, source, con)
-    layer = layer_dir(revision.id)
-    assert try_read_parquet(layer + "outputs/*.parquet", con) is None
-    assert "p_max_pu" in Record.at(layer, con).attributes
+    write_record(revision, source)
+    layer = store.layer_dir(revision.id)
+    assert try_read_parquet(layer + "outputs/*.parquet", store.workspace.con) is None
+    assert "p_max_pu" in store.layer(revision.id).attributes
 
 
 # -- one schema per record root (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ----------------------------------------
 
 
-def test_two_roots_in_one_process_read_their_own_schema(tmp_path):
-    """A connection's schema comes from *its* root, not the process default.
+def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
+    """A store's schema comes from *its* location, and so do its layers.
 
-    `connect(base_uri=...)` already scopes a connection to one record - its
-    `layer_dir` macro derives from that root - so the manifest
-    beside those layers is a property of the connection too. Two records on
-    two roots therefore disagree about their dims without either being wrong.
+    Two records on two locations disagree about their dims without either
+    being wrong, while sharing one workspace.
     """
-    from datarecord import duck
-    from datarecord.layered.resolve import write_schema as write_manifest
-
-    roots = {}
+    stores = {}
     cases: list[tuple[str, dict[str, nw.dtypes.DType]]] = [
         ("a", {"scenario": nw.String()}),
         ("b", {"vintage": nw.Int64()}),
     ]
     for name, dims in cases:
-        root = str(tmp_path / name)
-        con = duck.connect(base_uri=root)
-        write_manifest(schema(dims=dims, partial=set(dims)), root)
-        roots[name] = (root, con, Revision.create(con))
+        store = workspace.store(str(tmp_path / name))
+        write_schema(schema(dims=dims, partial=set(dims)), store)
+        revision = empty_root(store)
+        write_input(
+            store.layer_dir(revision.id), "p_nom", [{"entity": "g", "value": 1.0}]
+        )
+        stores[name] = (store, revision)
 
-    (_, _, revision_a), (root_b, con_b, revision_b) = roots["a"], roots["b"]
+    (_, revision_a), (store_b, revision_b) = stores["a"], stores["b"]
     # Beyond `entity` and the group's coordinates, which every schema declares.
     assert revision_a.record.schema.broadcast_dims == ("scenario",)
     assert revision_b.record.schema.broadcast_dims == ("vintage",)
 
     # A layer read directly needs no schema supplied either: its own directory
-    # carries none (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record), so the connection's root answers - which is what
-    # `Record.at` used to take a `declared` argument for.
-    layer = Record.at(layer_dir(revision_b.id, root_b), con_b)
-    assert layer.schema.broadcast_dims == ("vintage",)
+    # carries none (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record), so its store's answers.
+    assert store_b.layer(revision_b.id).schema.broadcast_dims == ("vintage",)
 
-    for _, con, _ in roots.values():
-        con.close()
+    for name, (store, revision) in stores.items():
+        location = tmp_path / name
+        assert (location / "layers" / str(revision.id)).is_dir(), (
+            "each location's layers land under it"
+        )
+        assert (location / "revisions" / f"{revision.id}.json").is_file()

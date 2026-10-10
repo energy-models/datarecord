@@ -20,11 +20,15 @@ import narwhals as nw
 import pytest
 from pydantic import ValidationError
 
-from datarecord import Revision
-from datarecord.duck import layer_dir
 from datarecord.mutable import NewChild, WorkingRecord
 from datarecord.schema import AttributeSpec, Dimension, Group, Schema
-from tests.fixtures import write_axis, write_group, write_schema
+from tests.fixtures import (
+    empty_child,
+    empty_root,
+    write_axis,
+    write_group,
+    write_schema,
+)
 
 
 def _schema(**overrides) -> Schema:
@@ -160,18 +164,18 @@ def _budget_schema() -> Schema:
     )
 
 
-def test_a_classified_axis_folds_as_an_ordinary_axis(con, base_uri):
+def test_a_classified_axis_folds_as_an_ordinary_axis(store):
     """The fold learns nothing new: the `into` dim has an axis file like any dim.
 
     Its own file is what gives it order and a place for `co2_budget`, which no
     bus column could hold.
     """
-    revision = Revision.create(con)
-    write_schema(_budget_schema())
-    write_axis(layer_dir(revision.id), "bus", [{"bus": "north"}])
-    write_axis(layer_dir(revision.id), "state", [{"state": "lower"}])
+    revision = empty_root(store)
+    write_schema(_budget_schema(), store)
+    write_axis(store.layer_dir(revision.id), "bus", [{"bus": "north"}])
+    write_axis(store.layer_dir(revision.id), "state", [{"state": "lower"}])
     write_axis(
-        layer_dir(revision.id), "country", [{"country": "DE"}, {"country": "FR"}]
+        store.layer_dir(revision.id), "country", [{"country": "DE"}, {"country": "FR"}]
     )
 
     axes = revision.resolver.dims.axes
@@ -181,18 +185,20 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(con, base_uri):
     )
 
 
-def test_a_chain_is_a_join_over_two_group_files(con, base_uri):
+def test_a_chain_is_a_join_over_two_group_files(store):
     """bus -> state -> country is one file per hop, never denormalised.
 
     Two files asserting bus->country would let a layer restating the states
     leave every bus's country stale, with nothing to detect it. A file per group
     gives that property for free: a layer restating a group restates one file.
     """
-    revision = Revision.create(con)
-    write_schema(_budget_schema())
-    write_group(layer_dir(revision.id), "state", [{"bus": "north", "state": "lower"}])
+    revision = empty_root(store)
+    write_schema(_budget_schema(), store)
     write_group(
-        layer_dir(revision.id), "country", [{"state": "lower", "country": "DE"}]
+        store.layer_dir(revision.id), "state", [{"bus": "north", "state": "lower"}]
+    )
+    write_group(
+        store.layer_dir(revision.id), "country", [{"state": "lower", "country": "DE"}]
     )
 
     groups = revision.record.groups
@@ -208,7 +214,7 @@ def test_a_chain_is_a_join_over_two_group_files(con, base_uri):
     ) == {"lower": "DE"}
 
 
-def test_member_order_survives_a_restate_through_a_materialised_parent(con, base_uri):
+def test_member_order_survives_a_restate_through_a_materialised_parent(store):
     """A group's member order is the resolved file's row order, preserved across a
     materialised parent: a key introduced at the root stays first, and a
     grandchild's addition sorts after the materialised seed's members.
@@ -217,36 +223,38 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(con, base
     order-preserving (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
     """
     schema = _budget_schema()
-    write_schema(schema)
+    write_schema(schema, store)
 
-    root = Revision.create(con)
-    write_group(layer_dir(root.id), "state", [{"bus": "north", "state": "lower"}])
+    root = empty_root(store)
+    write_group(store.layer_dir(root.id), "state", [{"bus": "north", "state": "lower"}])
 
-    child = root.child()
-    write_group(layer_dir(child.id), "state", [{"bus": "south", "state": "upper"}])
+    child = empty_child(root)
+    write_group(
+        store.layer_dir(child.id), "state", [{"bus": "south", "state": "upper"}]
+    )
     child.materialise()
 
-    grandchild = child.child()
-    write_group(layer_dir(grandchild.id), "state", [{"bus": "east", "state": "lower"}])
+    grandchild = empty_child(child)
+    write_group(
+        store.layer_dir(grandchild.id), "state", [{"bus": "east", "state": "lower"}]
+    )
 
     rows = grandchild.record.groups["state"].collect().to_native().to_pydict()
     assert rows["bus"] == ["north", "south", "east"], "member order, seed first"
     assert "order_key" not in rows
 
 
-def test_an_attribute_addressed_by_the_into_dim_alone_is_a_column_of_its_axis(
-    con, base_uri
-):
+def test_an_attribute_addressed_by_the_into_dim_alone_is_a_column_of_its_axis(store):
     """`co2_budget` is a property of the country, so it rides on the axis file.
 
     Not `inputs/co2_budget.parquet`: one addressing coordinate is a column on
     that thing's own table, and for a mapping that table is its own axis file.
     """
-    revision = Revision.create(con)
+    revision = empty_root(store)
     schema = _budget_schema()
-    write_schema(schema)
+    write_schema(schema, store)
     write_axis(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         "country",
         [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
     )
@@ -259,21 +267,21 @@ def test_an_attribute_addressed_by_the_into_dim_alone_is_a_column_of_its_axis(
     )
 
 
-def test_setting_an_axis_addressed_attribute_stages_an_axis_row(con, base_uri):
+def test_setting_an_axis_addressed_attribute_stages_an_axis_row(store):
     """`set` states a value for a label the axis already has.
 
     The staged row carries the label and the column, so a read with pending
     edits answers the new value while every untouched label keeps the base's.
     """
-    revision = Revision.create(con)
-    write_schema(_budget_schema())
+    revision = empty_root(store)
+    write_schema(_budget_schema(), store)
     write_axis(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         "country",
         [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
     )
 
-    staged = WorkingRecord(revision.record, con)
+    staged = WorkingRecord(revision.record)
     staged.set("co2_budget", {"DE": 12.0})
 
     frame = staged.dims["country"].collect().to_native()
@@ -283,7 +291,7 @@ def test_setting_an_axis_addressed_attribute_stages_an_axis_row(con, base_uri):
     )
 
 
-def test_setting_one_axis_attribute_keeps_its_siblings_value(con, base_uri):
+def test_setting_one_axis_attribute_keeps_its_siblings_value(store):
     """Two attributes on one axis, one edited: the other must survive the fold.
 
     The staged row carries only the column its `set` named, and the fold is
@@ -292,7 +300,7 @@ def test_setting_one_axis_attribute_keeps_its_siblings_value(con, base_uri):
     column *before* the fold sees it is what makes the two calls commute, and
     this is the assertion that fails if it stops.
     """
-    revision = Revision.create(con)
+    revision = empty_root(store)
     write_schema(
         _schema(
             attributes={
@@ -300,15 +308,16 @@ def test_setting_one_axis_attribute_keeps_its_siblings_value(con, base_uri):
                 "population": AttributeSpec(dtype=nw.Float64(), dims={"country"}),
             },
             partial=frozenset({"country"}),
-        )
+        ),
+        store,
     )
     write_axis(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         "country",
         [{"country": "DE", "co2_budget": 40.0, "population": 83.0}],
     )
 
-    staged = WorkingRecord(revision.record, con)
+    staged = WorkingRecord(revision.record)
     staged.set("co2_budget", {"DE": 12.0})
 
     frame = staged.dims["country"].collect().to_native()
@@ -325,24 +334,24 @@ def test_setting_one_axis_attribute_keeps_its_siblings_value(con, base_uri):
     assert frame["population"].to_pylist() == [84.0]
 
 
-def test_a_child_layer_holds_only_the_axis_labels_it_touched(con, base_uri):
+def test_a_child_layer_holds_only_the_axis_labels_it_touched(store):
     """With the axis `partial`, a patch layer's `dims/` is the edits alone.
 
     The fold resolves every untouched label from the parent, which is what
     `partial` buys - and what it costs is a wider owner map, so an axis is only
     declared so where a layer really does patch label by label.
     """
-    revision = Revision.create(con)
-    write_schema(_budget_schema())
+    revision = empty_root(store)
+    write_schema(_budget_schema(), store)
     write_axis(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         "country",
         [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
     )
 
     # Deliberately not materialised: a patch layer resolves over its parent's
     # raw layer, so no node cache is required for the fold to see both labels.
-    staged = WorkingRecord(revision.record, con)
+    staged = WorkingRecord(revision.record)
     staged.set("co2_budget", {"DE": 12.0})
     country = staged.resolver.sources[-1].axis("country")
     assert country is not None
@@ -358,7 +367,7 @@ def test_a_child_layer_holds_only_the_axis_labels_it_touched(con, base_uri):
     )
 
 
-def test_a_child_layer_restates_an_axis_it_owns_whole(con, base_uri):
+def test_a_child_layer_restates_an_axis_it_owns_whole(store):
     """Outside `partial`, touching an axis means carrying every label of it.
 
     A layer holding the edited label alone would not leave the others stale, it
@@ -366,22 +375,23 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(con, base_uri):
     this layer says it is. That is the price of keeping `partial` small, and it
     is bounded by the axis rather than paid by every read.
     """
-    revision = Revision.create(con)
+    revision = empty_root(store)
     # `partial` left empty, unlike `_budget_schema`.
     write_schema(
         _schema(
             attributes={
                 "co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})
             }
-        )
+        ),
+        store,
     )
     write_axis(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         "country",
         [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
     )
 
-    staged = WorkingRecord(revision.record, con)
+    staged = WorkingRecord(revision.record)
     staged.set("co2_budget", {"DE": 12.0})
 
     country = staged.resolver.sources[-1].axis("country")
@@ -398,21 +408,21 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(con, base_uri):
     )
 
 
-def test_an_axis_resolves_over_an_unmaterialised_parent(con, base_uri):
+def test_an_axis_resolves_over_an_unmaterialised_parent(store):
     """A node cache is an optimisation, so a fold without one answers the same.
 
     `ancestry_to_read` keeps an unmaterialised ancestor in the ancestry, so the
     dirs it is folded over must name that layer's raw `dims/` and not only the
     `resolved/dims/` it has never written.
     """
-    revision = Revision.create(con)
-    write_schema(_budget_schema())
+    revision = empty_root(store)
+    write_schema(_budget_schema(), store)
     write_axis(
-        layer_dir(revision.id), "country", [{"country": "DE"}, {"country": "FR"}]
+        store.layer_dir(revision.id), "country", [{"country": "DE"}, {"country": "FR"}]
     )
 
-    child = revision.child()
-    write_axis(layer_dir(child.id), "country", [{"country": "NO"}])
+    child = empty_child(revision)
+    write_axis(store.layer_dir(child.id), "country", [{"country": "NO"}])
 
     labels = child.resolver.dims.axes["country"].df()["country"].tolist()
     assert labels == ["DE", "FR", "NO"], (
@@ -420,19 +430,19 @@ def test_an_axis_resolves_over_an_unmaterialised_parent(con, base_uri):
     )
 
 
-def test_set_may_name_a_label_no_layer_has_written(con, base_uri):
+def test_set_may_name_a_label_no_layer_has_written(store):
     """`set` introduces the label, the fold keying per label rather than whole.
 
     So this layer's axis file gains `NO` beside the `DE` it patches, and the
     parent's `DE` row is what the fold resolves against.
     """
-    revision = Revision.create(con)
-    write_schema(_budget_schema())
+    revision = empty_root(store)
+    write_schema(_budget_schema(), store)
     write_axis(
-        layer_dir(revision.id), "country", [{"country": "DE", "co2_budget": 40.0}]
+        store.layer_dir(revision.id), "country", [{"country": "DE", "co2_budget": 40.0}]
     )
 
-    staged = WorkingRecord(revision.record, con)
+    staged = WorkingRecord(revision.record)
     staged.set("co2_budget", {"DE": 12.0, "NO": 3.0})
 
     child = staged.commit(NewChild(revision))
@@ -440,12 +450,12 @@ def test_set_may_name_a_label_no_layer_has_written(con, base_uri):
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
 
 
-def test_a_classified_axis_keeps_its_own_order(con, base_uri):
+def test_a_classified_axis_keeps_its_own_order(store):
     """Axis order is the file's row order, classified or not."""
-    revision = Revision.create(con)
-    write_schema(_schema())
+    revision = empty_root(store)
+    write_schema(_schema(), store)
     write_axis(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         "country",
         [{"country": "NO"}, {"country": "DE"}, {"country": "FR"}],
     )

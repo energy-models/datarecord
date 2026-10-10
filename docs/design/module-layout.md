@@ -11,15 +11,20 @@ The target, once the split below is done:
 ```text
 datarecord/                     # the standalone concept
 ├── schema.py                   # Dimension, AttributeSpec, Schema
-├── record.py                   # Record, Frames, LazyFrames, Flags
+├── record.py                   # RecordLike, LayerData, Frames, LazyFrames, Flags
+├── store.py                    # Workspace, Store
+├── files.py                    # Files: manifests and revision files, local or remote
 ├── mutable.py                  # WorkingRecord, the edit/commit path
 ├── layered/                    # Record and its resolution
+│   ├── record.py               # Record, the narwhals face of a Resolver
 │   ├── revision.py             # Revision, the node tree
 │   ├── resolve.py              # owner-map fold
 │   ├── sources.py              # LayerSource: where a layer's files are
 │   └── write.py                # write_record
-└── duck.py                     # connection setup, path derivation
+└── duck.py                     # relation helpers
 ```
+
+`Record` lives beside its backing, the `Resolver`, rather than in the top-level `record.py`, which holds the vocabulary a record speaks — the protocols and the value types their members use. Its own module rather than `resolve.py`, so that file stays the DuckDB fold alone; the dependency runs one way, `layered/record.py` importing `Resolver` and nothing importing back. Where a connection and a location come from is `store.py`'s, so `duck.py` holds no state.
 
 "[Depends on `duckdb`, `narwhals` and `pydantic`, and on nothing else](index.md#what-a-data-record-is)" is achieved at this layer — `datarecord/tools/` is where a framework-specific tool lives instead (below), and nothing under it is imported by the package's own `__init__.py`.
 

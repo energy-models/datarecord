@@ -22,11 +22,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID, uuid5
 
-from datarecord.duck import (
-    layer_dir,
-    parquet_names,
-    try_read_parquet,
-)
+from datarecord.duck import parquet_names, try_read_parquet
 from datarecord.layered.fold import Fold
 from datarecord.record import Kind
 
@@ -34,6 +30,7 @@ if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
     from datarecord.schema import Schema
+    from datarecord.store import Store, Workspace
 
 
 @runtime_checkable
@@ -188,14 +185,20 @@ class _FileLayer:
     """The layer layout over a URI, shared by every file-backed source.
 
     Each member is one file, addressed by what keys it. A subclass supplies
-    where the layer root is (`uri`), the connection to read it with, and the
+    where the layer root is (`uri`), the workspace to read it through, and the
     schema its reader held, and inherits every accessor unchanged - which is
     what keeps "a directory read as a layer" from being a second reading of the
     format.
+
+    No cursor is held: each read takes the calling thread's (`_con`), so a
+    source serves every thread.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
     """
 
     schema: Schema
-    con: DuckDBPyConnection | None
     frozen: bool = True
 
     def uri(self, path: str = "") -> str:
@@ -207,15 +210,8 @@ class _FileLayer:
 
     @property
     def _con(self) -> DuckDBPyConnection:
-        """The connection to read through.
-
-        Optional on the field so `uri` alone is usable without one - which the
-        write path does, having nothing to read.
-        """
-        if self.con is None:
-            msg = f"{type(self).__name__} was built without a connection to read with"
-            raise ValueError(msg)
-        return self.con
+        """The calling thread's cursor on the workspace this layer is read through."""
+        raise NotImplementedError
 
     def _read(self, path: str, **kwargs: object) -> DuckDBPyRelation | None:
         return try_read_parquet(self.uri(path), self._con, **kwargs)
@@ -268,8 +264,8 @@ class _FileLayer:
 class ParquetLayer(_FileLayer):
     """A layer as a parquet directory, located from its revision UUID.
 
-    The location is derived, never stored, so changing the layout is a change
-    to `layer_dir` and nothing else.
+    The location is derived from the store, never stored, so changing the
+    layout is a change to `Store.layer_dir` and nothing else.
 
     Notes
     -----
@@ -278,27 +274,30 @@ class ParquetLayer(_FileLayer):
 
     revision_id: UUID
     schema: Schema
-    con: DuckDBPyConnection | None = None
-    base_uri: str | None = None
+    store: Store
     frozen: bool = True
 
     @property
     def layer_id(self) -> UUID:
         return self.revision_id
 
+    @property
+    def _con(self) -> DuckDBPyConnection:
+        return self.store.workspace.con
+
     def uri(self, path: str = "") -> str:
-        return layer_dir(self.revision_id, self.base_uri) + path
+        return self.store.layer_dir(self.revision_id) + path
 
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
-        return Fold.read(self.revision_id, con, schema, self.base_uri)
+        return Fold.read(self.revision_id, con, schema, self.store)
 
 
 @dataclass(frozen=True)
 class DirectorySource(_FileLayer):
     """A plain parquet directory read as one layer.
 
-    What `Record.at(uri)` folds over, and the whole of what reading a plain
+    What `Workspace.at(uri)` and `Store.layer(id)` fold over, and the whole of what reading a plain
     directory takes: the layout is the same as a tree layer's, so every member
     is one of the directory's files and the fold needs no conditional path.
 
@@ -308,9 +307,8 @@ class DirectorySource(_FileLayer):
     than another. So two readings of one directory agree on which layer they
     read without being told, and a caller has nothing to allocate or keep.
 
-    It is no node in a layer tree either way - there is nothing for
-    `NewChild()` to branch from, so this makes such a record *readable* through
-    the fold, not committable to a tree.
+    It is no node in a layer tree either way, so this makes such a record
+    *readable* through the fold, not a revision to branch from.
 
     Notes
     -----
@@ -319,7 +317,7 @@ class DirectorySource(_FileLayer):
 
     base: str
     schema: Schema
-    con: DuckDBPyConnection | None = None
+    workspace: Workspace
     frozen: bool = True
 
     def __post_init__(self) -> None:
@@ -333,6 +331,10 @@ class DirectorySource(_FileLayer):
     @property
     def layer_id(self) -> UUID:
         return uuid5(_DIRECTORY_NAMESPACE, self.base)
+
+    @property
+    def _con(self) -> DuckDBPyConnection:
+        return self.workspace.con
 
     def uri(self, path: str = "") -> str:
         return self.base + path

@@ -36,7 +36,7 @@ class WorkingRecord:
     def rollback(self) -> None: ...
 ```
 
-Built over a base `Record` and a DuckDB connection: `WorkingRecord(revision.record, con)`.
+Built over a base `Record`, `WorkingRecord(revision.record)`, it stages on the base's connection, `record.con`.
 
 A **class, not a protocol**.
 `Record` is a protocol because several things satisfy it — two backings, a framework object presenting itself as one, the two readings commit writes — and structural typing is what lets a consumer satisfy it without depending on this package.
@@ -173,7 +173,7 @@ That asymmetry is the whole of the rule: a broad derived edit over a type where 
 A tool solves against a record and hands back what it computed:
 
 ```python
-record = WorkingRecord(record, con)
+record = WorkingRecord(record)
 record.set("p_max_pu", 0.8, entity=["wind1"])
 model = PyPSA.build(record)  # solve the edited record
 model.optimize()

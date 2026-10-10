@@ -25,18 +25,17 @@ from datarecord import (
     RecordLike,
     Revision,
     Schema,
+    Store,
     WorkingRecord,
-    connect,
-    layer_dir,
+    Workspace,
     write_record,
 )
 ```
 
-| page                               | symbols                                                 |
-| ---------------------------------- | ------------------------------------------------------- |
-| [Record](record.md)                | `Record`, `RecordLike`, `Frames`, `LazyFrames`, `Flags` |
-| [Schema](schema.md)                | `Schema`, `Dimension`, `AttributeSpec`                  |
-| [Duck](../design/module-layout.md) | `connect`, `layer_dir`                                  |
-| [Layered](layered.md)              | `Revision`, `write_record`                              |
-| [WorkingRecord](mutable.md)        | `WorkingRecord`, `NewChild`, `Directory`                |
-| [Tools](tools.md)                  | `Tool`, `Requirements`, the PyPSA tool                  |
+| page                        | symbols                                                 |
+| --------------------------- | ------------------------------------------------------- |
+| [Record](record.md)         | `Record`, `RecordLike`, `Frames`, `LazyFrames`, `Flags` |
+| [Schema](schema.md)         | `Schema`, `Dimension`, `AttributeSpec`                  |
+| [Layered](layered.md)       | `Workspace`, `Store`, `Revision`, `write_record`        |
+| [WorkingRecord](mutable.md) | `WorkingRecord`, `NewChild`, `Directory`                |
+| [Tools](tools.md)           | `Tool`, `Requirements`, the PyPSA tool                  |
