@@ -282,4 +282,6 @@ def test_component_tombstone_does_not_cascade_to_its_connections(store):
         store.layer_dir(both.id),
         [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
     )
-    assert both.resolver.group_frame("connection") is None
+    frame = both.resolver.group_frame("connection")
+    assert frame is not None, "the group was written, so it is present"
+    assert frame.count("*").fetchone() == (0,), "every connection row is tombstoned"

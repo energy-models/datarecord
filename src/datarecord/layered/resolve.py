@@ -1243,7 +1243,7 @@ class Resolver:
             with_columns(keys.schema, rel, *columns).project(
                 lit(layer_uuid).alias("layer_uuid"), col("*")
             )
-            for (layer_uuid,) in om["layer_uuid"].distinct().fetchall()
+            for layer_uuid in self._layers_owning(attribute)
             if (rel := self.source_for(layer_uuid).attribute(attribute)) is not None
         ]
         if not layers:
@@ -1265,6 +1265,34 @@ class Resolver:
                 )
             )
         )
+
+    def _layers_owning(self, attribute: str) -> list[UUID]:
+        """The layers owning any key of `attribute`, whose rows `_relation` reads.
+
+        Where every source is frozen, one scan of the map answers every
+        attribute and is kept; otherwise the map may change under the reader,
+        so each call asks for its own attribute.
+        """
+        if self.frozen:
+            return self._cached_layers_owning.get(attribute, [])
+        om = self.inputs.filter(col("attribute") == lit(attribute))
+        return [u for (u,) in om["layer_uuid"].distinct().fetchall()]
+
+    @cached_property
+    def _cached_layers_owning(self) -> dict[str, list[UUID]]:
+        """`_layers_owning` for every attribute, where every source is frozen.
+
+        Plain data any thread computes the same, so it is kept on the resolver
+        rather than as a shared table beside the owner map it is read from.
+
+        Notes
+        -----
+        - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+        """
+        rows = self.inputs.aggregate(
+            "attribute, list(DISTINCT layer_uuid)", "attribute"
+        ).fetchall()
+        return dict(rows)
 
     def _outputs(self, attribute: str) -> DuckDBPyRelation:
         """A result attribute from this record's own layer; outputs do not overlay.
@@ -1289,8 +1317,9 @@ class Resolver:
         the entity axis. So the per-type files fold on `entity` (last-writer-wins,
         each layer's own row winning), and the result is semi-joined to the live
         resolved entity axis - which decides membership, type and order - so a row
-        whose entity the axis does not carry drops out. `None` where the type
-        has no live member.
+        whose entity the axis does not carry drops out. `None` where no layer
+        wrote an entity or a member of the type; empty, not `None`, where every
+        member it wrote is gone.
 
         Raises
         ------
@@ -1339,21 +1368,19 @@ class Resolver:
         Not per type, which is no coordinate of a group. The folded relation is
         already the winning row per `group_key`, carrying every non-key column -
         an attribute over the group, an `into` label - in member order, read
-        inline with no owner map.
+        inline with no owner map. `None` where no layer wrote a row; empty, not
+        `None`, where every row written is tombstoned.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        rel = self.group(group)
-        if rel is None or rel.limit(1).fetchone() is None:
-            return None
-        return rel
+        return self.group(group)
 
     def _in_axis_order(
         self, wide: DuckDBPyRelation, axis: DuckDBPyRelation, match: tuple[str, ...]
-    ) -> DuckDBPyRelation | None:
+    ) -> DuckDBPyRelation:
         """`wide`'s rows scoped to `axis`, in `axis`'s member order.
 
         `axis` carries a `_pos` in member order (`fold_axis`); the join does not
@@ -1368,6 +1395,4 @@ class Resolver:
         result = joined.project(*(col("u", c) for c in cols), col("o", "_pos")).order(
             "_pos"
         )
-        if result.limit(1).fetchone() is None:
-            return None
         return result.project(star(exclude=["_pos"]))

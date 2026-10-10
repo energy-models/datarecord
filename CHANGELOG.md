@@ -31,6 +31,10 @@ All notable changes to datarecord are documented here. The format follows
   connection their frames are planned on, so `PyPSA.results(n, w.con)` sets
   straight onto `w` rather than failing on a relation from DuckDB's default
   connection; `on_connection` is gone.
+- `Resolver.group_frame` and `Resolver.entity_type` return an empty relation,
+  rather than `None`, where every row written is tombstoned: telling the two
+  apart ran the whole fold a second time on every read. `None` still means no
+  layer wrote a row.
 
 ### Added
 
@@ -51,3 +55,5 @@ All notable changes to datarecord are documented here. The format follows
 - Folding the owner map no longer compares every row with every label of a
   `partial` dim's axis; the first read of a record with long series is linear
   again.
+- A record whose layers are all written scans its owner map once for the
+  layers owning each attribute, rather than once per attribute read.
