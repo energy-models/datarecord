@@ -363,6 +363,9 @@ def _series_frame(
     )
 
     present = sorted(int(c) for c in set(piv.columns) - set(group_by))
+    if not present:
+        return pd.DataFrame(index=snapshots.index, columns=static_index[:0])
+
     wide = (
         snapshots.left_join(piv.set_alias("piv"), group_by)
         .project(*(col("piv", str(p)) for p in present))
@@ -987,7 +990,8 @@ class PyPSATool(Tool):
             # and `_assign_static` sorts the wide frame back by it at the end.
             static = static.project("*, row_number() OVER () AS _pos")
             # Connections back to the positional columns PyPSA expects (https://energy-models.github.io/datarecord/design/tools/).
-            static = _collapse_connections(static, record, ctype, con)
+            connections = _ordered_connections(record, ctype)
+            static = _collapse_connections(static, connections, ctype, con)
 
             # Frames are built and released per type, so peak memory is one
             # type's wide frames rather than the whole network (https://energy-models.github.io/datarecord/design/tools/).
@@ -1015,7 +1019,13 @@ class PyPSATool(Tool):
                         "a.entity = m.entity",
                         how="semi",
                     )
-                attributes[attr] = (long, flags)
+                if CONNECTION in carried[attr].dims:
+                    for column, rows in _port_columns(
+                        long, attr, connections, ctype, con
+                    ).items():
+                        attributes[column] = (rows, flags)
+                else:
+                    attributes[attr] = (long, flags)
 
             _add_component_type(n, ctype, static, attributes, shape, con)
 
@@ -2023,19 +2033,27 @@ def _connection_attributes(record: RecordLike, ctype: str) -> frozenset[str]:
 
 
 def _collapse_connections(
-    static: DuckDBPyRelation, record: RecordLike, ctype: str, con: DuckDBPyConnection
+    static: DuckDBPyRelation,
+    connections: pd.DataFrame | None,
+    ctype: str,
+    con: DuckDBPyConnection,
 ) -> DuckDBPyRelation:
     """Add `bus0`/`bus1`/... columns to a static frame from its connection rows.
 
     PyPSA wants a column per port; the record stores a row per connection. This is the seam between them, and the only direction that needs
     positions at all.
 
+    Parameters
+    ----------
+    connections
+        `ctype`'s connections as `_ordered_connections` numbers them, which
+        `_port_columns` places per-connection values by.
+
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    df = _ordered_connections(record, ctype)
-    if df is None:
+    if connections is None:
         return static
     # Pivoted on the same key the ports were numbered within, so each
     # (component, scenario, ...) keeps its own port columns.
@@ -2044,8 +2062,8 @@ def _collapse_connections(
     # here - but `pivot` drops NaN index levels, so such a dim is folded away
     # instead: every row shares its value, and the join below matches on the
     # dims that actually distinguish rows.
-    varying = [d for d in index[1:] if df[d].notna().any()]
-    wide = df.pivot(index=["entity", *varying], columns="port", values="bus")
+    varying = [d for d in index[1:] if connections[d].notna().any()]
+    wide = connections.pivot(index=["entity", *varying], columns="port", values="bus")
     registered = _registered(ctype)
     wide.columns = [_port_attribute("bus", port, registered) for port in wide.columns]
     wide = wide.reset_index()  # noqa: F841 - queried by name below
@@ -2058,6 +2076,62 @@ def _collapse_connections(
         *(col("s", c) for c in static.columns),
         *(col("ports", c) for c in ports.columns if c not in ("entity", *varying)),
     )
+
+
+def _port_columns(
+    long: DuckDBPyRelation,
+    stem: str,
+    connections: pd.DataFrame | None,
+    ctype: str,
+    con: DuckDBPyConnection,
+) -> dict[str, DuckDBPyRelation]:
+    """A per-connection attribute's rows split into PyPSA's port columns.
+
+    The inverse of `_NetworkSource._per_port_long_rels`: `efficiency` on a
+    Link's bus1 connection is `efficiency`, on its bus2 connection
+    `efficiency2`. A row takes the port `_ordered_connections` numbered its
+    `(entity, bus)` with, the numbering `_collapse_connections` names
+    `bus0`/`bus1`/... by, so a value lands beside the bus it is keyed by. A
+    row naming no connection of the entity is dropped, as a value for no
+    member is.
+
+    A port the bare registry declares carries only the stems it registers
+    there (a Link's bus0 has no `efficiency0`); one beyond it is an
+    additional port, which PyPSA gives every per-port stem (`efficiency2`).
+
+    Parameters
+    ----------
+    long
+        The attribute's rows, carrying `entity` and `bus`.
+    connections
+        `ctype`'s connections as `_ordered_connections` numbers them.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
+    if connections is None:
+        return {}
+    keyed = connections[[ENTITY, BUS, "port"]]  # noqa: F841 - queried by name below
+    ports = con.sql("FROM keyed").set_alias("ports")
+    placed = (
+        long.set_alias("v")
+        .join(ports, ex_all(col("v", c) == col("ports", c) for c in (ENTITY, BUS)))
+        .project(*(col("v", c) for c in long.columns if c != BUS), col("ports", "port"))
+    )
+    registered = _registered(ctype)
+    columns = {
+        column: port
+        for port in connections["port"].unique()
+        if (column := _port_attribute(stem, port, registered)) in registered
+        or _port_attribute(BUS, port, registered) not in registered
+    }
+    return {
+        column: placed.filter(col("port") == lit(port))
+        .project(star(exclude=["port"]))
+        .set_alias(column)
+        for column, port in columns.items()
+    }
 
 
 def _static_columns(record: RecordLike, ctype: str) -> frozenset[str]:

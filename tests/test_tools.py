@@ -32,6 +32,7 @@ from tests.fixtures import (
     write_entity_type,
     write_input,
 )
+from tests.test_roundtrip import assert_networks_equal
 
 
 @pytest.fixture
@@ -620,6 +621,67 @@ def test_a_three_port_record_writes_p_on_each_connection(store):
         "b": flows["p1"],
         "c": flows["p2"],
     }
+
+
+def test_a_third_port_efficiency_survives_a_round_trip(store):
+    """`efficiency2` comes back from its bus2 connection, not as the default.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
+    n = _three_port_link()
+    n.c["Link"].static.loc["split", ["efficiency", "efficiency2"]] = [0.5, 0.3]
+
+    built = PyPSA.build(export_network(n, store).record)
+
+    link = built.c["Link"].static.loc["split"]
+    assert (link["efficiency"], link["efficiency2"]) == (0.5, 0.3), (
+        "each port's efficiency lands in its own column"
+    )
+    assert_networks_equal(built, n)
+
+
+def test_a_time_varying_third_port_efficiency_survives_a_round_trip(store):
+    """A series on bus2 is `efficiency2`'s series, beside a static `efficiency`.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
+    n = _three_port_link()
+    n.c["Link"].static.loc["split", "efficiency"] = 0.5
+    n.c["Link"].dynamic["efficiency2"] = pd.DataFrame(
+        {"split": [0.2, 0.4]}, index=n.snapshots
+    ).rename_axis(columns="name")
+
+    built = PyPSA.build(export_network(n, store).record)
+
+    assert built.c["Link"].dynamic["efficiency"].empty, "port 1 stays static"
+    assert built.c["Link"].static.at["split", "efficiency"] == 0.5
+    assert_networks_equal(built, n)
+
+
+def test_a_stochastic_third_port_efficiency_survives_a_round_trip(store):
+    """Per-scenario port values are placed by connection like any other.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
+    n = _three_port_link()
+    n.set_scenarios({"low": 0.5, "high": 0.5})
+    n.c["Link"].static["efficiency"] = 0.5
+    n.c["Link"].static.loc[("low", "split"), "efficiency2"] = 0.2
+    n.c["Link"].static.loc[("high", "split"), "efficiency2"] = 0.4
+
+    built = PyPSA.build(export_network(n, store).record)
+
+    static = built.c["Link"].static
+    assert static[["efficiency", "efficiency2"]].to_dict("index") == {
+        ("low", "split"): {"efficiency": 0.5, "efficiency2": 0.2},
+        ("high", "split"): {"efficiency": 0.5, "efficiency2": 0.4},
+    }, "each scenario's port values land in their own columns"
 
 
 def test_a_nan_in_a_series_survives_the_melt(workspace):

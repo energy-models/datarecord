@@ -101,3 +101,7 @@ All notable changes to datarecord are documented here. The format follows
   PyPSA schema declares, so setting each one with `kind="outputs"` no longer
   raises `KeyError`: `Bus.control` and `SubNetwork.carrier`, which PyPSA
   also registers as inputs, are no longer emitted as results.
+- `PyPSA.build` turns a per-connection input back into PyPSA's port columns:
+  `efficiency` on a Link's bus2 connection is `efficiency2` again, static or
+  per snapshot, rather than every port's value landing in `efficiency` and
+  `efficiency2` reading as its default.
