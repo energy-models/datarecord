@@ -21,7 +21,7 @@ import pytest
 
 from datarecord import WorkingRecord
 from datarecord.duck import union_all_by_name
-from datarecord.layered.resolve import write_schema
+from datarecord.layered.resolve import _fold_kind, write_schema
 from datarecord.layered.sources import DirectorySource, LayerSource, ParquetLayer
 from datarecord.schema import Schema
 from tests.fixtures import (
@@ -460,3 +460,47 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
     assert _largest_intermediate(store, rel) <= stored, (
         "no operator produces more rows than the layer holds"
     )
+
+
+def test_the_fold_broadcasts_by_hash_join(store):
+    """Expanding a broadcast NULL over its axis is a hash join, not a nested loop.
+
+    The join matched on `dim IS NULL` alone, which DuckDB runs as a nested loop
+    comparing every row with every label - even a row that sets the dim and so
+    matches none. Row counts stay right, so only the plan shows it.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
+    write_schema(
+        Schema(
+            dimensions={
+                "entity": {"dtype": "String"},
+                "entity_type": {"dtype": "String"},
+                "snapshot": {"dtype": "Int64"},
+            },
+            groups={"entity_type": {"over": ["entity"], "into": "entity_type"}},
+            attributes={
+                "p_max_pu": {"dtype": "Float64", "dims": ["entity", "snapshot"]},
+                "weight": {"dtype": "Float64", "dims": ["snapshot"]},
+            },
+            partial=frozenset({"snapshot"}),
+        ),
+        store,
+    )
+    base = empty_root(store)
+    staged = WorkingRecord(base.record)
+    staged.add("Generator", pd.DataFrame({"entity": ["wind"]}))
+    staged.set("weight", {0: 1.0, 1: 1.0})
+    staged.set(
+        "p_max_pu",
+        pd.DataFrame({"entity": ["wind", "wind"], "snapshot": [0, 1], "value": 0.5}),
+    )
+    resolver = base.child(staged.edits).resolver
+
+    plan = _fold_kind(
+        "inputs", resolver.sources, resolver.con, resolver.schema
+    ).explain()
+    assert "HASH_JOIN" in plan, "the fold joins at all"
+    assert "NL_JOIN" not in plan and "NESTED_LOOP" not in plan, plan

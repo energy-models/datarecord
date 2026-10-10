@@ -48,3 +48,6 @@ All notable changes to datarecord are documented here. The format follows
 - A fold cached before the manifest widened now reads under the wider schema.
 - Reading an attribute over a `partial` dim no longer slows with the square
   of that dim's length.
+- Folding the owner map no longer compares every row with every label of a
+  `partial` dim's axis; the first read of a record with long series is linear
+  again.

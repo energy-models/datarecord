@@ -239,8 +239,14 @@ class Coords:
             if axis is None:
                 exprs[dim] = col(alias, dim)
                 continue
-            key = axis.project(dim)
-            rel = rel.join(key, col(alias, dim).isnull(), how="left")
+            # `dim IS NULL = true` rather than `dim IS NULL`: an equality hashes,
+            # a one-sided condition is a nested loop over every row and label.
+            key = axis.project(col(dim), lit(True).alias("_broadcast"))  # noqa: FBT003
+            rel = rel.join(
+                key,
+                col(alias, dim).isnull() == col(key.alias, "_broadcast"),
+                how="left",
+            )
             exprs[dim] = coalesce(col(alias, dim), col(key.alias, dim))
         return rel, exprs
 

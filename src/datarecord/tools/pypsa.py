@@ -227,8 +227,12 @@ class Index:
         """
         if len(self.index) == 0:
             return rel
+        # `IS NULL = true` hashes; the one-sided `IS NULL` is a nested loop.
+        axis = self.rel.project(col(column), lit(True).alias("_broadcast"))  # noqa: FBT003
         return rel.join(
-            self.rel.set_alias("_ax"), col(rel.alias, column).isnull(), how="left"
+            axis.set_alias("_ax"),
+            col(rel.alias, column).isnull() == col("_ax", "_broadcast"),
+            how="left",
         ).project(
             *(col(rel.alias, c) for c in rel.columns if c != column),
             coalesce(col(rel.alias, column), col("_ax", column)).alias(column),
