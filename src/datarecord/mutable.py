@@ -650,7 +650,9 @@ class WorkingRecord(Record):
         `value` is a mapping from label to value, or a scalar for every label the
         axis currently has. A mapping may name a label no layer has written yet,
         which becomes a row of this layer's axis file - the fold keys per label,
-        so introducing one displaces nothing.
+        so introducing one displaces nothing. The entity axis is the exception:
+        a component exists by `add` alone, so a name with no member row is
+        rejected as `set` rejects it for a long attribute.
 
         One *complete* row per label: this edit's column over the label's
         current row - the one already staged where there is one, else the base's
@@ -711,6 +713,8 @@ class WorkingRecord(Record):
         if isinstance(value, Mapping):
             if not value:
                 return
+            if dim == "entity":
+                self._resolve_types(list(value))
             edit = self._values_relation(
                 {dim: list(value), attribute: list(value.values())},
                 {
@@ -786,8 +790,8 @@ class WorkingRecord(Record):
             )
         self._insert(rows, table, {})
 
-    def _resolved_names(self, ctype: str) -> list[str]:
-        """Every name `ctype` currently resolves to, base plus staged.
+    def _resolved_names(self, ctype: str | None = None) -> list[str]:
+        """Every name `ctype` currently resolves to, base plus staged; every name if `None`.
 
         Off the components map rather than the member frame, for the reason
         `_name_types` gives: membership is what the map decided, and resolving
@@ -804,10 +808,9 @@ class WorkingRecord(Record):
         axis = self.resolver.entity_axis
         if axis is None:
             return []
-        rows = (
-            axis.filter(col("entity_type") == lit(ctype)).project("entity").fetchall()
-        )
-        return [str(n) for (n,) in rows]
+        if ctype is not None:
+            axis = axis.filter(col("entity_type") == lit(ctype))
+        return [str(n) for (n,) in axis.project("entity").fetchall()]
 
     def _name_types(self) -> nw.LazyFrame | None:
         """`(name, entity_type)` over everything this record resolves.
@@ -818,9 +821,10 @@ class WorkingRecord(Record):
         member frames instead would resolve each type's wide rows - a union and a
         join per type - to read two columns the fold already decided.
 
-        `None` where the schema declares no type axis: there is no `entity_type`
-        column then, no name has a type, and every caller here reads that as "no
-        cross-type question to ask" (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        Where the schema declares no type axis there is no `entity_type` column
+        and no name has a type: each is labelled `entity`, which carries every
+        attribute addressed by `entity` (`Schema.attributes_for`), so a name is
+        still checked to exist and its attribute to reach a component (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
 
         Notes
         -----
@@ -828,9 +832,14 @@ class WorkingRecord(Record):
         - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         """
         axis = self.resolver.entity_axis
-        if axis is None or self.schema.entity_type_dim is None:
+        if axis is None:
             return None
-        rel = axis.project("entity", "entity_type")
+        rel = axis.project(
+            col("entity"),
+            col("entity_type")
+            if self.schema.entity_type_dim is not None
+            else lit("entity").alias("entity_type"),
+        )
         if rel.limit(1).fetchone() is None:
             return None
         return nw.from_native(rel).lazy()
@@ -848,7 +857,7 @@ class WorkingRecord(Record):
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         known = self._name_types()
-        if known is None:
+        if known is None or self.schema.entity_type_dim is None:
             return
         clashing = (
             lazy.select("entity")
@@ -1079,6 +1088,7 @@ class WorkingRecord(Record):
 
         axis = self._axis_of(attribute) if kind == "inputs" else None
         if axis is not None:
+            self._series_axis(attribute, value, indexed_by)
             self._stage_axis(axis, attribute, value, entity=entity)
             return
 
@@ -1112,12 +1122,19 @@ class WorkingRecord(Record):
         The types come from the record rather than from `types_declaring` where
         the schema declares no entity-type labels: the axis is then a plain
         string and its labels are data, so what types exist is a question only
-        the resolved components can answer.
+        the resolved components can answer. Where the schema declares no type
+        axis at all, every resolved name, if `attribute` reaches a component.
 
         Notes
         -----
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
+        if self.schema.entity_type_dim is None:
+            return (
+                self._resolved_names()
+                if self.schema.addresses_entity(attribute)
+                else []
+            )
         declared = self.schema.types_declaring(attribute)
         if not self.schema.entity_types:
             declared = frozenset(

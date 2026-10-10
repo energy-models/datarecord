@@ -19,11 +19,12 @@ import pandas as pd
 
 from datarecord import Revision
 from datarecord.duck import layer_dir
+from datarecord.tools.pypsa import ENTITY_GROUP
 from tests.fixtures import (
     export_network,
     relation,
     schema,
-    tombstone,
+    write_entities,
     write_input,
     write_periods,
     write_schema,
@@ -35,7 +36,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     """With `period` `partial`, a child may replace one period only."""
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(schema(partial={"scenario", "period"}))
+    write_schema(schema(typed=False, partial={"scenario", "period"}))
     revision.materialise()
 
     child = revision.child()
@@ -81,7 +82,7 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(schema(partial={"period"}))
+    write_schema(schema(typed=False, partial={"period"}))
     write_periods(layer_dir(revision.id), [{"period": 2020}, {"period": 2030}])
     write_input(
         layer_dir(revision.id),
@@ -118,11 +119,13 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(schema(partial={"period"}))
+    write_schema(schema(typed=False, partial={"period"}))
     revision.materialise()
 
     child = revision.child()
-    tombstone(layer_dir(child.id), "Generator", ["Manchester Wind"])
+    write_entities(
+        layer_dir(child.id), [{"entity": "Manchester Wind", "deleted": True}]
+    )
 
     axis_rel = child.resolver.entity_axis
     assert axis_rel is not None
@@ -144,7 +147,7 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_schema(schema(partial={"scenario", "period"}))
+    write_schema(schema(typed=False, partial={"scenario", "period"}))
     write_input(
         layer_dir(revision.id),
         "p_max_pu",
@@ -271,9 +274,9 @@ def test_a_dim_names_its_own_file(con, base_uri):
 def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     """`entity` names the component in every frame the protocol hands back.
 
-    The one axis the format knows by name, because it is the axis the component
-    types partition: `entity_type` hangs off it and `dims/entity_type/` is
-    keyed by it. Every other dim is declared.
+    The one axis the format knows by name: `dims/entity.parquet` is keyed by
+    it, and an attribute row names its component by it. Every other dim is
+    declared.
 
     Notes
     -----
@@ -283,7 +286,7 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     export_network(ac_dc, revision, con)
 
     record = revision.record
-    assert "entity" in record.entity_types["Generator"].collect_schema().names()
+    assert "entity" in record.dims["entity"].collect_schema().names()
     assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
     # And in the owner map the fold builds over them.
     ea = revision.resolver.entity_axis
@@ -292,24 +295,25 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
 
 
 def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
-    """`dims/entity.parquet` says which entities exist and what type each is.
+    """`dims/entity.parquet` says which entities exist, one row each.
 
-    Derived by the writer from the per-type frames rather than handed over, so
-    a record cannot disagree with itself about it. The components map folds
-    from this one file, where it used to glob `dims/entity_type/` and take the
-    type from the filename.
+    The components map folds from this one file. A PyPSA record declares no
+    entity-type axis, so the file also carries each component's constant
+    columns, its type among them as `entity_group`.
 
     Notes
     -----
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
 
     axis = con.read_parquet(layer_dir(revision.id) + "dims/entity.parquet").df()
-    assert {"entity", "entity_type", "deleted"} <= set(axis.columns)
+    assert {"entity", ENTITY_GROUP, "deleted", "p_nom"} <= set(axis.columns)
+    assert "entity_type" not in axis.columns
     assert not axis["entity"].duplicated().any()
-    assert "Generator" in set(axis["entity_type"])
+    assert "Generator" in set(axis[ENTITY_GROUP])
 
     # And it is what the fold reads: the map's entities are the axis's.
     ea2 = revision.resolver.entity_axis

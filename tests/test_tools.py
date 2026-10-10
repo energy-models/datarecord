@@ -19,12 +19,12 @@ from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
-from datarecord.tools.pypsa import ENTITY_TYPE, REQUIRED_DIMS, PyPSA, _colliding_names
+from datarecord.tools.pypsa import ENTITY_GROUP, REQUIRED_DIMS, PyPSA, _colliding_names
 from tests.fixtures import (
     export_network,
     relation,
     schema,
-    write_entity_type,
+    write_entities,
     write_input,
 )
 
@@ -103,38 +103,21 @@ def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
 
 
 def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
-    """A type outside PyPSA's registry is reported by `verify`, not raised in the fold.
+    """An `entity_group` outside PyPSA's registry is reported by `verify`, not raised.
 
-    The type must be one the *schema* declares - the entity-type axis is an
-    `Enum` and that vocabulary is upheld everywhere, so a record cannot hold a
-    type its own schema excludes. What it can hold is a type this tool has no
-    registry entry for, which reads back fine and is this tool's business rather
-    than the record layer's. `Requirements.entity_types` is what carries it.
+    The group is an attribute the record layer knows no vocabulary for, so a
+    record holds any label and reads back fine. That this tool has no registry
+    entry for one is its own business. `Requirements.entity_types` is what
+    carries it.
 
     Notes
     -----
-    - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
+    - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    # Declared alongside PyPSA's own types, since the axis pins the vocabulary.
-    declared = read_schema(con)
-    axis = declared.dimensions[ENTITY_TYPE]
-    assert isinstance(axis.dtype, nw.Enum), "PyPSA declares its types as an enum"
-    write_schema(
-        declared.model_copy(
-            update={
-                "dimensions": {
-                    **declared.dimensions,
-                    ENTITY_TYPE: axis.model_copy(
-                        update={"dtype": nw.Enum([*axis.dtype.categories, "Widget"])}
-                    ),
-                }
-            }
-        )
-    )
-    write_entity_type(layer_dir(revision.id), "Widget", [{"entity": "w1"}])
+    write_entities(layer_dir(revision.id), [{"entity": "w1", ENTITY_GROUP: "Widget"}])
 
     missing = PyPSA.verify(revision.record)
     assert missing.entity_types == {"Widget"}
@@ -142,6 +125,32 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     assert "Generator" not in missing.entity_types
     with pytest.raises(UnsupportedRecordError, match="Widget"):
         PyPSA.build(revision.record)
+
+
+def test_the_component_type_is_an_attribute_not_an_axis(multiperiod):
+    """No entity-type dim, group or trait: the type is `entity_group` on `dims/entity.parquet`.
+
+    So it never enters a spec as an axis, and a component's constant columns
+    are columns of the entity axis, NULL on the rows of a type without one.
+
+    Notes
+    -----
+    - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    source = PyPSA.to_datarecord(multiperiod)
+    declared = source.schema
+    assert "entity_type" not in declared.dimensions
+    assert declared.entity_type_dim is None
+    assert not declared.traits
+    assert list(source.entity_types) == []
+    assert {ENTITY_GROUP, "p_nom", "s_nom", "e_nom"} <= set(
+        declared.attributes_on("entity")
+    )
+
+    axis = source.dims["entity"].collect().to_native().set_index("entity")
+    assert axis.loc["Manchester Wind", ENTITY_GROUP] == "Generator"
+    assert pd.isna(axis.loc["Manchester Wind", "s_nom"]), "no Generator has an `s_nom`"
 
 
 _DIMS = {
@@ -176,7 +185,7 @@ def _with_schema(revision, **kwargs) -> None:
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     was = read_schema()
-    now = schema(**kwargs)
+    now = schema(typed=False, **kwargs)
     # The tool's own axes (`carrier`, ...) stay, since its groups map into them.
     kept = {
         d: spec
@@ -233,7 +242,9 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     export_network(ac_dc, revision, con)
     # A Generator member carrying no `bus` column at all, no connection row
     # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
-    write_entity_type(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    write_entities(
+        layer_dir(revision.id), [{"entity": "g1", ENTITY_GROUP: "Generator"}]
+    )
     # One file across every type, so the Generators' rows are dropped from it
     # rather than a per-type file being unlinked.
     path = Path(layer_dir(revision.id), "groups", "connection.parquet")
@@ -257,7 +268,9 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_entity_type(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    write_entities(
+        layer_dir(revision.id), [{"entity": "g1", ENTITY_GROUP: "Generator"}]
+    )
 
     # PyPSA's own registry already declares `bus` with a `""` default, which
     # is exactly the case this pins - so the record is left as written.
@@ -564,7 +577,7 @@ def test_buses_and_carriers_are_axes_not_entities(multiperiod_revision):
     - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
     """
     entities = _parquet(multiperiod_revision, "dims/entity.parquet")
-    assert not set(entities["entity_type"]) & {
+    assert not set(entities[ENTITY_GROUP]) & {
         "Bus",
         "Carrier",
         "Shape",
@@ -608,7 +621,7 @@ def test_a_technology_group_carries_its_resource_class(multiperiod_revision):
     classes = dict(zip(axis["technology_group"], axis["resource_class"], strict=True))
     assert classes["onwind"] == 1
     assert pd.isna(classes["OCGT"])
-    members = _parquet(multiperiod_revision, "dims/entity_type/Generator.parquet")
+    members = _parquet(multiperiod_revision, "dims/entity.parquet")
     assert "resource_class" not in members.columns, "it moved to the group's axis"
 
 
@@ -706,6 +719,29 @@ def test_the_shipped_spec_binds_to_the_record(multiperiod):
     )
     with pytest.raises(ValueError, match=r"parameters \['nowhere'\]"):
         PyPSA.check_spec(extra, record)
+
+
+def test_the_shipped_spec_binds_to_a_record_without_storage(ac_dc):
+    """Names only absent types register, and the technology-group axis, are not missing.
+
+    Any other name stays required.
+
+    Notes
+    -----
+    - [the mathspec spec](https://energy-models.github.io/datarecord/design/tools/#the-mathspec-spec)
+    """
+    import mathspec
+
+    from datarecord.tools.pypsa import MATHSPEC
+
+    n = ac_dc.copy()
+    n.set_investment_periods([2030, 2040])
+    spec = mathspec.to_spec(str(MATHSPEC))
+    PyPSA.check_spec(spec, PyPSA.to_datarecord(n))
+
+    extra = mathspec.merge([spec, {"given": {"parameters": {"nowhere": {"dims": []}}}}])
+    with pytest.raises(ValueError, match=r"parameters \['nowhere'\]"):
+        PyPSA.check_spec(extra, PyPSA.to_datarecord(n))
 
 
 @pytest.mark.parametrize(

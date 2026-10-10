@@ -24,8 +24,6 @@ dimensions:
     description: investment periods, labelled by their year
   entity:
     description: every component that is not a bus, a carrier or a shape
-  entity_type:
-    description: PyPSA's component type of an entity
   bus:
     description: nodes where power balances
   carrier:
@@ -38,10 +36,6 @@ relations:
     key: snapshot
     values: period
     description: the investment period a snapshot falls in; the record's `snapshot` axis is `within` `period`
-  entity_entity_type:
-    key: entity
-    values: entity_type
-    description: the component type of each entity
   entity_carrier:
     key: entity
     values: carrier
@@ -57,13 +51,13 @@ relations:
     description: which buses an entity attaches to
 
 masks:
-  generator: { where: "entity_entity_type == 'Generator'" }
-  load: { where: "entity_entity_type == 'Load'" }
-  line: { where: "entity_entity_type == 'Line'" }
-  transformer: { where: "entity_entity_type == 'Transformer'" }
-  link: { where: "entity_entity_type == 'Link'" }
-  storage_unit: { where: "entity_entity_type == 'StorageUnit'" }
-  store: { where: "entity_entity_type == 'Store'" }
+  generator: { where: "entity_group == 'Generator'" }
+  load: { where: "entity_group == 'Load'" }
+  line: { where: "entity_group == 'Line'" }
+  transformer: { where: "entity_group == 'Transformer'" }
+  link: { where: "entity_group == 'Link'" }
+  storage_unit: { where: "entity_group == 'StorageUnit'" }
+  store: { where: "entity_group == 'Store'" }
   branch: { where: line OR transformer }
   storage: { where: storage_unit OR store }
   capacity: { where: NOT load }
@@ -82,6 +76,7 @@ parameters:
   period_weighting_objective: { dims: [period], description: "`investment_period_weightings.objective`" }
   period_year: { dims: [period], dtype: int, description: "the year a period stands for: its label, as a value" }
 
+  entity_group: { dims: [entity], dtype: str, description: "PyPSA's component type of an entity: `Generator`, `Link`, ..." }
   role: { dims: [entity, bus], dtype: str, description: "`input`, `output` or `attached`: which end of the entity a connection is" }
   efficiency:
     dims: [scenario, snapshot, entity, bus]
