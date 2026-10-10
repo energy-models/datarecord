@@ -20,10 +20,19 @@ All notable changes to datarecord are documented here. The format follows
   its ancestry back in a new process. `ws.con` is the calling thread's cursor,
   and a relation from another connection or thread is rejected at the write
   and edit boundary.
+- Writing is `store.root(source)`, `rev.child(source)` and
+  `ws.write(source, uri)`; `write_record`, `Revision.create` and the
+  source-less `Revision.child()` are gone. A `WorkingRecord` no longer
+  commits: `rev.child(w.edits)` writes its edits as a child,
+  `ws.write(w, uri)` the flattened record, and `NewChild`, `Directory` and
+  `commit` are gone. A tree write writes its revision file last, so a failed write leaves
+  no revision and never widens the manifest.
 
 ### Fixed
 
+- `materialise()` writes `owner_map/inputs.parquet` last, each file through
+  a temporary name, so a node never reads as materialised from half its
+  cache.
 - A fold cached before the manifest widened now reads under the wider schema.
-
 - Reading an attribute over a `partial` dim no longer slows with the square
   of that dim's length.

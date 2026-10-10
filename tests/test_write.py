@@ -17,10 +17,9 @@ import pytest
 
 from datarecord import Workspace
 from datarecord.layered.resolve import read_schema
-from datarecord.layered.write import write_record
 from datarecord.record import EMPTY, LazyFrames, RecordLike
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import empty_child, empty_root, export_network, relation, schema
+from tests.fixtures import empty_child, export_network, relation, schema
 
 
 class _Source:
@@ -86,7 +85,7 @@ def _long(**overrides) -> pd.DataFrame:
     """One long row carrying its attribute's own coordinates, and no others.
 
     Shaped from the spec rather than spelled: a source handing over a column
-    the attribute is not addressed by is what `write_record` now rejects, so a
+    the attribute is not addressed by is what the writer now rejects, so a
     helper that spelled every declared dim would be testing against a record no
     reader would accept.
 
@@ -131,9 +130,8 @@ def test_source_is_explorable_without_building(store):
         source.attributes["nope"]
 
 
-def test_write_record_builds_each_key_once(store):
+def test_a_write_builds_each_key_once(store):
     """The writer looks up every key exactly once, and only what it writes."""
-    revision = empty_root(store)
     source = _Source(
         _SCHEMA,
         attributes={"p_nom": _long(), "e_nom": _long(attribute="e_nom")},
@@ -141,7 +139,7 @@ def test_write_record_builds_each_key_once(store):
             "Process": pd.DataFrame({"entity": ["steel_dri"], "scenario": [None]})
         },
     )
-    write_record(revision, source)
+    store.root(source)
 
     assert sorted(source.built) == [
         "attributes:e_nom",
@@ -153,7 +151,7 @@ def test_write_record_builds_each_key_once(store):
 # -- creating a layer -------------------------------------------------------
 
 
-def test_write_record_creates_a_new_layer(store):
+def test_a_write_creates_a_new_layer(store):
     """Files land where `layer_dir` says - data only, no schema.
 
     The record's one schema goes beside `layers/`, so a layer directory holds
@@ -164,21 +162,21 @@ def test_write_record_creates_a_new_layer(store):
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    revision = empty_root(store)
-    write_record(revision, _Source(_SCHEMA, attributes={"p_nom": _long()}))
+    revision = store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
 
     base = Path(store.layer_dir(revision.id))
     assert (base / "inputs" / "p_nom.parquet").exists()
     assert not (base / "manifest.json").exists()
     # Written once for the whole tree, and it is what the layer is read under.
     assert read_schema(store) == _SCHEMA
+    assert store.revisions() == [revision], "the revision file makes it real"
 
 
 def test_no_layer_file_carries_order_key(store, ac_dc, tmp_path):
     """`order_key` is the fold's answer about a frame, never a column of one.
 
-    A source handing over *resolved* frames carries it - which is what
-    committing a `WorkingRecord` to a `Directory` does, the record itself being
+    A source handing over *resolved* frames carries it - which is what writing
+    a `WorkingRecord` as a standalone directory does, the record itself being
     what is written. Writing it would put a struct column in files the
     format promises a foreign reader can open, and would look like stored order
     where the fold always re-derives it from file order.
@@ -188,18 +186,17 @@ def test_no_layer_file_carries_order_key(store, ac_dc, tmp_path):
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     """
-    from datarecord.mutable import Directory, WorkingRecord
+    from datarecord.mutable import WorkingRecord
 
-    revision = empty_root(store)
-    write_record(revision, PyPSA.to_datarecord(ac_dc))
+    revision = export_network(ac_dc, store)
 
     staged = WorkingRecord(revision.record)
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     out = str(tmp_path / "flat")
-    staged.commit(Directory(out))
+    store.workspace.write(staged, out)
 
     written = sorted(Path(out).rglob("*.parquet"))
-    assert written, "the commit must have written something to check"
+    assert written, "the write must have written something to check"
     for path in written:
         columns = store.workspace.con.sql(
             f"SELECT * FROM read_parquet('{path}')"
@@ -223,8 +220,7 @@ def test_a_per_type_member_file_does_not_repeat_its_type(store, ac_dc):
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
     - [the entity axis](https://energy-models.github.io/datarecord/design/format/#the-entity-axis)
     """
-    revision = empty_root(store)
-    write_record(revision, PyPSA.to_datarecord(ac_dc))
+    revision = export_network(ac_dc, store)
     layer = Path(store.layer_dir(revision.id))
 
     members = layer / "dims" / "entity_type" / "Generator.parquet"
@@ -252,9 +248,10 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
     """
     out = str(tmp_path / "standalone")
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
-    write_record(None, source, workspace=workspace, uri=out)
+    record = workspace.write(source, out)
 
     assert (Path(out) / "manifest.json").exists()
+    assert record.schema == _SCHEMA
     assert workspace.at(out).schema == _SCHEMA
 
     # And it is that file answering: a standalone record is one whole record,
@@ -273,26 +270,49 @@ def test_a_directory_without_a_manifest_is_no_standalone_record(store, tmp_path)
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    revision = empty_root(store)
-    write_record(revision, _Source(_SCHEMA, attributes={"p_nom": _long()}))
+    revision = store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
     with pytest.raises(FileNotFoundError, match="no manifest"):
         store.workspace.at(store.layer_dir(revision.id))
     assert store.layer(revision.id).schema == _SCHEMA
 
 
-def test_write_record_refuses_an_existing_layer(store):
-    """A whole-layer write never half-replaces what a record already holds.
+def test_a_standalone_write_refuses_an_existing_directory(workspace, tmp_path):
+    """A whole-record write never half-replaces what a record already holds.
 
     Notes
     -----
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
-    revision = empty_root(store)
+    out = str(tmp_path / "standalone")
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
-    write_record(revision, source)
+    workspace.write(source, out)
 
-    with pytest.raises(FileExistsError, match="already exists"):
-        write_record(revision, source)
+    with pytest.raises(FileExistsError, match="not empty"):
+        workspace.write(source, out)
+
+
+def test_a_failed_standalone_write_leaves_no_record(workspace, tmp_path):
+    """The manifest is written last, so a directory whose write failed is none.
+
+    Notes
+    -----
+    - [a standalone directory](https://energy-models.github.io/datarecord/design/writing/#a-standalone-directory)
+    """
+    out = tmp_path / "standalone"
+    short = _long().drop(columns=["breakpoint"])
+    with pytest.raises(ValueError, match="missing long-schema columns"):
+        workspace.write(_Source(_SCHEMA, attributes={"p_nom": short}), str(out))
+    assert not out.exists()
+    with pytest.raises(FileNotFoundError):
+        workspace.at(str(out))
+
+
+def _nothing_reachable(store) -> None:
+    """A failed tree write leaves no revision, no layer and no manifest."""
+    assert store.revisions() == [], "no revision file, so nothing reaches a layer"
+    layers = Path(store.uri, "layers")
+    assert not (layers.exists() and any(layers.iterdir())), "staged and removed"
+    assert not Path(store.manifest_uri).exists(), "never widened for no layer"
 
 
 def test_a_file_carries_only_its_own_attributes_coordinates(store, ac_dc):
@@ -308,8 +328,7 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store, ac_dc):
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     inputs = Path(store.layer_dir(revision.id), "inputs")
 
     def columns(attribute: str) -> set[str]:
@@ -336,7 +355,7 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store, ac_dc):
 # -- validation -------------------------------------------------------------
 
 
-def test_write_record_rejects_an_undeclared_attribute(store):
+def test_a_write_rejects_an_undeclared_attribute(store):
     """An attribute with no spec has no shape, so there is nothing to write it as.
 
     Its `dims` are what say which columns the file carries, so writing one the
@@ -348,14 +367,13 @@ def test_write_record_rejects_an_undeclared_attribute(store):
     -----
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
     """
-    revision = empty_root(store)
     source = _Source(_SCHEMA, attributes={"not_declared": _long(attribute="nope")})
 
     with pytest.raises(ValueError, match="not a declared attribute"):
-        write_record(revision, source)
+        store.root(source)
 
 
-def test_write_record_rejects_a_coordinate_the_attribute_lacks(store):
+def test_a_write_rejects_a_coordinate_the_attribute_lacks(store):
     """A column the attribute is not addressed by is a disagreement, not a spare.
 
     The read path projects an attribute's own coordinates, so a `bus` on a
@@ -367,45 +385,42 @@ def test_write_record_rejects_a_coordinate_the_attribute_lacks(store):
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    revision = empty_root(store)
     wide = _long().assign(bus=None)
     source = _Source(_SCHEMA, attributes={"p_nom": wide})
 
     with pytest.raises(
         ValueError, match=r"carries columns \['bus'\].*not addressed by"
     ):
-        write_record(revision, source)
+        store.root(source)
 
 
-def test_write_record_rejects_a_missing_long_column(store):
+def test_a_write_rejects_a_missing_long_column(store):
     """A frame the fold could not resolve is refused before anything is written."""
-    revision = empty_root(store)
     short = _long().drop(columns=["breakpoint"])
     source = _Source(_SCHEMA, attributes={"p_nom": short})
 
     with pytest.raises(ValueError, match="missing long-schema columns.*breakpoint"):
-        write_record(revision, source)
-    assert not Path(store.layer_dir(revision.id)).exists()
+        store.root(source)
+    _nothing_reachable(store)
 
 
-def test_write_record_rejects_a_group_frame_missing_a_coordinate(store):
+def test_a_write_rejects_a_group_frame_missing_a_coordinate(store):
     """A group's row is keyed by its coordinates, so one lacking them misresolves.
 
     Notes
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
-    revision = empty_root(store)
     source = _Source(
         _SCHEMA,
         connections={"connection": pd.DataFrame({"entity": ["steel_dri"]})},  # no `bus`
     )
 
     with pytest.raises(ValueError, match="coordinates.*bus"):
-        write_record(revision, source)
+        store.root(source)
 
 
-def test_write_record_rejects_a_name_two_types_share(store):
+def test_a_write_rejects_a_name_two_types_share(store):
     """Names are unique across every type, checked before anything is written.
 
     The attribute rows record no type, so two components sharing a name would
@@ -416,7 +431,6 @@ def test_write_record_rejects_a_name_two_types_share(store):
     -----
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
-    revision = empty_root(store)
     source = _Source(
         _SCHEMA,
         entity_types={
@@ -428,13 +442,12 @@ def test_write_record_rejects_a_name_two_types_share(store):
     # The detail names the name and the types claiming it, in that order - the
     # message is what a caller acts on, so a transposed pair is a defect.
     with pytest.raises(ValueError, match=r"'shared' is a Process and a Widget"):
-        write_record(revision, source)
-    assert not Path(store.layer_dir(revision.id)).exists()
+        store.root(source)
+    _nothing_reachable(store)
 
 
-def test_write_record_accepts_one_name_per_type(store):
+def test_a_write_accepts_one_name_per_type(store):
     """The negative half: the same two types with distinct names write fine."""
-    revision = empty_root(store)
     source = _Source(
         _SCHEMA,
         entity_types={
@@ -443,7 +456,7 @@ def test_write_record_accepts_one_name_per_type(store):
         },
     )
 
-    write_record(revision, source)
+    revision = store.root(source)
     assert Path(store.layer_dir(revision.id)).exists()
 
 
@@ -458,7 +471,6 @@ def test_the_uniqueness_check_spans_backends(store):
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    revision = empty_root(store)
     source = _Source(
         _SCHEMA,
         entity_types={
@@ -471,10 +483,10 @@ def test_the_uniqueness_check_spans_backends(store):
     )
 
     with pytest.raises(ValueError, match="entity types reuse names"):
-        write_record(revision, source)
+        store.root(source)
 
 
-def test_write_record_rejects_a_nested_axis_without_its_parent(store):
+def test_a_write_rejects_a_nested_axis_without_its_parent(store):
     """A `within` dim's file needs a column per parent, or the fold miskeys it.
 
     `snapshot within period` makes the axis key `(period, snapshot)`, so a
@@ -485,7 +497,6 @@ def test_write_record_rejects_a_nested_axis_without_its_parent(store):
     -----
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
-    revision = empty_root(store)
     nested = schema(within={"snapshot": {"period"}})
     source = _Source(
         nested,
@@ -493,11 +504,11 @@ def test_write_record_rejects_a_nested_axis_without_its_parent(store):
     )
 
     with pytest.raises(ValueError, match="axis key columns.*period"):
-        write_record(revision, source)
-    assert not Path(store.layer_dir(revision.id)).exists()
+        store.root(source)
+    _nothing_reachable(store)
 
 
-def test_write_record_rejects_an_undeclared_axis_column(store):
+def test_a_write_rejects_an_undeclared_axis_column(store):
     """An axis file's payload is the schema's to state, like a long frame's.
 
     A column no declaration accounts for would be read back with no dtype and
@@ -507,15 +518,14 @@ def test_write_record_rejects_an_undeclared_axis_column(store):
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    revision = empty_root(store)
     source = _Source(
         schema(),
         dims={"scenario": pd.DataFrame({"scenario": ["high"], "nonsense": [1.0]})},
     )
 
     with pytest.raises(ValueError, match="does not declare for the 'scenario' axis"):
-        write_record(revision, source)
-    assert not Path(store.layer_dir(revision.id)).exists()
+        store.root(source)
+    _nothing_reachable(store)
 
 
 def test_an_axis_carries_the_attributes_addressed_by_it_alone(store):
@@ -528,7 +538,6 @@ def test_an_axis_carries_the_attributes_addressed_by_it_alone(store):
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    revision = empty_root(store)
     declared = schema()
     assert "weight" in declared.attributes_on("scenario")
 
@@ -536,7 +545,7 @@ def test_an_axis_carries_the_attributes_addressed_by_it_alone(store):
         declared,
         dims={"scenario": pd.DataFrame({"scenario": ["high"], "weight": [0.4]})},
     )
-    write_record(revision, source)
+    revision = store.root(source)
 
     axis = revision.resolver.dims.axes["scenario"].df()
     assert dict(zip(axis["scenario"], axis["weight"])) == {"high": 0.4}
@@ -571,8 +580,7 @@ def test_write_then_build_round_trips(store, ac_dc):
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    revision = empty_root(store)
-    write_record(revision, PyPSA.to_datarecord(ac_dc))
+    revision = export_network(ac_dc, store)
 
     assert not PyPSA.verify(revision.record)
     back = PyPSA.build(revision.record)
@@ -598,8 +606,7 @@ def test_multi_port_links_round_trip_through_connections(store, ac_dc):
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    revision = empty_root(store)
-    write_record(revision, PyPSA.to_datarecord(ac_dc))
+    revision = export_network(ac_dc, store)
 
     # Stored bus-keyed, with a role from PyPSA's sign convention. One file for
     # every type, so the Links are reached by their entities.
@@ -622,8 +629,7 @@ def test_single_port_components_keep_their_unsuffixed_bus(store, ac_dc):
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    revision = empty_root(store)
-    write_record(revision, PyPSA.to_datarecord(ac_dc))
+    revision = export_network(ac_dc, store)
 
     rows = store.workspace.con.read_parquet(
         store.layer_dir(revision.id) + "groups/connection.parquet"
@@ -644,8 +650,7 @@ def test_static_series_split_survives_the_writer(store, ac_dc):
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    revision = empty_root(store)
-    write_record(revision, PyPSA.to_datarecord(ac_dc))
+    revision = export_network(ac_dc, store)
     back = PyPSA.build(revision.record)
 
     assert sorted(back.c["Generator"].dynamic["p_max_pu"].columns) == sorted(
@@ -657,8 +662,7 @@ def test_written_layer_overlays(store, ac_dc):
     """A written layer is an ordinary layer: a child patches it as any other."""
     from tests.fixtures import write_input
 
-    root = empty_root(store)
-    write_record(root, PyPSA.to_datarecord(ac_dc))
+    root = export_network(ac_dc, store)
     root.materialise()
 
     child = empty_child(root)

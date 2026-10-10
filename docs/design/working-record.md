@@ -6,14 +6,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # `WorkingRecord`
 
-[`Record`](record.md) is read-only, and [`write_record`](writing.md) writes a whole record from a source that already knows everything it will contain.
+[`Record`](record.md) is read-only, and [the writers](writing.md) write a whole record from a source that already knows everything it will contain.
 Neither covers editing: adding entities, removing them, setting an attribute on a group.
 
 ```python
 class WorkingRecord:
-    """A `Record` that accepts edits and materialises them on commit."""
+    """A `Record` that accepts edits, and hands them over as a layer."""
 
-    def __init__(self, base: Record, con: DuckDBPyConnection) -> None: ...
+    def __init__(self, base: Record) -> None: ...
 
     def set(
         self,
@@ -32,26 +32,27 @@ class WorkingRecord:
     def add_group(self, group: str, frame: IntoFrame) -> None: ...
     def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None: ...
 
-    def commit(self, target: Target) -> Any: ...  # the new child, for NewChild
+    @property
+    def edits(self) -> LayerData: ...  # the staged layer alone
     def rollback(self) -> None: ...
 ```
 
 Built over a base `Record`, `WorkingRecord(revision.record)`, it stages on the base's connection, `record.con`.
 
 A **class, not a protocol**.
-`Record` is a protocol because several things satisfy it — two backings, a framework object presenting itself as one, the two readings commit writes — and structural typing is what lets a consumer satisfy it without depending on this package.
+`Record` is a protocol because several things satisfy it — two backings, a framework object presenting itself as one, the two readings a write takes — and structural typing is what lets a consumer satisfy it without depending on this package.
 There is one way to edit a record, so a second name for it would be an interface over its only implementation.
 Where [the staged rows live](#staging) is this class's own business, which is why the name says what it is rather than how.
 
 It **satisfies** `Record`, which is the load-bearing decision: a mutable record reads as a record, and what it reads is the data _with its pending edits applied_.
-So an edit can be read back, or the record handed to something that only knows `Record`, without committing.
+So an edit can be read back, or the record handed to something that only knows `Record`, without writing it.
 Structurally, not by inheritance — the read members are implemented here over [base-plus-staged](#reading-with-pending-edits).
 
-Two properties follow from accumulate-then-commit, and both are the point:
+Two properties follow from accumulate-then-write, and both are the point:
 
 - An edit costs a row in a staging table, not a rewrite.
-  A hundred edits to one attribute are a hundred rows, collapsed once at commit.
-- Nothing touches the record until `commit()`.
+  A hundred edits to one attribute are a hundred rows, collapsed once when written.
+- Nothing touches the record until [`edits`](#edits) is written as a child.
   A caller that fails halfway leaves no layer; one that changes its mind calls `rollback()`.
 
 ## The shape of an edit
@@ -71,10 +72,10 @@ Nor is there a `connect`/`disconnect` pair beside it — `connection` is one gro
 The inputs key is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: `partial` necessarily contains `entity` and every [group](schema.md#groups) key coordinate, since neither broadcasts.
 Every key is `entity`-based, because `entity` is [what identifies an entity](format.md#entity-is-unique-across-types).
 An **entity** edit still _names_ a type — `add("Generator", frame)` — because it creates the thing that has one, and the row it writes records it; but the type is a column of that row rather than part of the key it targets.
-That is what makes `remove("Generator", ["x"])` followed by `add("Bus", frame)` collapse to the later edit: one name has one answer, where a type-partitioned key would keep both and commit a record whose two types share a name.
+That is what makes `remove("Generator", ["x"])` followed by `add("Bus", frame)` collapse to the later edit: one name has one answer, where a type-partitioned key would keep both and write a record whose two types share a name.
 
 The crucial property: **an edit is expressed in the format's own terms.** Setting `p_nom` on twenty entities _is_ twenty `inputs/p_nom.parquet` rows, which is what a patch layer would hold anyway.
-So a staged edit is already the row it will be written as, and `commit()` is a concatenation rather than a translation.
+So a staged edit is already the row it will be written as, and writing `edits` is a concatenation rather than a translation.
 
 ## `set`
 
@@ -111,7 +112,7 @@ The edit stages a row of [that axis's own file](format.md#where-a-value-lives) r
 A label the axis does not have is refused rather than introduced: an axis row is a label's existence, which an axis file states. Where the axis's dtype is an `Enum` the vocabulary is the schema's, so an undeclared label is rejected without reading the axis at all.
 
 `kind` names the destination in the format's own terms — [the shape of an edit](#the-shape-of-an-edit) is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
-`"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool [hands results back](#results-through-kindoutputs) to a record before it is committed.
+`"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool [hands results back](#results-through-kindoutputs) to a record before it is written.
 
 `value` takes six forms, because assigning one value to a group and assigning a different value to each member are equally ordinary and neither should require building a frame:
 
@@ -157,7 +158,7 @@ What it does differently is read before it stages:
 - Where the other forms stage without touching parent data, this one must resolve the keys it targets first.
   On a layered record that is a fold, so a broad derived edit is the one edit whose cost scales with the ancestry rather than with the rows written.
 - What is staged is the _result_, not the expression.
-  So a committed layer holds ordinary rows, and nothing in the format records that a value was derived — replaying an edit sequence is not a thing the record supports.
+  So a written layer holds ordinary rows, and nothing in the format records that a value was derived — replaying an edit sequence is not a thing the record supports.
 
 The expression is evaluated by narwhals against the resolved long frame, so it names `value` rather than the attribute: the frame is long, and one attribute per call means the column is always `value`.
 
@@ -179,10 +180,10 @@ model = PyPSA.build(record)  # solve the edited record
 model.optimize()
 for attr, frame in PyPSA.results(model).items():
     record.set(attr, frame, kind="outputs")
-record.commit(NewChild())  # one layer, inputs and results together
+rev.child(record.edits)  # one layer, inputs and results together
 ```
 
-In memory only: the results live in the staging area beside the input edits and become part of the same layer at commit, so a solve produces one new record rather than a record plus a separate results record.
+In memory only: the results live in the staging area beside the input edits and become part of the same layer when `edits` is written, so a solve produces one new record rather than a record plus a separate results record.
 Nothing on disk is mutated, and [write-once](layers.md#a-layers-data-is-write-once) stands unchanged.
 
 Two things differ from an input edit, both following from [outputs](read-path.md#outputs):
@@ -238,7 +239,7 @@ Which is which comes from the schema, so `add` needs no framework registry.
 A column the schema does not name is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column and no reader that would know what it means. A tool that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
 
 `add` keeps its `ctype` argument where `set` loses it: this is the call that _establishes_ what a name's type is, so there is nothing yet to [look it up in](format.md#entity-is-unique-across-types).
-It is also where uniqueness is enforced — a name the record already resolves, under this type or any other, is rejected here rather than at commit, so the collision is [reported at the line that introduces it](#validation).
+It is also where uniqueness is enforced — a name the record already resolves, under this type or any other, is rejected here rather than at write, so the collision is [reported at the line that introduces it](#validation).
 
 It is **not** a sequence of `set` calls, even though the varying columns it stages take the same path a `set` would.
 `set` writes `inputs/` rows only, and an entity exists by virtue of its `dims/entity_type/` row: staging attribute values for a name no layer declares is precisely what [validation](#validation) rejects.
@@ -264,42 +265,40 @@ The one staging path every declared [group](schema.md#groups) writes through. Th
 `add`'s own port-splitting calls `add_group` too, but only for a group whose **key** includes `entity` — the case where a row describes one of the entity's own group memberships (`bus`, for `connection`).
 A group like `corridor`, relating two entities neither of which is "the" one being added, has no such row to derive from a single entity's wide frame and is staged through `add_group` directly.
 
-## Committing
+## Edits
+
+A `WorkingRecord` does not write. What it holds are two things the [writers](writing.md) take:
 
 ```python
-Target = NewChild | Directory
+w = WorkingRecord(rev.record)
+w.set("p_nom", 100.0, entity=["gen1"])
+edited = rev.child(w.edits)  # the delta, as a child layer
+ws.write(w, "out/")  # base plus edits, flattened
+w.rollback()
 ```
 
-- **`NewChild(record=None)`** — create a child of `record` and write the staged rows as its layer.
-  The patch-layer path: read a parent, edit, commit a child.
-  [Any node may be a parent](layers.md#a-layers-data-is-write-once), so this needs no preparation of the one being branched from.
+- **`w.edits`** — the staged layer alone, the [`LayerData`](record.md#layerdata) it already is. Written as a child of the revision `w` was built over, it is **only the edits** — that is what a patch layer is, and the fold resolves the rest from the parent. The layer lands in the **child**, never in the node branched from, so it is `child`'s return value that reads the edits back.
+- **`w`** itself — what is staged _plus what the record already reads_, the whole resolved record. Written as a standalone directory, there being no parent to resolve against.
 
-  `record` defaults to the node the `WorkingRecord` was built over, since branching from the thing you read is what a caller means every time; naming one is for re-parenting the edits elsewhere.
-  A base that is no node in the tree — a directory, a framework object — has nothing to default to and must supply one.
-  The layer lands in the **child**, never in the node branched from, so it is `commit`'s return value that reads the edits back.
-
-- **`Directory(uri)`** — write a standalone record.
-  What is staged _plus what the record already reads_, flattened into one layer.
-
-The two write different things.
-A `NewChild` writes **only the edits** — that is what a patch layer is, and the fold resolves the rest from the parent.
-A `Directory` writes **the resolved result**, since there is no parent to resolve against.
-Both go through [`write_record`](writing.md), which takes a [`LayerData`](record.md#layerdata): a `NewChild` hands it the staged layer's own source, a `Directory` the resolver that folds base and staged into one — the two objects a `WorkingRecord` already holds, one meaning "my layer's rows" and the other "everything folded to here", answering the same interface.
 The writer cannot tell which it was handed, which is the point: "enumerate what I hold, hand each over" is one contract whether "what I hold" is a single layer or a whole fold.
+
+Each part of a write now has one owner. Which rows to write is the caller's choice of `w.edits` or `w`. Which parent is named by the caller, who built `w` from it. Clearing the staging area is `rollback()`, called or not: a `WorkingRecord` still holding its edits after a write reads exactly what it did before.
+
+One mistake is caught. `other.child(w.edits)`, with `w` built over a different revision, would write a delta computed against the wrong parent — an axis edit carries its base's sibling columns — and read back wrong, so `child` compares the edits' base revision with its own id and raises on a mismatch. Edits over a directory have no revision as their base and so are a child of none. One mistake is not caught: `rev.child(w)` writes the whole resolved record as a child layer rather than the delta. It reads back correctly, just larger, and a resolved record being a valid layer source too, `edits` is the name that has to carry it.
 
 An edited axis follows [`partial`](schema.md#partial-the-granularity-of-an-override), exactly as an attribute's rows do.
 A `partial` axis is patched label by label: the layer holds the labels the edit touched, and the fold resolves the rest from the parent, last-writer-wins per [axis key](record.md#axis-order).
 An axis **outside** `partial` is owned whole once touched, so the layer restates every label with the static attributes attached to them — one rule for what non-partial means, rather than an axis-shaped exception to it.
 The fold would resolve the narrower form correctly, since it keys per label and an omitted one keeps its parent's row; what ownership buys is that a layer's axis file says what the axis _is_ there, rather than being readable only against its parent.
-A `Directory` writes the resolved axis whole either way, and an axis nothing touched is written by neither.
+A standalone write of `w` writes the resolved axis whole either way, and an axis nothing touched is written by neither.
 
 Restating on edit is what an axis outside `partial` costs, and it is [the cheaper side of that trade](schema.md#partial-the-granularity-of-an-override) — which is the reason not to reach for `partial` when an axis merely gains an attribute.
 
 Neither carries the **base's** results across.
 An edit changes the inputs a result was computed from, so a parent's `outputs/` says nothing about the child — results belong to the node that was solved, and a node with different inputs is a different node.
 
-What a commit does carry is results **staged into this record** through [`set(..., kind="outputs")`](#results-through-kindoutputs).
-Those were computed against these pending inputs, so they describe exactly the layer being written, and both readings write them: a `NewChild` layer holds its edits and the results computed from them together.
+What a write does carry is results **staged into this record** through [`set(..., kind="outputs")`](#results-through-kindoutputs).
+Those were computed against these pending inputs, so they describe exactly the layer being written, and both readings write them: a child written from `edits` holds the edits and the results computed from them together.
 
 An edit **replaces the rows it names** rather than appending beside them: it deletes the rows at the coordinate it writes and inserts the new ones, so a staging table holds one row per coordinate and no fold is needed to read it.
 The key it replaces on is the coordinate — the same one a read would have collapsed — so the delete removes exactly what a last-writer-wins fold would have discarded.
@@ -311,14 +310,14 @@ The same distinction governs [the read overlay](#reading-with-pending-edits) and
 Three interactions need stating, because each is where replacing by coordinate alone is not the whole story:
 
 - **`remove` after `set`** on the same entity: the tombstone wins, since a deleted entity has no attributes.
-  An entity tombstone reaches another file's rows, so it stays an anti-join at read and commit rather than a replace — the attribute rows are keyed by coordinate, the tombstone by name.
+  An entity tombstone reaches another file's rows, so it stays an anti-join at read and write rather than a replace — the attribute rows are keyed by coordinate, the tombstone by name.
 - **`add` after `remove`** of the same name: the entity exists again.
   The entity axis replaces on `entity` alone, so the `add` row displaces the tombstone by construction — no member row and tombstone both.
 - **`set` on an entity this record also added**: correct as-is, since the two live in different files.
 
 The [non-`partial` rule](schema.md#partial-the-granularity-of-an-override) is the subtle one.
 Overwriting one value along a non-partial axis means the layer must carry that entity's _whole_ extent along it, so such a `set` reads the resolved series for that key and stages the untouched coordinates alongside the edit.
-That is the one read of parent data an edit makes, and it happens as the rows are staged rather than at commit: the staging table then already holds what the layer will write, so commit collapses and writes it without a completion step of its own.
+That is the one read of parent data an edit makes, and it happens as the rows are staged rather than at write: the staging table then already holds what the layer will hold, so a write of `edits` has no completion step of its own.
 
 The scope is the key the edit named, never the attribute: an entity no edit mentioned keeps its rows in the parent, and a layer carrying them would claim an extent it was never given.
 A staged row that leaves the axis NULL is the exception, since [the broadcast rule](record.md#the-broadcast-rule) already makes it cover every label — there is nothing left to carry, and a carried row beside it would overlap.
@@ -326,9 +325,9 @@ Carried rows go in only where no edit already holds the coordinate, so a later `
 
 ## Validation
 
-[`write_record`](writing.md) validates structurally, so commit inherits that.
+[The writer](writing.md) validates structurally, so writing `edits` inherits that.
 What editing adds is edit-level: an `add` whose frame lacks `entity`, an `add` whose name [collides](format.md#entity-is-unique-across-types) with one the record already resolves, a `set` naming an entity the record does not resolve, a dim keyword the schema does not declare.
-These are caught when the edit is **staged**, not at commit — a caller should learn about a typo'd attribute at the line that typed it, not fifty edits later.
+These are caught when the edit is **staged**, not at write — a caller should learn about a typo'd attribute at the line that typed it, not fifty edits later.
 
 A `set` resolves each name to its type before checking anything else, so "no member row for `wind9`" and "`Generator` declares no `p_nom_maxx`" are both reported against the name that produced them.
 The membership read this needs is the one [`set`](#set) already performs, so deriving the type costs nothing beyond it.
@@ -365,10 +364,10 @@ The staged rows are [the format's own rows](#the-shape-of-an-edit), so a staged 
 
 These tables are the **only** place a staged row exists: [the reads](#reading-with-pending-edits) read them rather than holding a copy.
 
-DuckDB rather than in-memory objects, for three reasons that all matter: the reads are already a fold, so staging elsewhere would mean marshalling every edit into a relation on every read; a large edit is a bulk insert rather than ten thousand Python objects; and commit hands each table to `write_record` as the file it already is, no collapse in between.
+DuckDB rather than in-memory objects, for three reasons that all matter: the reads are already a fold, so staging elsewhere would mean marshalling every edit into a relation on every read; a large edit is a bulk insert rather than ten thousand Python objects; and a write of `edits` hands each table to the writer as the file it already is, no collapse in between.
 
-Connection-scoped, like the owner-map cache, so they vanish with the connection and never appear on disk.
-A record whose edits must survive a process boundary should commit.
+Tables in the workspace's database, like the folded caches, so on `:memory:` they vanish with the workspace and never appear on disk.
+A record whose edits must survive a process boundary should be written as a child.
 
 An edit **replaces** what it names rather than appending, so a table holds one row per key and reading it is a scan — no ordering column, and edit order is just which edit ran last.
 

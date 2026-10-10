@@ -33,8 +33,7 @@ from tests.fixtures import (
 
 def test_partial_period_override_resolves_per_period(store, ac_dc):
     """With `period` `partial`, a child may replace one period only."""
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     write_schema(schema(partial={"scenario", "period"}), store)
     revision.materialise()
 
@@ -77,8 +76,7 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store, a
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     write_schema(schema(partial={"period"}), store)
     write_periods(store.layer_dir(revision.id), [{"period": 2020}, {"period": 2030}])
     write_input(
@@ -114,8 +112,7 @@ def test_tombstone_ignores_period_even_when_period_is_partial(store, ac_dc):
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     write_schema(schema(partial={"period"}), store)
     revision.materialise()
 
@@ -140,8 +137,7 @@ def test_the_fold_unions_maps_by_name(store, ac_dc):
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     write_schema(schema(partial={"scenario", "period"}), store)
     write_input(
         store.layer_dir(revision.id),
@@ -277,8 +273,7 @@ def test_the_entity_column_is_entity(store, ac_dc):
     -----
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
 
     record = revision.record
     assert "entity" in record.entity_types["Generator"].collect_schema().names()
@@ -301,8 +296,7 @@ def test_the_entity_axis_is_where_identity_lives(store, ac_dc):
     -----
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
 
     axis = store.workspace.con.read_parquet(
         store.layer_dir(revision.id) + "dims/entity.parquet"

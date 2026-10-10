@@ -11,5 +11,3 @@ SPDX-License-Identifier: CC-BY-4.0
 ::: datarecord.store.Store
 
 ::: datarecord.layered.revision.Revision
-
-::: datarecord.layered.write.write_record

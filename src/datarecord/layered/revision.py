@@ -33,6 +33,7 @@ from pydantic import (
 from datarecord.layered import resolve
 from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver
+from datarecord.record import LayerData, RecordLike
 from datarecord.store import Store, Workspace
 
 _ANCESTRY = """
@@ -135,19 +136,36 @@ class Revision(BaseModel):
 
     # -- tree ---------------------------------------------------------------
 
-    @staticmethod
-    def create(store: Store, parent: UUID | None = None) -> Revision:
-        """A new revision in `store`, its file written before any layer."""
-        return store._create(parent)
+    def child(self, source: LayerData | RecordLike) -> Revision:
+        """A new child of this revision, with `source` as its layer.
 
-    def child(self) -> Revision:
-        """Branch a new revision off this one.
+        Any node may be a parent: a layer is write-once, so a base cannot shift
+        under its descendants. A `WorkingRecord`'s `edits` are a delta against
+        the revision it was built over, so they are written only under that
+        one; the `WorkingRecord` itself writes its whole resolved record.
+
+        Raises
+        ------
+        ValueError
+            If `source` is staged edits built over another revision, whose delta
+            would read back wrong here.
 
         Notes
         -----
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+        - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         """
-        return Revision.create(self.store, parent=self.id)
+        from datarecord.mutable import StagedSource
+
+        if isinstance(source, StagedSource) and source.base != self.id:
+            msg = (
+                f"these edits were staged over revision {source.base}, so they "
+                f"are a delta against it and not against {self.id}; write them "
+                f"as a child of the revision the `WorkingRecord` was built over"
+            )
+            raise ValueError(msg)
+        return self.store._write(source, self.id)
 
     def materialise(self) -> None:
         """Write this node's caches - owner maps and resolved dims.

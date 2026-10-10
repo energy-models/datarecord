@@ -29,13 +29,13 @@ results = PyPSA.results(n)  # Frames, in the long schema
 `results` returns the same `Frames` type `Record.outputs` presents, so a solve's output goes straight back:
 
 ```python
-w = WorkingRecord(record)
+w = WorkingRecord(rev.record)
 w.set("p_max_pu", 0.8, entity=["wind1"])
 n = PyPSA.build(w)  # a WorkingRecord is a Record
 n.optimize()
 for attr, frame in PyPSA.results(n).items():
     w.set(attr, frame, kind="outputs")
-w.commit(NewChild())  # one layer, inputs and results together
+rev.child(w.edits)  # one layer, inputs and results together
 ```
 
 Two checks are skipped for `kind="outputs"`: the attribute need not be schema-declared, and a result's `entity` need not resolve to a declared member — a solve may produce rows for an entity type it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).

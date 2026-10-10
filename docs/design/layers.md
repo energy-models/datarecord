@@ -37,8 +37,8 @@ A layer owns a whole curve, the same rule a non-`partial` dim follows ([partial]
 
 A node has no mutable state.
 
-A layer's data is created by one act — [`write_record`](writing.md), whether called directly or by a [commit](working-record.md#committing) — which refuses an existing directory and stages into a sibling path, so a layer is complete when it first becomes visible and never changes afterwards.
-Editing needs no mutable layer: edits accumulate in [the staging area](working-record.md#staging) and become a layer at commit.
+A layer's data is created by one act — [`store.root` or `rev.child`](writing.md), the latter also how a `WorkingRecord`'s [edits](working-record.md#edits) are written — which refuses an existing directory and stages into a sibling path, so a layer is complete when it first becomes visible and never changes afterwards; and its [revision file, written last](writing.md#a-revision-exists-only-by-its-file), is what makes it reachable at all.
+Editing needs no mutable layer: edits accumulate in [the staging area](working-record.md#staging) and become a layer when written as a child.
 
 The one thing written into a layer directory after that act is its [`resolved/` cache](#materialised-node-caches), which is why the invariant is stated over the layer's _data_ rather than over the directory.
 That is not a loosening that costs anything: a cache is derived from immutable layers, so writing one cannot change an answer, and nothing downstream reads it as data.

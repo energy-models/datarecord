@@ -989,7 +989,7 @@ class PyPSATool(Tool):
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
-        # The same wide->long melt `write_record` uses, kept lazy. `outputs`
+        # The same wide->long melt `write_layer` uses, kept lazy. `outputs`
         # keys every registry result; a result absent on this network unions to
         # `None` and is dropped here rather than surfaced, since a reader takes
         # the default for it (the outputs default rule) - no key, no collect.
@@ -1005,7 +1005,7 @@ class PyPSATool(Tool):
         return {attr: nw.from_native(rel).lazy() for attr, rel in frames.items()}
 
     def to_datarecord(self, model: pypsa.Network) -> RecordLike:
-        """Present a `Network` as the `Record` `write_record` persists.
+        """Present a `Network` as the `Record` `write_layer` persists.
 
         The inverse of `build`, and the only place PyPSA's shape is undone:
         `c.static`/`c.dynamic` become long rows, and `bus0`/`bus1`/`efficiency2`
@@ -1223,7 +1223,7 @@ class _NetworkSource:
 
     n: pypsa.Network
     # The connection the wide->long melt runs on, so its relations pass through
-    # `write_record`'s `as_relation` without a copy (same connection) and stay
+    # `write_layer`'s `as_relation` without a copy (same connection) and stay
     # lazy. `None` off the write path - `to_datarecord(n)` stays con-free and
     # backend-agnostic - where the module default connection answers instead.
     con: DuckDBPyConnection | None = None
@@ -1233,7 +1233,7 @@ class _NetworkSource:
     _DIMS = (SNAPSHOT, PERIOD, SCENARIO)
 
     def on_connection(self, con: DuckDBPyConnection) -> _NetworkSource:
-        """This source with its melt bound to `con`, for `write_record`.
+        """This source with its melt bound to `con`, for `write_layer`.
 
         The write path calls this so a melted relation lands on the writer's own
         connection and passes through `as_relation` without a copy.
@@ -1244,7 +1244,7 @@ class _NetworkSource:
     def _melt_con(self) -> DuckDBPyConnection:
         """The connection the wide->long melt runs on.
 
-        `write_record`'s connection where it threaded one in, so a melted
+        `write_layer`'s connection where it threaded one in, so a melted
         relation passes through `as_relation` on the same connection without a
         copy; the module default otherwise, off the write path.
         """
@@ -1381,7 +1381,7 @@ class _NetworkSource:
         The wide `snapshots x entities` (or
         `snapshots x (scenario, entity)`) dynamic frame is melted by `UNPIVOT`
         rather than `pandas.stack`, so the relation stays a lazy plan
-        `write_record` writes without a copy. Static scalars land as null-snapshot
+        `write_layer` writes without a copy. Static scalars land as null-snapshot
         rows exactly as `_scalar_rows` builds them; `drop_defaults` omits a scalar
         that only repeats the attribute's default.
 
@@ -1526,7 +1526,7 @@ class _NetworkSource:
         Keys are named per type by the registry and merged, matching the file
         layout - one `outputs/<attr>.parquet` across types, like `inputs/`.
         A network that was never solved still names them; the frame is then
-        empty and `write_record` writes an empty file rather than none, which
+        empty and `write_layer` writes an empty file rather than none, which
         reads back as "take the default" either way.
 
         Notes
@@ -1550,7 +1550,7 @@ class _NetworkSource:
         return names
 
     def flags(self, ctype: str) -> dict[str, Flags]:
-        """Never consulted: `write_record` persists frames, not flags.
+        """Never consulted: `write_layer` persists frames, not flags.
 
         A network-backed source exists to be written, and the write path reads
         only the frame mappings. Answering properly is easy - `c.static` and
@@ -1698,7 +1698,7 @@ class _NetworkSource:
         attaches to; a component-level one has no `bus` column at all, that
         being the connection group's coordinate rather than a column the format
         fixes. The rows are a DuckDB relation melted by `_as_long_rel`, so the
-        frame stays a lazy plan `write_record` writes without a copy.
+        frame stays a lazy plan `write_layer` writes without a copy.
 
         Notes
         -----
@@ -1819,7 +1819,7 @@ class _NetworkSource:
     ) -> nw.LazyFrame:
         """Union `rels`, project `columns`, as a lazy narwhals frame.
 
-        An empty list is an empty frame with the right columns; `write_record`
+        An empty list is an empty frame with the right columns; `write_layer`
         casts every column to its declared type, so a column pandas would type as
         float from all-NULLs still lands right.
         """

@@ -6,10 +6,10 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Editing
 
-`WorkingRecord` is a record plus pending edits, held in memory and not yet written anywhere. It **satisfies `Record`**, so what it reads is the data with its pending edits applied — an edit can be read back, or the record handed to something that only knows how to read, without committing ([design](../design/working-record.md)).
+`WorkingRecord` is a record plus pending edits, held in memory and not yet written anywhere. It **satisfies `Record`**, so what it reads is the data with its pending edits applied — an edit can be read back, or the record handed to something that only knows how to read, without writing it ([design](../design/working-record.md)).
 
 ```python
-from datarecord import WorkingRecord, NewChild, Directory
+from datarecord import WorkingRecord
 
 w = WorkingRecord(root.record)
 ```
@@ -81,27 +81,28 @@ w.rollback()  # discard everything staged
 
 What you staged is read back from the record itself, which satisfies `Record` and answers with the edits applied ([design](../design/working-record.md#reading-with-pending-edits)). Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk ([design](../design/working-record.md#staging)).
 
-## Committing
+## Writing the edits
 
-Nothing touches the record until `commit`, which takes one of two targets ([design](../design/working-record.md#committing)):
+A `WorkingRecord` does not write. Nothing touches the record until you hand its edits to a writer ([design](../design/working-record.md#edits)):
 
 ```python
-new = w.commit(NewChild())  # a patch layer under a new child; returns it
-w.commit(Directory("out/"))  # a standalone record, flattened; returns None
+new = root.child(w.edits)  # a patch layer under a new child of the base
+ws.write(w, "out/")  # a standalone record, flattened
+w.rollback()  # clear the staging area, if you are done
 ```
 
-`NewChild()` writes **only the edits** and the fold resolves the rest from the parent. `Directory(uri)` writes **the resolved result** — what is staged plus what the record already reads — since there is no parent to resolve against.
+`w.edits` is **only the edits**, and the fold resolves the rest from the parent. `w` itself is **the resolved result** — what is staged plus what the record already reads — which is what a standalone directory needs, there being no parent to resolve against.
 
-The layer lands in the **child**, never in the node you branched from — layers are write-once ([design](../design/layers.md#a-layers-data-is-write-once)) — so it is the returned node that reads the edits back:
+The edits are a delta against the revision `w` was built over, so `child` raises if you write them under another one. The layer lands in the **child**, never in the node you branched from — layers are write-once ([design](../design/layers.md#a-layers-data-is-write-once)) — so it is the returned node that reads the edits back:
 
 ```python
 new.record.attributes["p_nom"].collect()
 ```
 
-`NewChild()` branches from whichever node the `WorkingRecord` was built over, which is what a caller means every time. Pass one explicitly — `NewChild(other_revision)` — only to re-parent the edits elsewhere; a `WorkingRecord` over a base that is not a node in a layer tree — a `Record.at(uri)` over a plain directory — has nothing to default to and must supply one.
+Writing clears nothing: a `WorkingRecord` still holding its edits reads exactly what it did before, until `rollback()`.
 
 An edit replaces the rows it names, so restating a coordinate overwrites it and the last write is what stands. A `remove` after a `set` wins regardless of order — a deleted entity has no attributes — and an `add` after a `remove` brings the entity back.
 
-Neither target carries a **base's** results across: an edit changes the inputs a result was computed from. What a commit does carry is results staged into this record through `set(..., kind="outputs")`, which were computed against these pending inputs ([design](../design/working-record.md#results-through-kindoutputs)).
+Neither write carries a **base's** results across: an edit changes the inputs a result was computed from. What it does carry is results staged into this record through `set(..., kind="outputs")`, which were computed against these pending inputs ([design](../design/working-record.md#results-through-kindoutputs)).
 
-Edit-level mistakes are caught when the edit is **staged**, not at commit, so a typo is reported at the line that typed it ([design](../design/working-record.md#validation)).
+Edit-level mistakes are caught when the edit is **staged**, not at write, so a typo is reported at the line that typed it ([design](../design/working-record.md#validation)).

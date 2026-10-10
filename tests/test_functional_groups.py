@@ -20,7 +20,7 @@ import narwhals as nw
 import pytest
 from pydantic import ValidationError
 
-from datarecord.mutable import NewChild, WorkingRecord
+from datarecord.mutable import WorkingRecord
 from datarecord.schema import AttributeSpec, Dimension, Group, Schema
 from tests.fixtures import (
     empty_child,
@@ -358,7 +358,7 @@ def test_a_child_layer_holds_only_the_axis_labels_it_touched(store):
     patch = country.df()
     assert patch["country"].tolist() == ["DE"], "only the touched label"
 
-    child = staged.commit(NewChild(revision))
+    child = revision.child(staged.edits)
     axis = child.resolver.dims.axes["country"].df()
     resolved = dict(zip(axis["country"], axis["co2_budget"]))
     assert resolved == {"DE": 12.0, "FR": 55.0}, "last writer wins per label"
@@ -401,7 +401,7 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(store):
         "the whole axis, not just the edited label"
     )
 
-    child = staged.commit(NewChild(revision))
+    child = revision.child(staged.edits)
     axis = child.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "FR": 55.0}, (
         "FR survives because this layer carried it"
@@ -445,7 +445,7 @@ def test_set_may_name_a_label_no_layer_has_written(store):
     staged = WorkingRecord(revision.record)
     staged.set("co2_budget", {"DE": 12.0, "NO": 3.0})
 
-    child = staged.commit(NewChild(revision))
+    child = revision.child(staged.edits)
     axis = child.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
 

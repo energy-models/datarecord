@@ -65,8 +65,8 @@ A framework consumes a record, a workflow engine produces one, and neither needs
 | [The schema](schema.md)              | what may exist: dims, attributes, patch granularity   |
 | [Layered resolution](layers.md)      | a tree of layers, folded last-writer-wins             |
 | [The DuckDB read path](read-path.md) | the owner map and how a relation resolves             |
-| [Writing a record](writing.md)       | `write_record`, and what it validates                 |
-| [`WorkingRecord`](working-record.md) | editing: staging, committing, reading back            |
+| [Writing a record](writing.md)       | `root`, `child`, `ws.write`, and what they validate   |
+| [`WorkingRecord`](working-record.md) | editing: staging, `edits`, reading back               |
 | [Consuming a record](tools.md)       | tools, and the seam a framework meets                 |
 | [Module layout](module-layout.md)    | where the code lives, and the one-way dependency      |
 | [Open questions](open-questions.md)  | what is deliberately unsettled                        |

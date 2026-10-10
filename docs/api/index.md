@@ -16,11 +16,9 @@ Everything below is importable from the top-level package:
 from datarecord import (
     AttributeSpec,
     Dimension,
-    Directory,
     Flags,
     Frames,
     LazyFrames,
-    NewChild,
     Record,
     RecordLike,
     Revision,
@@ -28,7 +26,6 @@ from datarecord import (
     Store,
     WorkingRecord,
     Workspace,
-    write_record,
 )
 ```
 
@@ -36,6 +33,6 @@ from datarecord import (
 | --------------------------- | ------------------------------------------------------- |
 | [Record](record.md)         | `Record`, `RecordLike`, `Frames`, `LazyFrames`, `Flags` |
 | [Schema](schema.md)         | `Schema`, `Dimension`, `AttributeSpec`                  |
-| [Layered](layered.md)       | `Workspace`, `Store`, `Revision`, `write_record`        |
-| [WorkingRecord](mutable.md) | `WorkingRecord`, `NewChild`, `Directory`                |
+| [Layered](layered.md)       | `Workspace`, `Store`, `Revision`                        |
+| [WorkingRecord](mutable.md) | `WorkingRecord`                                         |
 | [Tools](tools.md)           | `Tool`, `Requirements`, the PyPSA tool                  |

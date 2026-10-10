@@ -30,6 +30,8 @@ from datarecord.files import Absent, Files, LocalFiles
 from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver, read_schema
 from datarecord.layered.sources import DirectorySource, LayerSource
+from datarecord.layered.write import layer_data, reconcile_schema, write_layer
+from datarecord.record import LayerData, RecordLike
 from datarecord.schema import Schema
 
 if TYPE_CHECKING:
@@ -185,6 +187,30 @@ class Workspace:
         schema = Schema.model_validate_json(found[0])
         return _record(DirectorySource(base, schema, self), workspace=self)
 
+    def write(self, source: LayerData | RecordLike, uri: str) -> Record:
+        """Write `source` as a standalone record at `uri`, and read it back.
+
+        The directory carries its own manifest, written last, so one whose
+        write failed reads as no record.
+
+        Raises
+        ------
+        FileExistsError
+            If anything is at `uri` already.
+
+        Notes
+        -----
+        - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+        - [a standalone directory](https://energy-models.github.io/datarecord/design/writing/#a-standalone-directory)
+        """
+        base = uri if uri.endswith("/") else uri + "/"
+        if self.files(base).list(base):
+            msg = f"{base} is not empty; a standalone record is written to a new URI"
+            raise FileExistsError(msg)
+        data = layer_data(source, self.con)
+        write_layer(data, base, self, manifest=data.schema)
+        return self.at(base)
+
     def close(self) -> None:
         """Close the database, and every thread's cursor with it."""
         self._db.close()
@@ -264,11 +290,39 @@ class Store:
 
     # -- the tree ------------------------------------------------------------
 
-    def _create(self, parent: UUID | None) -> Revision:
-        """A new revision's file, written create-only, and its cached row."""
+    def root(self, source: LayerData | RecordLike) -> Revision:
+        """A new root revision, with `source` as its layer.
+
+        Raises
+        ------
+        ValueError
+            If `source` fails validation, or its schema is incompatible with
+            the store's; nothing is then reachable.
+
+        Notes
+        -----
+        - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+        - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/writing/#a-revision-exists-only-by-its-file)
+        """
+        return self._write(source, None)
+
+    def _write(self, source: LayerData | RecordLike, parent: UUID | None) -> Revision:
+        """Write `source` as a new revision's layer: layer, manifest, revision file.
+
+        The revision file is what makes the layer real, so it is written last;
+        the manifest before it is widened only for a layer that exists.
+        """
+        id = uuid4()
+        data = layer_data(source, self.workspace.con)
+        write_layer(data, self.layer_dir(id), self.workspace)
+        reconcile_schema(data.schema, self)
+        return self._create(parent, id)
+
+    def _create(self, parent: UUID | None, id: UUID | None = None) -> Revision:
+        """A revision's file, written create-only, and its cached row."""
         from datarecord.layered.revision import Revision
 
-        id = uuid4()
+        id = id or uuid4()
         body = json.dumps({"id": str(id), "parent": parent and str(parent)})
         self.files.write_text(self._revision_uri(id), body, expect=Absent())
         self._cache([(id, parent)])

@@ -148,9 +148,9 @@ def collision_detail(rows: Iterable[tuple[Any, Any]]) -> str:
 class RecordLike(Protocol):
     """What a record answers, however it is backed, as narwhals frames.
 
-    Read-only: writing is `write_record(revision_id, source, con)`, which takes
-    a `LayerData` rather than this - a framework's own `RecordLike` reaches it
-    through the adapter `write_record` wraps one in.
+    Read-only: writing is `store.root(source)`, `rev.child(source)` or
+    `ws.write(source, uri)`, whose writer reads a `LayerData` rather than this -
+    a framework's own `RecordLike` reaches it through an adapter.
 
     Notes
     -----
@@ -266,14 +266,14 @@ class RecordLike(Protocol):
 class LayerData(Protocol):
     """The rows of one thing - a layer, or a fold - enumerated and read.
 
-    `write_record`'s input: it needs `schema` and, per kind, which keys this
+    `write_layer`'s input: it needs `schema` and, per kind, which keys this
     thing holds and each one's rows - the enumerate-and-read pairs below, no
     more. `layered.sources.LayerSource` and `layered.resolve.Resolver` both
     satisfy this structurally, one answering for its own layer and the other
     for everything folded into it; the object decides which, never a mode flag
     or a name prefix. Rows are raw `DuckDBPyRelation`s, not narwhals frames -
     unlike `RecordLike`, which a framework's own producer speaks instead and
-    `write_record` adapts.
+    `write_layer` adapts.
 
     `schema` is not a peer of the other members but what decides which of them
     exist: `entity_types`/`entity_type` are populated exactly where the schema

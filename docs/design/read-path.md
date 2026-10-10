@@ -36,7 +36,7 @@ A coordinate an attribute's own file does not carry reads as NULL, which is what
 
 `entity_type` is **not** on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the resolved entity axis is what says which type an entity is.
 That axis is the entity mapping every type-scoped question goes through — [`flags(ctype)`](record.md#flags) joins it, as does a consumer wanting one type's frame — and it carries `entity_type` as a column, functionally determined by `entity` rather than keyed alongside it.
-Keying on the type would let an entity resolve to two rows, admitting at read time the collision [name uniqueness](format.md#entity-is-unique-across-types) rejects at write time; so the fold aggregates the type over the group-by instead of grouping on it, and the staging area collapses a `remove` under one type followed by an `add` under another to the later edit ([committing](working-record.md#committing)).
+Keying on the type would let an entity resolve to two rows, admitting at read time the collision [name uniqueness](format.md#entity-is-unique-across-types) rejects at write time; so the fold aggregates the type over the group-by instead of grouping on it, and the staging area collapses a `remove` under one type followed by an `add` under another to the later edit ([edits](working-record.md#edits)).
 
 The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.

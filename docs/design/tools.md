@@ -22,7 +22,7 @@ class Tool(Protocol):
 ```
 
 `results` returns [`Frames`](record.md#frames) — the same type `Record.outputs` presents, keyed by attribute, each frame in [the long schema](format.md#the-long-schema).
-So a tool's results go straight to [`write_record`](writing.md), or one at a time to [`set(attr, frame, kind="outputs")`](working-record.md#results-through-kindoutputs) with no key to unpack.
+So a tool's results go straight to [a write](writing.md), or one at a time to [`set(attr, frame, kind="outputs")`](working-record.md#results-through-kindoutputs) with no key to unpack.
 
 A framework holds its results per entity type, so reaching this shape means concatenating each attribute's types into one frame.
 That is free: the frames are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller collects.

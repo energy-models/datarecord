@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import empty_root, export_network
+from tests.fixtures import export_network
 
 
 def _has_export_to_parquet() -> bool:
@@ -72,8 +72,7 @@ def assert_networks_equal(got, expected):
 
 @pytest.fixture
 def single_revision(store, ac_dc):
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     return revision
 
 

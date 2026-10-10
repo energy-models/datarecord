@@ -13,8 +13,7 @@ except importlib.metadata.PackageNotFoundError as e:  # pragma: no cover
 
 from datarecord.layered.record import Record
 from datarecord.layered.revision import Revision
-from datarecord.layered.write import write_record
-from datarecord.mutable import Directory, NewChild, WorkingRecord
+from datarecord.mutable import WorkingRecord
 from datarecord.record import (
     Flags,
     Frames,
@@ -27,12 +26,10 @@ from datarecord.store import Store, Workspace
 __all__ = [
     "AttributeSpec",
     "Dimension",
-    "Directory",
     "Flags",
     "Frames",
     "Group",
     "LazyFrames",
-    "NewChild",
     "Record",
     "RecordLike",
     "Revision",
@@ -41,5 +38,4 @@ __all__ = [
     "Trait",
     "WorkingRecord",
     "Workspace",
-    "write_record",
 ]

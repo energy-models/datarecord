@@ -19,13 +19,14 @@ Notes
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from hashlib import sha256
 from typing import TYPE_CHECKING
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import duckdb
 import narwhals as nw
@@ -222,7 +223,7 @@ class Coords:
         Notes
         -----
         `rel` must carry a column for every dim in `layer_keys`, which
-        `write_record` enforces: a record whose frames do not is one the
+        `write_layer` enforces: a record whose frames do not is one the
         writer rejected, and binding here would resolve it as though the dim
         were broadcast everywhere.
 
@@ -290,7 +291,7 @@ def sources_to_read(
     store
         Where the layers are.
     schema
-        The record's one manifest, carried by every source so `write_record`
+        The record's one manifest, carried by every source so `write_layer`
         can read it off the layer it is handed.
 
     Returns
@@ -773,7 +774,12 @@ def materialise(
     fold stops here rather than walking further up (`sources_to_read`).
 
     Safe to call more than once, and safe to call on any node - layers are
-    write-once, so what is folded here cannot later become stale.
+    write-once, so what is folded here cannot later become stale. Two writers
+    write the same content, so racing is harmless.
+
+    `owner_map/inputs.parquet` is what `materialised` reads as the whole
+    cache's presence, so it is written last: a reader that sees it finds the
+    rest, and a write that fails part-way leaves the node unmaterialised.
 
     Notes
     -----
@@ -782,11 +788,26 @@ def materialise(
     """
     schema = read_schema(store)
     con = store.workspace.con
-    ensure_local_dir(store.resolved_dir(revision_id) + "owner_map/")
-    for kind in map_kinds(schema):
-        uri = store.owner_map_uri(revision_id, kind)
-        _fold_kind(kind, sources, con, schema).to_parquet(uri)
     _materialise_dims(revision_id, sources, store, schema)
+    ensure_local_dir(store.resolved_dir(revision_id) + "owner_map/")
+    for kind in sorted(map_kinds(schema), key=lambda kind: kind == "inputs"):
+        uri = store.owner_map_uri(revision_id, kind)
+        _to_parquet(_fold_kind(kind, sources, con, schema), uri)
+
+
+def _to_parquet(rel: DuckDBPyRelation, uri: str) -> None:
+    """`rel.to_parquet(uri)`, never visible half-written where `uri` is local.
+
+    `to_parquet` creates the file at its final path before it is complete, and
+    a reader meeting it mid-write fails rather than misses, so a local file is
+    written under a temporary name and renamed into place.
+    """
+    if "://" in uri:
+        rel.to_parquet(uri)
+        return
+    tmp = f"{uri}.{uuid4().hex}.tmp"
+    rel.to_parquet(tmp)
+    os.replace(tmp, uri)
 
 
 def _materialise_dims(
@@ -806,11 +827,11 @@ def _materialise_dims(
     base = store.resolved_dir(revision_id) + "dims/"
     ensure_local_dir(base)
     for dim, rel in dims.axes.items():
-        rel.to_parquet(f"{base}{dim}.parquet")
+        _to_parquet(rel, f"{base}{dim}.parquet")
     groups = store.resolved_dir(revision_id) + "groups/"
     ensure_local_dir(groups)
     for group, rel in dims.groups.items():
-        rel.to_parquet(f"{groups}{group}.parquet")
+        _to_parquet(rel, f"{groups}{group}.parquet")
     # The per-type wide static frames, folded across sources. An entity's wide
     # columns live in a per-type file, not on the axis, so they are the one
     # membership value that needs materialising beside the axis for a descendant
@@ -831,7 +852,7 @@ def _materialise_dims(
             [seed, *(source.entity_type(ctype) for source in above)], ("entity",), con
         )
         if wide is not None:
-            wide.to_parquet(f"{types}{ctype}.parquet")
+            _to_parquet(wide, f"{types}{ctype}.parquet")
 
 
 # -- the schema (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ---------------------------------------------
@@ -912,7 +933,7 @@ class Resolver:
 
     A plain field, not a lazy read: every fold needs it, both construction sites
     already hold it (a tree node reads its store's, a standalone directory its
-    own), and each source carries the same reference so `write_record` can
+    own), and each source carries the same reference so `write_layer` can
     read one off the layer it is handed.
 
     Notes

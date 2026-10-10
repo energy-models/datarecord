@@ -25,8 +25,7 @@ import pandas as pd
 import pytest
 
 from datarecord.layered.resolve import write_schema
-from datarecord.layered.write import write_record
-from datarecord.mutable import NewChild, WorkingRecord
+from datarecord.mutable import WorkingRecord
 from datarecord.schema import AttributeSpec, Dimension, Schema
 from tests.fixtures import empty_root
 
@@ -66,7 +65,7 @@ def root(store, untyped_schema):
             [{"entity": "a", "p_nom": 1.0}, {"entity": "b", "p_nom": 2.0}],
         ),
     )
-    child = staged.commit(NewChild(revision))
+    child = revision.child(staged.edits)
     child.materialise()
     return child
 
@@ -111,7 +110,7 @@ def test_no_entity_type_directory_is_written(store, untyped_schema):
     staged = WorkingRecord(revision.record)
     staged.add(KIND, pd.DataFrame([{"entity": "a", "p_nom": 1.0}]))
     staged.add("other", pd.DataFrame([{"entity": "c", "p_nom": 3.0}]))
-    child = staged.commit(NewChild(revision))
+    child = revision.child(staged.edits)
 
     assert not Path(store.layer_dir(child.id) + "dims/entity_type").exists()
     assert _entities(child.record) == {"a": 1.0, "c": 3.0}
@@ -162,9 +161,8 @@ def test_an_entity_type_column_is_rejected(store, untyped_schema):
 
         frozen = True
 
-    revision = empty_root(store)
     with pytest.raises(ValueError, match="entity_type"):
-        write_record(revision, WithEntityType())
+        store.root(WithEntityType())
 
 
 def test_set_reaches_a_named_entity(root, store):
@@ -176,7 +174,7 @@ def test_set_reaches_a_named_entity(root, store):
     """
     staged = WorkingRecord(root.record)
     staged.set("p_nom", 5.0, entity=["a"])
-    child = staged.commit(NewChild(root))
+    child = root.child(staged.edits)
     assert _entities(child.record) == {"a": 5.0, "b": 2.0}
 
 
@@ -184,7 +182,7 @@ def test_set_with_no_names_reaches_every_entity(root, store):
     """A scalar with no `entity=` broadcasts to every label the axis has."""
     staged = WorkingRecord(root.record)
     staged.set("p_nom", 9.0)
-    child = staged.commit(NewChild(root))
+    child = root.child(staged.edits)
     assert _entities(child.record) == {"a": 9.0, "b": 9.0}
 
 
@@ -196,7 +194,7 @@ def test_an_unknown_label_is_accepted(root, store):
     """
     staged = WorkingRecord(root.record)
     staged.add("other", pd.DataFrame([{"entity": "c", "p_nom": 3.0}]))
-    child = staged.commit(NewChild(root))
+    child = root.child(staged.edits)
     assert list(child.record.entity_types) == []
     assert _entities(child.record) == {"a": 1.0, "b": 2.0, "c": 3.0}
 
@@ -205,7 +203,7 @@ def test_remove_drops_a_component_through_the_axis_alone(root, store):
     """`remove` writes one tombstone, on the entity axis, and the fold honours it."""
     staged = WorkingRecord(root.record)
     staged.remove(KIND, ["a"])
-    child = staged.commit(NewChild(root))
+    child = root.child(staged.edits)
     assert _entities(child.record) == {"b": 2.0}
 
 
@@ -241,7 +239,7 @@ def test_a_resolved_record_reads_the_same_as_an_unresolved_one(store, untyped_sc
         KIND,
         pd.DataFrame([{"entity": "a", "p_nom": 1.0}, {"entity": "b", "p_nom": 2.0}]),
     )
-    child = staged.commit(NewChild(revision))
+    child = revision.child(staged.edits)
 
     unresolved = _entities(child.record)
     child.materialise()

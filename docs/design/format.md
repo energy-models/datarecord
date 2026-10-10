@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # The record format
 
-A record's **on-disk form** is a parquet directory: [`write_record`](writing.md) produces it, `Workspace.at(uri)` reads it, and a foreign tool can consume it knowing nothing about this package.
+A record's **on-disk form** is a parquet directory: [a write](writing.md) produces it, `Workspace.at(uri)` reads it, and a foreign tool can consume it knowing nothing about this package.
 A record that is never written has no directory, and answers [the protocol](record.md) all the same.
 
 ```text
@@ -33,7 +33,7 @@ entity | entity_type | <entity key dims> | deleted     -- a schema declaring the
 entity | <entity key dims> | deleted | <attr> ...       -- a schema declaring none
 ```
 
-It is **an axis file like any other**: a `Record` hands it over as `dims["entity"]` and [`write_record`](writing.md) writes it, with no derivation step of its own. A producer that knows its entities knows their types — `PyPSA` builds this frame from the same per-type frames it supplies as `entity_types` — so asking it for one file is cheaper than reconstructing it from the others, and it makes the writer a thing that writes frames rather than one that also computes one.
+It is **an axis file like any other**: a `Record` hands it over as `dims["entity"]` and [the writer](writing.md) writes it, with no derivation step of its own. A producer that knows its entities knows their types — `PyPSA` builds this frame from the same per-type frames it supplies as `entity_types` — so asking it for one file is cheaper than reconstructing it from the others, and it makes the writer a thing that writes frames rather than one that also computes one.
 
 Two things live here in every record, and — where the schema declares no type axis — a third:
 
@@ -128,7 +128,7 @@ Two things follow, and they are the reason to want this.
 An attribute row is addressed the way an entity is, so `set("p_nom", 150.0, entity=["wind1"])` needs no type: the entity determines it ([set](working-record.md#set)).
 And the inputs key loses a column, so the fold's key is `(entity, bus, *owned_per dims, attribute)` — one less column to compare NULL-safely in every join in [the read path](read-path.md).
 
-**Enforced, not assumed.** [`write_record`](writing.md) rejects a record whose entity tables share an entity, and `add` rejects an entity the record already resolves under another type ([add / remove](working-record.md#add-remove)).
+**Enforced, not assumed.** [The writer](writing.md) rejects a record whose entity tables share an entity, and `add` rejects an entity the record already resolves under another type ([add / remove](working-record.md#add-remove)).
 A collision cannot be left to be discovered: it would silently merge two entities' attribute rows, since the rows themselves no longer record which type they meant.
 
 A modelling framework that scopes names per type must therefore reconcile before it writes.

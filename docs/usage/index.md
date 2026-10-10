@@ -47,6 +47,6 @@ thread; a frame belongs to the thread that built it.
 | [Reading a record](reading.md) | the `Record` protocol, frames, `flags`        |
 | [The schema](schema.md)        | declaring dims and attributes                 |
 | [Layers](layers.md)            | revisions, branching, materialising           |
-| [Editing](editing.md)          | `WorkingRecord`: `set`, `add`, `commit`       |
-| [Writing](writing.md)          | `write_record`                                |
+| [Editing](editing.md)          | `WorkingRecord`: `set`, `add`, `edits`        |
+| [Writing](writing.md)          | `store.root`, `rev.child`, `ws.write`         |
 | [Tools](tools.md)              | consuming a record from a modelling framework |

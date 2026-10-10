@@ -13,6 +13,7 @@ Notes
 import pickle
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import duckdb
 import narwhals as nw
@@ -35,8 +36,7 @@ from tests.fixtures import (
 @pytest.fixture
 def tree(store, ac_dc):
     """A root holding `ac_dc`, and a child of it."""
-    root = empty_root(store)
-    export_network(ac_dc, root)
+    root = export_network(ac_dc, store)
     return root, empty_child(root)
 
 
@@ -202,6 +202,30 @@ def test_a_fold_table_reads_under_a_widened_schema(store):
     inputs = after.resolver.inputs
     assert "scenario" in str(inputs.types[inputs.columns.index("varies")]), (
         "a fold made under the narrower schema reads under the wider one"
+    )
+
+
+def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkeypatch):
+    """`owner_map/inputs.parquet` is the cache's presence, so it is written last.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    """
+    from datarecord.layered import resolve
+
+    root, _ = tree
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("the owner map write fails")
+
+    monkeypatch.setattr(resolve, "_fold_kind", fail)
+    with pytest.raises(RuntimeError):
+        root.materialise()
+    assert Path(store.resolved_dir(root.id), "dims", "entity.parquet").exists()
+    assert not resolve.materialised(root.id, store), "the rest is no cache yet"
+    assert not list(Path(store.resolved_dir(root.id)).rglob("*.tmp")), (
+        "no temporary file is left behind"
     )
 
 

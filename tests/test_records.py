@@ -14,9 +14,8 @@ from dataclasses import dataclass
 import narwhals as nw
 import pytest
 
-from datarecord.layered.revision import Record
+from datarecord.layered.record import Record
 from datarecord.layered.sources import ParquetLayer
-from datarecord.layered.write import write_record
 from datarecord.mutable import WorkingRecord
 from datarecord.record import EMPTY, Flags, Frames, RecordLike
 from datarecord.schema import AttributeSpec, Schema
@@ -24,6 +23,7 @@ from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
     empty_root,
+    export_network,
     schema,
     write_entity_type,
     write_input,
@@ -36,8 +36,7 @@ MEMBERS = ("dims", "entity_types", "attributes")
 @pytest.fixture
 def written(store, ac_dc):
     """A record of one layer, so every construction below reads the same files."""
-    revision = empty_root(store)
-    write_record(revision, PyPSA.to_datarecord(ac_dc))
+    revision = export_network(ac_dc, store)
     return revision
 
 
@@ -150,10 +149,9 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
     assert list(record.outputs) == []
     assert record.attributes["p_nom"].implementation == nw.Implementation.DUCKDB
 
-    # And `write_record` consumes it, which is the point of widening the type:
+    # And the writer consumes it, which is the point of widening the type:
     # it iterates and looks up, both of which a `dict` answers.
-    revision = empty_root(store)
-    write_record(revision, record)
+    revision = store.root(record)
     assert "p_nom" in store.layer(revision.id).attributes
 
 
@@ -416,8 +414,7 @@ def test_flags_report_a_curve(store):
 
 def test_node_record_resolves_the_overlay(store, ac_dc):
     """One layer read alone against the same layer folded onto its parent."""
-    root = empty_root(store)
-    write_record(root, PyPSA.to_datarecord(ac_dc))
+    root = export_network(ac_dc, store)
     root.materialise()
 
     child = empty_child(root)
@@ -450,8 +447,7 @@ def test_node_record_orders_members(store, ac_dc):
     -----
     - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
     """
-    root = empty_root(store)
-    write_record(root, PyPSA.to_datarecord(ac_dc))
+    root = export_network(ac_dc, store)
     root.materialise()
 
     child = empty_child(root)
@@ -473,8 +469,7 @@ def test_node_record_orders_members(store, ac_dc):
 
 def test_a_directory_at_a_uri_reads_a_plain_record(store, ac_dc, tmp_path):
     """No revision and no tree: any parquet directory blocks wrote is a `Record`."""
-    revision = empty_root(store)
-    write_record(revision, PyPSA.to_datarecord(ac_dc))
+    revision = export_network(ac_dc, store)
 
     record = store.layer(revision.id)
     assert isinstance(record, RecordLike)
@@ -573,10 +568,9 @@ def test_write_record_omits_outputs_for_an_unsolved_source(store, ac_dc):
     source = Unsolved()
     assert isinstance(source, RecordLike)
 
-    revision = empty_root(store)
     # An empty `outputs` writes no `outputs/` at all, rather than an empty
     # directory (https://energy-models.github.io/datarecord/design/writing/).
-    write_record(revision, source)
+    revision = store.root(source)
     layer = store.layer_dir(revision.id)
     assert try_read_parquet(layer + "outputs/*.parquet", store.workspace.con) is None
     assert "p_max_pu" in store.layer(revision.id).attributes

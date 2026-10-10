@@ -298,22 +298,21 @@ def empty_child(parent: Revision) -> Revision:
     return parent.store._create(parent.id)
 
 
-def export_network(n, revision) -> None:
-    """Write `n` as `revision`'s layer, through the record layer's own writer.
+def export_network(n, store: Store) -> Revision:
+    """Write `n` as a new root of `store`, through the record layer's own writer.
 
     Not `n.export_to_parquet`: that emits PyPSA's upstream manifest format,
     which is a different vocabulary from the schema a record declares.
-    Going through `write_record` means a test record is written exactly as
+    Going through `store.root` means a test record is written exactly as
     `blocks` writes one.
 
     Notes
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    from datarecord.layered.write import write_record
     from datarecord.tools.pypsa import PyPSA
 
-    write_record(revision, PyPSA.to_datarecord(n))
+    return store.root(PyPSA.to_datarecord(n))
 
 
 def write_schema(schema: Schema, store: Store) -> None:

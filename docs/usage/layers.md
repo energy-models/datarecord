@@ -9,14 +9,16 @@ SPDX-License-Identifier: CC-BY-4.0
 A `Revision` is a node in a tree of layers. Each node adds one layer; what it resolves to is that layer over its ancestors', last-writer-wins ([design](../design/layers.md)).
 
 ```python
-from datarecord import Revision, Workspace
+from datarecord import Workspace
 
 store = Workspace().store("/data/my-record")
 
-root = Revision.create(store)  # a new node
-child = root.child()  # branch off it
+root = store.root(source)  # a new node, with `source` as its layer
+child = root.child(patch)  # branch off it, with `patch` as its layer
 record = child.record  # the resolved overlay, as a `Record`
 ```
+
+There is no empty revision: a revision exists by writing its layer.
 
 Each revision is a file under `revisions/` beside `layers/`, so a location alone
 is enough to find the tree, and a `Revision` serialises as its id, its parent and

@@ -19,7 +19,6 @@ from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import ENTITY_TYPE, PyPSA, _colliding_names
 from tests.fixtures import (
-    empty_root,
     export_network,
     relation,
     schema,
@@ -30,8 +29,7 @@ from tests.fixtures import (
 
 @pytest.fixture
 def single_revision(store, ac_dc):
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     return revision
 
 
@@ -89,8 +87,7 @@ def test_verify_reports_a_missing_dim(store, ac_dc):
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     _with_schema(revision, dims={"snapshot": nw.Datetime()}, partial=set())
 
     missing = PyPSA.verify(revision.record)
@@ -115,8 +112,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(store, ac_dc):
     - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     # Declared alongside PyPSA's own types, since the axis pins the vocabulary.
     declared = read_schema(store)
     axis = declared.dimensions[ENTITY_TYPE]
@@ -218,9 +214,8 @@ def test_verify_reports_a_snapshot_key(store, ac_dc):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    revision = empty_root(store)
     write_schema(PyPSA.to_datarecord(ac_dc).schema, store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     _with_schema(revision, partial={"scenario", "snapshot"})
 
     missing = PyPSA.verify(revision.record)
@@ -232,8 +227,7 @@ def test_verify_reports_a_snapshot_key(store, ac_dc):
 
 def test_verify_reports_a_missing_required_attribute(store, ac_dc):
     """A component type with no `bus` anywhere - not in the frame, not in the catalog."""
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     # A Generator member carrying no `bus` column at all, no connection row
     # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
     write_entity_type(store.layer_dir(revision.id), "Generator", [{"entity": "g1"}])
@@ -256,8 +250,7 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(store, ac_dc
     -----
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
     """
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     write_entity_type(store.layer_dir(revision.id), "Generator", [{"entity": "g1"}])
 
     # PyPSA's own registry already declares `bus` with a `""` default, which
@@ -272,8 +265,7 @@ def test_verify_reports_a_piecewise_linear_attribute(store, ac_dc):
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
     """
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     write_input(
         store.layer_dir(revision.id),
         "marginal_cost",
@@ -559,8 +551,7 @@ def test_a_second_tool_needs_no_record_change(store, ac_dc):
     fake = FakeTool()
     assert isinstance(fake, Tool)
 
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
 
     assert fake.requires(revision.record).dims == {"snapshot"}
     assert fake.verify(revision.record).entity_types == {"Nope"}
@@ -579,8 +570,7 @@ def test_schema_dims_stay_generic(store, ac_dc):
     Keying it would be a different matter, reported by the tool against the
     real record - see `test_verify_reports_unsupported_keys`.
     """
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     _with_schema(revision, dims={**_DIMS, "vintage": nw.String()})
     dims = revision.resolver.dims
     assert "vintage" in dims.schema.dims

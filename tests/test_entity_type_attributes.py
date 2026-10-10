@@ -22,7 +22,7 @@ import pytest
 from pydantic import ValidationError
 
 from datarecord.layered.resolve import write_schema
-from datarecord.mutable import NewChild, WorkingRecord
+from datarecord.mutable import WorkingRecord
 from datarecord.schema import AttributeSpec, Dimension, Group, Schema
 from tests.fixtures import empty_root, write_axis
 
@@ -60,7 +60,7 @@ def root(store, typed_schema):
     staged = WorkingRecord(revision.record)
     staged.add("Bus", pd.DataFrame([{"entity": "b1"}]))
     staged.add("Generator", pd.DataFrame([{"entity": "g1", "p_nom": 1.0}]))
-    child = staged.commit(NewChild(revision))
+    child = revision.child(staged.edits)
     write_axis(
         store.layer_dir(child.id),
         "entity_type",
@@ -134,7 +134,7 @@ def test_a_child_layer_restates_the_type_axis_it_owns_whole(root, store):
         "the whole axis, not just the edited label"
     )
 
-    child = staged.commit(NewChild(root))
+    child = root.child(staged.edits)
     assert _icons(child.record) == {"Bus": "node", "Generator": "windmill"}, (
         "the untouched type keeps its icon because this layer carried it"
     )

@@ -277,7 +277,7 @@ class Tool(Protocol):
         ...
 
     def to_datarecord(self, model: Any) -> RecordLike:
-        """`model` presented as a layer `write_record` can persist.
+        """`model` presented as a layer `write_layer` can persist.
 
         The inverse of `build`. Framework-specific: undoing a framework's own
         shape is exactly what a tool knows and the record layer does not.
@@ -293,7 +293,7 @@ class Tool(Protocol):
 
         Keyed by attribute, each frame in the long schema - `name`, the dim
         columns, `value` - the same shape `Record.outputs` presents, so results
-        go straight to `write_record` or to `set(..., kind="outputs")`. One frame
+        go straight to `write_layer` or to `set(..., kind="outputs")`. One frame
         spans every entity type, needing no type column.
 
         Narwhals frames, so the seam names no one dataframe library, and lazy so

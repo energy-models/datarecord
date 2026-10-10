@@ -18,7 +18,6 @@ import pytest
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
-    empty_root,
     export_network,
     relation,
     rename_components,
@@ -49,8 +48,7 @@ def stochastic():
 
 @pytest.fixture
 def parent(store, stochastic):
-    revision = empty_root(store)
-    export_network(stochastic, revision)
+    revision = export_network(stochastic, store)
     revision.materialise()
     return revision
 

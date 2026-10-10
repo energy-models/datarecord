@@ -38,7 +38,7 @@ class LayerSource(Protocol):
     """One layer's own rows, however they are stored.
 
     "The layer as it would be written", not "the rows as stored": a source
-    hands over what `write_record` would persist, so however a staging area
+    hands over what `write_layer` would persist, so however a staging area
     reaches one row per key happens behind it and the fold never learns about it.
     `None` means this layer wrote nothing of that kind.
 
@@ -81,7 +81,7 @@ class LayerSource(Protocol):
 
         A layer holds only data - its schema lives beside the tree, not in the
         layer - so this is the reference the constructing reader already held,
-        carried so `write_record` can read it off the source it is handed. Every
+        carried so `write_layer` can read it off the source it is handed. Every
         source in one fold carries the same one.
 
         Notes
@@ -121,7 +121,7 @@ class LayerSource(Protocol):
     def entity_types(self) -> set[str]:
         """Which types this layer has a member file for.
 
-        For `write_record`'s benefit, not the fold's: a read learns which types
+        For `write_layer`'s benefit, not the fold's: a read learns which types
         exist from the resolved entity axis, never by listing a source's files.
         A directory listing, like `axes()` - empty wherever no member file
         exists, which for a schema declaring no entity-type axis is always.
@@ -139,7 +139,7 @@ class LayerSource(Protocol):
     def groups(self) -> set[str]:
         """Which groups this layer has a row for, by file - like `axes()`.
 
-        For `write_record`'s benefit; not scoped to a schema, which a
+        For `write_layer`'s benefit; not scoped to a schema, which a
         `LayerSource` does not carry - a file some other source's declaration
         does not recognise is the reader's concern, not this listing's.
         """
@@ -152,7 +152,7 @@ class LayerSource(Protocol):
     def attributes(self, kind: Kind = "inputs") -> set[str]:
         """Which `<kind>/*.parquet` files this layer has, by name.
 
-        For `write_record`'s benefit: a read learns owned attributes from the
+        For `write_layer`'s benefit: a read learns owned attributes from the
         owner map, never by listing a source's own files.
         """
         ...

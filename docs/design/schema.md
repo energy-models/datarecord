@@ -459,7 +459,7 @@ Adding a functional group is compatible in the same sense adding any group is: t
 
 The compatible changes are those where NULL already means what the new schema needs it to mean, so [the broadcast rule](record.md#the-broadcast-rule) absorbs them without touching a row.
 
-An incompatible change therefore needs the layers rewritten rather than the schema edited, which for a layered record means flattening to a [`Directory`](working-record.md#committing) under the new schema.
+An incompatible change therefore needs the layers rewritten rather than the schema edited, which for a layered record means flattening it to a [standalone directory](writing.md#a-standalone-directory) under the new schema.
 A reader encountering a `version` it was not written for should refuse rather than guess, since every failure above is silent.
 
 ## `unit` and `description`

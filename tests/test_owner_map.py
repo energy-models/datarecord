@@ -19,7 +19,7 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 
-from datarecord import NewChild, WorkingRecord
+from datarecord import WorkingRecord
 from datarecord.duck import union_all_by_name
 from datarecord.layered.resolve import write_schema
 from datarecord.layered.sources import DirectorySource, LayerSource, ParquetLayer
@@ -35,8 +35,7 @@ from tests.fixtures import (
 
 @pytest.fixture
 def parent(store, ac_dc):
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     revision.materialise()
     return revision
 
@@ -440,7 +439,8 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
         store,
     )
     names, snapshots = ["wind", "solar"], 200
-    staged = WorkingRecord(empty_root(store).record)
+    base = empty_root(store)
+    staged = WorkingRecord(base.record)
     staged.add("Generator", pd.DataFrame({"entity": names}))
     staged.set(
         "p_max_pu",
@@ -452,7 +452,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
             }
         ),
     )
-    revision = staged.commit(NewChild())
+    revision = base.child(staged.edits)
 
     rel = revision.record.attributes["p_max_pu"].to_native()
     stored = len(names) * snapshots

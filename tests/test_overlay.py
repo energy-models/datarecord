@@ -22,13 +22,11 @@ from datarecord.layered.resolve import (
 )
 from datarecord.layered.revision import ancestry
 from datarecord.layered.sources import ParquetLayer
-from datarecord.layered.write import write_record
 from datarecord.record import EMPTY
 from datarecord.schema import AttributeSpec
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
-    empty_root,
     export_network,
     outputs,
     relation,
@@ -45,8 +43,7 @@ def _entities(revision) -> set[str]:
 
 @pytest.fixture
 def parent(store, ac_dc):
-    revision = empty_root(store)
-    export_network(ac_dc, revision)
+    revision = export_network(ac_dc, store)
     revision.materialise()
     return revision
 
@@ -341,9 +338,13 @@ def test_a_schema_narrowing_is_refused(store, parent, ac_dc):
         def flags(self, ctype):
             return {}
 
-    child = empty_child(parent)
+    before = read_schema(store)
     with pytest.raises(ValueError, match="no longer varies over"):
-        write_record(child, _Narrowed())
+        parent.child(_Narrowed())
+    assert read_schema(store) == before, "the manifest is never narrowed"
+    assert [r.id for r in store.revisions()] == [parent.id], (
+        "the layer was written, but without its revision file nothing reaches it"
+    )
 
 
 def test_member_order_survives_closed_intermediate(store, parent, ac_dc):

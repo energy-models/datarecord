@@ -19,7 +19,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 - **Whether staged results should be invalidated by a later input edit.** Results attached through [`set(..., kind="outputs")`](working-record.md#results-through-kindoutputs) were computed from the inputs pending at that moment, so editing an input afterwards leaves them describing a record that no longer exists.
   Dropping them on the next input edit was considered and rejected: it silently discards work the caller may have wanted, and a record that guesses which of the two the caller meant to keep is worse than one that keeps both and says so.
-  Coherence is the caller's business, and a commit writes whatever is staged.
+  Coherence is the caller's business, and writing `edits` writes whatever is staged.
   If this bites in practice, a `pending`-level warning is the cheap next step rather than a silent truncation.
 
 - **Whether a `WorkingRecord` over an open record stages against a snapshot.** Writing into an open record invalidates its owner-map cache.

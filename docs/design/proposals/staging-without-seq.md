@@ -8,7 +8,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 Status: **Implemented** · Drafted 2026-09-02 · Implemented 2026-09-02
 
-Landed in [staging](../working-record.md#staging) and [committing](../working-record.md#committing); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
+Landed in [staging](../working-record.md#staging) and [committing](../working-record.md#edits); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 
 Two departures from the sketch below are worth naming. An axis edit is not delete-then-insert: an axis row's columns are independently editable, so a `set` there **patches its one column in place** (`UPDATE ... FROM`, plus an `INSERT` for a label no row yet holds), which is what keeps a sibling attribute without a completion step — `_complete_axis` was drafted and then dropped for it. And `_axis_layer` stays, reduced to a scan for a `partial` axis and a union with the untouched base labels for one owned whole, rather than going entirely.
 
