@@ -77,7 +77,13 @@ _PERIOD_WEIGHTINGS = ("objective", "years")
 # mathspec spec, which compares it against `build_year`.
 PERIOD_YEAR = "period_year"
 EXTENDABLE = "extendable"
+_NOMINAL = {"": "nominal", "_min": "nominal_min", "_max": "nominal_max"}
 ACTIVE_IN_PERIOD = "active_in_period"
+CAPITAL_WEIGHT = "capital_weight"
+RETENTION = "retention"
+PORT_RATE = "port_rate"
+PORT_IN, PORT_OUT, DEMAND_RATE = "port_in", "port_out", "demand_rate"
+_DERIVED = frozenset({ACTIVE_IN_PERIOD, CAPITAL_WEIGHT, RETENTION, PORT_RATE})
 
 # PyPSA component types the record carries as axes rather than entities, and
 # what their names become.
@@ -92,7 +98,7 @@ _REGIONS = {"onshore": "region_onshore", "offshore": "region_offshore"}
 _DROPPED_SHAPES = frozenset({"country", "offshore"})
 # Component columns that are a function of the technology group, so they move
 # to its axis file, with their declared types.
-_TECHNOLOGY_GROUP_COLUMNS = {"resource_class": nw.Int64(), "nice_name": nw.String()}
+_TECHNOLOGY_GROUP_COLUMNS = {"nice_name": nw.String()}
 DEFAULT_CRS = "EPSG:4326"
 
 #: The base mathspec spec for the record `PyPSA.to_datarecord` writes.
@@ -846,7 +852,8 @@ def _record_names(c: pypsa.Components) -> dict[str, str]:
     """`c`'s registry attribute -> its record name.
 
     A per-port attribute is named by its stem; a per-entity one whose name is
-    a port stem elsewhere (a Link's internal `p`) takes `_internal`.
+    a port stem elsewhere (a Link's internal `p`) takes `_internal`, and
+    `<x>_nom_extendable` is `extendable`.
     """
     ports = _port_columns(c)
     names = {}
@@ -855,14 +862,41 @@ def _record_names(c: pypsa.Components) -> dict[str, str]:
             names[attr] = ports[attr][0]
         elif attr in _port_stems():
             names[attr] = f"{attr}{_INTERNAL}"
+        elif attr.endswith("_nom_extendable"):
+            names[attr] = EXTENDABLE
         else:
             names[attr] = attr
     return names
 
 
-def _extendable_attributes(c: pypsa.Components) -> list[str]:
-    """`c`'s `<x>_nom_extendable` attribute, which the record calls `extendable`."""
-    return [a for a in c.defaults.index if a.endswith("_nom_extendable")]
+def _nominal_prefix(c: pypsa.Components) -> str | None:
+    """`p_nom`, `s_nom` or `e_nom`: the stem of `c`'s capacity attributes."""
+    found = [
+        a.removesuffix("_extendable")
+        for a in c.defaults.index
+        if a.endswith("_nom_extendable")
+    ]
+    return found[0] if found else None
+
+
+def _pypsa_names(ctype: str) -> dict[str, str]:
+    """Record name -> PyPSA name of `ctype`'s renamed per-entity attributes."""
+    c = _blank_network().c[ctype]
+    ports = _port_columns(c)
+    return {
+        record: attr
+        for attr, record in _record_names(c).items()
+        if record != attr and attr not in ports
+    }
+
+
+def _port_buses(c: pypsa.Components, port: str) -> pd.Series:
+    """The bus at `port` of each component, by name."""
+    buses = c.static[_port_attribute("bus", port)]
+    if isinstance(buses.index, pd.MultiIndex):
+        buses = buses.droplevel(SCENARIO)
+        buses = buses[~buses.index.duplicated()]
+    return buses
 
 
 def _scenario_varying(c: pypsa.Components, columns: Sequence[str]) -> frozenset[str]:
@@ -922,6 +956,10 @@ def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
         rows = attached.rename("bus").reset_index()
         rows = rows.rename(columns={"name": "entity"})
         rows["role"] = _port_role(port)
+        rows[PORT_IN] = int(_port_role(port) == _INPUT_PORT)
+        rows[PORT_OUT] = int(_port_role(port) == _OUTPUT_PORT)
+        if c.name == "Load":
+            rows[DEMAND_RATE] = static.loc[attached.index, "sign"].to_numpy()
         rows["deleted"] = False
         for attr, (stem, at) in constant.items():
             if at == port:
@@ -1124,14 +1162,7 @@ def _per_port_long_rows(
         long = _long_rows(c, column, dims, drop_defaults=drop_defaults)
         if long.empty:
             continue
-        # `static` is `(scenario, name)`-indexed on a stochastic network, so map
-        # the bus by name alone - a component's bus does not vary by scenario, so
-        # the name level deduplicates to one bus per component.
-        buses = static[bus_column]
-        if isinstance(buses.index, pd.MultiIndex):
-            buses = buses.droplevel(SCENARIO)
-            buses = buses[~buses.index.duplicated()]
-        long["bus"] = long["entity"].map(buses)
+        long["bus"] = long["entity"].map(_port_buses(c, port))
         long["attribute"] = stem
         frames.append(long[long["bus"].astype(str) != ""])
     if not frames:
@@ -1329,20 +1360,21 @@ class PyPSATool(Tool):
             # Connections back to the positional columns PyPSA expects (https://energy-models.github.io/datarecord/design/tools/).
             static = _collapse_connections(static, record, members, con)
             static = _classify(static, record, ctype, con)
-            static = _restore_extendable(static, ctype)
+            static = _restore_names(static, ctype)
 
             # Frames are built and released per type, so peak memory is one
             # type's wide frames rather than the whole network (https://energy-models.github.io/datarecord/design/tools/).
             # Through the schema, so a renamed or computed attribute reaches the
             # pivot below as an ordinary long relation. Scoped by a semi-join
             # against this type's members (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+            pypsa_names = _pypsa_names(ctype)
             attributes = {
-                attr: (
+                pypsa_names.get(attr, attr): (
                     _scoped(self.schema.resolve(record, ctype, attr), members),
                     flags,
                 )
                 for attr, flags in group_flags.get(ctype, {}).items()
-                if attr != ACTIVE_IN_PERIOD
+                if attr not in _DERIVED
             }
             _add_component_type(n, ctype, static, attributes, shape, con)
 
@@ -1642,8 +1674,6 @@ def _technology_groups(n: pypsa.Network) -> _TechnologyGroups | None:
             )
             raise ValueError(msg)
     axis = rows.groupby(TECHNOLOGY_GROUP, sort=False)[present].first().reset_index()
-    if "resource_class" in axis.columns:
-        axis["resource_class"] = pd.to_numeric(axis["resource_class"]).astype("Int64")
     return _TechnologyGroups(
         members=_functional(rows, ENTITY, TECHNOLOGY_GROUP),
         axis=axis,
@@ -1701,8 +1731,7 @@ class _NetworkSource:
         """Columns of `ctype` the record stores as groups or on another axis."""
         tg = self._technology_groups
         moved = tg.moved.get(ctype, ()) if tg is not None else ()
-        extendable = _extendable_attributes(self.n.c[ctype])
-        return (CARRIER, TECHNOLOGY_GROUP, *moved, *extendable)
+        return (CARRIER, TECHNOLOGY_GROUP, *moved)
 
     def _entity_columns(self, c: pypsa.Components) -> list[str]:
         """`c`'s static columns that stay per entity (`_moved` and ports aside)."""
@@ -1764,7 +1793,11 @@ class _NetworkSource:
             SCENARIO_WEIGHT,
             PERIOD_YEAR,
             EXTENDABLE,
-            ACTIVE_IN_PERIOD,
+            *_NOMINAL.values(),
+            *_DERIVED,
+            PORT_IN,
+            PORT_OUT,
+            DEMAND_RATE,
         }
         names = {}
         for dim, mine in self._axis_columns.items():
@@ -1855,17 +1888,55 @@ class _NetworkSource:
                 unit="year",
                 description="The year an investment period stands for.",
             ),
-            EXTENDABLE: AttributeSpec(
-                dtype=nw.Boolean(),
-                dims=frozenset({ENTITY}),
-                default=False,
-                description="Whether the optimisation sizes the entity: `p_nom_extendable`, `s_nom_extendable` or `e_nom_extendable`.",
-            ),
             ACTIVE_IN_PERIOD: AttributeSpec(
                 dtype=nw.Boolean(),
                 dims=frozenset({ENTITY, PERIOD}),
                 default=False,
                 description="Whether the entity stands in a period: `active` and `build_year <= period < build_year + lifetime`.",
+            ),
+            **{
+                name: AttributeSpec(
+                    dtype=nw.Float64(),
+                    dims=frozenset({ENTITY}),
+                    description=f"`p_nom{suffix}`, `s_nom{suffix}` or `e_nom{suffix}`, whichever the type sizes by.",
+                )
+                for suffix, name in _NOMINAL.items()
+            },
+            CAPITAL_WEIGHT: AttributeSpec(
+                dtype=nw.Float64(),
+                dims=frozenset({ENTITY, PERIOD}),
+                default=0.0,
+                description="`investment_period_weightings.objective` where an extendable entity stands in a period.",
+            ),
+            RETENTION: AttributeSpec(
+                dtype=nw.Float64(),
+                dims=frozenset({ENTITY, *self._varying_dims}),
+                default=1.0,
+                description="What a store keeps over a snapshot: `(1 - standing_loss) ** snapshot_weighting_stores`.",
+            ),
+            PORT_RATE: AttributeSpec(
+                dtype=nw.Float64(),
+                dims=frozenset({CONNECTION, *self._varying_dims}),
+                default=0.0,
+                description="What one unit of flow puts on a bus: -1 at an input, `efficiency` at an output, `sign` where attached.",
+            ),
+            PORT_IN: AttributeSpec(
+                dtype=nw.Int64(),
+                dims=frozenset({CONNECTION}),
+                default=0,
+                description="1 where the connection is the input end.",
+            ),
+            PORT_OUT: AttributeSpec(
+                dtype=nw.Int64(),
+                dims=frozenset({CONNECTION}),
+                default=0,
+                description="1 where the connection is an output end.",
+            ),
+            DEMAND_RATE: AttributeSpec(
+                dtype=nw.Float64(),
+                dims=frozenset({CONNECTION}),
+                default=0.0,
+                description="What one unit of a load's `p_set` puts on its bus: its `sign`.",
             ),
             **{
                 f"snapshot_weighting_{w}": weight.model_copy(
@@ -2233,6 +2304,9 @@ class _NetworkSource:
                 names.setdefault(attr, []).append(ctype)
         if len(self.n.investment_periods):
             names[ACTIVE_IN_PERIOD] = list(self._entity_ctypes)
+            names[CAPITAL_WEIGHT] = list(self._entity_ctypes)
+        names[RETENTION] = list(self._entity_ctypes)
+        names[PORT_RATE] = list(self._entity_ctypes)
         bus = self.n.c["Bus"]
         outputs = set(_output_attributes(bus))
         for attr in bus.defaults.index[bus.defaults["varying"].astype(bool)]:
@@ -2343,9 +2417,12 @@ class _NetworkSource:
         # Scenario-varying columns belong in `inputs/`; what is left is the
         # same in every scenario and collapses to one entity row.
         columns = [x for x in columns if x not in _scenario_varying(c, columns)]
-        frame = c.static[columns].reset_index().rename(columns={"name": ENTITY})
-        extendable = c.static[_extendable_attributes(c)].any(axis=1).to_numpy()
-        frame[EXTENDABLE] = extendable
+        frame = c.static[columns].rename(columns=_record_names(c)).reset_index()
+        frame = frame.rename(columns={"name": ENTITY})
+        prefix = _nominal_prefix(c)
+        if prefix is not None:
+            for suffix, name in _NOMINAL.items():
+                frame[name] = c.static[prefix + suffix].to_numpy()
         return self._tagged(_as_wkt(frame), ENTITY)
 
     @staticmethod
@@ -2380,8 +2457,16 @@ class _NetworkSource:
         dims = self._DIMS
         bus_names = {record: pypsa for pypsa, record in self._names[BUS].items()}
         columns = list(self.schema.long_columns_for(attribute))
-        if attribute == ACTIVE_IN_PERIOD:
-            return nw.from_native(self._activity_rows()[columns]).lazy()
+        derived = {
+            ACTIVE_IN_PERIOD: self._activity_rows,
+            CAPITAL_WEIGHT: self._capital_weight_rows,
+            RETENTION: self._retention_rows,
+            PORT_RATE: self._port_rate_rows,
+        }
+        if attribute in derived:
+            rows = derived[attribute]().assign(attribute=attribute, breakpoint=None)
+            rows = rows.reset_index(drop=True)
+            return nw.from_native(rows[columns]).lazy()
         frames = []
         for ctype in ctypes:
             c = self.n.c[ctype]
@@ -2414,8 +2499,79 @@ class _NetworkSource:
             rows = active[active].rename("value").reset_index()
             frames.append(rows.rename(columns={"name": ENTITY}))
         rows = pd.concat(frames, ignore_index=True)
-        rows = rows.drop(columns=SCENARIO, errors="ignore").drop_duplicates()
-        return rows.assign(attribute=ACTIVE_IN_PERIOD, breakpoint=None)
+        return rows.drop(columns=SCENARIO, errors="ignore").drop_duplicates()
+
+    def _capital_weight_rows(self) -> pd.DataFrame:
+        """`capital_weight`: the period's objective weighting where an extendable entity stands."""
+        rows = self._activity_rows()
+        extendable = {
+            name
+            for ctype in self._entity_ctypes
+            for name in _names(self.n.c[ctype].extendables)
+        }
+        rows = rows[rows[ENTITY].isin(extendable)]
+        objective = self.n.investment_period_weightings.objective
+        return rows.assign(value=rows[PERIOD].map(objective).to_numpy())
+
+    def _retention_rows(self) -> pd.DataFrame:
+        """`retention` where a store loses energy: `(1 - standing_loss) ** snapshot_weighting_stores`."""
+        weights = self._snapshot_frame()
+        keys = [k for k in (PERIOD, SNAPSHOT) if k in weights.columns]
+        weights = weights[[*keys, "snapshot_weighting_stores"]]
+        frames = []
+        for ctype in self._entity_ctypes:
+            c = self.n.c[ctype]
+            if "standing_loss" not in c.defaults.index:
+                continue
+            loss = _as_long(c, "standing_loss")
+            loss = loss[loss["value"] != 0]
+            if weights["snapshot_weighting_stores"].nunique() == 1:
+                w = weights["snapshot_weighting_stores"].iloc[0]
+                frames.append(loss.assign(value=(1 - loss["value"]) ** w))
+                continue
+            static = loss[loss[SNAPSHOT].isna()].drop(columns=keys)
+            rows = pd.concat(
+                [
+                    static.merge(weights, how="cross"),
+                    loss[loss[SNAPSHOT].notna()].merge(weights, on=keys),
+                ],
+                ignore_index=True,
+            )
+            rows["value"] = (1 - rows["value"]) ** rows["snapshot_weighting_stores"]
+            frames.append(rows.drop(columns="snapshot_weighting_stores"))
+        return self._rows(frames)
+
+    def _port_rate_rows(self) -> pd.DataFrame:
+        """`port_rate` per connection: -1 at an input, `efficiency` at an output, `sign` where attached."""
+        frames = []
+        for ctype in self._entity_ctypes:
+            c = self.n.c[ctype]
+            efficiency = {
+                port: attr
+                for attr, (stem, port) in _port_columns(c).items()
+                if stem == "efficiency"
+            }
+            for port in c.ports:
+                column = _port_attribute("bus", port)
+                if column not in c.static.columns:
+                    continue
+                role = _port_role(port)
+                if role == _OUTPUT_PORT and port in efficiency:
+                    rows = _as_long(c, efficiency[port])
+                elif role == _SINGLE_PORT:
+                    rows = _scalar_rows(c, "sign", pd.Index([]))
+                else:
+                    rows = _scalar_rows(c, column, pd.Index([]))
+                    rows["value"] = -1.0 if role == _INPUT_PORT else 1.0
+                rows[BUS] = rows[ENTITY].map(_port_buses(c, port))
+                frames.append(rows[rows[BUS].astype(str) != ""])
+        return self._rows(frames)
+
+    def _rows(self, frames: list[pd.DataFrame]) -> pd.DataFrame:
+        """`frames` as one, or no rows over every column a derived attribute may have."""
+        if not frames:
+            return pd.DataFrame(columns=[ENTITY, BUS, *self._DIMS, "value"])
+        return pd.concat(frames, ignore_index=True)
 
     def _output_keys(self, attribute: str, ctypes: list[str]) -> list[str]:
         """The key columns of a result's rows: `bus`, or `entity` and `bus` where per-port."""
@@ -2716,14 +2872,15 @@ def _collapse_connections(
     )
 
 
-def _restore_extendable(static: DuckDBPyRelation, ctype: str) -> DuckDBPyRelation:
-    """`extendable` back under `ctype`'s `<x>_nom_extendable`, or dropped where it has none."""
-    if EXTENDABLE not in static.columns:
-        return static
-    names = _extendable_attributes(_blank_network().c[ctype])
+def _restore_names(static: DuckDBPyRelation, ctype: str) -> DuckDBPyRelation:
+    """`static` with `ctype`'s renamed columns back under their PyPSA names."""
+    names = _pypsa_names(ctype)
     return static.project(
-        *(col(c) for c in static.columns if c != EXTENDABLE),
-        *(col(EXTENDABLE).alias(name) for name in names),
+        *(
+            col(c).alias(names.get(c, c))
+            for c in static.columns
+            if c not in _NOMINAL.values()
+        )
     )
 
 
