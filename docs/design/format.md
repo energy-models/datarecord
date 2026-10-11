@@ -11,7 +11,7 @@ A record that is never written has no directory, and answers [the protocol](reco
 
 ```text
 record/
-├── manifest.json                   # the schema
+├── manifest.json                   # the schema, and the record's id
 ├── dims/
 │   ├── entity.parquet              # which entities exist, and of what type
 │   ├── entity_type/<Type>.parquet  # non-varying attribute columns, per type

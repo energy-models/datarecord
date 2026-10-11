@@ -1160,8 +1160,8 @@ def test_an_edit_over_a_directory_base_reads_back(store, ac_dc):
     )
     assert before != [4242.0], "otherwise the assertion above proves nothing"
 
-    # The base's id is derived from where it is rather than allocated, so two
-    # readers of one directory agree on which layer they are reading.
+    # The base's id is derived from its revision's rather than allocated, so
+    # two readers of one layer agree on which layer they are reading.
     other = WorkingRecord(store.layer(revision.id))
     assert other._base.revision_id == staged._base.revision_id
     assert other._layer_id != staged._layer_id, "each staging area is its own layer"
@@ -1170,8 +1170,8 @@ def test_an_edit_over_a_directory_base_reads_back(store, ac_dc):
 def test_edits_over_a_directory_are_no_revisions_delta(store, written_directory):
     """A directory is no node in a tree, so its edits are a child of none.
 
-    Its `revision_id` is derived from where it is, so it names no revision;
-    the flattened record writes as a standalone directory instead.
+    Its `revision_id` is the id its manifest carries, so it names no
+    revision; the flattened record writes as a standalone directory instead.
 
     Notes
     -----
@@ -1189,8 +1189,8 @@ def test_a_directory_uri_reads_the_same_with_or_without_a_trailing_slash(
 ):
     """Every member path is appended to the URI, so the slash cannot be optional.
 
-    And `layer_id` is derived from that URI, so the two spellings have to
-    normalise to one before it is hashed - otherwise one directory reads as two
+    And `layer_id` is the id the manifest under that URI carries, so both
+    spellings must reach the one file - otherwise one directory reads as two
     layers and a `WorkingRecord` over each disagrees about which it edits.
     """
     bare = written_directory.rstrip("/")

@@ -57,3 +57,5 @@ Two writers creating a location's first layers, or widening its schema, at once 
 ## A standalone directory
 
 A standalone directory has no revision file, so there **the manifest is written last**: `ws.at` requires one, so a directory whose write failed reads as no record rather than part of one. `ws.write` refuses a URI under which anything is listed already, as a whole-record write refuses an existing layer: unlike a layer's UUID the caller picks this URI, and a write over an existing record would mix the two under the old manifest. The check and the write are two steps, so two writers racing to one new URI can still mix; a standalone directory has one writer.
+
+Each write mints the record a fresh [id](schema.md#one-schema-per-record), carried in its manifest, so a record deleted and written again at one URI is a new layer to every workspace rather than the old one's cached folds. `ws.write` and `ws.at` resolve a local path as `ws.store` does.

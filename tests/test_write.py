@@ -9,6 +9,7 @@ Notes
 - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
 """
 
+import shutil
 from pathlib import Path
 
 import narwhals as nw
@@ -258,7 +259,11 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
     # so it reads the same through a workspace that knows nothing about it.
     elsewhere = Workspace()
     try:
-        assert elsewhere.at(out).schema == _SCHEMA
+        again = elsewhere.at(out)
+        assert again.schema == _SCHEMA
+        assert again.resolver.revision_id == record.resolver.revision_id, (
+            "the manifest's id names one layer to every reader"
+        )
     finally:
         elsewhere.close()
 
@@ -304,6 +309,64 @@ def test_a_failed_standalone_write_leaves_no_record(workspace, tmp_path):
         workspace.write(_Source(_SCHEMA, attributes={"p_nom": short}), str(out))
     assert not out.exists()
     with pytest.raises(FileNotFoundError):
+        workspace.at(str(out))
+
+
+def _p_nom(value: float) -> _Source:
+    return _Source(_SCHEMA, attributes={"p_nom": _long(value=value)})
+
+
+def _read_p_nom(record) -> list[float]:
+    return record.attributes["p_nom"].collect()["value"].to_list()
+
+
+def test_a_record_written_again_at_one_uri_reads_as_itself(workspace, tmp_path):
+    """The workspace shares fold tables by layer id, so each write mints its own.
+
+    An id derived from the URI would key the second record's folds as the
+    first's, and serve the deleted record's values.
+
+    Notes
+    -----
+    - [a standalone directory](https://energy-models.github.io/datarecord/design/writing/#a-standalone-directory)
+    """
+    out = tmp_path / "standalone"
+    assert _read_p_nom(workspace.write(_p_nom(1.0), str(out))) == [1.0]
+    shutil.rmtree(out)
+    assert _read_p_nom(workspace.write(_p_nom(2.0), str(out))) == [2.0], (
+        "the new record, not the fold of the one deleted"
+    )
+
+
+def test_a_relative_uri_is_read_where_it_was_resolved(workspace, tmp_path, monkeypatch):
+    """One relative path names two records from two working directories.
+
+    Notes
+    -----
+    - [a standalone directory](https://energy-models.github.io/datarecord/design/writing/#a-standalone-directory)
+    """
+    for name, value in [("a", 1.0), ("b", 2.0)]:
+        (tmp_path / name).mkdir()
+        monkeypatch.chdir(tmp_path / name)
+        assert _read_p_nom(workspace.write(_p_nom(value), "out")) == [value], (
+            f"the record written under {name}/"
+        )
+    assert _read_p_nom(workspace.at("out")) == [2.0], "read from the cwd, b/"
+    monkeypatch.chdir(tmp_path / "a")
+    assert _read_p_nom(workspace.at("out")) == [1.0], "read from the cwd, a/"
+
+
+def test_a_manifest_without_an_id_is_refused(workspace, tmp_path):
+    """Read without one, the record's folds would have nothing to be keyed by.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    """
+    out = tmp_path / "standalone"
+    workspace.write(_p_nom(1.0), str(out))
+    (out / "manifest.json").write_text(_SCHEMA.model_dump_json())
+    with pytest.raises(ValueError, match="no record id"):
         workspace.at(str(out))
 
 

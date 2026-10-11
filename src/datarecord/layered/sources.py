@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
-from uuid import UUID, uuid5
+from uuid import UUID
 
 from datarecord.duck import parquet_names, try_read_parquet
 from datarecord.layered.fold import Fold
@@ -301,36 +301,35 @@ class DirectorySource(_FileLayer):
     directory takes: the layout is the same as a tree layer's, so every member
     is one of the directory's files and the fold needs no conditional path.
 
-    `layer_id` is derived rather than stored, as `ParquetLayer`'s location is
-    and for the mirrored reason: a directory has no revision to be stamped
-    with, but it has a location, and that is what makes it one layer rather
-    than another. So two readings of one directory agree on which layer they
-    read without being told, and a caller has nothing to allocate or keep.
+    It is no node in a layer tree, so this makes such a record *readable*
+    through the fold, not a revision to branch from.
 
-    It is no node in a layer tree either way, so this makes such a record
-    *readable* through the fold, not a revision to branch from.
+    Attributes
+    ----------
+    id
+        The layer's identity, which keys the workspace's shared fold tables:
+        a standalone record's is minted by its write and read from its
+        manifest, so a record written again at one URI is another layer.
 
     Notes
     -----
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
 
     base: str
     schema: Schema
     workspace: Workspace
+    id: UUID
     frozen: bool = True
 
     def __post_init__(self) -> None:
-        # A caller's directory URI, with or without the trailing slash every
-        # member path is appended to. Normalised here rather than in `uri` so
-        # `layer_id` sees it too: `/x` and `/x/` are one directory, and hashing
-        # them apart would read one location as two layers.
         if not self.base.endswith("/"):
             object.__setattr__(self, "base", self.base + "/")
 
     @property
     def layer_id(self) -> UUID:
-        return uuid5(_DIRECTORY_NAMESPACE, self.base)
+        return self.id
 
     @property
     def _con(self) -> DuckDBPyConnection:
@@ -338,8 +337,3 @@ class DirectorySource(_FileLayer):
 
     def uri(self, path: str = "") -> str:
         return self.base + path
-
-
-# A fixed namespace, so one directory's `layer_id` is the same in every process
-# - a random one would make it per-reader, which is what deriving it avoids.
-_DIRECTORY_NAMESPACE = UUID("6f3d9f4e-1c2b-4a5d-8e7f-0a1b2c3d4e5f")

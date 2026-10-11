@@ -367,17 +367,6 @@ class RivalWrite:
         return found
 
 
-def write_directory_schema(directory: str, schema: Schema) -> None:
-    """Write `manifest.json` *inside* `directory`, for a standalone record.
-
-    Notes
-    -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
-    """
-    Path(directory).mkdir(parents=True, exist_ok=True)
-    Path(directory, "manifest.json").write_text(schema.model_dump_json())
-
-
 def _default_attributes(
     dims: dict[str, nw.dtypes.DType], groups: dict[str, dict[str, str]]
 ):

@@ -22,7 +22,7 @@ import pytest
 from datarecord import WorkingRecord
 from datarecord.duck import union_all_by_name
 from datarecord.layered.resolve import _fold_kind, write_schema
-from datarecord.layered.sources import DirectorySource, LayerSource, ParquetLayer
+from datarecord.layered.sources import LayerSource, ParquetLayer
 from datarecord.schema import Schema
 from tests.fixtures import (
     empty_child,
@@ -363,34 +363,6 @@ def test_a_parquet_layer_takes_the_store_it_was_given(workspace, tmp_path):
     assert ParquetLayer(revision_id, Schema(), elsewhere).uri(
         "dims/entity.parquet"
     ) == (f"{tmp_path}/elsewhere/layers/{revision_id}/dims/entity.parquet")
-
-
-def test_a_directory_source_derives_its_layer_id_from_where_it_is(workspace):
-    """A directory has no revision to be stamped with, so its location is its identity.
-
-    Derived rather than allocated, which is what makes it the *same* layer in
-    every process and every reader - the fold keys a source by UUID, and a
-    per-reader one would make two readings of one directory disagree about
-    which layer they are reading. `uuid5` is what pins that across processes; a
-    stable-per-process id would pass an in-process comparison and still be
-    wrong for a materialised map read back later.
-
-    Notes
-    -----
-    - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
-    """
-    a = DirectorySource("/records/one/", Schema(), workspace)
-    assert (
-        a.layer_id == DirectorySource("/records/one/", Schema(), workspace).layer_id
-    ), "same place"
-    assert (
-        a.layer_id != DirectorySource("/records/two/", Schema(), workspace).layer_id
-    ), "different place"
-    # The literal value, so the derivation cannot drift silently: a layer id
-    # that changed between versions would orphan every materialised map naming
-    # the old one.
-    assert str(a.layer_id) == "dbc5401e-335a-506d-89db-395e6ea37662"
-    assert isinstance(a, LayerSource), "structural, with `layer_id` a property"
 
 
 def _largest_intermediate(store, rel):

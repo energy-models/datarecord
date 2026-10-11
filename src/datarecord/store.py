@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import duckdb
 from duckdb import DuckDBPyConnection
@@ -177,25 +177,30 @@ class Workspace:
                 "a store needs a location; an empty one would be the working directory"
             )
             raise ValueError(msg)
-        location = str(Path(uri).resolve()) if "://" not in uri else uri.rstrip("/")
+        location = _absolute(uri)
         self.files(location)
         return self._stores.setdefault(location, Store(location, self))
 
     def at(self, uri: str) -> Record:
         """The standalone record at `uri`, read under its own `manifest.json`.
 
+        A local `uri` is resolved, as `store` resolves one, so a later `chdir`
+        cannot point it at another record.
+
         Raises
         ------
         FileNotFoundError
             If `uri` has no manifest: a directory without one is a tree layer,
             read under its store's schema through `Store.layer`.
+        ValueError
+            If the manifest carries no record id.
 
         Notes
         -----
         - [the record format](https://energy-models.github.io/datarecord/design/format/)
         - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
         """
-        base = uri if uri.endswith("/") else uri + "/"
+        base = _absolute(uri) + "/"
         found = self.files(base).read_text(base + "manifest.json")
         if found is None:
             msg = (
@@ -203,14 +208,23 @@ class Workspace:
                 f"its store's `layer(id)`"
             )
             raise FileNotFoundError(msg)
+        id = json.loads(found[0]).get("id")
+        if id is None:
+            msg = (
+                f"{base}manifest.json carries no record id; a standalone "
+                f"record's id is minted by `Workspace.write`, so write it again "
+                f"through that"
+            )
+            raise ValueError(msg)
         schema = Schema.model_validate_json(found[0])
-        return _record(DirectorySource(base, schema, self), workspace=self)
+        return _record(DirectorySource(base, schema, self, UUID(id)), workspace=self)
 
     def write(self, source: LayerData | RecordLike, uri: str) -> Record:
         """Write `source` as a standalone record at `uri`, and read it back.
 
         The directory carries its own manifest, written last, so one whose
-        write failed reads as no record.
+        write failed reads as no record. The manifest carries a fresh id, so
+        a record written again at `uri` is never read as the one before it.
 
         Raises
         ------
@@ -222,12 +236,12 @@ class Workspace:
         - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
         - [a standalone directory](https://energy-models.github.io/datarecord/design/writing/#a-standalone-directory)
         """
-        base = uri if uri.endswith("/") else uri + "/"
+        base = _absolute(uri) + "/"
         if self.files(base).list(base):
             msg = f"{base} is not empty; a standalone record is written to a new URI"
             raise FileExistsError(msg)
         data = layer_data(source, self.con)
-        write_layer(data, base, self, manifest=data.schema)
+        write_layer(data, base, self, manifest=_manifest(data.schema, uuid4()))
         return self.at(base)
 
     def close(self) -> None:
@@ -458,9 +472,34 @@ class Store:
         record - nothing beneath it is folded in.
         """
         return _record(
-            DirectorySource(self.layer_dir(id), read_schema(self), self.workspace),
+            DirectorySource(
+                self.layer_dir(id),
+                read_schema(self),
+                self.workspace,
+                # Not `id`, whose fold tables hold the whole ancestry's fold.
+                uuid5(id, "layer"),
+            ),
             workspace=self.workspace,
         )
+
+
+def _absolute(uri: str) -> str:
+    """`uri` without a trailing slash, a local path resolved against the cwd."""
+    return str(Path(uri).resolve()) if "://" not in uri else uri.rstrip("/")
+
+
+def _manifest(schema: Schema, id: UUID) -> str:
+    """A standalone record's `manifest.json`: `schema`, with its `id` beside it.
+
+    Beside the schema's keys rather than wrapping them, so the file still
+    parses as the schema alone. A tree's manifest carries no id, its
+    revisions naming its layers.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    """
+    return json.dumps({"id": str(id), **json.loads(schema.model_dump_json())})
 
 
 def _process_store(uri: str) -> Store:

@@ -60,3 +60,9 @@ All notable changes to datarecord are documented here. The format follows
 - A pickled `Revision` unpickles through `Workspace.process()` and reads its
   ancestry back, rather than reading empty, and pickles after `.record` is
   read rather than failing on its DuckDB connection.
+- A standalone record's `manifest.json` carries an `id` that `ws.write`
+  mints, and which keys its folds in the workspace in place of its URI. A
+  record deleted and written again at one URI, or one relative path read
+  from another working directory, no longer reads the folds of the record
+  before it. `ws.at` resolves a local path as `ws.store` does, and refuses a
+  manifest without an id: write such a record again.

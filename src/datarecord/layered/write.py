@@ -56,7 +56,7 @@ def write_layer(
     base: str,
     workspace: Workspace,
     *,
-    manifest: Schema | None = None,
+    manifest: str | None = None,
 ) -> None:
     """Write `data` as the layer directory `base`, which must not exist yet.
 
@@ -74,8 +74,8 @@ def write_layer(
         The layer's contents, validated against its own schema as each frame is
         built.
     manifest
-        Written into the directory, last, for a standalone record; a tree layer
-        holds only data.
+        A standalone record's `manifest.json` text, written into the
+        directory last; a tree layer holds only data.
 
     Raises
     ------
@@ -152,7 +152,7 @@ def write_layer(
         # written last: a directory without one reads as no record.
         if manifest is not None:
             workspace.files(staging).write_text(
-                staging + "manifest.json", manifest.model_dump_json(), expect=Absent()
+                staging + "manifest.json", manifest, expect=Absent()
             )
     except BaseException:
         if local:

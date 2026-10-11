@@ -70,7 +70,7 @@ The layout is the whole format ([design](../design/format.md)):
 
 ```text
 record/
-├── manifest.json                   # the schema
+├── manifest.json                   # the schema, and the record's id
 ├── dims/
 │   ├── entity_type/<Type>.parquet  # members + non-varying attribute columns
 │   ├── <group>/<Type>.parquet      # which tuples of the group exist
