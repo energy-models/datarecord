@@ -367,7 +367,7 @@ def fold_axis(
             rel.project(
                 lit(depth).alias("_depth"),
                 sql("row_number() OVER ()").alias("_row"),
-                col("*"),
+                star(),
             )
         )
     if not layers:

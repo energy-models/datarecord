@@ -487,7 +487,7 @@ def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
             ),
         )
         om = om.project(
-            star(exclude=(d,)), col(d).alias(_owned(d)), fn.unnest(stored).alias(d)
+            star(exclude=(col(d),)), col(d).alias(_owned(d)), fn.unnest(stored).alias(d)
         )
     return om
 
@@ -1246,7 +1246,7 @@ class Resolver:
         )
         layers = [
             with_columns(keys.schema, rel, *columns).project(
-                lit(layer_uuid).alias("layer_uuid"), col("*")
+                lit(layer_uuid).alias("layer_uuid"), star()
             )
             for layer_uuid in self._layers_owning(attribute)
             if (rel := self.source_for(layer_uuid).attribute(attribute)) is not None
