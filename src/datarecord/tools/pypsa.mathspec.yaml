@@ -60,7 +60,7 @@ masks:
   store: { where: "entity_group == 'Store'" }
   branch: { where: line OR transformer }
   storage: { where: storage_unit OR store }
-  capacity: { where: NOT load }
+  sized: { where: NOT load }
   in_service: { where: "at(active_in_period, by=snapshot_period[period])" }
 
 parameters:
@@ -96,9 +96,9 @@ parameters:
     dims: [entity, period]
     missing: 0
     description: "`investment_period_weightings.objective` where an extendable entity stands in a period"
-  nominal: { dims: [entity], missing: absent, description: "the fixed capacity: `p_nom`, `s_nom` or `e_nom`" }
-  nominal_min: { dims: [entity], missing: absent, description: "`p_nom_min`, `s_nom_min` or `e_nom_min`" }
-  nominal_max: { dims: [entity], missing: absent, description: "`p_nom_max`, `s_nom_max` or `e_nom_max`" }
+  capacity: { dims: [entity], missing: absent, description: "the fixed capacity: `p_nom`, `s_nom` or `e_nom`" }
+  capacity_min: { dims: [entity], missing: absent, description: "`p_nom_min`, `s_nom_min` or `e_nom_min`" }
+  capacity_max: { dims: [entity], missing: absent, description: "`p_nom_max`, `s_nom_max` or `e_nom_max`" }
 
   p_min_pu: { dims: [scenario, snapshot, entity], missing: absent }
   p_max_pu: { dims: [scenario, snapshot, entity], missing: absent }
@@ -135,11 +135,11 @@ parameters:
 variables:
   nom:
     dims: [entity]
-    where: capacity
+    where: sized
     description: "capacity: `p_nom`, `s_nom` or `e_nom`"
   p:
     dims: [scenario, snapshot, entity]
-    where: capacity AND in_service
+    where: sized AND in_service
     description: "flow: a generator's output, a branch's or a link's `p0`, a storage unit's dispatch, a store's discharge"
   p_store:
     dims: [scenario, snapshot, entity]
@@ -214,16 +214,16 @@ constraints:
     expression: injection == 0
   nom_fixed:
     dims: [entity]
-    where: capacity AND NOT extendable
-    expression: nom == nominal
+    where: sized AND NOT extendable
+    expression: nom == capacity
   nom_lower:
     dims: [entity]
     where: extendable
-    expression: nom >= nominal_min
+    expression: nom >= capacity_min
   nom_upper:
     dims: [entity]
-    where: extendable AND nominal_max
-    expression: nom <= nominal_max
+    where: extendable AND capacity_max
+    expression: nom <= capacity_max
   p_lower:
     dims: [scenario, snapshot, entity]
     where: (generator OR link) AND in_service

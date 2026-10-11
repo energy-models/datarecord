@@ -77,7 +77,7 @@ _PERIOD_WEIGHTINGS = ("objective", "years")
 # mathspec spec, which compares it against `build_year`.
 PERIOD_YEAR = "period_year"
 EXTENDABLE = "extendable"
-_NOMINAL = {"": "nominal", "_min": "nominal_min", "_max": "nominal_max"}
+CAPACITY = "capacity"
 ACTIVE_IN_PERIOD = "active_in_period"
 CAPITAL_WEIGHT = "capital_weight"
 RETENTION = "retention"
@@ -852,31 +852,29 @@ def _record_names(c: pypsa.Components) -> dict[str, str]:
     """`c`'s registry attribute -> its record name.
 
     A per-port attribute is named by its stem; a per-entity one whose name is
-    a port stem elsewhere (a Link's internal `p`) takes `_internal`, and
+    a port stem elsewhere (a Link's internal `p`) takes `_internal`. The
+    type's `p_nom`, `s_nom` or `e_nom` and its variants are `capacity...`, and
     `<x>_nom_extendable` is `extendable`.
     """
     ports = _port_columns(c)
+    (prefix,) = [
+        a.removesuffix("_extendable")
+        for a in c.defaults.index
+        if a.endswith("_nom_extendable")
+    ] or [None]
     names = {}
     for attr in c.defaults.index:
         if attr in ports:
             names[attr] = ports[attr][0]
         elif attr in _port_stems():
             names[attr] = f"{attr}{_INTERNAL}"
-        elif attr.endswith("_nom_extendable"):
+        elif prefix is not None and attr == f"{prefix}_extendable":
             names[attr] = EXTENDABLE
+        elif prefix is not None and re.fullmatch(rf"{prefix}(_.+)?", attr):
+            names[attr] = CAPACITY + attr.removeprefix(prefix)
         else:
             names[attr] = attr
     return names
-
-
-def _nominal_prefix(c: pypsa.Components) -> str | None:
-    """`p_nom`, `s_nom` or `e_nom`: the stem of `c`'s capacity attributes."""
-    found = [
-        a.removesuffix("_extendable")
-        for a in c.defaults.index
-        if a.endswith("_nom_extendable")
-    ]
-    return found[0] if found else None
 
 
 def _pypsa_names(ctype: str) -> dict[str, str]:
@@ -1793,7 +1791,7 @@ class _NetworkSource:
             SCENARIO_WEIGHT,
             PERIOD_YEAR,
             EXTENDABLE,
-            *_NOMINAL.values(),
+            CAPACITY,
             *_DERIVED,
             PORT_IN,
             PORT_OUT,
@@ -1894,14 +1892,6 @@ class _NetworkSource:
                 default=False,
                 description="Whether the entity stands in a period: `active` and `build_year <= period < build_year + lifetime`.",
             ),
-            **{
-                name: AttributeSpec(
-                    dtype=nw.Float64(),
-                    dims=frozenset({ENTITY}),
-                    description=f"`p_nom{suffix}`, `s_nom{suffix}` or `e_nom{suffix}`, whichever the type sizes by.",
-                )
-                for suffix, name in _NOMINAL.items()
-            },
             CAPITAL_WEIGHT: AttributeSpec(
                 dtype=nw.Float64(),
                 dims=frozenset({ENTITY, PERIOD}),
@@ -2419,10 +2409,6 @@ class _NetworkSource:
         columns = [x for x in columns if x not in _scenario_varying(c, columns)]
         frame = c.static[columns].rename(columns=_record_names(c)).reset_index()
         frame = frame.rename(columns={"name": ENTITY})
-        prefix = _nominal_prefix(c)
-        if prefix is not None:
-            for suffix, name in _NOMINAL.items():
-                frame[name] = c.static[prefix + suffix].to_numpy()
         return self._tagged(_as_wkt(frame), ENTITY)
 
     @staticmethod
@@ -2875,13 +2861,7 @@ def _collapse_connections(
 def _restore_names(static: DuckDBPyRelation, ctype: str) -> DuckDBPyRelation:
     """`static` with `ctype`'s renamed columns back under their PyPSA names."""
     names = _pypsa_names(ctype)
-    return static.project(
-        *(
-            col(c).alias(names.get(c, c))
-            for c in static.columns
-            if c not in _NOMINAL.values()
-        )
-    )
+    return static.project(*(col(c).alias(names.get(c, c)) for c in static.columns))
 
 
 def _frame(record: RecordLike, kind: str, key: str) -> pd.DataFrame | None:

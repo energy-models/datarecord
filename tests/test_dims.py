@@ -310,7 +310,7 @@ def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
     export_network(ac_dc, revision, con)
 
     axis = con.read_parquet(layer_dir(revision.id) + "dims/entity.parquet").df()
-    assert {"entity", ENTITY_GROUP, "deleted", "p_nom"} <= set(axis.columns)
+    assert {"entity", ENTITY_GROUP, "deleted", "capacity"} <= set(axis.columns)
     assert "entity_type" not in axis.columns
     assert not axis["entity"].duplicated().any()
     assert "Generator" in set(axis[ENTITY_GROUP])
