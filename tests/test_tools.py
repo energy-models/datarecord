@@ -556,7 +556,8 @@ def test_a_name_is_never_an_identifier_in_the_melt(store):
 
 
 def test_a_name_is_never_an_identifier_in_the_pivot(store):
-    """`snapshot` is the pivot's group-by column; it still comes back as a series.
+    """`snapshot` is the pivot's group-by column, and `Gen` and `gen` one
+    case-insensitive identifier; each still comes back as its own series.
 
     Notes
     -----
@@ -564,7 +565,7 @@ def test_a_name_is_never_an_identifier_in_the_pivot(store):
     """
     import pypsa
 
-    names = ['wind "north"', "snapshot"]
+    names = ['wind "north"', "snapshot", "Gen", "gen"]
     n = pypsa.Network()
     n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
     n.add("Bus", "north")
@@ -586,17 +587,16 @@ def test_a_name_is_never_an_identifier_in_the_pivot(store):
     )
 
 
-def test_to_datarecord_rejects_names_differing_only_by_case(workspace):
-    """DuckDB identifiers ignore case, so the melt would merge `Gen` and `gen`."""
+def test_names_differing_only_by_case_are_distinct(workspace):
+    """No name becomes a DuckDB identifier, so case cannot merge two of them."""
     import pypsa
 
     n = pypsa.Network()
     n.add("Bus", "north")
     n.add("Generator", ["Gen", "gen"], bus="north")
 
-    assert _colliding_names(n) == {"Gen", "gen"}
-    with pytest.raises(UnsupportedRecordError, match="ignoring case"):
-        PyPSA.to_datarecord(n, workspace.con)
+    assert not _colliding_names(n)
+    assert PyPSA.to_datarecord(n, workspace.con) is not None
 
 
 def test_a_second_tool_needs_no_record_change(store, ac_dc):

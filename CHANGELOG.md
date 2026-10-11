@@ -80,3 +80,6 @@ All notable changes to datarecord are documented here. The format follows
   `period` in a multi-period network, rather than dropping it from
   `dynamic`: the `PIVOT` is on each component's position, so no name
   becomes an SQL identifier there either.
+- `PyPSA.to_datarecord` accepts components whose names differ only by case,
+  such as `Gen` and `gen`, rather than reporting them as one name: neither
+  the melt nor the pivot folds case any more.

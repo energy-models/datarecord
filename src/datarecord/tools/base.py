@@ -54,8 +54,8 @@ class Requirements:
         cannot represent, as opposed to a value it is missing - a
         piecewise-linear attribute where the tool takes a scalar.
     names : frozenset of str
-        Names two of the framework's entities claim, ignoring case, which a
-        record scopes across every type.
+        Names two of the framework's entities claim, which a record scopes
+        across every type.
 
     Notes
     -----
@@ -102,7 +102,7 @@ class Requirements:
             )
         if self.names:
             parts.append(
-                f"names claimed by more than one entity, ignoring case "
+                f"names claimed by more than one entity "
                 f"{sorted(self.names)} (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
             )
         return ", ".join(parts) if parts else "nothing"

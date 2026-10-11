@@ -388,21 +388,19 @@ def _exported(c) -> bool:
 
 
 def _colliding_names(n: pypsa.Network) -> frozenset[str]:
-    """Names more than one exported component claims, compared case-insensitively.
+    """Names more than one exported component claims.
 
     Only exported types count, since only those become member rows. Read off the
     `name` level rather than the index: a stochastic network is keyed
     `(scenario, name)`, and comparing tuples would read one component in two
-    scenarios as two names while missing a real collision. Case-folded because
-    the wide->long melt turns names into DuckDB column identifiers, which are
-    case-insensitive: `Gen` and `gen` would silently merge.
+    scenarios as two names while missing a real collision.
 
     Notes
     -----
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    seen: dict[str, tuple[str, str]] = {}
+    seen: dict[str, str] = {}
     clashing: set[str] = set()
     for c in n.components:
         if not _exported(c):
@@ -413,9 +411,8 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
         )
         for value in names:
             name = str(value)
-            first = seen.setdefault(name.casefold(), (name, c.name))
-            if first != (name, c.name):
-                clashing.update((name, first[0]))
+            if seen.setdefault(name, c.name) != c.name:
+                clashing.add(name)
     return frozenset(clashing)
 
 
