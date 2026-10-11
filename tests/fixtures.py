@@ -236,6 +236,24 @@ def write_axis(layer: str, dim: str, rows: list[dict]) -> None:
     pd.DataFrame(rows).to_parquet(target / f"{dim}.parquet", index=False)
 
 
+def example(load):
+    """A PyPSA example network, loaded offline once it is cached.
+
+    PyPSA asks GitHub for a newer release on every netCDF import, without a
+    timeout, so a stalled connection hangs the suite. Network requests are
+    allowed only to download an example not cached yet, which PyPSA refuses
+    with a `ValueError` while they are off.
+    """
+    import pypsa
+
+    with pypsa.option_context("general.allow_network_requests", False):
+        try:
+            return load()
+        except ValueError:
+            pass
+    return load()
+
+
 def rename_components(n, ctype: str, suffix: str) -> None:
     """Suffix one type's member names, in `static` and every dynamic container.
 

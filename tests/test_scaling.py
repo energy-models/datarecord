@@ -32,9 +32,9 @@ def carbon():
     """
     import pypsa
 
-    from tests.fixtures import rename_components
+    from tests.fixtures import example, rename_components
 
-    n = pypsa.examples.carbon_management()
+    n = example(pypsa.examples.carbon_management)
     for ctype in ("Load", "Store", "Link", "Generator"):
         rename_components(n, ctype, f" {ctype}")
     return n

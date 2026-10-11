@@ -18,6 +18,7 @@ import pytest
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
+    example,
     export_network,
     relation,
     rename_components,
@@ -41,7 +42,7 @@ def stochastic():
     """
     import pypsa
 
-    n = pypsa.examples.stochastic_network()
+    n = example(pypsa.examples.stochastic_network)
     rename_components(n, "Generator", " Gen")
     return n
 

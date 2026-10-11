@@ -36,8 +36,8 @@ def ac_dc():
     """
     import pypsa
 
-    from tests.fixtures import rename_components
+    from tests.fixtures import example, rename_components
 
-    n = pypsa.examples.ac_dc_meshed()
+    n = example(pypsa.examples.ac_dc_meshed)
     rename_components(n, "Load", " Load")
     return n
