@@ -407,6 +407,19 @@ The membership keys are in the key already, by being membership; `partial` neith
 
 The [entity-type axis](#entity_type-the-axis-of-kinds) carries an attribute yet is neither `partial` nor a membership key: its labels are a column of `dims/entity.parquet`, not an addressable coordinate, so it restates whole like any non-`partial` axis and stays out of the fold key.
 
+## Names
+
+A declared dim, group, group coordinate, attribute or result name becomes a column, beside the columns datarecord writes itself. `Schema` refuses one at load that could not stand there, naming it and the reason:
+
+- **`"` or `.`.** A name reaches DuckDB as a column reference, which reads `a.b` as column `b` of table `a` and cannot spell a `"` at all. A space, mixed case, a keyword or a leading digit are fine: those quote.
+- **A column the format writes.** `attribute`, `breakpoint` and `value` on [every long row](format.md#the-long-schema), `deleted` as a [tombstone](layers.md#deletion), `varies`, `broadcast`, `breakpoints` and `layer_uuid` in [the owner map](read-path.md#owner-map), and `order_key` on a resolved frame. Ignoring case, as DuckDB resolves a column name. A collision is silent otherwise: a dim named `value` gives the long file two columns of one name, and one named `deleted` reads every label as a tombstone, dropping its rows with nothing reported.
+- **A leading `_`.** The prefix of every scratch column a fold adds and drops, so that set can grow without growing this list.
+- **`entity_type` as an attribute or result.** It is the column `dims/entity.parquet` carries an entity's type under, whatever [the type axis](#entity_type-the-axis-of-kinds) is called; as that axis's own dim or group name it is the usual spelling.
+
+Entity names and labels are data, never identifiers, so none of this constrains them.
+
+`entity` is not reserved: a schema declares it like any other axis, so it cannot be taken by surprise.
+
 ## One schema per record
 
 Not one per layer.

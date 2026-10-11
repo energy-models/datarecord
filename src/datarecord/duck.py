@@ -245,7 +245,7 @@ def struct_of(fields: Mapping[str, Expression]) -> Expression:
 
     Never empty, DuckDB having no empty struct.
     """
-    packed = ", ".join(f'"{name}" := {value}' for name, value in fields.items())
+    packed = ", ".join(f"{col(name)} := {value}" for name, value in fields.items())
     return sql(f"struct_pack({packed})")
 
 

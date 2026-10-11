@@ -115,6 +115,74 @@ LONG_TAIL = ("attribute", "breakpoint", "value")
 FLAG_COLUMNS = ("varies", "broadcast", "breakpoints")
 
 
+LAYER_COLUMN = "layer_uuid"
+"""The owner map's column naming the layer each row's value is read from.
+
+Notes
+-----
+- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+"""
+
+
+DERIVED = ("order_key",)
+"""Columns a resolved frame carries that no layer file may.
+
+The fold's answer *about* a frame rather than data in it, so writing one would
+both put a column in a file the format does not define and read as stored order
+where the fold always re-derives it from file order.
+
+Notes
+-----
+- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+"""
+
+
+ENTITY_TYPE_COLUMN = "entity_type"
+"""The column `dims/entity.parquet` carries an entity's type under.
+
+Whatever the entity-type dim is called, so an attribute or result of this name
+would be dropped from a member file as that type's copy.
+
+Notes
+-----
+- [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
+"""
+
+
+RESERVED = frozenset(
+    {*STRUCTURAL_TYPES, *LONG_TAIL, *FLAG_COLUMNS, LAYER_COLUMN, *DERIVED}
+)
+"""Columns datarecord writes beside a schema's own, which no declaration may take.
+
+Compared ignoring case, as DuckDB resolves a column name. The fold's scratch
+columns are not listed: every one starts with `_`, which `Schema` refuses as a
+declared name's first character instead.
+
+Notes
+-----
+- [names](https://energy-models.github.io/datarecord/design/schema/#names)
+"""
+
+
+def _misnamed(name: str) -> str | None:
+    """Why `name` cannot be a declared dim, group, coordinate or attribute, if so.
+
+    `duckdb.ColumnExpression` is how every declared name becomes a column
+    reference, and it reads `a.b` as column `b` of table `a` and cannot spell a
+    `"` at all; those two are what make a name unquotable, rather than a space
+    or a keyword, which it quotes.
+    """
+    if '"' in name:
+        return 'contains `"`, which no DuckDB column reference can spell'
+    if "." in name:
+        return "contains `.`, which DuckDB reads as a table qualifier"
+    if name.startswith("_"):
+        return "starts with `_`, kept for the columns a fold adds and drops"
+    if name.lower() in RESERVED:
+        return f"is `{name.lower()}`, a column datarecord writes into every record"
+    return None
+
+
 def flag_type(dims: tuple[str, ...]) -> nw.dtypes.DType:
     """One flag struct's type: a BOOLEAN field per declared dim.
 
@@ -448,7 +516,9 @@ class Schema(BaseModel):
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
+        - [names](https://energy-models.github.io/datarecord/design/schema/#names)
         """
+        self._check_names()
         declared = set(self.dimensions)
 
         # Attributes but no axes is a table, not a record (https://energy-models.github.io/datarecord/design/schema/#dimensions). Rejected here
@@ -624,6 +694,45 @@ class Schema(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+    def _check_names(self) -> None:
+        """Refuse every declared name that cannot be a column of its own.
+
+        Group names are checked with the rest though no file has a column of
+        one, since `dims` spells a group and a dim alike. `entity_type` is the
+        one name legal as a dim or group and not as an attribute: the type axis
+        is spelled so, and its column is no attribute's to take.
+        """
+        declared = [
+            *(("dim", d) for d in self.dimensions),
+            *(("group", g) for g in self.groups),
+            *(
+                (f"coordinate of group {g!r}", c)
+                for g, spec in self.groups.items()
+                for c in spec.over
+            ),
+            *(("attribute", a) for a in self.attributes),
+            *(("result", r) for r in self.results),
+        ]
+        problems = []
+        for kind, name in declared:
+            why = _misnamed(name)
+            typed = kind in ("attribute", "result")
+            if why is None and typed and name.lower() == ENTITY_TYPE_COLUMN:
+                why = (
+                    f"is `{ENTITY_TYPE_COLUMN}`, the column an entity's type is "
+                    f"written under"
+                )
+            if why is not None:
+                problems.append(f"{kind} {name!r} {why}")
+        if problems:
+            msg = (
+                f"a schema may not declare these names: {'; '.join(problems)}. "
+                f"Rename each: a declared name becomes a column beside those "
+                f"datarecord writes itself, {sorted(RESERVED)} and any starting "
+                f"with `_` (https://energy-models.github.io/datarecord/design/schema/#names)"
+            )
+            raise ValueError(msg)
 
     # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
 
@@ -1036,7 +1145,7 @@ class Schema(BaseModel):
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return (*self.input_key, "layer_uuid", *FLAG_COLUMNS)
+        return (*self.input_key, LAYER_COLUMN, *FLAG_COLUMNS)
 
     # -- typing (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/writing/) -------------------------------------------------
 

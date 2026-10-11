@@ -35,6 +35,13 @@ All notable changes to datarecord are documented here. The format follows
   rather than `None`, where every row written is tombstoned: telling the two
   apart ran the whole fold a second time on every read. `None` still means no
   layer wrote a row.
+- A schema declaring a dim, group, group coordinate, attribute or result
+  whose name holds `"` or `.`, starts with `_`, or is a column datarecord
+  writes itself (`value`, `deleted`, `layer_uuid`, ... ignoring case, and
+  `entity_type` for an attribute) is refused at load, naming each offender.
+  Such a name used to collide silently: a dim named `deleted` read every
+  label as a tombstone. A manifest declaring one no longer loads; rename it.
+  Based on #26 by @FBumann.
 
 ### Added
 

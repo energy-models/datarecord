@@ -30,7 +30,7 @@ from datarecord.duck import as_relation, fn, union_all_by_name
 from datarecord.files import Absent, PreconditionFailedError, Version
 from datarecord.layered.resolve import cast_declared
 from datarecord.record import Frames, LayerData, RecordLike, collision_detail
-from datarecord.schema import Schema
+from datarecord.schema import DERIVED, Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
@@ -225,19 +225,6 @@ def reconcile_schema(schema: Schema, store: Store) -> None:
 
 _ATTEMPTS = 10
 """How many times `reconcile_schema` writes the manifest before giving up."""
-
-
-DERIVED = ("order_key",)
-"""Columns a resolved frame carries that no layer file may.
-
-The fold's answer *about* a frame rather than data in it, so writing one would
-both put a column in a file the format does not define and read as stored order
-where the fold always re-derives it from file order.
-
-Notes
------
-- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-"""
 
 
 def _write_frame(

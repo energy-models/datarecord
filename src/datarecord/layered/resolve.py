@@ -52,7 +52,7 @@ from datarecord.duck import (
 from datarecord.layered.fold import Fold
 from datarecord.layered.sources import LayerSource, ParquetLayer
 from datarecord.record import Flags
-from datarecord.schema import Schema
+from datarecord.schema import LAYER_COLUMN, Schema
 
 if TYPE_CHECKING:
     from datarecord.store import Store, Workspace
@@ -527,12 +527,12 @@ def fold_inputs(
             *(expr.alias(d) for d, expr in dims.items()),
             *(col("i", d).alias(f"_raw_{d}") for d in broadcast),
             col("i", "attribute"),
-            lit(str(source.layer_id)).cast(LAYER_UUID_TYPE).alias("layer_uuid"),
+            lit(str(source.layer_id)).cast(LAYER_UUID_TYPE).alias(LAYER_COLUMN),
             col("i", "breakpoint"),
         )
         own = tagged.aggregate(
             [
-                *(col(c) for c in (*keys.schema.input_key, "layer_uuid")),
+                *(col(c) for c in (*keys.schema.input_key, LAYER_COLUMN)),
                 # A field aggregating to NULL - what a map written before the
                 # dim was declared yields - reads as "not set", the same as
                 # false.
@@ -1246,7 +1246,7 @@ class Resolver:
         )
         layers = [
             with_columns(keys.schema, rel, *columns).project(
-                lit(layer_uuid).alias("layer_uuid"), star()
+                lit(layer_uuid).alias(LAYER_COLUMN), star()
             )
             for layer_uuid in self._layers_owning(attribute)
             if (rel := self.source_for(layer_uuid).attribute(attribute)) is not None
@@ -1259,7 +1259,7 @@ class Resolver:
             .set_alias("l")
             .join(
                 _as_stored(om, broadcast_over).set_alias("o"),
-                null_safe("l", "o", (*address, "layer_uuid", *broadcast_over)),
+                null_safe("l", "o", (*address, LAYER_COLUMN, *broadcast_over)),
             )
             .project(
                 *(
@@ -1281,7 +1281,7 @@ class Resolver:
         if self.frozen:
             return self._cached_layers_owning.get(attribute, [])
         om = self.inputs.filter(col("attribute") == lit(attribute))
-        return [u for (u,) in om["layer_uuid"].distinct().fetchall()]
+        return [u for (u,) in om[LAYER_COLUMN].distinct().fetchall()]
 
     @cached_property
     def _cached_layers_owning(self) -> dict[str, list[UUID]]:
