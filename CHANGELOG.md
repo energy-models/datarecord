@@ -57,3 +57,6 @@ All notable changes to datarecord are documented here. The format follows
   again.
 - A record whose layers are all written scans its owner map once for the
   layers owning each attribute, rather than once per attribute read.
+- A pickled `Revision` unpickles through `Workspace.process()` and reads its
+  ancestry back, rather than reading empty, and pickles after `.record` is
+  read rather than failing on its DuckDB connection.

@@ -177,6 +177,27 @@ def test_a_revision_crosses_a_process_boundary(tree):
     assert unpickled is Workspace.process().store(child.store.uri)
 
 
+def test_a_pickled_revision_reads_its_ancestry_back(workspace, tree):
+    """Pickled after a read, so a cached resolver would have to travel if any did.
+
+    The fixture's workspace is not the process one, so the ancestry can only
+    come from reading the revision files again.
+
+    Notes
+    -----
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/layers/#crossing-a-process-boundary)
+    """
+    root, child = tree
+    names = list(child.record.attributes)
+    assert workspace is not Workspace.process(), "the fixture workspace is its own"
+
+    back = pickle.loads(pickle.dumps(child))
+    assert back.store.workspace is Workspace.process()
+    assert back.parent == root.id
+    assert back.ancestry() == [root.id, child.id], "the tree is read back from files"
+    assert list(back.record.attributes) == names
+
+
 def test_threads_share_one_folded_owner_map(workspace, tree):
     """Each thread reads on its own cursor, and the fold is done once.
 

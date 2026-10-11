@@ -73,9 +73,10 @@ class Revision(BaseModel):
     resolves to is that layer over its ancestors'. The layer location derives
     from `id` via its store's `layer_dir`, it is not stored.
 
-    Serialises its store as the location, and validates back through
-    `Workspace.process()`, reading the revision file and every parent the
-    process does not yet hold - so `ancestry()` answers in a fresh process.
+    Serialises its store as the location, and validates or unpickles back
+    through `Workspace.process()`, reading the revision file and every parent
+    the process does not yet hold - so `ancestry()` answers in a fresh process.
+    Nothing cached travels.
 
     Notes
     -----
@@ -100,6 +101,9 @@ class Revision(BaseModel):
             store.revision(UUID(str(data["id"])))
             data = {**data, "store": store}
         return data
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return self.store.revision, (self.id,)
 
     @property
     def resolver(self) -> Resolver:
