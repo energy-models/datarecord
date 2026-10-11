@@ -776,6 +776,18 @@ def test_the_entity_type_axis_may_be_called_entity_type(position):
 
 
 @pytest.mark.parametrize("position", POSITIONS)
+def test_names_differing_only_in_case_are_refused(position):
+    """DuckDB resolves `Entity` and `entity` to one column, so declaring both
+    would have one read the other's values."""
+    with pytest.raises(ValidationError) as refused:
+        _declaring(position, "Entity")
+    message = str(refused.value)
+    assert "'Entity'" in message, "the error names the new spelling"
+    assert "'entity'" in message, "and the one it clashes with"
+    assert "differ only in case" in message, "the error says why"
+
+
+@pytest.mark.parametrize("position", POSITIONS)
 @pytest.mark.parametrize("name", ["Order Size", "select", "Horizon", "1st"])
 def test_a_name_duckdb_quotes_is_accepted(name, position):
     """A space, a keyword, mixed case or a leading digit all quote cleanly."""

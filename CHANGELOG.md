@@ -38,7 +38,8 @@ All notable changes to datarecord are documented here. The format follows
 - A schema declaring a dim, group, group coordinate, attribute or result
   whose name holds `"` or `.`, starts with `_`, or is a column datarecord
   writes itself (`value`, `deleted`, `layer_uuid`, ... ignoring case, and
-  `entity_type` for an attribute) is refused at load, naming each offender.
+  `entity_type` for an attribute), or that differs from another declared
+  name only in case, is refused at load, naming each offender.
   Such a name used to collide silently: a dim named `deleted` read every
   label as a tombstone. A manifest declaring one no longer loads; rename it.
   Based on #26 by @FBumann.

@@ -415,6 +415,7 @@ A declared dim, group, group coordinate, attribute or result name becomes a colu
 - **A column the format writes.** `attribute`, `breakpoint` and `value` on [every long row](format.md#the-long-schema), `deleted` as a [tombstone](layers.md#deletion), `varies`, `broadcast`, `breakpoints` and `layer_uuid` in [the owner map](read-path.md#owner-map), and `order_key` on a resolved frame. Ignoring case, as DuckDB resolves a column name. A collision is silent otherwise: a dim named `value` gives the long file two columns of one name, and one named `deleted` reads every label as a tombstone, dropping its rows with nothing reported.
 - **A leading `_`.** The prefix of every scratch column a fold adds and drops, so that set can grow without growing this list.
 - **`entity_type` as an attribute or result.** It is the column `dims/entity.parquet` carries an entity's type under, whatever [the type axis](#entity_type-the-axis-of-kinds) is called; as that axis's own dim or group name it is the usual spelling.
+- **Two spellings differing only in case.** DuckDB resolves `Bus` and `bus` to one column, so a schema declaring both would have one read the other's values. One spelling declared twice, as when a group's coordinate is named after the dim it ranges over, is a single column and fine.
 
 Entity names and labels are data, never identifiers, so none of this constrains them.
 

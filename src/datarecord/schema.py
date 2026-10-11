@@ -701,7 +701,10 @@ class Schema(BaseModel):
         Group names are checked with the rest though no file has a column of
         one, since `dims` spells a group and a dim alike. `entity_type` is the
         one name legal as a dim or group and not as an attribute: the type axis
-        is spelled so, and its column is no attribute's to take.
+        is spelled so, and its column is no attribute's to take. Two spellings
+        of one name differing only in case are refused, DuckDB resolving both
+        to one column; one spelling declared twice, as a group's coordinate
+        naming a dim, is left to the rules that govern it.
         """
         declared = [
             *(("dim", d) for d in self.dimensions),
@@ -725,6 +728,13 @@ class Schema(BaseModel):
                 )
             if why is not None:
                 problems.append(f"{kind} {name!r} {why}")
+        spellings: dict[str, dict[str, str]] = {}
+        for kind, name in declared:
+            spellings.setdefault(name.lower(), {}).setdefault(name, kind)
+        for named in spellings.values():
+            if len(named) > 1:
+                clash = ", ".join(f"{kind} {name!r}" for name, kind in named.items())
+                problems.append(f"{clash} differ only in case, one column to DuckDB")
         if problems:
             msg = (
                 f"a schema may not declare these names: {'; '.join(problems)}. "
