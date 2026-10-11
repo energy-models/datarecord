@@ -222,14 +222,16 @@ class Workspace:
     def write(self, source: LayerData | RecordLike, uri: str) -> Record:
         """Write `source` as a standalone record at `uri`, and read it back.
 
-        The directory carries its own manifest, written last, so one whose
-        write failed reads as no record. The manifest carries a fresh id, so
-        a record written again at `uri` is never read as the one before it.
+        A standalone record is written to a URI that does not exist yet. The
+        directory carries its own manifest, written last, so one whose write
+        failed reads as no record. The manifest carries a fresh id, so a
+        record written again at `uri` is never read as the one before it.
 
         Raises
         ------
         FileExistsError
-            If anything is at `uri` already.
+            If anything exists at `uri`: locally the path, even an empty
+            directory; remotely any key under it.
 
         Notes
         -----
@@ -237,8 +239,11 @@ class Workspace:
         - [a standalone directory](https://energy-models.github.io/datarecord/design/writing/#a-standalone-directory)
         """
         base = _absolute(uri) + "/"
-        if self.files(base).list(base):
-            msg = f"{base} is not empty; a standalone record is written to a new URI"
+        if self.files(base).exists(base):
+            msg = (
+                f"{base} already exists; a standalone record is written to a URI "
+                f"that does not exist yet"
+            )
             raise FileExistsError(msg)
         data = layer_data(source, self.con)
         write_layer(data, base, self, manifest=_manifest(data.schema, uuid4()))

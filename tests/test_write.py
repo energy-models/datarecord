@@ -292,8 +292,24 @@ def test_a_standalone_write_refuses_an_existing_directory(workspace, tmp_path):
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
     workspace.write(source, out)
 
-    with pytest.raises(FileExistsError, match="not empty"):
+    with pytest.raises(FileExistsError, match="does not exist yet"):
         workspace.write(source, out)
+
+
+def test_a_standalone_write_refuses_an_existing_empty_directory(workspace, tmp_path):
+    """Refused up front, where the write itself would fail on the path existing.
+
+    Notes
+    -----
+    - [a standalone directory](https://energy-models.github.io/datarecord/design/writing/#a-standalone-directory)
+    """
+    source = _Source(_SCHEMA, attributes={"p_nom": _long()})
+    with pytest.raises(FileExistsError, match="does not exist yet"):
+        workspace.write(source, str(tmp_path))
+    assert source.built == [], "refused before any frame was built"
+    assert list(tmp_path.iterdir()) == [], "refused before anything was written"
+
+    assert workspace.write(source, str(tmp_path / "new")).schema == _SCHEMA
 
 
 def test_a_failed_standalone_write_leaves_no_record(workspace, tmp_path):

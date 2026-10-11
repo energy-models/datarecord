@@ -66,3 +66,6 @@ All notable changes to datarecord are documented here. The format follows
   from another working directory, no longer reads the folds of the record
   before it. `ws.at` resolves a local path as `ws.store` does, and refuses a
   manifest without an id: write such a record again.
+- `ws.write` to an existing empty directory raises its `FileExistsError` up
+  front, saying a standalone record is written to a URI that does not exist
+  yet, rather than passing the check and failing inside the write.

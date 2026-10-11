@@ -167,6 +167,6 @@ def test_a_standalone_write_to_a_non_empty_uri_is_refused(workspace, bucket):
     files = workspace.files(out)
     files.write_text(f"{out}/stray.txt", "x", expect=None)
 
-    with pytest.raises(FileExistsError, match="not empty"):
+    with pytest.raises(FileExistsError, match="does not exist yet"):
         workspace.write(_Source(_SCHEMA, attributes={"p_nom": _long()}), out)
     assert files.list(out) == ["stray.txt"], "refused before anything was written"
