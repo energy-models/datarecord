@@ -69,3 +69,7 @@ All notable changes to datarecord are documented here. The format follows
 - `ws.write` to an existing empty directory raises its `FileExistsError` up
   front, saying a standalone record is written to a URI that does not exist
   yet, rather than passing the check and failing inside the write.
+- `PyPSA.to_datarecord` melts a time series whose component name holds a
+  `"`, or is `snapshot` or `period`, rather than failing to parse or
+  duplicating an id column: a name is no longer pasted into the `UNPIVOT`
+  as an SQL identifier.

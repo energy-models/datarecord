@@ -524,6 +524,37 @@ def test_a_nan_in_a_series_survives_the_melt(workspace):
     assert len(split) == 2, "one row per snapshot, NaN included"
 
 
+def test_a_name_is_never_an_identifier_in_the_melt(store):
+    """`wind "north"` would end a quoted identifier, `snapshot` duplicate one.
+
+    Read back from the written record, so each value must land under its own
+    name, not just survive the write.
+
+    Notes
+    -----
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+    """
+    import pypsa
+
+    names = ['wind "north"', "snapshot"]
+    n = pypsa.Network()
+    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
+    n.add("Bus", "north")
+    n.add("Generator", names, bus="north")
+    n.c["Generator"].dynamic["p_max_pu"] = pd.DataFrame(
+        {names[0]: [0.1, 0.2], names[1]: [0.3, 0.4]}, index=n.snapshots
+    )
+
+    revision = store.root(PyPSA.to_datarecord(n, store.workspace.con))
+    rows = revision.record.attributes["p_max_pu"].collect()
+    assert sorted(rows.select("entity", "value").rows()) == [
+        ("snapshot", 0.3),
+        ("snapshot", 0.4),
+        ('wind "north"', 0.1),
+        ('wind "north"', 0.2),
+    ], "each name keeps its own series"
+
+
 def test_to_datarecord_rejects_names_differing_only_by_case(workspace):
     """DuckDB identifiers ignore case, so the melt would merge `Gen` and `gen`."""
     import pypsa

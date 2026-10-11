@@ -1421,6 +1421,11 @@ class _NetworkSource:
         `None` where the frame has no entity columns - a degenerate
         `UNPIVOT ... IN ()` and an empty relation the caller would only union
         away.
+
+        The melted columns are named by position and aliased back to their
+        names as string literals, so a name never becomes an SQL identifier:
+        a quote in it would end the identifier, a name equal to an id column
+        would duplicate it, and DuckDB folds identifiers' case.
         """
         wide = c.dynamic[attr]
         stochastic = isinstance(wide.columns, pd.MultiIndex)
@@ -1437,13 +1442,17 @@ class _NetworkSource:
         )
         if not valcols:
             return None
-        w = wide.reset_index()
-        w.columns = [*idcols, *valcols]
+        positional = [f"v{i}" for i in range(len(valcols))]
+        w = wide.set_axis(positional, axis=1).reset_index()
+        w.columns = [*idcols, *positional]
         # `from_df` captures the frame into the relation's own plan, so a later
         # call reusing the frame variable cannot rebind this one (unlike a named
         # registered view).
         wide_rel = con.from_df(w)  # noqa: F841 - bound by name for the query below
-        inlist = ", ".join(f'"{x}"' for x in valcols)
+        inlist = ", ".join(
+            f"{p} AS {lit(str(name))}"
+            for p, name in zip(positional, valcols, strict=True)
+        )
         idsel = ", ".join(idcols)
         # Two steps rather than one nested query: the local-relation replacement
         # scan does not compose through a subquery, so melt first, then project.
