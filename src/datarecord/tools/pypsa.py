@@ -21,7 +21,7 @@ import math
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
-from functools import cache, cached_property, reduce
+from functools import cache, cached_property
 from typing import TYPE_CHECKING, Any
 
 import narwhals as nw
@@ -197,10 +197,6 @@ def _connection(record: RecordLike) -> DuckDBPyConnection:
 
 # -- long -> wide -----------------------------------------------------------
 
-# Separates pivoted index-level values in a combined PIVOT column name; chosen
-# to never collide with a component/scenario name (the broadcast rule).
-_KEY_SEP = "\x01"
-
 
 @dataclass(frozen=True)
 class Index:
@@ -320,17 +316,6 @@ def _assign_static(
     return frame.set_index(keys)
 
 
-def _flat_index(index: pd.Index, sep: str = "_") -> pd.Index[str]:
-    """Join a MultiIndex's levels into one string-valued Index; other indexes as-is."""
-    if not isinstance(index, pd.MultiIndex):
-        return index
-
-    return reduce(
-        lambda x, y: x + sep + y,
-        (index.get_level_values(lvl) for lvl in range(index.nlevels)),
-    )
-
-
 def _series_frame(
     rows: DuckDBPyRelation,
     shape: NetworkShape,
@@ -350,6 +335,10 @@ def _series_frame(
     just to complete `static_index` would wrongly force that component into
     `dynamic` instead of leaving it static.
 
+    The pivot is on each column's position in `static_index` rather than its
+    name, so a name never becomes an SQL identifier: one equal to a group-by
+    column would collide with it, and DuckDB folds identifiers' case.
+
     Notes
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
@@ -359,22 +348,28 @@ def _series_frame(
     if shape.stochastic:
         rows = scenarios.expand(rows, SCENARIO)
     group_by = [PERIOD, SNAPSHOT] if shape.multiperiod else [SNAPSHOT]
-    pivot_key = f" || '{_KEY_SEP}' || ".join(shape.index_names)
+    keys = shape.index_names
+    columns = Index.of(static_index.set_names(keys), con).rel.set_alias("k")
+    rows = rows.set_alias("r")
+    positioned = rows.join(  # noqa: F841 - bound by name for the query below
+        columns, ex_all(col("r", k) == col("k", k) for k in keys)
+    ).project(
+        *(col("r", g) for g in group_by),
+        col("k", "_pos").alias("_col"),
+        col("r", "value"),
+    )
     piv = con.sql(
-        f"PIVOT rows ON {pivot_key} USING first(value) GROUP BY {', '.join(group_by)}"
+        f"PIVOT positioned ON _col USING first(value) GROUP BY {', '.join(group_by)}"
     )
 
-    present = set(piv.columns) - set(group_by)
-    pivoted_names = _flat_index(static_index, _KEY_SEP)
-    keep = pivoted_names.isin(present)
-
+    present = sorted(int(c) for c in set(piv.columns) - set(group_by))
     wide = (
         snapshots.left_join(piv.set_alias("piv"), group_by)
-        .project(*(col("piv", name) for name in pivoted_names[keep]))
+        .project(*(col("piv", str(p)) for p in present))
         .df()
     )
     wide.index = snapshots.index
-    wide.columns = static_index[keep]
+    wide.columns = static_index[[p - 1 for p in present]]
     return wide
 
 

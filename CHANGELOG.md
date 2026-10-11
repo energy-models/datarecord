@@ -76,3 +76,7 @@ All notable changes to datarecord are documented here. The format follows
   `"`, or is `snapshot` or `period`, rather than failing to parse or
   duplicating an id column: a name is no longer pasted into the `UNPIVOT`
   as an SQL identifier.
+- `PyPSA.build` keeps the time series of a component named `snapshot`, or
+  `period` in a multi-period network, rather than dropping it from
+  `dynamic`: the `PIVOT` is on each component's position, so no name
+  becomes an SQL identifier there either.

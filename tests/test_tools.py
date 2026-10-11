@@ -555,6 +555,37 @@ def test_a_name_is_never_an_identifier_in_the_melt(store):
     ], "each name keeps its own series"
 
 
+def test_a_name_is_never_an_identifier_in_the_pivot(store):
+    """`snapshot` is the pivot's group-by column; it still comes back as a series.
+
+    Notes
+    -----
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+    """
+    import pypsa
+
+    names = ['wind "north"', "snapshot"]
+    n = pypsa.Network()
+    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
+    n.add("Bus", "north")
+    n.add("Generator", names, bus="north")
+    series = pd.DataFrame(
+        {name: [0.1 * i, 0.1 * i + 0.05] for i, name in enumerate(names, 1)},
+        index=n.snapshots,
+    )
+    n.c["Generator"].dynamic["p_max_pu"] = series
+
+    revision = store.root(PyPSA.to_datarecord(n, store.workspace.con))
+    built = PyPSA.build(revision.record).c["Generator"].dynamic["p_max_pu"]
+    pd.testing.assert_frame_equal(
+        built[names],
+        series,
+        check_names=False,
+        check_freq=False,
+        check_column_type=False,
+    )
+
+
 def test_to_datarecord_rejects_names_differing_only_by_case(workspace):
     """DuckDB identifiers ignore case, so the melt would merge `Gen` and `gen`."""
     import pypsa
