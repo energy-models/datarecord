@@ -103,8 +103,8 @@ def test_combined_record_writes_and_reads_back(multiperiod, con, tmp_path):
     ("change", "match"),
     [
         (
-            {"attributes": {"capacity": AttributeSpec(dtype="Float64", dims={"entity"})}},
-            "attributes \\['capacity'\\]",
+            {"attributes": {"nom": AttributeSpec(dtype="Float64", dims={"entity"})}},
+            "attributes \\['nom'\\]",
         ),
         (
             {

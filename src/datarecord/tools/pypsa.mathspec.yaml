@@ -96,9 +96,9 @@ parameters:
     dims: [entity, period]
     missing: 0
     description: "`investment_period_weightings.objective` where an extendable entity stands in a period"
-  capacity: { dims: [entity], missing: absent, description: "the fixed capacity: `p_nom`, `s_nom` or `e_nom`" }
-  capacity_min: { dims: [entity], missing: absent, description: "`p_nom_min`, `s_nom_min` or `e_nom_min`" }
-  capacity_max: { dims: [entity], missing: absent, description: "`p_nom_max`, `s_nom_max` or `e_nom_max`" }
+  nom: { dims: [entity], missing: absent, description: "the fixed capacity: `p_nom`, `s_nom` or `e_nom`" }
+  nom_min: { dims: [entity], missing: absent, description: "`p_nom_min`, `s_nom_min` or `e_nom_min`" }
+  nom_max: { dims: [entity], missing: absent, description: "`p_nom_max`, `s_nom_max` or `e_nom_max`" }
 
   p_min_pu: { dims: [scenario, snapshot, entity], missing: absent }
   p_max_pu: { dims: [scenario, snapshot, entity], missing: absent }
@@ -133,7 +133,7 @@ parameters:
   spill_cost: { dims: [scenario, snapshot, entity], missing: neutral }
 
 variables:
-  nom:
+  capacity:
     dims: [entity]
     where: sized
     description: "capacity: `p_nom`, `s_nom` or `e_nom`"
@@ -206,7 +206,7 @@ expressions:
       * snapshot_weighting_objective * at(period_weighting_objective, by=snapshot_period[period]),
       over=[snapshot, entity])
   capex:
-    expression: sum(capital_cost * nom * capital_weight, over=[entity, period])
+    expression: sum(capital_cost * capacity * capital_weight, over=[entity, period])
 
 constraints:
   balance:
@@ -215,31 +215,31 @@ constraints:
   nom_fixed:
     dims: [entity]
     where: sized AND NOT extendable
-    expression: nom == capacity
+    expression: capacity == nom
   nom_lower:
     dims: [entity]
     where: extendable
-    expression: nom >= capacity_min
+    expression: capacity >= nom_min
   nom_upper:
     dims: [entity]
-    where: extendable AND capacity_max
-    expression: nom <= capacity_max
+    where: extendable AND nom_max
+    expression: capacity <= nom_max
   p_lower:
     dims: [scenario, snapshot, entity]
     where: (generator OR link) AND in_service
-    expression: p >= p_min_pu * nom
+    expression: p >= p_min_pu * capacity
   p_upper:
     dims: [scenario, snapshot, entity]
     where: (generator OR link OR storage_unit) AND in_service
-    expression: p <= p_max_pu * nom
+    expression: p <= p_max_pu * capacity
   branch_lower:
     dims: [scenario, snapshot, entity]
     where: branch AND in_service
-    expression: p >= -s_max_pu * nom
+    expression: p >= -s_max_pu * capacity
   branch_upper:
     dims: [scenario, snapshot, entity]
     where: branch AND in_service
-    expression: p <= s_max_pu * nom
+    expression: p <= s_max_pu * capacity
   p_dispatch_lower:
     dims: [scenario, snapshot, entity]
     where: storage_unit AND in_service
@@ -247,15 +247,15 @@ constraints:
   p_store_upper:
     dims: [scenario, snapshot, entity]
     where: storage_unit AND in_service
-    expression: p_store <= -p_min_pu * nom
+    expression: p_store <= -p_min_pu * capacity
   e_lower:
     dims: [scenario, snapshot, entity]
     where: store AND in_service
-    expression: e >= e_min_pu * nom
+    expression: e >= e_min_pu * capacity
   e_upper:
     dims: [scenario, snapshot, entity]
     where: store AND in_service
-    expression: e <= e_max_pu * nom
+    expression: e <= e_max_pu * capacity
   soc_lower:
     dims: [scenario, snapshot, entity]
     where: storage_unit AND in_service
@@ -263,7 +263,7 @@ constraints:
   soc_upper:
     dims: [scenario, snapshot, entity]
     where: storage_unit AND in_service
-    expression: e <= max_hours * nom
+    expression: e <= max_hours * capacity
   e_sum_lower:
     dims: [scenario, entity]
     where: generator AND e_sum_min

@@ -144,7 +144,7 @@ def test_the_component_type_is_an_attribute_not_an_axis(multiperiod):
     assert declared.entity_type_dim is None
     assert not declared.traits
     assert list(source.entity_types) == []
-    assert {ENTITY_GROUP, "capacity", "extendable"} <= set(
+    assert {ENTITY_GROUP, "nom", "extendable"} <= set(
         declared.attributes_on("entity")
     )
 
@@ -421,7 +421,7 @@ def test_results_extracts_long_form_outputs(single_revision):
 
     results = PyPSA.results(n)
     assert "p" in results
-    assert "capacity_opt" in results
+    assert "nom_opt" in results
 
     # Narwhals frames, so the seam names no one dataframe library, and lazy so a
     # tool may fetch on demand (https://energy-models.github.io/datarecord/design/tools/).
@@ -440,7 +440,7 @@ def test_results_extracts_long_form_outputs(single_revision):
 
     # A static output has no snapshot, and only the components whose value
     # differs from the default appear (some generators solve to p_nom_opt=0).
-    nom = results["capacity_opt"].collect()
+    nom = results["nom_opt"].collect()
     nom = nom.filter(nw.col("entity").is_in(list(gens)))
     assert nom["snapshot"].is_null().all()
     nonzero = n.c["Generator"].static["p_nom_opt"] != 0.0
@@ -482,7 +482,7 @@ def test_results_skips_outputs_still_at_their_default(single_revision):
     n = PyPSA.build(single_revision.record)
     results = PyPSA.results(n)
     assert "p" not in results
-    assert "capacity_opt" not in results
+    assert "nom_opt" not in results
 
 
 def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):

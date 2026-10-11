@@ -77,7 +77,7 @@ _PERIOD_WEIGHTINGS = ("objective", "years")
 # mathspec spec, which compares it against `build_year`.
 PERIOD_YEAR = "period_year"
 EXTENDABLE = "extendable"
-CAPACITY = "capacity"
+CAPACITY = "nom"
 ACTIVE_IN_PERIOD = "active_in_period"
 CAPITAL_WEIGHT = "capital_weight"
 RETENTION = "retention"
@@ -853,7 +853,7 @@ def _record_names(c: pypsa.Components) -> dict[str, str]:
 
     A per-port attribute is named by its stem; a per-entity one whose name is
     a port stem elsewhere (a Link's internal `p`) takes `_internal`. The
-    type's `p_nom`, `s_nom` or `e_nom` and its variants are `capacity...`, and
+    type's `p_nom`, `s_nom` or `e_nom` and its variants are `nom...`, and
     `<x>_nom_extendable` is `extendable`.
     """
     ports = _port_columns(c)
