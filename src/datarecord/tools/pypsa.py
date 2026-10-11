@@ -25,7 +25,7 @@ import re
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
-from functools import cached_property, reduce
+from functools import cache, cached_property, reduce
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -76,6 +76,8 @@ _PERIOD_WEIGHTINGS = ("objective", "years")
 # The period's year as a value: a dimension label is never a value to a
 # mathspec spec, which compares it against `build_year`.
 PERIOD_YEAR = "period_year"
+EXTENDABLE = "extendable"
+ACTIVE_IN_PERIOD = "active_in_period"
 
 # PyPSA component types the record carries as axes rather than entities, and
 # what their names become.
@@ -754,10 +756,8 @@ def _output_attributes(c: pypsa.Components) -> list[str]:
 # onward are additional sinks.
 _INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT = "input", "output", "attached"
 
-# Attribute stems that exist once per port. A record stores each as one
-# bus-keyed attribute (https://energy-models.github.io/datarecord/design/record/#connections), so these are the names whose port suffix is
-# undone on write and reapplied on build.
-_PORT_STEMS = ("bus", "efficiency", "p")
+_PORT_SUFFIX = re.compile(r"(.+?)(\d+)")
+_INTERNAL = "_internal"
 
 
 def _port_role(port: str) -> str:
@@ -776,20 +776,93 @@ def _port_role(port: str) -> str:
     return _INPUT_PORT if port == "0" else _OUTPUT_PORT
 
 
-def _port_attribute(stem: str, port: str) -> str:
-    """PyPSA's name for `stem` at `port`: `bus0`, `efficiency`, `efficiency2`, ...
+def _port_attribute(
+    stem: str, port: str, unsuffixed: frozenset[str] = frozenset()
+) -> str:
+    """PyPSA's name for `stem` at `port`: `bus0`, `p1`, `efficiency`, `efficiency2`, ...
 
-    `bus` is suffixed from `0`, every other per-port attribute from `2` - the
-    quirk that makes the port vocabulary unguessable from a registry and is why
-    a record keys connections by bus instead.
+    Suffixed by the port, except a multi-port type's `_unsuffixed_attrs`
+    (a Link's `efficiency`, `delay`, `cyclic_delay`) at port `1`.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    if stem == "bus":
-        return f"bus{port}"
-    return stem if port == "1" else f"{stem}{port}"
+    return stem if port == "1" and stem in unsuffixed else f"{stem}{port}"
+
+
+def _unsuffixed(c: pypsa.Components) -> frozenset[str]:
+    """The stems `c` leaves unsuffixed at port `1`, from PyPSA's multi-port class."""
+    from pypsa.components._types.mixin.multiports import _Multiport
+
+    return frozenset(c._unsuffixed_attrs) if isinstance(c, _Multiport) else frozenset()
+
+
+@cache
+def _blank_network() -> pypsa.Network:
+    """An empty network, whose components answer registry questions per type."""
+    import pypsa
+
+    return pypsa.Network()
+
+
+@cache
+def _port_stems() -> frozenset[str]:
+    """Every attribute stem some PyPSA type carries once per port, from its registry.
+
+    A registry name ending in one of the type's port digits (`bus0`, `p1`,
+    `q0`, `rate0`), and the multi-port types' unsuffixed ones.
+    """
+    stems: set[str] = set()
+    for ctype in _registry():
+        c = _blank_network().c[ctype]
+        ports = set(c.ports) - {""}
+        stems |= _unsuffixed(c)
+        stems |= {
+            match.group(1)
+            for attr in c.defaults.index
+            if (match := _PORT_SUFFIX.fullmatch(attr)) and match.group(2) in ports
+        }
+    return frozenset(stems)
+
+
+def _port_columns(c: pypsa.Components) -> dict[str, tuple[str, str]]:
+    """`c`'s per-port attribute names -> `(stem, port)`, for its actual ports.
+
+    A single-port type's `bus`, `p`, `efficiency` are per-port at port `""`.
+    """
+    unsuffixed = _unsuffixed(c)
+    named = (
+        (_port_attribute(stem, port, unsuffixed), stem, port)
+        for stem in sorted(_port_stems())
+        for port in c.ports
+    )
+    return {
+        name: (stem, port) for name, stem, port in named if name in c.defaults.index
+    }
+
+
+def _record_names(c: pypsa.Components) -> dict[str, str]:
+    """`c`'s registry attribute -> its record name.
+
+    A per-port attribute is named by its stem; a per-entity one whose name is
+    a port stem elsewhere (a Link's internal `p`) takes `_internal`.
+    """
+    ports = _port_columns(c)
+    names = {}
+    for attr in c.defaults.index:
+        if attr in ports:
+            names[attr] = ports[attr][0]
+        elif attr in _port_stems():
+            names[attr] = f"{attr}{_INTERNAL}"
+        else:
+            names[attr] = attr
+    return names
+
+
+def _extendable_attributes(c: pypsa.Components) -> list[str]:
+    """`c`'s `<x>_nom_extendable` attribute, which the record calls `extendable`."""
+    return [a for a in c.defaults.index if a.endswith("_nom_extendable")]
 
 
 def _scenario_varying(c: pypsa.Components, columns: Sequence[str]) -> frozenset[str]:
@@ -829,6 +902,14 @@ def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     static = c.static
+    constant = {
+        attr: (stem, port)
+        for attr, (stem, port) in _port_columns(c).items()
+        if stem != "bus"
+        and attr in static.columns
+        and not c.defaults.at[attr, "varying"]
+        and not _is_output(c.defaults, attr)
+    }
     frames = []
     for port in c.ports:
         column = _port_attribute("bus", port)
@@ -842,6 +923,9 @@ def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
         rows = rows.rename(columns={"name": "entity"})
         rows["role"] = _port_role(port)
         rows["deleted"] = False
+        for attr, (stem, at) in constant.items():
+            if at == port:
+                rows[stem] = static.loc[attached.index, attr].to_numpy()
         frames.append(rows)
     if not frames:
         return pd.DataFrame(columns=["entity", "bus", "role", "deleted"])
@@ -980,7 +1064,11 @@ def _as_long(
 
 
 def _long_rows(
-    c: pypsa.Components, attribute: str, dims: tuple[str, ...]
+    c: pypsa.Components,
+    attribute: str,
+    dims: tuple[str, ...],
+    *,
+    drop_defaults: bool = False,
 ) -> pd.DataFrame:
     """One attribute's long rows for one component type, in the long schema.
 
@@ -1001,7 +1089,7 @@ def _long_rows(
     - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    long = _as_long(c, attribute, drop_defaults=False)
+    long = _as_long(c, attribute, drop_defaults=drop_defaults)
     long = long.assign(attribute=attribute, breakpoint=None)
     for dim in dims:
         if dim not in long.columns:
@@ -1010,7 +1098,11 @@ def _long_rows(
 
 
 def _per_port_long_rows(
-    c: pypsa.Components, stem: str, dims: tuple[str, ...]
+    c: pypsa.Components,
+    stem: str,
+    dims: tuple[str, ...],
+    *,
+    drop_defaults: bool = False,
 ) -> pd.DataFrame:
     """A per-connection attribute's long rows, `bus` filled from the port.
 
@@ -1024,12 +1116,12 @@ def _per_port_long_rows(
     """
     static = c.static
     frames = []
-    for port in c.ports:
-        column = _port_attribute(stem, port)
+    ports = {port: attr for attr, (s, port) in _port_columns(c).items() if s == stem}
+    for port, column in ports.items():
         bus_column = _port_attribute("bus", port)
-        if column not in c.defaults.index or bus_column not in static.columns:
+        if bus_column not in static.columns:
             continue
-        long = _long_rows(c, column, dims)
+        long = _long_rows(c, column, dims, drop_defaults=drop_defaults)
         if long.empty:
             continue
         # `static` is `(scenario, name)`-indexed on a stochastic network, so map
@@ -1045,6 +1137,20 @@ def _per_port_long_rows(
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True)
+
+
+def _record_rows(
+    c: pypsa.Components,
+    name: str,
+    dims: tuple[str, ...],
+    *,
+    drop_defaults: bool = False,
+) -> pd.DataFrame:
+    """The long rows of record attribute `name` for one type, per port where it is per-port."""
+    if name in {stem for stem, _ in _port_columns(c).values()}:
+        return _per_port_long_rows(c, name, dims, drop_defaults=drop_defaults)
+    (attr,) = (a for a, n in _record_names(c).items() if n == name)
+    return _long_rows(c, attr, dims, drop_defaults=drop_defaults).assign(attribute=name)
 
 
 # -- the tool ---------------------------------------------------------------
@@ -1223,6 +1329,7 @@ class PyPSATool(Tool):
             # Connections back to the positional columns PyPSA expects (https://energy-models.github.io/datarecord/design/tools/).
             static = _collapse_connections(static, record, members, con)
             static = _classify(static, record, ctype, con)
+            static = _restore_extendable(static, ctype)
 
             # Frames are built and released per type, so peak memory is one
             # type's wide frames rather than the whole network (https://energy-models.github.io/datarecord/design/tools/).
@@ -1235,6 +1342,7 @@ class PyPSATool(Tool):
                     flags,
                 )
                 for attr, flags in group_flags.get(ctype, {}).items()
+                if attr != ACTIVE_IN_PERIOD
             }
             _add_component_type(n, ctype, static, attributes, shape, con)
 
@@ -1363,12 +1471,6 @@ class PyPSATool(Tool):
             raise ValueError(msg)
 
 
-def _record_stem(attr: str) -> str:
-    """The record name of a registry attribute: a per-port one by its stem."""
-    match = re.fullmatch(rf"({'|'.join(_PORT_STEMS)})\d+", attr)
-    return match.group(1) if match else attr
-
-
 def _unheld_names(record: RecordLike) -> frozenset[str]:
     """Names `record` cannot carry, the network holding nothing for them.
 
@@ -1381,8 +1483,8 @@ def _unheld_names(record: RecordLike) -> frozenset[str]:
     - [the mathspec spec](https://energy-models.github.io/datarecord/design/tools/#the-mathspec-spec)
     """
     registry = {
-        ctype: {_record_stem(a) for a in attrs}
-        for ctype, attrs in _registry().items()
+        ctype: set(_record_names(_blank_network().c[ctype]).values()) - {"name"}
+        for ctype in _registry()
         if ctype not in _AXIS_TYPES and ctype not in _NOT_EXPORTED
     }
     held = set(_entity_groups(record))
@@ -1599,11 +1701,12 @@ class _NetworkSource:
         """Columns of `ctype` the record stores as groups or on another axis."""
         tg = self._technology_groups
         moved = tg.moved.get(ctype, ()) if tg is not None else ()
-        return (CARRIER, TECHNOLOGY_GROUP, *moved)
+        extendable = _extendable_attributes(self.n.c[ctype])
+        return (CARRIER, TECHNOLOGY_GROUP, *moved, *extendable)
 
     def _entity_columns(self, c: pypsa.Components) -> list[str]:
         """`c`'s static columns that stay per entity (`_moved` and ports aside)."""
-        per_port = set(self._port_stems(c))
+        per_port = set(_port_columns(c))
         moved = set(self._moved(c.name))
         return [x for x in c.static.columns if x not in per_port and x not in moved]
 
@@ -1660,6 +1763,8 @@ class _NetworkSource:
             ROLE,
             SCENARIO_WEIGHT,
             PERIOD_YEAR,
+            EXTENDABLE,
+            ACTIVE_IN_PERIOD,
         }
         names = {}
         for dim, mine in self._axis_columns.items():
@@ -1750,6 +1855,18 @@ class _NetworkSource:
                 unit="year",
                 description="The year an investment period stands for.",
             ),
+            EXTENDABLE: AttributeSpec(
+                dtype=nw.Boolean(),
+                dims=frozenset({ENTITY}),
+                default=False,
+                description="Whether the optimisation sizes the entity: `p_nom_extendable`, `s_nom_extendable` or `e_nom_extendable`.",
+            ),
+            ACTIVE_IN_PERIOD: AttributeSpec(
+                dtype=nw.Boolean(),
+                dims=frozenset({ENTITY, PERIOD}),
+                default=False,
+                description="Whether the entity stands in a period: `active` and `build_year <= period < build_year + lifetime`.",
+            ),
             **{
                 f"snapshot_weighting_{w}": weight.model_copy(
                     update={"dims": frozenset({SNAPSHOT})}
@@ -1769,13 +1886,14 @@ class _NetworkSource:
             # Per-port columns collapse to their stem, which a record keys by
             # bus rather than by position (https://energy-models.github.io/datarecord/design/record/#connections); `efficiency2` and `efficiency`
             # agree on every declaration, so either row answers.
-            per_port = self._port_stems(c)
+            per_port = _port_columns(c)
+            names = _record_names(c)
             outputs = set(_output_attributes(c))
             moved = set(self._moved(ctype))
             for attr in c.defaults.index:
                 if attr == "name" or attr in moved:
                     continue
-                stem = per_port.get(attr, attr)
+                stem = names[attr]
                 # A per-port attribute names the `connection` group, which
                 # expands to `(entity, bus)` (https://energy-models.github.io/datarecord/design/schema/#groups).
                 spec = self._registry_spec(
@@ -2113,6 +2231,8 @@ class _NetworkSource:
         for ctype in self._entity_ctypes:
             for attr in self._record_attributes(self.n.c[ctype]):
                 names.setdefault(attr, []).append(ctype)
+        if len(self.n.investment_periods):
+            names[ACTIVE_IN_PERIOD] = list(self._entity_ctypes)
         bus = self.n.c["Bus"]
         outputs = set(_output_attributes(bus))
         for attr in bus.defaults.index[bus.defaults["varying"].astype(bool)]:
@@ -2125,8 +2245,9 @@ class _NetworkSource:
         """Each `outputs/` attribute -> the component types holding it."""
         names: dict[str, list[str]] = {}
         for ctype in self._entity_ctypes:
-            for attr in _output_attributes(self.n.c[ctype]):
-                names.setdefault(attr, []).append(ctype)
+            c = self.n.c[ctype]
+            for attr in _output_attributes(c):
+                names.setdefault(_record_names(c)[attr], []).append(ctype)
         for attr in _output_attributes(self.n.c["Bus"]):
             names.setdefault(self._names[BUS][attr], []).append("Bus")
         return names
@@ -2181,7 +2302,7 @@ class _NetworkSource:
         """
         defaults = c.defaults
         outputs = set(_output_attributes(c))
-        per_port = self._port_stems(c)
+        names = _record_names(c)
         diverging = _scenario_varying(c, list(c.static.columns))
         moved = set(self._moved(c.name))
         stems: list[str] = []
@@ -2190,20 +2311,10 @@ class _NetworkSource:
                 continue
             if not defaults.loc[attr, "varying"] and attr not in diverging:
                 continue
-            stem = per_port.get(attr, attr)
+            stem = names[attr]
             if stem not in stems:
                 stems.append(stem)
         return stems
-
-    def _port_stems(self, c: pypsa.Components) -> dict[str, str]:
-        """Per-port attribute name -> its stem, for this type's actual ports."""
-        mapping = {}
-        for stem in _PORT_STEMS:
-            for port in c.ports:
-                name = _port_attribute(stem, port)
-                if name in c.defaults.index:
-                    mapping[name] = stem
-        return mapping
 
     # -- frames -------------------------------------------------------------
 
@@ -2233,6 +2344,8 @@ class _NetworkSource:
         # same in every scenario and collapses to one entity row.
         columns = [x for x in columns if x not in _scenario_varying(c, columns)]
         frame = c.static[columns].reset_index().rename(columns={"name": ENTITY})
+        extendable = c.static[_extendable_attributes(c)].any(axis=1).to_numpy()
+        frame[EXTENDABLE] = extendable
         return self._tagged(_as_wkt(frame), ENTITY)
 
     @staticmethod
@@ -2266,24 +2379,53 @@ class _NetworkSource:
         """
         dims = self._DIMS
         bus_names = {record: pypsa for pypsa, record in self._names[BUS].items()}
+        columns = list(self.schema.long_columns_for(attribute))
+        if attribute == ACTIVE_IN_PERIOD:
+            return nw.from_native(self._activity_rows()[columns]).lazy()
         frames = []
         for ctype in ctypes:
             c = self.n.c[ctype]
             if ctype == "Bus":
                 rows = _long_rows(c, bus_names[attribute], dims)
                 rows = rows.rename(columns={ENTITY: BUS}).assign(attribute=attribute)
-            elif attribute in self._port_stems(c).values():
-                rows = _per_port_long_rows(c, attribute, dims)
             else:
-                rows = _long_rows(c, attribute, dims)
+                rows = _record_rows(c, attribute, dims)
             if not rows.empty:
                 frames.append(rows)
-        columns = list(self.schema.long_columns_for(attribute))
         if not frames:
             return nw.from_native(pd.DataFrame(columns=columns)).lazy()
         # No dtype fixing here: `write_record` casts every schema column to the
         # record layer's declared type on the way out (https://energy-models.github.io/datarecord/design/writing/).
         return nw.from_native(pd.concat(frames, ignore_index=True)[columns]).lazy()
+
+    def _activity_rows(self) -> pd.DataFrame:
+        """`active_in_period`'s rows: one `True` per entity and period it stands in.
+
+        PyPSA's `get_active_assets`: `active` and
+        `build_year <= period < build_year + lifetime`.
+        """
+        frames = []
+        for ctype in self._entity_ctypes:
+            c = self.n.c[ctype]
+            active = pd.concat(
+                {p: c.get_active_assets(p) for p in self.n.investment_periods},
+                names=[PERIOD],
+            )
+            rows = active[active].rename("value").reset_index()
+            frames.append(rows.rename(columns={"name": ENTITY}))
+        rows = pd.concat(frames, ignore_index=True)
+        rows = rows.drop(columns=SCENARIO, errors="ignore").drop_duplicates()
+        return rows.assign(attribute=ACTIVE_IN_PERIOD, breakpoint=None)
+
+    def _output_keys(self, attribute: str, ctypes: list[str]) -> list[str]:
+        """The key columns of a result's rows: `bus`, or `entity` and `bus` where per-port."""
+        if ctypes == ["Bus"]:
+            return [BUS]
+        per_port = any(
+            attribute in {stem for stem, _ in _port_columns(self.n.c[ct]).values()}
+            for ct in ctypes
+        )
+        return [ENTITY, BUS] if per_port else [ENTITY]
 
     def _output_rows(self, attribute: str, ctypes: list[str]) -> pd.DataFrame | None:
         """One result attribute's long rows off their defaults, or `None` if none.
@@ -2296,25 +2438,25 @@ class _NetworkSource:
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
         bus_names = {record: pypsa for pypsa, record in self._names[BUS].items()}
-        key = BUS if ctypes == ["Bus"] else ENTITY
+        keys = self._output_keys(attribute, ctypes)
         frames = []
         for ctype in ctypes:
             c = self.n.c[ctype]
-            name = bus_names[attribute] if ctype == "Bus" else attribute
             try:
-                long = _as_long(c, name, drop_defaults=True)
+                if ctype == "Bus":
+                    long = _as_long(c, bus_names[attribute], drop_defaults=True)
+                    long = long.rename(columns={ENTITY: BUS})
+                else:
+                    long = _record_rows(c, attribute, (), drop_defaults=True)
             except (AttributeError, KeyError):
                 # Not every registry output has a container on every network.
                 continue
             if long.empty:
                 continue
-            long = long.rename(columns={ENTITY: key}).assign(
-                attribute=attribute, breakpoint=None
-            )
-            frames.append(long)
+            frames.append(long.assign(attribute=attribute, breakpoint=None))
         if not frames:
             return None
-        columns = [key, *self._DIMS, "attribute", "breakpoint", "value"]
+        columns = [*keys, *self._DIMS, "attribute", "breakpoint", "value"]
         return pd.concat(frames, ignore_index=True)[columns]
 
     def _output_frame(self, attribute: str, ctypes: list[str]) -> nw.LazyFrame:
@@ -2326,9 +2468,14 @@ class _NetworkSource:
         """
         rows = self._output_rows(attribute, ctypes)
         if rows is None:
-            key = BUS if ctypes == ["Bus"] else ENTITY
             rows = pd.DataFrame(
-                columns=[key, *self._DIMS, "attribute", "breakpoint", "value"]
+                columns=[
+                    *self._output_keys(attribute, ctypes),
+                    *self._DIMS,
+                    "attribute",
+                    "breakpoint",
+                    "value",
+                ]
             )
         return nw.from_native(rows).lazy()
 
@@ -2566,6 +2713,17 @@ def _collapse_connections(
     return joined.project(
         *(col("s", c) for c in static.columns),
         *(col("ports", c) for c in ports.columns if c not in ("entity", *varying)),
+    )
+
+
+def _restore_extendable(static: DuckDBPyRelation, ctype: str) -> DuckDBPyRelation:
+    """`extendable` back under `ctype`'s `<x>_nom_extendable`, or dropped where it has none."""
+    if EXTENDABLE not in static.columns:
+        return static
+    names = _extendable_attributes(_blank_network().c[ctype])
+    return static.project(
+        *(col(c) for c in static.columns if c != EXTENDABLE),
+        *(col(EXTENDABLE).alias(name) for name in names),
     )
 
 

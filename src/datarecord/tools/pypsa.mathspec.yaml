@@ -6,7 +6,7 @@ description: >-
   PyPSA's linear optimal power flow in entity form, over the names a record
   written by `datarecord.tools.pypsa` carries. Multi-period with perfect
   foresight: snapshots fall in investment periods, an asset stands in a period
-  within `build_year <= period_year < build_year + lifetime`, and the objective
+  within `active_in_period`, and the objective
   weights snapshots and periods. No global and no custom constraints: those are
   separate fragments. Not covered: unit commitment, ramping, quadratic costs,
   `p_set` fixing of non-loads, and Kirchhoff's voltage law over transformers.
@@ -61,12 +61,7 @@ masks:
   branch: { where: line OR transformer }
   storage: { where: storage_unit OR store }
   capacity: { where: NOT load }
-  extendable: { where: p_nom_extendable OR s_nom_extendable OR e_nom_extendable }
-  in_service:
-    where: >-
-      active
-      AND build_year <= at(period_year, by=snapshot_period[period])
-      AND build_year + lifetime > at(period_year, by=snapshot_period[period])
+  in_service: { where: "at(active_in_period, by=snapshot_period[period])" }
 
 parameters:
   scenario_weight: { dims: [scenario], description: how much a scenario counts in the expectation }
@@ -85,16 +80,20 @@ parameters:
   sign: { dims: [entity], missing: absent, description: power sign of a one-port }
   v_nom: { dims: [bus], description: nominal voltage of a bus }
 
-  active: { dims: [entity], dtype: bool, description: whether the entity takes part at all }
-  build_year: { dims: [entity], dtype: int, missing: 0 }
-  lifetime: { dims: [entity], missing: .inf }
+  active_in_period:
+    dims: [entity, period]
+    dtype: bool
+    missing: neutral
+    description: "whether the entity stands in a period: `active` and `build_year <= period_year < build_year + lifetime`"
+  extendable:
+    dims: [entity]
+    dtype: bool
+    missing: neutral
+    description: "whether the optimisation sizes the entity: `p_nom_extendable`, `s_nom_extendable` or `e_nom_extendable`"
 
   p_nom: { dims: [entity], missing: absent }
   s_nom: { dims: [entity], missing: absent }
   e_nom: { dims: [entity], missing: absent }
-  p_nom_extendable: { dims: [entity], dtype: bool, missing: neutral }
-  s_nom_extendable: { dims: [entity], dtype: bool, missing: neutral }
-  e_nom_extendable: { dims: [entity], dtype: bool, missing: neutral }
   p_nom_min: { dims: [entity], missing: absent }
   s_nom_min: { dims: [entity], missing: absent }
   e_nom_min: { dims: [entity], missing: absent }
@@ -277,7 +276,7 @@ expressions:
     dims: [entity, period]
     cases:
       standing:
-        when: active AND build_year <= period_year AND build_year + lifetime > period_year
+        when: active_in_period
         expression: period_weighting_objective
     otherwise: 0
   built:
