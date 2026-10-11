@@ -21,6 +21,7 @@ import pytest
 
 from datarecord import Revision, Workspace
 from datarecord.files import Absent, PreconditionFailedError
+from datarecord.layered import write
 from datarecord.layered.resolve import read_schema
 from datarecord.mutable import WorkingRecord
 from tests.fixtures import (
@@ -155,6 +156,43 @@ def test_a_widening_the_race_made_incompatible_is_reported(
         store.root(_Source(widened(_SCHEMA, "mine"), attributes={"p_nom": _long()}))
     assert read_schema(store) == rival, "the rival's widening is kept"
     assert store.revisions() == [], "the losing layer is unreachable"
+
+
+class _AlwaysLoses:
+    """`Files` where every conditional write of `uri` is refused, and counted."""
+
+    def __init__(self, inner, uri):
+        self._inner = inner
+        self._uri = uri
+        self.writes = 0
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def write_text(self, uri, text, *, expect):
+        if uri == self._uri and expect is not None:
+            self.writes += 1
+            raise PreconditionFailedError(uri)
+        return self._inner.write_text(uri, text, expect=expect)
+
+
+def test_a_writer_that_always_loses_gives_up(workspace, store, monkeypatch):
+    """As a manifest unreadable for a 403 does: the error names both causes.
+
+    Notes
+    -----
+    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
+    """
+    files = _AlwaysLoses(workspace._local, store.manifest_uri)
+    monkeypatch.setattr(workspace, "_local", files)
+    monkeypatch.setattr(write, "sleep", lambda _: None)
+
+    with pytest.raises(RuntimeError, match=r"changed under each.*s3:GetObject"):
+        store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
+    assert files.writes == write._ATTEMPTS, "one write per attempt, then the error"
+    assert store.revisions() == [], (
+        "the layer that never declared its schema is unreachable"
+    )
 
 
 def test_a_revision_crosses_a_process_boundary(tree):

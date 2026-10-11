@@ -46,6 +46,9 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- Writing a layer whose `manifest.json` write keeps losing, as it does with a
+  credential that can write the manifest but not read it, gives up after ten
+  attempts with an error naming `s3:GetObject`, rather than looping forever.
 - `materialise()` writes `owner_map/inputs.parquet` last, each file through
   a temporary name, so a node never reads as materialised from half its
   cache.
