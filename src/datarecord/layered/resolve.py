@@ -627,9 +627,9 @@ def _fold_map(
     """A record's owner map of one kind, folded down over `sources`.
 
     Only `inputs` remains a kind; the axes fold to a resolved copy instead
-    (`resolve_coords`). The deepest materialised source's `Fold` is the fold's
-    *seed* rather than a step of it: its `owner_map` is already folded over
-    everything at or below it, so it is read as the starting relation and only
+    (`resolve_coords`). The deepest materialised source's map is the fold's
+    *seed* rather than a step of it: it is already folded over everything at or
+    below it, so it is read as the starting relation (`_frozen_table`) and only
     the sources above it are folded on top.
 
     Notes
@@ -639,11 +639,12 @@ def _fold_map(
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     keys = resolve_coords(schema, sources, con)
-    base, above = _base_and_above(sources, con, schema)
+    _, above = _base_and_above(sources, con, schema)
+    seed = sources[: len(sources) - len(above)]
 
     rel = _empty_relation(keys.schema, con, *columns(keys))
-    if base is not None:
-        rel = cast_declared(keys.schema, _keyed(keys.schema, base.owner_map))
+    if seed:
+        rel = _frozen_table(seed[-1].layer_id, seed, con, keys.schema, kind=kind)
 
     for source in above:
         rel = fold(source, keys, con, rel)
@@ -747,49 +748,37 @@ def _frozen_table(
     table is shared by every cursor on the workspace and carries no schema in
     its name, so a schema widened since the fold reads it as it is: a widening
     only adds, and what it adds here - a flag field for a new dim, a key column
-    for a newly keyed group - reads as unset where it is missing (`_keyed`). A
-    persisted map is cast, parquet not carrying the declared types.
+    for a newly keyed group - reads as unset where it is missing: a key column
+    is NULL on every row, no row folded then having named the group. A persisted
+    map is cast, parquet not carrying the declared types.
+
+    The one place a cached map enters a fold: a materialised seed is read here
+    too (`_fold_map`).
 
     Notes
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     last = sources[-1] if sources else None
+    rel = None
     if isinstance(last, ParquetLayer) and last.revision_id == revision_id:
-        uri = last.store.owner_map_uri(revision_id, kind)
-        persisted = try_read_parquet(uri, con)
-        if persisted is not None:
-            return cast_declared(schema, _keyed(schema, persisted))
-
-    if not sources:
+        rel = try_read_parquet(last.store.owner_map_uri(revision_id, kind), con)
+    if rel is not None:
+        rel = cast_declared(schema, rel)
+    elif not sources:
         # Nothing frozen to fold, which is a `WorkingRecord` over a base that is
         # itself unfrozen; the tail folds onto an empty map.
         columns, _ = map_kinds(schema)[kind]
         return _empty_relation(schema, con, *columns(Coords(schema=schema, axes={})))
-
-    return _keyed(
-        schema,
-        _shared(
+    else:
+        rel = _shared(
             con,
             _table_name(revision_id, kind),
             lambda: _fold_kind(kind, sources, con, schema),
-        ),
-    )
-
-
-def _keyed(schema: Schema, owner_map: DuckDBPyRelation) -> DuckDBPyRelation:
-    """An owner map folded under an earlier schema, carrying this one's key.
-
-    A key column it lacks - a group first keyed by an attribute declared since -
-    is NULL on every row, which is right: no row folded then named the group.
-
-    Notes
-    -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
-    """
-    return with_columns(schema, owner_map, *schema.input_key)
+        )
+    return with_columns(schema, rel, *schema.input_key)
 
 
 def _frozen_coords(
