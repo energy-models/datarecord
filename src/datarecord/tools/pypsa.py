@@ -8,8 +8,7 @@ The only module that knows PyPSA's network shape - that its axes are
 `snapshot`/`period`/`scenario`, that a stochastic network is indexed by
 `(scenario, name)`, how its static/series split maps onto the record's
 `dims/entity` + `inputs/` split, that a component's type is its
-`entity_group`, and that buses, carriers and technology groups are axes rather
-than entities.
+`entity_group`, and that buses and carriers are axes rather than entities.
 
 Notes
 -----
@@ -60,7 +59,8 @@ if TYPE_CHECKING:
 # single-period network.
 SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
 ENTITY, BUS, CONNECTION = "entity", "bus", "connection"
-CARRIER, TECHNOLOGY_GROUP = "carrier", "technology_group"
+CARRIER = "carrier"
+TECHNOLOGY = "entity_map_technology"
 # An attribute over the `connection` group, not a column the format fixes: the
 # port vocabulary below is this tool's, so the record layer never names it.
 ROLE = "role"
@@ -96,9 +96,8 @@ _REGIONS = {"onshore": "region_onshore", "offshore": "region_offshore"}
 # `Shape` rows with no component, which pypsa-eur writes for context and the
 # record drops (https://energy-models.github.io/datarecord/design/tools/#shapes).
 _DROPPED_SHAPES = frozenset({"country", "offshore"})
-# Component columns that are a function of the technology group, so they move
-# to its axis file, with their declared types.
-_TECHNOLOGY_GROUP_COLUMNS = {"nice_name": nw.String()}
+# Custom component columns the record stores per entity under another name.
+_RENAMED_COLUMNS = {"technology_group": TECHNOLOGY}
 DEFAULT_CRS = "EPSG:4326"
 
 #: The base mathspec spec for the record `PyPSA.to_datarecord` writes.
@@ -117,9 +116,7 @@ def _classification(key: str, into: str) -> str:
 _CARRIER_GROUPS = {
     ENTITY: _classification(ENTITY, CARRIER),
     BUS: _classification(BUS, CARRIER),
-    TECHNOLOGY_GROUP: _classification(TECHNOLOGY_GROUP, CARRIER),
 }
-TECHNOLOGY_GROUP_GROUP = _classification(ENTITY, TECHNOLOGY_GROUP)
 
 # PyPSA's `defaults["typ"]` (the attribute's Python type) mapped to the narwhals
 # type the long schema stores, `String` for anything unlisted. Keyed on `typ` -
@@ -852,31 +849,20 @@ def _record_names(c: pypsa.Components) -> dict[str, str]:
     """`c`'s registry attribute -> its record name.
 
     A per-port attribute is named by its stem; a per-entity one whose name is
-    a port stem elsewhere (a Link's internal `p`) takes `_internal`. The
-    type's `p_nom`, `s_nom` or `e_nom` is `capacity_fixed`, a variant
-    `<x>_nom_<suffix>` is `capacity_<suffix>`, and `<x>_nom_extendable` is
-    `extendable`.
+    a port stem elsewhere (a Link's internal `p`) takes `_internal`. A custom
+    column of `_RENAMED_COLUMNS` takes its record name there (`technology_group`
+    is `entity_map_technology`).
     """
     ports = _port_columns(c)
-    (prefix,) = [
-        a.removesuffix("_extendable")
-        for a in c.defaults.index
-        if a.endswith("_nom_extendable")
-    ] or [None]
     names = {}
     for attr in c.defaults.index:
         if attr in ports:
             names[attr] = ports[attr][0]
         elif attr in _port_stems():
             names[attr] = f"{attr}{_INTERNAL}"
-        elif prefix is not None and attr == f"{prefix}_extendable":
-            names[attr] = EXTENDABLE
-        elif prefix is not None and re.fullmatch(rf"{prefix}(_.+)?", attr):
-            suffix = attr.removeprefix(prefix).removeprefix("_") or "fixed"
-            names[attr] = f"{CAPACITY}_{suffix}"
         else:
             names[attr] = attr
-    return names
+    return names | _RENAMED_COLUMNS
 
 
 def _pypsa_names(ctype: str) -> dict[str, str]:
@@ -1419,21 +1405,21 @@ class PyPSATool(Tool):
         The inverse of `build`, and the only place PyPSA's shape is undone:
         `c.static`/`c.dynamic` become long rows, `bus0`/`bus1`/`efficiency2`
         become connection rows carrying a `role`, buses and carriers become
-        axes, and `carrier`/`technology_group` become groups. Key sets are read
-        off the network, so listing unpivots nothing and a lookup only what is
-        asked for.
+        axes, `carrier` becomes groups, and `technology_group` becomes the
+        entity attribute `entity_map_technology`. Key sets are read off the
+        network, so listing unpivots nothing and a lookup only what is asked
+        for.
 
         Raises
         ------
         UnsupportedRecordError
             If two component types share a name: PyPSA scopes names per type, a
             record record-wide, and this reports rather than renames. Likewise
-            if a custom column of an axis (bus, carrier, technology group) has
-            the record name of a custom entity column or another axis's.
+            if a custom column of an axis (bus, carrier) has the record name of
+            a custom entity column or another axis's.
         ValueError
             If a `Shape` is neither a bus region nor a dropped country or
-            offshore shape, or a technology group does not have exactly one
-            carrier and at most one resource class.
+            offshore shape.
 
         Notes
         -----
@@ -1446,7 +1432,7 @@ class PyPSATool(Tool):
         if clashing:
             raise UnsupportedRecordError(self.name, Requirements(names=clashing))
         source = _NetworkSource(model)
-        _ = source._regions, source._technology_groups
+        _ = source._regions
         if source._clashing_columns:
             raise UnsupportedRecordError(
                 self.name, Requirements(columns=source._clashing_columns)
@@ -1463,10 +1449,9 @@ class PyPSATool(Tool):
 
         A name the record cannot carry because the network has nothing it would
         describe is not missing: an attribute only component types the record
-        holds no member of register (`e_min_pu` with no `Store`), and the
-        technology-group axis and its groups where no component has a
-        `technology_group`. The spec's rows over them are empty, as they are in
-        PyPSA's model. Every other name is required.
+        holds no member of register (`e_min_pu` with no `Store`). The spec's
+        rows over them are empty, as they are in PyPSA's model. Every other
+        name is required.
 
         Raises
         ------
@@ -1507,8 +1492,7 @@ def _unheld_names(record: RecordLike) -> frozenset[str]:
     """Names `record` cannot carry, the network holding nothing for them.
 
     The record-name stems of attributes that only component types no
-    `entity_group` of the record names register, and the technology-group
-    axis with its groups where the record declares no `technology_group` dim.
+    `entity_group` of the record names register.
 
     Notes
     -----
@@ -1526,14 +1510,7 @@ def _unheld_names(record: RecordLike) -> frozenset[str]:
     unheld = set().union(
         *(attrs for ctype, attrs in registry.items() if ctype not in held)
     )
-    names = unheld - carried
-    if TECHNOLOGY_GROUP not in record.schema.dimensions:
-        names |= {
-            TECHNOLOGY_GROUP,
-            TECHNOLOGY_GROUP_GROUP,
-            _classification(TECHNOLOGY_GROUP, CARRIER),
-        }
-    return frozenset(names)
+    return frozenset(unheld - carried)
 
 
 def _registry() -> dict[str, frozenset[str]]:
@@ -1592,97 +1569,6 @@ def _bus_regions(n: pypsa.Network) -> pd.DataFrame:
 
 
 @dataclass(frozen=True)
-class _TechnologyGroups:
-    """`entity -> technology_group` and the per-group columns derived from it.
-
-    Attributes
-    ----------
-    members
-        `(entity, technology_group)`, one row per grouped entity.
-    axis
-        One row per group: `technology_group` and the `_TECHNOLOGY_GROUP_COLUMNS`
-        the members carry.
-    carriers
-        `(technology_group, carrier)`, one row per group.
-    moved
-        Per component type, the columns moved off it onto the group's axis.
-    """
-
-    members: pd.DataFrame
-    axis: pd.DataFrame
-    carriers: pd.DataFrame
-    moved: dict[str, tuple[str, ...]]
-
-
-def _technology_groups(n: pypsa.Network) -> _TechnologyGroups | None:
-    """The network's technology groups, or `None` where no type has the column.
-
-    Raises
-    ------
-    ValueError
-        If a group's members do not share exactly one carrier and at most one
-        value of each `_TECHNOLOGY_GROUP_COLUMNS` column, or an entity outside
-        every group carries one of those columns.
-
-    Notes
-    -----
-    - [technology groups](https://energy-models.github.io/datarecord/design/tools/#technology-groups)
-    """
-    frames = []
-    moved: dict[str, tuple[str, ...]] = {}
-    for c in n.components:
-        if not _exported(c) or TECHNOLOGY_GROUP not in c.static.columns:
-            continue
-        columns = tuple(x for x in _TECHNOLOGY_GROUP_COLUMNS if x in c.static.columns)
-        moved[c.name] = columns
-        frame = c.static[[TECHNOLOGY_GROUP, CARRIER, *columns]].reset_index()
-        frames.append(
-            frame.rename(columns={"name": ENTITY}).drop(
-                columns=SCENARIO, errors="ignore"
-            )
-        )
-    if not frames:
-        return None
-    rows = pd.concat(frames, ignore_index=True).drop_duplicates()
-    grouped = rows[TECHNOLOGY_GROUP].notna() & (
-        rows[TECHNOLOGY_GROUP].astype(str) != ""
-    )
-    present = [x for x in _TECHNOLOGY_GROUP_COLUMNS if x in rows.columns]
-    stray = rows.loc[~grouped & rows[present].notna().any(axis=1), ENTITY]
-    if not stray.empty:
-        msg = (
-            f"entities {sorted(stray.astype(str))} carry {present} but no "
-            f"technology group; those columns are the group's"
-        )
-        raise ValueError(msg)
-    rows = rows[grouped]
-    carriers = rows[rows[CARRIER].notna() & (rows[CARRIER].astype(str) != "")]
-    count = carriers.groupby(TECHNOLOGY_GROUP)[CARRIER].nunique()
-    count = count.reindex(rows[TECHNOLOGY_GROUP].unique(), fill_value=0)
-    if (count != 1).any():
-        msg = (
-            f"technology groups {sorted(count.index[count != 1].astype(str))} do "
-            f"not have exactly one carrier among their members"
-        )
-        raise ValueError(msg)
-    for column in present:
-        many = rows.groupby(TECHNOLOGY_GROUP)[column].nunique() > 1
-        if many.any():
-            msg = (
-                f"technology groups {sorted(many.index[many].astype(str))} have "
-                f"more than one {column!r} among their members"
-            )
-            raise ValueError(msg)
-    axis = rows.groupby(TECHNOLOGY_GROUP, sort=False)[present].first().reset_index()
-    return _TechnologyGroups(
-        members=_functional(rows, ENTITY, TECHNOLOGY_GROUP),
-        axis=axis,
-        carriers=_functional(rows, TECHNOLOGY_GROUP, CARRIER),
-        moved=moved,
-    )
-
-
-@dataclass(frozen=True)
 class _NetworkSource:
     """A `pypsa.Network` presented as a `Record`.
 
@@ -1706,10 +1592,6 @@ class _NetworkSource:
         return _bus_regions(self.n)
 
     @cached_property
-    def _technology_groups(self) -> _TechnologyGroups | None:
-        return _technology_groups(self.n)
-
-    @cached_property
     def _entity_ctypes(self) -> tuple[str, ...]:
         return tuple(c.name for c in self.n.components if _exported(c))
 
@@ -1727,17 +1609,10 @@ class _NetworkSource:
             *((SCENARIO,) if self.n.has_scenarios else ()),
         )
 
-    def _moved(self, ctype: str) -> tuple[str, ...]:
-        """Columns of `ctype` the record stores as groups or on another axis."""
-        tg = self._technology_groups
-        moved = tg.moved.get(ctype, ()) if tg is not None else ()
-        return (CARRIER, TECHNOLOGY_GROUP, *moved)
-
     def _entity_columns(self, c: pypsa.Components) -> list[str]:
-        """`c`'s static columns that stay per entity (`_moved` and ports aside)."""
+        """`c`'s static columns that stay per entity (`carrier` and ports aside)."""
         per_port = set(_port_columns(c))
-        moved = set(self._moved(c.name))
-        return [x for x in c.static.columns if x not in per_port and x not in moved]
+        return [x for x in c.static.columns if x not in per_port and x != CARRIER]
 
     @cached_property
     def _axis_columns(self) -> dict[str, list[str]]:
@@ -1748,7 +1623,6 @@ class _NetworkSource:
         - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
         """
         bus = self.n.c["Bus"]
-        tg = self._technology_groups
         return {
             BUS: [
                 *(
@@ -1759,7 +1633,6 @@ class _NetworkSource:
                 *self._regions.columns,
             ],
             CARRIER: list(self.n.c["Carrier"].static.columns),
-            TECHNOLOGY_GROUP: [] if tg is None else list(tg.axis.columns[1:]),
         }
 
     @cached_property
@@ -1784,10 +1657,9 @@ class _NetworkSource:
             ENTITY,
             BUS,
             CARRIER,
-            TECHNOLOGY_GROUP,
+            TECHNOLOGY,
             ENTITY_GROUP,
             CONNECTION,
-            TECHNOLOGY_GROUP_GROUP,
             *_CARRIER_GROUPS.values(),
             ROLE,
             SCENARIO_WEIGHT,
@@ -1826,7 +1698,8 @@ class _NetworkSource:
         for ctype in self._entity_ctypes:
             for column in self._entity_columns(self.n.c[ctype]):
                 if column not in registry:
-                    owners.setdefault(column, set()).add(ctype)
+                    name = _RENAMED_COLUMNS.get(column, column)
+                    owners.setdefault(name, set()).add(ctype)
         for dim, names in self._names.items():
             for name in names.values():
                 owners.setdefault(name, set()).add(dim)
@@ -1952,9 +1825,8 @@ class _NetworkSource:
             per_port = _port_columns(c)
             names = _record_names(c)
             outputs = set(_output_attributes(c))
-            moved = set(self._moved(ctype))
             for attr in c.defaults.index:
-                if attr == "name" or attr in moved:
+                if attr in ("name", CARRIER):
                     continue
                 stem = names[attr]
                 # A per-port attribute names the `connection` group, which
@@ -1972,7 +1844,7 @@ class _NetworkSource:
                 if column in c.defaults.index:
                     continue
                 attributes.setdefault(
-                    column,
+                    names.get(column, column),
                     AttributeSpec(
                         dtype=_column_dtype(c.static[column]),
                         dims=frozenset({ENTITY}),
@@ -1982,7 +1854,6 @@ class _NetworkSource:
         # A name PyPSA registers as an output on one type and an input on
         # another would be both here; the input declaration wins.
         results = {a: s for a, s in results.items() if a not in attributes}
-        tg = self._technology_groups
         multiperiod = len(self.n.investment_periods) > 0
         dimensions = {
             SNAPSHOT: Dimension(
@@ -2017,21 +1888,6 @@ class _NetworkSource:
                 over={BUS: BUS}, into=CARRIER, description="The carrier of each bus."
             ),
         }
-        if tg is not None:
-            dimensions[TECHNOLOGY_GROUP] = Dimension(
-                dtype=nw.String(),
-                description="A technology: components of one carrier and resource class.",
-            )
-            groups[TECHNOLOGY_GROUP_GROUP] = Group(
-                over={ENTITY: ENTITY},
-                into=TECHNOLOGY_GROUP,
-                description="The technology group of each component.",
-            )
-            groups[_CARRIER_GROUPS[TECHNOLOGY_GROUP]] = Group(
-                over={TECHNOLOGY_GROUP: TECHNOLOGY_GROUP},
-                into=CARRIER,
-                description="The one carrier of each technology group.",
-            )
         return RecordSchema(
             dimensions=dimensions,
             groups=groups,
@@ -2068,7 +1924,7 @@ class _NetworkSource:
     def _axis_specs(
         self, attributes: dict[str, AttributeSpec], results: dict[str, AttributeSpec]
     ) -> None:
-        """Declare the bus, carrier and technology group axes' attributes.
+        """Declare the bus and carrier axes' attributes.
 
         Notes
         -----
@@ -2077,7 +1933,6 @@ class _NetworkSource:
         frames = {
             BUS: self._bus_frame(),
             CARRIER: self._carrier_frame(),
-            TECHNOLOGY_GROUP: self._technology_group_frame(),
         }
         defaults = {
             BUS: self.n.c["Bus"].defaults,
@@ -2095,12 +1950,9 @@ class _NetworkSource:
                     )
                     target[name] = self._registry_spec(row, dim)
                     continue
-                dtype = (
-                    _TECHNOLOGY_GROUP_COLUMNS[column]
-                    if dim == TECHNOLOGY_GROUP
-                    else _column_dtype(frames[dim][name])
+                attributes[name] = AttributeSpec(
+                    dtype=_column_dtype(frames[dim][name]), dims=frozenset({dim})
                 )
-                attributes[name] = AttributeSpec(dtype=dtype, dims=frozenset({dim}))
 
     @property
     def dims(self) -> LazyFrames:
@@ -2121,7 +1973,6 @@ class _NetworkSource:
             ENTITY: self._entity_axis_frame,
             BUS: self._bus_frame,
             CARRIER: self._carrier_frame,
-            TECHNOLOGY_GROUP: self._technology_group_frame,
         }
         held = {
             SNAPSHOT: len(self.n.snapshots) > 0,
@@ -2130,7 +1981,6 @@ class _NetworkSource:
             ENTITY: True,
             BUS: not self.n.c["Bus"].static.empty,
             CARRIER: not self.n.c["Carrier"].static.empty,
-            TECHNOLOGY_GROUP: self._technology_groups is not None,
         }
         present = tuple(d for d in axes if held[d])
         return LazyFrames(present, lambda dim: nw.from_native(axes[dim]()).lazy())
@@ -2189,18 +2039,6 @@ class _NetworkSource:
             static = static[~static.index.duplicated()]
         return self._axis_frame(CARRIER, static.rename_axis("name").reset_index())
 
-    def _technology_group_frame(self) -> pd.DataFrame:
-        """`dims/technology_group.parquet`, derived from the members.
-
-        Notes
-        -----
-        - [technology groups](https://energy-models.github.io/datarecord/design/tools/#technology-groups)
-        """
-        tg = self._technology_groups
-        if tg is None:
-            return pd.DataFrame(columns=[TECHNOLOGY_GROUP])
-        return self._axis_frame(TECHNOLOGY_GROUP, tg.axis)
-
     def _entity_axis_frame(self) -> pd.DataFrame:
         """`dims/entity.parquet`: every exported type's members, `entity_group` their type.
 
@@ -2229,7 +2067,7 @@ class _NetworkSource:
 
     @property
     def groups(self) -> LazyFrames:
-        """`connection` and the carrier and technology group classifications.
+        """`connection` and the carrier classifications.
 
         Notes
         -----
@@ -2244,10 +2082,6 @@ class _NetworkSource:
                 CARRIER,
             ),
         }
-        tg = self._technology_groups
-        if tg is not None:
-            frames[TECHNOLOGY_GROUP_GROUP] = lambda: tg.members
-            frames[_CARRIER_GROUPS[TECHNOLOGY_GROUP]] = lambda: tg.carriers
         return LazyFrames(
             tuple(frames),
             lambda name: nw.from_native(self._tagged(frames[name](), None)).lazy(),
@@ -2370,10 +2204,9 @@ class _NetworkSource:
         outputs = set(_output_attributes(c))
         names = _record_names(c)
         diverging = _scenario_varying(c, list(c.static.columns))
-        moved = set(self._moved(c.name))
         stems: list[str] = []
         for attr in defaults.index:
-            if attr in outputs or attr == "name" or attr in moved:
+            if attr in outputs or attr in ("name", CARRIER):
                 continue
             if not defaults.loc[attr, "varying"] and attr not in diverging:
                 continue
@@ -2971,16 +2804,13 @@ def _add_carriers(
 def _classify(
     static: DuckDBPyRelation, record: RecordLike, ctype: str, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """Add `carrier`, and `technology_group` with its axis columns, from the groups.
+    """Add `carrier` from its group.
 
-    A component with no carrier row takes the registry's default. The
-    technology group columns reach only a type with grouped members, so a type
-    that never carried them gains none.
+    A component with no carrier row takes the registry's default.
 
     Notes
     -----
     - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
-    - [technology groups](https://energy-models.github.io/datarecord/design/tools/#technology-groups)
     """
     from pypsa.components.types import get as get_component_type
 
@@ -2993,14 +2823,6 @@ def _classify(
         if carriers is None
         else extra.index.map(carriers.set_index(ENTITY)[CARRIER]).fillna(default)
     )
-    members = _frame(record, "groups", TECHNOLOGY_GROUP_GROUP)
-    if members is not None and members[ENTITY].isin(entities).any():
-        groups = members.set_index(ENTITY)[TECHNOLOGY_GROUP]
-        extra[TECHNOLOGY_GROUP] = extra.index.map(groups)
-        axis = _frame(record, "dims", TECHNOLOGY_GROUP)
-        if axis is not None:
-            columns = _pypsa_columns(axis, record, TECHNOLOGY_GROUP)
-            extra = extra.join(columns, on=TECHNOLOGY_GROUP)
     extra = extra.reset_index()  # noqa: F841 - queried by name below
     joined = con.sql("FROM extra").set_alias("x")
     return (

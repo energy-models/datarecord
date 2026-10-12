@@ -28,8 +28,6 @@ dimensions:
     description: nodes where power balances
   carrier:
     description: energy carriers
-  technology_group:
-    description: technologies, grouping entities of one carrier and resource class
 
 relations:
   snapshot_period:
@@ -41,11 +39,6 @@ relations:
     values: carrier
     missing: absent
     description: the carrier of each entity
-  entity_technology_group:
-    key: entity
-    values: technology_group
-    missing: absent
-    description: the technology group of each entity
   connection:
     key: [entity, bus]
     description: which buses an entity attaches to
@@ -61,6 +54,8 @@ masks:
   branch: { where: line OR transformer }
   storage: { where: storage_unit OR store }
   sized: { where: NOT load }
+  p_sized: { where: generator OR link OR storage_unit }
+  extendable: { where: p_nom_extendable OR s_nom_extendable OR e_nom_extendable }
   in_service: { where: "at(active_in_period, by=snapshot_period[period])" }
 
 parameters:
@@ -86,20 +81,26 @@ parameters:
     dtype: bool
     missing: neutral
     description: "whether the entity stands in a period: `active` and `build_year <= period_year < build_year + lifetime`"
-  extendable:
-    dims: [entity]
-    dtype: bool
-    missing: neutral
-    description: "whether the optimisation sizes the entity: `p_nom_extendable`, `s_nom_extendable` or `e_nom_extendable`"
+  p_nom_extendable: { dims: [entity], dtype: bool, missing: neutral }
+  s_nom_extendable: { dims: [entity], dtype: bool, missing: neutral }
+  e_nom_extendable: { dims: [entity], dtype: bool, missing: neutral }
 
   capital_weight:
     dims: [entity, period]
     missing: 0
     description: "`investment_period_weightings.objective` where an extendable entity stands in a period"
-  capacity_fixed: { dims: [entity], missing: absent, description: "the fixed capacity: `p_nom`, `s_nom` or `e_nom`" }
-  capacity_min: { dims: [entity], missing: absent, description: "`p_nom_min`, `s_nom_min` or `e_nom_min`" }
-  capacity_max: { dims: [entity], missing: absent, description: "`p_nom_max`, `s_nom_max` or `e_nom_max`" }
-  capacity_set: { dims: [entity], missing: absent, description: "`p_nom_set`, `s_nom_set` or `e_nom_set`" }
+  p_nom: { dims: [entity], missing: absent }
+  p_nom_min: { dims: [entity], missing: absent }
+  p_nom_max: { dims: [entity], missing: absent }
+  p_nom_set: { dims: [entity], missing: absent }
+  s_nom: { dims: [entity], missing: absent }
+  s_nom_min: { dims: [entity], missing: absent }
+  s_nom_max: { dims: [entity], missing: absent }
+  s_nom_set: { dims: [entity], missing: absent }
+  e_nom: { dims: [entity], missing: absent }
+  e_nom_min: { dims: [entity], missing: absent }
+  e_nom_max: { dims: [entity], missing: absent }
+  e_nom_set: { dims: [entity], missing: absent }
 
   p_min_pu: { dims: [scenario, snapshot, entity], missing: absent }
   p_max_pu: { dims: [scenario, snapshot, entity], missing: absent }
@@ -134,10 +135,15 @@ parameters:
   spill_cost: { dims: [scenario, snapshot, entity], missing: neutral }
 
 variables:
-  capacity:
+  p_nom_opt:
     dims: [entity]
-    where: sized
-    description: "capacity: `p_nom`, `s_nom` or `e_nom`"
+    where: p_sized AND p_nom_extendable
+  s_nom_opt:
+    dims: [entity]
+    where: branch AND s_nom_extendable
+  e_nom_opt:
+    dims: [entity]
+    where: store AND e_nom_extendable
   p:
     dims: [scenario, snapshot, entity]
     where: sized AND in_service
@@ -160,6 +166,17 @@ variables:
     description: voltage angle
 
 expressions:
+  capacity:
+    dims: [entity]
+    description: "the optimised capacity where extendable, else the fixed one"
+    cases:
+      p_nom_opt: { when: p_sized AND p_nom_extendable, expression: p_nom_opt }
+      p_nom: { when: p_sized AND NOT p_nom_extendable, expression: p_nom }
+      s_nom_opt: { when: branch AND s_nom_extendable, expression: s_nom_opt }
+      s_nom: { when: branch AND NOT s_nom_extendable, expression: s_nom }
+      e_nom_opt: { when: store AND e_nom_extendable, expression: e_nom_opt }
+      e_nom: { when: store AND NOT e_nom_extendable, expression: e_nom }
+    otherwise: 0
   store_carried_in:
     dims: [scenario, snapshot, entity]
     cases:
@@ -213,22 +230,42 @@ constraints:
   balance:
     dims: [scenario, snapshot, bus]
     expression: injection == 0
-  capacity_fixed:
+  p_nom_lower:
     dims: [entity]
-    where: sized AND NOT extendable
-    expression: capacity == capacity_fixed
-  capacity_lower:
+    where: p_nom_opt AND p_nom_min
+    expression: p_nom_opt >= p_nom_min
+  p_nom_upper:
     dims: [entity]
-    where: extendable
-    expression: capacity >= capacity_min
-  capacity_upper:
+    where: p_nom_opt AND p_nom_max
+    expression: p_nom_opt <= p_nom_max
+  p_nom_set:
     dims: [entity]
-    where: extendable AND capacity_max
-    expression: capacity <= capacity_max
-  capacity_set:
+    where: p_nom_opt AND p_nom_set
+    expression: p_nom_opt == p_nom_set
+  s_nom_lower:
     dims: [entity]
-    where: extendable AND capacity_set
-    expression: capacity == capacity_set
+    where: s_nom_opt AND s_nom_min
+    expression: s_nom_opt >= s_nom_min
+  s_nom_upper:
+    dims: [entity]
+    where: s_nom_opt AND s_nom_max
+    expression: s_nom_opt <= s_nom_max
+  s_nom_set:
+    dims: [entity]
+    where: s_nom_opt AND s_nom_set
+    expression: s_nom_opt == s_nom_set
+  e_nom_lower:
+    dims: [entity]
+    where: e_nom_opt AND e_nom_min
+    expression: e_nom_opt >= e_nom_min
+  e_nom_upper:
+    dims: [entity]
+    where: e_nom_opt AND e_nom_max
+    expression: e_nom_opt <= e_nom_max
+  e_nom_set:
+    dims: [entity]
+    where: e_nom_opt AND e_nom_set
+    expression: e_nom_opt == e_nom_set
   p_lower:
     dims: [scenario, snapshot, entity]
     where: (generator OR link) AND in_service

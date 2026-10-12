@@ -263,7 +263,9 @@ def test_the_series_index_name_says_what_it_holds(staged):
 def test_indexed_by_must_be_a_coordinate_of_the_attribute(staged):
     series = pd.Series({"a": 1.0})
     with pytest.raises(ValueError, match="no coordinate of"):
-        staged.set("capacity_fixed", series, entity=["Manchester Wind"], indexed_by="snapshot")
+        staged.set(
+            "p_nom", series, entity=["Manchester Wind"], indexed_by="snapshot"
+        )
 
 
 # -- set (https://energy-models.github.io/datarecord/design/working-record/#set) -------------------------------------------------------------
@@ -271,9 +273,9 @@ def test_indexed_by_must_be_a_coordinate_of_the_attribute(staged):
 
 def test_set_stages_without_writing(staged, root):
     """Staging is not a layer: the record reads the edit, the record does not."""
-    staged.set("capacity_fixed", 150.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
 
-    assert _column(staged, "capacity_fixed")["Manchester Wind"] == 150.0
+    assert _column(staged, "p_nom")["Manchester Wind"] == 150.0
     # The record itself is untouched until commit.
     assert _static(root, "p_nom")["Manchester Wind"] != 150.0
 
@@ -331,21 +333,23 @@ def test_last_write_wins_within_the_staging_area(staged, root):
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.set("capacity_fixed", 100.0, entity=["Manchester Wind"])
-    staged.set("capacity_fixed", 150.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 100.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
 
     # Read back before commit: the collapse is what the read applies too, so
     # the second edit wins without the rows having been merged when staged.
     axis = _entities(staged)
     mine = axis[axis["entity"] == "Manchester Wind"]
-    assert list(mine["capacity_fixed"]) == [150.0], "one row survives the collapse, the later"
+    assert list(mine["p_nom"]) == [150.0], (
+        "one row survives the collapse, the later"
+    )
 
     child = staged.commit(NewChild(root))
     assert _static(child, "p_nom")["Manchester Wind"] == 150.0
 
 
 def test_set_over_several_names(staged, root):
-    staged.set("capacity_fixed", 150.0, entity=["Manchester Wind", "Norway Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind", "Norway Wind"])
     child = staged.commit(NewChild(root))
 
     got = _static(child, "p_nom")
@@ -360,7 +364,7 @@ def test_set_rejects_an_unknown_name(staged):
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
     """
     with pytest.raises(KeyError, match="Nope"):
-        staged.set("capacity_fixed", 1.0, entity=["Nope"])
+        staged.set("p_nom", 1.0, entity=["Nope"])
 
 
 def test_set_accepts_a_name_staged_by_add(staged, root):
@@ -370,8 +374,8 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
     -----
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
-    staged.add(GEN, _new("NewSolar", capacity_fixed=1.0))
-    staged.set("capacity_fixed", 7.0, entity=["NewSolar"])
+    staged.add(GEN, _new("NewSolar", p_nom=1.0))
+    staged.set("p_nom", 7.0, entity=["NewSolar"])
 
     child = staged.commit(NewChild(root))
     assert _static(child, "p_nom")["NewSolar"] == 7.0
@@ -515,17 +519,17 @@ def test_a_staged_edit_is_read_back_and_then_re_read(staged, ac_dc):
 
     def p_nom(name):
         axis = _entities(staged)
-        return axis[axis["entity"] == name]["capacity_fixed"].tolist()
+        return axis[axis["entity"] == name]["p_nom"].tolist()
 
-    staged.set("capacity_fixed", 11.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 11.0, entity=["Manchester Wind"])
     assert p_nom("Manchester Wind") == [11.0]
 
-    staged.set("capacity_fixed", 22.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 22.0, entity=["Manchester Wind"])
     assert p_nom("Manchester Wind") == [22.0], "the read re-folds the staged layer"
 
     # A key the second edit never named, to pin that re-folding is not
     # re-resolving from scratch and dropping what the first edit staged.
-    staged.set("capacity_fixed", 33.0, entity=["Norway Wind"])
+    staged.set("p_nom", 33.0, entity=["Norway Wind"])
     assert p_nom("Manchester Wind") == [22.0]
     assert p_nom("Norway Wind") == [33.0]
 
@@ -716,8 +720,8 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
     """
     # Owned per entity alone: `p_nom` varies over no other axis, so there is no
     # extent along one to restate.
-    assert staged.schema.owned_per("capacity_fixed") == frozenset({"entity"})
-    staged.set("capacity_fixed", 150.0, entity=["Manchester Wind"])
+    assert staged.schema.owned_per("p_nom") == frozenset({"entity"})
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
     rows = _layer_entities(child, con)
@@ -729,7 +733,9 @@ def test_a_partial_axis_stays_a_patch(staged, root, con):
 
 
 def test_add_then_commit_makes_a_component_exist(staged, root):
-    staged.add(GEN, _new("NewSolar", bus="Manchester", role="attached", capacity_fixed=42.0))
+    staged.add(
+        GEN, _new("NewSolar", bus="Manchester", role="attached", p_nom=42.0)
+    )
     assert "NewSolar" in _members(staged), "the addition reads back before commit"
 
     child = staged.commit(NewChild(root))
@@ -756,7 +762,7 @@ def test_add_rejects_a_name_another_type_already_holds(typed_staged):
 
 def test_add_accepts_a_name_of_its_own_type(staged, root):
     """Re-adding a name of the same type is an edit to that member, not a clash."""
-    staged.add(GEN, _new("Manchester Wind", capacity_fixed=5.0))
+    staged.add(GEN, _new("Manchester Wind", p_nom=5.0))
     child = staged.commit(NewChild(root))
     assert (
         PyPSA.build(child.record).c[GEN].static.loc["Manchester Wind", "p_nom"] == 5.0
@@ -869,11 +875,11 @@ def test_add_fills_a_declared_column_another_add_omitted(staged):
     -----
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
     """
-    staged.add(GEN, _new("NewSolar", capacity_fixed=1234.5))
+    staged.add(GEN, _new("NewSolar", p_nom=1234.5))
     # No `p_nom`, so it is NULL for this one alone.
     staged.add(GEN, _new("NewWind"))
 
-    p_nom = _column(staged, "capacity_fixed")
+    p_nom = _column(staged, "p_nom")
     assert pd.isna(p_nom["NewWind"]), "not carried, so NULL"
     assert p_nom["NewSolar"] == 1234.5, "unaffected by the later add"
 
@@ -894,7 +900,7 @@ def test_add_after_remove_leaves_the_component_alive(staged, root):
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     staged.remove(GEN, ["Norway Gas"])
-    staged.add(GEN, _new("Norway Gas", capacity_fixed=1.0))
+    staged.add(GEN, _new("Norway Gas", p_nom=1.0))
 
     child = staged.commit(NewChild(root))
     assert "Norway Gas" in set(child.resolver.entity_axis.df()["entity"])
@@ -907,7 +913,7 @@ def test_a_tombstone_drops_that_components_staged_attributes(staged, root):
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.set("capacity_fixed", 99.0, entity=["Norway Gas"])
+    staged.set("p_nom", 99.0, entity=["Norway Gas"])
     staged.remove(GEN, ["Norway Gas"])
 
     child = staged.commit(NewChild(root))
@@ -1049,7 +1055,7 @@ def test_a_child_layer_holds_only_the_edits(staged, root, con):
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.set("capacity_fixed", 150.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
     rows = _layer_entities(child, con)
@@ -1117,7 +1123,7 @@ def test_new_child_defaults_to_the_node_the_record_was_built_over(staged, root):
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.set("capacity_fixed", 150.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild())
 
     assert child.parent == root.id
@@ -1133,7 +1139,7 @@ def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root, co
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
     before = _static(root, "p_nom")["Manchester Wind"]
-    staged.set("capacity_fixed", 150.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild())
 
     assert _static(child, "p_nom")["Manchester Wind"] == 150.0
@@ -1236,8 +1242,8 @@ def test_edits_read_under_the_base_records_schema(staged, con, tmp_path):
 
         editing = WorkingRecord(base, elsewhere)
         assert editing.schema == base.schema, "an edit declares nothing of its own"
-        editing.set("capacity_fixed", 999.0, entity=["Manchester Wind"])
-        assert _column(editing, "capacity_fixed")["Manchester Wind"] == 999.0
+        editing.set("p_nom", 999.0, entity=["Manchester Wind"])
+        assert _column(editing, "p_nom")["Manchester Wind"] == 999.0
     finally:
         elsewhere.close()
 
@@ -1249,12 +1255,12 @@ def test_a_directory_target_writes_a_flattened_record(staged, root, con, tmp_pat
     -----
     - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
     """
-    staged.set("capacity_fixed", 150.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     out = str(tmp_path / "flat")
     assert staged.commit(Directory(out)) is None
 
     record = Record.at(out, con)
-    assert _column(record, "capacity_fixed")["Manchester Wind"] == 150.0
+    assert _column(record, "p_nom")["Manchester Wind"] == 150.0
     # Flattened: every component is present, not left to a parent to supply.
     assert len(_members(record)) == 6
 
@@ -1266,7 +1272,7 @@ def test_a_committed_child_builds_a_network(staged, root):
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    staged.set("capacity_fixed", 150.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     child = staged.commit(NewChild(root))
 
     assert (
@@ -1363,7 +1369,7 @@ def test_results_accept_a_component_type_the_record_never_declared(staged):
 
     # The same name as an input is still rejected: membership governs inputs.
     with pytest.raises(KeyError, match="member row"):
-        staged.set("capacity_fixed", 1.0, entity=["NoSuchGenerator"])
+        staged.set("p_nom", 1.0, entity=["NoSuchGenerator"])
 
 
 def test_an_undeclared_result_is_rejected(staged):
@@ -1377,8 +1383,8 @@ def test_an_undeclared_result_is_rejected(staged):
     - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
-    with pytest.raises(KeyError, match="no result 'capacity_optt'"):
-        staged.set("capacity_optt", 1.0, entity=["Manchester Wind"], kind="outputs")
+    with pytest.raises(KeyError, match="no result 'p_nom_optt'"):
+        staged.set("p_nom_optt", 1.0, entity=["Manchester Wind"], kind="outputs")
 
 
 def test_a_result_may_not_vary_over_a_dim_it_does_not_declare(staged):
@@ -1388,10 +1394,10 @@ def test_a_result_may_not_vary_over_a_dim_it_does_not_declare(staged):
     -----
     - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
     """
-    assert "period" not in staged.schema.results["capacity_opt"].dims
+    assert "period" not in staged.schema.results["p_nom_opt"].dims
     with pytest.raises(ValueError, match="does not vary over"):
         staged.set(
-            "capacity_opt", 1.0, entity=["Manchester Wind"], kind="outputs", period=2030
+            "p_nom_opt", 1.0, entity=["Manchester Wind"], kind="outputs", period=2030
         )
 
 
@@ -1498,8 +1504,8 @@ def test_one_call_spans_component_types(staged):
     -----
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
-    staged.set("capacity_fixed", {"Manchester Wind": 150.0, "DC link": 80.0})
-    got = _column(staged, "capacity_fixed")
+    staged.set("p_nom", {"Manchester Wind": 150.0, "DC link": 80.0})
+    got = _column(staged, "p_nom")
     assert got["Manchester Wind"] == 150.0
     assert got["DC link"] == 80.0
 

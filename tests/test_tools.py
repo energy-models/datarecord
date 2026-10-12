@@ -144,13 +144,12 @@ def test_the_component_type_is_an_attribute_not_an_axis(multiperiod):
     assert declared.entity_type_dim is None
     assert not declared.traits
     assert list(source.entity_types) == []
-    assert {ENTITY_GROUP, "capacity_fixed", "extendable"} <= set(
+    assert {ENTITY_GROUP, "p_nom", "s_nom", "e_nom", "p_nom_extendable"} <= set(
         declared.attributes_on("entity")
     )
 
     axis = source.dims["entity"].collect().to_native().set_index("entity")
     assert axis.loc["Manchester Wind", ENTITY_GROUP] == "Generator"
-    assert set(declared.attributes_on("entity")).isdisjoint({"p_nom", "s_nom", "e_nom"})
 
 
 _DIMS = {
@@ -421,7 +420,7 @@ def test_results_extracts_long_form_outputs(single_revision):
 
     results = PyPSA.results(n)
     assert "p" in results
-    assert "capacity_opt" in results
+    assert "p_nom_opt" in results
 
     # Narwhals frames, so the seam names no one dataframe library, and lazy so a
     # tool may fetch on demand (https://energy-models.github.io/datarecord/design/tools/).
@@ -440,11 +439,13 @@ def test_results_extracts_long_form_outputs(single_revision):
 
     # A static output has no snapshot, and only the components whose value
     # differs from the default appear (some generators solve to p_nom_opt=0).
-    capacity = results["capacity_opt"].collect()
+    capacity = results["p_nom_opt"].collect()
     capacity = capacity.filter(nw.col("entity").is_in(list(gens)))
     assert capacity["snapshot"].is_null().all()
     nonzero = n.c["Generator"].static["p_nom_opt"] != 0.0
-    assert set(capacity["entity"].to_list()) == set(n.c["Generator"].static.index[nonzero])
+    assert set(capacity["entity"].to_list()) == set(
+        n.c["Generator"].static.index[nonzero]
+    )
 
 
 def test_results_concatenate_every_type_under_one_attribute(single_revision):
@@ -482,7 +483,7 @@ def test_results_skips_outputs_still_at_their_default(single_revision):
     n = PyPSA.build(single_revision.record)
     results = PyPSA.results(n)
     assert "p" not in results
-    assert "capacity_opt" not in results
+    assert "p_nom_opt" not in results
 
 
 def test_a_second_tool_needs_no_record_change(con, base_uri, ac_dc):
@@ -606,8 +607,6 @@ def test_a_bus_series_is_keyed_by_bus(multiperiod_revision):
     [
         ("entity_carrier", "Manchester Wind", "wind"),
         ("bus_carrier", "Norway DC", "DC"),
-        ("entity_technology_group", "Norway Gas", "OCGT"),
-        ("technology_group_carrier", "onwind", "wind"),
     ],
 )
 def test_classifications_are_groups(multiperiod_revision, group, key, expected):
@@ -616,12 +615,18 @@ def test_classifications_are_groups(multiperiod_revision, group, key, expected):
     assert by_key[key] == expected
 
 
-def test_resource_class_is_per_entity(multiperiod_revision):
-    axis = _parquet(multiperiod_revision, "dims/technology_group.parquet")
-    assert "resource_class" not in axis.columns
+@pytest.mark.parametrize(
+    ("column", "entity", "expected"),
+    [
+        ("entity_map_technology", "Norway Gas", "OCGT"),
+        ("resource_class", "Manchester Wind", 1),
+    ],
+)
+def test_custom_columns_are_per_entity(multiperiod_revision, column, entity, expected):
     members = _parquet(multiperiod_revision, "dims/entity.parquet").set_index("entity")
-    assert members.loc["Manchester Wind", "resource_class"] == 1
-    assert pd.isna(members.loc["Norway Gas", "resource_class"])
+    assert members.loc[entity, column] == expected
+    assert "technology_group" not in members.columns
+    assert "technology_group" not in read_schema().dimensions
 
 
 def test_geometry_is_wkt_with_its_crs_in_meta(multiperiod_revision, multiperiod):
@@ -638,27 +643,6 @@ def test_a_multiperiod_snapshot_is_within_its_period(multiperiod_revision):
     assert {"period", "snapshot", "snapshot_weighting_objective"} <= set(axis.columns)
     periods = _parquet(multiperiod_revision, "dims/period.parquet")
     assert periods["period_year"].tolist() == [2030, 2040, 2050]
-
-
-def _with_generators(n, **columns):
-    m = n.copy()
-    for column, values in columns.items():
-        m.c["Generator"].static[column] = values
-    return m
-
-
-@pytest.mark.parametrize(
-    ("columns", "match"),
-    [
-        ({"technology_group": "all"}, "exactly one carrier"),
-    ],
-)
-def test_technology_groups_must_be_functions_of_their_members(
-    multiperiod, columns, match
-):
-    n = _with_generators(multiperiod, **columns)
-    with pytest.raises(ValueError, match=match):
-        PyPSA.to_datarecord(n)
 
 
 def test_a_shape_the_record_cannot_place_is_rejected(multiperiod):
@@ -707,7 +691,7 @@ def test_the_shipped_spec_binds_to_the_record(multiperiod):
 
 
 def test_the_shipped_spec_binds_to_a_record_without_storage(ac_dc):
-    """Names only absent types register, and the technology-group axis, are not missing.
+    """Names only absent types register are not missing.
 
     Any other name stays required.
 

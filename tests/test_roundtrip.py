@@ -112,9 +112,9 @@ def test_roundtrip_matches_pypsa_reader(con, base_uri, single_revision, ac_dc):
 def test_roundtrip_matches_original(con, base_uri, request, network):
     """Genuine data loss surfaces here even if it is shared with upstream.
 
-    `multiperiod` carries investment periods, custom columns, bus regions and
-    technology groups, every one of which the record stores off the
-    component frames and `build` puts back.
+    `multiperiod` carries investment periods, custom columns (`technology_group`
+    among them, stored as `entity_map_technology`) and bus regions, every one of
+    which the record stores off the component frames and `build` puts back.
 
     Notes
     -----

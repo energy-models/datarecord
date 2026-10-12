@@ -197,7 +197,7 @@ def test_no_layer_file_carries_order_key(con, base_uri, ac_dc, tmp_path):
     write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
 
     staged = WorkingRecord(revision.record, con)
-    staged.set("capacity_fixed", 150.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     out = str(tmp_path / "flat")
     staged.commit(Directory(out))
 
