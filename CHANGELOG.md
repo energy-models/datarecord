@@ -19,9 +19,10 @@ All notable changes to datarecord are documented here. The format follows
   format change: `inputs/` and `outputs/` files over a group are rewritten.
   The dims a group draws on now broadcast, so a per-bus value with
   `bus = NULL` holds for every bus, and patching one bus at a time needs
-  `bus` in `partial`. `WorkingRecord.set` still takes `bus=` and accepts a
-  frame with the struct or its coordinates flat. Naming a group beside a dim its key is named for
-  (`dims={"connection", "bus"}`) is rejected.
+  `bus` in `partial`. `WorkingRecord.set` still takes `bus=`; a long frame
+  carries the struct, its coordinates flat being rejected. Naming a group
+  beside a dim its key is named for (`dims={"connection", "bus"}`) is
+  rejected.
 - A `Workspace` holds the DuckDB connection and a `Store` one location;
   `connect`, `layer_dir`, `DATARECORD_BASE_URI`, `Record.at` and the process
   default connection are gone. A store's revisions live beside its layers as

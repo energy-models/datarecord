@@ -1140,17 +1140,13 @@ class WorkingRecord(Record):
             self._validate_attribute(ctype, attribute, dims, name=name)
 
     def _check_group_columns(self, lazy: nw.LazyFrame, attribute: str) -> None:
-        """Reject a frame carrying a group both packed and flat, or packed wrong.
-
-        Flat coordinates are packed on the way in (`_insert_long`), so a frame
-        may carry either form; both at once could disagree. A struct must have
-        exactly the group's key as fields - a cast would silently drop an extra
-        one and NULL a missing one.
+        """Reject a frame carrying a group other than as its one struct column.
 
         Raises
         ------
         ValueError
-            Naming the group and the key it is carried by.
+            On a group's key coordinate as a flat column, naming the struct to
+            pass instead, or on a struct not of exactly the group's key.
 
         Notes
         -----
@@ -1159,15 +1155,17 @@ class WorkingRecord(Record):
         """
         types = lazy.collect_schema()
         for group in self.schema.coordinates_of(attribute):
-            if not _is_group_column(self.schema, group) or group not in types:
+            if not _is_group_column(self.schema, group):
                 continue
-            flat = sorted(set(self.schema.group_key(group)) & set(types))
-            if flat:
+            key = self.schema.group_key(group)
+            if flat := [c for c in key if c in types]:
                 msg = (
-                    f"`set({attribute!r}, <frame>)` carries {group!r} beside {flat}; "
-                    f"a group is one struct or its coordinates flat, not both (https://energy-models.github.io/datarecord/design/schema/#groups)"
+                    f"`set({attribute!r}, <frame>)` carries {flat} flat; pass "
+                    f"{group!r} as one struct column with fields {list(key)} (https://energy-models.github.io/datarecord/design/schema/#groups)"
                 )
                 raise ValueError(msg)
+            if group not in types:
+                continue
             dtype = types[group]
             self.schema.check_group_column(
                 group,

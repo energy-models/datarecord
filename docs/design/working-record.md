@@ -129,8 +129,8 @@ A label the axis does not have is refused rather than introduced: an axis row is
 A frame "supplies its own keys" now means its `entity` column alone: a `entity_type` column is neither required nor read, since [the name determines the type](format.md#entity-is-unique-across-types).
 A frame carrying one is rejected rather than ignored — it says the writer believes the type is part of the key, and silently dropping the column would let a genuine disagreement through.
 
-A frame over a group carries it **either as the struct column or as its key coordinates flat**, `entity | bus`; flat coordinates are packed on the way in, so the frame a tool already builds keeps working.
-One carrying both is rejected, the two being free to disagree, and so is a struct whose fields are not exactly the group's key, which a cast would silently re-key.
+A frame over a group carries it **as the struct column**, `connection STRUCT(entity, bus)`.
+One carrying a key coordinate flat, `entity` or `bus`, is rejected with the struct to pass instead, and so is a struct whose fields are not exactly the group's key, which a cast would silently re-key.
 
 The first four normalise to a long frame before staging, so there is one staging path.
 A length mismatch between a sequence and `entity` is an error at the call, not a silently truncated edit.

@@ -985,39 +985,37 @@ def test_an_omitted_group_coordinate_is_a_null_field(staged):
     assert own == [({"entity": "Manchester Wind", "bus": None},)]
 
 
-def test_a_frame_may_carry_a_group_flat_or_packed(staged):
-    """Flat coordinates are packed on the way in; a packed struct passes through.
+def test_a_frame_carries_a_group_as_its_struct(staged):
+    """A packed struct passes through, one key replacing the last.
 
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
-    flat = pd.DataFrame(
-        [{"entity": "Manchester Wind", "bus": "Manchester", "value": 0.5}]
-    )
-    staged.set("efficiency", flat)
-    assert list(_efficiency(staged)["Manchester"]) == [0.5]
-
-    packed = staged.con.sql(
-        "SELECT {'entity': 'Manchester Wind', 'bus': 'Manchester'} AS connection, "
-        "0.25 AS value"
-    )
-    staged.set("efficiency", packed)
+    for value in (0.5, 0.25):
+        staged.set(
+            "efficiency",
+            staged.con.sql(
+                "SELECT {'entity': 'Manchester Wind', 'bus': 'Manchester'} "
+                f"AS connection, {value} AS value"
+            ),
+        )
     assert list(_efficiency(staged)["Manchester"]) == [0.25], "one key, replaced"
 
 
 @pytest.mark.parametrize(
     "select",
     [
+        "'Manchester Wind' AS entity, 'Manchester' AS bus, 0.5 AS value",
         "{'entity': 'Manchester Wind', 'bus': 'Manchester'} AS connection, "
         "'Manchester' AS bus, 0.5 AS value",
         "{'entity': 'Manchester Wind'} AS connection, 0.5 AS value",
         "'Manchester' AS connection, 0.5 AS value",
     ],
-    ids=["both", "partial-struct", "not-a-struct"],
+    ids=["flat", "both", "partial-struct", "not-a-struct"],
 )
-def test_a_frame_carrying_a_group_twice_or_partly_is_rejected(staged, select):
-    """A struct beside its flat coordinates, or with other fields, is refused.
+def test_a_frame_carrying_a_group_but_as_its_struct_is_rejected(staged, select):
+    """Flat coordinates, beside the struct or not, or a wrong struct, are refused.
 
     Notes
     -----
@@ -1608,11 +1606,9 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, store):
     - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    frame = pd.DataFrame(
-        [
-            {"entity": "Manchester Wind", "value": 1.0},
-            {"entity": "0", "value": 2.0},
-        ]
+    frame = staged.con.sql(
+        "SELECT {'entity': entity, 'bus': NULL::VARCHAR} AS connection, value "
+        "FROM (VALUES ('Manchester Wind', 1.0), ('0', 2.0)) t(entity, value)"
     )
     staged.set("p", frame, kind="outputs")
 
