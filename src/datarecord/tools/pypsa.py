@@ -31,7 +31,7 @@ import pandas as pd
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyConnection, DuckDBPyRelation
+from duckdb import DuckDBPyConnection, DuckDBPyRelation, FunctionExpression
 from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all
@@ -391,6 +391,42 @@ def _exported(c) -> bool:
     return not c.static.empty and c.name not in c.n.standard_type_components
 
 
+_SUB_NETWORK = "SubNetwork"
+#: After a SubNetwork's name in a record. PyPSA numbers them `0`, `1`, ... as it
+#: numbers Lines, and a record's names are unique across types.
+_SUB_NETWORK_SUFFIX = " SubNetwork"
+
+
+def _record_name(ctype: str, name: str) -> str:
+    """`name` as the record keys it: a SubNetwork's suffixed, any other as is."""
+    return f"{name}{_SUB_NETWORK_SUFFIX}" if ctype == _SUB_NETWORK else name
+
+
+def _sub_network_named(rel: DuckDBPyRelation, column: str) -> DuckDBPyRelation:
+    """`rel` with `_SUB_NETWORK_SUFFIX` after every value of `column`."""
+    return rel.select(
+        *(
+            FunctionExpression("concat", col(c), lit(_SUB_NETWORK_SUFFIX)).alias(c)
+            if c == column
+            else col(c)
+            for c in rel.columns
+        )
+    )
+
+
+def _sub_network_unnamed(rel: DuckDBPyRelation, column: str) -> DuckDBPyRelation:
+    """`rel` with `_SUB_NETWORK_SUFFIX` taken off `column`, where it ends with it."""
+    pattern = lit(f"{re.escape(_SUB_NETWORK_SUFFIX)}$")
+    return rel.select(
+        *(
+            FunctionExpression("regexp_replace", col(c), pattern, lit("")).alias(c)
+            if c == column
+            else col(c)
+            for c in rel.columns
+        )
+    )
+
+
 def _colliding_names(n: pypsa.Network) -> frozenset[str]:
     """Names more than one exported component claims.
 
@@ -414,7 +450,7 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
             index.get_level_values("name") if "name" in (index.names or []) else index
         )
         for value in names:
-            name = str(value)
+            name = _record_name(c.name, str(value))
             if seen.setdefault(name, c.name) != c.name:
                 clashing.add(name)
     return frozenset(clashing)
@@ -1029,6 +1065,8 @@ class PyPSATool(Tool):
 
         for ctype in sorted(record.entity_types):
             static = to_relation(record.entity_types[ctype])
+            if ctype == _SUB_NETWORK:
+                static = _sub_network_unnamed(static, ENTITY)
             if not shape.stochastic and SCENARIO in static.columns:
                 static = static.project(star(exclude=[SCENARIO]))
             # `_pos` in member order before any join scrambles it: the member
@@ -1374,7 +1412,7 @@ def _registry_schema() -> RecordSchema:
             # enum rather than a bare string, and a type outside it is rejected on
             # write.
             ENTITY_TYPE: Dimension(
-                dtype=nw.Enum(sorted(carries)),
+                dtype=nw.Enum(ctypes),
                 description="What kind of entity an entity is.",
             ),
         },
@@ -1800,6 +1838,8 @@ class _NetworkSource:
         def keep(column: str) -> bool:
             if column in per_port:
                 return False  # a connection supplies it (https://energy-models.github.io/datarecord/design/record/#connections)
+            if ctype == _SUB_NETWORK and column == "obj":
+                return False  # PyPSA's live SubNetwork object, not data
             if column not in defaults.index:
                 # A custom column the registry has no entry for (e.g.
                 # `ac_dc_meshed`'s `Bus.country`). Non-varying by construction -
@@ -1820,6 +1860,7 @@ class _NetworkSource:
         # left is the same in every scenario and collapses to one entity row.
         columns = [x for x in columns if x not in _scenario_varying(c, columns)]
         frame = c.static[columns].reset_index().rename(columns={"name": "entity"})
+        frame["entity"] = [_record_name(ctype, str(x)) for x in frame["entity"]]
         return nw.from_native(self._tagged(frame)).lazy()
 
     @staticmethod
@@ -2028,8 +2069,13 @@ class _NetworkSource:
                 except (AttributeError, KeyError):
                     # Not every registry output has a container on every network.
                     continue
-                if rel is not None:
-                    rels.append(rel)
+                if rel is None:
+                    continue
+                if ctype == _SUB_NETWORK:
+                    rel = _sub_network_named(rel, ENTITY)
+                if column == "sub_network":
+                    rel = _sub_network_named(rel, "value")
+                rels.append(rel)
         return rels
 
     def _union_rel(

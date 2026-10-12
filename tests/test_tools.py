@@ -338,6 +338,27 @@ def test_to_datarecord_accepts_distinct_names(workspace):
     assert PyPSA.to_datarecord(n, workspace.con) is not None
 
 
+def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
+    """PyPSA numbers SubNetworks `0`, `1`, ... as it numbers Lines.
+
+    The record keys them `0 SubNetwork`, ..., the `sub_network` results
+    pointing at them likewise, and `build` takes the suffix off again.
+    """
+    n = ac_dc.copy()
+    n.determine_network_topology()
+    assert set(n.c["SubNetwork"].static.index) & set(n.c["Line"].static.index)
+
+    record = export_network(n, store).record
+    names = record.entity_types["SubNetwork"].collect().to_pandas()["entity"]
+    assert sorted(names) == [f"{i} SubNetwork" for i in range(4)]
+    results = PyPSA.results(n, store.workspace.con)
+    pointed = set(results["sub_network"].collect().to_pandas()["value"])
+    assert pointed <= set(names), "a `sub_network` value names a SubNetwork entity"
+
+    built = PyPSA.build(record)
+    assert sorted(built.c["SubNetwork"].static.index) == ["0", "1", "2", "3"]
+
+
 def test_a_stochastic_network_is_not_a_false_collision():
     """A `(scenario, name)` index is one name per component, not one per scenario.
 

@@ -55,6 +55,7 @@ It is also where a framework scoping names **per type** meets [a record scoping 
 PyPSA permits a `Bus` and a `Generator` both called `north`, so `to_datarecord` reports such a network as unbuildable rather than writing a record whose two entities share one key.
 Reported rather than repaired: renaming to `Generator:north` would hand back a network whose components the framework can no longer find by their own names, and the record layer does not own a framework's vocabulary.
 PyPSA is itself moving to record-wide unique names, so this is a constraint that resolves rather than one to design around.
+SubNetworks are the exception: PyPSA names them `0`, `1`, … on every topology pass, as it numbers Lines, so there is no caller to report to. The record keys them `0 SubNetwork`, …, as a caller suffixes a clashing `Load`, the `sub_network` results pointing at them likewise, and `build` takes the suffix off, so the framework finds them by their own names again.
 It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by [`order_key`](read-path.md#owner-map), and where a curve is either translated or reported unbuildable.
 A per-connection input follows its connection's position: `efficiency` on a Link's `bus2` connection is PyPSA's `efficiency2`, static or per snapshot.
 A Process's `rate0`, `rate1`, `rate2`, … are likewise the one input `rate`, numbered from `0` because PyPSA registers `rate0` where it leaves port `1`'s `efficiency` unsuffixed.
