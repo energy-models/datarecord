@@ -852,25 +852,24 @@ class Schema(BaseModel):
         spec = self.groups[group]
         return nw.Struct({c: self.dimensions[spec.over[c]].dtype for c in spec.key})
 
-    def check_group_column(
+    def check_group_columns(
         self,
-        group: str,
-        columns: Mapping[str, Iterable[str] | None],
+        groups: Iterable[str],
+        columns: Mapping[str, nw.dtypes.DType],
         *,
         carrier: str,
     ) -> None:
-        """Reject `group` carried other than as one struct column of exactly its key.
+        """Reject each of `groups` carried other than as one struct column of exactly its key.
 
         A cast would not catch a struct of other fields: a struct casts by field
         name, so a missing field turns NULL and an extra one is dropped,
-        silently re-keying every row. A carrier without the group's column
+        silently re-keying every row. A carrier without a group's column
         passes, whether it may lack one being the caller's to say.
 
         Parameters
         ----------
         columns
-            Each column the carrier has, to its struct fields - `None` where
-            it is no struct.
+            The carrier's column types - a narwhals frame's `collect_schema()`.
         carrier
             What carries the columns, named in the message.
 
@@ -884,16 +883,24 @@ class Schema(BaseModel):
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        key = self.group_key(group)
-        flat = [c for c in key if c in columns]
-        fields = columns.get(group, key)
-        if flat or fields is None or set(fields) != set(key):
-            carried = f"{flat} flat" if flat else f"{group!r} with fields {fields}"
-            msg = (
-                f"{carrier} carries {carried}; pass {group!r} as one struct "
-                f"column with a field per key coordinate, {list(key)} (https://energy-models.github.io/datarecord/design/schema/#groups)"
+        for group in groups:
+            key = self.group_key(group)
+            flat = [c for c in key if c in columns]
+            dtype = columns.get(group)
+            fields = (
+                key
+                if dtype is None
+                else [f.name for f in dtype.fields]
+                if isinstance(dtype, nw.Struct)
+                else None
             )
-            raise ValueError(msg)
+            if flat or fields is None or set(fields) != set(key):
+                carried = f"{flat} flat" if flat else f"{group!r} as {dtype}"
+                msg = (
+                    f"{carrier} carries {carried}; pass {group!r} as one struct "
+                    f"column with a field per key coordinate, {list(key)} (https://energy-models.github.io/datarecord/design/schema/#groups)"
+                )
+                raise ValueError(msg)
 
     def long_columns_for(self, attribute: str) -> tuple[str, ...]:
         """One attribute's full long column set, in order - input or result.

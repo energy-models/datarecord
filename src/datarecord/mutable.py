@@ -1036,11 +1036,11 @@ class WorkingRecord(Record):
                     f"carries no type and the column would be ignored (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
                 )
                 raise ValueError(msg)
-            columns = _struct_fields(lazy)
-            for group in self.schema.groups_of(attribute):
-                self.schema.check_group_column(
-                    group, columns, carrier=f"`set({attribute!r}, <frame>)`"
-                )
+            self.schema.check_group_columns(
+                self.schema.groups_of(attribute),
+                lazy.collect_schema(),
+                carrier=f"`set({attribute!r}, <frame>)`",
+            )
             if kind == "inputs":
                 self._validate_frame(lazy, attribute, dims)
             else:
@@ -1779,7 +1779,7 @@ class WorkingRecord(Record):
         ------
         ValueError
             On a missing group or `into` column, and as
-            `Schema.check_group_column` does.
+            `Schema.check_group_columns` does.
 
         Notes
         -----
@@ -1787,8 +1787,8 @@ class WorkingRecord(Record):
         """
         call = f"`add_group({group!r}, ...)`"
         lazy = _incoming(frame, self.con)
-        columns = _struct_fields(lazy)
-        self.schema.check_group_column(group, columns, carrier=call)
+        columns = lazy.collect_schema()
+        self.schema.check_group_columns([group], columns, carrier=call)
         into = self.schema.groups[group].into
         for required in (group, *([into] if into else [])):
             if required not in columns:
@@ -2208,14 +2208,6 @@ def _packed(
             for c, d in schema.groups[group].over.items()
         }
     ).cast(duck_types(schema.group_type(group)))
-
-
-def _struct_fields(lazy: nw.LazyFrame) -> dict[str, list[str] | None]:
-    """Each column of `lazy` to its struct fields, `None` where it is no struct."""
-    return {
-        c: [f.name for f in t.fields] if isinstance(t, nw.Struct) else None
-        for c, t in lazy.collect_schema().items()
-    }
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:

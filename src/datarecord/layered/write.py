@@ -22,6 +22,7 @@ from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
 
+import narwhals as nw
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
@@ -375,9 +376,9 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
                 f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
             )
             raise ValueError(msg)
-        for group in schema.groups_of(key) if kind == "attributes" else ():
-            schema.check_group_column(
-                group, _struct_fields(rel), carrier=f"inputs/{key}.parquet"
+        if kind == "attributes":
+            schema.check_group_columns(
+                schema.groups_of(key), _types(rel), carrier=f"inputs/{key}.parquet"
             )
         return
 
@@ -445,15 +446,12 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             f"it (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
         )
         raise ValueError(msg)
-    schema.check_group_column(key, _struct_fields(rel), carrier=f"groups/{key}.parquet")
+    schema.check_group_columns([key], _types(rel), carrier=f"groups/{key}.parquet")
 
 
-def _struct_fields(rel: DuckDBPyRelation) -> dict[str, list[str] | None]:
-    """Each column of `rel` to its struct fields, `None` where it is no struct."""
-    return {
-        c: [n for n, _ in t.children] if t.id == "struct" else None
-        for c, t in zip(rel.columns, rel.types, strict=True)
-    }
+def _types(rel: DuckDBPyRelation) -> nw.Schema:
+    """`rel`'s column types as narwhals dtypes, what `Schema` checks against."""
+    return nw.from_native(rel).collect_schema()
 
 
 class _RecordLikeAsLayerData:
