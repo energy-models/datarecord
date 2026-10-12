@@ -34,7 +34,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, FunctionExpression
 from duckdb import StarExpression as star
 
-from datarecord.duck import ex_all
+from datarecord.duck import DuckTypes, ex_all, fn, struct_of
 from datarecord.record import Flags, Frames, LazyFrames, RecordLike
 from datarecord.schema import AttributeSpec, Dimension, Group, Trait
 from datarecord.schema import Schema as RecordSchema
@@ -1092,7 +1092,7 @@ class PyPSATool(Tool):
                 # Through the schema, so a renamed or computed attribute
                 # reaches the pivot below as an ordinary long relation. Scoped
                 # by a semi-join against `static`, this type's entity table (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-                long = self.schema.resolve(record, ctype, attr)
+                long = _unpack_connection(self.schema.resolve(record, ctype, attr))
                 # An attribute addressed by `entity` scopes to this type's
                 # members; one addressed by an axis alone has no entity column
                 # to scope by, and belongs to the record rather than to a
@@ -1125,8 +1125,8 @@ class PyPSATool(Tool):
         `entity_type` to tell the arms apart. Which attributes count as
         results comes from PyPSA's registry, so an upgrade that adds one is
         picked up, by the same rule the schema declares `results` by: a per-port
-        result (`p0`, `p1`, a Generator's `p`) is one `p` row per connection with
-        its `bus`, `Bus.p`/`q` are not written, `Link.p` is `p_internal`, and a
+        result (`p0`, `p1`, a Generator's `p`) is one `p` row per connection,
+        keyed by its `connection` struct, `Bus.p`/`q` are not written, `Link.p` is `p_internal`, and a
         name PyPSA also registers as an input (`Bus.control`) is none.
 
         Each frame is a lazy DuckDB relation on `con` over the network's
@@ -1231,8 +1231,8 @@ def _attribute_spec(row: pd.Series, *, per_port: bool) -> AttributeSpec:
     """One `c.defaults` row as the spec a record declares, input or result.
 
     `entity` is a dim like any other, so an entity attribute declares it, and
-    a per-port one names the `connection` group instead, which expands to
-    `(entity, bus)`. A varying attribute varies over time and, in a stochastic
+    a per-port one names the `connection` group instead, whose rows carry it
+    as one `{entity, bus}` struct. A varying attribute varies over time and, in a stochastic
     network, scenario; both are declared always, a network without scenarios
     writing none.
 
@@ -1434,7 +1434,7 @@ def _registry_schema() -> RecordSchema:
         traits=traits,
         # `partial` names value dims a layer patches per value: a layer may set
         # one generator's `p_nom` per scenario without restating the rest.
-        # Membership keys - `entity`, the `connection` group's `bus` - are in the
+        # Membership keys - `entity`, the `connection` group's column - are in the
         # fold key by being membership, not by being `partial`
         # (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
         partial=frozenset({SCENARIO}),
@@ -1916,10 +1916,9 @@ class _NetworkSource:
     def _long_frame(self, attribute: str, ctypes: list[str]) -> nw.LazyFrame:
         """One attribute's long rows, across every type that has it.
 
-        A per-connection attribute contributes rows carrying the bus each port
-        attaches to; a component-level one has no `bus` column at all, that
-        being the connection group's coordinate rather than a column the format
-        fixes. The rows are a DuckDB relation melted by `_as_long_rel`, so the
+        A per-connection attribute contributes rows carrying the `connection`
+        struct each port is, in place of `entity`; a component-level one carries
+        `entity` alone. The rows are a DuckDB relation melted by `_as_long_rel`, so the
         frame stays a lazy plan `write_layer` writes without a copy.
 
         Notes
@@ -1928,8 +1927,7 @@ class _NetworkSource:
         - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
         """
         # This attribute's own columns, from its spec: one file is one attribute,
-        # so a component attribute hands over no `bus` and none a dim it is not
-        # addressed by (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+        # so it hands over no dim it is not addressed by (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
         columns = list(_registry_schema().long_columns_for(attribute))
         rels = []
         for ctype in ctypes:
@@ -1947,10 +1945,10 @@ class _NetworkSource:
     def _per_port_long_rels(
         self, c: pypsa.Components, stem: str
     ) -> list[DuckDBPyRelation]:
-        """A per-connection attribute's long relations, one per port, `bus` filled.
+        """A per-connection attribute's long relations, one per port.
 
         The inverse of the positional collapse: `efficiency`/`efficiency2` become
-        one attribute whose rows carry the bus each port attaches to.
+        one attribute whose rows carry the connection each port is.
 
         Notes
         -----
@@ -1974,11 +1972,12 @@ class _NetworkSource:
         *,
         drop_defaults: bool,
     ) -> DuckDBPyRelation | None:
-        """`column`'s long relation at `port`, tagged `attribute`, `bus` filled.
+        """`column`'s long relation at `port`, tagged `attribute`, keyed by connection.
 
-        The bus is joined from the port's static bus column rather than mapped
-        in pandas, so the rows stay a relation. `None` where the port has no bus
-        column or `column` contributes no rows.
+        The `connection` struct packs the entity with the bus joined from the
+        port's static bus column rather than mapped in pandas, so the rows stay a
+        relation. `None` where the port has no bus column or `column`
+        contributes no rows.
 
         Notes
         -----
@@ -1986,7 +1985,7 @@ class _NetworkSource:
         """
         con = self.con
         static = c.static
-        bus_column = _port_attribute("bus", port, c.defaults.index)
+        bus_column = _port_attribute(BUS, port, c.defaults.index)
         if bus_column not in static.columns:
             return None
         # `static` is `(scenario, name)`-indexed on a stochastic network; a
@@ -2001,14 +2000,21 @@ class _NetworkSource:
         bus_rel = con.sql(  # noqa: F841 - bound by name for the join below
             "SELECT CAST(entity AS VARCHAR) entity, bus FROM bus_df"
         )
-        # `v` already carries `attribute`, so the join only adds `bus`; an inner
-        # join drops a port whose bus is empty.
-        v = self._tagged_long_rel(  # noqa: F841 - bound by name for the query
-            c, attribute, column, drop_defaults=drop_defaults
-        )
+        # An inner join drops a port whose bus is empty.
+        v = self._tagged_long_rel(c, attribute, column, drop_defaults=drop_defaults)
         if v is None:
             return None
-        return con.sql("SELECT v.*, b.bus FROM v JOIN bus_rel b ON v.entity = b.entity")
+        connection = struct_of({ENTITY: col("v", ENTITY), BUS: col("b", BUS)}).cast(
+            DuckTypes(v)(_registry_schema().group_type(CONNECTION))
+        )
+        return (
+            v.set_alias("v")
+            .join(bus_rel.set_alias("b"), col("v", ENTITY) == col("b", ENTITY))
+            .project(
+                *(col("v", name) for name in v.columns if name != ENTITY),
+                connection.alias(CONNECTION),
+            )
+        )
 
     def _output_frame(self, attribute: str, ctypes: list[str]) -> nw.LazyFrame:
         """One result attribute's long rows, across every type that has it.
@@ -2030,7 +2036,7 @@ class _NetworkSource:
         return self._union_rel(rels, self._output_columns(attribute))
 
     def _output_columns(self, attribute: str) -> list[str]:
-        """A result's long columns: `bus` where it is over the `connection` group.
+        """A result's long columns: `connection` where it is over that group.
 
         Every network axis whether or not the result varies over it, as the
         melt produces them.
@@ -2040,8 +2046,8 @@ class _NetworkSource:
         - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
         """
         spec = _registry_schema().results[attribute]
-        bus = [BUS] if CONNECTION in spec.dims else []
-        return [ENTITY, *bus, *self._DIMS, "attribute", "breakpoint", "value"]
+        member = CONNECTION if CONNECTION in spec.dims else ENTITY
+        return [member, *self._DIMS, "attribute", "breakpoint", "value"]
 
     def _output_rels(self, attribute: str, ctypes: list[str]) -> list[DuckDBPyRelation]:
         """One result attribute's per-type long relations, empties dropped.
@@ -2094,13 +2100,16 @@ class _NetworkSource:
     ) -> nw.LazyFrame:
         """Union `rels`, project `columns`, as a lazy narwhals frame.
 
-        An empty list is an empty frame with the right columns; `write_layer`
-        casts every column to its declared type, so a column pandas would type as
-        float from all-NULLs still lands right.
+        An empty list is an empty relation with the right columns, each of its
+        declared type: `write_layer` checks a group column is a struct before it
+        casts.
         """
         rel = self._union_rel(rels, columns)
         if rel is None:
-            return nw.from_native(pd.DataFrame(columns=columns)).lazy()
+            schema = _registry_schema()
+            rel = DuckTypes(self.con).empty_relation(
+                **{c: schema.column_type(c) or nw.String() for c in columns}
+            )
         return nw.from_native(rel).lazy()
 
 
@@ -2230,6 +2239,27 @@ def _collapse_connections(
     return joined.project(
         *(col("s", c) for c in static.columns),
         *(col("ports", c) for c in ports.columns if c not in ("entity", *varying)),
+    )
+
+
+def _unpack_connection(long: DuckDBPyRelation) -> DuckDBPyRelation:
+    """`long` with its `connection` struct spread to `entity` and `bus`, if it has one.
+
+    The flat pair is what PyPSA's per-type, per-port frames are keyed by, so the
+    struct is unpacked once, where an attribute is read for the build.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    if CONNECTION not in long.columns:
+        return long
+    return long.project(
+        *(col(c) for c in long.columns if c != CONNECTION),
+        *(
+            fn.struct_extract(col(CONNECTION), lit(field)).alias(field)
+            for field in (ENTITY, BUS)
+        ),
     )
 
 

@@ -199,8 +199,10 @@ def test_constructions_agree_on_rows(both):
             right = other.attributes[attribute].collect().to_native().to_pandas()
             columns = sorted(set(left.columns) & set(right.columns))
             assert set(left.columns) == set(right.columns), attribute
-            left = left[columns].sort_values(columns).reset_index(drop=True)
-            right = right[columns].sort_values(columns).reset_index(drop=True)
+            # A group's struct column arrives as dicts, which pandas cannot sort.
+            order = {"by": columns, "key": lambda s: s.astype(str)}
+            left = left[columns].sort_values(**order).reset_index(drop=True)
+            right = right[columns].sort_values(**order).reset_index(drop=True)
             assert left.equals(right), attribute
 
 
