@@ -49,7 +49,7 @@ from datarecord.duck import (
     try_read_parquet,
     union_all_by_name,
 )
-from datarecord.layered.fold import Fold, owning_entity
+from datarecord.layered.fold import Fold, entity_coordinates
 from datarecord.layered.sources import LayerSource, ParquetLayer
 from datarecord.record import Flags
 from datarecord.schema import LAYER_COLUMN, Schema
@@ -513,8 +513,9 @@ def fold_inputs(
 ) -> DuckDBPyRelation:
     """This layer's inputs map: its `inputs/` keys, folded over `parent`.
 
-    An entity tombstone drops a parent row by its `owning_entity`, so removing
-    an entity drops its connections' values while the connection tuples stand.
+    An entity tombstone drops a parent row naming the entity anywhere among its
+    `entity_coordinates`, so removing an entity drops its connections' values
+    while the connection tuples stand.
 
     Notes
     -----
@@ -583,10 +584,11 @@ def fold_inputs(
             f"partial dim keyed by {schema.axis_key(d)} outruns `input_key` "
             f"{schema.input_key}; a nested dim needs its parents in the fold key"
         )
+    dead_entities = _deleted_relation(source.axis("entity"), keys, con)
     memberships = [
-        (
-            _deleted_relation(source.axis("entity"), keys, con),
-            owning_entity(schema, "p", keyed) == col("x", "entity"),
+        *(
+            (dead_entities, on == col("x", "entity"))
+            for on in entity_coordinates(schema, "p", keyed)
         ),
         *(
             (

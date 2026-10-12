@@ -36,7 +36,7 @@ from datarecord.duck import (
     struct_of,
     union_all_by_name,
 )
-from datarecord.layered.fold import Fold, owning_entity
+from datarecord.layered.fold import Fold, entity_coordinates
 from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver
 from datarecord.record import (
@@ -1819,7 +1819,7 @@ class WorkingRecord(Record):
 
         One row, on the entity axis, which is where membership lives and the only
         place the fold reads an entity's tombstone from - a group attribute's row
-        included, by the entity inside its struct (`owning_entity`). A member
+        included, by each entity inside its struct (`entity_coordinates`). A member
         file holds values, never a `deleted` (`_member_columns`), so no second
         write there keeps step with this one. The axis row carries the type only
         where a group declares the axis; the delete keys on `entity` alone
@@ -1909,8 +1909,8 @@ class WorkingRecord(Record):
         clear this attribute's rows for the name too, and a `remove_group` its
         rows for the tuple.
 
-        An entity tombstone reaches a group attribute's row too, by its
-        `owning_entity` - as the fold does.
+        An entity tombstone reaches a group attribute's row too, by any of its
+        `entity_coordinates` - as the fold does.
 
         None where nothing is staged for it, which is what says the base's rows
         stand alone.
@@ -1927,8 +1927,10 @@ class WorkingRecord(Record):
         # Matched on `name` alone: the tombstone carries a type and a staged
         # input row does not (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
         if dead is not None:
-            on = owning_entity(self.schema, "l", rel.columns) == col("d", "entity")
-            rel = rel.set_alias("l").join(dead.set_alias("d"), on, how="anti")
+            for on in entity_coordinates(self.schema, "l", rel.columns):
+                rel = rel.set_alias("l").join(
+                    dead.set_alias("d"), on == col("d", "entity"), how="anti"
+                )
         for g in (c for c in rel.columns if _is_group_column(self.schema, c)):
             tuples = self._rows(g)
             if tuples is None:

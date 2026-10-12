@@ -9,9 +9,14 @@ Notes
 - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
 """
 
+from pathlib import Path
+from typing import Any
+
+import duckdb
 import narwhals as nw
 
 from datarecord.layered.revision import Revision
+from datarecord.mutable import WorkingRecord
 from datarecord.schema import AttributeSpec, Schema
 from tests.fixtures import (
     empty_child,
@@ -23,6 +28,7 @@ from tests.fixtures import (
     write_axis,
     write_connections,
     write_entity_type,
+    write_group,
     write_input,
     write_schema,
 )
@@ -372,3 +378,103 @@ def test_a_map_folded_before_the_group_was_keyed_reads_it_as_null(store):
 
     assert _efficiencies(child) == {"h2_north": 2.0}
     assert list(relation(child, "p_nom").df()["value"]) == [100.0]
+
+
+# -- a group drawing twice on `entity` --------------------------------------
+
+SELLER, BUYER = "Generator", "Load"
+
+
+def _contract_root(store) -> Revision:
+    """Two contracts `(from, to)`, from one seller to two buyers.
+
+    `price` is over `{contract, snapshot}`, so no top-level `entity` names
+    either party: both ride inside the `contract` struct.
+    """
+    price = AttributeSpec(dtype=nw.Float64(), dims={"contract", "snapshot"})
+    write_schema(
+        schema(
+            attributes={SELLER: {"price": price}},
+            groups={
+                "connection": {"entity": "entity", "bus": "bus"},
+                "contract": {"from": "entity", "to": "entity"},
+            },
+        ),
+        store,
+    )
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_entity_type(layer, SELLER, [{"entity": "plant"}])
+    write_entity_type(layer, BUYER, [{"entity": "mill"}, {"entity": "smelter"}])
+    write_group(
+        layer,
+        "contract",
+        [{"from": "plant", "to": "mill"}, {"from": "plant", "to": "smelter"}],
+    )
+    Path(layer, "inputs").mkdir(parents=True, exist_ok=True)
+    duckdb.sql(
+        """
+        SELECT {'from': 'plant', 'to': c}::STRUCT("from" VARCHAR, "to" VARCHAR)
+                   AS contract,
+               NULL::TIMESTAMP AS snapshot, 'price' AS attribute, v AS value
+        FROM (VALUES ('mill', 10.0), ('smelter', 20.0)) t(c, v)
+        """
+    ).to_parquet(str(Path(layer, "inputs", "price.parquet")))
+    return revision
+
+
+def _prices(record) -> dict[str, float]:
+    df = record.attributes["price"].collect().to_native().to_pandas()
+    return {c["to"]: v for c, v in zip(df["contract"], df["value"], strict=True)}
+
+
+def test_an_entity_tombstone_reaches_a_groups_second_entity(store):
+    """Removing the buyer drops its contract's values, as removing the seller would.
+
+    Every key coordinate over `entity` names an owner, so a row dies when any of
+    them is tombstoned; the contract tuple stands, as a connection's does.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
+    root = _contract_root(store)
+    assert _prices(root.record) == {"mill": 10.0, "smelter": 20.0}
+
+    child = empty_child(root)
+    tombstone(store.layer_dir(child.id), BUYER, ["mill"])
+    assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
+    contracts = child.record.groups["contract"].collect().to_native()
+    assert len(contracts) == 2, "the tuples are not cascaded to"
+
+
+def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
+    """Staging drops the parent's and its own rows for the `to` entity, as the fold.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    root = _contract_root(store)
+    staged = WorkingRecord(root.record)
+    contract: dict[str, Any] = {"from": "plant", "to": "mill"}
+    staged.set("price", 30.0, **contract)
+    assert _prices(staged)["mill"] == 30.0, "the staged value reads before removal"
+    staged.remove(BUYER, ["mill"])
+    assert _prices(staged) == {"smelter": 20.0}, "neither the base's nor the staged"
+
+    child = root.child(staged.edits)
+    assert _prices(child.record) == {"smelter": 20.0}
+
+
+def test_flags_scope_a_two_entity_row_to_the_type_of_each(store):
+    """A contract across two types counts towards both; a third sees nothing.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    """
+    record = _contract_root(store).record
+    assert "price" in record.flags(SELLER), "the `from` entity's type"
+    assert "price" in record.flags(BUYER), "the `to` entity's type too"
+    assert "price" not in record.flags("Store"), "no party is of this type"

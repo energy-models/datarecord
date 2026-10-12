@@ -194,7 +194,7 @@ So an attribute addressed by `entity` alone reports both sets empty, and that is
 
 Per entity type, because one file holds every type's rows: unioning across types would report a Generator's per-timestep rows and a Link's single row as one shape, which describes neither.
 Scoping is a join to the entity_types map on `entity`, not a filter on the attribute rows ([entity is unique across types](format.md#entity-is-unique-across-types)).
-A row keyed by a group joins on the entity inside the group's column — a group drawing twice on `entity` by its first coordinate — and an attribute addressing no entity at all, a per-bus value, is in no type's `flags`.
+A row keyed by a group joins on each entity inside the group's column — a group drawing twice on `entity` counts towards the type of either — and an attribute addressing no entity at all, a per-bus value, is in no type's `flags`.
 
 ## The protocol names no engine
 

@@ -29,7 +29,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 
@@ -156,9 +155,9 @@ class Fold:
         """Per attribute, which dims its rows use - whole-record, or one type.
 
         Whole-record when `entity_type` is `None`; scoped to a type's entities
-        when named, by a semi-join to the resolved entity axis on the row's
-        entity - the one inside a group's column where the row is keyed by a
-        group (`owning_entity`). A type whose
+        when named, by a semi-join to the resolved entity axis on each entity the
+        row names (`entity_coordinates`). A row naming entities of two types -
+        a contract `(from, to)` across them - counts towards both. A type whose
         entities disagree yields a dim in both sets - the instruction to use
         both containers, each taking the rows it matches. The union stops at the
         type boundary: across types it would describe neither.
@@ -196,14 +195,20 @@ class Fold:
             axis = self.entity_axis
             if axis is None:
                 return None
-            of_type = axis.filter(col("entity_type") == lit(entity_type)).project(
-                "entity"
+            of_type = (
+                axis.filter(col("entity_type") == lit(entity_type))
+                .project("entity")
+                .distinct()
+                .set_alias("e")
             )
-            rel = rel.join(
-                of_type.distinct().set_alias("e"),
-                owning_entity(self.schema, "i", rel.columns) == col("e", "entity"),
-                how="semi",
-            )
+            # A row matched by two of its entities is counted twice; harmless
+            # under `bool_or`, so no distinct.
+            scoped = rel.limit(0)
+            for on in entity_coordinates(self.schema, "i", rel.columns):
+                scoped = scoped.union(
+                    rel.join(of_type, on == col("e", "entity"), how="semi")
+                )
+            rel = scoped
         flag = {
             c: struct_of(
                 {d: fn.bool_or(struct_field(rel, c, d, lit(False))) for d in dims}
@@ -246,38 +251,38 @@ class Fold:
         )
 
 
-def owning_entity(schema: Schema, alias: str, columns: Container[str]) -> Expression:
-    """The entity a long row of `alias` belongs to, wherever it sits.
+def entity_coordinates(
+    schema: Schema, alias: str, columns: Container[str]
+) -> list[Expression]:
+    """Every entity a long row of `alias` names, wherever it sits.
 
-    `entity` itself, or else the first coordinate over `entity` of a keyed
+    `entity` itself, and each key coordinate over `entity` of every keyed
     group's struct: a connection row has no top-level `entity`, its entity
-    riding inside `connection`. A group drawing twice on `entity` - a corridor
-    `(from, to)` - belongs to its first. NULL for a row with no entity, which
-    therefore belongs to no type and no entity tombstone reaches.
+    riding inside `connection`, and a group drawing twice on `entity` - a
+    contract `(from, to)` - names both. A row naming none belongs to no type and
+    no entity tombstone reaches it. Match one join per expression rather than an
+    `OR` of them, which DuckDB cannot hash.
 
     Parameters
     ----------
     columns
-        The relation's columns; an owning column it lacks is skipped.
+        The relation's columns; an entity column it lacks is skipped.
 
     Notes
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    firsts = {
-        g: next(
-            (c for c in schema.group_key(g) if schema.groups[g].over[c] == "entity"),
-            None,
-        )
-        for g in schema.group_columns
-        if g in columns
-    }
-    entities = [
+    return [
         *([col(alias, "entity")] if "entity" in columns else []),
-        *(fn.struct_extract(col(alias, g), lit(c)) for g, c in firsts.items() if c),
+        *(
+            fn.struct_extract(col(alias, g), lit(c))
+            for g in schema.group_columns
+            if g in columns
+            for c in schema.group_key(g)
+            if schema.groups[g].over[c] == "entity"
+        ),
     ]
-    return coalesce(*entities) if entities else lit(None)
 
 
 def _read_dir(dir_uri: str, con: DuckDBPyConnection) -> dict[str, DuckDBPyRelation]:

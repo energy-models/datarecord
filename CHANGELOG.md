@@ -74,6 +74,10 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- Removing an entity drops the values of every group row naming it, not only
+  where it is the group's first entity coordinate: a `contract` over
+  `(from, to)` loses its values when either party is removed, and
+  `flags(ctype)` counts such a row towards the type of each party.
 - Writing a layer whose `manifest.json` write keeps losing, as it does with a
   credential that can write the manifest but not read it, gives up after ten
   attempts with an error naming `s3:GetObject`, rather than looping forever.

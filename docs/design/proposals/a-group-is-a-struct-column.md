@@ -108,7 +108,7 @@ A long frame handed to `set` may carry either the struct column or its coordinat
 ## One behaviour that must not move
 
 Today a connection attribute row carries a top-level `entity`, so [the fold](../read-path.md#owner-map) drops it when the entity is tombstoned even though the connection tuple survives.
-Under the struct it has no top-level `entity`, so the entity tombstone matches a row's _owning entity_ instead — `entity`, or else the entity inside the group's struct.
+Under the struct it has no top-level `entity`, so the entity tombstone matches every entity a row names instead — `entity`, and each entity inside the group's struct.
 Removing an entity still drops its connections' values and leaves the tuples, which is the no-cascade rule as it stands: the tuples are a membership of their own, the values belong to the entity.
 
 ## A rule it adds
@@ -129,8 +129,7 @@ It is the same "keyed twice over" rule [`into`](../schema.md#into-a-group-that-c
 
 - **Per-bus patching needs `bus` in `partial`.** `bus` is no membership key any more, so a layer patching a per-bus `marginal_price` one bus at a time declares it [`partial`](../schema.md#partial-the-granularity-of-an-override) like any value dim; a connection's bus is patched per row regardless, inside `connection`.
 - **A value staged without `bus=` matches no connection.** It is stored keyed `{entity, NULL}`, and a NULL field compares equal only to a NULL field. The "every connection of this entity" reading the pages gave was never implemented; it is left [open](../open-questions.md).
-- **The entity tombstone reaches the entity inside the struct.** The fold matches it on a row's owning entity — `entity`, or else the first coordinate over `entity` of a keyed group — so removing an entity drops its connections' values as before, the tuples standing until removed in turn. A first cut had `remove` tombstone every tuple naming the entity instead, which left a re-added entity without its parent's connections.
+- **The entity tombstone reaches the entity inside the struct.** The fold matches it on every entity a row names — `entity`, and each key coordinate over `entity` of a keyed group — so removing an entity drops its connections' values as before, the tuples standing until removed in turn. A first cut had `remove` tombstone every tuple naming the entity instead, which left a re-added entity without its parent's connections.
 - **A layer's own tombstones apply only to its parents.** So the staged collapse drops its own rows itself: `remove_group` also drops the rows it staged on the tuple, as `remove` does on the entity.
 - **A long frame handed to `set` carries the struct only.** Accepting its coordinates flat as well cost a second packing path and a both-forms rejection for no caller that needed it: the PyPSA tool packs once, where it builds its frames.
 - **An empty frame must still type the group column as the struct.** A source emitting no rows for an attribute hands over a typed empty relation, or the writer rejects a column that is not a struct of the group's key.
-- **`flags(ctype)` scopes a group by its entity field.** A group drawing on `entity` twice is scoped by its first coordinate, and an attribute with no entity at all — a per-bus value — is in no type's `flags`.
