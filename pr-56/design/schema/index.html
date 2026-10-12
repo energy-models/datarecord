@@ -1722,7 +1722,8 @@ Its axis file is owned like any other's: outside <a href="#partial-the-granulari
 Being classified buys it no exemption, and carrying an attribute is no reason to declare it <code>partial</code> — that would widen the fold's key with a column no <code>inputs/</code> row can carry.</p>
 <p><strong>Entirely optional.</strong> A schema declaring no such axis has components with no types, and everything addressed by <code>entity</code> reaches all of them.
 There is then no <code>entity_type</code> column on the entity axis and no <code>dims/entity_type/</code> at all: a component's non-varying values are columns of <code>dims/entity.parquet</code> itself (<a href="../format/#where-a-value-lives">where a value lives</a>), which is the honest shape of "these components have no kinds" — one file, not one per label an <code>add</code> happened to use. <a href="../record/"><code>Record.entity_types</code></a> is empty, matching <code>schema.entity_types</code>.
-A tool that needs types requires the axis in the schema it builds — <a href="../tools/">PyPSA does</a> — which is where that requirement belongs, not here.</p>
+A tool that needs types requires the axis in the schema it builds, which is where that requirement belongs, not here.
+<a href="../tools/#the-pypsa-tool">PyPSA</a> does not: it writes the type of each component as the attribute <code>entity_group</code>, so the type is not a dim of the record or of a spec.</p>
 <p><strong>One, by name.</strong> Only <code>entity_type</code> partitions the attribute vocabulary, so <code>attributes_for</code> always has one answer however many other classifications <code>entity</code> has.</p>
 <h2 id="traits">Traits<a class="headerlink" href="#traits" title="Permanent link">&para;</a></h2>
 <p>A trait is a named bundle of attributes, and which entity types carry them:</p>

@@ -787,6 +787,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing a record
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -803,6 +821,36 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#combining-records" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combining records
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1139,6 +1187,25 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#combining-records" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Combining records
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1185,6 +1252,17 @@ A result is exempt from both checks: its shape is a framework's business, and a 
 <p>The input is a <a href="../record/#layerdata"><code>LayerData</code></a>: "the rows of one thing, enumerated and read" — the same interface a <a href="../read-path/#owner-map"><code>LayerSource</code></a> answers for its own layer and a <code>Resolver</code> answers for a whole fold, so <code>write_record</code> cannot tell which it was handed and does not need to.
 A staged layer's own rows and a resolved record are both a <code>LayerData</code>, which is what lets <code>commit</code> write either without a third shape adapting one to the other.</p>
 <p>A framework object exposing narwhals frames — <a href="../record/"><code>Record</code></a> rather than <code>LayerData</code> — is not itself one: <code>write_record</code> wraps it in a thin adapter that reads its <code>Frames</code> mappings as the enumerate-and-read pairs <code>LayerData</code> declares, so a tool stays narwhals-facing and the layered write path stays raw-relation throughout.</p>
+<h2 id="combining-records">Combining records<a class="headerlink" href="#combining-records" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">record</span> <span class="o">=</span> <span class="n">combine</span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span><span class="n">n</span><span class="p">),</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">FrameRecord</span><span class="p">(</span><span class="n">schema</span><span class="p">,</span> <span class="n">dim_frames</span><span class="o">=...</span><span class="p">,</span> <span class="n">group_frames</span><span class="o">=...</span><span class="p">,</span> <span class="n">attribute_frames</span><span class="o">=...</span><span class="p">),</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">)</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">write_record</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">record</span><span class="p">,</span> <span class="n">con</span><span class="p">,</span> <span class="n">uri</span><span class="o">=</span><span class="s2">"out/"</span><span class="p">)</span>
+</code></pre></div>
+<p>A tool's record has the tool's schema. Data that a consumer derives beside it — the inputs of constraints that the framework keeps out of its model — has no place in that schema. <code>combine(base, extension)</code> gives one <code>RecordLike</code> that holds both, and it names no framework.</p>
+<p><strong>The schemas unite.</strong> The two schemas must have the same <code>version</code>. A dim that both declare must have the same declaration. An attribute, result, group, trait or <code>meta</code> key that both declare is refused: an extension adds names, it never redefines one. <code>partial</code> is the union.</p>
+<p><strong>The frames unite.</strong> A key that only one side holds keeps that side's frame. A dim, or an entity type, that both sides hold gets the extension's columns joined onto the base's rows by key. Those columns are the attributes the extension addresses by that axis alone, or by <code>entity</code> alone, which live in that frame (<a href="../format/#where-a-value-lives">where a value lives</a>). The extension can set a value only on a label that the base holds; a value on another label is refused when the frame is read. Groups, attributes and outputs are new names, so their frames never meet.</p>
+<p><code>FrameRecord</code> is the shape of an extension: a schema and native frames of any backend narwhals reads. Its <code>flags</code> answers nothing, as a tool's own record does: <code>write_record</code> persists frames, not flags.</p>
 
 
 

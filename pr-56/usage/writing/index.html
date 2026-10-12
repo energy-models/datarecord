@@ -680,6 +680,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -696,6 +714,36 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#adding-data-to-a-tools-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding data to a tool's record
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -957,6 +1005,25 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#adding-data-to-a-tools-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding data to a tool's record
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -989,6 +1056,16 @@ SPDX-License-Identifier: CC-BY-4.0
 </code></pre></div>
 <p><code>source</code> is anything satisfying <code>Record</code> — including a framework object presenting itself as one, which is what puts read and write on a single seam. An existing layer directory is an error rather than an overwrite: frames are staged into a sibling path and renamed on success, so a source that fails validation leaves no layer rather than half of one (<a href="../../design/writing/">design</a>).</p>
 <p>Every column the schema declares a type for is cast to it on the way out, so a record's files carry the schema's types and a reader can trust them. Validation is structural — a long frame carries <a href="../../design/format/#the-long-schema">the format's columns</a>, and an entity frame carries every dim it is keyed by.</p>
+<h2 id="adding-data-to-a-tools-record">Adding data to a tool's record<a class="headerlink" href="#adding-data-to-a-tools-record" title="Permanent link">&para;</a></h2>
+<p><code>combine</code> lays an extension over a record, for data that the tool's schema does not hold (<a href="../../design/writing/#combining-records">design</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">FrameRecord</span><span class="p">,</span> <span class="n">combine</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">extension</span> <span class="o">=</span> <span class="n">FrameRecord</span><span class="p">(</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">schema</span><span class="p">,</span> <span class="n">dim_frames</span><span class="o">=</span><span class="p">{</span><span class="s2">"limit"</span><span class="p">:</span> <span class="n">limits</span><span class="p">},</span> <span class="n">attribute_frames</span><span class="o">=</span><span class="p">{</span><span class="s2">"limit_constant"</span><span class="p">:</span> <span class="n">constants</span><span class="p">}</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">)</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">write_record</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">combine</span><span class="p">(</span><span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span><span class="n">n</span><span class="p">),</span> <span class="n">extension</span><span class="p">),</span> <span class="n">con</span><span class="p">,</span> <span class="n">uri</span><span class="o">=</span><span class="s2">"out/"</span><span class="p">)</span>
+</code></pre></div>
+<p>Every name the extension declares is new, and the dims both sides declare are declared the same.</p>
 
 
 

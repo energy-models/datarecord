@@ -1397,7 +1397,7 @@ It follows the direction of <a href="https://github.com/PyPSA/PyPSA/issues/1474"
 <tbody>
 <tr>
 <td><code>Generator</code>, <code>Link</code>, <code>Line</code>, …</td>
-<td>entities, one <code>dims/entity_type/&lt;Type&gt;.parquet</code> each</td>
+<td>entities, rows of <code>dims/entity.parquet</code>; the type is <code>entity_group</code></td>
 </tr>
 <tr>
 <td><code>Bus</code></td>
@@ -1445,10 +1445,16 @@ It follows the direction of <a href="https://github.com/PyPSA/PyPSA/issues/1474"
 </tr>
 </tbody>
 </table>
-<p><strong>A functional group is named <code>&lt;key&gt;_&lt;into&gt;</code></strong>, never after the dim it maps into: a mathspec spec binds to a record by name, and a relation there may not share a dimension's name. The entity-type group is <code>entity_entity_type</code> for the same reason; the record layer finds <a href="../schema/#entity_type-the-axis-of-kinds">the axis</a> by its dim's name, not the group's.</p>
+<p><strong>The component type is an attribute, not an axis.</strong> The record declares no <a href="../schema/#entity_type-the-axis-of-kinds">entity-type axis</a>, no entity-type group and no traits. The PyPSA type of each entity is <code>entity_group</code>, a <code>str</code> attribute over <code>entity</code>. It is a column of <code>dims/entity.parquet</code>, so it is not a dim of the record or of a mathspec spec.
+Without the type axis, the constant columns of all types are columns of <code>dims/entity.parquet</code> (<a href="../format/#where-a-value-lives">where a value lives</a>). A column is NULL on the rows of a type that does not have it.
+<code>build</code> reads the type of each entity from <code>entity_group</code>. For each type, it keeps the columns that PyPSA's registry (<code>c.defaults</code>) declares for that type, and the custom columns in which a member of the type has a value.
+<code>verify</code> and <code>build</code> read the flags of each type from the rows of its members, because the record's own <code>flags</code> cannot scope by an attribute.
+<code>verify</code> reports an <code>entity_group</code> that PyPSA does not know. An entity with no <code>entity_group</code> is an error.</p>
+<p><strong>A functional group is named <code>&lt;key&gt;_&lt;into&gt;</code></strong>, never after the dim it maps into: a mathspec spec binds to a record by name, and a relation there may not share a dimension's name.</p>
 <p><strong>The attribute namespace is flat</strong>, so an axis column whose name another PyPSA type's registry or a dim or group already claims is written <code>&lt;axis&gt;_&lt;name&gt;</code>: <code>Bus.x</code> is <code>bus_x</code> beside <code>Line.x</code>, and <code>Bus.p</code> is the result <code>bus_p</code>. An unclaimed name such as <code>y</code> or <code>busmap_5</code> is unchanged. The rule reads the registry and the structural names only — never what else the network holds — so one column has one record name in every network, and a fixed mathspec spec binds to every record a network writes.
 That leaves custom columns, which no registry lists: an axis column whose record name is also a custom entity column or another axis's column has no rule to tell the two apart, so <code>to_datarecord</code> raises <code>UnsupportedRecordError</code> naming the column and both owners rather than renaming one silently.
 <code>schema.meta["names"]</code> records each axis's record-to-PyPSA mapping, which is what <code>build</code> inverts.</p>
+<p><strong>The capacity attributes have one name for all types.</strong> <code>p_nom</code>, <code>s_nom</code> and <code>e_nom</code> are <code>capacity_fixed</code>. A variant <code>&lt;x&gt;_nom_&lt;suffix&gt;</code> is <code>capacity_&lt;suffix&gt;</code>: <code>capacity_min</code>, <code>capacity_max</code>, <code>capacity_set</code>, <code>capacity_mod</code> and the result <code>capacity_opt</code>. <code>&lt;x&gt;_nom_extendable</code> is <code>extendable</code>. The bare name <code>capacity</code> is the decision variable of the mathspec spec, so no attribute takes it. <code>build</code> inverts the mapping.</p>
 <p><strong>Multi-period.</strong> On a network with investment periods, <code>snapshot</code> is <a href="../schema/#within-an-axis-inside-an-axis"><code>within</code></a> <code>period</code>, so the snapshot axis is keyed <code>(period, snapshot)</code> — PyPSA's <code>(period, timestep)</code> — and every snapshot-varying attribute is addressed by <code>period</code> too.</p>
 <h3 id="technology-groups">Technology groups<a class="headerlink" href="#technology-groups" title="Permanent link">&para;</a></h3>
 <p>A component's <code>technology_group</code> column becomes the group <code>entity_technology_group</code>, written only where some type has the column. Its axis, <code>dims/technology_group.parquet</code>, carries what is a function of the group: <code>resource_class</code> and <code>nice_name</code> move there off the members, and <code>technology_group_carrier</code> maps each group to its one carrier.
@@ -1460,11 +1466,13 @@ That leaves custom columns, which no registry lists: an axis column whose record
 <h3 id="global-constraints">Global constraints<a class="headerlink" href="#global-constraints" title="Permanent link">&para;</a></h3>
 <p><code>GlobalConstraint</code> is not carried. A global constraint is math, not data — a CO2 cap is a constraint over the emissions of the components it names — so it lives in a mathspec fragment beside the shipped spec.</p>
 <h3 id="the-mathspec-spec">The mathspec spec<a class="headerlink" href="#the-mathspec-spec" title="Permanent link">&para;</a></h3>
-<p><code>datarecord/tools/pypsa.mathspec.yaml</code> (<code>datarecord.tools.pypsa.MATHSPEC</code>) states the linear optimal power flow over the record's own names: dims <code>snapshot</code>, <code>period</code>, <code>scenario</code>, <code>entity</code>, <code>entity_type</code>, <code>bus</code>, <code>carrier</code>, <code>technology_group</code>; relations as the groups are named; PyPSA's attribute names per type (<code>p_nom_min</code>, <code>s_nom_min</code>, <code>e_nom_min</code>), unified by named expressions rather than renamed.
+<p><code>datarecord/tools/pypsa.mathspec.yaml</code> (<code>datarecord.tools.pypsa.MATHSPEC</code>) states the linear optimal power flow over the record's own names: dims <code>snapshot</code>, <code>period</code>, <code>scenario</code>, <code>entity</code>, <code>bus</code>, <code>carrier</code>, <code>technology_group</code>; relations as the groups are named; the record's attribute names, so the capacity bounds are <code>capacity_min</code> and <code>capacity_max</code> for every type. The decision variable is <code>capacity</code>.
+The PyPSA type is the <code>str</code> parameter <code>entity_group</code>, not a dim or a relation. A mask compares it with a value: <code>generator</code> is <code>entity_group == 'Generator'</code>.
 The bus balance reads the <code>connection</code> group's <code>role</code> and the per-connection <code>efficiency</code>.</p>
 <p>mathspec has no nested dimension, so <code>snapshot</code> is flat there and its period is the relation <code>snapshot_period</code>, which the record's <code>within</code> supplies as the nested axis file's key.
 A dimension label is never a value to mathspec, so an asset's activity <code>build_year &lt;= period &lt; build_year + lifetime</code> compares against <code>period_year</code>, a column the tool writes on the period axis, rather than a precomputed <code>active[entity, period]</code>.</p>
-<p><code>PyPSA.check_spec(spec, record)</code> fails where the spec names a dimension, relation or parameter the record does not carry, a nested dim offering <code>&lt;dim&gt;_&lt;parent&gt;</code> as a relation.</p>
+<p><code>PyPSA.check_spec(spec, record)</code> fails where the spec names a dimension, relation or parameter the record does not carry, a nested dim offering <code>&lt;dim&gt;_&lt;parent&gt;</code> as a relation.
+Two kinds of name are not missing. The first is an attribute that only types the record holds no member of register: the record reads the types it holds from its <code>entity_group</code> values. The second is the technology-group axis and its groups, where the record has no <code>technology_group</code> dim.</p>
 
 
 
