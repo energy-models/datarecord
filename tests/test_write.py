@@ -208,7 +208,7 @@ def test_no_layer_file_carries_order_key(con, base_uri, ac_dc, tmp_path):
         assert "order_key" not in columns, f"{path.relative_to(out)} carries order_key"
 
 
-def test_a_per_type_member_file_does_not_repeat_its_type(con, base_uri, ac_dc):
+def test_a_per_type_member_file_does_not_repeat_its_type(con, base_uri):
     """`dims/entity_type/<T>.parquet` is indexed by `entity`, one column per attribute.
 
     The type is the file the rows are in, and it reaches a reader already:
@@ -225,19 +225,25 @@ def test_a_per_type_member_file_does_not_repeat_its_type(con, base_uri, ac_dc):
     - [the entity axis](https://energy-models.github.io/datarecord/design/format/#the-entity-axis)
     """
     revision = Revision.create(con)
-    write_record(revision.id, PyPSA.to_datarecord(ac_dc), con)
+    members = pd.DataFrame({"entity": ["steel_dri"], "entity_type": ["Process"]})
+    source = _Source(
+        _SCHEMA,
+        entity_types={"Process": members},
+        dims={"entity": members.assign(deleted=False)},
+    )
+    write_record(revision.id, source, con)
     layer = Path(layer_dir(revision.id))
 
-    members = layer / "dims" / "entity_type" / "Generator.parquet"
-    columns = con.sql(f"SELECT * FROM read_parquet('{members}')").columns
+    member_file = layer / "dims" / "entity_type" / "Process.parquet"
+    columns = con.sql(f"SELECT * FROM read_parquet('{member_file}')").columns
     assert "entity" in columns, "still indexed by entity"
     assert "entity_type" not in columns, "the filename already says which type"
 
-    # Derived from those files all the same, so the type still reaches a reader.
+    # The axis file carries it, so the type still reaches a reader.
     axis = con.sql(f"SELECT * FROM read_parquet('{layer / 'dims' / 'entity.parquet'}')")
     assert "entity_type" in axis.columns
     types = {t for (t,) in axis.project("entity_type").distinct().fetchall()}
-    assert "Generator" in types, "the type survives being off the member file"
+    assert types == {"Process"}, "the type survives being off the member file"
 
 
 def test_a_directory_target_carries_its_own_schema(con, base_uri, tmp_path):
@@ -529,10 +535,10 @@ def test_to_datarecord_lists_without_unpivoting(con, base_uri, ac_dc):
     source = PyPSA.to_datarecord(ac_dc)
 
     assert isinstance(source, RecordLike)
-    assert "Generator" in source.entity_types
+    assert "entity" in source.dims
     assert "connection" in source.groups
     assert "p_max_pu" in source.attributes
-    # Non-varying attributes belong to `dims/entity_type/`, not `inputs/` (https://energy-models.github.io/datarecord/design/record/).
+    # Non-varying attributes belong to an axis file, not `inputs/` (https://energy-models.github.io/datarecord/design/record/).
     assert "v_nom" not in source.attributes
     # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/design/record/#connections).
     assert "efficiency" in source.attributes

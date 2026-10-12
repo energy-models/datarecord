@@ -56,6 +56,10 @@ class Requirements:
     names : frozenset of str
         Names two of the framework's components claim, which a record scopes
         across every type.
+    columns : frozenset of tuple of (str, str, str)
+        `(column, owner, other_owner)`: a custom column two owners - component
+        types or axes - both carry, which one flat attribute namespace cannot
+        hold as two attributes.
 
     Notes
     -----
@@ -70,6 +74,7 @@ class Requirements:
     unsupported_keys: frozenset[tuple[str, str]] = frozenset()
     unsupported_values: frozenset[tuple[str, str]] = frozenset()
     names: frozenset[str] = frozenset()
+    columns: frozenset[tuple[str, str, str]] = frozenset()
 
     def __bool__(self) -> bool:
         """Whether anything is required (or, for a `verify` result, missing)."""
@@ -80,6 +85,7 @@ class Requirements:
             or self.unsupported_keys
             or self.unsupported_values
             or self.names
+            or self.columns
         )
 
     def describe(self) -> str:
@@ -105,6 +111,12 @@ class Requirements:
                 f"names claimed by more than one component type "
                 f"{sorted(self.names)} (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
             )
+        if self.columns:
+            clashes = ", ".join(
+                f"{column!r} on {owner} and {other}"
+                for column, owner, other in sorted(self.columns)
+            )
+            parts.append(f"columns claimed by two owners ({clashes})")
         return ", ".join(parts) if parts else "nothing"
 
 

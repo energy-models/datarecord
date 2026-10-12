@@ -139,19 +139,19 @@ Results version like inputs ([versioning](#versioning)): removing one, changing 
 
 ## `entity_type` — the axis of kinds
 
-What kind of thing a component is, declared like any other classification: a [group `into`](#into-a-group-that-classifies) it, over `entity` alone.
+What kind of thing a component is, declared like any other classification: a [group `into`](#into-a-group-that-classifies) it, over `entity` alone, into the dim named `entity_type`.
 
 ```python
 dimensions = {
     "entity": Dimension(dtype="str"),
-    "entity_type": Dimension(dtype=Enum(["Bus", "Generator", "Link"])),
+    "entity_type": Dimension(dtype=Enum(["Generator", "Line", "Link"])),
 }
 groups = {
     "entity_type": Group(over=["entity"], into="entity_type"),
 }
 ```
 
-`into` is what says every component carries exactly one type, and being over `entity` alone is what makes this axis _the_ entity-type axis rather than one classification among several. At most one group may be that; a second has no resolved answer for what a component carries.
+`into` is what says every component carries exactly one type. **The axis is identified by name**: the dim called `entity_type`, classified into by a group over `entity` alone. Other groups over `entity` alone are ordinary classifications — a component's carrier, its technology group — and each is one more functional group, not a second type vocabulary. Identifying the axis by its structure would have to forbid them, and a component has a carrier as surely as it has a type.
 An `Enum` dtype pins the vocabulary and makes an unknown type a write-time error; a plain `str` leaves the labels as data, which is the right declaration for a record whose types are not known up front.
 
 **Its rows are the entity axis file**, not a `groups/` file of its own — the one exception to [a file per group](format.md#where-a-value-lives). `dims/entity.parquet` carries `entity_type`, which is [where the format already put it](format.md#entity-is-unique-across-types): the axis file a source hands over carries the column, so `entity -> entity_type` is one fact in one place and nothing can disagree with itself about which type a component is.
@@ -165,9 +165,10 @@ Being classified buys it no exemption, and carrying an attribute is no reason to
 
 **Entirely optional.** A schema declaring no such axis has components with no types, and everything addressed by `entity` reaches all of them.
 There is then no `entity_type` column on the entity axis and no `dims/entity_type/` at all: a component's non-varying values are columns of `dims/entity.parquet` itself ([where a value lives](format.md#where-a-value-lives)), which is the honest shape of "these components have no kinds" — one file, not one per label an `add` happened to use. [`Record.entity_types`](record.md) is empty, matching `schema.entity_types`.
-A tool that needs types requires the axis in the schema it builds — [PyPSA does](tools.md) — which is where that requirement belongs, not here.
+A tool that needs types requires the axis in the schema it builds, which is where that requirement belongs, not here.
+[PyPSA](tools.md#the-pypsa-tool) does not: it writes the type of each component as the attribute `entity_group`, so the type is not a dim of the record or of a spec.
 
-**At most one.** A second dim `on` `entity` is rejected: a component has one type, and two vocabularies over one axis leave `attributes_for` with no resolved answer for what it carries.
+**One, by name.** Only `entity_type` partitions the attribute vocabulary, so `attributes_for` always has one answer however many other classifications `entity` has.
 
 ## Traits
 
@@ -201,7 +202,7 @@ And a trait is **queryable** — a consumer dispatching on "everything investabl
 
 **Declared, not inferred.** No framework ships a trait registry to read, so the mapping from its component registry to traits is authored and maintained. That cost is the price of the vocabulary being useful to something other than this schema.
 
-**Only an entity-type axis may scope a trait.** `on` is keyed by a dim declared `on={"entity"}` and the schema rejects any other, because a trait scoped to, say, `country` would make an attribute's vocabulary depend on data — which attributes a component carries would follow from what its bus maps to, a per-entity lookup every caller of `attributes_for` treats as answerable from the schema alone.
+**Only the entity-type axis may scope a trait.** `on` is keyed by `entity_type` and the schema rejects any other dim, because a trait scoped to, say, `country` would make an attribute's vocabulary depend on data — which attributes a component carries would follow from what its bus maps to, a per-entity lookup every caller of `attributes_for` treats as answerable from the schema alone.
 
 A trait with an empty `on` narrows nothing: it is a bundle for a consumer to dispatch on, and its attributes stay carried by every type.
 

@@ -28,7 +28,13 @@ from datarecord.layered.write import write_record
 from datarecord.record import EMPTY
 from datarecord.schema import AttributeSpec
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network, outputs, relation, tombstone, write_input
+from tests.fixtures import (
+    export_network,
+    outputs,
+    relation,
+    write_entities,
+    write_input,
+)
 
 
 @pytest.fixture
@@ -87,7 +93,7 @@ def test_tombstone_removes_component(con, parent):
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     child = parent.child()
-    tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
+    write_entities(layer_dir(child.id), [{"entity": "Norway Gas", "deleted": True}])
 
     om = child.resolver.entity_axis.df()
     assert "Norway Gas" not in set(om["entity"])
@@ -121,7 +127,7 @@ def test_sibling_branch_unaffected(con, parent):
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     deleting = parent.child()
-    tombstone(layer_dir(deleting.id), "Generator", ["Norway Gas"])
+    write_entities(layer_dir(deleting.id), [{"entity": "Norway Gas", "deleted": True}])
     sibling = parent.child()
 
     assert "Norway Gas" not in set(deleting.resolver.entity_axis.df()["entity"])
@@ -270,14 +276,10 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     amended = read_schema()
-    # Declared once, record-wide, then narrowed to the type that carries it -
-    # the two halves an amendment now has.
+    # Declared once, record-wide: a PyPSA record has no traits to narrow it to
+    # a type, so every component carries it.
     amended.attributes["p_min_pu"] = AttributeSpec(
         dtype=nw.Float64(), dims={"entity", "snapshot"}, default=0.25
-    )
-    was = amended.traits["Generator"]
-    amended.traits["Generator"] = was.model_copy(
-        update={"attributes": was.attributes | {"p_min_pu"}}
     )
     write_schema(amended)
 
@@ -295,7 +297,7 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
     # And the amendment is visible from the record, not just from the layer
     # that happens to carry a row for it.
-    assert "p_min_pu" in child.record.schema.attributes_for("Generator")
+    assert "p_min_pu" in child.record.schema.attributes
 
 
 def test_a_schema_narrowing_is_refused(con, parent, ac_dc):

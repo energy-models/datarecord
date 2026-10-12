@@ -32,6 +32,10 @@ mypy = "*"
 pandas = "*"
 pyarrow = "*"
 pypsa = "*"
+# Unreleased on main: the language the shipped `pypsa.mathspec.yaml` is written
+# in (`relation[column]` calls, `missing:`, `masks:`) postdates mathspec 0.2.1.
+[feature.test.pypi-dependencies]
+mathspec = { git = "https://github.com/energy-models/mathspec", rev = "8c481e8196878c9fe51979600ab4ce20d26dc8ef" }
 [feature.test.tasks]
 test = "pytest"
 test-coverage = "pytest --cov=datarecord --cov-report=xml --cov-report=term-missing"

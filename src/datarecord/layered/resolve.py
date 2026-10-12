@@ -205,8 +205,9 @@ class Coords:
         ----------
         rel : DuckDBPyRelation
         layer_keys : tuple of str
-            `schema.partial_dims`. Never `entity` or a group's coordinate,
-            which address a row rather than broadcasting over an axis.
+            `schema.partial_dims`. A membership key among them - `entity`, a
+            group's coordinate - passes through as stored, even where it has an
+            axis file (`bus`): it addresses a row rather than broadcasting.
 
         Returns
         -------
@@ -233,7 +234,7 @@ class Coords:
         exprs = {}
         for dim in layer_keys:
             axis = self.axes.get(dim)
-            if axis is None:
+            if axis is None or dim not in self.schema.broadcast_dims:
                 exprs[dim] = col(alias, dim)
                 continue
             key = axis.project(dim)

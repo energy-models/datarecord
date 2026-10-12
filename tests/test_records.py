@@ -22,8 +22,14 @@ from datarecord.layered.write import write_record
 from datarecord.mutable import WorkingRecord
 from datarecord.record import EMPTY, Flags, Frames, RecordLike
 from datarecord.schema import AttributeSpec, Schema
-from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import schema, write_entity_type, write_input, write_schema
+from datarecord.tools.pypsa import ENTITY_GROUP, PyPSA
+from tests.fixtures import (
+    schema,
+    write_entities,
+    write_entity_type,
+    write_input,
+    write_schema,
+)
 
 MEMBERS = ("dims", "entity_types", "attributes")
 
@@ -447,15 +453,12 @@ def test_node_record_orders_members(con, base_uri, ac_dc):
     root.materialise()
 
     child = root.child()
-    write_entity_type(layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
-
-    names = list(
-        Record(child.resolver)
-        .entity_types["Generator"]
-        .collect()
-        .to_native()
-        .to_pandas()["entity"]
+    write_entities(
+        layer_dir(child.id), [{"entity": "New Solar", ENTITY_GROUP: "Generator"}]
     )
+
+    axis = Record(child.resolver).dims["entity"].collect().to_native().to_pandas()
+    names = list(axis.loc[axis[ENTITY_GROUP] == "Generator", "entity"])
     # First-introduced order: the root's members, then the child's addition.
     assert names == [*ac_dc.c["Generator"].static.index, "New Solar"]
 
@@ -470,7 +473,8 @@ def test_a_directory_at_a_uri_reads_a_plain_record(con, base_uri, ac_dc, tmp_pat
 
     record = Record.at(layer_dir(revision.id), con)
     assert isinstance(record, RecordLike)
-    assert "Generator" in record.entity_types
+    axis = record.dims["entity"].collect().to_native().to_pandas()
+    assert "Generator" in set(axis[ENTITY_GROUP])
     assert "p_max_pu" in record.attributes
     assert record.schema.attributes
 

@@ -24,7 +24,7 @@ from datarecord.duck import layer_dir, resolved_dir, union_all_by_name
 from datarecord.layered.resolve import write_schema
 from datarecord.layered.sources import DirectorySource, LayerSource, ParquetLayer
 from datarecord.schema import Schema
-from tests.fixtures import export_network, tombstone, write_input
+from tests.fixtures import export_network, write_entities, write_input
 
 
 @pytest.fixture
@@ -166,7 +166,7 @@ def test_tombstone_removes_all_attributes(con, parent):
     assert "Norway Gas" in entity_names(parent)
 
     child = parent.child()
-    tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
+    write_entities(layer_dir(child.id), [{"entity": "Norway Gas", "deleted": True}])
     assert not {k for k in keys(child, con) if k[0] == "Norway Gas"}
     assert "Norway Gas" not in entity_names(child)
 

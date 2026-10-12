@@ -22,6 +22,7 @@ from datarecord.schema import (
     Schema,
     Trait,
 )
+from datarecord.tools.pypsa import ENTITY_GROUP
 
 # No `entity_type`: an attribute row is keyed by `name`, unique across every type
 # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
@@ -166,6 +167,29 @@ def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:
     if axis.exists():
         entities = pd.concat([pd.read_parquet(axis), entities], ignore_index=True)
     entities.to_parquet(axis, index=False)
+
+
+def write_entities(layer: str, rows: list[dict]) -> None:
+    """Append rows to an untyped layer's `dims/entity.parquet`.
+
+    A PyPSA record declares no entity-type axis: a component's constant columns,
+    its `entity_group` among them, are columns of the entity axis itself, and a
+    row with `deleted` set is a tombstone.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    df = pd.DataFrame(rows)
+    if "deleted" not in df:
+        df["deleted"] = False
+    df["deleted"] = df["deleted"].fillna(False).astype(bool)
+    axis = Path(layer, "dims", "entity.parquet")
+    axis.parent.mkdir(parents=True, exist_ok=True)
+    if axis.exists():
+        df = pd.concat([pd.read_parquet(axis), df], ignore_index=True)
+    df.to_parquet(axis, index=False)
 
 
 def tombstone(layer: str, ctype: str, names: list[str]) -> None:
@@ -377,6 +401,7 @@ def schema(
         "connection": {"entity": "entity", "bus": "bus"}
     },
     within: dict[str, set[str]] | None = None,
+    typed: bool = True,
 ) -> Schema:
     """A schema shaped like the PyPSA records most tests build on.
 
@@ -385,6 +410,10 @@ def schema(
     pin a different layering granularity, `dims` to declare another axis,
     `groups` to declare a different sparse relation, `within` to nest one axis
     inside another.
+
+    `typed=False` declares no entity-type axis and no traits: a component's
+    type is then its `entity_group` attribute, as `PyPSA.to_datarecord`
+    writes it, which is what a test redeclaring a PyPSA record's schema needs.
 
     `entity` and every group coordinate are declared dims and are `partial`:
     a layer patches one component's value, or one connection's, without
@@ -407,9 +436,12 @@ def schema(
     for ctype, attrs in (attributes or {}).items():
         for attr, spec in attrs.items():
             flat.setdefault(attr, spec)
-        traits[ctype] = Trait(
-            attributes=frozenset(attrs), on={"entity_type": frozenset({ctype})}
-        )
+        if typed:
+            traits[ctype] = Trait(
+                attributes=frozenset(attrs), on={"entity_type": frozenset({ctype})}
+            )
+    if not typed:
+        flat[ENTITY_GROUP] = AttributeSpec(dtype=nw.String(), dims={"entity"})
     # Declared whether or not a caller named them: a test writing `p_max_pu`
     # needs it declared, and one passing `attributes=` is narrowing what a type
     # *carries* rather than shortening the record's vocabulary.
@@ -428,7 +460,9 @@ def schema(
         groups={g: Group(over=over) for g, over in groups.items()}
         # `into` over `entity` alone is what makes `entity_type` the
         # entity-type axis (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
-        | {"entity_type": Group(over=["entity"], into="entity_type")},
+        | (
+            {"entity_type": Group(over=["entity"], into="entity_type")} if typed else {}
+        ),
         dimensions={
             d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))
             for d, t in declared.items()
@@ -436,7 +470,7 @@ def schema(
         # A plain string rather than an enum: the tests name types freely, and
         # pinning the categories here would make every fixture that adds one
         # declare it twice (https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds).
-        | {"entity_type": Dimension(dtype=nw.String())},
+        | ({"entity_type": Dimension(dtype=nw.String())} if typed else {}),
         attributes=flat,
         traits=traits,
         # `partial` names value dims a layer patches per value; membership keys

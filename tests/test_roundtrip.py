@@ -37,10 +37,14 @@ needs_export_to_parquet = pytest.mark.skipif(
 
 
 def assert_networks_equal(got, expected):
-    """Compare component frames, which is what the record round-trips."""
+    """Compare component frames, which is what the record round-trips.
+
+    Global constraints are not carried (they belong to the math), and shapes
+    come back as bus regions, renamed, so both are compared elsewhere.
+    """
     for exp_c in expected.components:
         ctype = exp_c.name
-        if exp_c.static.empty:
+        if exp_c.static.empty or ctype in ("GlobalConstraint", "Shape"):
             continue
         got_c = got.c[ctype]
         pd.testing.assert_index_equal(
@@ -104,9 +108,53 @@ def test_roundtrip_matches_pypsa_reader(con, base_uri, single_revision, ac_dc):
     assert_networks_equal(PyPSA.build(single_revision.record), reference)
 
 
-def test_roundtrip_matches_original(con, base_uri, single_revision, ac_dc):
-    """Genuine data loss surfaces here even if it is shared with upstream."""
-    assert_networks_equal(PyPSA.build(single_revision.record), ac_dc)
+@pytest.mark.parametrize("network", ["ac_dc", "multiperiod"])
+def test_roundtrip_matches_original(con, base_uri, request, network):
+    """Genuine data loss surfaces here even if it is shared with upstream.
+
+    `multiperiod` carries investment periods, custom columns (`technology_group`
+    among them, stored as `entity_map_technology`) and bus regions, every one of
+    which the record stores off the component frames and `build` puts back.
+
+    Notes
+    -----
+    - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
+    """
+    n = request.getfixturevalue(network)
+    revision = Revision.create(con)
+    export_network(n, revision, con)
+    got = PyPSA.build(revision.record)
+
+    assert_networks_equal(got, n)
+    pd.testing.assert_frame_equal(
+        got.snapshot_weightings, n.snapshot_weightings, check_index_type=False
+    )
+    pd.testing.assert_frame_equal(
+        got.investment_period_weightings,
+        n.investment_period_weightings,
+        check_index_type=False,
+        check_names=False,
+    )
+    assert got.crs == n.crs
+
+
+def test_bus_regions_come_back_as_shapes(con, base_uri, multiperiod):
+    """Bus regions round-trip by `(bus, type)`; a country shape is dropped.
+
+    Notes
+    -----
+    - [shapes](https://energy-models.github.io/datarecord/design/tools/#shapes)
+    """
+    revision = Revision.create(con)
+    export_network(multiperiod, revision, con)
+    got = PyPSA.build(revision.record).shapes
+
+    def regions(shapes):
+        rows = shapes[shapes["component"] == "Bus"]
+        return {(i, t): g.wkt for i, t, g in zip(rows.idx, rows.type, rows.geometry)}
+
+    assert regions(got) == regions(multiperiod.shapes)
+    assert "country" not in set(got["type"]), "context shapes are not carried"
 
 
 def test_static_series_split_preserved(con, base_uri, single_revision):

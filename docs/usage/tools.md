@@ -39,3 +39,17 @@ w.commit(NewChild())  # one layer, inputs and results together
 ```
 
 Two checks are skipped for `kind="outputs"`: the attribute need not be schema-declared, and a result's `entity` need not resolve to a declared member — a solve may produce rows for a component type it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).
+
+## The component type of a PyPSA record
+
+A record from `PyPSA.to_datarecord` has no entity-type axis. The PyPSA type of each component (`Generator`, `Link`, ...) is `entity_group`, a column of `dims/entity.parquet`, and `record.entity_types` is empty ([design](../design/tools.md#the-pypsa-tool)).
+To add a component to such a record, put its type in the frame. The label that `add` takes does not go into the record:
+
+```python
+w.add(
+    "Generator",
+    pd.DataFrame({"entity": ["wind3"], "entity_group": ["Generator"], "p_nom": [50.0]}),
+)
+```
+
+`build` reads the type from `entity_group`, and a mathspec spec compares it with a value: `entity_group == 'Generator'`.

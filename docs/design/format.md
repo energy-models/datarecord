@@ -33,7 +33,7 @@ entity | entity_type | <component key dims> | deleted     -- a schema declaring 
 entity | <component key dims> | deleted | <attr> ...       -- a schema declaring none
 ```
 
-It is **an axis file like any other**: a `Record` hands it over as `dims["entity"]` and [`write_record`](writing.md) writes it, with no derivation step of its own. A producer that knows its components knows their types — `PyPSA` builds this frame from the same per-type frames it supplies as `entity_types` — so asking it for one file is cheaper than reconstructing it from the others, and it makes the writer a thing that writes frames rather than one that also computes one.
+It is **an axis file like any other**: a `Record` hands it over as `dims["entity"]` and [`write_record`](writing.md) writes it, with no derivation step of its own. A producer that knows its components builds this frame itself — `PyPSA` concatenates its per-type frames and writes the type of each component as its `entity_group` column — so asking it for one file is cheaper than reconstructing it from the others, and it makes the writer a thing that writes frames rather than one that also computes one.
 
 Two things live here in every record, and — where the schema declares no type axis — a third:
 
@@ -111,7 +111,7 @@ An attribute addressed by a group alone is not here either: it is a column of th
 ## `entity` is unique across types
 
 An `entity` identifies one component across the whole record.
-Two types may not share one: a `Bus` and a `Generator` both called `north` are a collision, not two components.
+Two types may not share one: a `Generator` and a `Load` both called `north` are a collision, not two components.
 
 That is what removes `entity_type` from every attribute key.
 An `inputs/` row addresses `(entity, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.

@@ -11,6 +11,7 @@ except importlib.metadata.PackageNotFoundError as e:  # pragma: no cover
     warnings.warn(f"Could not determine version of {__name__}\n{e!s}", stacklevel=2)
     __version__ = "unknown"
 
+from datarecord.combine import FrameRecord, combine, combine_schemas
 from datarecord.duck import connect, layer_dir
 from datarecord.layered.revision import Record, Revision
 from datarecord.layered.write import write_record
@@ -28,6 +29,7 @@ __all__ = [
     "Dimension",
     "Directory",
     "Flags",
+    "FrameRecord",
     "Frames",
     "Group",
     "LazyFrames",
@@ -38,6 +40,8 @@ __all__ = [
     "Schema",
     "Trait",
     "WorkingRecord",
+    "combine",
+    "combine_schemas",
     "connect",
     "layer_dir",
     "write_record",

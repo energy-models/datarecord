@@ -12,6 +12,7 @@ The target, once the split below is done:
 datarecord/                     # the standalone concept
 ├── schema.py                   # Dimension, AttributeSpec, Schema
 ├── record.py                   # Record, Frames, LazyFrames, Flags
+├── combine.py                  # combine, FrameRecord: a record and its extension
 ├── mutable.py                  # WorkingRecord, the edit/commit path
 ├── layered/                    # Record and its resolution
 │   ├── revision.py             # Revision, the node tree

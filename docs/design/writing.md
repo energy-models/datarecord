@@ -37,3 +37,21 @@ The input is a [`LayerData`](record.md#layerdata): "the rows of one thing, enume
 A staged layer's own rows and a resolved record are both a `LayerData`, which is what lets `commit` write either without a third shape adapting one to the other.
 
 A framework object exposing narwhals frames — [`Record`](record.md) rather than `LayerData` — is not itself one: `write_record` wraps it in a thin adapter that reads its `Frames` mappings as the enumerate-and-read pairs `LayerData` declares, so a tool stays narwhals-facing and the layered write path stays raw-relation throughout.
+
+## Combining records
+
+```python
+record = combine(
+    PyPSA.to_datarecord(n),
+    FrameRecord(schema, dim_frames=..., group_frames=..., attribute_frames=...),
+)
+write_record(None, record, con, uri="out/")
+```
+
+A tool's record has the tool's schema. Data that a consumer derives beside it — the inputs of constraints that the framework keeps out of its model — has no place in that schema. `combine(base, extension)` gives one `RecordLike` that holds both, and it names no framework.
+
+**The schemas unite.** The two schemas must have the same `version`. A dim that both declare must have the same declaration. An attribute, result, group, trait or `meta` key that both declare is refused: an extension adds names, it never redefines one. `partial` is the union.
+
+**The frames unite.** A key that only one side holds keeps that side's frame. A dim, or an entity type, that both sides hold gets the extension's columns joined onto the base's rows by key. Those columns are the attributes the extension addresses by that axis alone, or by `entity` alone, which live in that frame ([where a value lives](format.md#where-a-value-lives)). The extension can set a value only on a label that the base holds; a value on another label is refused when the frame is read. Groups, attributes and outputs are new names, so their frames never meet.
+
+`FrameRecord` is the shape of an extension: a schema and native frames of any backend narwhals reads. Its `flags` answers nothing, as a tool's own record does: `write_record` persists frames, not flags.

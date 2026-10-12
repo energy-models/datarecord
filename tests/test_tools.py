@@ -19,12 +19,12 @@ from datarecord import Revision
 from datarecord.duck import layer_dir
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
-from datarecord.tools.pypsa import ENTITY_TYPE, PyPSA, _colliding_names
+from datarecord.tools.pypsa import ENTITY_GROUP, REQUIRED_DIMS, PyPSA, _colliding_names
 from tests.fixtures import (
     export_network,
     relation,
     schema,
-    write_entity_type,
+    write_entities,
     write_input,
 )
 
@@ -103,38 +103,21 @@ def test_verify_reports_a_missing_dim(con, base_uri, ac_dc):
 
 
 def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
-    """A type outside PyPSA's registry is reported by `verify`, not raised in the fold.
+    """An `entity_group` outside PyPSA's registry is reported by `verify`, not raised.
 
-    The type must be one the *schema* declares - the entity-type axis is an
-    `Enum` and that vocabulary is upheld everywhere, so a record cannot hold a
-    type its own schema excludes. What it can hold is a type this tool has no
-    registry entry for, which reads back fine and is this tool's business rather
-    than the record layer's. `Requirements.entity_types` is what carries it.
+    The group is an attribute the record layer knows no vocabulary for, so a
+    record holds any label and reads back fine. That this tool has no registry
+    entry for one is its own business. `Requirements.entity_types` is what
+    carries it.
 
     Notes
     -----
-    - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
+    - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    # Declared alongside PyPSA's own types, since the axis pins the vocabulary.
-    declared = read_schema(con)
-    axis = declared.dimensions[ENTITY_TYPE]
-    assert isinstance(axis.dtype, nw.Enum), "PyPSA declares its types as an enum"
-    write_schema(
-        declared.model_copy(
-            update={
-                "dimensions": {
-                    **declared.dimensions,
-                    ENTITY_TYPE: axis.model_copy(
-                        update={"dtype": nw.Enum([*axis.dtype.categories, "Widget"])}
-                    ),
-                }
-            }
-        )
-    )
-    write_entity_type(layer_dir(revision.id), "Widget", [{"entity": "w1"}])
+    write_entities(layer_dir(revision.id), [{"entity": "w1", ENTITY_GROUP: "Widget"}])
 
     missing = PyPSA.verify(revision.record)
     assert missing.entity_types == {"Widget"}
@@ -142,6 +125,31 @@ def test_verify_reports_a_type_the_tool_does_not_know(con, base_uri, ac_dc):
     assert "Generator" not in missing.entity_types
     with pytest.raises(UnsupportedRecordError, match="Widget"):
         PyPSA.build(revision.record)
+
+
+def test_the_component_type_is_an_attribute_not_an_axis(multiperiod):
+    """No entity-type dim, group or trait: the type is `entity_group` on `dims/entity.parquet`.
+
+    So it never enters a spec as an axis, and a component's constant columns
+    are columns of the entity axis, NULL on the rows of a type without one.
+
+    Notes
+    -----
+    - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    source = PyPSA.to_datarecord(multiperiod)
+    declared = source.schema
+    assert "entity_type" not in declared.dimensions
+    assert declared.entity_type_dim is None
+    assert not declared.traits
+    assert list(source.entity_types) == []
+    assert {ENTITY_GROUP, "p_nom", "s_nom", "e_nom", "p_nom_extendable"} <= set(
+        declared.attributes_on("entity")
+    )
+
+    axis = source.dims["entity"].collect().to_native().set_index("entity")
+    assert axis.loc["Manchester Wind", ENTITY_GROUP] == "Generator"
 
 
 _DIMS = {
@@ -176,9 +184,23 @@ def _with_schema(revision, **kwargs) -> None:
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     was = read_schema()
-    now = schema(**kwargs).model_copy(
+    now = schema(typed=False, **kwargs)
+    # The tool's own axes (`carrier`, ...) stay, since its groups map into them.
+    kept = {
+        d: spec
+        for d, spec in was.dimensions.items()
+        if d not in now.dimensions and d not in REQUIRED_DIMS
+    }
+    dimensions = {**kept, **now.dimensions}
+    addressable = set(dimensions) | set(was.groups)
+    now = now.model_copy(
         update={
-            "attributes": was.attributes,
+            "dimensions": dimensions,
+            "attributes": {
+                a: spec
+                for a, spec in was.attributes.items()
+                if spec.dims <= addressable
+            },
             "groups": was.groups,
             "traits": was.traits,
             "meta": was.meta,
@@ -219,7 +241,9 @@ def test_verify_reports_a_missing_required_attribute(con, base_uri, ac_dc):
     export_network(ac_dc, revision, con)
     # A Generator member carrying no `bus` column at all, no connection row
     # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
-    write_entity_type(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    write_entities(
+        layer_dir(revision.id), [{"entity": "g1", ENTITY_GROUP: "Generator"}]
+    )
     # One file across every type, so the Generators' rows are dropped from it
     # rather than a per-type file being unlinked.
     path = Path(layer_dir(revision.id), "groups", "connection.parquet")
@@ -243,7 +267,9 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(
     """
     revision = Revision.create(con)
     export_network(ac_dc, revision, con)
-    write_entity_type(layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    write_entities(
+        layer_dir(revision.id), [{"entity": "g1", ENTITY_GROUP: "Generator"}]
+    )
 
     # PyPSA's own registry already declares `bus` with a `""` default, which
     # is exactly the case this pins - so the record is left as written.
@@ -306,6 +332,7 @@ def test_to_datarecord_rejects_a_cross_type_name_collision():
     n = pypsa.Network()
     n.add("Bus", "north")
     n.add("Generator", "north", bus="north")
+    n.add("Load", "north", bus="north")
 
     with pytest.raises(UnsupportedRecordError, match="more than one component type"):
         PyPSA.to_datarecord(n)
@@ -412,11 +439,13 @@ def test_results_extracts_long_form_outputs(single_revision):
 
     # A static output has no snapshot, and only the components whose value
     # differs from the default appear (some generators solve to p_nom_opt=0).
-    nom = results["p_nom_opt"].collect()
-    nom = nom.filter(nw.col("entity").is_in(list(gens)))
-    assert nom["snapshot"].is_null().all()
+    capacity = results["p_nom_opt"].collect()
+    capacity = capacity.filter(nw.col("entity").is_in(list(gens)))
+    assert capacity["snapshot"].is_null().all()
     nonzero = n.c["Generator"].static["p_nom_opt"] != 0.0
-    assert set(nom["entity"].to_list()) == set(n.c["Generator"].static.index[nonzero])
+    assert set(capacity["entity"].to_list()) == set(
+        n.c["Generator"].static.index[nonzero]
+    )
 
 
 def test_results_concatenate_every_type_under_one_attribute(single_revision):
@@ -524,3 +553,195 @@ def test_schema_dims_stay_generic(con, base_uri, ac_dc):
     # simply not something the tool looks at.
     assert not PyPSA.verify(revision.record)
     assert "vintage" in dims.schema.long_columns
+
+
+# -- axes, classifications and the spec (https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool) --
+
+
+@pytest.fixture
+def multiperiod_revision(con, base_uri, multiperiod):
+    revision = Revision.create(con)
+    export_network(multiperiod, revision, con)
+    return revision
+
+
+def _parquet(revision, path: str) -> pd.DataFrame:
+    return pd.read_parquet(Path(layer_dir(revision.id), path))
+
+
+def test_buses_and_carriers_are_axes_not_entities(multiperiod_revision):
+    """Bus and Carrier rows are `dims/` files; no `Bus`, `Carrier`, `Shape` or
+    `GlobalConstraint` entity is written.
+
+    Notes
+    -----
+    - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
+    """
+    entities = _parquet(multiperiod_revision, "dims/entity.parquet")
+    assert not set(entities[ENTITY_GROUP]) & {
+        "Bus",
+        "Carrier",
+        "Shape",
+        "GlobalConstraint",
+    }
+    bus = _parquet(multiperiod_revision, "dims/bus.parquet")
+    assert {"busmap_all", "busmap_5", "busmap_10", "country", "v_nom"} <= set(
+        bus.columns
+    )
+    assert {"bus_x", "y", "bus_geometry"} <= set(bus.columns), (
+        "a Bus column another type also names is prefixed"
+    )
+    assert "carrier" not in bus.columns, "a bus's carrier is a group"
+    carrier = _parquet(multiperiod_revision, "dims/carrier.parquet")
+    assert {"carrier", "co2_emissions", "color", "nice_name"} <= set(carrier.columns)
+
+
+def test_a_bus_series_is_keyed_by_bus(multiperiod_revision):
+    rows = _parquet(multiperiod_revision, "inputs/v_mag_pu_set.parquet")
+    assert "bus" in rows.columns
+    assert "entity" not in rows.columns
+
+
+@pytest.mark.parametrize(
+    ("group", "key", "expected"),
+    [
+        ("entity_carrier", "Manchester Wind", "wind"),
+        ("bus_carrier", "Norway DC", "DC"),
+    ],
+)
+def test_classifications_are_groups(multiperiod_revision, group, key, expected):
+    rows = _parquet(multiperiod_revision, f"groups/{group}.parquet")
+    by_key = dict(zip(rows.iloc[:, 0], rows.iloc[:, 1], strict=True))
+    assert by_key[key] == expected
+
+
+@pytest.mark.parametrize(
+    ("column", "entity", "expected"),
+    [
+        ("entity_map_technology", "Norway Gas", "OCGT"),
+        ("resource_class", "Manchester Wind", 1),
+    ],
+)
+def test_custom_columns_are_per_entity(multiperiod_revision, column, entity, expected):
+    members = _parquet(multiperiod_revision, "dims/entity.parquet").set_index("entity")
+    assert members.loc[entity, column] == expected
+    assert "technology_group" not in members.columns
+    assert "technology_group" not in read_schema().dimensions
+
+
+def test_geometry_is_wkt_with_its_crs_in_meta(multiperiod_revision, multiperiod):
+    bus = _parquet(multiperiod_revision, "dims/bus.parquet").set_index("bus")
+    assert bus.loc["Manchester", "region_onshore"].startswith("POLYGON")
+    assert bus.loc["Norway", "region_offshore"].startswith("POLYGON")
+    assert read_schema().meta["crs"] == multiperiod.crs.to_string()
+
+
+def test_a_multiperiod_snapshot_is_within_its_period(multiperiod_revision):
+    schema = read_schema()
+    assert schema.dimensions["snapshot"].within == {"period"}
+    axis = _parquet(multiperiod_revision, "dims/snapshot.parquet")
+    assert {"period", "snapshot", "snapshot_weighting_objective"} <= set(axis.columns)
+    periods = _parquet(multiperiod_revision, "dims/period.parquet")
+    assert periods["period_year"].tolist() == [2030, 2040, 2050]
+
+
+def test_a_shape_the_record_cannot_place_is_rejected(multiperiod):
+    n = multiperiod.copy()
+    import shapely
+
+    n.add(
+        "Shape",
+        ["admin"],
+        geometry=[shapely.Point(0, 0)],
+        idx=["London"],
+        component=["Bus"],
+        type=["admin"],
+    )
+    with pytest.raises(ValueError, match="neither a bus's onshore or offshore"):
+        PyPSA.to_datarecord(n)
+
+
+def test_the_shipped_spec_binds_to_the_record(multiperiod):
+    """The base mathspec spec loads, prints, and names only what the record has.
+
+    Notes
+    -----
+    - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
+    """
+    import mathspec
+
+    from datarecord.tools.pypsa import MATHSPEC
+
+    spec = mathspec.to_spec(str(MATHSPEC))
+    assert "balance" in mathspec.to_markdown(spec)
+    record = PyPSA.to_datarecord(multiperiod)
+    PyPSA.check_spec(spec, record)
+
+    extra = mathspec.merge(
+        [
+            spec,
+            {
+                "dimensions": {"entity": {}},
+                "parameters": {"nowhere": {"dims": ["entity"]}},
+            },
+        ]
+    )
+    with pytest.raises(ValueError, match=r"parameters \['nowhere'\]"):
+        PyPSA.check_spec(extra, record)
+
+
+def test_the_shipped_spec_binds_to_a_record_without_storage(ac_dc):
+    """Names only absent types register are not missing.
+
+    Any other name stays required.
+
+    Notes
+    -----
+    - [the mathspec spec](https://energy-models.github.io/datarecord/design/tools/#the-mathspec-spec)
+    """
+    import mathspec
+
+    from datarecord.tools.pypsa import MATHSPEC
+
+    n = ac_dc.copy()
+    n.set_investment_periods([2030, 2040])
+    spec = mathspec.to_spec(str(MATHSPEC))
+    PyPSA.check_spec(spec, PyPSA.to_datarecord(n))
+
+    extra = mathspec.merge([spec, {"given": {"parameters": {"nowhere": {"dims": []}}}}])
+    with pytest.raises(ValueError, match=r"parameters \['nowhere'\]"):
+        PyPSA.check_spec(extra, PyPSA.to_datarecord(n))
+
+
+@pytest.mark.parametrize(
+    ("component", "column", "other"),
+    [
+        ("Bus", "asset_status", "Generator"),
+        ("Carrier", "country", "bus"),
+    ],
+)
+def test_a_custom_axis_column_clashing_with_another_owner_is_reported(
+    multiperiod, component, column, other
+):
+    """A clash between custom columns is reported, never renamed by the data.
+
+    Renaming on clash would give one column a different record name in
+    another network, which a fixed spec could not bind to.
+
+    Notes
+    -----
+    - [the PyPSA tool](https://energy-models.github.io/datarecord/design/tools/#the-pypsa-tool)
+    """
+    n = multiperiod.copy()
+    n.c[component].static[column] = "x"
+    with pytest.raises(UnsupportedRecordError, match=rf"'{column}' on .*{other}"):
+        PyPSA.to_datarecord(n)
+
+
+def test_an_axis_name_does_not_depend_on_the_network(ac_dc, multiperiod):
+    """`country` is `country` on the bus axis whatever the entities carry."""
+    names = [
+        PyPSA.to_datarecord(n).schema.meta["names"]["bus"] for n in (ac_dc, multiperiod)
+    ]
+    assert names[0]["country"] == names[1]["country"] == "country"
+    assert names[0]["bus_x"] == "x", "a registry clash is prefixed in every network"

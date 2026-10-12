@@ -1,0 +1,336 @@
+# SPDX-FileCopyrightText: datarecord contributors
+#
+# SPDX-License-Identifier: MIT
+
+description: >-
+  PyPSA's linear optimal power flow in entity form, over the names a record
+  written by `datarecord.tools.pypsa` carries. Multi-period with perfect
+  foresight: snapshots fall in investment periods, an asset stands in a period
+  within `active_in_period`, and the objective
+  weights snapshots and periods. No global and no custom constraints: those are
+  separate fragments. Not covered: unit commitment, ramping, quadratic costs,
+  `p_set` fixing of non-loads, and Kirchhoff's voltage law over transformers.
+
+dimensions:
+  scenario:
+    description: the futures dispatch is chosen in, weighted by `scenario_weight`
+  snapshot:
+    dtype: datetime
+    ordered: true
+    description: dispatch periods, each within one investment period
+  period:
+    dtype: int
+    ordered: true
+    description: investment periods, labelled by their year
+  entity:
+    description: every component that is not a bus, a carrier or a shape
+  bus:
+    description: nodes where power balances
+  carrier:
+    description: energy carriers
+
+relations:
+  snapshot_period:
+    key: snapshot
+    values: period
+    description: the investment period a snapshot falls in; the record's `snapshot` axis is `within` `period`
+  entity_carrier:
+    key: entity
+    values: carrier
+    missing: absent
+    description: the carrier of each entity
+  connection:
+    key: [entity, bus]
+    description: which buses an entity attaches to
+
+masks:
+  generator: { where: "entity_group == 'Generator'" }
+  load: { where: "entity_group == 'Load'" }
+  line: { where: "entity_group == 'Line'" }
+  transformer: { where: "entity_group == 'Transformer'" }
+  link: { where: "entity_group == 'Link'" }
+  storage_unit: { where: "entity_group == 'StorageUnit'" }
+  store: { where: "entity_group == 'Store'" }
+  branch: { where: line OR transformer }
+  storage: { where: storage_unit OR store }
+  sized: { where: NOT load }
+  p_sized: { where: generator OR link OR storage_unit }
+  extendable: { where: p_nom_extendable OR s_nom_extendable OR e_nom_extendable }
+  in_service: { where: "at(active_in_period, by=snapshot_period[period])" }
+
+parameters:
+  scenario_weight: { dims: [scenario], description: how much a scenario counts in the expectation }
+  snapshot_weighting_objective: { dims: [snapshot], description: "`snapshot_weightings.objective`" }
+  snapshot_weighting_stores: { dims: [snapshot], description: "`snapshot_weightings.stores`" }
+  snapshot_weighting_generators: { dims: [snapshot], description: "`snapshot_weightings.generators`" }
+  period_weighting_objective: { dims: [period], description: "`investment_period_weightings.objective`" }
+  period_year: { dims: [period], dtype: int, description: "the year a period stands for: its label, as a value" }
+
+  entity_group: { dims: [entity], dtype: str, description: "PyPSA's component type of an entity: `Generator`, `Link`, ..." }
+  port_rate:
+    dims: [scenario, snapshot, entity, bus]
+    missing: 0
+    description: "what one unit of flow puts on a bus: -1 at an input, `efficiency` at an output, `sign` where attached"
+  port_in: { dims: [entity, bus], dtype: int, missing: 0, description: 1 at the input end of a connection }
+  port_out: { dims: [entity, bus], dtype: int, missing: 0, description: 1 at an output end of a connection }
+  demand_rate: { dims: [entity, bus], missing: 0, description: "what one unit of a load's `p_set` puts on its bus: its `sign`" }
+  v_nom: { dims: [bus], description: nominal voltage of a bus }
+
+  active_in_period:
+    dims: [entity, period]
+    dtype: bool
+    missing: neutral
+    description: "whether the entity stands in a period: `active` and `build_year <= period_year < build_year + lifetime`"
+  p_nom_extendable: { dims: [entity], dtype: bool, missing: neutral }
+  s_nom_extendable: { dims: [entity], dtype: bool, missing: neutral }
+  e_nom_extendable: { dims: [entity], dtype: bool, missing: neutral }
+
+  capital_weight:
+    dims: [entity, period]
+    missing: 0
+    description: "`investment_period_weightings.objective` where an extendable entity stands in a period"
+  p_nom: { dims: [entity], missing: absent }
+  p_nom_min: { dims: [entity], missing: absent }
+  p_nom_max: { dims: [entity], missing: absent }
+  p_nom_set: { dims: [entity], missing: absent }
+  s_nom: { dims: [entity], missing: absent }
+  s_nom_min: { dims: [entity], missing: absent }
+  s_nom_max: { dims: [entity], missing: absent }
+  s_nom_set: { dims: [entity], missing: absent }
+  e_nom: { dims: [entity], missing: absent }
+  e_nom_min: { dims: [entity], missing: absent }
+  e_nom_max: { dims: [entity], missing: absent }
+  e_nom_set: { dims: [entity], missing: absent }
+
+  p_min_pu: { dims: [scenario, snapshot, entity], missing: absent }
+  p_max_pu: { dims: [scenario, snapshot, entity], missing: absent }
+  s_max_pu: { dims: [scenario, snapshot, entity], missing: absent }
+  e_min_pu: { dims: [scenario, snapshot, entity], missing: absent }
+  e_max_pu: { dims: [scenario, snapshot, entity], missing: absent }
+  max_hours: { dims: [entity], missing: absent }
+  p_set: { dims: [scenario, snapshot, entity], missing: absent, description: a load's demand }
+  e_sum_max: { dims: [entity], missing: absent }
+  e_sum_min: { dims: [entity], missing: absent }
+  x: { dims: [entity], missing: absent, description: "series reactance of a line, in ohm" }
+
+  e_cyclic: { dims: [entity], dtype: bool, missing: neutral }
+  e_cyclic_per_period: { dims: [entity], dtype: bool, missing: neutral }
+  e_initial: { dims: [entity], missing: absent }
+  e_initial_per_period: { dims: [entity], dtype: bool, missing: neutral }
+  cyclic_state_of_charge: { dims: [entity], dtype: bool, missing: neutral }
+  cyclic_state_of_charge_per_period: { dims: [entity], dtype: bool, missing: neutral }
+  state_of_charge_initial: { dims: [entity], missing: absent }
+  state_of_charge_initial_per_period: { dims: [entity], dtype: bool, missing: neutral }
+  retention:
+    dims: [scenario, snapshot, entity]
+    missing: 1
+    description: "what a store keeps over a snapshot: `(1 - standing_loss) ** snapshot_weighting_stores`"
+  efficiency_store: { dims: [scenario, snapshot, entity], missing: absent }
+  efficiency_dispatch: { dims: [scenario, snapshot, entity], missing: absent }
+  inflow: { dims: [scenario, snapshot, entity], missing: absent }
+
+  capital_cost: { dims: [entity], missing: neutral }
+  marginal_cost: { dims: [scenario, snapshot, entity], missing: neutral }
+  marginal_cost_storage: { dims: [scenario, snapshot, entity], missing: neutral }
+  spill_cost: { dims: [scenario, snapshot, entity], missing: neutral }
+
+variables:
+  p_nom_opt:
+    dims: [entity]
+    where: p_sized AND p_nom_extendable
+  s_nom_opt:
+    dims: [entity]
+    where: branch AND s_nom_extendable
+  e_nom_opt:
+    dims: [entity]
+    where: store AND e_nom_extendable
+  p:
+    dims: [scenario, snapshot, entity]
+    where: sized AND in_service
+    description: "flow: a generator's output, a branch's or a link's `p0`, a storage unit's dispatch, a store's discharge"
+  p_store:
+    dims: [scenario, snapshot, entity]
+    where: storage_unit AND in_service
+    bounds: { lower: 0 }
+  spill:
+    dims: [scenario, snapshot, entity]
+    where: storage_unit AND in_service AND inflow
+    missing: neutral
+    bounds: { lower: 0, upper: inflow }
+  e:
+    dims: [scenario, snapshot, entity]
+    where: storage AND in_service
+    description: "energy level: a store's `e`, a storage unit's state of charge"
+  theta:
+    dims: [scenario, snapshot, bus]
+    description: voltage angle
+
+expressions:
+  capacity:
+    dims: [entity]
+    description: "the optimised capacity where extendable, else the fixed one"
+    cases:
+      p_nom_opt: { when: p_sized AND p_nom_extendable, expression: p_nom_opt }
+      p_nom: { when: p_sized AND NOT p_nom_extendable, expression: p_nom }
+      s_nom_opt: { when: branch AND s_nom_extendable, expression: s_nom_opt }
+      s_nom: { when: branch AND NOT s_nom_extendable, expression: s_nom }
+      e_nom_opt: { when: store AND e_nom_extendable, expression: e_nom_opt }
+      e_nom: { when: store AND NOT e_nom_extendable, expression: e_nom }
+    otherwise: 0
+  store_carried_in:
+    dims: [scenario, snapshot, entity]
+    cases:
+      period_cyclic:
+        when: e_cyclic AND e_cyclic_per_period
+        expression: retention * shift(e, along=snapshot, offset=1, edge='wrap', within=snapshot_period[period])
+      cyclic:
+        when: e_cyclic AND NOT e_cyclic_per_period AND position(snapshot) == 0
+        expression: retention * shift(e, along=snapshot, offset=1, edge='wrap')
+      period_opening:
+        when: NOT e_cyclic AND e_initial_per_period AND position(snapshot, within=snapshot_period[period]) == 0
+        expression: e_initial
+      opening:
+        when: NOT e_cyclic AND NOT e_initial_per_period AND position(snapshot) == 0
+        expression: e_initial
+    otherwise: retention * shift(e, along=snapshot, offset=1)
+  storage_unit_carried_in:
+    dims: [scenario, snapshot, entity]
+    cases:
+      period_cyclic:
+        when: cyclic_state_of_charge AND cyclic_state_of_charge_per_period
+        expression: retention * shift(e, along=snapshot, offset=1, edge='wrap', within=snapshot_period[period])
+      cyclic:
+        when: cyclic_state_of_charge AND NOT cyclic_state_of_charge_per_period AND position(snapshot) == 0
+        expression: retention * shift(e, along=snapshot, offset=1, edge='wrap')
+      period_opening:
+        when: >-
+          NOT cyclic_state_of_charge AND state_of_charge_initial_per_period
+          AND position(snapshot, within=snapshot_period[period]) == 0
+        expression: state_of_charge_initial
+      opening:
+        when: NOT cyclic_state_of_charge AND NOT state_of_charge_initial_per_period AND position(snapshot) == 0
+        expression: state_of_charge_initial
+    otherwise: retention * shift(e, along=snapshot, offset=1)
+  injection:
+    dims: [scenario, snapshot, bus]
+    expression: >-
+      sum(port_rate * p, over=entity)
+      - sum(port_rate * p_store, over=entity)
+      + sum(demand_rate * p_set, over=entity)
+  opex:
+    dims: [scenario]
+    expression: >-
+      sum((marginal_cost * p + spill_cost * spill + marginal_cost_storage * e)
+      * snapshot_weighting_objective * at(period_weighting_objective, by=snapshot_period[period]),
+      over=[snapshot, entity])
+  capex:
+    expression: sum(capital_cost * capacity * capital_weight, over=[entity, period])
+
+constraints:
+  balance:
+    dims: [scenario, snapshot, bus]
+    expression: injection == 0
+  p_nom_lower:
+    dims: [entity]
+    where: p_nom_opt AND p_nom_min
+    expression: p_nom_opt >= p_nom_min
+  p_nom_upper:
+    dims: [entity]
+    where: p_nom_opt AND p_nom_max
+    expression: p_nom_opt <= p_nom_max
+  p_nom_set:
+    dims: [entity]
+    where: p_nom_opt AND p_nom_set
+    expression: p_nom_opt == p_nom_set
+  s_nom_lower:
+    dims: [entity]
+    where: s_nom_opt AND s_nom_min
+    expression: s_nom_opt >= s_nom_min
+  s_nom_upper:
+    dims: [entity]
+    where: s_nom_opt AND s_nom_max
+    expression: s_nom_opt <= s_nom_max
+  s_nom_set:
+    dims: [entity]
+    where: s_nom_opt AND s_nom_set
+    expression: s_nom_opt == s_nom_set
+  e_nom_lower:
+    dims: [entity]
+    where: e_nom_opt AND e_nom_min
+    expression: e_nom_opt >= e_nom_min
+  e_nom_upper:
+    dims: [entity]
+    where: e_nom_opt AND e_nom_max
+    expression: e_nom_opt <= e_nom_max
+  e_nom_set:
+    dims: [entity]
+    where: e_nom_opt AND e_nom_set
+    expression: e_nom_opt == e_nom_set
+  p_lower:
+    dims: [scenario, snapshot, entity]
+    where: (generator OR link) AND in_service
+    expression: p >= p_min_pu * capacity
+  p_upper:
+    dims: [scenario, snapshot, entity]
+    where: (generator OR link OR storage_unit) AND in_service
+    expression: p <= p_max_pu * capacity
+  branch_lower:
+    dims: [scenario, snapshot, entity]
+    where: branch AND in_service
+    expression: p >= -s_max_pu * capacity
+  branch_upper:
+    dims: [scenario, snapshot, entity]
+    where: branch AND in_service
+    expression: p <= s_max_pu * capacity
+  p_dispatch_lower:
+    dims: [scenario, snapshot, entity]
+    where: storage_unit AND in_service
+    expression: p >= 0
+  p_store_upper:
+    dims: [scenario, snapshot, entity]
+    where: storage_unit AND in_service
+    expression: p_store <= -p_min_pu * capacity
+  e_lower:
+    dims: [scenario, snapshot, entity]
+    where: store AND in_service
+    expression: e >= e_min_pu * capacity
+  e_upper:
+    dims: [scenario, snapshot, entity]
+    where: store AND in_service
+    expression: e <= e_max_pu * capacity
+  soc_lower:
+    dims: [scenario, snapshot, entity]
+    where: storage_unit AND in_service
+    expression: e >= 0
+  soc_upper:
+    dims: [scenario, snapshot, entity]
+    where: storage_unit AND in_service
+    expression: e <= max_hours * capacity
+  e_sum_lower:
+    dims: [scenario, entity]
+    where: generator AND e_sum_min
+    expression: sum(p * snapshot_weighting_generators, over=snapshot) >= e_sum_min
+  e_sum_upper:
+    dims: [scenario, entity]
+    where: generator AND e_sum_max
+    expression: sum(p * snapshot_weighting_generators, over=snapshot) <= e_sum_max
+  kirchhoff:
+    dims: [scenario, snapshot, entity]
+    where: line AND entity_carrier == 'AC' AND in_service
+    expression: >-
+      p * x == (sum(port_in * theta, over=bus) - sum(port_out * theta, over=bus))
+      * sum(port_in * v_nom ** 2, over=bus)
+  store_balance:
+    dims: [scenario, snapshot, entity]
+    where: store AND in_service
+    expression: e == store_carried_in - p * snapshot_weighting_stores
+  storage_unit_balance:
+    dims: [scenario, snapshot, entity]
+    where: storage_unit AND in_service
+    expression: >-
+      e == storage_unit_carried_in
+      + (efficiency_store * p_store - p / efficiency_dispatch + inflow - spill) * snapshot_weighting_stores
+
+objective:
+  sense: minimize
+  expression: capex + sum(scenario_weight * opex, over=scenario)
