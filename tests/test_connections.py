@@ -472,8 +472,8 @@ def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
     assert _prices(child.record) == {"smelter": 20.0}
 
 
-def test_set_fills_the_one_entity_coordinate_the_keywords_leave_open(store):
-    """`entity=` names land in the open party; with none open, one row is staged.
+def test_set_names_a_contracts_parties_by_keyword_only(store):
+    """No field is called `entity`, so `entity=` has nothing to fill; one row per call.
 
     Notes
     -----
@@ -485,13 +485,10 @@ def test_set_fills_the_one_entity_coordinate_the_keywords_leave_open(store):
     assert len(staged.attributes["price"].collect()) == 2, "one row per contract"
     assert _prices(staged) == {"mill": 30.0, "smelter": 20.0}
 
-    staged.set("price", 40.0, entity=["plant"], to="smelter")
-    assert _prices(staged) == {"mill": 30.0, "smelter": 40.0}, "names fill `from`"
-
-    with pytest.raises(ValueError, match=r"\['from', 'to'\]"):
-        staged.set("price", 50.0, entity=["mill"])
-    with pytest.raises(ValueError, match="nowhere for `entity=`"):
-        staged.set("price", 50.0, entity=["mill"], **contract)
+    with pytest.raises(ValueError, match="no `entity` coordinate"):
+        staged.set("price", 50.0, entity=["plant"], to="smelter")
+    with pytest.raises(ValueError, match="no `entity` coordinate"):
+        staged.set("price", 50.0, to="smelter")
 
 
 def test_flags_scope_a_two_entity_row_to_the_type_of_each(store):

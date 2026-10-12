@@ -85,7 +85,10 @@ def _base_and_above(
 
 
 def resolve_coords(
-    schema: Schema, sources: Sequence[LayerSource], con: DuckDBPyConnection
+    schema: Schema,
+    sources: Sequence[LayerSource],
+    con: DuckDBPyConnection,
+    split: tuple[Fold | None, list[LayerSource]] | None = None,
 ) -> Coords:
     """Fold every dim `schema` declares to its axis relation.
 
@@ -96,6 +99,8 @@ def resolve_coords(
     sources : sequence of LayerSource
         Root first, ending in the layer being resolved.
     con : DuckDBPyConnection
+    split
+        `_base_and_above(sources, ...)`, where the caller already read it.
 
     Returns
     -------
@@ -110,7 +115,7 @@ def resolve_coords(
     # which dims that source actually has, so `fold_axis` below is only ever
     # asked for a dim at least one source holds, and only passed the sources
     # that hold it.
-    base, above = _base_and_above(sources, con, schema)
+    base, above = split or _base_and_above(sources, con, schema)
     present = [source.axes() for source in above]
     axes = {}
     for dim in schema.dims:
@@ -626,13 +631,15 @@ def _fold_map(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    keys = resolve_coords(schema, sources, con)
-    _, above = _base_and_above(sources, con, schema)
-    seed = sources[: len(sources) - len(above)]
-
-    rel = _empty_relation(keys.schema, con, *columns(keys))
-    if seed:
-        rel = _frozen_table(seed[-1].layer_id, seed, con, keys.schema, kind=kind)
+    base, above = split = _base_and_above(sources, con, schema)
+    keys = resolve_coords(schema, sources, con, split)
+    if base is None:
+        rel = _empty_relation(keys.schema, con, *columns(keys))
+    else:
+        seed = sources[: len(sources) - len(above)]
+        rel = _frozen_table(
+            seed[-1].layer_id, seed, con, keys.schema, kind=kind, read=base.owner_map
+        )
 
     for source in above:
         rel = fold(source, keys, con, rel)
@@ -728,6 +735,7 @@ def _frozen_table(
     schema: Schema,
     *,
     kind: str,
+    read: DuckDBPyRelation | None = None,
 ) -> DuckDBPyRelation:
     """The frozen prefix's owner map, its own materialised one or a cached fold.
 
@@ -741,6 +749,11 @@ def _frozen_table(
     The one place a cached map enters a fold: a materialised seed is read here
     too (`_fold_map`).
 
+    Parameters
+    ----------
+    read
+        The prefix's materialised map where the caller already holds it.
+
     Notes
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
@@ -748,8 +761,12 @@ def _frozen_table(
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     last = sources[-1] if sources else None
-    rel = None
-    if isinstance(last, ParquetLayer) and last.revision_id == revision_id:
+    rel = read
+    if (
+        rel is None
+        and isinstance(last, ParquetLayer)
+        and last.revision_id == revision_id
+    ):
         rel = try_read_parquet(last.store.owner_map_uri(revision_id, kind), con)
     if rel is not None:
         rel = cast_declared(schema, rel)
@@ -860,7 +877,8 @@ def _materialise_dims(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     con = store.workspace.con
-    dims = resolve_coords(schema, sources, con)
+    seed_base, above = split = _base_and_above(sources, con, schema)
+    dims = resolve_coords(schema, sources, con, split)
     base = store.resolved_dir(revision_id) + "dims/"
     ensure_local_dir(base)
     for dim, rel in dims.axes.items():
@@ -882,7 +900,6 @@ def _materialise_dims(
     types = store.resolved_dir(revision_id) + "dims/entity_type/"
     ensure_local_dir(types)
     live = set(distinct_values(axis, "entity_type", order=False))
-    seed_base, above = _base_and_above(sources, con, schema)
     for ctype in live:
         seed = None if seed_base is None else seed_base.entity_types.get(ctype)
         wide = fold_axis(
