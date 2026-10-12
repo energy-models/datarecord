@@ -108,6 +108,10 @@ A plain dim keyword scopes the edit and its absence means "every value" by the N
 A group's key coordinates are packed with the entity into the group's [struct column](schema.md#groups), so `entity=["dc"], bus="north"` stages `connection = {entity: dc, bus: north}`.
 A group column does not broadcast: omitting `bus` stages `{entity: dc, bus: NULL}`, which [matches no connection](record.md#the-broadcast-rule) rather than every connection of the entity.
 
+**`entity=` fills only a coordinate named `entity`**, the row's own or a group field so called.
+A field drawing on `entity` under another name is a keyword like any other: a contract `(from, to)` is addressed as `from="plant", to="mill"`, both required, and `entity=` beside it is refused, since it would have to guess which party it names.
+Such a call stages one row, not one per entity of the type.
+
 **An attribute addressed by one axis alone is keyed by that axis's labels**, not by `entity`: `set("icon", {"Generator": "turbine"})` states one type's icon, and `set("co2_budget", 3.0)` reaches every country the axis has.
 The edit stages a row of [that axis's own file](format.md#where-a-value-lives) rather than a long row, so `entity=` is refused — an icon belongs to no entity — and a sequence is refused too, there being no name list to align against.
 A label the axis does not have is refused rather than introduced: an axis row is a label's existence, which an axis file states. Where the axis's dtype is an `Enum` the vocabulary is the schema's, so an undeclared label is rejected without reading the axis at all.

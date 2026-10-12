@@ -32,6 +32,12 @@ All notable changes to datarecord are documented here. The format follows
   tool no longer declares `bus` as an attribute: a port's bus is the
   connection tuple. `Schema.group_coordinates` and `Group.coordinates` are
   gone.
+- `WorkingRecord.set(..., entity=...)` fills only a coordinate named
+  `entity`. An attribute over a group with no such field, a contract
+  `(from, to)`, takes every party as a keyword and refuses `entity=`; it
+  used to stage one duplicate row per entity of the type. `add` refuses a
+  frame carrying a group's columns without its full key, which used to
+  stage a half-keyed row.
 - A group may not share a dim's name, the entity-type group excepted: a
   group is carried as a column named for it. Rename a functional group for
   the relation, `bus_country` into `country`.
