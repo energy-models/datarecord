@@ -58,6 +58,7 @@ nav:
           - A Workspace and a Store: design/proposals/store.md
           - A group is one struct column: design/proposals/a-group-is-a-struct-column.md
           - Deletion cascades through tombstones: design/proposals/deletion-cascades-through-tombstones.md
+          - Properties: design/proposals/properties.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:
