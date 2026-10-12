@@ -96,9 +96,10 @@ parameters:
     dims: [entity, period]
     missing: 0
     description: "`investment_period_weightings.objective` where an extendable entity stands in a period"
-  nom: { dims: [entity], missing: absent, description: "the fixed capacity: `p_nom`, `s_nom` or `e_nom`" }
-  nom_min: { dims: [entity], missing: absent, description: "`p_nom_min`, `s_nom_min` or `e_nom_min`" }
-  nom_max: { dims: [entity], missing: absent, description: "`p_nom_max`, `s_nom_max` or `e_nom_max`" }
+  capacity_fixed: { dims: [entity], missing: absent, description: "the fixed capacity: `p_nom`, `s_nom` or `e_nom`" }
+  capacity_min: { dims: [entity], missing: absent, description: "`p_nom_min`, `s_nom_min` or `e_nom_min`" }
+  capacity_max: { dims: [entity], missing: absent, description: "`p_nom_max`, `s_nom_max` or `e_nom_max`" }
+  capacity_set: { dims: [entity], missing: absent, description: "`p_nom_set`, `s_nom_set` or `e_nom_set`" }
 
   p_min_pu: { dims: [scenario, snapshot, entity], missing: absent }
   p_max_pu: { dims: [scenario, snapshot, entity], missing: absent }
@@ -212,18 +213,22 @@ constraints:
   balance:
     dims: [scenario, snapshot, bus]
     expression: injection == 0
-  nom_fixed:
+  capacity_fixed:
     dims: [entity]
     where: sized AND NOT extendable
-    expression: capacity == nom
-  nom_lower:
+    expression: capacity == capacity_fixed
+  capacity_lower:
     dims: [entity]
     where: extendable
-    expression: capacity >= nom_min
-  nom_upper:
+    expression: capacity >= capacity_min
+  capacity_upper:
     dims: [entity]
-    where: extendable AND nom_max
-    expression: capacity <= nom_max
+    where: extendable AND capacity_max
+    expression: capacity <= capacity_max
+  capacity_set:
+    dims: [entity]
+    where: extendable AND capacity_set
+    expression: capacity == capacity_set
   p_lower:
     dims: [scenario, snapshot, entity]
     where: (generator OR link) AND in_service

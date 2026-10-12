@@ -80,6 +80,8 @@ Without the type axis, the constant columns of all types are columns of `dims/en
 That leaves custom columns, which no registry lists: an axis column whose record name is also a custom entity column or another axis's column has no rule to tell the two apart, so `to_datarecord` raises `UnsupportedRecordError` naming the column and both owners rather than renaming one silently.
 `schema.meta["names"]` records each axis's record-to-PyPSA mapping, which is what `build` inverts.
 
+**The capacity attributes have one name for all types.** `p_nom`, `s_nom` and `e_nom` are `capacity_fixed`. A variant `<x>_nom_<suffix>` is `capacity_<suffix>`: `capacity_min`, `capacity_max`, `capacity_set`, `capacity_mod` and the result `capacity_opt`. `<x>_nom_extendable` is `extendable`. The bare name `capacity` is the decision variable of the mathspec spec, so no attribute takes it. `build` inverts the mapping.
+
 **Multi-period.** On a network with investment periods, `snapshot` is [`within`](schema.md#within-an-axis-inside-an-axis) `period`, so the snapshot axis is keyed `(period, snapshot)` — PyPSA's `(period, timestep)` — and every snapshot-varying attribute is addressed by `period` too.
 
 ### Technology groups
@@ -101,7 +103,7 @@ Geometry is WKT text, in `schema.meta["crs"]` (`n.crs`, EPSG:4326 by default). A
 
 ### The mathspec spec
 
-`datarecord/tools/pypsa.mathspec.yaml` (`datarecord.tools.pypsa.MATHSPEC`) states the linear optimal power flow over the record's own names: dims `snapshot`, `period`, `scenario`, `entity`, `bus`, `carrier`, `technology_group`; relations as the groups are named; PyPSA's attribute names per type (`p_nom_min`, `s_nom_min`, `e_nom_min`), unified by named expressions rather than renamed.
+`datarecord/tools/pypsa.mathspec.yaml` (`datarecord.tools.pypsa.MATHSPEC`) states the linear optimal power flow over the record's own names: dims `snapshot`, `period`, `scenario`, `entity`, `bus`, `carrier`, `technology_group`; relations as the groups are named; the record's attribute names, so the capacity bounds are `capacity_min` and `capacity_max` for every type. The decision variable is `capacity`.
 The PyPSA type is the `str` parameter `entity_group`, not a dim or a relation. A mask compares it with a value: `generator` is `entity_group == 'Generator'`.
 The bus balance reads the `connection` group's `role` and the per-connection `efficiency`.
 

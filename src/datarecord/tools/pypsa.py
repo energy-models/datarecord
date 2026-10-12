@@ -77,7 +77,7 @@ _PERIOD_WEIGHTINGS = ("objective", "years")
 # mathspec spec, which compares it against `build_year`.
 PERIOD_YEAR = "period_year"
 EXTENDABLE = "extendable"
-CAPACITY = "nom"
+CAPACITY = "capacity"
 ACTIVE_IN_PERIOD = "active_in_period"
 CAPITAL_WEIGHT = "capital_weight"
 RETENTION = "retention"
@@ -853,8 +853,9 @@ def _record_names(c: pypsa.Components) -> dict[str, str]:
 
     A per-port attribute is named by its stem; a per-entity one whose name is
     a port stem elsewhere (a Link's internal `p`) takes `_internal`. The
-    type's `p_nom`, `s_nom` or `e_nom` and its variants are `nom...`, and
-    `<x>_nom_extendable` is `extendable`.
+    type's `p_nom`, `s_nom` or `e_nom` is `capacity_fixed`, a variant
+    `<x>_nom_<suffix>` is `capacity_<suffix>`, and `<x>_nom_extendable` is
+    `extendable`.
     """
     ports = _port_columns(c)
     (prefix,) = [
@@ -871,7 +872,8 @@ def _record_names(c: pypsa.Components) -> dict[str, str]:
         elif prefix is not None and attr == f"{prefix}_extendable":
             names[attr] = EXTENDABLE
         elif prefix is not None and re.fullmatch(rf"{prefix}(_.+)?", attr):
-            names[attr] = CAPACITY + attr.removeprefix(prefix)
+            suffix = attr.removeprefix(prefix).removeprefix("_") or "fixed"
+            names[attr] = f"{CAPACITY}_{suffix}"
         else:
             names[attr] = attr
     return names
@@ -1461,7 +1463,7 @@ class PyPSATool(Tool):
 
         A name the record cannot carry because the network has nothing it would
         describe is not missing: an attribute only component types the record
-        holds no member of register (`e_nom` with no `Store`), and the
+        holds no member of register (`e_min_pu` with no `Store`), and the
         technology-group axis and its groups where no component has a
         `technology_group`. The spec's rows over them are empty, as they are in
         PyPSA's model. Every other name is required.
