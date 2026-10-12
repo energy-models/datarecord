@@ -201,8 +201,8 @@ class Fold:
                 .distinct()
                 .set_alias("e")
             )
-            # A row matched by two of its entities is counted twice; harmless
-            # under `bool_or`, so no distinct.
+            # One join per coordinate, an `OR` of them being unhashable. A row
+            # matched twice is harmless under `bool_or`, so no distinct.
             scoped = rel.limit(0)
             for on in entity_coordinates(self.schema, "i", rel.columns):
                 scoped = scoped.union(
@@ -260,8 +260,7 @@ def entity_coordinates(
     group's struct: a connection row has no top-level `entity`, its entity
     riding inside `connection`, and a group drawing twice on `entity` - a
     contract `(from, to)` - names both. A row naming none belongs to no type and
-    no entity tombstone reaches it. Match one join per expression rather than an
-    `OR` of them, which DuckDB cannot hash.
+    no entity tombstone reaches it.
 
     Parameters
     ----------
@@ -279,8 +278,7 @@ def entity_coordinates(
             fn.struct_extract(col(alias, g), lit(c))
             for g in schema.group_columns
             if g in columns
-            for c in schema.group_key(g)
-            if schema.groups[g].over[c] == "entity"
+            for c in schema.entity_fields(g)
         ),
     ]
 

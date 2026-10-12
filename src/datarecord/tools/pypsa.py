@@ -2012,7 +2012,6 @@ class _NetworkSource:
         bus_rel = con.sql(  # noqa: F841 - bound by name for the join below
             "SELECT CAST(entity AS VARCHAR) entity, bus FROM bus_df"
         )
-        # An inner join drops a port whose bus is empty.
         v = self._tagged_long_rel(c, attribute, column, drop_defaults=drop_defaults)
         if v is None:
             return None

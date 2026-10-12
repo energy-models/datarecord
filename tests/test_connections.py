@@ -14,6 +14,7 @@ from typing import Any
 
 import duckdb
 import narwhals as nw
+import pytest
 
 from datarecord.layered.revision import Revision
 from datarecord.mutable import WorkingRecord
@@ -469,6 +470,28 @@ def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
 
     child = root.child(staged.edits)
     assert _prices(child.record) == {"smelter": 20.0}
+
+
+def test_set_fills_the_one_entity_coordinate_the_keywords_leave_open(store):
+    """`entity=` names land in the open party; with none open, one row is staged.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    staged = WorkingRecord(_contract_root(store).record)
+    contract: dict[str, Any] = {"from": "plant", "to": "mill"}
+    staged.set("price", 30.0, **contract)
+    assert len(staged.attributes["price"].collect()) == 2, "one row per contract"
+    assert _prices(staged) == {"mill": 30.0, "smelter": 20.0}
+
+    staged.set("price", 40.0, entity=["plant"], to="smelter")
+    assert _prices(staged) == {"mill": 30.0, "smelter": 40.0}, "names fill `from`"
+
+    with pytest.raises(ValueError, match=r"\['from', 'to'\]"):
+        staged.set("price", 50.0, entity=["mill"])
+    with pytest.raises(ValueError, match="nowhere for `entity=`"):
+        staged.set("price", 50.0, entity=["mill"], **contract)
 
 
 def test_flags_scope_a_two_entity_row_to_the_type_of_each(store):

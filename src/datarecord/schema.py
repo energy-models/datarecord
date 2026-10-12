@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
+from functools import cached_property
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
@@ -679,34 +680,12 @@ class Schema(BaseModel):
                     f"dims a layer patches per value"
                 )
                 raise ValueError(msg)
-
-        # The fold key rests on every dim being exactly one of: a broadcast dim
-        # (NULL means all-values), a membership key (a row exists or not), or the
-        # entity-type axis (a column of `dims/entity.parquet`, not addressable).
-        # All three derive from `broadcast_dims`, so this cannot fail unless that
-        # derivation drifts - which would silently drop a coordinate from the fold
-        # key or double-count it, the one broadcasting bug worth an assertion
-        # (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-        broadcast = set(self.broadcast_dims)
-        membership = set(self.membership_keys) & set(self.dims)
-        type_axis = {entity_type} & set(self.dims) if entity_type else set()
-        covered = broadcast | membership | type_axis
-        disjoint = len(broadcast) + len(membership) + len(type_axis) == len(covered)
-        if covered != set(self.dims) or not disjoint:
-            msg = (
-                f"every dim must be exactly one of broadcast, membership key or "
-                f"the entity-type axis; got broadcast {sorted(broadcast)}, "
-                f"membership {sorted(membership)}, type axis {sorted(type_axis)} "
-                f"over dims {sorted(self.dims)}"
-            )
-            raise ValueError(msg)
         return self
 
     def _check_names(self) -> None:
         """Refuse every declared name that cannot be a column of its own.
 
-        Group names are checked with the rest though no file has a column of
-        one, since `dims` spells a group and a dim alike. `entity_type` is the
+        A group's name is a column too, its struct column. `entity_type` is the
         one name legal as a dim or group and not as an attribute: the type axis
         is spelled so, and its column is no attribute's to take. Two spellings
         of one name differing only in case are refused, DuckDB resolving both
@@ -817,15 +796,9 @@ class Schema(BaseModel):
             return ()
         return (*self.groups_of(attribute), *(d for d in self.dims if d in spec.dims))
 
-    @property
+    @cached_property
     def group_columns(self) -> tuple[str, ...]:
         """The groups the owner map is keyed by, in declaration order.
-
-        A group some attribute names beside another coordinate, so that its
-        rows are long rows in `inputs/` carrying the group's struct column.
-        Every other group would be a map column NULL on every row: the
-        entity-type group, one addressed only alone (a column of its own file),
-        one only results name (`outputs/` never overlays), or one nothing names.
 
         Notes
         -----
@@ -861,10 +834,7 @@ class Schema(BaseModel):
     ) -> None:
         """Reject each of `groups` carried other than as one struct column of exactly its key.
 
-        A cast would not catch a struct of other fields: a struct casts by field
-        name, so a missing field turns NULL and an extra one is dropped,
-        silently re-keying every row. A carrier without a group's column
-        passes, whether it may lack one being the caller's to say.
+        A carrier without a group's column passes.
 
         Parameters
         ----------
@@ -1211,6 +1181,20 @@ class Schema(BaseModel):
         """
         spec = self.groups.get(group)
         return () if spec is None else spec.key
+
+    def entity_fields(self, group: str) -> tuple[str, ...]:
+        """The key coordinates of `group` that name an entity, whatever they are called.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        spec = self.groups.get(group)
+        return (
+            ()
+            if spec is None
+            else tuple(c for c in spec.key if spec.over[c] == "entity")
+        )
 
     @property
     def input_columns(self) -> tuple[str, ...]:

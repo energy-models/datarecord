@@ -734,11 +734,9 @@ def _frozen_table(
     Keyed by `revision_id` rather than by the prefix: the prefix *is* what that
     node resolves from, a staged source only ever being appended after it. The
     table is shared by every cursor on the workspace and carries no schema in
-    its name, so a schema widened since the fold reads it as it is: a widening
-    only adds, and what it adds here - a flag field for a new dim, a key column
-    for a newly keyed group - reads as unset where it is missing: a key column
-    is NULL on every row, no row folded then having named the group. A persisted
-    map is cast, parquet not carrying the declared types.
+    its name, so a schema widened since the fold reads it as it is, a column it
+    lacks padded as unset. A persisted map is cast, parquet not carrying the
+    declared types.
 
     The one place a cached map enters a fold: a materialised seed is read here
     too (`_fold_map`).

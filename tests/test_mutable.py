@@ -819,6 +819,18 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     assert buses["Manchester Wind"] == "Manchester"
 
 
+def test_add_refuses_a_connection_row_without_its_bus(staged):
+    """A `role` with no `bus` would stage a connection keyed by half its tuple.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    frame = pd.DataFrame([{"entity": "NewSolar", "role": "attached", "p_nom": 1.0}])
+    with pytest.raises(ValueError, match=r"\['bus'\]"):
+        staged.add(GEN, frame)
+
+
 def test_add_rejects_a_column_the_schema_does_not_declare(staged):
     """A member column no declaration accounts for is an error, not a new column.
 
