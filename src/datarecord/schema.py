@@ -21,6 +21,7 @@ Notes
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
@@ -861,6 +862,41 @@ class Schema(BaseModel):
         """
         spec = self.groups[group]
         return nw.Struct({c: self.dimensions[spec.over[c]].dtype for c in spec.key})
+
+    def check_group_column(
+        self, group: str, fields: Iterable[str] | None, *, carrier: str, dtype: object
+    ) -> None:
+        """Reject a column carrying `group` unless it is a struct of exactly its key.
+
+        A cast would not catch it: a struct casts by field name, so a missing
+        field turns NULL and an extra one is dropped, silently re-keying every
+        row.
+
+        Parameters
+        ----------
+        fields
+            The column's struct fields, `None` where it is no struct.
+        carrier
+            What carries the column, named in the message.
+        dtype
+            The column's type as the caller sees it, named in the message.
+
+        Raises
+        ------
+        ValueError
+            Naming the group, its type, and the key it is carried by.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        key = self.group_key(group)
+        if fields is None or set(fields) != set(key):
+            msg = (
+                f"{carrier} carries {group!r} as {dtype}; a group is one struct "
+                f"column with a field per key coordinate, {list(key)} (https://energy-models.github.io/datarecord/design/schema/#groups)"
+            )
+            raise ValueError(msg)
 
     def long_columns_for(self, attribute: str) -> tuple[str, ...]:
         """One attribute's full long column set, in order - input or result.

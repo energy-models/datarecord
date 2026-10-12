@@ -1161,20 +1161,22 @@ class WorkingRecord(Record):
         for group in self.schema.coordinates_of(attribute):
             if not _is_group_column(self.schema, group) or group not in types:
                 continue
-            key = self.schema.group_key(group)
-            flat = sorted(set(key) & set(types))
-            dtype = types[group]
-            fields = (
-                {f.name for f in dtype.fields} if isinstance(dtype, nw.Struct) else None
-            )
-            if flat or fields != set(key):
+            flat = sorted(set(self.schema.group_key(group)) & set(types))
+            if flat:
                 msg = (
-                    f"`set({attribute!r}, <frame>)` carries {group!r} as {dtype}"
-                    f"{f' beside {flat}' if flat else ''}; a group is one struct "
-                    f"with a field per key coordinate {list(key)}, or those "
-                    f"coordinates flat, not both (https://energy-models.github.io/datarecord/design/schema/#groups)"
+                    f"`set({attribute!r}, <frame>)` carries {group!r} beside {flat}; "
+                    f"a group is one struct or its coordinates flat, not both (https://energy-models.github.io/datarecord/design/schema/#groups)"
                 )
                 raise ValueError(msg)
+            dtype = types[group]
+            self.schema.check_group_column(
+                group,
+                [f.name for f in dtype.fields]
+                if isinstance(dtype, nw.Struct)
+                else None,
+                carrier=f"`set({attribute!r}, <frame>)`",
+                dtype=dtype,
+            )
 
     def _group_of(self, attribute: str, name: str) -> str | None:
         """The group column of `attribute` whose struct holds coordinate `name`.
