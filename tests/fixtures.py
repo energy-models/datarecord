@@ -10,6 +10,7 @@ Notes
 """
 
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import narwhals as nw
@@ -91,8 +92,9 @@ def write_input(
 def write_group(layer: str, group: str, rows: list[dict]) -> None:
     """Write `groups/<group>.parquet` from plain rows, whatever columns they carry.
 
-    The generic form of `write_connections`: one file per group, keyed by its
-    coordinates, with `deleted` supplied where a row does not carry it.
+    The generic form of `write_connections`: one file per group, keyed by the
+    struct column named for it - a dict per row here - with `deleted` supplied
+    where a row does not carry it.
 
     Notes
     -----
@@ -107,11 +109,22 @@ def write_group(layer: str, group: str, rows: list[dict]) -> None:
     df.to_parquet(target / f"{group}.parquet", index=False)
 
 
+def unpacked(frame: Any, group: str = "connection") -> pd.DataFrame:
+    """A group-keyed frame or relation as pandas, its struct column spread flat.
+
+    A numpy-backed pandas frame has no struct dtype, so the unnest happens on
+    the DuckDB side.
+    """
+    rel = frame.to_native() if isinstance(frame, nw.LazyFrame) else frame
+    return rel.project(f"unnest({group}), * EXCLUDE ({group})").df()
+
+
 def write_connections(layer: str, rows: list[dict]) -> None:
     """Write `groups/connection.parquet`, including the `deleted` tombstone.
 
-    Each row needs `entity` and `bus`; `role` describes the connection and keys
-    nothing, so it is optional here.
+    Each row needs `entity` and `bus`, packed into the `connection` struct the
+    file is keyed by; `role` describes the connection and keys nothing, so it is
+    optional here.
 
     No component type - one file holds every type's rows. Appended rather than
     replaced, since a layer may write them a call at a time.
@@ -129,8 +142,11 @@ def write_connections(layer: str, rows: list[dict]) -> None:
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
+    df["connection"] = [
+        {"entity": e, "bus": b} for e, b in zip(df.pop("entity"), df.pop("bus"))
+    ]
 
-    lead = ["entity", "bus", "role", "scenario", "deleted"]
+    lead = ["connection", "role", "scenario", "deleted"]
     ordered = lead + [c for c in df.columns if c not in lead]
     target = Path(layer, "groups")
     target.mkdir(parents=True, exist_ok=True)

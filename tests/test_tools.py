@@ -29,6 +29,7 @@ from tests.fixtures import (
     outputs,
     relation,
     schema,
+    unpacked,
     write_entity_type,
     write_input,
 )
@@ -167,19 +168,6 @@ _DIMS = {
 }
 
 
-def _without_default(revision, ctype: str, attribute: str) -> None:
-    """Drop one attribute's declared default, leaving the rest of the schema.
-
-    `ctype` says which type the caller means it for; the spec itself is
-    declared once record-wide, so dropping the default drops it everywhere.
-    """
-    was = read_schema(revision.store)
-    assert attribute in was.attributes_for(ctype)
-    spec = was.attributes[attribute]
-    was.attributes[attribute] = spec.model_copy(update={"default": None})
-    write_schema(was, revision.store)
-
-
 def _with_schema(revision, **kwargs) -> None:
     """Redeclare the record's schema, keeping the attributes it already declares.
 
@@ -246,18 +234,22 @@ def test_verify_reports_a_snapshot_key(store, ac_dc):
 
 
 def test_verify_reports_a_missing_required_attribute(store, ac_dc):
-    """A component type with no `bus` anywhere - not in the frame, not in the catalog."""
+    """A component type with no `bus` anywhere - no connection row supplies it.
+
+    A port's bus is the `connection` tuple itself, declared as no attribute, so
+    no default can stand in for it.
+    """
     revision = export_network(ac_dc, store)
-    # A Generator member carrying no `bus` column at all, no connection row
-    # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
+    # A Generator member with no connection row supplying its bus
+    # (https://energy-models.github.io/datarecord/design/record/#connections).
     write_entity_type(store.layer_dir(revision.id), "Generator", [{"entity": "g1"}])
     # One file across every type, so the Generators' rows are dropped from it
     # rather than a per-type file being unlinked.
     path = Path(store.layer_dir(revision.id), "groups", "connection.parquet")
     rows = pd.read_parquet(path)
     generators = set(ac_dc.c["Generator"].static.index) | {"g1"}
-    rows[~rows["entity"].isin(generators)].to_parquet(path, index=False)
-    _without_default(revision, "Generator", "bus")
+    entities = rows["connection"].map(lambda c: c["entity"])
+    rows[~entities.isin(generators)].to_parquet(path, index=False)
 
     missing = PyPSA.verify(revision.record)
     assert ("Generator", "bus") in missing.attributes
@@ -271,11 +263,11 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(store, ac_dc
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
     """
     revision = export_network(ac_dc, store)
-    write_entity_type(store.layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    write_entity_type(store.layer_dir(revision.id), "Line", [{"entity": "l1"}])
 
-    # PyPSA's own registry already declares `bus` with a `""` default, which
-    # is exactly the case this pins - so the record is left as written.
-    assert ("Generator", "bus") not in PyPSA.verify(revision.record).attributes
+    # PyPSA's own registry already declares the required `x` with a default,
+    # which is exactly the case this pins - so the record is left as written.
+    assert ("Line", "x") not in PyPSA.verify(revision.record).attributes
 
 
 def test_verify_reports_a_piecewise_linear_attribute(store, ac_dc):
@@ -543,11 +535,7 @@ def test_a_solved_p_is_one_row_per_connection(single_revision):
     n.optimize(solver_name="highs")
 
     p = _flat(PyPSA.results(n, single_revision.record.con)["p"])
-    connections = (
-        single_revision.record.groups["connection"]
-        .collect(backend="pandas")
-        .to_native()
-    )
+    connections = unpacked(single_revision.record.groups["connection"])
     per_connection = p.groupby(["entity", "bus"]).size()
     assert set(per_connection.index) == set(
         zip(connections["entity"], connections["bus"])
@@ -786,7 +774,7 @@ def test_delays_are_columns_of_their_connections(workspace, store):
     assert not {"delay", "delay0", "delay2", "cyclic_delay1"} & set().union(
         *members.values()
     ), "no positional names on the members"
-    connections = record.groups["connection"].collect().to_pandas()
+    connections = _flat(record.groups["connection"])
     delay = connections.set_index(["entity", "bus"])["delay"].dropna().to_dict()
     assert delay == {
         ("dri", "a"): 1,

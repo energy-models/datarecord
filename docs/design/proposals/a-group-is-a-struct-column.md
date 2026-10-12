@@ -57,8 +57,7 @@ So [resolving a relation](../read-path.md#resolving-a-relation) joins `o.connect
 
 **A group does not share a dim's name.** A group is carried as a column named for it, so `country` into `country` would make two columns one name; the functional group is `bus_country`, and only the entity-type group, which has no file or column of its own, may share its dim's name.
 
-**A group file stays flat**: `groups/connection.parquet` is `entity | bus | role`, keyed by its coordinates, folded [like any axis](../read-path.md#one-fold-for-every-axis).
-The struct is built where a row is joined against it, `{'entity': entity, 'bus': bus} AS connection`, which is the one place the two shapes meet.
+**A group file is keyed by its struct column**: `groups/connection.parquet` is `connection STRUCT(entity, bus) | role`, folded [like any axis](../read-path.md#one-fold-for-every-axis) keyed by that one column, exactly as `dims/<dim>.parquet` is keyed by the column named for the dim — so a row and its group meet on one column with nothing packed between them.
 
 ## The owner map
 
@@ -133,3 +132,5 @@ It is the same "keyed twice over" rule [`into`](../schema.md#into-a-group-that-c
 - **A long frame handed to `set` carries the struct only.** Accepting its coordinates flat as well cost a second packing path and a both-forms rejection for no caller that needed it: the PyPSA tool packs once, where it builds its frames.
 - **An empty frame must still type the group column as the struct.** A source emitting no rows for an attribute hands over a typed empty relation, or the writer rejects a column that is not a struct of the group's key.
 - **Shadowing went.** A group sharing a dim's name was resolved to the dim, which every place that tells a group column from a dim had to repeat. Once a group is a column named for itself, the collision is two columns under one name, so the schema rejects it; only the entity-type group, which never becomes a column, keeps its dim's name.
+- **A flat group file cost a conversion wherever a row met it.** The fold's group tombstones, the staged collapse, `remove_group` and `add` each packed the file's coordinates into the struct. Keying `groups/<group>.parquet` by its struct column, as an axis file is keyed by its dim, removed every one; packing survives only where a caller hands flat values in — `set`'s coordinate keywords, `remove_group`'s tuples, `add`'s wide frame — and in the PyPSA tool, whose network is flat.
+- **PyPSA's `bus` was an attribute and a coordinate at once.** The tool declared the port stem `bus` as an attribute over `connection`, which in a flat file was the same column as the coordinate. Under the struct it would be a second column beside the key, so the tool declares no such attribute: a port's bus is the connection tuple, and a component with no connection row lacks it whatever default PyPSA registers.

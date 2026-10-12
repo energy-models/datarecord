@@ -31,7 +31,12 @@ import pandas as pd
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyConnection, DuckDBPyRelation, FunctionExpression
+from duckdb import (
+    DuckDBPyConnection,
+    DuckDBPyRelation,
+    Expression,
+    FunctionExpression,
+)
 from duckdb import StarExpression as star
 
 from datarecord.duck import DuckTypes, ex_all, fn, struct_of
@@ -1355,7 +1360,8 @@ def _registry_schema() -> RecordSchema:
             if attr == "name" or attr in is_output:
                 continue
             stem = per_port.get(attr, attr)
-            if stem in carried:
+            # A port's bus is the `connection` tuple itself, no attribute of it.
+            if stem in carried or stem == BUS:
                 continue
             carried.add(stem)
             # One attribute, one spec, record-wide: two types declaring the same
@@ -1557,7 +1563,7 @@ class _NetworkSource:
         return LazyFrames((CONNECTION,), lambda _: self._connection_frame())
 
     def _connection_frame(self) -> nw.LazyFrame:
-        """Every type's connections in one frame, `(entity, bus, role)`.
+        """Every type's connections in one frame, `(connection, role, deleted)`.
 
         Notes
         -----
@@ -1577,7 +1583,13 @@ class _NetworkSource:
             rows = rows.drop(columns=[SCENARIO]).drop_duplicates(
                 subset=["entity", "bus"]
             )
-        return nw.from_native(rows).lazy()
+        flat = self.con.sql("FROM rows")
+        return nw.from_native(
+            flat.project(
+                _connection_struct(flat, col(ENTITY), col(BUS)),
+                star(exclude=[ENTITY, BUS]),
+            )
+        ).lazy()
 
     def _as_long_rel(
         self, c: pypsa.Components, attr: str, *, drop_defaults: bool = False
@@ -2004,15 +2016,12 @@ class _NetworkSource:
         v = self._tagged_long_rel(c, attribute, column, drop_defaults=drop_defaults)
         if v is None:
             return None
-        connection = struct_of({ENTITY: col("v", ENTITY), BUS: col("b", BUS)}).cast(
-            DuckTypes(v)(_registry_schema().group_type(CONNECTION))
-        )
         return (
             v.set_alias("v")
             .join(bus_rel.set_alias("b"), col("v", ENTITY) == col("b", ENTITY))
             .project(
                 *(col("v", name) for name in v.columns if name != ENTITY),
-                connection.alias(CONNECTION),
+                _connection_struct(v, col("v", ENTITY), col("b", BUS)),
             )
         )
 
@@ -2149,7 +2158,7 @@ def _ordered_connections(record: RecordLike, ctype: str) -> pd.DataFrame | None:
     members = record.entity_types.get(ctype)
     if frame is None or members is None:
         return None
-    df = frame.collect(backend="pandas").to_native()
+    df = _unpack_connection(to_relation(frame)).df()
     mine = set(members.select("entity").collect(backend="pandas").to_native()["entity"])
     df = df[df["entity"].isin(mine)]
     if df.empty:
@@ -2240,6 +2249,19 @@ def _collapse_connections(
         *(col("s", c) for c in static.columns),
         *(col("ports", c) for c in ports.columns if c not in ("entity", *varying)),
     )
+
+
+def _connection_struct(
+    rel: DuckDBPyRelation, entity: Expression, bus: Expression
+) -> Expression:
+    """The `connection` column packed from `entity` and `bus`, typed as declared.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    group_type = DuckTypes(rel)(_registry_schema().group_type(CONNECTION))
+    return struct_of({ENTITY: entity, BUS: bus}).cast(group_type).alias(CONNECTION)
 
 
 def _unpack_connection(long: DuckDBPyRelation) -> DuckDBPyRelation:

@@ -78,15 +78,15 @@ So "varying" is not "has dims" but **"has dims beyond its address"**, and one ru
 
 So an entity type's constant frame is assembled from both: the non-varying columns, and the dim-NULL rows of the varying files.
 
-A [group](schema.md#groups)'s rows are in `groups/<group>.parquet`, keyed by that group's coordinates and carrying their own tombstones — `groups/connection.parquet` for the `connection` group over `(entity, bus)`.
-**The file stays flat**, `entity | bus | role`, one column per coordinate: the struct an attribute row carries is how a group is referenced, packed where a row is joined against the group.
+A [group](schema.md#groups)'s rows are in `groups/<group>.parquet`, keyed by that group's tuple and carrying their own tombstones — `groups/connection.parquet` for the `connection` group over `(entity, bus)`.
+**The file is keyed by one struct column named for the group**, `connection STRUCT(entity, bus) | role | deleted`, exactly as `dims/<dim>.parquet` is keyed by the column named for the dim: the column an attribute row carries the group as is the one the group's own file is keyed by, so no read or write converts between two shapes.
 A record with no such file has no rows of that group.
 
 **One file per group, never split by type.** A group's rows are keyed by its coordinates and `entity_type` is not one of them: splitting put `connection` rows for a `Link` and a `Line` in different files despite identical keys, forcing a union on every read and privileging `entity` among the coordinates. A `corridor` between two buses has no type to split on at all, and a `contract` between two entities has two — one per coordinate, neither of them the row's — so the split never generalised beyond the case it was written for.
 
 The [entity-type group](schema.md#entity_type-the-axis-of-kinds) is the one exception, its rows being the [entity axis file](#the-entity-axis) rather than a `groups/` file of their own: an entity's type is what its identity already states, so storing it twice is what would let the two disagree.
 
-A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a column of the group's file like any coordinate, so `groups/bus_country.parquet` is `bus | country`. No column on the classified axis: `dims/bus.parquet` does not gain a `country`, the relation being the group's own file. That costs a join where a column read would have done, and buys a uniform rule — `into` decides nothing about storage, so nothing in the layout branches on it.
+A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a plain column of the group's file beside the key, so `groups/bus_country.parquet` is `bus_country STRUCT(bus) | country`. No column on the classified axis: `dims/bus.parquet` does not gain a `country`, the relation being the group's own file. That costs a join where a column read would have done, and buys a uniform rule — `into` decides nothing about storage, so nothing in the layout branches on it.
 
 ## The long schema
 

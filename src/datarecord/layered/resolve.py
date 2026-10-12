@@ -142,11 +142,12 @@ def resolve_groups(
     above: Sequence[LayerSource],
     con: DuckDBPyConnection,
 ) -> dict[str, DuckDBPyRelation]:
-    """Fold every declared group to its resolved relation, keyed by `group_key`.
+    """Fold every declared group to its resolved relation, keyed by its struct column.
 
-    A group folds through `fold_axis` like any axis with a composite key: last-
-    writer-wins per `group_key`, static columns (`into`, group-attributes) on the
-    winning row, its own tombstones honoured, member order the file's row order.
+    A group folds through `fold_axis` like any axis, keyed by the one column
+    named for it: last-writer-wins per tuple, static columns (`into`,
+    group-attributes) on the winning row, its own tombstones honoured, member
+    order the file's row order.
     The base `Fold`'s resolved group seeds depth 0. Absent from the result where
     no layer wrote a row.
 
@@ -158,12 +159,11 @@ def resolve_groups(
     """
     groups = {}
     for group in schema.groups:
-        key = schema.group_key(group)
         seed = None if base is None else base.groups.get(group)
         rows = [seed, *(source.group(group) for source in above)]
-        if not key or all(rel is None for rel in rows):
+        if all(rel is None for rel in rows):
             continue
-        rel = fold_axis(rows, key, con)
+        rel = fold_axis(rows, (group,), con)
         if rel is not None:
             groups[group] = rel
     return groups
@@ -185,9 +185,9 @@ class Coords:
         column alone - `scenario`'s carries `weight` too. A dim with no rows
         anywhere is absent rather than present-and-empty.
     groups : dict of str to DuckDBPyRelation
-        Each declared group's folded relation, keyed by `group_key`, carrying its
-        static columns, in member order - a group folds like an axis with a
-        composite key, no owner map. Absent where no layer wrote a row.
+        Each declared group's folded relation, keyed by its struct column,
+        carrying its static columns, in member order - a group folds like an
+        axis, no owner map. Absent where no layer wrote a row.
 
     Notes
     -----
@@ -374,7 +374,6 @@ def _deleted_relation(
     con: DuckDBPyConnection,
     *,
     fixed: tuple[str, ...] = ("entity",),
-    group: str | None = None,
 ) -> DuckDBPyRelation:
     """One layer's tombstones of one membership, keyed as the map they filter.
 
@@ -392,10 +391,7 @@ def _deleted_relation(
         The layer's rows of that membership, or `None` where it has none.
     fixed
         The key columns, compared NULL-safely: `entity` for an entity, a dim's
-        `axis_key` for a coordinate.
-    group
-        A group's tuples instead, packed from its flat file's `group_key` into
-        the one struct column the map keys the group by.
+        `axis_key` for a coordinate, the group's struct column for a group.
 
     Notes
     -----
@@ -403,16 +399,6 @@ def _deleted_relation(
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
     schema = keys.schema
-    if group is not None:
-        if rel is None or "deleted" not in rel.columns:
-            return _empty_relation(schema, con, group)
-        packed = struct_of({c: col(c) for c in schema.group_key(group)})
-        group_type = DuckTypes(con)(schema.group_type(group))
-        return (
-            rel.filter(col("deleted"))
-            .project(packed.cast(group_type).alias(group))
-            .distinct()
-        )
     if rel is None or "deleted" not in rel.columns:
         return _empty_relation(schema, con, *fixed)
     return rel.filter(col("deleted")).project(*(col(c) for c in fixed)).distinct()
@@ -592,7 +578,7 @@ def fold_inputs(
         ),
         *(
             (
-                _deleted_relation(source.group(g), keys, con, group=g),
+                _deleted_relation(source.group(g), keys, con, fixed=(g,)),
                 null_safe("x", "p", (g,)),
             )
             for g in schema.group_columns
@@ -1094,7 +1080,7 @@ class Resolver:
     def group(self, name: str) -> DuckDBPyRelation | None:
         """One declared group's resolved relation, folded like an axis.
 
-        The winning row per `group_key`, static columns carried, in member order.
+        The winning row per tuple, static columns carried, in member order.
         `None` where no layer wrote a row.
 
         Notes
@@ -1414,7 +1400,7 @@ class Resolver:
         """One group's resolved rows, folded like an axis, in member order.
 
         Not per type, which is no coordinate of a group. The folded relation is
-        already the winning row per `group_key`, carrying every non-key column -
+        already the winning row per tuple, carrying every non-key column -
         an attribute over the group, an `into` label - in member order, read
         inline with no owner map. `None` where no layer wrote a row; empty, not
         `None`, where every row written is tombstoned.

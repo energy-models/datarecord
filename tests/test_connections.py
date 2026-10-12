@@ -25,6 +25,7 @@ from tests.fixtures import (
     schema,
     tombstone,
     tombstone_connection,
+    unpacked,
     write_axis,
     write_connections,
     write_entity_type,
@@ -87,7 +88,7 @@ def _efficiencies(revision) -> dict[str, float]:
 def test_connections_resolve_in_order(store):
     """A component's connections come back in first-introduced order."""
     revision = _root(store)
-    frame = _connections(revision).df()
+    frame = unpacked(_connections(revision))
     assert list(frame["bus"]) == ["h2_north", "iron_ore", "dri"]
     # `role` describes the connection rather than keying it, so it rides along
     # from the owning layer's file (https://energy-models.github.io/datarecord/design/record/#connections).
@@ -258,7 +259,7 @@ def test_connection_tombstone_removes_one_connection(store):
     child = empty_child(root)
     tombstone_connection(store.layer_dir(child.id), [("steel_dri", "iron_ore")])
 
-    frame = _connections(child).df()
+    frame = unpacked(_connections(child))
     assert set(frame["bus"]) == {"h2_north", "dri"}
     # ... and the attribute rows go with it, which the map can scope per
     # connection only because `bus` is in `input_key`.
@@ -409,7 +410,10 @@ def _contract_root(store) -> Revision:
     write_group(
         layer,
         "contract",
-        [{"from": "plant", "to": "mill"}, {"from": "plant", "to": "smelter"}],
+        [
+            {"contract": {"from": "plant", "to": "mill"}},
+            {"contract": {"from": "plant", "to": "smelter"}},
+        ],
     )
     Path(layer, "inputs").mkdir(parents=True, exist_ok=True)
     duckdb.sql(

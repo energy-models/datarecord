@@ -1036,7 +1036,11 @@ class WorkingRecord(Record):
                     f"carries no type and the column would be ignored (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
                 )
                 raise ValueError(msg)
-            self._check_group_columns(lazy, attribute)
+            columns = _struct_fields(lazy)
+            for group in self.schema.groups_of(attribute):
+                self.schema.check_group_column(
+                    group, columns, carrier=f"`set({attribute!r}, <frame>)`"
+                )
             if kind == "inputs":
                 self._validate_frame(lazy, attribute, dims)
             else:
@@ -1138,41 +1142,6 @@ class WorkingRecord(Record):
         ]
         for name, ctype in self._resolve_types(names).items():
             self._validate_attribute(ctype, attribute, dims, name=name)
-
-    def _check_group_columns(self, lazy: nw.LazyFrame, attribute: str) -> None:
-        """Reject a frame carrying a group other than as its one struct column.
-
-        Raises
-        ------
-        ValueError
-            On a group's key coordinate as a flat column, naming the struct to
-            pass instead, or on a struct not of exactly the group's key.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
-        """
-        types = lazy.collect_schema()
-        for group in self.schema.groups_of(attribute):
-            key = self.schema.group_key(group)
-            if flat := [c for c in key if c in types]:
-                msg = (
-                    f"`set({attribute!r}, <frame>)` carries {flat} flat; pass "
-                    f"{group!r} as one struct column with fields {list(key)} (https://energy-models.github.io/datarecord/design/schema/#groups)"
-                )
-                raise ValueError(msg)
-            if group not in types:
-                continue
-            dtype = types[group]
-            self.schema.check_group_column(
-                group,
-                [f.name for f in dtype.fields]
-                if isinstance(dtype, nw.Struct)
-                else None,
-                carrier=f"`set({attribute!r}, <frame>)`",
-                dtype=dtype,
-            )
 
     def _group_of(self, attribute: str, name: str) -> str | None:
         """The group column of `attribute` whose struct holds coordinate `name`.
@@ -1627,13 +1596,19 @@ class WorkingRecord(Record):
         # can describe that entity's own row of such a group (`bus`, for
         # `connection`), but not a `corridor`, which relates two entities
         # neither is "the" one being added here - that goes through `add_group`.
+        # The entity-type group's row is the entity axis's, written below.
         by_group: dict[str, list[str]] = {}
-        for c in columns:
-            if not declared.get(c) or c in varying:
+        for group, spec in self.schema.groups.items():
+            if "entity" not in spec.key or spec.into == self.schema.entity_type_dim:
                 continue
-            for group in self.schema.groups_of(c):
-                if "entity" in self.schema.group_key(group):
-                    by_group.setdefault(group, []).append(c)
+            own = [
+                c
+                for c in columns
+                if (c != "entity" and (c in spec.over or c == spec.into))
+                or (c not in varying and group in self.schema.groups_of(c))
+            ]
+            if own:
+                by_group[group] = own
         ports = [c for cols in by_group.values() for c in cols]
         member_cols = [c for c in columns if c not in varying and c not in ports]
 
@@ -1681,15 +1656,13 @@ class WorkingRecord(Record):
         # attribute of one, so they become that group's row; an attribute
         # addressed by the group rides along
         # (https://energy-models.github.io/datarecord/design/record/#connections).
-        for group, group_cols in by_group.items():
-            coordinates = self.schema.group_coordinates(group)
-            extra = [c for c in group_cols if c not in coordinates]
+        for group, own in by_group.items():
+            key = self.schema.group_key(group)
+            packed = _packed(self.schema, group, columns, {}, DuckTypes(rel))
             self.add_group(
                 group,
-                lazy.select(
-                    "entity",
-                    *(nw.col(c) for c in coordinates if c != "entity"),
-                    *(nw.col(c) for c in extra),
+                rel.project(
+                    packed.alias(group), *(col(c) for c in own if c not in key)
                 ),
             )
 
@@ -1763,51 +1736,6 @@ class WorkingRecord(Record):
         )
         raise ValueError(msg)
 
-    def _stage_tombstones(
-        self,
-        kind: str,
-        fixed: tuple[str, ...],
-        keys: list[list[Any]],
-        key: tuple[str, ...],
-        attribute: str | None = None,
-    ) -> None:
-        """Replace one `deleted` row per key.
-
-        Shared by `remove` and `remove_group`, which differ only in their
-        columns - a group's key where `remove` carries the entity. One helper so
-        the shape is derived from the column list rather than restated per
-        caller, which is what let the two drift out of step.
-
-        `fixed` are the columns the tombstone carries; `key` is the subset an
-        edit replaces on, which is `entity` alone even where the entity axis
-        also carries the type - so a tombstone deletes an `add` row whatever type
-        it named.
-
-        `keys` arrives row-oriented and is transposed to build the relation,
-        columns being how every insert here crosses into DuckDB.
-
-        Notes
-        -----
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
-        """
-        table = self._ensure(kind, attribute)
-        if not keys:
-            return
-        by_column = dict(zip(fixed, zip(*keys, strict=True), strict=True))
-        types = (
-            _group_coordinate_types(self.schema, kind)
-            if kind in self.schema.groups
-            else {c: self._column_type(c) for c in fixed}
-        )
-        rel = self._values_relation(by_column, {c: types[c] for c in fixed})
-        self._insert(
-            rel,
-            table,
-            {"deleted": lit(True)},  # noqa: FBT003
-            key=key,
-        )
-
     def remove(self, ctype: str, names: Sequence[str]) -> None:
         """Stage a tombstone per entity.
 
@@ -1828,60 +1756,76 @@ class WorkingRecord(Record):
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
+        columns = {"entity": list(names)}
         if self.schema.entity_type_dim is not None:
-            self._stage_tombstones(
-                _ENTITY_AXIS,
-                ("entity_type", "entity"),
-                [[ctype, name] for name in names],
-                ("entity",),
-            )
-        else:
-            self._stage_tombstones(
-                _ENTITY_AXIS, ("entity",), [[name] for name in names], ("entity",)
-            )
+            columns["entity_type"] = [ctype] * len(names)
+        rel = self._values_relation(columns, {c: self._column_type(c) for c in columns})
+        self._insert(
+            rel, self._ensure(_ENTITY_AXIS), {"deleted": lit(True)}, key=("entity",)
+        )  # noqa: FBT003
 
     def add_group(self, group: str, frame: Any) -> None:
-        """Stage rows of one declared group from a frame carrying its coordinates.
+        """Stage rows of one declared group from a frame keyed by its struct column.
 
-        The one path every group is added through, a record's `connection`
-        group included.
+        The frame carries the group as one struct column named for it, its
+        `into` label and any attribute over the group as plain columns - the
+        shape of `groups/<group>.parquet`. The one path every group is added
+        through, a record's `connection` group included.
 
         No entity type, which is no coordinate of a group
         (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
 
+        Raises
+        ------
+        ValueError
+            On a missing group or `into` column, and as
+            `Schema.check_group_column` does.
+
         Notes
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        coordinates = self.schema.group_coordinates(group)
+        call = f"`add_group({group!r}, ...)`"
         lazy = _incoming(frame, self.con)
-        columns = lazy.collect_schema().names()
-        for required in coordinates:
+        columns = _struct_fields(lazy)
+        self.schema.check_group_column(group, columns, carrier=call)
+        into = self.schema.groups[group].into
+        for required in (group, *([into] if into else [])):
             if required not in columns:
-                msg = f"`add_group({group!r}, ...)` needs a {required!r} column"
+                msg = f"{call} needs a {required!r} column"
                 raise ValueError(msg)
         table = self._ensure(group)
-        extra = [c for c in columns if c not in coordinates]
-        self._reject_undeclared(f"add_group({group!r}, ...)", table, extra)
+        self._reject_undeclared(call, table, list(columns))
         self._insert(
             as_relation(lazy, self.con),
             table,
             {"deleted": lit(False)},  # noqa: FBT003
-            key=self.schema.group_key(group),
+            key=(group,),
         )
 
     def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None:
-        """Stage a tombstone per key, over one declared group's `group_key`.
+        """Stage a tombstone per tuple, each in `Schema.group_key` order.
 
-        An `into` label is no part of a key: the tuple is removed, whatever
-        label it carried.
+        Each tuple is packed into the group's struct column. An `into` label is
+        no part of a key: the tuple is removed, whatever label it carried.
 
         Notes
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        group_key = self.schema.group_key(group)
-        self._stage_tombstones(group, group_key, [list(key) for key in keys], group_key)
+        key = self.schema.group_key(group)
+        over = self.schema.groups[group].over
+        types = {c: self.schema.dimensions[d].dtype for c, d in over.items()}
+        flat = self._values_relation(
+            {c: [k[i] for k in keys] for i, c in enumerate(key)}, types
+        )
+        packed = _packed(self.schema, group, key, {}, DuckTypes(flat))
+        self._insert(
+            flat.project(packed.alias(group)),
+            self._ensure(group),
+            {"deleted": lit(True)},  # noqa: FBT003
+            key=(group,),
+        )
 
     # -- edits / rollback (https://energy-models.github.io/datarecord/design/working-record/#edits) --------------------------
 
@@ -1933,10 +1877,10 @@ class WorkingRecord(Record):
             tuples = self._rows(g)
             if tuples is None:
                 continue
-            packed = _packed(self.schema, g, tuples.columns, {}, DuckTypes(tuples))
-            dead_tuples = tuples.filter(col("deleted")).project(packed.alias(g))
             rel = rel.set_alias("l").join(
-                dead_tuples.set_alias("d"), null_safe("l", "d", [g]), how="anti"
+                tuples.filter(col("deleted")).set_alias("d"),
+                null_safe("l", "d", [g]),
+                how="anti",
             )
         return rel
 
@@ -1992,9 +1936,9 @@ class WorkingRecord(Record):
         return self._rows(_MEMBERS, ctype)
 
     def _collapsed_group(self, group: str) -> DuckDBPyRelation | None:
-        """One group's staged rows - a table scan, one per `group_key`.
+        """One group's staged rows - a table scan, one per tuple.
 
-        Restating a tuple replaced its row (`_replace` on `group_key`), so the
+        Restating a tuple replaced its row (`_replace` on the group's column), so the
         table already holds one per key; a different `into` label is that edit,
         not a second row.
 
@@ -2191,7 +2135,7 @@ def _member_columns(schema: Schema, ctype: str) -> dict[str, nw.dtypes.DType]:
 
 
 def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
-    """One group's staged columns: its coordinates, and the fold's own.
+    """One group's staged columns: its struct column, `into`, and the fold's own.
 
     No `entity_type`, which is no coordinate of a group
     (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
@@ -2211,21 +2155,13 @@ def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
         for name, spec in schema.attributes.items()
         if not spec.varying and group in schema.groups_of(name)
     }
+    into = schema.groups[group].into
     return {
-        **_group_coordinate_types(schema, group),
+        group: schema.group_type(group),
+        **({into: schema.dimensions[into].dtype} if into else {}),
         "deleted": nw.Boolean(),
         **over,
     }
-
-
-def _group_coordinate_types(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
-    """One group's flat coordinates, each typed as the dim it draws on.
-
-    By `over` rather than by name: a coordinate need not be a dim of its own
-    name - a corridor's `from` draws on `entity`.
-    """
-    spec = schema.groups[group]
-    return {c: schema.dimensions[spec.over.get(c, c)].dtype for c in spec.coordinates}
 
 
 def _flat_coordinates(schema: Schema, attribute: str) -> tuple[str, ...]:
@@ -2264,13 +2200,22 @@ def _packed(
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
-    types = _group_coordinate_types(schema, group)
     return struct_of(
         {
-            c: col(c) if c in present else duck_types.lit(dims.get(c), types[c])
-            for c in schema.group_key(group)
+            c: col(c)
+            if c in present
+            else duck_types.lit(dims.get(c), schema.dimensions[d].dtype)
+            for c, d in schema.groups[group].over.items()
         }
     ).cast(duck_types(schema.group_type(group)))
+
+
+def _struct_fields(lazy: nw.LazyFrame) -> dict[str, list[str] | None]:
+    """Each column of `lazy` to its struct fields, `None` where it is no struct."""
+    return {
+        c: [f.name for f in t.fields] if isinstance(t, nw.Struct) else None
+        for c, t in lazy.collect_schema().items()
+    }
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:

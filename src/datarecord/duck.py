@@ -338,8 +338,9 @@ def fold_axis(
     The one fold for every axis - a dim's coordinates, a group, the entity axis.
     `axes` is root first, one entry per layer - `None` where that layer has no
     rows. Last-writer-wins per `key`, which is `Schema.axis_key` for a dim or
-    `Schema.group_key` for a group, so a nested dim is keyed by `(*parents, dim)`
-    and two periods' identically labelled timesteps stay distinct.
+    the group's struct column for a group, so a nested dim is keyed by
+    `(*parents, dim)` and two periods' identically labelled timesteps stay
+    distinct.
 
     A `deleted = true` row is a tombstone: it removes its key unless a still-
     deeper layer restates it, and never survives into the output, which carries

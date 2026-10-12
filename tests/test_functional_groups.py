@@ -60,19 +60,12 @@ def test_the_dim_a_group_is_into_is_an_ordinary_dim():
     assert s.column_type("country") == nw.String()
 
 
-def test_into_becomes_a_coordinate_of_the_group():
-    """`into` is sugar: it folds into `coordinates` and nothing branches on it.
+def test_the_key_is_over_without_into():
+    """What the uniqueness constraint is on: each `over` tuple carries one label.
 
-    So `groups/state_country.parquet` is keyed `state | country` exactly as an
-    `into`-less group is keyed by its `over` alone.
+    So `groups/state_country.parquet` is keyed by a `state_country` struct over
+    `state`, `country` a plain column beside it.
     """
-    s = _schema()
-    assert s.group_coordinates("state_country") == ("state", "country")
-    assert s.group_coordinates("bus_state") == ("bus", "state")
-
-
-def test_the_key_is_the_coordinates_minus_into():
-    """What the uniqueness constraint is on: each `over` tuple carries one label."""
     s = _schema()
     assert s.group_key("state_country") == ("state",)
     assert s.group_key("bus_state") == ("bus",)
@@ -114,14 +107,13 @@ def test_an_into_less_group_in_dims_is_one_struct_column():
 def test_a_corridor_draws_two_coordinates_from_one_dim():
     """`over`'s dict form is what a relation between two of one axis needs."""
     s = _schema(groups={"corridor": Group(over={"from": "bus", "to": "bus"})})
-    assert s.group_coordinates("corridor") == ("from", "to")
     assert s.group_key("corridor") == ("from", "to"), "no `into`, so all of them"
 
 
 def test_the_over_list_form_is_sugar_for_the_dict():
     """`[bus]` is `{bus: bus}`; the dict is what a corridor needs."""
     assert Group(over=["bus"]).over == {"bus": "bus"}
-    assert Group(over={"from": "bus", "to": "bus"}).coordinates == ("from", "to")
+    assert Group(over={"from": "bus", "to": "bus"}).key == ("from", "to")
 
 
 def test_a_functional_group_keys_no_axis():
@@ -196,25 +188,25 @@ def test_a_chain_is_a_join_over_two_group_files(store):
     revision = empty_root(store)
     write_schema(_budget_schema(), store)
     write_group(
-        store.layer_dir(revision.id), "bus_state", [{"bus": "north", "state": "lower"}]
+        store.layer_dir(revision.id),
+        "bus_state",
+        [{"bus_state": {"bus": "north"}, "state": "lower"}],
     )
     write_group(
         store.layer_dir(revision.id),
         "state_country",
-        [{"state": "lower", "country": "DE"}],
+        [{"state_country": {"state": "lower"}, "country": "DE"}],
     )
 
     groups = revision.record.groups
     assert groups["bus_state"].collect().to_native().to_pydict() == {
-        "bus": ["north"],
+        "bus_state": [{"bus": "north"}],
         "state": ["lower"],
+    }, "keyed by the struct column named for the group, `into` beside it"
+    assert groups["state_country"].collect().to_native().to_pydict() == {
+        "state_country": [{"state": "lower"}],
+        "country": ["DE"],
     }
-    assert dict(
-        zip(
-            groups["state_country"].collect().to_native()["state"].to_pylist(),
-            groups["state_country"].collect().to_native()["country"].to_pylist(),
-        )
-    ) == {"lower": "DE"}
 
 
 def test_member_order_survives_a_restate_through_a_materialised_parent(store):
@@ -230,22 +222,30 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
 
     root = empty_root(store)
     write_group(
-        store.layer_dir(root.id), "bus_state", [{"bus": "north", "state": "lower"}]
+        store.layer_dir(root.id),
+        "bus_state",
+        [{"bus_state": {"bus": "north"}, "state": "lower"}],
     )
 
     child = empty_child(root)
     write_group(
-        store.layer_dir(child.id), "bus_state", [{"bus": "south", "state": "upper"}]
+        store.layer_dir(child.id),
+        "bus_state",
+        [{"bus_state": {"bus": "south"}, "state": "upper"}],
     )
     child.materialise()
 
     grandchild = empty_child(child)
     write_group(
-        store.layer_dir(grandchild.id), "bus_state", [{"bus": "east", "state": "lower"}]
+        store.layer_dir(grandchild.id),
+        "bus_state",
+        [{"bus_state": {"bus": "east"}, "state": "lower"}],
     )
 
     rows = grandchild.record.groups["bus_state"].collect().to_native().to_pydict()
-    assert rows["bus"] == ["north", "south", "east"], "member order, seed first"
+    assert [r["bus"] for r in rows["bus_state"]] == ["north", "south", "east"], (
+        "member order, seed first"
+    )
     assert "order_key" not in rows
 
 

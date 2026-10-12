@@ -78,11 +78,11 @@ The rest is data, and comes in two shapes.
 ```text
 dims["scenario"]                       scenario | ...   one row per axis label, in axis order
 entity_types["Generator"]              entity | <non-varying attribute columns>
-groups["connection"]                   entity | bus | <attributes over the group>
+groups["connection"]                   connection STRUCT(entity, bus) | <attributes over the group>
 ```
 
-`groups` is keyed by the group alone, one frame each: a group's rows are keyed by its coordinates and the entity type is not one of them, so `groups/connection.parquet` holds every type's attachments ([where the rows live](format.md#where-a-value-lives)).
-A group's own frame is flat, one column per coordinate.
+`groups` is keyed by the group alone, one frame each: a group's rows are keyed by its tuple and the entity type is no part of it, so `groups/connection.parquet` holds every type's attachments ([where the rows live](format.md#where-a-value-lives)).
+A group's own frame is keyed by the one struct column named for it, as an axis's is by the column named for the dim, its `into` label and attributes beside it.
 
 `attributes` and `outputs` are **long** — one row per value, keyed by the attribute's name:
 

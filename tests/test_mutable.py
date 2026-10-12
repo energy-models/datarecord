@@ -21,7 +21,7 @@ from datarecord.mutable import WorkingRecord, normalise_value
 from datarecord.record import RecordLike
 from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import empty_root, export_network, schema
+from tests.fixtures import empty_root, export_network, schema, unpacked
 
 GEN = "Generator"
 
@@ -910,16 +910,21 @@ def test_add_group_stages_a_new_connection(staged, root):
     staged.add_group(
         "connection",
         pd.DataFrame(
-            [{"entity": "Manchester Wind", "bus": "Norway", "role": "attached"}]
+            [
+                {
+                    "connection": {"entity": "Manchester Wind", "bus": "Norway"},
+                    "role": "attached",
+                }
+            ]
         ),
     )
-    staged_rows = staged.groups["connection"].collect().to_native().to_pandas()
+    staged_rows = unpacked(staged.groups["connection"])
     assert "Norway" in set(
         staged_rows[staged_rows["entity"] == "Manchester Wind"]["bus"]
     ), "the new connection reads back before commit"
 
     child = root.child(staged.edits)
-    rows = child.resolver.group_frame("connection").df()
+    rows = unpacked(child.resolver.group_frame("connection"))
     got = set(rows[rows["entity"] == "Manchester Wind"]["bus"])
     assert "Norway" in got
 
@@ -932,13 +937,13 @@ def test_remove_group_stages_a_tombstone(staged, root):
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     staged.remove_group("connection", [("Norwich Converter", "Norwich")])
-    before = staged.groups["connection"].collect().to_native().to_pandas()
+    before = unpacked(staged.groups["connection"])
     ports = set(before[before["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in ports, "the removal reads back before commit"
     assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
     child = root.child(staged.edits)
-    rows = child.resolver.group_frame("connection").df()
+    rows = unpacked(child.resolver.group_frame("connection"))
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     # The component's other port survives: deletion is per connection, not per
@@ -1098,12 +1103,18 @@ def test_remove_then_add_keeps_the_parents_connection_values(staged, root):
 
 
 def _connections(record):
-    return record.groups["connection"].collect().to_native().to_pandas()
+    return unpacked(record.groups["connection"])
 
 
-def test_add_group_needs_every_coordinate(staged):
-    with pytest.raises(ValueError, match="'bus'"):
-        staged.add_group("connection", pd.DataFrame([{"entity": "Manchester Wind"}]))
+def test_add_group_rejects_flat_coordinates(staged):
+    frame = pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
+    with pytest.raises(ValueError, match="pass 'connection' as one struct column"):
+        staged.add_group("connection", frame)
+
+
+def test_add_group_needs_the_struct_column(staged):
+    with pytest.raises(ValueError, match="needs a 'connection' column"):
+        staged.add_group("connection", pd.DataFrame([{"role": "attached"}]))
 
 
 def test_every_declared_group_reads_its_staged_rows(store, ac_dc):
@@ -1131,18 +1142,20 @@ def test_every_declared_group_reads_its_staged_rows(store, ac_dc):
     staged = WorkingRecord(revision.record)
 
     staged.add_group(
-        "connection", pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
+        "connection",
+        pd.DataFrame([{"connection": {"entity": "Manchester Wind", "bus": "Norway"}}]),
     )
     staged.add_group(
-        "corridor", pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}])
+        "corridor",
+        pd.DataFrame([{"corridor": {"from": "Manchester Wind", "to": "Norway"}}]),
     )
 
-    connections = staged.groups["connection"].collect().to_native().to_pandas()
+    connections = unpacked(staged.groups["connection"])
     assert "Norway" in set(
         connections[connections["entity"] == "Manchester Wind"]["bus"]
     )
 
-    corridors = staged.groups["corridor"].collect().to_native().to_pandas()
+    corridors = unpacked(staged.groups["corridor"], "corridor")
     assert list(zip(corridors["from"], corridors["to"], strict=True)) == [
         ("Manchester Wind", "Norway")
     ], "the second group reads its own rows, not the first's"

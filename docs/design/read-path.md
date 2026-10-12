@@ -46,7 +46,7 @@ Keying on the type would let an entity resolve to two rows, admitting at read ti
 The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
 Every membership's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of the entity axis, of each keyed group, and of each partial dim — read from the same file that membership folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
-A group's tombstones are one NULL-safe anti-join on its struct column, packed from the flat group file — the same shape as the entity axis's.
+A group's tombstones are one NULL-safe anti-join on its struct column, the group file's own key — the same shape as the entity axis's.
 A layer's tombstones apply to its parents' keys, not to its own rows.
 The entity axis's anti-join matches every entity a row names: its `entity`, and each key coordinate over `entity` inside a keyed group's struct — both of a group drawing twice on `entity` — one anti-join per coordinate, so deleting an entity drops its connections' values too.
 This is not a cascade: each membership honours only its _own_ tombstones, so deleting an entity leaves its connection tuples in the group file until they are deleted in turn.
@@ -54,7 +54,7 @@ A membership column [never broadcasts](record.md#the-broadcast-rule), so a row n
 
 ## One fold for every axis
 
-A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer patches per key.
+A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer patches per key — a group's key being its one struct column, as a dim's is the column named for it.
 They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), static columns carried on the winning row (`weight` on `dims/scenario.parquet`, `entity_type` on the entity axis, `into` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
 
 The resolved relation is returned **in first-introduced member order** — root first, then file order within a layer — and a node's caches persist it _in that order_, so a reader recovers member order from the resolved file's own row number.

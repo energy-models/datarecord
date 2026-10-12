@@ -21,7 +21,7 @@ Notes
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
@@ -383,22 +383,10 @@ class Group(BaseModel):
         return value
 
     @property
-    def coordinates(self) -> tuple[str, ...]:
-        """This group's columns in declaration order, `into` last where declared.
-
-        Notes
-        -----
-        - [into](https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)
-        """
-        if self.into is None:
-            return tuple(self.over)
-        return (*self.over, self.into)
-
-    @property
     def key(self) -> tuple[str, ...]:
-        """The coordinates a row is unique over: `coordinates` minus `into`.
+        """The coordinates a row is unique over: `over`'s, in declaration order.
 
-        Every coordinate for a group without one.
+        `into` is none of them: it follows from the key.
 
         Notes
         -----
@@ -865,36 +853,44 @@ class Schema(BaseModel):
         return nw.Struct({c: self.dimensions[spec.over[c]].dtype for c in spec.key})
 
     def check_group_column(
-        self, group: str, fields: Iterable[str] | None, *, carrier: str, dtype: object
+        self,
+        group: str,
+        columns: Mapping[str, Iterable[str] | None],
+        *,
+        carrier: str,
     ) -> None:
-        """Reject a column carrying `group` unless it is a struct of exactly its key.
+        """Reject `group` carried other than as one struct column of exactly its key.
 
-        A cast would not catch it: a struct casts by field name, so a missing
-        field turns NULL and an extra one is dropped, silently re-keying every
-        row.
+        A cast would not catch a struct of other fields: a struct casts by field
+        name, so a missing field turns NULL and an extra one is dropped,
+        silently re-keying every row. A carrier without the group's column
+        passes, whether it may lack one being the caller's to say.
 
         Parameters
         ----------
-        fields
-            The column's struct fields, `None` where it is no struct.
+        columns
+            Each column the carrier has, to its struct fields - `None` where
+            it is no struct.
         carrier
-            What carries the column, named in the message.
-        dtype
-            The column's type as the caller sees it, named in the message.
+            What carries the columns, named in the message.
 
         Raises
         ------
         ValueError
-            Naming the group, its type, and the key it is carried by.
+            On a key coordinate as a column of its own, or a group column not
+            a struct of exactly the key, naming the struct to pass instead.
 
         Notes
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         key = self.group_key(group)
-        if fields is None or set(fields) != set(key):
+        flat = [c for c in key if c in columns]
+        fields = columns.get(group, key)
+        if flat or fields is None or set(fields) != set(key):
+            carried = f"{flat} flat" if flat else f"{group!r} with fields {fields}"
             msg = (
-                f"{carrier} carries {group!r} as {dtype}; a group is one struct "
+                f"{carrier} carries {carried}; pass {group!r} as one struct "
                 f"column with a field per key coordinate, {list(key)} (https://energy-models.github.io/datarecord/design/schema/#groups)"
             )
             raise ValueError(msg)
@@ -1196,24 +1192,10 @@ class Schema(BaseModel):
             g for g in self.groups if g in spec.dims and g not in self.dimensions
         )
 
-    def group_coordinates(self, group: str) -> tuple[str, ...]:
-        """One group's columns, or `()` if it is not declared.
-
-        Every column of the group's file, `into` included. Coordinate names
-        rather than dim names, so two drawing on one axis stay two columns.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        """
-        spec = self.groups.get(group)
-        return () if spec is None else spec.coordinates
-
     def group_key(self, group: str) -> tuple[str, ...]:
-        """One group's key columns, or `()` if it is not declared.
+        """One group's key coordinates - its struct column's fields - or `()` if undeclared.
 
-        `group_coordinates` minus `into` - what the fold keys ownership by and
-        what a tombstone names.
+        `into` is none of them: the tuple is the key, whatever label it carries.
 
         Notes
         -----

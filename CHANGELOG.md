@@ -15,7 +15,7 @@ All notable changes to datarecord are documented here. The format follows
 
 - An attribute over a group carries it as one struct column named for the
   group, a field per key coordinate (`connection STRUCT(entity, bus)`), in
-  place of the coordinates flat; group files stay flat. This is an on-disk
+  place of the coordinates flat. This is an on-disk
   format change: `inputs/` and `outputs/` files over a group are rewritten.
   The dims a group draws on now broadcast, so a per-bus value with
   `bus = NULL` holds for every bus, and patching one bus at a time needs
@@ -23,6 +23,15 @@ All notable changes to datarecord are documented here. The format follows
   carries the struct, its coordinates flat being rejected. Naming a group
   beside a dim its key is named for (`dims={"connection", "bus"}`) is
   rejected.
+- A group file is keyed by one struct column named for the group, as an
+  axis file is by its dim: `groups/connection.parquet` is
+  `connection STRUCT(entity, bus) | role | deleted`, an `into` label a plain
+  column beside it. This is an on-disk format change. `Record.groups[...]`
+  hands back that shape; `add_group` takes the struct column and rejects the
+  coordinates flat; `remove_group` still takes a tuple per key. The PyPSA
+  tool no longer declares `bus` as an attribute: a port's bus is the
+  connection tuple. `Schema.group_coordinates` and `Group.coordinates` are
+  gone.
 - A group may not share a dim's name, the entity-type group excepted: a
   group is carried as a column named for it. Rename a functional group for
   the relation, `bus_country` into `country`.

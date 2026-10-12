@@ -21,7 +21,7 @@ from datarecord.layered.resolve import read_schema
 from datarecord.record import EMPTY, LazyFrames, RecordLike
 from datarecord.schema import AttributeSpec, Dimension, Schema
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import empty_child, export_network, relation, schema
+from tests.fixtures import empty_child, export_network, relation, schema, unpacked
 
 
 class _Source:
@@ -517,19 +517,31 @@ def test_a_write_rejects_a_missing_long_column(store):
     _nothing_reachable(store)
 
 
-def test_a_write_rejects_a_group_frame_missing_a_coordinate(store):
-    """A group's row is keyed by its coordinates, so one lacking them misresolves.
+def test_a_write_rejects_a_flat_group_frame(store):
+    """A group file is keyed by the struct column named for it, not its coordinates.
 
     Notes
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
-    source = _Source(
-        _SCHEMA,
-        connections={"connection": pd.DataFrame({"entity": ["steel_dri"]})},  # no `bus`
-    )
+    flat = pd.DataFrame({"entity": ["steel_dri"], "bus": ["h2"]})
+    source = _Source(_SCHEMA, connections={"connection": flat})
 
-    with pytest.raises(ValueError, match="coordinates.*bus"):
+    with pytest.raises(ValueError, match=r"missing \['connection'\]"):
+        store.root(source)
+
+
+def test_a_write_rejects_a_group_struct_not_of_its_key(store):
+    """A struct missing a key field would re-key every row once cast.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    partial = pd.DataFrame({"connection": [{"entity": "steel_dri"}]})
+    source = _Source(_SCHEMA, connections={"connection": partial})
+
+    with pytest.raises(ValueError, match="one struct column"):
         store.root(source)
 
 
@@ -796,9 +808,11 @@ def test_multi_port_links_round_trip_through_connections(store, ac_dc):
 
     # Stored bus-keyed, with a role from PyPSA's sign convention. One file for
     # every type, so the Links are reached by their entities.
-    rows = store.workspace.con.read_parquet(
-        store.layer_dir(revision.id) + "groups/connection.parquet"
-    ).df()
+    rows = unpacked(
+        store.workspace.con.read_parquet(
+            store.layer_dir(revision.id) + "groups/connection.parquet"
+        )
+    )
     links = rows[rows["entity"].isin(ac_dc.c["Link"].static.index)]
     assert set(links["role"]) == {"input", "output"}
     assert set(links["bus"]) >= set(ac_dc.c["Link"].static["bus0"])
@@ -817,9 +831,11 @@ def test_single_port_components_keep_their_unsuffixed_bus(store, ac_dc):
     """
     revision = export_network(ac_dc, store)
 
-    rows = store.workspace.con.read_parquet(
-        store.layer_dir(revision.id) + "groups/connection.parquet"
-    ).df()
+    rows = unpacked(
+        store.workspace.con.read_parquet(
+            store.layer_dir(revision.id) + "groups/connection.parquet"
+        )
+    )
     mine = rows[rows["entity"].isin(ac_dc.c["Generator"].static.index)]
     assert set(mine["role"]) == {"attached"}
 

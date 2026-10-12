@@ -257,17 +257,19 @@ It does not tombstone the entity's group tuples, which stay until [`remove_group
 ## `add_group` / `remove_group`
 
 ```python
-record.add_group("connection", frame)  # the group's own coordinates
+record.add_group("connection", frame)  # a `connection` struct column, `role` beside it
 record.remove_group("connection", [("dc", "north")])
 ```
 
 The one staging path every declared [group](schema.md#groups) writes through. There is no `connect`/`disconnect` beside it: `connection` is one group among however many a schema declares, and a call naming it would put one framework's vocabulary in the record layer.
 
-`frame` carries `group`'s own coordinate columns (`entity` and `bus` for `connection`, `from` and `to` for a `corridor`) plus whatever else the group's file holds — an attribute [addressed by the group](format.md#where-a-value-lives), such as PyPSA's `role`. `keys` is a tuple per row in the group's [key](schema.md#into-a-group-that-classifies) order.
+`frame` is shaped like the group's file: one struct column named for the group (`connection STRUCT(entity, bus)`, `corridor STRUCT("from", "to")`), its `into` label where it declares one, and any attribute [addressed by the group](format.md#where-a-value-lives), such as PyPSA's `role`.
+A key coordinate as a column of its own is rejected with the struct to pass instead, as [`set`](#set) rejects it.
+`keys` is a tuple per row in the group's [key](schema.md#into-a-group-that-classifies) order, packed into the struct for the caller.
 
 **No entity type**, unlike [`add`](#add-remove): a group's rows are keyed by its coordinates and the type is not one of them.
 
-`add`'s own port-splitting calls `add_group` too, but only for a group whose **key** includes `entity` — the case where a row describes one of the entity's own group memberships (`bus`, for `connection`).
+`add`'s own port-splitting calls `add_group` too, but only for a group whose **key** includes `entity` — the case where a row describes one of the entity's own group memberships (`bus`, for `connection`), which it packs with the entity into the struct.
 A group like `corridor`, relating two entities neither of which is "the" one being added, has no such row to derive from a single entity's wide frame and is staged through `add_group` directly.
 
 ## Edits

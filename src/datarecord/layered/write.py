@@ -375,14 +375,9 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
                 f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
             )
             raise ValueError(msg)
-        types = dict(zip(rel.columns, rel.types, strict=True))
         for group in schema.groups_of(key) if kind == "attributes" else ():
-            dtype = types[group]
             schema.check_group_column(
-                group,
-                [n for n, _ in dtype.children] if dtype.id == "struct" else None,
-                carrier=f"inputs/{key}.parquet",
-                dtype=dtype,
+                group, _struct_fields(rel), carrier=f"inputs/{key}.parquet"
             )
         return
 
@@ -441,15 +436,24 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
 
     if kind != "groups" or key not in schema.groups:
         return
-    # A group's row is keyed by its coordinates, `into` among them, so a frame
-    # lacking one would be keyed by a column that is not there.
-    missing = sorted(set(schema.group_coordinates(key)) - columns)
+    into = schema.groups[key].into
+    missing = sorted({key, *([into] if into else [])} - columns)
     if missing:
         msg = (
-            f"groups/{key}.parquet is missing the group's coordinates "
-            f"{missing}; the fold would key by a column that is not there (https://energy-models.github.io/datarecord/design/schema/#groups)"
+            f"groups/{key}.parquet is missing {missing}; a group file is keyed "
+            f"by one struct column named for the group, its `into` label beside "
+            f"it (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
         )
         raise ValueError(msg)
+    schema.check_group_column(key, _struct_fields(rel), carrier=f"groups/{key}.parquet")
+
+
+def _struct_fields(rel: DuckDBPyRelation) -> dict[str, list[str] | None]:
+    """Each column of `rel` to its struct fields, `None` where it is no struct."""
+    return {
+        c: [n for n, _ in t.children] if t.id == "struct" else None
+        for c, t in zip(rel.columns, rel.types, strict=True)
+    }
 
 
 class _RecordLikeAsLayerData:
