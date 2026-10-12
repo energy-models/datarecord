@@ -375,6 +375,8 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
                 f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
             )
             raise ValueError(msg)
+        if kind == "attributes":
+            _validate_group_columns(rel, key, schema)
         return
 
     if kind == "dims":
@@ -441,6 +443,30 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             f"{missing}; the fold would key by a column that is not there (https://energy-models.github.io/datarecord/design/schema/#groups)"
         )
         raise ValueError(msg)
+
+
+def _validate_group_columns(rel: DuckDBPyRelation, key: str, schema: Schema) -> None:
+    """Check each group column of an input is a struct of exactly the group's key.
+
+    Casting would not catch it: DuckDB casts a struct by field name, so a
+    missing field turns NULL and an extra one is dropped, silently re-keying
+    every row.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    types = dict(zip(rel.columns, rel.types, strict=True))
+    for group in schema.groups_of(key):
+        dtype = types[group]
+        fields = [name for name, _ in dtype.children] if dtype.id == "struct" else None
+        if fields is None or set(fields) != set(schema.group_key(group)):
+            msg = (
+                f"inputs/{key}.parquet carries {group!r} as {dtype}; a group is "
+                f"one struct column with a field per key coordinate, "
+                f"{list(schema.group_key(group))} (https://energy-models.github.io/datarecord/design/schema/#groups)"
+            )
+            raise ValueError(msg)
 
 
 class _RecordLikeAsLayerData:

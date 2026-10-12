@@ -96,6 +96,7 @@ def _long(**overrides) -> pd.DataFrame:
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     row = {
+        "connection": None,
         "entity": "steel_dri",
         "bus": None,
         "snapshot": None,
@@ -428,7 +429,8 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store, ac_dc):
     }, "a component attribute carries `entity`, not the connection group's `bus`"
 
     efficiency = columns("efficiency")
-    assert "bus" in efficiency, "a connection attribute carries the group's coordinates"
+    assert "connection" in efficiency, "a connection attribute carries the group"
+    assert "bus" not in efficiency, "as one struct column, not its coordinates"
     assert "period" not in efficiency, "and no dim it is not addressed by"
 
 
@@ -472,6 +474,37 @@ def test_a_write_rejects_a_coordinate_the_attribute_lacks(store):
         ValueError, match=r"carries columns \['bus'\].*not addressed by"
     ):
         store.root(source)
+
+
+def test_a_write_rejects_a_group_column_that_is_not_its_key(store):
+    """A group's column is a struct of exactly its key coordinates.
+
+    DuckDB casts a struct by field name, so a missing field would be written as
+    NULL rather than refused, re-keying every row.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    row = {"attribute": "efficiency", "breakpoint": None, "value": 1.0}
+    row |= {"snapshot": None, "scenario": None, "period": None}
+    short = pd.DataFrame([{"connection": {"entity": "steel_dri"}, **row}])
+    source = _Source(_SCHEMA, attributes={"efficiency": short})
+
+    with pytest.raises(ValueError, match=r"'connection' as .*\['entity', 'bus'\]"):
+        store.root(source)
+
+
+def test_a_group_column_round_trips_as_a_struct(store):
+    """What a source hands over as the group's struct reads back as one."""
+    row = {"attribute": "efficiency", "breakpoint": None, "value": 1.0}
+    row |= {"snapshot": None, "scenario": None, "period": None}
+    connection = {"entity": "steel_dri", "bus": "h2_north"}
+    frame = pd.DataFrame([{"connection": connection, **row}])
+    revision = store.root(_Source(_SCHEMA, attributes={"efficiency": frame}))
+
+    rows = relation(revision, "efficiency").project("connection, value").fetchall()
+    assert rows == [(connection, 1.0)]
 
 
 def test_a_write_rejects_a_missing_long_column(store):

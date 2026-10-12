@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 
@@ -45,7 +46,7 @@ from datarecord.record import Flags
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from duckdb import DuckDBPyConnection, DuckDBPyRelation
+    from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 
     from datarecord.schema import Schema
     from datarecord.store import Store
@@ -155,7 +156,9 @@ class Fold:
         """Per attribute, which dims its rows use - whole-record, or one type.
 
         Whole-record when `entity_type` is `None`; scoped to a type's entities
-        when named, by a semi-join to the resolved entity axis. A type whose
+        when named, by a semi-join to the resolved entity axis on the row's
+        entity - the one inside a group's column where the row is keyed by a
+        group (`_owning_entity`). A type whose
         entities disagree yields a dim in both sets - the instruction to use
         both containers, each taking the rows it matches. The union stops at the
         type boundary: across types it would describe neither.
@@ -197,7 +200,9 @@ class Fold:
                 "entity"
             )
             rel = rel.join(
-                of_type.distinct().set_alias("e"), "i.entity = e.entity", how="semi"
+                of_type.distinct().set_alias("e"),
+                _owning_entity(self.schema) == col("e", "entity"),
+                how="semi",
             )
         flag = {
             c: struct_of(
@@ -239,6 +244,30 @@ class Fold:
             entity_types=_read_dir(f"{base}dims/entity_type/", con),
             owner_map=owner_map,
         )
+
+
+def _owning_entity(schema: Schema) -> Expression:
+    """The entity an owner-map row (aliased `i`) belongs to, wherever it sits.
+
+    `entity` itself, or else the first coordinate over `entity` of a keyed
+    group's struct: a connection row has no top-level `entity`, its entity
+    riding inside `connection`. A group drawing twice on `entity` - a corridor
+    `(from, to)` - is scoped by its first.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    over = {g: schema.groups[g].over for g in schema.group_columns}
+    firsts = {
+        g: next((c for c in schema.group_key(g) if over[g][c] == "entity"), None)
+        for g in schema.group_columns
+    }
+    entities = [
+        *([col("i", "entity")] if "entity" in schema.input_key else []),
+        *(fn.struct_extract(col("i", g), lit(c)) for g, c in firsts.items() if c),
+    ]
+    return coalesce(*entities)
 
 
 def _read_dir(dir_uri: str, con: DuckDBPyConnection) -> dict[str, DuckDBPyRelation]:

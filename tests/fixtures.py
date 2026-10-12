@@ -11,6 +11,7 @@ Notes
 
 from pathlib import Path
 
+import duckdb
 import narwhals as nw
 import pandas as pd
 
@@ -41,15 +42,21 @@ LONG_COLUMNS = [
 
 
 def write_input(
-    layer: str, attribute: str, rows: list[dict], *, snapshot_dtype="datetime64[ns]"
+    layer: str,
+    attribute: str,
+    rows: list[dict],
+    *,
+    snapshot_dtype="datetime64[ns]",
+    connection: bool | None = None,
 ) -> None:
     """Write `inputs/<attribute>.parquet` in the long schema.
 
     Each row needs at least `name` and `value`; missing dimension columns
     default to NULL, i.e. "applies to the whole axis".
-    `bus` set marks a per-connection attribute, `breakpoint`
-    a piecewise-linear one; both NULL is the ordinary component-level
-    scalar.
+    A `bus` on any row marks a per-connection attribute, its `entity` and `bus`
+    packed into the one `connection` struct column - unless `connection` says
+    otherwise, for an attribute over the `bus` dim itself; `breakpoint` marks a
+    piecewise-linear one; neither is the ordinary component-level scalar.
 
     Notes
     -----
@@ -57,12 +64,15 @@ def write_input(
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     df = pd.DataFrame(rows)
+    if connection is None:
+        connection = "bus" in df
     df["attribute"] = attribute
     for col in LONG_COLUMNS:
         if col not in df:
             df[col] = None
     df["snapshot"] = pd.Series(df["snapshot"]).astype(snapshot_dtype)
     df["scenario"] = df["scenario"].astype("string")
+    df["entity"] = df["entity"].astype("string")
     df["bus"] = df["bus"].astype("string")
     df["period"] = df["period"].astype("Int64")
     df["breakpoint"] = df["breakpoint"].astype("float64")
@@ -70,7 +80,12 @@ def write_input(
 
     target = Path(layer, "inputs")
     target.mkdir(parents=True, exist_ok=True)
-    df[LONG_COLUMNS].to_parquet(target / f"{attribute}.parquet", index=False)
+    rel = duckdb.connect().from_df(df[LONG_COLUMNS])
+    if connection:
+        rel = rel.project(
+            "{'entity': entity, 'bus': bus} AS connection, * EXCLUDE (entity, bus)"
+        )
+    rel.to_parquet(str(target / f"{attribute}.parquet"))
 
 
 def write_group(layer: str, group: str, rows: list[dict]) -> None:
@@ -397,7 +412,7 @@ def _default_attributes(
     Addressed over every declared dim rather than a narrower set, which is the
     widest shape and so the one that accepts any row a test writes.
     `efficiency` is the exception, being over the `connection` group where one
-    is declared: that is what puts a `bus` column on its file.
+    is declared: that is what puts a `connection` struct column on its file.
 
     `weight` is the other, addressed by `scenario` alone - so it is a column of
     `dims/scenario.parquet` rather than a long row, and it is declared because
@@ -406,6 +421,8 @@ def _default_attributes(
     """
     varying = {"entity", *dims}
     connection = "connection" if "connection" in groups else "entity"
+    # A dim the connection's column already carries cannot address it again.
+    per_connection = set(dims) - set(groups.get(connection, ()))
     declared = {
         "p_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
         "e_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
@@ -414,7 +431,9 @@ def _default_attributes(
         "marginal_cost": AttributeSpec(
             dtype=nw.Float64(), dims=varying, breakpoints=True
         ),
-        "efficiency": AttributeSpec(dtype=nw.Float64(), dims={connection, *dims}),
+        "efficiency": AttributeSpec(
+            dtype=nw.Float64(), dims={connection, *per_connection}
+        ),
     }
     if "scenario" in dims:
         declared["weight"] = AttributeSpec(
@@ -447,10 +466,9 @@ def schema(
     `groups` to declare a different sparse relation, `within` to nest one axis
     inside another.
 
-    `entity` and every group coordinate are declared dims and are `partial`:
-    a layer patches one component's value, or one connection's, without
-    restating the rest, which is what `partial` means. The schema requires it,
-    so this supplies it rather than leaving each caller to.
+    A group's coordinates are declared dims; `entity` and the group's column are
+    membership keys, so a layer patches one component's value, or one
+    connection's, without restating the rest.
 
     Notes
     -----

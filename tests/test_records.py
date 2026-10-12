@@ -599,13 +599,13 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
         stores[name] = (store, revision)
 
     (_, revision_a), (store_b, revision_b) = stores["a"], stores["b"]
-    # Beyond `entity` and the group's coordinates, which every schema declares.
-    assert revision_a.record.schema.broadcast_dims == ("scenario",)
-    assert revision_b.record.schema.broadcast_dims == ("vintage",)
+    # Beyond `entity`, and `bus`, which every schema here declares for its group.
+    assert revision_a.record.schema.broadcast_dims == ("bus", "scenario")
+    assert revision_b.record.schema.broadcast_dims == ("bus", "vintage")
 
     # A layer read directly needs no schema supplied either: its own directory
     # carries none (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record), so its store's answers.
-    assert store_b.layer(revision_b.id).schema.broadcast_dims == ("vintage",)
+    assert store_b.layer(revision_b.id).schema.broadcast_dims == ("bus", "vintage")
 
     for name, (store, revision) in stores.items():
         location = tmp_path / name

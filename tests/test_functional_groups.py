@@ -46,9 +46,6 @@ def _schema(**overrides) -> Schema:
         "partial": frozenset(),
     }
     kwargs.update(overrides)
-    # A group's key coordinates are membership keys, in the fold key by being
-    # membership - not declared `partial`, which is for value dims a layer patches
-    # per value (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
     return Schema(**kwargs)
 
 
@@ -95,13 +92,16 @@ def test_a_group_may_share_a_dims_name_and_the_dim_wins():
     assert s.groups_of("co2_budget") == (), "a shadowed group addresses nothing"
 
 
-def test_an_into_less_group_in_dims_expands_to_its_coordinates():
-    """A group no dim shadows has no other spelling, so `dims` expands it."""
+def test_an_into_less_group_in_dims_is_one_struct_column():
+    """A group no dim shadows is carried as itself, a struct over its coordinates."""
     s = _schema(
         groups={"connection": Group(over=["bus", "state"])},
         attributes={"capacity": AttributeSpec(dtype=nw.Float64(), dims={"connection"})},
     )
-    assert s.coordinates_of("capacity") == ("bus", "state"), "expanded, not the name"
+    assert s.coordinates_of("capacity") == ("connection",), "the group, not expanded"
+    assert s.column_type("connection") == nw.Struct(
+        {"bus": nw.String(), "state": nw.String()}
+    )
     assert s.groups_of("capacity") == ("connection",)
 
 

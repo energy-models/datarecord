@@ -9,7 +9,10 @@ Notes
 - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
 """
 
+import narwhals as nw
+
 from datarecord.layered.revision import Revision
+from datarecord.schema import AttributeSpec, Schema
 from tests.fixtures import (
     empty_child,
     empty_root,
@@ -17,6 +20,7 @@ from tests.fixtures import (
     schema,
     tombstone,
     tombstone_connection,
+    write_axis,
     write_connections,
     write_entity_type,
     write_input,
@@ -70,7 +74,7 @@ def _root(store) -> Revision:
 
 
 def _efficiencies(revision) -> dict[str, float]:
-    df = relation(revision, "efficiency").df()
+    df = relation(revision, "efficiency").project("connection.bus AS bus, value").df()
     return dict(zip(df["bus"], df["value"], strict=True))
 
 
@@ -270,10 +274,12 @@ def test_component_tombstone_does_not_cascade_to_its_connections(store):
     root = _root(store)
     root.materialise()
 
-    # The component alone: its connections survive, dangling.
+    # The component alone: its connections survive, dangling, and so do their
+    # values - a connection row is keyed by the connection, not the entity.
     child = empty_child(root)
     tombstone(store.layer_dir(child.id), PROCESS, ["steel_dri"])
     assert child.resolver.group_frame("connection") is not None
+    assert len(_efficiencies(child)) == 3, "only the connection's tombstone drops it"
 
     # The connections too: now both are gone.
     both = empty_child(root)
@@ -285,3 +291,82 @@ def test_component_tombstone_does_not_cascade_to_its_connections(store):
     frame = both.resolver.group_frame("connection")
     assert frame is not None, "the group was written, so it is present"
     assert frame.count("*").fetchone() == (0,), "every connection row is tombstoned"
+    assert _efficiencies(both) == {}, "and their values go with them"
+
+
+def test_a_dim_a_group_draws_on_still_broadcasts(store):
+    """A NULL `bus` on a per-bus attribute is every bus, beside a `connection` group.
+
+    The group carries its `bus` inside its own struct column, so the dim keeps
+    its axis to expand against.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    price = AttributeSpec(dtype=nw.Float64(), dims={"bus", "snapshot"})
+    write_schema(
+        schema(attributes={"Bus": {"marginal_price": price}}, partial={"bus"}), store
+    )
+    root = empty_root(store)
+    layer = store.layer_dir(root.id)
+    write_axis(layer, "bus", [{"bus": "north"}, {"bus": "south"}])
+    write_input(layer, "marginal_price", [{"value": 5.0}], connection=False)
+    root.materialise()
+
+    child = empty_child(root)
+    write_input(
+        store.layer_dir(child.id),
+        "marginal_price",
+        [{"bus": "south", "value": 7.0}],
+        connection=False,
+    )
+
+    def prices(revision):
+        df = relation(revision, "marginal_price").df()
+        return dict(zip(df["bus"], df["value"], strict=True))
+
+    assert prices(root) == {"north": 5.0, "south": 5.0}, "one row, every bus"
+    assert prices(child) == {"north": 5.0, "south": 7.0}, "a patch hits its bus"
+    assert "bus" in root.resolver.fold.flags()["marginal_price"].broadcast
+
+
+def test_a_map_folded_before_the_group_was_keyed_reads_it_as_null(store):
+    """Declaring the first attribute over a group widens the fold key.
+
+    A map materialised before has no `connection` column; no row there names a
+    connection, so it reads as NULL and the fold carries on over it.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    """
+    full = schema()
+    narrow = Schema(
+        **{
+            **dict(full),
+            "attributes": {
+                a: s for a, s in full.attributes.items() if a != "efficiency"
+            },
+        }
+    )
+    assert narrow.group_columns == (), "nothing names the group beside a dim"
+    write_schema(narrow, store)
+    root = empty_root(store)
+    layer = store.layer_dir(root.id)
+    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_input(layer, "p_nom", [{"entity": "steel_dri", "value": 100.0}])
+    root.materialise()
+
+    write_schema(full, store)
+    child = empty_child(root)
+    write_input(
+        store.layer_dir(child.id),
+        "efficiency",
+        [{"entity": "steel_dri", "bus": "h2_north", "value": 2.0}],
+    )
+
+    assert _efficiencies(child) == {"h2_north": 2.0}
+    assert list(relation(child, "p_nom").df()["value"]) == [100.0]

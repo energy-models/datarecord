@@ -175,7 +175,12 @@ def test_curve_on_a_connection(store):
         ],
     )
 
-    df = relation(child, "efficiency").order("bus, breakpoint").df()
+    df = (
+        relation(child, "efficiency")
+        .project("connection.bus AS bus, breakpoint, value")
+        .order("bus, breakpoint")
+        .df()
+    )
     rows = list(zip(df["bus"], df["breakpoint"], df["value"], strict=True))
     assert rows == [
         ("dri", 0.0, 1.0),

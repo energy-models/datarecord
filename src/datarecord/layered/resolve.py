@@ -209,8 +209,9 @@ class Coords:
         ----------
         rel : DuckDBPyRelation
         layer_keys : tuple of str
-            `schema.partial_dims`. Never `entity` or a group's coordinate,
-            which address a row rather than broadcasting over an axis.
+            The broadcast dims of `schema.partial_dims`. Never `entity` or a
+            group's column, which address a row rather than broadcasting over
+            an axis.
 
         Returns
         -------
@@ -372,7 +373,8 @@ def _deleted_relation(
     keys: Coords,
     con: DuckDBPyConnection,
     *,
-    fixed: tuple[str, ...],
+    fixed: tuple[str, ...] = ("entity",),
+    group: str | None = None,
 ) -> DuckDBPyRelation:
     """One layer's tombstones of one membership, keyed as the map they filter.
 
@@ -389,16 +391,30 @@ def _deleted_relation(
     rel
         The layer's rows of that membership, or `None` where it has none.
     fixed
-        The key columns, compared NULL-safely: `entity` for an entity, a
-        group's coordinates for one of its tuples, a dim's `axis_key` for a
-        coordinate.
+        The key columns, compared NULL-safely: `entity` for an entity, a dim's
+        `axis_key` for a coordinate.
+    group
+        A group's tuples instead, packed from its flat file's `group_key` into
+        the one struct column the map keys the group by.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
+    schema = keys.schema
+    if group is not None:
+        if rel is None or "deleted" not in rel.columns:
+            return _empty_relation(schema, con, group)
+        packed = struct_of({c: col(c) for c in schema.group_key(group)})
+        group_type = DuckTypes(con)(schema.group_type(group))
+        return (
+            rel.filter(col("deleted"))
+            .project(packed.cast(group_type).alias(group))
+            .distinct()
+        )
     if rel is None or "deleted" not in rel.columns:
-        return _empty_relation(keys.schema, con, *fixed)
+        return _empty_relation(schema, con, *fixed)
     return rel.filter(col("deleted")).project(*(col(c) for c in fixed)).distinct()
 
 
@@ -501,19 +517,25 @@ def fold_inputs(
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
+    schema = keys.schema
     rel = source.all_attributes("inputs")
     if rel is None:
-        own = _empty_relation(keys.schema, con, *keys.schema.input_columns)
+        own = _empty_relation(schema, con, *schema.input_columns)
     else:
-        # Every declared dim too, not just `breakpoint`: one file carries only
-        # its own attribute's columns, so a coordinate another attribute uses
-        # is absent here and must read as NULL rather than fail to bind.
-        broadcast = keys.schema.broadcast_dims
+        # Every declared dim and group column too, not just `breakpoint`: one
+        # file carries only its own attribute's columns, so a coordinate another
+        # attribute uses is absent here and must read as NULL rather than fail
+        # to bind.
+        broadcast = schema.broadcast_dims
         rel = cast_declared(
-            keys.schema,
-            with_columns(keys.schema, rel, "breakpoint", *keys.schema.dims),
+            schema,
+            with_columns(
+                schema, rel, "breakpoint", *schema.group_columns, *schema.dims
+            ),
         )
-        rel, dims = keys.expand_dims(rel.set_alias("i"), keys.schema.partial_dims)
+        rel, dims = keys.expand_dims(
+            rel.set_alias("i"), tuple(d for d in schema.partial_dims if d in broadcast)
+        )
         # Each broadcast dim is carried twice: the (possibly broadcast) key
         # value, and `_raw_<dim>` as the row stored it. The flags describe the
         # stored form - whether a row set the dim or left it NULL - so they
@@ -523,7 +545,8 @@ def fold_inputs(
         # stored. Together they are every declared dim, exactly once.
         expanded = set(dims)
         tagged = rel.project(
-            *(col("i", d) for d in keys.schema.dims if d not in expanded),
+            *(col("i", g) for g in schema.group_columns),
+            *(col("i", d) for d in schema.dims if d not in expanded),
             *(expr.alias(d) for d, expr in dims.items()),
             *(col("i", d).alias(f"_raw_{d}") for d in broadcast),
             col("i", "attribute"),
@@ -532,7 +555,7 @@ def fold_inputs(
         )
         own = tagged.aggregate(
             [
-                *(col(c) for c in (*keys.schema.input_key, LAYER_COLUMN)),
+                *(col(c) for c in (*schema.input_key, LAYER_COLUMN)),
                 # A field aggregating to NULL - what a map written before the
                 # dim was declared yields - reads as "not set", the same as
                 # false.
@@ -548,33 +571,40 @@ def fold_inputs(
 
     # Each membership this layer tombstones anti-joins `parent`, keyed as it is
     # in `input_key` (https://energy-models.github.io/datarecord/design/read-path/#owner-map).
-    schema = keys.schema
     keyed = set(schema.input_key)
-    # `optional` where an absent key is legitimate: entity and groups drop out of
-    # `input_key` when a schema declares no dims. A partial dim's `axis_key` is
-    # always present, so a miss there is a nested dim whose parents the schema
-    # failed to keep in the fold key, and the assert names it.
+    # A partial dim's `axis_key` is always in `input_key`, so a miss there is a
+    # nested dim whose parents the schema failed to keep in the fold key, and
+    # the assert names it.
     memberships = [
-        (source.axis("entity"), ("entity",), True),
-        *((source.group(g), schema.group_key(g), True) for g in schema.groups),
-        *((source.axis(d), schema.axis_key(d), False) for d in schema.partial or ()),
+        *(
+            [(_deleted_relation(source.axis("entity"), keys, con), ("entity",))]
+            if "entity" in keyed
+            else []
+        ),
+        *(
+            (_deleted_relation(source.group(g), keys, con, group=g), (g,))
+            for g in schema.group_columns
+        ),
+        *(
+            (
+                _deleted_relation(source.axis(d), keys, con, fixed=schema.axis_key(d)),
+                schema.axis_key(d),
+            )
+            for d in schema.partial or ()
+        ),
     ]
     kept = parent.set_alias("p")
-    for rel_deleted, key, optional in memberships:
-        if not key or (optional and not keyed.issuperset(key)):
-            continue
+    for deleted, key in memberships:
         assert keyed.issuperset(key), (
             f"partial dim keyed by {key} outruns `input_key` {schema.input_key}; "
             "a nested dim needs its parents in the fold key"
         )
         kept = kept.join(
-            _deleted_relation(rel_deleted, keys, con, fixed=key).set_alias("x"),
-            null_safe("x", "p", key),
-            how="anti",
+            deleted.set_alias("x"), null_safe("x", "p", key), how="anti"
         ).set_alias("p")
     # Parent minus what this layer restates, union this layer's own.
     kept = kept.join(
-        own.set_alias("o"), null_safe("p", "o", keys.schema.input_key), how="anti"
+        own.set_alias("o"), null_safe("p", "o", schema.input_key), how="anti"
     )
     return union_all_by_name([kept, own], con)
 
@@ -609,7 +639,7 @@ def _fold_map(
 
     rel = _empty_relation(keys.schema, con, *columns(keys))
     if base is not None:
-        rel = cast_declared(keys.schema, base.owner_map)
+        rel = cast_declared(keys.schema, _keyed(keys.schema, base.owner_map))
 
     for source in above:
         rel = fold(source, keys, con, rel)
@@ -712,9 +742,9 @@ def _frozen_table(
     node resolves from, a staged source only ever being appended after it. The
     table is shared by every cursor on the workspace and carries no schema in
     its name, so a schema widened since the fold reads it as it is: a widening
-    only adds, and the one thing it adds here - a flag field for a new dim -
-    reads as unset where it is missing. A persisted map is cast, parquet not
-    carrying the declared types.
+    only adds, and what it adds here - a flag field for a new dim, a key column
+    for a newly keyed group - reads as unset where it is missing (`_keyed`). A
+    persisted map is cast, parquet not carrying the declared types.
 
     Notes
     -----
@@ -726,7 +756,7 @@ def _frozen_table(
         uri = last.store.owner_map_uri(revision_id, kind)
         persisted = try_read_parquet(uri, con)
         if persisted is not None:
-            return cast_declared(schema, persisted)
+            return cast_declared(schema, _keyed(schema, persisted))
 
     if not sources:
         # Nothing frozen to fold, which is a `WorkingRecord` over a base that is
@@ -734,11 +764,28 @@ def _frozen_table(
         columns, _ = map_kinds(schema)[kind]
         return _empty_relation(schema, con, *columns(Coords(schema=schema, axes={})))
 
-    return _shared(
-        con,
-        _table_name(revision_id, kind),
-        lambda: _fold_kind(kind, sources, con, schema),
+    return _keyed(
+        schema,
+        _shared(
+            con,
+            _table_name(revision_id, kind),
+            lambda: _fold_kind(kind, sources, con, schema),
+        ),
     )
+
+
+def _keyed(schema: Schema, owner_map: DuckDBPyRelation) -> DuckDBPyRelation:
+    """An owner map folded under an earlier schema, carrying this one's key.
+
+    A key column it lacks - a group first keyed by an attribute declared since -
+    is NULL on every row, which is right: no row folded then named the group.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    """
+    return with_columns(schema, owner_map, *schema.input_key)
 
 
 def _frozen_coords(
@@ -1233,8 +1280,9 @@ class Resolver:
         # carries. A dim outside `partial` is in neither: it is not in the map
         # at all, so it constrains nothing and passes straight through.
         #
-        # Of those that are, an address coordinate matches NULL-safely and a
-        # broadcast dim NULL-aware - the split `broadcast_dims` draws
+        # Of those that are, an address coordinate - `entity`, or a group's one
+        # struct column - matches NULL-safely and a broadcast dim NULL-aware -
+        # the split `broadcast_dims` draws
         # (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         coordinates = set(keys.schema.coordinates_of(attribute))
         broadcasts = set(keys.schema.broadcast_dims)
