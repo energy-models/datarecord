@@ -18,6 +18,7 @@ Notes
 from __future__ import annotations
 
 import math
+import re
 import warnings
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
@@ -668,10 +669,37 @@ _INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT = "input", "output", "attached"
 # schema declares it as an enum rather than a bare string.
 _ROLES = (_INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT)
 
-# Attribute stems that exist once per port, inputs and results alike. A record
-# stores each as one bus-keyed attribute (https://energy-models.github.io/datarecord/design/record/#connections), so these are the names
-# whose port suffix is undone on write.
-_PORT_STEMS = ("bus", "efficiency", "rate", "p", "q")
+_PORT_SUFFIX = re.compile(r"(.+?)(\d+)")
+
+
+@cache
+def _per_port_stems() -> frozenset[str]:
+    """Every attribute stem some PyPSA type carries once per port, inputs and results alike.
+
+    A record stores each as one bus-keyed attribute, so these are the names
+    whose port suffix is undone on write. Read off the registry: a name ending
+    in one of its type's port indices (`bus0`, `p1`, `rate0`, `delay1`), and
+    the stems a multi-port type leaves unsuffixed at port `1` (a Link's
+    `efficiency`, `delay`, `cyclic_delay`), which no suffix gives away.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
+    import pypsa
+
+    n = pypsa.Network()
+    stems: set[str] = set()
+    for ctype in n.all_components:
+        c = n.components[ctype]
+        ports = set(c.ports) - {""}
+        stems |= set(getattr(c, "_unsuffixed_attrs", ()))
+        stems |= {
+            match.group(1)
+            for attr in c.defaults.index
+            if (match := _PORT_SUFFIX.fullmatch(attr)) and match.group(2) in ports
+        }
+    return frozenset(stems)
 
 
 def _port_role(port: str) -> str:
@@ -713,6 +741,19 @@ def _port_attribute(stem: str, port: str, registered: Container[str]) -> str:
     return f"{stem}{port}"
 
 
+def _carries(stem: str, port: str, registered: Container[str]) -> bool:
+    """Whether PyPSA has a `stem` column at `port`.
+
+    A port the bare registry declares carries only the stems it registers
+    there (a Link's bus0 has no `efficiency0`); one beyond it is an
+    additional port, which PyPSA gives every per-port stem (`efficiency2`).
+    """
+    return (
+        _port_attribute(stem, port, registered) in registered
+        or _port_attribute(BUS, port, registered) not in registered
+    )
+
+
 @cache
 def _registered(ctype: str) -> frozenset[str]:
     """`ctype`'s attribute names in PyPSA's bare registry, for `_port_attribute`."""
@@ -751,24 +792,29 @@ def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
 
     Undoes PyPSA's positional encoding: `c.ports` is the authoritative port
     list (`["0", "1"]` plus `additional_ports`), so the port count comes from
-    the network rather than a guessed bound.
+    the network rather than a guessed bound. A per-port input that never
+    varies (`delay`, `cyclic_delay`) is a column of the row, a spec over the
+    `connection` group alone being one, as `role` is.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     static = c.static
+    constant = _connection_columns(c)
     frames = []
     for port in c.ports:
         column = _port_attribute("bus", port, c.defaults.index)
         if column not in static.columns:
             continue
-        buses = static[column]
-        attached = buses[buses.astype(str) != ""]
+        attached = static[static[column].astype(str) != ""]
         if attached.empty:
             continue
-        rows = attached.rename("bus").reset_index()
-        rows = rows.rename(columns={"name": "entity"})
+        rows = attached[[column]].rename(columns={column: "bus"})
+        for stem, at in constant.items():
+            if port in at:
+                rows[stem] = attached[at[port]]
+        rows = rows.reset_index().rename(columns={"name": "entity"})
         rows["role"] = _port_role(port)
         rows["deleted"] = False
         frames.append(rows)
@@ -1108,7 +1154,7 @@ def _port_names(c: pypsa.Components) -> dict[str, tuple[str, str]]:
     registered = c.defaults.index
     return {
         name: (stem, port)
-        for stem in _PORT_STEMS
+        for stem in sorted(_per_port_stems())
         for port in c.ports
         if (name := _port_attribute(stem, port, registered)) in registered
     }
@@ -1117,6 +1163,30 @@ def _port_names(c: pypsa.Components) -> dict[str, tuple[str, str]]:
 def _port_stems(c: pypsa.Components) -> dict[str, str]:
     """Per-port attribute name -> its stem, for this type's actual ports."""
     return {name: stem for name, (stem, _) in _port_names(c).items()}
+
+
+def _connection_columns(c: pypsa.Components) -> dict[str, dict[str, str]]:
+    """Stem -> `{port: column}` of `c`'s per-port inputs stored on its connection rows.
+
+    Those that vary over nothing: a varying one, or one a stochastic network
+    holds per scenario, is long rows in `inputs/` instead (`_record_attributes`),
+    and `bus` is the row's key rather than a column of it.
+    """
+    defaults = c.defaults
+    named = {
+        name: at
+        for name, at in _port_names(c).items()
+        if at[0] != BUS
+        and name in c.static.columns
+        and not defaults.at[name, "varying"]
+        and name not in _output_attributes(c)
+    }
+    diverging = {named[name][0] for name in _scenario_varying(c, list(named))}
+    columns: dict[str, dict[str, str]] = {}
+    for name, (stem, port) in named.items():
+        if stem not in diverging:
+            columns.setdefault(stem, {})[port] = name
+    return columns
 
 
 def _attribute_spec(row: pd.Series, *, per_port: bool) -> AttributeSpec:
@@ -2095,10 +2165,17 @@ def _collapse_connections(
     # instead: every row shares its value, and the join below matches on the
     # dims that actually distinguish rows.
     varying = [d for d in index[1:] if connections[d].notna().any()]
-    wide = connections.pivot(index=["entity", *varying], columns="port", values="bus")
     registered = _registered(ctype)
-    wide.columns = [_port_attribute("bus", port, registered) for port in wide.columns]
-    wide = wide.reset_index()  # noqa: F841 - queried by name below
+    stems = [BUS, *(s for s in sorted(_per_port_stems() - {BUS}) if s in connections)]
+    pieces = []
+    for stem in stems:
+        piece = connections.pivot(
+            index=["entity", *varying], columns="port", values=stem
+        )
+        piece = piece[[p for p in piece if _carries(stem, p, registered)]]
+        piece.columns = [_port_attribute(stem, port, registered) for port in piece]
+        pieces.append(piece if stem == BUS else piece.dropna(axis=1, how="all"))
+    wide = pd.concat(pieces, axis=1).reset_index()  # noqa: F841 - queried by name below
     ports = con.sql("FROM wide").set_alias("ports")
     on = ["entity", *(d for d in varying if d in static.columns)]
     joined = static.set_alias("s").join(
@@ -2127,9 +2204,7 @@ def _port_columns(
     row naming no connection of the entity is dropped, as a value for no
     member is.
 
-    A port the bare registry declares carries only the stems it registers
-    there (a Link's bus0 has no `efficiency0`); one beyond it is an
-    additional port, which PyPSA gives every per-port stem (`efficiency2`).
+    Only the ports that carry `stem` (`_carries`).
 
     Parameters
     ----------
@@ -2153,10 +2228,9 @@ def _port_columns(
     )
     registered = _registered(ctype)
     columns = {
-        column: port
+        _port_attribute(stem, port, registered): port
         for port in connections["port"].unique()
-        if (column := _port_attribute(stem, port, registered)) in registered
-        or _port_attribute(BUS, port, registered) not in registered
+        if _carries(stem, port, registered)
     }
     return {
         column: placed.filter(col("port") == lit(port))

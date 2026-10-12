@@ -733,6 +733,45 @@ def test_process_rates_survive_a_round_trip(store):
     assert_networks_equal(built, n)
 
 
+def test_delays_are_columns_of_their_connections(workspace, store):
+    """A Process's `delay0`/`delay1` and a Link's `delay`/`delay2` are one `delay` per bus.
+
+    A Link leaves `delay` unsuffixed at bus1, so no suffix marks it per-port.
+    Never varying, it is a column of the connection row, as `role` is.
+
+    Notes
+    -----
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
+    n = _three_port_process()
+    n.c["Process"].static.loc["dri", ["delay0", "delay1"]] = [1, 2]
+    n.c["Process"].static.loc["dri", "cyclic_delay1"] = True
+    n.add("Link", "split", bus0="a", bus1="b", bus2="c", delay=3, delay2=4)
+
+    record = PyPSA.to_datarecord(n, workspace.con)
+    members = {
+        c: set(record.entity_types[c].collect_schema()) for c in record.entity_types
+    }
+    assert not {"delay", "delay0", "delay2", "cyclic_delay1"} & set().union(
+        *members.values()
+    ), "no positional names on the members"
+    connections = record.groups["connection"].collect().to_pandas()
+    delay = connections.set_index(["entity", "bus"])["delay"].dropna().to_dict()
+    assert delay == {
+        ("dri", "a"): 1,
+        ("dri", "b"): 2,
+        ("dri", "c"): 0,
+        ("split", "b"): 3,
+        ("split", "c"): 4,
+    }, "bus0 of a Link has no delay"
+    assert _registry_schema().attributes["cyclic_delay"].dims == {"connection"}
+
+    built = PyPSA.build(export_network(n, store).record)
+    assert built.c["Link"].static.loc["split", ["delay", "delay2"]].tolist() == [3, 4]
+    assert built.c["Process"].static.loc["dri", "cyclic_delay1"]
+    assert_networks_equal(built, n)
+
+
 def test_a_time_varying_process_rate_survives_a_round_trip(store):
     """A series on bus1 is `rate1`'s series, beside a static `rate0`.
 

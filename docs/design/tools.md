@@ -59,6 +59,8 @@ It is also where bus-keyed connections are collapsed back to a framework's posit
 A per-connection input follows its connection's position: `efficiency` on a Link's `bus2` connection is PyPSA's `efficiency2`, static or per snapshot.
 A Process's `rate0`, `rate1`, `rate2`, … are likewise the one input `rate`, numbered from `0` because PyPSA registers `rate0` where it leaves port `1`'s `efficiency` unsuffixed.
 Its ports default differently, `-1` at the input end and `1` at the others, so `rate` declares no default and a port with no row keeps PyPSA's own.
+Which stems are per-port is read off PyPSA's registry, a name ending in a port index plus a Link's unsuffixed `efficiency`, `delay` and `cyclic_delay`.
+One that never varies, `delay` and `cyclic_delay`, is a column of the connection row, as `role` is, rather than a long row in `inputs/`.
 
 The tool's own `Schema` reconciles vocabularies: per entity type, which record attribute a tool's attribute is renamed from, or which several it is computed from.
 Since [the schema](schema.md) makes a record's attribute names _declared_ rather than conventional, this maps one declared vocabulary to another.
