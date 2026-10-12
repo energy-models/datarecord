@@ -274,12 +274,14 @@ def test_component_tombstone_does_not_cascade_to_its_connections(store):
     root = _root(store)
     root.materialise()
 
-    # The component alone: its connections survive, dangling, and so do their
-    # values - a connection row is keyed by the connection, not the entity.
+    # The component alone: its connections survive, dangling, but not their
+    # values - the entity tombstone reaches the entity inside `connection`.
     child = empty_child(root)
     tombstone(store.layer_dir(child.id), PROCESS, ["steel_dri"])
-    assert child.resolver.group_frame("connection") is not None
-    assert len(_efficiencies(child)) == 3, "only the connection's tombstone drops it"
+    frame = child.resolver.group_frame("connection")
+    assert frame is not None
+    assert frame.count("*").fetchone() == (3,), "the tuples are not cascaded to"
+    assert _efficiencies(child) == {}, "the entity's tombstone drops their values"
 
     # The connections too: now both are gone.
     both = empty_child(root)

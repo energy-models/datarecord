@@ -49,7 +49,7 @@ from datarecord.duck import (
     try_read_parquet,
     union_all_by_name,
 )
-from datarecord.layered.fold import Fold
+from datarecord.layered.fold import Fold, owning_entity
 from datarecord.layered.sources import LayerSource, ParquetLayer
 from datarecord.record import Flags
 from datarecord.schema import LAYER_COLUMN, Schema
@@ -513,6 +513,9 @@ def fold_inputs(
 ) -> DuckDBPyRelation:
     """This layer's inputs map: its `inputs/` keys, folded over `parent`.
 
+    An entity tombstone drops a parent row by its `owning_entity`, so removing
+    an entity drops its connections' values while the connection tuples stand.
+
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
@@ -575,33 +578,34 @@ def fold_inputs(
     # A partial dim's `axis_key` is always in `input_key`, so a miss there is a
     # nested dim whose parents the schema failed to keep in the fold key, and
     # the assert names it.
+    for d in schema.partial or ():
+        assert keyed.issuperset(schema.axis_key(d)), (
+            f"partial dim keyed by {schema.axis_key(d)} outruns `input_key` "
+            f"{schema.input_key}; a nested dim needs its parents in the fold key"
+        )
     memberships = [
-        *(
-            [(_deleted_relation(source.axis("entity"), keys, con), ("entity",))]
-            if "entity" in keyed
-            else []
+        (
+            _deleted_relation(source.axis("entity"), keys, con),
+            owning_entity(schema, "p", keyed) == col("x", "entity"),
         ),
         *(
-            (_deleted_relation(source.group(g), keys, con, group=g), (g,))
+            (
+                _deleted_relation(source.group(g), keys, con, group=g),
+                null_safe("x", "p", (g,)),
+            )
             for g in schema.group_columns
         ),
         *(
             (
                 _deleted_relation(source.axis(d), keys, con, fixed=schema.axis_key(d)),
-                schema.axis_key(d),
+                null_safe("x", "p", schema.axis_key(d)),
             )
             for d in schema.partial or ()
         ),
     ]
     kept = parent.set_alias("p")
-    for deleted, key in memberships:
-        assert keyed.issuperset(key), (
-            f"partial dim keyed by {key} outruns `input_key` {schema.input_key}; "
-            "a nested dim needs its parents in the fold key"
-        )
-        kept = kept.join(
-            deleted.set_alias("x"), null_safe("x", "p", key), how="anti"
-        ).set_alias("p")
+    for deleted, on in memberships:
+        kept = kept.join(deleted.set_alias("x"), on, how="anti").set_alias("p")
     # Parent minus what this layer restates, union this layer's own.
     kept = kept.join(
         own.set_alias("o"), null_safe("p", "o", schema.input_key), how="anti"

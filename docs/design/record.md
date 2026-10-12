@@ -113,8 +113,8 @@ A connection is one row of the **`connection` [group](schema.md#groups)** — `G
 A connection is identified by **the bus it attaches to**, never by position.
 An attribute is a connection attribute because its `dims` name the group, so a per-connection value is otherwise an ordinary long row: `efficiency` may vary by timestep and scenario like any other attribute, and decodes by the same rules with no special case.
 
-**A connection attribute is keyed by the connection, not the entity.** Its row carries no top-level `entity`, so the entity's tombstone does not reach it; only the connection's own does.
-Removing an entity therefore removes its connections too — [`WorkingRecord.remove`](working-record.md#add-remove) stages a tombstone for each — and that is what drops their values.
+**A connection attribute is keyed by the connection, not the entity.** Its row carries no top-level `entity`; the entity's tombstone reaches it by the entity inside the struct, as does the connection's own.
+Removing an entity therefore drops its connections' values, while the connection tuples stay until [removed in turn](working-record.md#add_group-remove_group).
 
 A record declaring no such group has no connections, and one declaring it with no rows answers `groups["connection"]` empty.
 Nothing about the mechanism is particular to buses — `corridor` over `(from, to)` is the same machinery, which is why `bus` is a field name here rather than a word the read path knows.

@@ -20,9 +20,7 @@ All notable changes to datarecord are documented here. The format follows
   The dims a group draws on now broadcast, so a per-bus value with
   `bus = NULL` holds for every bus, and patching one bus at a time needs
   `bus` in `partial`. `WorkingRecord.set` still takes `bus=` and accepts a
-  frame with the struct or its coordinates flat. An entity tombstone no
-  longer drops a connection's values; `remove` tombstones the entity's
-  connections instead. Naming a group beside a dim its key is named for
+  frame with the struct or its coordinates flat. Naming a group beside a dim its key is named for
   (`dims={"connection", "bus"}`) is rejected.
 - A `Workspace` holds the DuckDB connection and a `Store` one location;
   `connect`, `layer_dir`, `DATARECORD_BASE_URI`, `Record.at` and the process

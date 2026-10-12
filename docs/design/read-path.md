@@ -48,7 +48,8 @@ A node whose caches are [materialised](layers.md#materialised-node-caches) persi
 Every membership's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of the entity axis, of each keyed group, and of each partial dim — read from the same file that membership folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
 A group's tombstones are one NULL-safe anti-join on its struct column, packed from the flat group file — the same shape as the entity axis's.
 A layer's tombstones apply to its parents' keys, not to its own rows.
-This is not a cascade: each membership honours only its _own_ tombstones, so deleting an entity drops the rows keyed by `entity` but not its connection tuples, nor the connection attributes keyed by them — those stay until the tuples are deleted in turn, which [`WorkingRecord.remove`](working-record.md#add-remove) does beside the entity's.
+The entity axis's anti-join matches a row's _owning entity_: its `entity`, or else the entity inside a keyed group's struct — a group drawing twice on `entity` by its first coordinate — so deleting an entity drops its connections' values too.
+This is not a cascade: each membership honours only its _own_ tombstones, so deleting an entity leaves its connection tuples in the group file until they are deleted in turn.
 A membership column [never broadcasts](record.md#the-broadcast-rule), so a row not addressed by one carries NULL there and its NULL-safe anti-join never takes it; only a row naming a dead membership is dropped.
 
 ## One fold for every axis
@@ -124,7 +125,7 @@ A flag field missing from a map folded before the dim was declared counts as `br
 A **group column** like `connection` is joined **NULL-safely** as one value rather than NULL-aware against the map, being [an address rather than a broadcast dim](record.md#the-broadcast-rule); DuckDB hash-joins `IS NOT DISTINCT FROM` on a `STRUCT` key directly, a NULL field comparing equal to a NULL field.
 A dim the group draws on, `bus` beside it on a per-bus attribute, is a broadcast dim and joins NULL-aware like `scenario` where it is `partial`.
 There is no membership gate at read: an attribute row is keyed by every membership its coordinates name — the entity, each group tuple, each dim coordinate — and each of those is [tombstone-pruned in the fold](#owner-map), so a row whose entity, connection tuple or dim coordinate was deleted is already gone from the map.
-It is not a cascade: a connection attribute's row carries no top-level `entity`, so it goes with its connection's tombstone, not its entity's.
+A connection attribute's row carries no top-level `entity`, so it goes with its connection's tombstone or with its owning entity's, the one inside the struct.
 
 `breakpoint` is projected but not joined on, being no part of the key: a curve is owned whole ([wide and long rows](record.md#wide-and-long-rows)), so every breakpoint of a key comes from the winning layer.
 

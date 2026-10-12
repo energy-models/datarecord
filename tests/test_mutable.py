@@ -1056,10 +1056,9 @@ def test_a_result_takes_a_bus_keyword(staged):
 
 
 def test_remove_drops_the_values_on_its_connections(staged, root):
-    """A connection attribute goes with its connections, which `remove` tombstones.
+    """The entity tombstone reaches a connection attribute by the struct's entity.
 
-    The row is keyed by the connection alone, so the entity's tombstone does
-    not reach it; `remove` stages one per connection naming the entity.
+    The connection tuples are not cascaded to: `remove` stages the entity alone.
 
     Notes
     -----
@@ -1073,13 +1072,31 @@ def test_remove_drops_the_values_on_its_connections(staged, root):
 
     assert _efficiency(staged) == {}, "neither the base's nor the staged values"
     assert _efficiency(staged, "Manchester Gas"), "another entity keeps its own"
-    connections = _connections(staged)
-    assert "Manchester Wind" not in set(connections["entity"])
 
     child = root.child(staged.edits)
     assert _efficiency(child.record) == {}
-    assert "Manchester Wind" not in set(_connections(child.record)["entity"])
     assert _efficiency(child.record, "Manchester Gas")
+    assert "Manchester Wind" in set(_connections(child.record)["entity"]), (
+        "the tuples stand, dangling"
+    )
+
+
+def test_remove_then_add_keeps_the_parents_connection_values(staged, root):
+    """A re-added entity has its connections and their values back.
+
+    `add` replaces the staged tombstone, so nothing of the parent's is dropped.
+
+    Notes
+    -----
+    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    """
+    before = _efficiency(staged)
+    assert before, "the base carries a value to keep"
+    staged.remove(GEN, ["Manchester Wind"])
+    staged.add(GEN, pd.DataFrame([{"entity": "Manchester Wind"}]))
+
+    child = root.child(staged.edits)
+    assert _efficiency(child.record).keys() == before.keys()
 
 
 def _connections(record):

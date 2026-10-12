@@ -15,11 +15,9 @@ Notes
 
 from __future__ import annotations
 
-import operator
 import re
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
-from functools import reduce
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID, uuid4
@@ -34,12 +32,11 @@ from duckdb import SQLExpression as sql
 from datarecord.duck import (
     DuckTypes,
     as_relation,
-    fn,
     null_safe,
     struct_of,
     union_all_by_name,
 )
-from datarecord.layered.fold import Fold
+from datarecord.layered.fold import Fold, owning_entity
 from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver
 from datarecord.record import (
@@ -1814,48 +1811,25 @@ class WorkingRecord(Record):
         )
 
     def remove(self, ctype: str, names: Sequence[str]) -> None:
-        """Stage a tombstone per entity, and per group tuple naming one.
+        """Stage a tombstone per entity.
 
         Need not enumerate what it deletes: one row per key, and the fold
         applies it to every attribute. Nor scope it - an entity exists or it
         does not, so a deletion removes it whole.
 
-        One row, on the entity axis, which is where membership lives. A member
+        One row, on the entity axis, which is where membership lives and the only
+        place the fold reads an entity's tombstone from - a group attribute's row
+        included, by the entity inside its struct (`owning_entity`). A member
         file holds values, never a `deleted` (`_member_columns`), so no second
         write there keeps step with this one. The axis row carries the type only
         where a group declares the axis; the delete keys on `entity` alone
         regardless, so it lands whatever type the `add` named.
 
-        And one tombstone per resolved tuple of every group a key coordinate of
-        which draws on `entity` and names one of `names`: a group attribute's
-        row is keyed by the tuple alone, which an entity tombstone does not
-        reach, so its values go only with the tuple.
-
         Notes
         -----
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         """
-        for group, spec in self.schema.groups.items():
-            on_entity = [c for c in spec.key if spec.over[c] == "entity"]
-            # The type axis's group is `dims/entity.parquet` itself, which the
-            # entity tombstone below already is.
-            is_type_axis = spec.into is not None and tuple(spec.over.values()) == (
-                "entity",
-            )
-            rows = None if is_type_axis else self.resolver.group(group)
-            if not on_entity or not names or rows is None:
-                continue
-            named = rows.filter(
-                reduce(
-                    operator.or_,
-                    (col(c).isin(*(lit(n) for n in names)) for c in on_entity),
-                )
-            ).project(*(col(c) for c in spec.key))
-            self._stage_tombstones(
-                group, spec.key, [list(r) for r in named.fetchall()], spec.key
-            )
         if self.schema.entity_type_dim is not None:
             self._stage_tombstones(
                 _ENTITY_AXIS,
@@ -1935,9 +1909,8 @@ class WorkingRecord(Record):
         clear this attribute's rows for the name too, and a `remove_group` its
         rows for the tuple.
 
-        An entity tombstone reaches a group attribute's row too, by the entity
-        inside its struct - which also catches a row whose other coordinates
-        name no tuple, e.g. a `set` that gave no `bus=`.
+        An entity tombstone reaches a group attribute's row too, by its
+        `owning_entity` - as the fold does.
 
         None where nothing is staged for it, which is what says the base's rows
         stand alone.
@@ -1950,23 +1923,13 @@ class WorkingRecord(Record):
         rel = self._rows("inputs", attribute)
         if rel is None:
             return None
-        groups = [c for c in rel.columns if _is_group_column(self.schema, c)]
         dead = self._tombstoned()
         # Matched on `name` alone: the tombstone carries a type and a staged
         # input row does not (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-        entities = [
-            *([col("l", "entity")] if "entity" in rel.columns else []),
-            *(
-                fn.struct_extract(col("l", g), lit(c))
-                for g in groups
-                for c in self.schema.group_key(g)
-                if self.schema.groups[g].over[c] == "entity"
-            ),
-        ]
-        if dead is not None and entities:
-            on = reduce(operator.or_, (e == col("d", "entity") for e in entities))
+        if dead is not None:
+            on = owning_entity(self.schema, "l", rel.columns) == col("d", "entity")
             rel = rel.set_alias("l").join(dead.set_alias("d"), on, how="anti")
-        for g in groups:
+        for g in (c for c in rel.columns if _is_group_column(self.schema, c)):
             tuples = self._rows(g)
             if tuples is None:
                 continue

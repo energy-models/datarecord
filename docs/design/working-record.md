@@ -251,10 +251,8 @@ Adding a bus with no attributes makes the point — nothing to `set`, yet the bu
 Membership is not reducible to attribute values.
 
 `remove` stages a tombstone on the [entity axis](format.md#the-entity-axis), one row per entity and no dim scope: an entity [exists or it does not](schema.md#existence-does-not-vary-along-a-dim), so there is no axis to scope a deletion along.
-It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute keyed by `entity`.
-**It also tombstones the entity's group tuples**: for every group a key coordinate of which draws on `entity`, each resolved tuple naming the entity is staged deleted, as [`remove_group`](#add_group-remove_group) would.
-A connection attribute's row is keyed by the connection alone, which the entity tombstone [does not reach](read-path.md#owner-map), so its values go only with the tuple.
-A later `add` of the same name therefore comes back without its connections until they are restated ([edits](#edits)).
+It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute row the entity owns, a connection attribute's by the entity inside its struct ([the owner map](read-path.md#owner-map)).
+It does not tombstone the entity's group tuples, which stay until [`remove_group`](#add_group-remove_group) deletes them.
 
 ## `add_group` / `remove_group`
 
@@ -321,7 +319,7 @@ Three interactions need stating, because each is where replacing by coordinate a
   A layer's tombstones apply only to its parents in [the fold](read-path.md#owner-map), so the staged collapse drops its own rows itself: a row naming a removed entity, top-level or inside a group's struct, and a row whose group column names a tuple `remove_group` staged deleted.
 - **`add` after `remove`** of the same name: the entity exists again.
   The entity axis replaces on `entity` alone, so the `add` row displaces the tombstone by construction — no member row and tombstone both.
-  Its connections do not come back: `remove` tombstoned them, and they stay deleted until restated.
+  So do its parent's connection values, which only the displaced tombstone reached.
 - **`set` on an entity this record also added**: correct as-is, since the two live in different files.
 
 The [non-`partial` rule](schema.md#partial-the-granularity-of-an-override) is the subtle one.
