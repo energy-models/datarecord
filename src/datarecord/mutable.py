@@ -1154,9 +1154,7 @@ class WorkingRecord(Record):
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         types = lazy.collect_schema()
-        for group in self.schema.coordinates_of(attribute):
-            if not _is_group_column(self.schema, group):
-                continue
+        for group in self.schema.groups_of(attribute):
             key = self.schema.group_key(group)
             if flat := [c for c in key if c in types]:
                 msg = (
@@ -1186,8 +1184,8 @@ class WorkingRecord(Record):
         return next(
             (
                 g
-                for g in self.schema.coordinates_of(attribute)
-                if _is_group_column(self.schema, g) and name in self.schema.group_key(g)
+                for g in self.schema.groups_of(attribute)
+                if name in self.schema.group_key(g)
             ),
             None,
         )
@@ -1350,7 +1348,7 @@ class WorkingRecord(Record):
         def coordinate(d: str) -> Expression:
             if d in present:
                 return col(d)
-            if _is_group_column(self.schema, d):
+            if d in self.schema.groups_of(attribute):
                 return _packed(self.schema, d, present, dims, duck_types).alias(d)
             return duck_types.lit(dims.get(d), self._column_type(d)).alias(d)
 
@@ -1931,7 +1929,7 @@ class WorkingRecord(Record):
                 rel = rel.set_alias("l").join(
                     dead.set_alias("d"), on == col("d", "entity"), how="anti"
                 )
-        for g in (c for c in rel.columns if _is_group_column(self.schema, c)):
+        for g in self.schema.groups_of(attribute):
             tuples = self._rows(g)
             if tuples is None:
                 continue
@@ -2230,16 +2228,6 @@ def _group_coordinate_types(schema: Schema, group: str) -> dict[str, nw.dtypes.D
     return {c: schema.dimensions[spec.over.get(c, c)].dtype for c in spec.coordinates}
 
 
-def _is_group_column(schema: Schema, column: str) -> bool:
-    """Whether `column` of a long row is a group's struct, not a dim.
-
-    Notes
-    -----
-    - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
-    """
-    return column in schema.groups and column not in schema.dimensions
-
-
 def _flat_coordinates(schema: Schema, attribute: str) -> tuple[str, ...]:
     """`coordinates_of`, each group column spelled as its key coordinates.
 
@@ -2250,13 +2238,12 @@ def _flat_coordinates(schema: Schema, attribute: str) -> tuple[str, ...]:
     -----
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
+    groups = schema.groups_of(attribute)
     return tuple(
         c
         for coordinate in schema.coordinates_of(attribute)
         for c in (
-            schema.group_key(coordinate)
-            if _is_group_column(schema, coordinate)
-            else (coordinate,)
+            schema.group_key(coordinate) if coordinate in groups else (coordinate,)
         )
     )
 

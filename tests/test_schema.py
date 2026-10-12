@@ -217,7 +217,7 @@ def test_a_trait_may_only_be_scoped_by_an_entity_type_axis():
                 "bus": Dimension(dtype=nw.String()),
                 "country": Dimension(dtype=nw.String()),
             },
-            groups={"country": Group(over=["bus"], into="country")},
+            groups={"bus_country": Group(over=["bus"], into="country")},
             attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
             traits={"t": Trait(attributes={"p_nom"}, on={"country": {"DE"}})},
             partial=frozenset(),

@@ -552,13 +552,24 @@ class Schema(BaseModel):
             msg = f"`within` is cyclic: {' -> '.join(e.args[1])}"
             raise ValueError(msg) from e
 
-        # A group's coordinates draw their labels from declared dims, and so
-        # does `into`. No check that the name is free of the dims: a collision
-        # is shadowing rather than an ambiguity (https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x).
+        classifies_entity = [
+            g
+            for g, spec in self.groups.items()
+            if spec.into is not None and tuple(spec.over.values()) == ("entity",)
+        ]
         for group, group_spec in self.groups.items():
             unknown = sorted(set(group_spec.over.values()) - declared)
             if unknown:
                 msg = f"group {group!r} is over undeclared dims {unknown}"
+                raise ValueError(msg)
+            if group in declared and group not in classifies_entity:
+                renamed = "_".join((*group_spec.over, group))
+                msg = (
+                    f"group {group!r} shares its name with the dim {group!r}; a "
+                    f"group is carried as a column named for it, so the two would "
+                    f"be one column. Rename the group, e.g. {renamed!r} into "
+                    f"{group!r} (https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)"
+                )
                 raise ValueError(msg)
             if group_spec.into is not None and group_spec.into not in declared:
                 msg = (
@@ -577,11 +588,7 @@ class Schema(BaseModel):
 
         # One group may classify `entity`, or none: every caller of
         # `attributes_for` asks for exactly one vocabulary.
-        classifying = sorted(
-            g.into
-            for g in self.groups.values()
-            if g.into is not None and tuple(g.over.values()) == ("entity",)
-        )
+        classifying = sorted(str(self.groups[g].into) for g in classifies_entity)
         if len(classifying) > 1:
             msg = (
                 f"{classifying} all classify `entity`; an entity has one type, "
@@ -611,7 +618,7 @@ class Schema(BaseModel):
                 )
                 raise ValueError(msg)
             for group, group_spec in self.groups.items():
-                if group in attr_spec.dims and group not in declared:
+                if group in self.groups_of(attr):
                     twice = sorted(set(group_spec.key) & attr_spec.dims)
                     if twice:
                         msg = (
@@ -803,12 +810,9 @@ class Schema(BaseModel):
     def coordinates_of(self, attribute: str) -> tuple[str, ...]:
         """The coordinate columns one attribute's rows carry, groups first.
 
-        One rule resolves a name in `dims`: **it is the dim of that name if one
-        is declared, and otherwise the group of that name**, carried as one
-        struct column named for the group (`group_type`). So `dims={"connection",
-        "snapshot"}` gives `("connection", "snapshot")` where no dim
-        `connection` exists, and `dims={"country"}` gives `("country",)` - the
-        dim, where a group of that name is shadowed.
+        A group in `dims` is carried as one struct column named for it
+        (`group_type`), so `dims={"connection", "snapshot"}` gives
+        `("connection", "snapshot")`.
 
         Per attribute rather than schema-wide: one file per attribute means one
         column set per attribute, and an all-NULL `entity` on a record-level
@@ -823,11 +827,7 @@ class Schema(BaseModel):
         spec = self.spec_for(attribute)
         if spec is None:
             return ()
-        # Declaration order, so every consumer sees one column order.
-        return (
-            *(g for g in self.groups if g in spec.dims and g not in self.dimensions),
-            *(d for d in self.dims if d in spec.dims),
-        )
+        return (*self.groups_of(attribute), *(d for d in self.dims if d in spec.dims))
 
     @property
     def group_columns(self) -> tuple[str, ...]:
@@ -835,20 +835,21 @@ class Schema(BaseModel):
 
         A group some attribute names beside another coordinate, so that its
         rows are long rows in `inputs/` carrying the group's struct column.
-        Every other group would be a map column NULL on every row: one a dim
-        shadows, one addressed only alone (a column of its own file), one only
-        results name (`outputs/` never overlays), or one nothing names.
+        Every other group would be a map column NULL on every row: the
+        entity-type group, one addressed only alone (a column of its own file),
+        one only results name (`outputs/` never overlays), or one nothing names.
 
         Notes
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return tuple(
+        keyed = {
             g
-            for g in self.groups
-            if g not in self.dimensions
-            and any(g in s.dims and s.varying for s in self.attributes.values())
-        )
+            for a, s in self.attributes.items()
+            if s.varying
+            for g in self.groups_of(a)
+        }
+        return tuple(g for g in self.groups if g in keyed)
 
     def group_type(self, group: str) -> nw.dtypes.DType:
         """The struct a row carries `group` as: a field per key coordinate.
@@ -970,14 +971,9 @@ class Schema(BaseModel):
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
-        return any(
-            c == "entity"
-            or (
-                c not in self.dimensions
-                and c in self.groups
-                and "entity" in self.groups[c].over.values()
-            )
-            for c in self.coordinates_of(attribute)
+        spec = self.spec_for(attribute)
+        return (spec is not None and "entity" in spec.dims) or any(
+            "entity" in self.groups[g].over.values() for g in self.groups_of(attribute)
         )
 
     def attributes_for(self, ctype: str) -> dict[str, AttributeSpec]:
@@ -1180,20 +1176,20 @@ class Schema(BaseModel):
         return (*self.partial_dims, "attribute")
 
     def groups_of(self, attribute: str) -> tuple[str, ...]:
-        """Which declared groups address `attribute`, in declaration order.
+        """Which declared groups address `attribute`, input or result, in declaration order.
 
         An attribute is a connection attribute because its `dims` name the
         `connection` group - not because a separate field says so. That is
         what lets a second group exist without a second field.
 
-        A group a dim shadows is not one of them, `dims: [country]` naming the
-        axis.
+        A name in `dims` is the dim where one is declared, which only the
+        entity-type group may share a name with.
 
         Notes
         -----
         - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
         """
-        spec = self.attributes.get(attribute)
+        spec = self.spec_for(attribute)
         if spec is None:
             return ()
         return tuple(

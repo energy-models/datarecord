@@ -61,7 +61,7 @@ The rule: **an attribute naming exactly one addressing coordinate is a column on
 | `{"entity"}`, no type axis   | `dims/entity.parquet` — a column of the entity axis itself             |
 | `{"connection"}`             | `groups/connection.parquet` — the group's own file                     |
 | `{"scenario"}`               | `dims/scenario.parquet` — the axis file                                |
-| `{"country"}`                | `dims/country.parquet` — the axis file, a dim shadowing the group      |
+| `{"country"}`                | `dims/country.parquet` — the axis file                                 |
 | `{"entity", "snapshot"}`     | `inputs/<attr>.parquet`                                                |
 | `{"connection", "snapshot"}` | `inputs/<attr>.parquet`                                                |
 
@@ -86,7 +86,7 @@ A record with no such file has no rows of that group.
 
 The [entity-type group](schema.md#entity_type-the-axis-of-kinds) is the one exception, its rows being the [entity axis file](#the-entity-axis) rather than a `groups/` file of their own: an entity's type is what its identity already states, so storing it twice is what would let the two disagree.
 
-A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a column of the group's file like any coordinate, so `groups/country.parquet` is `bus | country`. No column on the classified axis: `dims/bus.parquet` does not gain a `country`, the relation being the group's own file. That costs a join where a column read would have done, and buys a uniform rule — `into` decides nothing about storage, so nothing in the layout branches on it.
+A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a column of the group's file like any coordinate, so `groups/bus_country.parquet` is `bus | country`. No column on the classified axis: `dims/bus.parquet` does not gain a `country`, the relation being the group's own file. That costs a join where a column read would have done, and buys a uniform rule — `into` decides nothing about storage, so nothing in the layout branches on it.
 
 ## The long schema
 

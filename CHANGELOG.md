@@ -23,6 +23,9 @@ All notable changes to datarecord are documented here. The format follows
   carries the struct, its coordinates flat being rejected. Naming a group
   beside a dim its key is named for (`dims={"connection", "bus"}`) is
   rejected.
+- A group may not share a dim's name, the entity-type group excepted: a
+  group is carried as a column named for it. Rename a functional group for
+  the relation, `bus_country` into `country`.
 - A `Workspace` holds the DuckDB connection and a `Store` one location;
   `connect`, `layer_dir`, `DATARECORD_BASE_URI`, `Record.at` and the process
   default connection are gone. A store's revisions live beside its layers as

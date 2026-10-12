@@ -4,8 +4,8 @@
 
 """Functional groups: a group declaring `into`, which classifies its coordinates.
 
-`country` over `[bus]` into `country` says every bus is in exactly one country.
-The relation is a file of its own, `groups/country.parquet`, and the dim it is
+`bus_country` over `[bus]` into `country` says every bus is in exactly one
+country. The relation is a file of its own, `groups/bus_country.parquet`, and the dim it is
 `into` keeps an axis file for its order and for attributes addressed by it.
 
 Notes
@@ -40,8 +40,8 @@ def _schema(**overrides) -> Schema:
             "country": Dimension(dtype=nw.String()),
         },
         "groups": {
-            "state": Group(over=["bus"], into="state"),
-            "country": Group(over=["state"], into="country"),
+            "bus_state": Group(over=["bus"], into="state"),
+            "state_country": Group(over=["state"], into="country"),
         },
         "partial": frozenset(),
     }
@@ -63,37 +63,43 @@ def test_the_dim_a_group_is_into_is_an_ordinary_dim():
 def test_into_becomes_a_coordinate_of_the_group():
     """`into` is sugar: it folds into `coordinates` and nothing branches on it.
 
-    So `groups/country.parquet` is keyed `state | country` exactly as an
+    So `groups/state_country.parquet` is keyed `state | country` exactly as an
     `into`-less group is keyed by its `over` alone.
     """
     s = _schema()
-    assert s.group_coordinates("country") == ("state", "country")
-    assert s.group_coordinates("state") == ("bus", "state")
+    assert s.group_coordinates("state_country") == ("state", "country")
+    assert s.group_coordinates("bus_state") == ("bus", "state")
 
 
 def test_the_key_is_the_coordinates_minus_into():
     """What the uniqueness constraint is on: each `over` tuple carries one label."""
     s = _schema()
-    assert s.group_key("country") == ("state",)
-    assert s.group_key("state") == ("bus",)
+    assert s.group_key("state_country") == ("state",)
+    assert s.group_key("bus_state") == ("bus",)
 
 
-def test_a_group_may_share_a_dims_name_and_the_dim_wins():
-    """Addressing resolves the dim namespace first, so the collision is shadowing.
+def test_a_group_may_not_share_a_dims_name():
+    """A group is carried as a column named for it, so the two would be one column."""
+    with pytest.raises(ValidationError, match="group 'country' shares its name"):
+        _schema(groups={"country": Group(over=["state"], into="country")})
 
-    `dims: [country]` is the axis - which is what a genuinely per-country value
-    wants - rather than the group expanded to the states it maps from.
-    """
-    s = _schema(
-        attributes={"co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})},
-        partial=frozenset({"country"}),
+
+def test_the_entity_type_group_may_share_its_dims_name():
+    """It has no file or column of its own: its rows are the entity axis."""
+    s = Schema(
+        dimensions={
+            "entity": Dimension(dtype=nw.String()),
+            "entity_type": Dimension(dtype=nw.String()),
+        },
+        groups={"entity_type": Group(over=["entity"], into="entity_type")},
+        attributes={"icon": AttributeSpec(dtype=nw.String(), dims={"entity_type"})},
     )
-    assert s.coordinates_of("co2_budget") == ("country",), "the dim, not the group"
-    assert s.groups_of("co2_budget") == (), "a shadowed group addresses nothing"
+    assert s.coordinates_of("icon") == ("entity_type",), "the dim"
+    assert s.groups_of("icon") == ()
 
 
 def test_an_into_less_group_in_dims_is_one_struct_column():
-    """A group no dim shadows is carried as itself, a struct over its coordinates."""
+    """A group in `dims` is carried as itself, a struct over its coordinates."""
     s = _schema(
         groups={"connection": Group(over=["bus", "state"])},
         attributes={"capacity": AttributeSpec(dtype=nw.Float64(), dims={"connection"})},
@@ -134,16 +140,11 @@ def test_a_functional_group_keys_no_axis():
 
 def test_a_group_over_an_undeclared_dim_is_refused():
     with pytest.raises(ValidationError, match="over undeclared dims"):
-        _schema(groups={"country": Group(over=["nope"], into="country")})
+        _schema(groups={"state_country": Group(over=["nope"], into="country")})
 
 
 def test_into_must_name_a_declared_dim():
-    """Rejected rather than tolerated, the failure being otherwise silent.
-
-    A dim shadows a group of its name, so an `into` naming a dim nobody declared
-    would leave `dims: [country]` quietly expanding to the coordinates instead
-    of naming the axis it meant.
-    """
+    """`into` names the axis whose labels the group's tuples carry."""
     with pytest.raises(ValidationError, match="`into` undeclared dim"):
         _schema(groups={"c": Group(over=["bus"], into="nope")})
 
@@ -195,21 +196,23 @@ def test_a_chain_is_a_join_over_two_group_files(store):
     revision = empty_root(store)
     write_schema(_budget_schema(), store)
     write_group(
-        store.layer_dir(revision.id), "state", [{"bus": "north", "state": "lower"}]
+        store.layer_dir(revision.id), "bus_state", [{"bus": "north", "state": "lower"}]
     )
     write_group(
-        store.layer_dir(revision.id), "country", [{"state": "lower", "country": "DE"}]
+        store.layer_dir(revision.id),
+        "state_country",
+        [{"state": "lower", "country": "DE"}],
     )
 
     groups = revision.record.groups
-    assert groups["state"].collect().to_native().to_pydict() == {
+    assert groups["bus_state"].collect().to_native().to_pydict() == {
         "bus": ["north"],
         "state": ["lower"],
     }
     assert dict(
         zip(
-            groups["country"].collect().to_native()["state"].to_pylist(),
-            groups["country"].collect().to_native()["country"].to_pylist(),
+            groups["state_country"].collect().to_native()["state"].to_pylist(),
+            groups["state_country"].collect().to_native()["country"].to_pylist(),
         )
     ) == {"lower": "DE"}
 
@@ -226,20 +229,22 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
     write_schema(schema, store)
 
     root = empty_root(store)
-    write_group(store.layer_dir(root.id), "state", [{"bus": "north", "state": "lower"}])
+    write_group(
+        store.layer_dir(root.id), "bus_state", [{"bus": "north", "state": "lower"}]
+    )
 
     child = empty_child(root)
     write_group(
-        store.layer_dir(child.id), "state", [{"bus": "south", "state": "upper"}]
+        store.layer_dir(child.id), "bus_state", [{"bus": "south", "state": "upper"}]
     )
     child.materialise()
 
     grandchild = empty_child(child)
     write_group(
-        store.layer_dir(grandchild.id), "state", [{"bus": "east", "state": "lower"}]
+        store.layer_dir(grandchild.id), "bus_state", [{"bus": "east", "state": "lower"}]
     )
 
-    rows = grandchild.record.groups["state"].collect().to_native().to_pydict()
+    rows = grandchild.record.groups["bus_state"].collect().to_native().to_pydict()
     assert rows["bus"] == ["north", "south", "east"], "member order, seed first"
     assert "order_key" not in rows
 

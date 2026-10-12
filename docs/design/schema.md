@@ -244,7 +244,9 @@ A group declares **which tuples over several dims exist**: a sparse subset of a 
 groups = {
     "connection": Group(over={"entity": "entity", "bus": "bus"}),
     "corridor": Group(over={"from": "bus", "to": "bus"}),
-    "country": Group(over=["bus"], into="country"),  # functional: one country per bus
+    "bus_country": Group(
+        over=["bus"], into="country"
+    ),  # functional: one country per bus
 }
 ```
 
@@ -266,7 +268,7 @@ The column's name says which group constrains the row, so two groups may share a
 **A group file stays flat**: `groups/connection.parquet` is `entity | bus | role`, keyed by its coordinates.
 The struct is how a group is _referenced_ from a row, not how it is stored, and it is built where a row is joined against the group, `{'entity': entity, 'bus': bus} AS connection`.
 
-**A group in `dims` resolves to itself** where no dim shadows it, so `dims={"connection", "timestep"}` gives the columns `connection | timestep`, groups first — [addressing](#addressing-dims-x) states the full rule.
+**A group in `dims` resolves to itself**, so `dims={"connection", "timestep"}` gives the columns `connection | timestep`, groups first — [addressing](#addressing-dims-x) states the full rule.
 The fold's key therefore does not vary per attribute: [`partial_dims`](#partial-the-granularity-of-an-override) is one fixed tuple, `entity`, the keyed group columns and the `partial` value dims.
 
 **An attribute may not name a group beside a dim its key coordinate is named for.** `dims={"connection", "bus"}` is rejected: the row would hold the bus twice, free to disagree — the same "keyed twice over" rule [`into`](#into-a-group-that-classifies) states.
@@ -283,13 +285,13 @@ Only a group some varying input attribute names beside another coordinate is key
 
 ### `into` — a group that classifies
 
-`into` names the dim a group is **functional into**: each tuple of `over` carries exactly one of its labels. `country` over `[bus]` into `country` says every bus is in one country.
+`into` names the dim a group is **functional into**: each tuple of `over` carries exactly one of its labels. `bus_country` over `[bus]` into `country` says every bus is in one country.
 
 It is a declaration a bare group cannot make. A group can only _happen_ to be single-valued, which leaves a duplicate row a data error the schema has no name for; `into` names it, so the constraint is declared and checkable on write. No existing system declares it — GAMS's `map(b,c)` is a set over a tuple of sets with single-valuedness left to convention, and a duplicated `b` silently double-counts — which is the argument for the field rather than against it, a schema whose purpose is making shape checkable having no reason to inherit that gap.
 
 **`into` must name a declared dim.** That is what keeps the axis file, and the axis file is the whole of what a functional group has over a bare tuple set: `dims/country.parquet` gives `country` its [order](record.md#axis-order) and somewhere for a per-country CO2 budget to live.
 
-**`into` is sugar, resolved once at parse.** It folds into the group's coordinates, so `groups/country.parquet` is keyed `bus | country` exactly as `connection` is keyed `entity | bus`, and no read path, file layout or fold key branches on whether a group has one. The field is retained for the three things that still need it: the uniqueness constraint (the key being the coordinates minus `into`), a consumer's aggregation, and round-tripping the manifest — writing back `over: [bus, country]` where the author wrote `into:` would silently rewrite their schema.
+**`into` is sugar, resolved once at parse.** It folds into the group's coordinates, so `groups/bus_country.parquet` is keyed `bus | country` exactly as `connection` is keyed `entity | bus`, and no read path, file layout or fold key branches on whether a group has one. The field is retained for the three things that still need it: the uniqueness constraint (the key being the coordinates minus `into`), a consumer's aggregation, and round-tripping the manifest — writing back `over: [bus, country]` where the author wrote `into:` would silently rewrite their schema.
 
 **It may not key an attribute alongside what it maps from.** `dims={"bus", "country"}` is rejected: `into` says the country follows from the bus, so the row would be keyed twice over and the two free to disagree.
 
@@ -303,14 +305,14 @@ An attribute names a group in its `dims` exactly as it names a dim, and one rule
 
 ```python
 "efficiency": AttributeSpec(dims={"connection", "timestep"}),  # connection | timestep
-"co2_budget": AttributeSpec(dims={"country"}),  # country: the dim, not the group
+"co2_budget": AttributeSpec(dims={"country"}),  # country: the dim
 ```
 
 A group with no dim of its name has no other spelling, so naming it is the only way to declare an attribute over it; `coordinates_of` lists the attribute's groups first, then its dims in declaration order.
 
-**A group may share a dim's name**, and there the dim wins. For a functional group that is the natural spelling: the dim is the axis of labels, the group is the relation between it and `over`, and shadowing is what should happen — a value that is genuinely per-country is `dims: [country]`, the dim, which is what the axis file exists for. Resolving to the group instead would key the value per bus, written so the reader has to look up the group's `over` to see it.
-
-Nothing then justifies prohibiting the collision in the `into`-less case either: the dim namespace resolving first means a dim and a group both called `connection` is not ambiguous, and one rule covers every collision instead of a rule plus a guard. What it gives up is a schema error — a shadowed `into`-less group loses its only spelling in `dims` and no longer says so at load time. That is not worth a second rule: the collision has to be authored deliberately, both entries are visible in one file, and [a lint would recover it](open-questions.md) without also rejecting the harmless case.
+**A group may not share a dim's name**: a group is carried as a column named for it, so sharing a dim's name makes two columns one name.
+A functional group is named for the relation rather than the axis it classifies into — `bus_country` into `country` — and the schema's error says so.
+The [entity-type group](#entity_type-the-axis-of-kinds) is exempt, having no file or column of its own: its rows are the entity axis, so `dims: [entity_type]` can only mean the dim.
 
 ## Existence does not vary along a dim
 

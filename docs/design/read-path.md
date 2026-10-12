@@ -36,7 +36,7 @@ A coordinate an attribute's own file does not carry reads as NULL, which is what
 Each membership is one column, so which columns name a connection is legible from the map itself, with no schema to say which belong together.
 
 **Only the groups a long input row can carry are keyed** (`Schema.group_columns`): a group some varying input attribute names beside another coordinate, `efficiency` over `{connection, timestep}`.
-Any other would be a column NULL on every row, widening the key every read pays for to identify nothing — the entity-type group, a group a dim shadows, a group addressed only alone (its attributes are [columns of its own file](format.md#where-a-value-lives)), a group only results name ([outputs never overlay](#outputs)), and a group nothing names.
+Any other would be a column NULL on every row, widening the key every read pays for to identify nothing — the entity-type group, a group addressed only alone (its attributes are [columns of its own file](format.md#where-a-value-lives)), a group only results name ([outputs never overlay](#outputs)), and a group nothing names.
 A map folded before an attribute keyed a group lacks its column and reads it as NULL, which is correct: no row folded then named the group.
 
 `entity_type` is **not** on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the resolved entity axis is what says which type an entity is.

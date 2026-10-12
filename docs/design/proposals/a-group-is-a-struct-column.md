@@ -27,7 +27,7 @@ sparse = {c for g in self.groups.values() for c in g.key}
 
 The cost lands on attributes that have nothing to do with the group.
 Declaring `connection` over `(entity, bus)` means no attribute anywhere may hold a value once for every bus: a per-bus `marginal_price` over `{bus, timestep}` reads a NULL `bus` as "no bus", not "every bus".
-Declaring `country` over `bus` into `country` — a classification, which addresses no attribute row at all — does the same.
+Declaring `bus_country` over `bus` into `country` — a classification, which addresses no attribute row at all — does the same.
 The broadcast rule is right that _a connection's_ `bus` has no axis to expand against; it is wrong that _the dim_ `bus` therefore has none.
 The two are one column today only because the group was flattened into the dim's name.
 
@@ -55,7 +55,7 @@ The fold key stays [one fixed tuple](../schema.md#partial-the-granularity-of-an-
 It is compared NULL-safely as one value, which DuckDB hash-joins on directly — checked on 1.5.5, `k IS NOT DISTINCT FROM k` over a `STRUCT` key plans a `HASH_JOIN`, and a NULL field compares equal to a NULL field.
 So [resolving a relation](../read-path.md#resolving-a-relation) joins `o.connection IS NOT DISTINCT FROM u.connection` where it joined `entity` and `bus` separately, and the address columns still derive from the schema.
 
-**A shadowed group never enters a row.** `country` over `bus` into `country` is spelled `dims: [country]` as the dim, so no attribute row carries the group, and its file stays `bus | country` — the struct is how a group is _referenced_, not how it is stored.
+**A group does not share a dim's name.** A group is carried as a column named for it, so `country` into `country` would make two columns one name; the functional group is `bus_country`, and only the entity-type group, which has no file or column of its own, may share its dim's name.
 
 **A group file stays flat**: `groups/connection.parquet` is `entity | bus | role`, keyed by its coordinates, folded [like any axis](../read-path.md#one-fold-for-every-axis).
 The struct is built where a row is joined against it, `{'entity': entity, 'bus': bus} AS connection`, which is the one place the two shapes meet.
@@ -79,7 +79,6 @@ breakpoints   BOOLEAN
 Every other group would be a column NULL on every row of the map, widening the key every read pays for to identify nothing:
 
 - the entity-type group, whose rows are the entity axis and which no attribute names beside `entity`;
-- a group a dim shadows, `country` into `country`, which `dims: [country]` names as the dim;
 - a group addressed only alone, whose attributes are [columns of its own file](../format.md#where-a-value-lives) — `role` on `connection`, were it the only one;
 - a group only results name, `outputs/` [never overlaying](../read-path.md#outputs);
 - a group nothing names.
@@ -133,3 +132,4 @@ It is the same "keyed twice over" rule [`into`](../schema.md#into-a-group-that-c
 - **A layer's own tombstones apply only to its parents.** So the staged collapse drops its own rows itself: `remove_group` also drops the rows it staged on the tuple, as `remove` does on the entity.
 - **A long frame handed to `set` carries the struct only.** Accepting its coordinates flat as well cost a second packing path and a both-forms rejection for no caller that needed it: the PyPSA tool packs once, where it builds its frames.
 - **An empty frame must still type the group column as the struct.** A source emitting no rows for an attribute hands over a typed empty relation, or the writer rejects a column that is not a struct of the group's key.
+- **Shadowing went.** A group sharing a dim's name was resolved to the dim, which every place that tells a group column from a dim had to repeat. Once a group is a column named for itself, the collision is two columns under one name, so the schema rejects it; only the entity-type group, which never becomes a column, keeps its dim's name.
