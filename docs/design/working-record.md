@@ -333,6 +333,9 @@ These are caught when the edit is **staged**, not at commit — a caller should 
 A `set` resolves each name to its type before checking anything else, so "no member row for `wind9`" and "`Generator` declares no `p_nom_maxx`" are both reported against the name that produced them.
 The membership read this needs is the one [`set`](#set) already performs, so deriving the type costs nothing beyond it.
 
+Where the schema declares no type axis, a name has no type. `set` still checks that each name has a row on the entity axis, and `entity=None` reaches every component if `entity` addresses the attribute.
+An attribute that is a column of `dims/entity.parquet` gets the same check: a component exists only after an `add`, so a `set` cannot make one.
+
 ## Staging
 
 Staged rows live in DuckDB tables on the record's own connection:

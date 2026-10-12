@@ -165,7 +165,8 @@ Being classified buys it no exemption, and carrying an attribute is no reason to
 
 **Entirely optional.** A schema declaring no such axis has components with no types, and everything addressed by `entity` reaches all of them.
 There is then no `entity_type` column on the entity axis and no `dims/entity_type/` at all: a component's non-varying values are columns of `dims/entity.parquet` itself ([where a value lives](format.md#where-a-value-lives)), which is the honest shape of "these components have no kinds" — one file, not one per label an `add` happened to use. [`Record.entity_types`](record.md) is empty, matching `schema.entity_types`.
-A tool that needs types requires the axis in the schema it builds — [PyPSA does](tools.md) — which is where that requirement belongs, not here.
+A tool that needs types requires the axis in the schema it builds, which is where that requirement belongs, not here.
+[PyPSA](tools.md#the-pypsa-tool) does not: it writes the type of each component as the attribute `entity_group`, so the type is not a dim of the record or of a spec.
 
 **One, by name.** Only `entity_type` partitions the attribute vocabulary, so `attributes_for` always has one answer however many other classifications `entity` has.
 

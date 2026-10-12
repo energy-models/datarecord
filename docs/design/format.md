@@ -33,7 +33,7 @@ entity | entity_type | <component key dims> | deleted     -- a schema declaring 
 entity | <component key dims> | deleted | <attr> ...       -- a schema declaring none
 ```
 
-It is **an axis file like any other**: a `Record` hands it over as `dims["entity"]` and [`write_record`](writing.md) writes it, with no derivation step of its own. A producer that knows its components knows their types — `PyPSA` builds this frame from the same per-type frames it supplies as `entity_types` — so asking it for one file is cheaper than reconstructing it from the others, and it makes the writer a thing that writes frames rather than one that also computes one.
+It is **an axis file like any other**: a `Record` hands it over as `dims["entity"]` and [`write_record`](writing.md) writes it, with no derivation step of its own. A producer that knows its components builds this frame itself — `PyPSA` concatenates its per-type frames and writes the type of each component as its `entity_group` column — so asking it for one file is cheaper than reconstructing it from the others, and it makes the writer a thing that writes frames rather than one that also computes one.
 
 Two things live here in every record, and — where the schema declares no type axis — a third:
 

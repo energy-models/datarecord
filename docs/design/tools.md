@@ -55,7 +55,7 @@ It follows the direction of [PyPSA#1474](https://github.com/PyPSA/PyPSA/issues/1
 
 | PyPSA                              | record                                                                     |
 | ---------------------------------- | -------------------------------------------------------------------------- |
-| `Generator`, `Link`, `Line`, …     | entities, one `dims/entity_type/<Type>.parquet` each                       |
+| `Generator`, `Link`, `Line`, …     | entities, rows of `dims/entity.parquet`; the type is `entity_group`        |
 | `Bus`                              | `dims/bus.parquet`: every static column, custom ones (`busmap_*`) included |
 | `Carrier`                          | `dims/carrier.parquet`                                                     |
 | a component's or bus's `carrier`   | the groups `entity_carrier` and `bus_carrier`, `into` `carrier`            |
@@ -68,7 +68,13 @@ It follows the direction of [PyPSA#1474](https://github.com/PyPSA/PyPSA/issues/1
 | `Shape` bus regions                | `region_onshore`, `region_offshore` on `dims/bus.parquet`                  |
 | `GlobalConstraint`                 | not carried                                                                |
 
-**A functional group is named `<key>_<into>`**, never after the dim it maps into: a mathspec spec binds to a record by name, and a relation there may not share a dimension's name. The entity-type group is `entity_entity_type` for the same reason; the record layer finds [the axis](schema.md#entity_type-the-axis-of-kinds) by its dim's name, not the group's.
+**The component type is an attribute, not an axis.** The record declares no [entity-type axis](schema.md#entity_type-the-axis-of-kinds), no entity-type group and no traits. The PyPSA type of each entity is `entity_group`, a `str` attribute over `entity`. It is a column of `dims/entity.parquet`, so it is not a dim of the record or of a mathspec spec.
+Without the type axis, the constant columns of all types are columns of `dims/entity.parquet` ([where a value lives](format.md#where-a-value-lives)). A column is NULL on the rows of a type that does not have it.
+`build` reads the type of each entity from `entity_group`. For each type, it keeps the columns that PyPSA's registry (`c.defaults`) declares for that type, and the custom columns in which a member of the type has a value.
+`verify` and `build` read the flags of each type from the rows of its members, because the record's own `flags` cannot scope by an attribute.
+`verify` reports an `entity_group` that PyPSA does not know. An entity with no `entity_group` is an error.
+
+**A functional group is named `<key>_<into>`**, never after the dim it maps into: a mathspec spec binds to a record by name, and a relation there may not share a dimension's name.
 
 **The attribute namespace is flat**, so an axis column whose name another PyPSA type's registry or a dim or group already claims is written `<axis>_<name>`: `Bus.x` is `bus_x` beside `Line.x`, and `Bus.p` is the result `bus_p`. An unclaimed name such as `y` or `busmap_5` is unchanged. The rule reads the registry and the structural names only — never what else the network holds — so one column has one record name in every network, and a fixed mathspec spec binds to every record a network writes.
 That leaves custom columns, which no registry lists: an axis column whose record name is also a custom entity column or another axis's column has no rule to tell the two apart, so `to_datarecord` raises `UnsupportedRecordError` naming the column and both owners rather than renaming one silently.
@@ -95,10 +101,12 @@ Geometry is WKT text, in `schema.meta["crs"]` (`n.crs`, EPSG:4326 by default). A
 
 ### The mathspec spec
 
-`datarecord/tools/pypsa.mathspec.yaml` (`datarecord.tools.pypsa.MATHSPEC`) states the linear optimal power flow over the record's own names: dims `snapshot`, `period`, `scenario`, `entity`, `entity_type`, `bus`, `carrier`, `technology_group`; relations as the groups are named; PyPSA's attribute names per type (`p_nom_min`, `s_nom_min`, `e_nom_min`), unified by named expressions rather than renamed.
+`datarecord/tools/pypsa.mathspec.yaml` (`datarecord.tools.pypsa.MATHSPEC`) states the linear optimal power flow over the record's own names: dims `snapshot`, `period`, `scenario`, `entity`, `bus`, `carrier`, `technology_group`; relations as the groups are named; PyPSA's attribute names per type (`p_nom_min`, `s_nom_min`, `e_nom_min`), unified by named expressions rather than renamed.
+The PyPSA type is the `str` parameter `entity_group`, not a dim or a relation. A mask compares it with a value: `generator` is `entity_group == 'Generator'`.
 The bus balance reads the `connection` group's `role` and the per-connection `efficiency`.
 
 mathspec has no nested dimension, so `snapshot` is flat there and its period is the relation `snapshot_period`, which the record's `within` supplies as the nested axis file's key.
 A dimension label is never a value to mathspec, so an asset's activity `build_year <= period < build_year + lifetime` compares against `period_year`, a column the tool writes on the period axis, rather than a precomputed `active[entity, period]`.
 
 `PyPSA.check_spec(spec, record)` fails where the spec names a dimension, relation or parameter the record does not carry, a nested dim offering `<dim>_<parent>` as a relation.
+Two kinds of name are not missing. The first is an attribute that only types the record holds no member of register: the record reads the types it holds from its `entity_group` values. The second is the technology-group axis and its groups, where the record has no `technology_group` dim.
