@@ -35,10 +35,14 @@ SPDX-License-Identifier: CC-BY-4.0
   What is open is the granularity: "which types have live rows" and "how many members a type has" are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
   Whatever is chosen, it has to be answerable off the owner map, which is where a record's membership already lives.
 
-- **Whether [`flags(ctype)`](record.md#flags) needs a record-level counterpart.** It takes an entity type, which two kinds of attribute do not have: one addressed by an axis alone, and one addressed by a [group](schema.md#groups)'s coordinates. Neither has a `ctype` to ask about, so neither is reachable through it.
+- **Whether [`flags(ctype)`](record.md#flags) needs a record-level counterpart.** It takes an entity type, which an attribute addressed by no entity does not have: one over an axis alone, a per-bus value over `{bus, timestep}`, or one over a [group](schema.md#groups) none of whose coordinates draws on `entity`. None has a `ctype` to ask about, so none is reachable through it.
 
   A second method keyed by attribute and scoped record-wide would answer it — which attributes have rows at all, which coordinates they use, which types they touch — and the [owner map](read-path.md#owner-map) already computes the material, so it costs a projection rather than a scan.
   What is unsettled is whether that replaces `flags` or sits beside it. `flags` is per type _by construction_, its union deliberately stopping at the type boundary, and a record-level answer filtered by type would have to reproduce that.
+
+- **What a connection value staged without its `bus` should mean.** `set("efficiency", 0.9, entity=["dc"])` stages `connection = {entity: dc, bus: NULL}`, which [matches no connection](record.md#the-broadcast-rule) and so is never read.
+  The earlier reading, "every connection of this entity", was documented but never implemented.
+  Implementing it means expanding a NULL field against the group's rows at stage time, or rejecting the call; until one is chosen, the value is silently stored and unreachable.
 
 ## Settled
 
@@ -46,3 +50,4 @@ SPDX-License-Identifier: CC-BY-4.0
   The recorded blocker was that `bus` inverts the rule NULL follows for a dim: a NULL declared dim means "all values" and the fold expands it against the axis, while a NULL `bus` is compared NULL-safely and never expanded.
   That premise did not survive. Expansion is governed by whether a coordinate is in the fold's key set, and a non-`partial` dim is never expanded either — so the behaviour that "makes a dim a dim" was never uniform, and `bus` was not an exception to it.
   A group states the rule instead of carrying an exception: a group coordinate addresses a sparse subset with no axis to expand against, which is [the broadcast rule](record.md#the-broadcast-rule) rather than a special case in it.
+  Since [a group is one struct column](proposals/a-group-is-a-struct-column.md), a connection's `bus` is a field of `connection` rather than the dim's column, so the dim `bus` broadcasts like any other and the exception is gone from the dim entirely.

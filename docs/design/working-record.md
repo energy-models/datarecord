@@ -105,7 +105,8 @@ The **spec** is the same for both, one attribute having [one spec record-wide](s
 None has a parameter of its own, because which coordinates exist is declared rather than fixed — a `bus=` keyword would spell one group's coordinate and be unable to name a two-coordinate group at all.
 
 A plain dim keyword scopes the edit and its absence means "every value" by the NULL broadcast rule, so `scenario="high"` patches one scenario.
-A group coordinate does not broadcast that way: omitting `bus` means "every connection of this entity" — [the group's rows](record.md#the-broadcast-rule), not the bus axis.
+A group's key coordinates are packed with the entity into the group's [struct column](schema.md#groups), so `entity=["dc"], bus="north"` stages `connection = {entity: dc, bus: north}`.
+A group column does not broadcast: omitting `bus` stages `{entity: dc, bus: NULL}`, which [matches no connection](record.md#the-broadcast-rule) rather than every connection of the entity.
 
 **An attribute addressed by one axis alone is keyed by that axis's labels**, not by `entity`: `set("icon", {"Generator": "turbine"})` states one type's icon, and `set("co2_budget", 3.0)` reaches every country the axis has.
 The edit stages a row of [that axis's own file](format.md#where-a-value-lives) rather than a long row, so `entity=` is refused — an icon belongs to no entity — and a sequence is refused too, there being no name list to align against.
@@ -127,6 +128,9 @@ A label the axis does not have is refused rather than introduced: an axis row is
 
 A frame "supplies its own keys" now means its `entity` column alone: a `entity_type` column is neither required nor read, since [the name determines the type](format.md#entity-is-unique-across-types).
 A frame carrying one is rejected rather than ignored — it says the writer believes the type is part of the key, and silently dropping the column would let a genuine disagreement through.
+
+A frame over a group carries it **either as the struct column or as its key coordinates flat**, `entity | bus`; flat coordinates are packed on the way in, so the frame a tool already builds keeps working.
+One carrying both is rejected, the two being free to disagree, and so is a struct whose fields are not exactly the group's key, which a cast would silently re-key.
 
 The first four normalise to a long frame before staging, so there is one staging path.
 A length mismatch between a sequence and `entity` is an error at the call, not a silently truncated edit.
@@ -247,7 +251,10 @@ Adding a bus with no attributes makes the point — nothing to `set`, yet the bu
 Membership is not reducible to attribute values.
 
 `remove` stages a tombstone on the [entity axis](format.md#the-entity-axis), one row per entity and no dim scope: an entity [exists or it does not](schema.md#existence-does-not-vary-along-a-dim), so there is no axis to scope a deletion along.
-It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute, and to every row of a group over `entity` — deleting an entity deletes its connections with it.
+It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute keyed by `entity`.
+**It also tombstones the entity's group tuples**: for every group a key coordinate of which draws on `entity`, each resolved tuple naming the entity is staged deleted, as [`remove_group`](#add_group-remove_group) would.
+A connection attribute's row is keyed by the connection alone, which the entity tombstone [does not reach](read-path.md#owner-map), so its values go only with the tuple.
+A later `add` of the same name therefore comes back without its connections until they are restated ([edits](#edits)).
 
 ## `add_group` / `remove_group`
 
@@ -311,8 +318,10 @@ Three interactions need stating, because each is where replacing by coordinate a
 
 - **`remove` after `set`** on the same entity: the tombstone wins, since a deleted entity has no attributes.
   An entity tombstone reaches another file's rows, so it stays an anti-join at read and write rather than a replace — the attribute rows are keyed by coordinate, the tombstone by name.
+  A layer's tombstones apply only to its parents in [the fold](read-path.md#owner-map), so the staged collapse drops its own rows itself: a row naming a removed entity, top-level or inside a group's struct, and a row whose group column names a tuple `remove_group` staged deleted.
 - **`add` after `remove`** of the same name: the entity exists again.
   The entity axis replaces on `entity` alone, so the `add` row displaces the tombstone by construction — no member row and tombstone both.
+  Its connections do not come back: `remove` tombstoned them, and they stay deleted until restated.
 - **`set` on an entity this record also added**: correct as-is, since the two live in different files.
 
 The [non-`partial` rule](schema.md#partial-the-granularity-of-an-override) is the subtle one.

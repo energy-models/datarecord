@@ -13,6 +13,17 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- An attribute over a group carries it as one struct column named for the
+  group, a field per key coordinate (`connection STRUCT(entity, bus)`), in
+  place of the coordinates flat; group files stay flat. This is an on-disk
+  format change: `inputs/` and `outputs/` files over a group are rewritten.
+  The dims a group draws on now broadcast, so a per-bus value with
+  `bus = NULL` holds for every bus, and patching one bus at a time needs
+  `bus` in `partial`. `WorkingRecord.set` still takes `bus=` and accepts a
+  frame with the struct or its coordinates flat. An entity tombstone no
+  longer drops a connection's values; `remove` tombstones the entity's
+  connections instead. Naming a group beside a dim its key is named for
+  (`dims={"connection", "bus"}`) is rejected.
 - A `Workspace` holds the DuckDB connection and a `Store` one location;
   `connect`, `layer_dir`, `DATARECORD_BASE_URI`, `Record.at` and the process
   default connection are gone. A store's revisions live beside its layers as

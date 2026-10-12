@@ -6,7 +6,10 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Proposal: a group is one struct column
 
-Status: **Draft** · Drafted 2026-10-12
+Status: **Implemented** · Drafted 2026-10-12 · Implemented 2026-10-12
+
+Landed in the [steps below](#landing) on [the schema](../schema.md#groups), [the record](../record.md#the-broadcast-rule), [the format](../format.md#the-long-schema), [the read path](../read-path.md#owner-map), [the working record](../working-record.md#set) and [consuming a record](../tools.md#results-on-connections); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
+[What the implementation found](#what-the-implementation-found) records where it departs from or adds to the argument below.
 
 An attribute over a [group](../schema.md#groups) carries the group as **one column, named for the group, of a `STRUCT` dtype over the group's key** — `connection STRUCT(entity, bus)` — rather than the group's coordinates spread out as columns of their own.
 
@@ -81,7 +84,7 @@ Every other group would be a column NULL on every row of the map, widening the k
 - a group only results name, `outputs/` [never overlaying](../read-path.md#outputs);
 - a group nothing names.
 
-So the map's membership columns are `entity` and `Schema.keyed_groups`, derived like `partial_dims` rather than declared.
+So the map's membership columns are `entity` and `Schema.group_columns`, derived like `partial_dims` rather than declared.
 Adding an attribute stays [compatible](../schema.md#versioning) though it may add a group to the key: a map folded before has no such column, which is correct — no row there names the group — so a reader takes a missing group column as NULL, as it takes a missing [flag field](../read-path.md#one-fold-for-every-axis) as unset.
 
 Each membership is one column, so reading the map needs no schema to say which columns belong together.
@@ -100,7 +103,7 @@ A long frame handed to `set` may carry either the struct column or its coordinat
 
 - **An on-disk format change.** Every `inputs/` and `outputs/` file over a group is rewritten, and materialised owner maps are rebuilt. The project is pre-1.0 and holds no compatibility promise; no reader for the flat form survives.
 - **Struct support at the boundary.** narwhals' `struct.field` works on DuckDB, polars and pyarrow-backed frames; a numpy-backed pandas frame has no struct dtype, so a pandas consumer unnests on the DuckDB side first.
-- **A filter by entity on a connection attribute** becomes `connection.entity = 'g1'`. Whether DuckDB's parquet reader pushes that into row-group statistics as it does for a top-level column is **to check** before landing; the owner map, which is where per-entity reads start, is a DuckDB table either way.
+- **A filter by entity on a connection attribute** becomes `connection.entity = 'g1'`. That costs nothing measurable: DuckDB 1.5.5 pushes a struct-field filter into the parquet scan and skips row groups on the field's statistics as it does for a top-level column — over 2M rows in 20 row groups, `conn.entity = …` and `entity = …` both read one row group (2.0 ms and 1.8 ms), and a field value outside every range skips all of them.
 
 ## One behaviour that moves
 
@@ -119,5 +122,14 @@ It is the same "keyed twice over" rule [`into`](../schema.md#into-a-group-that-c
 1. `Schema`: `coordinates_of` resolves a group to itself; `broadcast_dims` drops `sparse`; `membership_keys` gains the group columns; the rule above.
 2. The fold and the read path: owner-map key and the group tombstone anti-join on the struct column; the resolve join on it.
 3. Staging: pack coordinate keywords and flat frame columns into the struct.
-4. The PyPSA tool unnests on read and packs on build.
+4. The PyPSA tool packs on `to_datarecord` and unpacks on `build`.
 5. [Schema](../schema.md#groups), [record](../record.md#the-broadcast-rule), [format](../format.md#the-long-schema) and [read-path](../read-path.md#owner-map) pages rewritten; this page marked landed.
+
+## What the implementation found
+
+- **Per-bus patching needs `bus` in `partial`.** `bus` is no membership key any more, so a layer patching a per-bus `marginal_price` one bus at a time declares it [`partial`](../schema.md#partial-the-granularity-of-an-override) like any value dim; a connection's bus is patched per row regardless, inside `connection`.
+- **A value staged without `bus=` matches no connection.** It is stored keyed `{entity, NULL}`, and a NULL field compares equal only to a NULL field. The "every connection of this entity" reading the pages gave was never implemented; it is left [open](../open-questions.md).
+- **`remove` then `add` leaves the entity without its connections.** `remove` tombstones every tuple naming the entity, and nothing revives them until they are restated.
+- **A layer's own tombstones apply only to its parents.** So the staged collapse drops its own rows itself: `remove_group` also drops the rows it staged on the tuple, as `remove` does on the entity.
+- **An empty frame must still type the group column as the struct.** A source emitting no rows for an attribute hands over a typed empty relation, or the writer rejects a column that is not a struct of the group's key.
+- **`flags(ctype)` scopes a group by its entity field.** A group drawing on `entity` twice is scoped by its first coordinate, and an attribute with no entity at all — a per-bus value — is in no type's `flags`.
