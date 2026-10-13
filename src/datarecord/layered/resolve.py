@@ -1308,9 +1308,9 @@ class Resolver:
         # carries. A dim outside `partial` is in neither: it is not in the map
         # at all, so it constrains nothing and passes straight through.
         #
-        # Of those that are, an address coordinate - `entity`, or a group's one
-        # struct column - matches NULL-safely and a broadcast dim NULL-aware -
-        # the split `broadcast_dims` draws
+        # Of those that are, `entity` matches NULL-safely and a broadcast
+        # coordinate - a dim or a group - NULL-aware, the split `broadcast_dims`
+        # draws
         # (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         coordinates = set(keys.schema.coordinates_of(attribute))
         broadcasts = set(keys.schema.broadcast_dims)

@@ -2257,8 +2257,8 @@ def _packed(
     Raises
     ------
     ValueError
-        Where a field is neither: a group column does not broadcast, so a NULL
-        field would key a row no tuple matches.
+        Where a field is neither: a struct NULL in some fields and not all
+        matches no tuple.
 
     Notes
     -----
