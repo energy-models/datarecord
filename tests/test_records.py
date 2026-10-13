@@ -22,9 +22,9 @@ from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
     empty_root,
-    export_network,
     schema,
     write_entity_type,
+    write_group,
     write_input,
     write_schema,
 )
@@ -33,9 +33,28 @@ MEMBERS = ("dims", "groups", "attributes")
 
 
 @pytest.fixture
-def written(store, ac_dc):
-    """A record of one layer, so every construction below reads the same files."""
-    revision = export_network(ac_dc, store)
+def written(store):
+    """A record of one layer, so every construction below reads the same files.
+
+    One generator with a `p_max_pu` series and an `efficiency` on its
+    connection, so attributes, the entity axis and a group are all present.
+    """
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
+    write_entity_type(layer, "Generator", [{"entity": "wind"}])
+    write_group(
+        layer, "connection", [{"connection": {"entity": "wind", "bus": "north"}}]
+    )
+    write_input(
+        layer,
+        "p_max_pu",
+        [
+            {"entity": "wind", "snapshot": s, "value": v}
+            for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
+        ],
+    )
+    write_input(layer, "efficiency", [{"entity": "wind", "bus": "north", "value": 0.9}])
     return revision
 
 
@@ -285,7 +304,7 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
 # -- more than one layer, which is where the fold stops being a scan ---------
 
 
-def test_node_record_orders_members(store, ac_dc):
+def test_node_record_orders_members(store):
     """A `Record` promises member order; for an overlay that means `order_key`.
 
     The order follows the true owning layer through a closed intermediate node
@@ -296,7 +315,13 @@ def test_node_record_orders_members(store, ac_dc):
     - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    root = export_network(ac_dc, store)
+    root = empty_root(store)
+    write_schema(schema(), store)
+    write_entity_type(
+        store.layer_dir(root.id),
+        "Generator",
+        [{"entity": "wind"}, {"entity": "gas"}, {"entity": "coal"}],
+    )
     root.materialise()
     middle = empty_child(root)
     middle.materialise()
@@ -306,7 +331,7 @@ def test_node_record_orders_members(store, ac_dc):
 
     axis = Record(child.resolver).properties["entity"].collect().to_native().to_pandas()
     names = list(axis[axis["entity_type"] == "Generator"]["entity"])
-    assert names == [*ac_dc.c["Generator"].static.index, "New Solar"], (
+    assert names == ["wind", "gas", "coal", "New Solar"], (
         "first-introduced order: the root's members, then the child's addition"
     )
 
@@ -357,7 +382,7 @@ def test_outputs_are_empty_until_solved(both):
         assert list(record.outputs) == []
 
 
-def test_write_record_omits_outputs_for_an_unsolved_source(store, ac_dc):
+def test_write_record_omits_outputs_for_an_unsolved_source(store, written):
     """A source with no results produces a layer with no `outputs/`.
 
     Notes
@@ -366,18 +391,18 @@ def test_write_record_omits_outputs_for_an_unsolved_source(store, ac_dc):
     """
     from datarecord.duck import try_read_parquet
 
-    solved = PyPSA.to_datarecord(ac_dc, store.workspace.con)
+    base = written.record
 
     class Unsolved:
         """The same record, with no results: `outputs` answers empty."""
 
-        schema = solved.schema
-        dims = solved.dims
-        properties = solved.properties
-        groups = solved.groups
-        attributes = solved.attributes
+        schema = base.schema
+        dims = base.dims
+        properties = base.properties
+        groups = base.groups
+        attributes = base.attributes
         outputs = EMPTY
-        flags = solved.flags
+        flags = base.flags
 
     source = Unsolved()
     assert isinstance(source, RecordLike)

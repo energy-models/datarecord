@@ -28,7 +28,6 @@ from tests.fixtures import (
     RivalWrite,
     empty_child,
     empty_root,
-    export_network,
     schema,
     widened,
     write_entity_type,
@@ -40,9 +39,13 @@ from tests.test_write import _SCHEMA, _long, _Source
 
 
 @pytest.fixture
-def tree(store, ac_dc):
-    """A root holding `ac_dc`, and a child of it."""
-    root = export_network(ac_dc, store)
+def tree(store):
+    """A root holding one generator with a `p_max_pu`, and a child of it."""
+    write_schema(schema(), store)
+    root = empty_root(store)
+    layer = store.layer_dir(root.id)
+    write_entity_type(layer, "Generator", [{"entity": "wind"}])
+    write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
     return root, empty_child(root)
 
 
@@ -444,7 +447,7 @@ def test_a_relation_from_another_connection_is_rejected(tree):
     foreign = duckdb.connect()
     try:
         w = WorkingRecord(root.record)
-        frame = foreign.sql("SELECT 'Manchester Wind' AS entity, 1.0 AS value")
+        frame = foreign.sql("SELECT 'wind' AS entity, 1.0 AS value")
         with pytest.raises(ValueError, match="another connection or thread"):
             w.set("p_nom", frame)
     finally:

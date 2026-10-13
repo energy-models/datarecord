@@ -29,14 +29,23 @@ from tests.fixtures import (
     empty_child,
     empty_root,
     export_network,
+    schema,
     tombstone,
+    write_entity_type,
     write_input,
 )
 
 
 @pytest.fixture
-def parent(store, ac_dc):
-    revision = export_network(ac_dc, store)
+def parent(store):
+    """A materialised root of three generators, each with two attributes."""
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_schema(schema(), store)
+    names = ["Manchester Wind", "Norway Wind", "Norway Gas"]
+    write_entity_type(layer, "Generator", [{"entity": n} for n in names])
+    for attribute, value in (("p_max_pu", 0.5), ("marginal_cost", 10.0)):
+        write_input(layer, attribute, [{"entity": n, "value": value} for n in names])
     revision.materialise()
     return revision
 
@@ -167,7 +176,7 @@ def test_last_writer_wins_per_key(store, parent):
     assert owner_of("Norway Wind", "p_max_pu") == parent.id
 
 
-def test_tombstone_removes_all_attributes(store, parent):
+def test_tombstone_removes_all_attributes(store, ac_dc):
     """A tombstone removes every attribute and the component row of the component.
 
     Only on the branch that carries it, and through to a built model.
@@ -176,6 +185,8 @@ def test_tombstone_removes_all_attributes(store, parent):
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
+    parent = export_network(ac_dc, store)
+    parent.materialise()
     before = {k for k in keys(parent) if k[0] == "Norway Gas"}
     assert len(before) > 1
     assert "Norway Gas" in entity_names(parent)

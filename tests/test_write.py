@@ -168,7 +168,7 @@ def test_a_write_creates_a_new_layer(store):
     assert store.revisions() == [revision], "the revision file makes it real"
 
 
-def test_no_layer_file_carries_order_key(store, ac_dc, tmp_path):
+def test_no_layer_file_carries_order_key(store, tmp_path):
     """`order_key` is the fold's answer about a frame, never a column of one.
 
     A source handing over *resolved* frames carries it - which is what writing
@@ -182,17 +182,31 @@ def test_no_layer_file_carries_order_key(store, ac_dc, tmp_path):
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     """
-    from datarecord.mutable import WorkingRecord
-
-    revision = export_network(ac_dc, store)
+    entities = ["steel_dri", "h2_north"]
+    connection = {"entity": "steel_dri", "bus": "h2_north"}
+    revision = store.root(
+        _Source(
+            _SCHEMA,
+            attributes={"p_nom": _long()},
+            dims={"entity": pd.DataFrame({"entity": entities})},
+            properties={
+                "entity": pd.DataFrame(
+                    {"entity": entities, "entity_type": ["Process", "Bus"]}
+                )
+            },
+            connections={"connection": pd.DataFrame({"connection": [connection]})},
+        )
+    )
 
     staged = WorkingRecord(revision.record)
-    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
+    staged.set("p_nom", 150.0, entity=["steel_dri"])
     out = str(tmp_path / "flat")
     store.workspace.write(staged, out)
 
     written = sorted(Path(out).rglob("*.parquet"))
-    assert written, "the write must have written something to check"
+    assert {"dims/entity.parquet", "groups/connection.parquet"} <= {
+        str(path.relative_to(out)) for path in written
+    }, "the frames the fold orders must be among those written"
     for path in written:
         columns = store.workspace.con.sql(
             f"SELECT * FROM read_parquet('{path}')"
@@ -355,7 +369,7 @@ def _nothing_reachable(store) -> None:
     assert not Path(store.manifest_uri).exists(), "never widened for no layer"
 
 
-def test_a_file_carries_only_its_own_attributes_coordinates(store, ac_dc):
+def test_a_file_carries_only_its_own_attributes_coordinates(store):
     """One attribute is one file, so one column set - not every declared dim.
 
     A component attribute has no `bus` column, a connection attribute does, and
@@ -368,7 +382,19 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store, ac_dc):
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    revision = export_network(ac_dc, store)
+    connection = {"entity": "steel_dri", "bus": "h2_north"}
+    revision = store.root(
+        _Source(
+            _SCHEMA,
+            attributes={
+                "p_max_pu": _long(
+                    attribute="p_max_pu", snapshot=pd.Timestamp("2030-01-01")
+                ),
+                "efficiency": _long(attribute="efficiency", connection=connection),
+                "weight": _long(attribute="weight", scenario="s1"),
+            },
+        )
+    )
     inputs = Path(store.layer_dir(revision.id), "inputs")
 
     def columns(attribute: str) -> set[str]:
@@ -382,6 +408,7 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store, ac_dc):
         "entity",
         "snapshot",
         "scenario",
+        "period",
         "attribute",
         "breakpoint",
         "value",
@@ -390,7 +417,9 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store, ac_dc):
     efficiency = columns("efficiency")
     assert "connection" in efficiency, "a connection attribute carries the group"
     assert "bus" not in efficiency, "as one struct column, not its coordinates"
-    assert "period" not in efficiency, "and no dim it is not addressed by"
+    assert columns("weight") & {"entity", "period"} == set(), (
+        "and no dim it is not addressed by"
+    )
 
 
 # -- validation -------------------------------------------------------------

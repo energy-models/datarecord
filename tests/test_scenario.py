@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from datarecord import Workspace
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
@@ -47,7 +48,15 @@ def stochastic():
     return n
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
+def store(tmp_path_factory):
+    """One store for the module: every test branches its own child off `parent`."""
+    workspace = Workspace()
+    yield workspace.store(str(tmp_path_factory.mktemp("stochastic")))
+    workspace.close()
+
+
+@pytest.fixture(scope="module")
 def parent(store, stochastic):
     revision = export_network(stochastic, store)
     revision.materialise()

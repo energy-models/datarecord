@@ -20,9 +20,9 @@ import pandas as pd
 from tests.fixtures import (
     empty_child,
     empty_root,
-    export_network,
     relation,
     schema,
+    write_entity_type,
     write_input,
     write_periods,
     write_schema,
@@ -30,7 +30,7 @@ from tests.fixtures import (
 )
 
 
-def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store, ac_dc):
+def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store):
     """A dim tombstone removes the attribute rows over that coordinate, not others.
 
     The fold anti-joins every membership's tombstones into the inputs map, dims
@@ -42,8 +42,11 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store, a
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    revision = export_network(ac_dc, store)
+    revision = empty_root(store)
     write_schema(schema(partial={"period"}), store)
+    write_entity_type(
+        store.layer_dir(revision.id), "Generator", [{"entity": "Manchester Wind"}]
+    )
     write_periods(store.layer_dir(revision.id), [{"period": 2020}, {"period": 2030}])
     write_input(
         store.layer_dir(revision.id),
@@ -69,7 +72,7 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store, a
     assert set(keyed["period"]) == {2020}, "and the map no longer owns its key"
 
 
-def test_the_fold_unions_maps_by_name(store, ac_dc):
+def test_the_fold_unions_maps_by_name(store):
     """A child's own map is unioned with the parent's by name, not by position.
 
     One schema serves the whole tree, so the dim *order* is fixed - but
@@ -81,8 +84,11 @@ def test_the_fold_unions_maps_by_name(store, ac_dc):
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    revision = export_network(ac_dc, store)
+    revision = empty_root(store)
     write_schema(schema(partial={"scenario", "period"}), store)
+    write_entity_type(
+        store.layer_dir(revision.id), "Generator", [{"entity": "Manchester Wind"}]
+    )
     write_input(
         store.layer_dir(revision.id),
         "p_max_pu",
