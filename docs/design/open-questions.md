@@ -40,11 +40,11 @@ SPDX-License-Identifier: CC-BY-4.0
   A second method keyed by attribute and scoped record-wide would answer it — which attributes have rows at all, which coordinates they use, which types they touch — and the [owner map](read-path.md#owner-map) already computes the material, so it costs a projection rather than a scan.
   What is unsettled is whether that replaces `flags` or sits beside it. `flags` is per type _by construction_, its union deliberately stopping at the type boundary, and a record-level answer filtered by type would have to reproduce that.
 
-- **What a connection value staged without its `bus` should mean.** `set("efficiency", 0.9, entity=["dc"])` stages `connection = {entity: dc, bus: NULL}`, which [matches no connection](record.md#the-broadcast-rule) and so is never read.
-  The earlier reading, "every connection of this entity", was documented but never implemented.
-  Implementing it means expanding a NULL field against the group's rows at stage time, or rejecting the call; until one is chosen, the value is silently stored and unreachable.
-
 ## Settled
+
+- **What a connection value staged without its `bus` should mean** — nothing; the call is [rejected](working-record.md#set).
+  `{entity: dc, bus: NULL}` [matches no connection](record.md#the-broadcast-rule), so storing it kept a value no read could reach.
+  The alternative, "every connection of this entity", would expand a NULL field against the group's rows at stage time — a broadcast a group column otherwise never does.
 
 - **Whether `within` should subsume `bus`** — no; [groups](schema.md#groups) do it.
   The recorded blocker was that `bus` inverts the rule NULL follows for a dim: a NULL declared dim means "all values" and the fold expands it against the axis, while a NULL `bus` is compared NULL-safely and never expanded.

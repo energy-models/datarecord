@@ -106,7 +106,7 @@ None has a parameter of its own, because which coordinates exist is declared rat
 
 A plain dim keyword scopes the edit and its absence means "every value" by the NULL broadcast rule, so `scenario="high"` patches one scenario.
 A group's key coordinates are packed with the entity into the group's [struct column](schema.md#groups), so `entity=["dc"], bus="north"` stages `connection = {entity: dc, bus: north}`.
-A group column does not broadcast: omitting `bus` stages `{entity: dc, bus: NULL}`, which [matches no connection](record.md#the-broadcast-rule) rather than every connection of the entity.
+A group column does not broadcast, so every key coordinate must be given: omitting `bus` is refused, since `{entity: dc, bus: NULL}` would [match no connection](record.md#the-broadcast-rule) rather than every connection of the entity.
 
 **`entity=` fills only a coordinate named `entity`**, the row's own or a group field so called.
 A field drawing on `entity` under another name is a keyword like any other: a contract `(from, to)` is addressed as `from="plant", to="mill"`, both required, and `entity=` beside it is refused, since it would have to guess which party it names.

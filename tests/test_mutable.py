@@ -990,16 +990,15 @@ def test_a_bus_keyword_addresses_one_connection(staged, root):
     assert list(_efficiency(child.record)["Manchester"]) == [0.5]
 
 
-def test_an_omitted_group_coordinate_is_a_null_field(staged):
-    """No `bus=` leaves the struct's `bus` NULL, as a flat column was before.
+def test_an_omitted_group_coordinate_is_rejected(staged):
+    """No `bus=` would key a row by `{entity, NULL}`, which no connection matches.
 
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
-    staged.set("efficiency", 0.5, entity=["Manchester Wind"])
-    own = staged.edits.attribute("efficiency").project("connection").fetchall()
-    assert own == [({"entity": "Manchester Wind", "bus": None},)]
+    with pytest.raises(ValueError, match=r"\['bus'\] was not given"):
+        staged.set("efficiency", 0.5, entity=["Manchester Wind"])
 
 
 def test_a_frame_carries_a_group_as_its_struct(staged):
@@ -1082,7 +1081,6 @@ def test_remove_drops_the_values_on_its_connections(staged, root):
     """
     assert _efficiency(staged), "the base carries a value to lose"
     staged.set("efficiency", 0.5, entity=["Manchester Wind"], bus="Manchester")
-    staged.set("efficiency", 0.6, entity=["Manchester Wind"])
     staged.remove(GEN, ["Manchester Wind"])
 
     assert _efficiency(staged) == {}, "neither the base's nor the staged values"
@@ -1514,7 +1512,7 @@ def test_results_stage_and_read_back_without_committing(staged):
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
     assert list(staged.outputs) == []
-    staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
+    staged.set("p", 42.0, entity=["Manchester Wind"], bus="Manchester", kind="outputs")
 
     rows = _unpacked(staged.outputs["p"])
     assert dict(zip(rows["entity"], rows["value"], strict=True)) == {
@@ -1532,7 +1530,7 @@ def test_results_survive_a_commit_into_the_new_layer(staged, root, store):
     - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
     """
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
-    staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
+    staged.set("p", 42.0, entity=["Manchester Wind"], bus="Manchester", kind="outputs")
     child = root.child(staged.edits)
 
     rows = _layer_rows(child, "p", kind="outputs")
@@ -1614,7 +1612,7 @@ def test_a_results_value_keeps_its_declared_type(staged):
 
     # The other half: dropping the cast altogether would answer '42.0' here,
     # a number read back as the text the staging column holds it as.
-    staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
+    staged.set("p", 42.0, entity=["Manchester Wind"], bus="Manchester", kind="outputs")
     numeric = staged.outputs["p"].collect().to_native().to_pandas()
     assert numeric["value"].tolist() == [42.0], "a numeric result comes back a number"
 

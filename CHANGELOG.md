@@ -37,7 +37,9 @@ All notable changes to datarecord are documented here. The format follows
   `(from, to)`, takes every party as a keyword and refuses `entity=`; it
   used to stage one duplicate row per entity of the type. `add` refuses a
   frame carrying a group's columns without its full key, which used to
-  stage a half-keyed row.
+  stage a half-keyed row. Likewise `set` on a group attribute without one
+  of its key coordinates (`set("efficiency", 0.9, entity=["dc"])`, no
+  `bus=`) is refused; it used to store a value no read reached.
 - A group may not share a dim's name, the entity-type group excepted: a
   group is carried as a column named for it. Rename a functional group for
   the relation, `bus_country` into `country`.

@@ -2249,18 +2249,33 @@ def _packed(
     """`group`'s struct column, packed from flat coordinates.
 
     A field is the column of that name where the relation carries one, else
-    the caller's keyword, else NULL.
+    the caller's keyword.
+
+    Raises
+    ------
+    ValueError
+        Where a field is neither: a group column does not broadcast, so a NULL
+        field would key a row no tuple matches.
 
     Notes
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
+    over = schema.groups[group].over
+    missing = [c for c in over if c not in present and c not in dims]
+    if missing:
+        msg = (
+            f"{group!r} is keyed by {list(over)}, and {missing} was not given; "
+            f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/design/schema/#groups)"
+        )
+        raise ValueError(msg)
     return struct_of(
         {
             c: col(c)
             if c in present
-            else duck_types.lit(dims.get(c), schema.dimensions[d].dtype)
-            for c, d in schema.groups[group].over.items()
+            else duck_types.lit(dims[c], schema.dimensions[d].dtype)
+            for c, d in over.items()
         }
     ).cast(duck_types(schema.group_type(group)))
 
