@@ -192,7 +192,7 @@ def test_component_level_attribute_is_unaffected(store):
     assert "bus" not in df.columns, "`p_nom` is not addressed by the connection group"
 
 
-def test_per_connection_attribute_varies_by_snapshot_and_scenario(store):
+def test_per_connection_attribute_varies_by_snapshot(store):
     """`bus` extends the key; it does not displace the dims.
 
     Notes
@@ -372,6 +372,13 @@ def _connection_frame(staged, entity, bus):
     )
 
 
+def _efficiency_rows(record) -> dict[tuple[str, str], float]:
+    df = unpacked(record.attributes["efficiency"])
+    return {
+        (e, b): v for e, b, v in zip(df["entity"], df["bus"], df["value"], strict=True)
+    }
+
+
 def test_remove_tombstones_the_tuples_naming_the_entity(store):
     """`remove` writes the cascade: the connections go, and their values with them.
 
@@ -379,15 +386,28 @@ def test_remove_tombstones_the_tuples_naming_the_entity(store):
     -----
     - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
     """
-    root = _root(store)
+    base = _root(store)
+    other = WorkingRecord(base.record)
+    other.add("entity", ["blast_furnace"], entity_type=PROCESS)
+    other.add_group("connection", _connection_frame(other, "blast_furnace", "iron_ore"))
+    other.set("efficiency", 3.0, entity=["blast_furnace"], bus="iron_ore")
+    root = base.child(other.edits)
+
     staged = WorkingRecord(root.record)
+    staged.set("efficiency", 0.5, entity=["steel_dri"], bus="dri")
     staged.remove("entity", ["steel_dri"])
-    assert len(staged.groups["connection"].collect()) == 0, "every tuple names it"
-    assert "efficiency" not in staged.attributes, "no owned key is left"
+    assert set(unpacked(staged.groups["connection"])["entity"]) == {"blast_furnace"}, (
+        "every tuple naming it goes, and no other"
+    )
+    assert _efficiency_rows(staged) == {("blast_furnace", "iron_ore"): 3.0}, (
+        "neither the base's nor the staged values, and another entity keeps its own"
+    )
 
     child = root.child(staged.edits)
-    assert len(child.record.groups["connection"].collect()) == 0
-    assert _efficiencies(child) == {}
+    assert set(unpacked(child.record.groups["connection"])["entity"]) == {
+        "blast_furnace"
+    }
+    assert _efficiency_rows(child.record) == {("blast_furnace", "iron_ore"): 3.0}
 
 
 def test_the_writer_refuses_a_tuple_naming_a_removed_entity(store):
@@ -535,32 +555,18 @@ def _prices(record) -> dict[str, float]:
     return {c["to"]: v for c, v in zip(df["contract"], df["value"], strict=True)}
 
 
-def test_remove_reaches_a_groups_second_entity(store):
+def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
     """Removing the buyer removes its contract, as removing the seller would.
 
-    Notes
-    -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
-    """
-    root = _contract_root(store)
-    assert _prices(root.record) == {"mill": 10.0, "smelter": 20.0}
-
-    staged = WorkingRecord(root.record)
-    staged.remove("entity", ["mill"])
-    child = root.child(staged.edits)
-    assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
-    contracts = child.record.groups["contract"].collect().to_native()
-    assert len(contracts) == 1, "its tuple went with it"
-
-
-def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
-    """Staging drops the parent's and its own rows for the `to` entity, as the fold.
+    Staging drops the parent's and its own rows for the `to` entity, as the fold.
 
     Notes
     -----
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
     """
     root = _contract_root(store)
+    assert _prices(root.record) == {"mill": 10.0, "smelter": 20.0}
     staged = WorkingRecord(root.record)
     contract: dict[str, Any] = {"from": "plant", "to": "mill"}
     staged.set("price", 30.0, **contract)
@@ -569,7 +575,9 @@ def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
     assert _prices(staged) == {"smelter": 20.0}, "neither the base's nor the staged"
 
     child = root.child(staged.edits)
-    assert _prices(child.record) == {"smelter": 20.0}
+    assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
+    contracts = child.record.groups["contract"].collect().to_native()
+    assert len(contracts) == 1, "its tuple went with it"
 
 
 def test_set_addresses_a_groups_fields_by_keyword(store):
@@ -591,5 +599,7 @@ def test_set_addresses_a_groups_fields_by_keyword(store):
 
     with pytest.raises(ValueError, match=r"\['from', 'to'"):
         staged.set("price", {"mill": 50.0})
+    with pytest.raises(ValueError, match=r"\['to'\] was not given"):
+        staged.set("price", 50.0, **plant)
     with pytest.raises(ValueError, match=r"does not vary over \['entity'\]"):
         staged.set("price", 50.0, entity=["mill"])

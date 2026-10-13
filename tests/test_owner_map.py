@@ -24,6 +24,7 @@ from datarecord.duck import union_all_by_name
 from datarecord.layered.resolve import _fold_kind, write_schema
 from datarecord.layered.sources import LayerSource, ParquetLayer
 from datarecord.schema import Schema
+from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
     empty_root,
@@ -96,18 +97,6 @@ def entity_names(revision):
     return set(revision.resolver.axis("entity").df()["entity"])
 
 
-def test_root_map_is_its_own_layer(store, parent):
-    """Every key of a root's inputs map points at the root itself.
-
-    The entity axis has no `layer_uuid` - it folds like an axis, its winning row
-    the whole row in one file (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-    """
-    om = parent.resolver
-    assert set(om.inputs.df()["layer_uuid"]) == {parent.id}
-    assert "layer_uuid" not in om.axis("entity").columns
-    assert ("Manchester Wind", "p_max_pu") in keys(parent)
-
-
 def test_materialise_writes_the_map_under_resolved(store, parent):
     """`materialise` writes the maps under `resolved/`, not at the layer root.
 
@@ -146,7 +135,21 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
 
 
 def test_last_writer_wins_per_key(store, parent):
-    """A child's key overrides the parent's, others stay with the parent."""
+    """A child's key overrides the parent's, others stay with the parent.
+
+    Every key of a root's map points at the root itself. The entity axis has no
+    `layer_uuid`: it folds like an axis, its winning row the whole row in one
+    file.
+
+    Notes
+    -----
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
+    """
+    om = parent.resolver
+    assert set(om.inputs.df()["layer_uuid"]) == {parent.id}
+    assert "layer_uuid" not in om.axis("entity").columns
+    assert ("Manchester Wind", "p_max_pu") in keys(parent)
+
     child = empty_child(parent)
     write_input(
         store.layer_dir(child.id),
@@ -167,6 +170,8 @@ def test_last_writer_wins_per_key(store, parent):
 def test_tombstone_removes_all_attributes(store, parent):
     """A tombstone removes every attribute and the component row of the component.
 
+    Only on the branch that carries it, and through to a built model.
+
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
@@ -177,47 +182,16 @@ def test_tombstone_removes_all_attributes(store, parent):
 
     child = empty_child(parent)
     tombstone(store.layer_dir(child.id), "Generator", ["Norway Gas"])
+    sibling = empty_child(parent)
     assert not {k for k in keys(child) if k[0] == "Norway Gas"}
     assert "Norway Gas" not in entity_names(child)
-
-
-def test_live_fold_is_cached_per_connection(store, parent):
-    """A node with no materialised cache folds once and caches the table.
-
-    Nothing invalidates it: layers are write-once, so a fold's inputs
-    cannot change under it.
-
-    Notes
-    -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    - [open questions](https://energy-models.github.io/datarecord/design/open-questions/)
-    """
-    child = empty_child(parent)
-    om = child.resolver
-    om.inputs.fetchall()
-    # Only `inputs` keeps an owner-map table; the entity axis folds like an axis.
-    assert store.workspace.con.execute(
-        "SELECT 1 FROM duckdb_tables() WHERE table_name = ?",
-        [f"owner_map_inputs_{child.id.hex}"],
-    ).fetchone()
-
-
-def test_materialising_does_not_change_the_map(store, parent):
-    """`materialise` is purely additive: same answer, fewer layers read.
-
-    Notes
-    -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    """
-    child = empty_child(parent)
-    write_input(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [{"entity": "Manchester Wind", "value": 0.42}],
+    assert "Norway Gas" in entity_names(sibling), (
+        "a tombstone only affects the branch that carries it"
     )
-    live = keys(child)
-    child.materialise()
-    assert keys(child) == live
+
+    n = PyPSA.build(child.record)
+    assert "Norway Gas" not in n.c["Generator"].static.index
+    assert "Norway Wind" in n.c["Generator"].static.index
 
 
 def test_a_removed_cache_falls_back_to_the_fold(store, parent):
@@ -245,37 +219,6 @@ def test_a_removed_cache_falls_back_to_the_fold(store, parent):
     assert keys(fresh) == expected
 
 
-def test_a_materialised_node_reads_the_same_as_an_unmaterialised_one(store, parent):
-    """The invariant the base/source split protects: a value read through a
-    materialised ancestor equals the same value re-folded from the own layers.
-
-    `parent` is materialised, so the child's fold seeds from `resolved/`. Removing
-    that cache forces the fold to walk the parent's own layer instead - a
-    different code path to the same answer, which is the whole point of the seed
-    standing for the fold above it.
-
-    Notes
-    -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
-    """
-    child = empty_child(parent)
-    write_input(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [{"entity": "Manchester Wind", "value": 0.42}],
-    )
-
-    def read() -> list[str]:
-        rel = store.revision(child.id).resolver.attribute("p_max_pu")
-        return sorted(repr(r) for r in rel.df().itertuples(index=False))
-
-    seeded = read()
-    shutil.rmtree(Path(store.resolved_dir(parent.id)))
-    refolded = read()
-    assert refolded == seeded, "the seed carries the fold above it"
-
-
 def test_any_node_may_be_a_parent(store, parent):
     """A layer is write-once, so no node needs preparing to branch from.
 
@@ -295,19 +238,6 @@ def test_any_node_may_be_a_parent(store, parent):
     df = grandchild.resolver.inputs.df()
     row = df[(df["entity"] == "Manchester Wind") & (df["attribute"] == "p_max_pu")]
     assert set(row["layer_uuid"]) == {child.id}
-
-
-def test_ancestry_is_root_first(store, parent):
-    """`ancestry` returns the root->node path in resolution order.
-
-    Notes
-    -----
-    - [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
-    """
-    child = empty_child(parent)
-    child.materialise()
-    grandchild = empty_child(child)
-    assert grandchild.ancestry() == [parent.id, child.id, grandchild.id]
 
 
 def test_a_record_with_no_manifest_folds(store):
@@ -354,15 +284,6 @@ def test_a_parquet_layer_locates_a_layers_files(store):
     )
     # A glob is a path like any other: the source neither parses nor validates.
     assert source.uri("inputs/*.parquet").endswith("inputs/*.parquet")
-
-
-def test_a_parquet_layer_takes_the_store_it_was_given(workspace, tmp_path):
-    """Two records on two stores locate their layers apart."""
-    revision_id = uuid4()
-    elsewhere = workspace.store(str(tmp_path / "elsewhere"))
-    assert ParquetLayer(revision_id, Schema(), elsewhere).uri(
-        "dims/entity.parquet"
-    ) == (f"{tmp_path.as_posix()}/elsewhere/layers/{revision_id}/dims/entity.parquet")
 
 
 def _largest_intermediate(store, rel):

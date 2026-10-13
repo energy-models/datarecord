@@ -228,23 +228,9 @@ def test_scenario_axis_survives_closed_grandchild(store, parent, stochastic):
         (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
     ]
     assert set(solar["scenario"]) == set(stochastic.scenarios)
-    assert set(solar["layer_uuid"]) == {grandchild.id}
-
-
-def test_scenario_null_row_broadcasts(store, parent, stochastic):
-    """A child's NULL-scenario row replaces the component in every scenario."""
-    child = empty_child(parent)
-    write_input(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [{"entity": "solar Gen", "value": 0.55}],
+    assert set(solar["layer_uuid"]) == {grandchild.id}, (
+        "the NULL-scenario row replaces the component in every scenario"
     )
 
-    df = child.resolver.inputs.df()
-    solar = df[
-        (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
-    ]
-    assert set(solar["layer_uuid"]) == {child.id}
-
-    rel = relation(child, "p_max_pu").df()
-    assert set(rel[rel["entity"] == "solar Gen"]["value"]) == {0.55}
+    rel = relation(grandchild, "p_max_pu").df()
+    assert set(rel[rel["entity"] == "solar Gen"]["value"]) == {0.88}

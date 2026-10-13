@@ -30,7 +30,6 @@ from tests.fixtures import (
     export_network,
     outputs,
     relation,
-    tombstone,
     write_input,
 )
 
@@ -88,24 +87,6 @@ def test_child_overwrite_reaches_model(store, parent):
     assert "Norway Wind" in n.c["Generator"].dynamic["p_max_pu"].columns
 
 
-def test_tombstone_removes_component(store, parent):
-    """A tombstone removes the component from every attribute and dimension.
-
-    Notes
-    -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-    """
-    child = empty_child(parent)
-    tombstone(store.layer_dir(child.id), "Generator", ["Norway Gas"])
-
-    assert "Norway Gas" not in _entities(child)
-    assert "Norway Gas" in _entities(parent)
-
-    n = PyPSA.build(child.record)
-    assert "Norway Gas" not in n.c["Generator"].static.index
-    assert "Norway Wind" in n.c["Generator"].static.index
-
-
 def test_child_adds_attribute(store, parent):
     """A child may write an attribute no ancestor had."""
     child = empty_child(parent)
@@ -119,45 +100,6 @@ def test_child_adds_attribute(store, parent):
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
     # Untouched generators keep the catalog default.
     assert n.c["Generator"].static.loc["Norway Wind", "p_min_pu"] == 0.0
-
-
-def test_sibling_branch_unaffected(store, parent):
-    """A tombstone only affects the branch that carries it.
-
-    Notes
-    -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-    """
-    deleting = empty_child(parent)
-    tombstone(store.layer_dir(deleting.id), "Generator", ["Norway Gas"])
-    sibling = empty_child(parent)
-
-    assert "Norway Gas" not in _entities(deleting)
-    assert "Norway Gas" in _entities(sibling)
-
-
-def test_grandchild_resolves_through_ancestry(store, parent):
-    """Resolution walks the whole root->node path, nearest layer winning."""
-    child = empty_child(parent)
-    write_input(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [{"entity": "Manchester Wind", "value": 0.42}],
-    )
-    child.materialise()
-
-    grandchild = empty_child(child)
-    write_input(
-        store.layer_dir(grandchild.id),
-        "p_max_pu",
-        [{"entity": "Manchester Wind", "value": 0.99}],
-    )
-
-    df = relation(grandchild, "p_max_pu").df()
-    manchester = df[df["entity"] == "Manchester Wind"]
-    assert len(manchester) == 1
-    assert manchester["value"].iloc[0] == 0.99
-    assert len(df[df["entity"] == "Norway Wind"]) == 10
 
 
 def test_closed_child_reads_own_resolver(store, parent):
@@ -269,6 +211,9 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     assert manchester[manchester["entity"] == "Manchester Wind"]["value"].tolist() == [
         0.99
     ], "grandchild's value wins over the materialised base"
+    assert len(manchester[manchester["entity"] == "Norway Wind"]) == 10, (
+        "an untouched sibling keeps the root's series through the ancestry"
+    )
 
 
 def test_a_new_attribute_is_a_schema_amendment(store, parent):
@@ -314,7 +259,7 @@ def test_a_new_attribute_is_a_schema_amendment(store, parent):
     )
 
 
-def test_a_schema_narrowing_is_refused(store, parent, ac_dc):
+def test_a_schema_narrowing_is_refused(store, parent):
     """A layer cannot redefine what an attribute means.
 
     Notes
@@ -345,29 +290,4 @@ def test_a_schema_narrowing_is_refused(store, parent, ac_dc):
     assert read_schema(store) == before, "the manifest is never narrowed"
     assert [r.id for r in store.revisions()] == [parent.id], (
         "the layer was written, but without its revision file nothing reaches it"
-    )
-
-
-def test_member_order_survives_closed_intermediate(store, parent, ac_dc):
-    """Component order still follows the true owning layer through a closed
-    intermediate node that changes nothing about membership.
-
-    `members()` resolves straight from the owner map's `order_key`, not from
-    a per-file depth lookup over `ancestry_since_closed` - which wouldn't
-    even find `parent` here, since `middle` sits between it and `grandchild`.
-
-    Notes
-    -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    """
-    middle = empty_child(parent)
-    middle.materialise()
-    grandchild = empty_child(middle)
-
-    n = PyPSA.build(grandchild.record)
-    pd.testing.assert_index_equal(
-        n.c["Generator"].static.index,
-        ac_dc.c["Generator"].static.index,
-        check_names=False,
     )

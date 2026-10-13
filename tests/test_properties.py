@@ -110,10 +110,9 @@ def test_properties_hold_stored_values_without_defaults(record):
     rows = _rows(record.properties["entity"])
     assert rows["g1"]["carrier"] == "wind"
     assert rows["l1"]["sign"] is None, "a stored-only read applies no default_by"
-
-
-def test_a_group_property_is_in_properties(record):
-    assert "role" in record.properties["connection"].collect_schema().names()
+    assert "role" in record.properties["connection"].collect_schema().names(), (
+        "a group's property is read off the group"
+    )
     assert "role" not in record.properties["entity"].collect_schema().names()
 
 

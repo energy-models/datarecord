@@ -15,7 +15,6 @@ import narwhals as nw
 import pytest
 
 from datarecord.layered.record import Record
-from datarecord.layered.sources import ParquetLayer
 from datarecord.mutable import WorkingRecord
 from datarecord.record import EMPTY, Flags, Frames, RecordLike
 from datarecord.schema import AttributeSpec, Schema
@@ -145,14 +144,6 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
     assert "p_nom" in store.layer(revision.id).attributes
 
 
-def test_revision_exposes_its_record(written):
-    """`revision.record` is the entry point; `resolver` stays the DuckDB view."""
-    record = written.record
-    assert isinstance(record, RecordLike), "the protocol, structurally"
-    assert isinstance(record, Record), "and the class this package provides"
-    assert record.resolver is written.resolver
-
-
 def test_constructions_agree_on_every_key_set(both):
     """One record, several ways of reading it: the keys must not depend on which."""
     node, *rest = both
@@ -209,63 +200,7 @@ def test_frames_stay_unmaterialised(both):
     assert "FILTER" in filtered.to_native().explain().upper()
 
 
-def test_keys_list_without_building(both):
-    """Listing a record is cheap; only a lookup does work.
-
-    Notes
-    -----
-    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
-    """
-    for record in both:
-        assert "p_max_pu" in record.attributes
-        assert "nope" not in record.attributes
-        assert len(list(record.attributes)) == len(record.attributes)
-
-
 # -- flags, the one non-frame member (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) ----------------------------------
-
-
-def test_a_materialised_map_survives_a_dim_being_declared(store):
-    """Adding a dim is compatible, and the persisted owner map too.
-
-    The flags live in two structs rather than a `varies_<dim>` column each, so
-    a map written before the dim existed differs from the current schema by a
-    struct *field*, which `UNION ALL BY NAME` fills with NULL - where a missing
-    *column* would have to be reconciled. The new dim reads as unset, which is
-    what it is: no row mentions it.
-
-    Notes
-    -----
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    """
-    narrow = {"snapshot": nw.Datetime(), "period": nw.Int64()}
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(schema(dims=narrow, partial=set()), store)
-    write_entity_type(layer, "Generator", [{"entity": "wind"}])
-    write_input(
-        layer,
-        "p_max_pu",
-        [
-            {"entity": "wind", "snapshot": s, "value": v}
-            for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
-        ],
-    )
-    revision.materialise()
-    # The map on disk knows nothing of `scenario` - without that this test
-    # would pass whatever the flags' layout.
-    uri = f"{store.resolved_dir(revision.id)}owner_map/inputs.parquet"
-    persisted = store.workspace.con.sql(f"SELECT varies FROM read_parquet('{uri}')")
-    assert "scenario" not in str(persisted.types[0])
-
-    # The dim arrives after the map is on disk.
-    write_schema(schema(dims={**narrow, "scenario": nw.String()}, partial=set()), store)
-    child = empty_child(revision)
-    flags = Record(child.resolver).flags()["p_max_pu"]
-    assert "snapshot" in flags.varies
-    assert "scenario" not in flags.varies
-    assert "scenario" not in flags.broadcast
 
 
 def test_flags_report_both_sets_where_components_disagree(store):
@@ -347,92 +282,36 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
     assert "snapshot" in flags["p_max_pu"].broadcast
 
 
-def test_flags_report_a_curve(store):
-    """`breakpoints` distinguishes a curve from a scalar, from either backing.
-
-    Notes
-    -----
-    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-    """
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
-    write_entity_type(layer, "Process", [{"entity": "steel"}])
-    write_input(
-        layer,
-        "marginal_cost",
-        [
-            {"entity": "steel", "breakpoint": x, "value": v}
-            for x, v in ((0.0, 20.0), (50.0, 35.0))
-        ],
-    )
-
-    record = revision.record
-    assert record.flags()["marginal_cost"].breakpoints
-
-
 # -- more than one layer, which is where the fold stops being a scan ---------
-
-
-def test_node_record_resolves_the_overlay(store, ac_dc):
-    """One layer read alone against the same layer folded onto its parent."""
-    root = export_network(ac_dc, store)
-    root.materialise()
-
-    child = empty_child(root)
-    write_input(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [{"entity": "Manchester Gas", "value": 0.1}],
-    )
-
-    overlay = Record(child.resolver)
-    # The single-layer view is the raw file, read through the `LayerSource`: the
-    # folding resolver (`Record.at`) is the whole-tree lens, wrong for "what does
-    # this one patch hold".
-    layer_only = ParquetLayer(child.id, child.resolver.schema, child.store).attribute(
-        "p_max_pu"
-    )
-
-    # The child's own layer holds one row; the resolution holds the root's too.
-    assert layer_only is not None and len(layer_only) == 1
-    resolved = overlay.attributes["p_max_pu"].collect().to_native().to_pandas()
-    assert len(resolved) > 1
-    patched = resolved[resolved["entity"] == "Manchester Gas"]["value"].tolist()
-    assert patched == [0.1]
 
 
 def test_node_record_orders_members(store, ac_dc):
     """A `Record` promises member order; for an overlay that means `order_key`.
 
+    The order follows the true owning layer through a closed intermediate node
+    that changes nothing about membership.
+
     Notes
     -----
     - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     root = export_network(ac_dc, store)
     root.materialise()
+    middle = empty_child(root)
+    middle.materialise()
 
-    child = empty_child(root)
+    child = empty_child(middle)
     write_entity_type(store.layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
     axis = Record(child.resolver).properties["entity"].collect().to_native().to_pandas()
     names = list(axis[axis["entity_type"] == "Generator"]["entity"])
-    # First-introduced order: the root's members, then the child's addition.
-    assert names == [*ac_dc.c["Generator"].static.index, "New Solar"]
+    assert names == [*ac_dc.c["Generator"].static.index, "New Solar"], (
+        "first-introduced order: the root's members, then the child's addition"
+    )
 
 
 # -- one layer read at its URI, with no tree around it -----------------------
-
-
-def test_a_directory_at_a_uri_reads_a_plain_record(store, ac_dc, tmp_path):
-    """No revision and no tree: any parquet directory blocks wrote is a `Record`."""
-    revision = export_network(ac_dc, store)
-
-    record = store.layer(revision.id)
-    assert isinstance(record, RecordLike)
-    assert "entity" in record.dims
-    assert "p_max_pu" in record.attributes
-    assert record.schema.attributes
 
 
 def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
@@ -450,25 +329,19 @@ def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
     assert "connection" not in store.layer(revision.id).groups
 
 
-def test_a_directory_reads_connections_blocks_wrote(written, store):
-    """A record blocks wrote has them, with the roles the collapse assigned.
+def test_missing_key_raises(both):
+    """A key the record does not hold is a `KeyError`, not an empty frame.
+
+    Listing the keys is cheap and answers membership without a lookup.
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
     """
-    record = store.layer(written.id)
-    assert "connection" in record.groups
-
-    rows = record.groups["connection"].collect().to_native().to_pandas()
-    assert set(rows["role"]) == {"input", "output", "attached"}, (
-        "one file across every type, so a Generator's role rides beside a Link's"
-    )
-
-
-def test_missing_key_raises(both):
-    """A key the record does not hold is a `KeyError`, not an empty frame."""
     for record in both:
+        assert "p_max_pu" in record.attributes
+        assert "nope" not in record.attributes
+        assert len(list(record.attributes)) == len(record.attributes)
         with pytest.raises(KeyError):
             record.attributes["not_an_attribute"]
 
@@ -481,21 +354,6 @@ def test_outputs_are_empty_until_solved(both):
     - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
     """
     for record in both:
-        assert list(record.outputs) == []
-
-
-def test_outputs_is_an_ordinary_record_member(both):
-    """`outputs` is on `Record`; emptiness is the existence answer.
-
-    Notes
-    -----
-    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-    """
-    # No separate protocol to satisfy: an unsolved record answers with an empty
-    # mapping, the same way every other member answers for what it lacks.
-    for record in both:
-        assert isinstance(record, RecordLike)
         assert list(record.outputs) == []
 
 

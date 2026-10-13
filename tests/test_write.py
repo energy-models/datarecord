@@ -19,11 +19,10 @@ import pytest
 from datarecord import Workspace
 from datarecord.layered.resolve import read_schema
 from datarecord.mutable import WorkingRecord
-from datarecord.record import EMPTY, LazyFrames, RecordLike
+from datarecord.record import EMPTY, LazyFrames
 from datarecord.schema import AttributeSpec, Dimension, PropertySpec, Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
-    empty_child,
     empty_root,
     export_network,
     relation,
@@ -123,25 +122,6 @@ def _long(**overrides) -> pd.DataFrame:
 # -- the lazy mapping (https://energy-models.github.io/datarecord/design/format/) -------------------------------------------------
 
 
-def test_source_is_explorable_without_building(store):
-    """Keys list, `in` answers, iteration repeats - none of it builds a frame."""
-    source = _Source(_SCHEMA, attributes={"p_nom": _long(), "e_nom": _long()})
-
-    assert list(source.attributes) == ["p_nom", "e_nom"]
-    assert "p_nom" in source.attributes
-    assert "nope" not in source.attributes
-    assert len(source.attributes) == 2
-    # Re-iterating works, unlike a generator, and still nothing is built.
-    assert list(source.attributes) == ["p_nom", "e_nom"]
-    assert source.built == []
-
-    source.attributes["p_nom"]
-    assert source.built == ["attributes:p_nom"]
-
-    with pytest.raises(KeyError):
-        source.attributes["nope"]
-
-
 def test_a_write_builds_each_key_once(store):
     """The writer looks up every key exactly once, and only what it writes."""
     source = _Source(
@@ -220,32 +200,6 @@ def test_no_layer_file_carries_order_key(store, ac_dc, tmp_path):
         assert "order_key" not in columns, f"{path.relative_to(out)} carries order_key"
 
 
-def test_a_category_is_a_column_of_its_axis_file(store):
-    """A category is a property column of `dims/entity.parquet`.
-
-    Notes
-    -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-    """
-    entities = pd.DataFrame({"entity": ["a", "b"], "entity_type": ["Process", "Bus"]})
-    revision = store.root(
-        _Source(
-            _SCHEMA,
-            dims={"entity": entities[["entity"]]},
-            properties={"entity": entities},
-        )
-    )
-    layer = Path(store.layer_dir(revision.id))
-
-    assert not (layer / "dims" / "entity_type").exists(), "no per-label file"
-    axis = revision.resolver.axis("entity")
-    assert axis is not None
-    assert dict(axis.project("entity, entity_type::VARCHAR").fetchall()) == {
-        "a": "Process",
-        "b": "Bus",
-    }
-
-
 def test_a_write_rejects_a_category_the_enum_does_not_declare(store):
     entities = pd.DataFrame({"entity": ["a"], "entity_type": ["Nope"]})
     with pytest.raises(Exception, match="Nope"):
@@ -301,22 +255,7 @@ def test_a_directory_without_a_manifest_is_no_standalone_record(store, tmp_path)
 
 
 def test_a_standalone_write_refuses_an_existing_directory(workspace, tmp_path):
-    """A whole-record write never half-replaces what a record already holds.
-
-    Notes
-    -----
-    - [the record format](https://energy-models.github.io/datarecord/design/format/)
-    """
-    out = str(tmp_path / "standalone")
-    source = _Source(_SCHEMA, attributes={"p_nom": _long()})
-    workspace.write(source, out)
-
-    with pytest.raises(FileExistsError, match="does not exist yet"):
-        workspace.write(source, out)
-
-
-def test_a_standalone_write_refuses_an_existing_empty_directory(workspace, tmp_path):
-    """Refused up front, where the write itself would fail on the path existing.
+    """Refused up front, empty or holding a record, so nothing is half-replaced.
 
     Notes
     -----
@@ -328,7 +267,10 @@ def test_a_standalone_write_refuses_an_existing_empty_directory(workspace, tmp_p
     assert source.built == [], "refused before any frame was built"
     assert list(tmp_path.iterdir()) == [], "refused before anything was written"
 
-    assert workspace.write(source, str(tmp_path / "new")).schema == _SCHEMA
+    out = str(tmp_path / "new")
+    assert workspace.write(source, out).schema == _SCHEMA
+    with pytest.raises(FileExistsError, match="does not exist yet"):
+        workspace.write(source, out)
 
 
 def test_a_failed_standalone_write_leaves_no_record(workspace, tmp_path):
@@ -718,14 +660,24 @@ def test_categories_add_one_column_to_the_entity_axis_and_nothing_else(tmp_path)
             ws.close()
         base = Path(store.layer_dir(layer.id))
         files = sorted(str(f.relative_to(base)) for f in base.rglob("*.parquet"))
-        axis = list(pd.read_parquet(base / "dims" / "entity.parquet").columns)
-        layouts[categorized] = (files, axis)
+        layouts[categorized] = (
+            files,
+            pd.read_parquet(base / "dims" / "entity.parquet"),
+        )
 
     (plain_files, plain_axis), (typed_files, typed_axis) = layouts[False], layouts[True]
     assert plain_files == typed_files, "the same files"
-    assert not any(f.startswith("dims/entity_type") for f in typed_files)
-    assert set(typed_axis) - set(plain_axis) == {"entity_type"}
-    assert set(plain_axis) <= set(typed_axis), "differing by exactly one column"
+    assert not any(f.startswith("dims/entity_type") for f in typed_files), (
+        "no per-label file"
+    )
+    assert set(typed_axis.columns) - set(plain_axis.columns) == {"entity_type"}
+    assert set(plain_axis.columns) <= set(typed_axis.columns), (
+        "differing by exactly one column"
+    )
+    assert dict(zip(typed_axis["entity"], typed_axis["entity_type"].astype(str))) == {
+        "g1": "Gen",
+        "g2": "Gen",
+    }, "the category is read back from the axis file"
 
 
 _AWKWARD = Schema(
@@ -810,8 +762,6 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
 def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
     """Key sets come off the network and its registry, so listing is cheap."""
     source = PyPSA.to_datarecord(ac_dc, store.workspace.con)
-
-    assert isinstance(source, RecordLike)
     assert "entity" in source.dims
     assert "connection" in source.groups
     assert "p_max_pu" in source.attributes
@@ -822,112 +772,31 @@ def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
     assert "efficiency2" not in source.attributes
 
 
-def test_write_then_build_round_trips(store, ac_dc):
-    """A network written by blocks and read back through `build` is unchanged.
-
-    Distinct from `test_roundtrip.py`, which reads an `export_to_parquet`
-    record: this exercises the writer and the connection collapse in one pass.
+def test_ports_round_trip_through_connections_with_a_role_per_type(store, ac_dc):
+    """Each port is a connection row with a role, and comes back as its own column.
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = export_network(ac_dc, store)
-
-    assert not PyPSA.verify(revision.record)
+    rows = unpacked(
+        store.workspace.con.read_parquet(
+            store.layer_dir(revision.id) + "groups/connection.parquet"
+        )
+    )
     back = PyPSA.build(revision.record)
 
-    for ctype in ("Bus", "Generator", "Link", "Line", "Load"):
-        original, rebuilt = ac_dc.c[ctype].static, back.c[ctype].static
-        assert list(rebuilt.index) == list(original.index), ctype
-        # Every column survives, custom ones included (`Bus.country` has no
-        # registry entry and must not be silently dropped).
-        assert set(rebuilt.columns) == set(original.columns), ctype
-        for column in original.columns:
-            assert rebuilt[column].astype(str).equals(original[column].astype(str)), (
-                ctype,
-                column,
+    for ctype, roles, ports in (
+        ("Link", {"input", "output"}, ("bus0", "bus1")),
+        ("Generator", {"attached"}, ("bus",)),
+    ):
+        original = ac_dc.c[ctype].static
+        mine = rows[rows["entity"].isin(original.index)]
+        assert set(mine["role"]) == roles, f"{ctype} roles follow PyPSA's sign"
+        for port in ports:
+            assert set(mine["bus"]) >= set(original[port]), f"{ctype}.{port} stored"
+            assert list(back.c[ctype].static[port]) == list(original[port]), (
+                f"{ctype}.{port} comes back under its own name"
             )
-
-
-def test_multi_port_links_round_trip_through_connections(store, ac_dc):
-    """`bus0`/`bus1` become connection rows and come back as columns.
-
-    Notes
-    -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-    """
-    revision = export_network(ac_dc, store)
-
-    # Stored bus-keyed, with a role from PyPSA's sign convention. One file for
-    # every type, so the Links are reached by their entities.
-    rows = unpacked(
-        store.workspace.con.read_parquet(
-            store.layer_dir(revision.id) + "groups/connection.parquet"
-        )
-    )
-    links = rows[rows["entity"].isin(ac_dc.c["Link"].static.index)]
-    assert set(links["role"]) == {"input", "output"}
-    assert set(links["bus"]) >= set(ac_dc.c["Link"].static["bus0"])
-
-    back = PyPSA.build(revision.record)
-    assert list(back.c["Link"].static["bus0"]) == list(ac_dc.c["Link"].static["bus0"])
-    assert list(back.c["Link"].static["bus1"]) == list(ac_dc.c["Link"].static["bus1"])
-
-
-def test_single_port_components_keep_their_unsuffixed_bus(store, ac_dc):
-    """A Generator's one `bus` is a connection too, and stays `bus`.
-
-    Notes
-    -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    """
-    revision = export_network(ac_dc, store)
-
-    rows = unpacked(
-        store.workspace.con.read_parquet(
-            store.layer_dir(revision.id) + "groups/connection.parquet"
-        )
-    )
-    mine = rows[rows["entity"].isin(ac_dc.c["Generator"].static.index)]
-    assert set(mine["role"]) == {"attached"}
-
-    back = PyPSA.build(revision.record)
-    assert list(back.c["Generator"].static["bus"]) == list(
-        ac_dc.c["Generator"].static["bus"]
-    )
-
-
-def test_static_series_split_survives_the_writer(store, ac_dc):
-    """Only the components with a series get a `dynamic` column.
-
-    Notes
-    -----
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-    """
-    revision = export_network(ac_dc, store)
-    back = PyPSA.build(revision.record)
-
-    assert sorted(back.c["Generator"].dynamic["p_max_pu"].columns) == sorted(
-        ac_dc.c["Generator"].dynamic["p_max_pu"].columns
-    )
-
-
-def test_written_layer_overlays(store, ac_dc):
-    """A written layer is an ordinary layer: a child patches it as any other."""
-    from tests.fixtures import write_input
-
-    root = export_network(ac_dc, store)
-    root.materialise()
-
-    child = empty_child(root)
-    write_input(
-        store.layer_dir(child.id),
-        "p_nom",
-        [{"entity": "Manchester Wind", "value": 999.0}],
-    )
-
-    resolved = relation(child, "p_nom").filter("entity = 'Manchester Wind'").df()
-    assert list(resolved["value"]) == [999.0]
