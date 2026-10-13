@@ -964,6 +964,24 @@ def _to_parquet(rel: DuckDBPyRelation, uri: str) -> None:
     os.replace(tmp, uri)
 
 
+def _to_parquet_unless_empty(
+    rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection
+) -> None:
+    """`_to_parquet`, writing nothing where `rel` has no row.
+
+    `rel` is evaluated once, into a temporary table, rather than once to
+    probe and again to write.
+    """
+    table = f"_unless_empty_{uuid4().hex}"
+    rel.create(table)
+    try:
+        rows = con.table(table)
+        if rows.limit(1).fetchone() is not None:
+            _to_parquet(rows, uri)
+    finally:
+        con.execute(f"DROP TABLE {table}")
+
+
 def _materialise_dims(
     revision_id: UUID,
     sources: Sequence[LayerSource],
@@ -990,8 +1008,7 @@ def _materialise_dims(
     dead = store.resolved_dir(revision_id) + "dead/"
     ensure_local_dir(dead)
     for name, rel in dims.dead.items():
-        if rel.limit(1).fetchone() is not None:
-            _to_parquet(rel, f"{dead}{name}.parquet")
+        _to_parquet_unless_empty(rel, f"{dead}{name}.parquet", con)
     # The per-type wide static frames, folded across sources. An entity's wide
     # columns live in a per-type file, not on the axis, so they are the one
     # membership value that needs materialising beside the axis for a descendant

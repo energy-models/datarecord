@@ -360,57 +360,6 @@ def fold_axis(
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    winners = _winners(axes, key, con)
-    if winners is None:
-        return None
-    has_deleted = "deleted" in winners.columns
-    # The deepest statement of a key wins; a tombstone there removes it.
-    if has_deleted:
-        winners = winners.filter(~_tombstone())
-    scaffold = [
-        "_depth",
-        "_rank",
-        "_row",
-        "_first",
-        *(["deleted"] if has_deleted else []),
-    ]
-    return winners.order("_first").project(star(exclude=scaffold))
-
-
-def dead_keys(
-    axes: Sequence[DuckDBPyRelation | None],
-    key: tuple[str, ...],
-    con: DuckDBPyConnection,
-) -> DuckDBPyRelation | None:
-    """The keys `fold_axis` drops: those whose winning row is a tombstone.
-
-    `None` where no layer carries a `deleted` column, so nothing is dead.
-
-    Notes
-    -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-    """
-    winners = _winners(axes, key, con)
-    if winners is None or "deleted" not in winners.columns:
-        return None
-    return winners.filter(_tombstone()).project(*(col(c) for c in key))
-
-
-def _tombstone() -> Expression:
-    """`deleted`, a row from a layer whose file lacks the column reading as live.
-
-    `UNION ALL BY NAME` fills that column with NULL, and `~NULL` would drop a
-    live row.
-    """
-    return coalesce(col("deleted"), lit(False))  # noqa: FBT003
-
-
-def _winners(
-    axes: Sequence[DuckDBPyRelation | None],
-    key: tuple[str, ...],
-    con: DuckDBPyConnection,
-) -> DuckDBPyRelation | None:
-    """The deepest row per `key` of `axes`, tombstones included, `_first` carried."""
     layers = []
     for depth, rel in enumerate(axes):
         if rel is None:
@@ -426,6 +375,7 @@ def _winners(
         return None
 
     union = union_all_by_name(layers, con)
+    has_deleted = "deleted" in union.columns
     partition = ", ".join(str(col(c)) for c in key)
     # `OVER (PARTITION BY ...)` stays text below: DuckDB's expression API has no
     # window construct, so only what the window wraps is built as an expression.
@@ -443,4 +393,57 @@ def _winners(
             f"OVER (PARTITION BY {partition})"
         ).alias("_first"),
     )
-    return ranked.filter(col("_rank") == lit(1))
+    winners = ranked.filter(col("_rank") == lit(1))
+    # The deepest statement of a key wins; a tombstone there removes it.
+    if has_deleted:
+        # A row from a layer whose file lacks the column reads `deleted` as NULL
+        # once unioned by name; NULL is not a tombstone, so coalesce to false
+        # rather than letting `~NULL` drop a live row.
+        winners = winners.filter(~coalesce(col("deleted"), lit(False)))  # noqa: FBT003
+    scaffold = [
+        "_depth",
+        "_rank",
+        "_row",
+        "_first",
+        *(["deleted"] if has_deleted else []),
+    ]
+    return winners.order("_first").project(star(exclude=scaffold))
+
+
+def dead_keys(
+    axes: Sequence[DuckDBPyRelation | None],
+    key: tuple[str, ...],
+    con: DuckDBPyConnection,
+) -> DuckDBPyRelation | None:
+    """The keys `fold_axis` drops: those whose deepest row is a tombstone.
+
+    A hash aggregate rather than `fold_axis`'s window, there being no row to
+    carry and no order to keep. `None` where no layer carries a `deleted`
+    column, so nothing is dead.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    present = [(depth, rel) for depth, rel in enumerate(axes) if rel is not None]
+    if not any("deleted" in rel.columns for _, rel in present):
+        return None
+    layers = [
+        rel.project(
+            *(col(c) for c in key),
+            lit(depth).alias("_depth"),
+            (
+                coalesce(col("deleted"), lit(False))  # noqa: FBT003
+                if "deleted" in rel.columns
+                else lit(False)  # noqa: FBT003
+            ).alias("_dead"),
+        )
+        for depth, rel in present
+    ]
+    deepest = union_all_by_name(layers, con).aggregate(
+        [
+            *(col(c) for c in key),
+            fn.arg_max(col("_dead"), col("_depth")).alias("_dead"),
+        ]
+    )
+    return deepest.filter(col("_dead")).project(*(col(c) for c in key))

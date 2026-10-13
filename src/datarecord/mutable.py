@@ -1068,8 +1068,9 @@ class WorkingRecord(Record):
             return
 
         closed = self._entity_column(attribute) is None
+        parties = self._keyword_entities(attribute, entity, dims) if closed else []
         if closed:
-            target = self._keyword_entities(attribute, entity, dims)[:1]
+            target = parties[:1]
         else:
             target = (
                 list(entity) if entity is not None else self._names_declaring(attribute)
@@ -1088,6 +1089,9 @@ class WorkingRecord(Record):
             raise ValueError(msg)
         if kind == "inputs":
             self._validate_dims(dims)
+            # Every party must exist, though only the first's type is held to
+            # carrying the attribute: a contract's buyer need not.
+            self._resolve_types(parties)
             # One lookup serves both: rejects a name with no member row, and
             # returns the type whose spec is checked (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
             for name, ctype in self._resolve_types(keys).items():
@@ -1131,7 +1135,10 @@ class WorkingRecord(Record):
 
         The frame supplies its own names, so each is resolved to its type and
         checked against that type's spec - one frame may legitimately span
-        types, since names are unique.
+        types, since names are unique. An attribute without an `entity`
+        coordinate names its entities in its groups' fields: each must exist,
+        and the first field's are held to the spec, as `set` holds a
+        contract's first party.
 
         Notes
         -----
@@ -1139,16 +1146,31 @@ class WorkingRecord(Record):
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         self._validate_dims(dims)
+        present = lazy.collect_schema().names()
         column = self._entity_column(attribute)
-        if column not in lazy.collect_schema().names():
-            return
-        entity = self._coordinate(attribute, "entity").alias("entity")
-        names = [
-            str(n)
-            for n in lazy.select(entity).unique("entity").collect()["entity"].to_list()
-        ]
-        for name, ctype in self._resolve_types(names).items():
-            self._validate_attribute(ctype, attribute, dims, name=name)
+        if column is not None:
+            parties = (
+                [self._coordinate(attribute, "entity")] if column in present else []
+            )
+        else:
+            parties = [
+                nw.col(g).struct.field(c)
+                for g in self.schema.groups_of(attribute)
+                if g in present
+                for c in self.schema.entity_fields(g)
+            ]
+        for i, party in enumerate(parties):
+            names = [
+                str(n)
+                for n in lazy.select(party.alias("entity"))
+                .drop_nulls()
+                .unique("entity")
+                .collect()["entity"]
+                .to_list()
+            ]
+            for name, ctype in self._resolve_types(names).items():
+                if i == 0:
+                    self._validate_attribute(ctype, attribute, dims, name=name)
 
     def _coordinate(self, attribute: str, name: str) -> nw.Expr:
         """Coordinate `name` of `attribute`'s rows, inside its group's struct if there.
@@ -1698,11 +1720,17 @@ class WorkingRecord(Record):
                 key=("entity",),
             )
         for attribute in varying:
+            fields = [
+                c
+                for g in self.schema.groups_of(attribute)
+                for c in self.schema.group_key(g)
+                if c in columns and c != "entity"
+            ]
             # Always `inputs`: `add` declares entities, and an entity's
             # attribute values are inputs whatever a later solve produces.
             self._stage_long(
                 attribute,
-                lazy.select("entity", nw.col(attribute).alias("value")),
+                lazy.select("entity", *fields, nw.col(attribute).alias("value")),
                 "inputs",
                 {},
             )
@@ -1812,6 +1840,8 @@ class WorkingRecord(Record):
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
         """
+        if not names:
+            return
         columns = {"entity": list(names)}
         if self.schema.entity_type_dim is not None:
             columns["entity_type"] = [ctype] * len(names)

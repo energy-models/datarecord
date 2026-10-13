@@ -416,6 +416,36 @@ def test_the_writer_refuses_a_tuple_naming_a_removed_entity(store):
         removed.child(revived.edits)
 
 
+def test_a_tuple_an_ancestor_left_dangling_fails_no_later_write(store):
+    """The writer checks what a layer does, not what it inherits.
+
+    Notes
+    -----
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    """
+    root = _root(store)
+    dangling = empty_child(root)
+    tombstone(store.layer_dir(dangling.id), PROCESS, ["steel_dri"])
+
+    staged = WorkingRecord(dangling.record)
+    staged.add(PROCESS, staged.con.sql("SELECT 'blast_furnace' AS entity"))
+    child = dangling.child(staged.edits)
+    assert "blast_furnace" in set(_entity_type_frame(child).df()["entity"])
+
+
+def test_set_requires_every_party_to_exist(store):
+    """The buyer need not carry `price`, but it must be an entity.
+
+    Notes
+    -----
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    """
+    staged = WorkingRecord(_contract_root(store).record)
+    contract: dict[str, Any] = {"from": "plant", "to": "nobody"}
+    with pytest.raises(KeyError, match="nobody"):
+        staged.set("price", 3.0, **contract)
+
+
 def test_a_removed_tuple_outside_partial_stays_removed_past_a_cache(store):
     """Its values are owned per attribute, so only the cached dead tuples drop them.
 

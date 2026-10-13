@@ -1094,6 +1094,25 @@ def test_remove_drops_the_values_on_its_connections(staged, root):
     )
 
 
+def test_remove_of_no_names_stages_nothing(staged):
+    staged.remove(GEN, [])
+    assert not staged.edits.axes(), "no tombstone, and no cascade to look up"
+
+
+def test_add_carries_a_connection_attributes_bus(staged):
+    """A varying attribute over `connection` takes its tuple from the frame's `bus`.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    staged.add(
+        "Link",
+        pd.DataFrame([{"entity": "Spur", "bus": "Manchester", "efficiency": 0.7}]),
+    )
+    assert _efficiency(staged, "Spur") == {"Manchester": [0.7]}
+
+
 def test_remove_then_add_starts_without_the_parents_connections(staged, root):
     """`add` replaces the entity's tombstone, not its connections'.
 
