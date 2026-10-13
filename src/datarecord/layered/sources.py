@@ -112,8 +112,7 @@ class LayerSource(Protocol):
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """`dims/<dim>.parquet` - one axis's full row, not the key alone.
 
-        Its properties and the attributes addressed by it alone ride along as
-        columns, its tombstones as `deleted`.
+        Its properties ride along as columns, its tombstones as `deleted`.
         """
         ...
 

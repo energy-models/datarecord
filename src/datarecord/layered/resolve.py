@@ -34,6 +34,7 @@ from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
+from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
@@ -49,6 +50,7 @@ from datarecord.duck import (
     try_read_parquet,
     union_all_by_name,
 )
+from datarecord.layered import categories
 from datarecord.layered.fold import Fold
 from datarecord.layered.sources import LayerSource, ParquetLayer
 from datarecord.schema import LAYER_COLUMN, Schema
@@ -204,7 +206,7 @@ def resolve_groups(
 
     A group folds through `fold_axis` like any axis, keyed by the one column
     named for it: last-writer-wins per tuple, static columns (`into`,
-    group-attributes) on the winning row, its own tombstones honoured, member
+    group properties) on the winning row, its own tombstones honoured, member
     order the file's row order.
     The base `Fold`'s resolved group seeds depth 0. Absent from the result where
     no layer wrote a row.
@@ -240,7 +242,7 @@ class Coords:
         The record's schema.
     axes : dict of str to DuckDBPyRelation
         Each declared dim's folded axis relation, full row rather than the key
-        column alone - `scenario`'s carries `weight` too. A dim with no rows
+        column alone - its properties ride along. A dim with no rows
         anywhere is absent rather than present-and-empty.
     groups : dict of str to DuckDBPyRelation
         Each declared group's folded relation, keyed by its struct column,
@@ -262,14 +264,19 @@ class Coords:
     dead: dict[str, DuckDBPyRelation] = field(default_factory=dict)
 
     def expand_dims(
-        self, rel: DuckDBPyRelation, layer_keys: tuple[str, ...]
+        self,
+        rel: DuckDBPyRelation,
+        layer_keys: tuple[str, ...],
+        con: DuckDBPyConnection,
     ) -> tuple[DuckDBPyRelation, dict[str, Expression]]:
-        """Left-join `rel` against each of `layer_keys`' axis, broadcasting NULLs.
+        """Join `rel` against each of `layer_keys`' axis, broadcasting NULLs.
 
         Only a row of an attribute whose `dims` name the dim broadcasts: any
         other is NULL there in every layer, so its key needs no
         expansion, and expanding it would multiply its owner-map rows by the
-        axis length for no change in ownership.
+        axis length for no change in ownership. A NULL of an attribute a trait
+        narrows reaches only the labels carrying it (`categories.carriers`),
+        and none where no label does.
 
         Parameters
         ----------
@@ -299,28 +306,73 @@ class Coords:
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         alias = rel.alias
         exprs = {}
         for dim in layer_keys:
             axis = self.axes.get(dim, self.groups.get(dim))
             over = [
-                lit(a)
+                a
                 for a in self.schema.attributes
                 if dim in self.schema.coordinates_of(a)
             ]
             if axis is None or not over:
                 exprs[dim] = col(alias, dim)
                 continue
-            # `... = true` rather than the bare condition: an equality hashes,
-            # a one-sided condition is a nested loop over every row and label.
-            # An attribute not over `dim` holds NULL there for want of the
-            # column, which is no broadcast.
-            broadcasts = col(alias, dim).isnull() & col(alias, "attribute").isin(*over)
-            key = axis.project(col(dim), lit(True).alias("_broadcast"))  # noqa: FBT003
-            rel = rel.join(key, broadcasts == col(key.alias, "_broadcast"), how="left")
-            exprs[dim] = coalesce(col(alias, dim), col(key.alias, dim))
+            names, carriers = categories.carriers(
+                self.schema, self.axes, self.groups, dim, over, con
+            )
+            plain = [lit(a) for a in over if a not in names]
+            expanded = [col(alias, dim)]
+            if plain:
+                # `... = true` rather than the bare condition: an equality hashes,
+                # a one-sided condition is a nested loop over every row and label.
+                # An attribute not over `dim` holds NULL there for want of the
+                # column, which is no broadcast.
+                broadcasts = col(alias, dim).isnull() & col(alias, "attribute").isin(
+                    *plain
+                )
+                key = axis.project(col(dim), lit(True).alias("_broadcast"))  # noqa: FBT003
+                rel = rel.join(
+                    key, broadcasts == col(key.alias, "_broadcast"), how="left"
+                )
+                expanded.append(col(key.alias, dim))
+            if carriers is not None:
+                key = _with_pass_row(
+                    carriers.project(col(dim), col("attribute")), con
+                ).set_alias(f"_carried_{len(exprs)}")
+                narrowed = col(alias, dim).isnull() & col(alias, "attribute").isin(
+                    *(lit(a) for a in names)
+                )
+                carried = duckdb.CaseExpression(narrowed, col(alias, "attribute"))
+                rel = rel.join(
+                    key,
+                    sql(
+                        f"{carried} IS NOT DISTINCT FROM {col(key.alias, 'attribute')}"
+                    ),
+                )
+                expanded.append(col(key.alias, dim))
+            exprs[dim] = coalesce(*expanded)
         return rel, exprs
+
+
+def _with_pass_row(
+    carriers: DuckDBPyRelation, con: DuckDBPyConnection
+) -> DuckDBPyRelation:
+    """`carriers` plus one all-NULL row, which every row not narrowed joins.
+
+    What lets `expand_dims` join the carriers inner, so that a NULL no label
+    carries reaches nothing, without a filter: a filter wraps the join in a new
+    alias, which the caller's projection off the original one cannot bind.
+    """
+    dim, attribute = carriers.columns
+    types = dict(zip(carriers.columns, carriers.types, strict=True))
+    pass_row = con.sql("SELECT 1").project(
+        lit(None).cast(types[dim]).alias(dim),
+        lit(None).cast(types[attribute]).alias(attribute),
+    )
+    return carriers.union(pass_row)
 
 
 # -- paths and probes -------------------------------------------------------
@@ -622,7 +674,9 @@ def fold_inputs(
             ),
         )
         rel, dims = keys.expand_dims(
-            rel.set_alias("i"), tuple(d for d in schema.partial_dims if d in broadcast)
+            rel.set_alias("i"),
+            tuple(d for d in schema.partial_dims if d in broadcast),
+            con,
         )
         # Each broadcast dim is carried twice: the (possibly broadcast) key
         # value, and `_raw_<dim>` as the row stored it. The flags describe the
@@ -1410,7 +1464,7 @@ class Resolver:
 
         The folded relation is
         already the winning row per tuple, carrying every non-key column -
-        an attribute over the group, an `into` label - in member order, read
+        a group property, an `into` label - in member order, read
         inline with no owner map. `None` where no layer wrote a row; empty, not
         `None`, where every row written is tombstoned.
 

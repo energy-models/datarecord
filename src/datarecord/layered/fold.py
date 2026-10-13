@@ -25,12 +25,15 @@ Notes
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import reduce
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
+from duckdb import DuckDBPyRelation
 
 from datarecord.duck import (
     distinct_values,
@@ -40,12 +43,18 @@ from datarecord.duck import (
     struct_of,
     try_read_parquet,
 )
+from datarecord.layered.categories import (
+    attributes_among,
+    categorized_dim,
+    matching,
+    selected,
+)
 from datarecord.record import Flags
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
-    from duckdb import DuckDBPyConnection, DuckDBPyRelation
+    from duckdb import DuckDBPyConnection
 
     from datarecord.schema import Schema
     from datarecord.store import Store
@@ -144,24 +153,73 @@ class Fold:
         """
         return self.owner_map.filter(col("attribute") == lit(attribute))
 
-    def flags(self) -> dict[str, Flags]:
-        """Per attribute, which dims its rows use, across the whole record.
+    def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
+        """Per attribute, which dims its rows use, across the record or one category.
 
         A dim in both sets is the instruction to use both containers, each
         taking the rows it matches.
 
+        Parameters
+        ----------
+        categories
+            Categorizing properties of one dim, each one category or several:
+            only rows reaching a matching label count, and only attributes
+            those labels carry (`Schema.attributes_for`) are present. None
+            given, every row counts.
+
+        Raises
+        ------
+        ValueError
+            If the keywords categorize no dim or several.
+
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         """
         dims = self.schema.broadcast_dims
-        # The structs come back as dicts keyed by dim, so each set is a filter by
-        # name rather than a positional slice.
-        return flags_from_rows(self.schema, dims, self._flag_rows(dims))
+        if not categories:
+            # The structs come back as dicts keyed by dim, so each set is a filter
+            # by name rather than a positional slice.
+            return flags_from_rows(
+                self.schema, dims, self._flag_rows(self.owner_map, dims)
+            )
+        dim = categorized_dim(self.schema, categories)
+        chosen = selected(self.schema, dim, categories)
+        carried = attributes_among(self.schema, dim, chosen)
+        axis = self.axes.get(dim)
+        if axis is None or not carried:
+            return {}
+        rows = self._owned_reaching(dim, matching(axis, chosen).project(col(dim)))
+        flags = flags_from_rows(self.schema, dims, self._flag_rows(rows, dims))
+        return {a: f for a, f in flags.items() if a in carried}
 
-    def _flag_rows(self, dims: tuple[str, ...]) -> list[tuple[Any, ...]]:
-        """The owner map's flag columns, aggregated per attribute."""
-        rel = self.owner_map
+    def _owned_reaching(self, dim: str, labels: DuckDBPyRelation) -> DuckDBPyRelation:
+        """The owner-map rows naming one of `labels`, on `dim` or a group's field over it.
+
+        One semi-join per path, unioned rather than OR-ed into one condition,
+        which would be a nested loop; a row matched twice changes no flag.
+        """
+        om = self.owner_map.set_alias("o")
+        paths = []
+        if dim in om.columns:
+            paths.append(col("o", dim))
+        for group in self.schema.groups:
+            field = self.schema.field_over(group, dim)
+            if group in om.columns and field is not None:
+                paths.append(fn.struct_extract(col("o", group), lit(field)))
+        reached = [
+            om.join(labels.set_alias("l"), path == col("l", dim), how="semi")
+            for path in paths
+        ]
+        if not reached:
+            return om.filter(lit(False))  # noqa: FBT003
+        return reduce(DuckDBPyRelation.union, reached)
+
+    def _flag_rows(
+        self, rel: DuckDBPyRelation, dims: tuple[str, ...]
+    ) -> list[tuple[Any, ...]]:
+        """`rel`'s flag columns, aggregated per attribute."""
         flag = {
             c: struct_of(
                 {d: fn.bool_or(struct_field(rel, c, d, lit(False))) for d in dims}

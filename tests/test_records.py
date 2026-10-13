@@ -117,15 +117,20 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
     class DictRecord:
         schema: Schema
         dims: Frames
+        properties: Frames
         groups: dict[str, Frames]
         attributes: Frames
         outputs: Frames
 
-        def flags(self) -> dict[str, Flags]:
+        def members(self, dim: str, **categories: object) -> nw.LazyFrame:
+            return self.properties[dim]
+
+        def flags(self, **categories: object) -> dict[str, Flags]:
             return {}
 
     record = DictRecord(
         schema(),
+        {"entity": entity_axis.select("entity")},
         {"entity": entity_axis},
         {},
         {"p_nom": long},
@@ -413,7 +418,7 @@ def test_node_record_orders_members(store, ac_dc):
     child = empty_child(root)
     write_entity_type(store.layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
-    axis = Record(child.resolver).dims["entity"].collect().to_native().to_pandas()
+    axis = Record(child.resolver).properties["entity"].collect().to_native().to_pandas()
     names = list(axis[axis["entity_type"] == "Generator"]["entity"])
     # First-introduced order: the root's members, then the child's addition.
     assert names == [*ac_dc.c["Generator"].static.index, "New Solar"]
@@ -513,6 +518,8 @@ def test_write_record_omits_outputs_for_an_unsolved_source(store, ac_dc):
 
         schema = solved.schema
         dims = solved.dims
+        properties = solved.properties
+        members = solved.members
         groups = solved.groups
         attributes = solved.attributes
         outputs = EMPTY

@@ -18,10 +18,19 @@ import pytest
 
 from datarecord import Workspace
 from datarecord.layered.resolve import read_schema
+from datarecord.mutable import WorkingRecord
 from datarecord.record import EMPTY, LazyFrames, RecordLike
-from datarecord.schema import AttributeSpec, Dimension, Schema
+from datarecord.schema import AttributeSpec, Dimension, PropertySpec, Schema
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import empty_child, export_network, relation, schema, unpacked
+from tests.fixtures import (
+    empty_child,
+    empty_root,
+    export_network,
+    relation,
+    schema,
+    unpacked,
+    write_schema,
+)
 
 
 class _Source:
@@ -34,6 +43,7 @@ class _Source:
         connections=None,
         outputs=None,
         dims=None,
+        properties=None,
     ):
         self._schema = schema
         self.built: list[str] = []
@@ -41,6 +51,7 @@ class _Source:
         self._connections = connections or {}
         self._outputs = outputs or {}
         self._dims = dims or {}
+        self._properties = properties or {}
 
     @property
     def schema(self):
@@ -58,6 +69,13 @@ class _Source:
         return self._frames(self._dims, "dims") if self._dims else EMPTY
 
     @property
+    def properties(self):
+        return self._frames(self._properties, "properties")
+
+    def members(self, dim, **categories):
+        raise NotImplementedError
+
+    @property
     def groups(self):
         """Keyed by group, one frame each."""
         return self._frames(self._connections, "groups")
@@ -70,7 +88,7 @@ class _Source:
     def outputs(self):
         return self._frames(self._outputs, "outputs")
 
-    def flags(self):
+    def flags(self, **categories):
         return {}
 
 
@@ -132,7 +150,8 @@ def test_a_write_builds_each_key_once(store):
     source = _Source(
         _SCHEMA,
         attributes={"p_nom": _long(), "e_nom": _long(attribute="e_nom")},
-        dims={
+        dims={"entity": pd.DataFrame({"entity": ["steel_dri"]})},
+        properties={
             "entity": pd.DataFrame(
                 {"entity": ["steel_dri"], "entity_type": ["Process"]}
             )
@@ -144,6 +163,7 @@ def test_a_write_builds_each_key_once(store):
         "attributes:e_nom",
         "attributes:p_nom",
         "dims:entity",
+        "properties:entity",
     ]
 
 
@@ -203,15 +223,21 @@ def test_no_layer_file_carries_order_key(store, ac_dc, tmp_path):
         assert "order_key" not in columns, f"{path.relative_to(out)} carries order_key"
 
 
-def test_the_discriminator_is_a_column_of_its_axis_file(store):
-    """A label is a property column of `dims/entity.parquet`.
+def test_a_category_is_a_column_of_its_axis_file(store):
+    """A category is a property column of `dims/entity.parquet`.
 
     Notes
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     entities = pd.DataFrame({"entity": ["a", "b"], "entity_type": ["Process", "Bus"]})
-    revision = store.root(_Source(_SCHEMA, dims={"entity": entities}))
+    revision = store.root(
+        _Source(
+            _SCHEMA,
+            dims={"entity": entities[["entity"]]},
+            properties={"entity": entities},
+        )
+    )
     layer = Path(store.layer_dir(revision.id))
 
     assert not (layer / "dims" / "entity_type").exists(), "no per-label file"
@@ -223,10 +249,16 @@ def test_the_discriminator_is_a_column_of_its_axis_file(store):
     }
 
 
-def test_a_write_rejects_a_label_the_discriminator_does_not_declare(store):
+def test_a_write_rejects_a_category_the_enum_does_not_declare(store):
     entities = pd.DataFrame({"entity": ["a"], "entity_type": ["Nope"]})
     with pytest.raises(Exception, match="Nope"):
-        store.root(_Source(_SCHEMA, dims={"entity": entities}))
+        store.root(
+            _Source(
+                _SCHEMA,
+                dims={"entity": entities[["entity"]]},
+                properties={"entity": entities},
+            )
+        )
     _nothing_reachable(store)
 
 
@@ -570,32 +602,133 @@ def test_a_write_rejects_an_undeclared_axis_column(store):
         dims={"scenario": pd.DataFrame({"scenario": ["high"], "nonsense": [1.0]})},
     )
 
-    with pytest.raises(ValueError, match="does not declare for the 'scenario' axis"):
+    with pytest.raises(
+        ValueError, match="does not declare as properties of 'scenario'"
+    ):
         store.root(source)
     _nothing_reachable(store)
 
 
-def test_an_axis_carries_the_attributes_addressed_by_it_alone(store):
-    """`weight` over `scenario` alone is a column of that axis's file.
-
-    Declared, so it round-trips with a dtype - which is what distinguishes it
-    from the undeclared column above.
+def test_an_attribute_column_in_a_dims_frame_is_refused(store):
+    """`weight` over `scenario` alone is an attribute, so long rows, never an axis column.
 
     Notes
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    declared = schema()
-    assert "weight" in declared.attributes_on("scenario")
-
     source = _Source(
-        declared,
+        schema(),
         dims={"scenario": pd.DataFrame({"scenario": ["high"], "weight": [0.4]})},
     )
-    revision = store.root(source)
 
-    axis = revision.resolver.dims.axes["scenario"].df()
-    assert dict(zip(axis["scenario"], axis["weight"])) == {"high": 0.4}
+    with pytest.raises(ValueError, match="they are attributes, whose values are long"):
+        store.root(source)
+    _nothing_reachable(store)
+
+
+def _plant(p_nom: frozenset[str], *, categorized: bool = False) -> Schema:
+    """Entities and scenarios, `p_nom` over `p_nom`, `entity_type` if `categorized`."""
+    return Schema(
+        dimensions={
+            "entity": Dimension(dtype=nw.String()),
+            "scenario": Dimension(dtype=nw.String()),
+        },
+        properties=(
+            {"entity": {"entity_type": PropertySpec(dtype=nw.Enum(["Gen", "Load"]))}}
+            if categorized
+            else {}
+        ),
+        attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims=p_nom)},
+        partial=frozenset({"entity", "scenario"}),
+    )
+
+
+def _plant_layer(store, schema: Schema, **columns):
+    """A root holding entities `g1` and `g2` with their `p_nom`, under `schema`."""
+    write_schema(schema, store)
+    root = empty_root(store)
+    staged = WorkingRecord(root.record)
+    staged.add("entity", ["g1", "g2"], **columns)
+    staged.set("p_nom", {"g1": 1.0, "g2": 2.0})
+    return root.child(staged.edits)
+
+
+def test_a_single_dim_attribute_is_long_rows_of_inputs(store):
+    """`p_nom` over `entity` alone is one `inputs/` row per label, not an axis column.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    layer = _plant_layer(store, _plant(frozenset({"entity"})))
+
+    assert "p_nom" in layer.record.attributes
+    on_disk = pd.read_parquet(
+        Path(store.layer_dir(layer.id), "inputs", "p_nom.parquet")
+    )
+    assert list(on_disk.columns) == ["entity", "attribute", "breakpoint", "value"]
+    assert dict(zip(on_disk["entity"], on_disk["value"])) == {"g1": 1.0, "g2": 2.0}, (
+        "one row per label"
+    )
+    axis = pd.read_parquet(Path(store.layer_dir(layer.id), "dims", "entity.parquet"))
+    assert "p_nom" not in axis.columns
+
+
+def test_widening_a_single_dim_attribute_reads_old_rows_in_every_scenario(store):
+    """An old row has no `scenario` column, read NULL, so it broadcasts.
+
+    Notes
+    -----
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    """
+    narrow = _plant(frozenset({"entity"}))
+    layer = _plant_layer(store, narrow)
+
+    wide = _plant(frozenset({"entity", "scenario"}))
+    assert wide.compatible_with(narrow) == []
+    write_schema(wide, store)
+    staged = WorkingRecord(store.revision(layer.id).record)
+    staged.add("scenario", ["low", "high"])
+    child = store.revision(layer.id).child(staged.edits)
+
+    rows = child.record.attributes["p_nom"].collect().to_pandas()
+    got = dict(zip(zip(rows["entity"], rows["scenario"]), rows["value"]))
+    assert got == {
+        ("g1", "low"): 1.0,
+        ("g1", "high"): 1.0,
+        ("g2", "low"): 2.0,
+        ("g2", "high"): 2.0,
+    }, "the old layer's value in every scenario"
+
+
+def test_categories_add_one_column_to_the_entity_axis_and_nothing_else(tmp_path):
+    """Same files with and without a categorizing property; `dims/entity.parquet` differs by it.
+
+    Notes
+    -----
+    - [one file per subject on disk](https://energy-models.github.io/datarecord/design/proposals/properties/#one-file-per-subject-on-disk)
+    """
+    layouts = {}
+    for categorized in (False, True):
+        ws = Workspace()
+        try:
+            store = ws.store(str(tmp_path / str(categorized)))
+            columns = {"entity_type": "Gen"} if categorized else {}
+            layer = _plant_layer(
+                store, _plant(frozenset({"entity"}), categorized=categorized), **columns
+            )
+        finally:
+            ws.close()
+        base = Path(store.layer_dir(layer.id))
+        files = sorted(str(f.relative_to(base)) for f in base.rglob("*.parquet"))
+        axis = list(pd.read_parquet(base / "dims" / "entity.parquet").columns)
+        layouts[categorized] = (files, axis)
+
+    (plain_files, plain_axis), (typed_files, typed_axis) = layouts[False], layouts[True]
+    assert plain_files == typed_files, "the same files"
+    assert not any(f.startswith("dims/entity_type") for f in typed_files)
+    assert set(typed_axis) - set(plain_axis) == {"entity_type"}
+    assert set(plain_axis) <= set(typed_axis), "differing by exactly one column"
 
 
 _AWKWARD = Schema(
@@ -608,8 +741,8 @@ _AWKWARD = Schema(
         "Order Size": AttributeSpec(
             dtype=nw.Float64(), dims={"entity", "select", "Horizon"}
         ),
-        "Group": AttributeSpec(dtype=nw.Float64(), dims={"select"}),
     },
+    properties={"select": {"Group": PropertySpec(dtype=nw.Float64())}},
     partial={"select", "Horizon"},
 )
 
@@ -633,8 +766,11 @@ def _awkward(values: dict[tuple[str, str], float]) -> _Source:
         attributes={"Order Size": long},
         dims={
             "entity": pd.DataFrame({"entity": ["plant"]}),
-            "select": pd.DataFrame({"select": ["a", "b"], "Group": [1.0, 2.0]}),
+            "select": pd.DataFrame({"select": ["a", "b"]}),
             "Horizon": pd.DataFrame({"Horizon": ["near", "far"]}),
+        },
+        properties={
+            "select": pd.DataFrame({"select": ["a", "b"], "Group": [1.0, 2.0]})
         },
     )
 
@@ -682,8 +818,8 @@ def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
     assert "entity" in source.dims
     assert "connection" in source.groups
     assert "p_max_pu" in source.attributes
-    # Non-varying attributes belong to `dims/entity.parquet`, not `inputs/` (https://energy-models.github.io/datarecord/design/record/).
-    assert "v_nom" not in source.attributes
+    assert "v_nom" in source.attributes, "a static attribute is long rows too"
+    assert "carrier" not in source.attributes, "a property is no attribute"
     # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/design/record/#connections).
     assert "efficiency" in source.attributes
     assert "efficiency2" not in source.attributes

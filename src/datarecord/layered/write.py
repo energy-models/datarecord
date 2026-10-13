@@ -27,9 +27,10 @@ import narwhals as nw
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
+from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import as_relation, fn
+from datarecord.duck import as_relation, fn, null_safe
 from datarecord.files import Absent, PreconditionFailedError, Version
 from datarecord.layered.resolve import cast_declared, resolve_coords
 from datarecord.layered.sources import DirectorySource
@@ -260,7 +261,8 @@ def _require_living_tuples(
     still naming a label it tombstones - so a tuple an ancestor left dangling
     fails no later write. Only a field over a dim keyed by its label alone is
     checked: a nested dim's label names no point without its parents, which a
-    tuple does not carry.
+    tuple does not carry. A layer adding no tuple and killing no such label
+    resolves nothing.
 
     Raises
     ------
@@ -271,17 +273,32 @@ def _require_living_tuples(
     -----
     - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
     """
-    coords = resolve_coords(schema, [*parents, layer], con)
-    killed = {
-        d: rel.filter(col("deleted"))
-        for d in layer.axes()
-        if (rel := layer.axis(d)) is not None and "deleted" in rel.columns
+    drawn = {
+        d
+        for g in schema.group_columns
+        for d in schema.groups[g].over.values()
+        if len(schema.axis_key(d)) == 1
     }
+    killed = {
+        d: tomb
+        for d in layer.axes()
+        if d in drawn
+        and (rel := layer.axis(d)) is not None
+        and "deleted" in rel.columns
+        and (tomb := rel.filter(col("deleted"))).limit(1).fetchone() is not None
+    }
+    added_by_group = {
+        g: rel
+        for g in schema.group_columns
+        if (rel := _living(layer.group(g))) is not None
+        and rel.limit(1).fetchone() is not None
+    }
+    if not killed and not added_by_group:
+        return
+    coords = resolve_coords(schema, [*parents, layer], con)
     problems = []
     for g in schema.group_columns:
-        added = layer.group(g)
-        if added is not None and "deleted" in added.columns:
-            added = added.filter(~coalesce(col("deleted"), lit(False)))  # noqa: FBT003
+        added = added_by_group.get(g)
         for field, dim in schema.groups[g].over.items():
             dead = coords.dead.get(dim)
             if dead is None or len(schema.axis_key(dim)) > 1:
@@ -312,6 +329,13 @@ def _require_living_tuples(
             f"it, so tombstone them in the same layer (https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)"
         )
         raise ValueError(msg)
+
+
+def _living(rel: DuckDBPyRelation | None) -> DuckDBPyRelation | None:
+    """`rel`'s rows that are no tombstone."""
+    if rel is None or "deleted" not in rel.columns:
+        return rel
+    return rel.filter(~coalesce(col("deleted"), lit(False)))  # noqa: FBT003
 
 
 def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) -> None:
@@ -411,30 +435,13 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
                 f"its labels identify a point only within them (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)"
             )
             raise ValueError(msg)
-        # An attribute addressed by this axis alone, or a property of it, is a
-        # column here, and not required: a record may declare one before any
-        # layer sets it, which resolves to its `default` (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-        #
-        # A column no declaration accounts for is rejected, as a long frame's
-        # extras are: one riding along uninvited would be read back as data
-        # nothing knows the dtype or meaning of.
-        known = (
-            set(schema.axis_key(key))
-            | set(schema.attributes_on(key))
-            # The structural columns an axis file may carry: a tombstone, and an
-            # explicit order key. Not every name in `STRUCTURAL_TYPES` - most of
-            # those are a long row's, and `attribute` or `breakpoint` here would
-            # be a long frame written to the wrong place.
-            | {"deleted", "order_key"}
+        _refuse_extra(
+            columns,
+            {*schema.axis_key(key), "deleted", "order_key"},
+            schema,
+            key,
+            f"dims/{key}.parquet",
         )
-        extra = sorted(columns - known)
-        if extra:
-            msg = (
-                f"dims/{key}.parquet carries columns {extra} the schema does not "
-                f"declare for the {key!r} axis; an axis file holds its key, its "
-                f"properties and the attributes addressed by it alone (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
-            )
-            raise ValueError(msg)
         return
 
     if kind != "groups" or key not in schema.groups:
@@ -448,9 +455,46 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             f"it (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
         )
         raise ValueError(msg)
+    _refuse_extra(
+        columns,
+        {key, *([into] if into else []), "deleted", "order_key"},
+        schema,
+        key,
+        f"groups/{key}.parquet",
+    )
     schema.check_group_columns(
         [key], nw.from_native(rel), carrier=f"groups/{key}.parquet"
     )
+
+
+def _refuse_extra(
+    columns: set[str], structural: set[str], schema: Schema, subject: str, file: str
+) -> None:
+    """Refuse a column of an axis or group file beyond `structural` and `subject`'s properties.
+
+    `structural` is the key, the tombstone and an explicit order key.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    extra = sorted(columns - structural - set(schema.properties.get(subject, {})))
+    if not extra:
+        return
+    attributes = [c for c in extra if c in schema.attributes]
+    named = "they" if attributes == extra else str(attributes)
+    hint = (
+        f"; {named} are attributes, whose values are long rows of "
+        f"inputs/<attr>.parquet whatever their `dims`"
+        if attributes
+        else ""
+    )
+    msg = (
+        f"{file} carries columns {extra} the schema does not declare as "
+        f"properties of {subject!r}; the file holds its key, tombstones and "
+        f"{subject!r}'s properties{hint} (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+    )
+    raise ValueError(msg)
 
 
 class _RecordLikeAsLayerData:
@@ -490,7 +534,36 @@ class _RecordLikeAsLayerData:
         return set(self._source.dims)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        return self._read(self._source.dims, dim)
+        """`dims[dim]` with `properties[dim]` joined on the axis key, in `dims[dim]`'s row order.
+
+        The row is numbered on `dims[dim]` alone, as `fold_axis` numbers a
+        layer's, and the `ORDER BY` on it is the outermost clause, since a
+        join defines no order.
+        """
+        axis = self._read(self._source.dims, dim)
+        if axis is None or dim not in self._source.properties:
+            return axis
+        props = self._read(self._source.properties, dim)
+        if props is None:
+            return axis
+        values = [c for c in props.columns if c not in axis.columns]
+        if not values:
+            return axis
+        joined = (
+            axis.project(star(), sql("row_number() OVER ()").alias("_row"))
+            .set_alias("a")
+            .join(
+                props.set_alias("p"),
+                null_safe("a", "p", self.schema.axis_key(dim)),
+                how="left",
+            )
+            .project(
+                col("a", "_row"),
+                *(col("a", c) for c in axis.columns),
+                *(col("p", c) for c in values),
+            )
+        )
+        return joined.query("j", "SELECT * EXCLUDE (_row) FROM j ORDER BY _row")
 
     def groups(self) -> set[str]:
         return set(self._source.groups)

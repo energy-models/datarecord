@@ -39,6 +39,7 @@ from datarecord.duck import (
     struct_of,
     union_all_by_name,
 )
+from datarecord.layered.categories import matching
 from datarecord.layered.fold import Fold
 from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver
@@ -98,9 +99,8 @@ def _series_index_name(value: Any) -> str | None:
     """A labelled series' index name, where it has one a caller could have meant.
 
     `pd.Series(...).index.name` is the caller already saying what the index
-    holds, so an `indexed_by=` repeating it is noise. A `MultiIndex` has `names`
-    rather than one `name` and is no one-dimensional index, so it answers None
-    and the caller says it explicitly.
+    holds. A `MultiIndex` has `names` rather than one `name` and is no
+    one-dimensional index, so it answers None.
     """
     index = getattr(value, "index", None)
     name = getattr(index, "name", None)
@@ -214,7 +214,7 @@ class StagedSource:
         Which matters for the columns rather than the labels: the fold is
         last-writer-wins per *label*, over the whole row, so a source handing
         over only the column its `set` named would blank every sibling
-        attribute on that label. A `set` on an axis carries the siblings into
+        property on that label. A `set` on an axis carries the siblings into
         the staged row when it patches it (`_patch_axis`), so the table is
         already the row a write of `edits` persists.
 
@@ -503,18 +503,11 @@ class WorkingRecord(Record):
 
     # -- edits (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one, https://energy-models.github.io/datarecord/design/working-record/#add-remove) ----------------------------------------
 
-    def _key_coordinate(
-        self,
-        attribute: str,
-        value: Any,
-        indexed_by: str | None,
-        given: Container[str],
-    ) -> str:
+    def _key_coordinate(self, attribute: str, value: Any, given: Container[str]) -> str:
         """Which coordinate a mapping's keys or a labelled series' index holds.
 
-        The caller says which - `indexed_by="snapshot"`, or the series' own
-        `index.name` where it names a coordinate of this attribute - and failing
-        both it is the one coordinate no keyword names. Never read off the
+        The series' own `index.name` where it names a coordinate of this
+        attribute, else the one coordinate no keyword names. Never read off the
         labels: one dim's label may be a string just like another's, so a
         membership test would make one call mean different things in two
         records.
@@ -525,21 +518,15 @@ class WorkingRecord(Record):
         Raises
         ------
         ValueError
-            Where `indexed_by` is no coordinate of `attribute` or is also a
-            keyword, or nothing says which of several open coordinates is meant.
+            Where the index names a coordinate also given as a keyword, or
+            nothing says which of several open coordinates is meant.
 
         Notes
         -----
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         coordinates = _flat_coordinates(self.schema, attribute)
-        named = indexed_by if indexed_by is not None else _series_index_name(value)
-        if indexed_by is not None and indexed_by not in coordinates:
-            msg = (
-                f"`indexed_by={indexed_by!r}` is no coordinate of {attribute!r}, "
-                f"which is addressed by {list(coordinates)}"
-            )
-            raise ValueError(msg)
+        named = _series_index_name(value)
         if named in coordinates:
             if named in given:
                 msg = (
@@ -552,7 +539,8 @@ class WorkingRecord(Record):
         if len(open_) != 1:
             msg = (
                 f"`set({attribute!r}, ...)` keys its values by one of {open_}; "
-                f"say which with `indexed_by=`, or name the others as keywords"
+                f"say which by naming the series' index, or name the others as "
+                f"keywords"
             )
             raise ValueError(msg)
         return open_[0]
@@ -562,43 +550,20 @@ class WorkingRecord(Record):
         dim = _flat_coordinates(self.schema, attribute).get(coordinate, coordinate)
         return self._column_type(dim)
 
-    def _axis_of(self, attribute: str) -> str | None:
-        """The dim whose axis file carries `attribute`, or `None`.
-
-        A declared attribute addressed by one dim alone is a column of that
-        dim's axis file rather than a long row, so an edit to it stages an axis
-        row. `attributes_on` is the rule. An undeclared attribute is never one -
-        only a result is undeclared, and a result is always long.
-
-        Notes
-        -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        """
-        spec = self.schema.attributes.get(attribute)
-        if spec is None or spec.varying:
-            return None
-        (dim,) = spec.dims
-        return dim if attribute in self.schema.attributes_on(dim) else None
-
-    def _stage_axis(
-        self,
-        dim: str,
-        attribute: str,
-        value: Any,
-        coords: Mapping[str, Any],
-    ) -> None:
-        """Stage one axis-file attribute, keyed by the axis's own labels.
+    def _axis_values(
+        self, dim: str, name: str, value: Any, coords: Mapping[str, Any]
+    ) -> Any:
+        """One property's edit, as a mapping from label to value or a bare scalar.
 
         `value` is a mapping or labelled series from label to value, a scalar or
         sequence over the labels a `dim=` keyword names, or a scalar for every
-        label the axis currently has. A label no layer has written yet becomes a
-        row of this layer's axis file - the fold keys per label, so introducing
-        one displaces nothing.
+        label the axis currently has - which stays a scalar.
 
-        One *complete* row per label: this edit's column over the label's
-        current row - the one already staged where there is one, else the base's
-        - so a second `set` on the same axis replaces the row rather than adding
-        beside it and losing the first's column.
+        Raises
+        ------
+        ValueError
+            On a keyword other than `dim`, a sequence with no labels to align
+            to, or a nested `dim`.
 
         Notes
         -----
@@ -608,9 +573,9 @@ class WorkingRecord(Record):
         unknown = sorted(set(coords) - {dim})
         if unknown:
             msg = (
-                f"`set({attribute!r}, ...)` names {unknown}, but {attribute!r} is "
-                f"addressed by {dim!r} alone - it is a column of "
-                f"dims/{dim}.parquet, keyed by nothing else"
+                f"`set({name!r}, ...)` names {unknown}, but {name!r} is a "
+                f"property of {dim!r} - a column of dims/{dim}.parquet, keyed "
+                f"by nothing else"
             )
             raise ValueError(msg)
         if not isinstance(value, Mapping) and (
@@ -626,48 +591,61 @@ class WorkingRecord(Record):
             value = dict(zip(keys, values, strict=True))
         elif _is_frame(value) or _is_labels(value):
             msg = (
-                f"`set({attribute!r}, <sequence>)` has no labels to align to; "
-                f"{attribute!r} is addressed by {dim!r} alone, so pass a mapping "
-                f"from {dim!r} label to value, or a scalar for every label"
+                f"`set({name!r}, <sequence>)` has no labels to align to; "
+                f"{name!r} is a property of {dim!r}, so pass a mapping from "
+                f"{dim!r} label to value, or a scalar for every label"
             )
             raise ValueError(msg)
         if len(self.schema.axis_key(dim)) > 1:
             msg = (
-                f"{attribute!r} is addressed by {dim!r}, which is `within` "
+                f"{name!r} is a property of {dim!r}, which is `within` "
                 f"{sorted(self.schema.dimensions[dim].within)}; a nested axis's "
                 f"labels identify a point only within its parents, which a "
                 f"mapping from label alone cannot name"
             )
             raise ValueError(msg)
+        return value
 
-        table = self._ensure(f"{_AXIS_PREFIX}{dim}", None)
-        if isinstance(value, Mapping):
+    def _stage_axis(self, dim: str, name: str, value: Any) -> None:
+        """Stage property `name` of `dim`, `value` as `_axis_values` returns it.
+
+        A scalar reaches every label of the axis as staged, one added in this
+        record included.
+
+        Notes
+        -----
+        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        """
+        if not isinstance(value, Mapping):
+            value = dict.fromkeys(self._labels_matching(dim, {}), value)
             if not value:
-                return
-            edit = self._values_relation(
-                {dim: list(value), attribute: list(value.values())},
-                {
-                    dim: self._column_type(dim),
-                    attribute: self.schema.value_type(attribute),
-                },
-            )
-        else:
-            base_axis = self._base.dims.axes.get(dim)
-            if base_axis is None:
                 msg = (
-                    f"`set({attribute!r}, <scalar>)` reaches every label the "
-                    f"{dim!r} axis has, and it has none; name the labels as a "
-                    f"mapping, or write the axis file first"
+                    f"`set({name!r}, <scalar>)` reaches every label the "
+                    f"{dim!r} axis has, and it has none; `add` labels first"
                 )
                 raise ValueError(msg)
-            edit = base_axis.project(col(dim), lit(value).alias(attribute))
-
-        self._patch_axis(dim, attribute, table, edit)
+        if not value:
+            return
+        table = self._ensure(f"{_AXIS_PREFIX}{dim}", None)
+        edit = self._values_relation(
+            {dim: list(value), name: list(value.values())},
+            {dim: self._column_type(dim), name: self.schema.column_type(name)},
+        )
+        self._patch_axis(dim, name, table, edit, self._base.dims.axes.get(dim))
 
     def _patch_axis(
-        self, dim: str, attribute: str, table: str, edit: DuckDBPyRelation
+        self,
+        key: str,
+        attribute: str,
+        table: str,
+        edit: DuckDBPyRelation,
+        base: DuckDBPyRelation | None,
     ) -> None:
-        """Set `attribute` on each label `edit` names, in place.
+        """Set property `attribute` on each label or tuple `edit` names, in place.
+
+        `key` is the one column a row is keyed by: a dim, or a group's struct
+        column. `base` is the base's resolved axis or group.
 
         An axis row's columns are independently editable, so this patches the one
         column rather than replacing the row - a sibling a `set` did not name is
@@ -694,27 +672,26 @@ class WorkingRecord(Record):
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         staged = self.con.table(table)
-        base = self._base.dims.axes.get(dim)
         # Raw SQL because `UPDATE ... FROM` is a join-update, which the relational
         # `update` cannot express (https://duckdb.org/docs/stable/clients/python/relational_api).
         self.con.execute(
             f"UPDATE {table} AS t SET {col(attribute)} = {col('e', attribute)} "
             f"FROM edit e "
-            f"WHERE {col('t', dim)} IS NOT DISTINCT FROM {col('e', dim)}"
+            f"WHERE {col('t', key)} IS NOT DISTINCT FROM {col('e', key)}"
         )
         fresh = edit.set_alias("e").join(
-            staged.set_alias("s"), null_safe("e", "s", [dim]), how="anti"
+            staged.set_alias("s"), null_safe("e", "s", [key]), how="anti"
         )
         if base is None:
-            rows = fresh.set_alias("e").select(col(dim), col(attribute))
+            rows = fresh.set_alias("e").select(col(key), col(attribute))
         else:
             # A left join, since a fresh label the base also lacks has no row.
-            siblings = [c for c in base.columns if c not in (dim, attribute)]
+            siblings = [c for c in base.columns if c not in (key, attribute)]
             rows = (
                 fresh.set_alias("e")
-                .join(base.set_alias("b"), null_safe("e", "b", [dim]), how="left")
+                .join(base.set_alias("b"), null_safe("e", "b", [key]), how="left")
                 .select(
-                    col("e", dim), col("e", attribute), *(col("b", c) for c in siblings)
+                    col("e", key), col("e", attribute), *(col("b", c) for c in siblings)
                 )
             )
         self._insert(rows, table, {})
@@ -794,22 +771,19 @@ class WorkingRecord(Record):
                 self._require_labels(attribute, coordinates[c], labels)
 
     def _require_labels(self, attribute: str, dim: str, labels: Sequence[Any]) -> None:
-        """Reject labels of a `partial` dim the record does not resolve, or whose kind lacks `attribute`.
+        """Reject labels of a `partial` dim the record does not resolve, or whose categories lack `attribute`.
 
         Only a `partial` dim keyed by itself alone, and with an axis some layer
         wrote: its label is what the fold keys a row by, so a value for one no
         layer declares would resolve to nothing - caught here rather than
-        dropped at read time. A dim with no axis has no vocabulary to check. Where `dim`
-        carries the discriminator and is drawn on by one coordinate of
-        `attribute` alone, each label's kind must also carry `attribute`
-        (`Schema.attributes_for`); a label of no kind passes. Two coordinates
-        on one dim - a contract's `from` and `to` - name no one owner whose kind
-        decides.
+        dropped at read time. Its categories are checked only where one
+        coordinate of `attribute` alone is over `dim`; a label of no category
+        passes.
 
         Raises
         ------
         KeyError
-            Naming the unknown labels, or the labels whose kind does not carry
+            Naming the unknown labels, or the labels whose categories do not carry
             `attribute`.
 
         Notes
@@ -821,41 +795,22 @@ class WorkingRecord(Record):
             dim,
         ):
             return
-        wanted = list(dict.fromkeys(str(n) for n in labels if n is not None))
         axis = self.resolver.axis(dim)
-        if not wanted or axis is None:
+        if axis is None:
             return
-        discriminator = self.schema.discriminators.get(dim)
         drawing = [
             c for c, d in _flat_coordinates(self.schema, attribute).items() if d == dim
         ]
-        kind = (
-            discriminator
-            if discriminator is not None
-            and len(drawing) == 1
-            and discriminator in axis.columns
-            else None
+        keys = (
+            [k for k in self.schema.categorizing(dim) if k in axis.columns]
+            if len(drawing) == 1
+            else []
         )
-        rows = (
-            nw.from_native(axis)
-            .lazy()
-            .filter(nw.col(dim).cast(nw.String()).is_in(wanted))
-            .select(dim, *([kind] if kind else []))
-            .collect()
-        )
-        found = {str(row[0]): row[1] if kind else None for row in rows.iter_rows()}
-        unknown = sorted(n for n in wanted if n not in found)
-        if unknown:
-            msg = (
-                f"no {dim!r} label {unknown}; `add` them first - a value for a "
-                f"label no layer declares would resolve to nothing"
-            )
-            raise KeyError(msg)
+        found = self._require_existing(dim, labels, keys)
         refused = sorted(
-            f"{n!r} is a {k}"
-            for n, k in found.items()
-            if k is not None
-            and attribute not in self.schema.attributes_for(dim, str(k))
+            f"{n!r} is {' and '.join(f'{k} {v!r}' for k, v in c.items())}"
+            for n, c in found.items()
+            if c and attribute not in self.schema.attributes_for(dim, **c)
         )
         if refused:
             msg = f"{attribute!r} is not carried where {', '.join(refused)}"
@@ -867,7 +822,6 @@ class WorkingRecord(Record):
         value: Any,
         *,
         kind: Literal["inputs", "outputs"] = "inputs",
-        indexed_by: str | None = None,
         **coords: Any,
     ) -> None:
         """Stage values of one attribute.
@@ -883,17 +837,24 @@ class WorkingRecord(Record):
         - a scalar, staged at every combination of the listed labels;
         - a sequence, aligned positionally to the one list keyword;
         - a mapping or a one-dimensional labelled series, keyed by labels of
-          `indexed_by` - by default the series' `index.name` where that names a
-          coordinate, else the one coordinate no keyword names;
+          the series' `index.name` where that names a coordinate, else of the
+          one coordinate no keyword names;
         - a long frame supplying its own keys, which keywords may complete with
           single labels;
         - a narwhals expression, a *function of the current value*: it reads the
           rows the keywords select before it stages, so two such calls compose.
 
-        An attribute addressed by one dim alone is a column of that dim's axis
-        file, so its edit patches axis rows: a mapping or series from label to
-        value, a `dim=` keyword naming the labels, or a scalar for every label
-        the axis has.
+        An attribute's values are long rows, whatever its `dims`. A property -
+        a category included - patches one column of existing axis rows: a
+        mapping or series from label to value, a `dim=` keyword naming the
+        labels, or a scalar for every label the axis has. A group's property
+        takes a scalar, its fields as keywords selecting the tuples, none
+        selecting every tuple.
+
+        A property keyword - `entity_type="Generator"`, or a list of values -
+        selects the labels of its dim matching it on the record as staged, the
+        keywords combining as an intersection; `set` writes one row per label,
+        and stores nothing of the filter, so a label added later is not reached.
 
         `kind="outputs"` stages into `outputs/` instead of `inputs/`, which is
         how a tool hands results back. Results use the same long schema; they do
@@ -904,12 +865,14 @@ class WorkingRecord(Record):
         ------
         KeyError
             On an undeclared attribute, result or keyword, a `partial` dim's
-            label the record does not resolve, or a label whose discriminator
-            kind does not carry `attribute`.
+            label the record does not resolve, a property's label no layer
+            wrote, or a label whose categories do not carry `attribute`.
         ValueError
             On a keyword the attribute does not vary over, a sequence with no
-            single list keyword to align to, or keys whose coordinate is
-            ambiguous.
+            single list keyword to align to, keys whose coordinate is
+            ambiguous, a value an `Enum` property does not list, or a property
+            keyword whose dim the attribute does not reach through exactly one
+            coordinate, or that is given beside that coordinate's own keyword.
 
         Notes
         -----
@@ -920,13 +883,14 @@ class WorkingRecord(Record):
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         keyed = isinstance(value, Mapping) or _series_index(value) is not None
-        if indexed_by is not None and not keyed:
-            msg = (
-                f"`set({attribute!r}, ..., indexed_by={indexed_by!r})` says what "
-                f"a mapping's keys or a series' index hold, but the value is "
-                f"neither"
-            )
-            raise ValueError(msg)
+        subject = self.schema.subject_of(attribute)
+        if subject in self.schema.groups:
+            self._set_group_property(subject, attribute, value, coords)
+            return
+        coords = self._select(attribute, coords)
+        if subject is not None:
+            self._set_property(subject, attribute, value, coords)
+            return
         listed = {c: list(v) for c, v in coords.items() if _is_labels(v)}
 
         if _is_frame(value) and not keyed:
@@ -950,16 +914,6 @@ class WorkingRecord(Record):
             return
 
         if kind == "inputs":
-            axis = self._axis_of(attribute)
-            if axis is not None and not isinstance(value, nw.Expr):
-                if indexed_by not in (None, axis):
-                    msg = (
-                        f"`indexed_by={indexed_by!r}` is no coordinate of "
-                        f"{attribute!r}, which is addressed by {axis!r} alone"
-                    )
-                    raise ValueError(msg)
-                self._stage_axis(axis, attribute, value, coords)
-                return
             self._validate_input(attribute, coords)
         else:
             self._validate_result(attribute, coords)
@@ -969,7 +923,7 @@ class WorkingRecord(Record):
             return
 
         if keyed:
-            key = self._key_coordinate(attribute, value, indexed_by, coords)
+            key = self._key_coordinate(attribute, value, coords)
             keys, values = normalise_value(value)
             if kind == "inputs":
                 self._require_labels(
@@ -1009,6 +963,177 @@ class WorkingRecord(Record):
         self._insert_long(
             rel, self._ensure(kind, attribute), attribute, set(rel.columns), fixed
         )
+
+    def _set_property(
+        self, dim: str, name: str, value: Any, coords: Mapping[str, Any]
+    ) -> None:
+        """Stage property `name` of `dim`: a patch of one column of each label's row.
+
+        Raises
+        ------
+        KeyError
+            On a label the record does not resolve.
+        ValueError
+            On a value an `Enum` property does not list, and as `_axis_values`
+            does.
+        """
+        values = self._axis_values(dim, name, value, coords)
+        keyed = isinstance(values, Mapping)
+        self.schema.require_listed(
+            dim,
+            {name: list(values.values()) if keyed else [values]},
+            f"`set({name!r}, ...)`",
+        )
+        if keyed:
+            self._require_existing(dim, list(values))
+        self._stage_axis(dim, name, values)
+
+    def _set_group_property(
+        self, group: str, name: str, value: Any, coords: Mapping[str, Any]
+    ) -> None:
+        """Stage scalar property `name` of `group` on the tuples its field keywords select, all if none.
+
+        Raises
+        ------
+        KeyError
+            Where keywords are given and select no tuple.
+        ValueError
+            On a keyword naming no field of `group`, a value that is not a
+            scalar, or one an `Enum` property does not list.
+        """
+        call = f"set({name!r}, ...)"
+        key = self.schema.group_key(group)
+        unknown = sorted(set(coords) - set(key))
+        if unknown:
+            msg = (
+                f"`{call}` names {unknown}, but {name!r} is a property of the "
+                f"group {group!r}, whose tuples its fields {list(key)} select"
+            )
+            raise ValueError(msg)
+        # Not left to the cast: DuckDB would store a dict or list as its text.
+        if isinstance(value, Mapping) or _is_labels(value) or _is_frame(value):
+            msg = (
+                f"`{call}` takes one value for the tuples its keywords select, "
+                f"{name!r} being a property of the group {group!r}"
+            )
+            raise ValueError(msg)
+        self.schema.require_listed(group, {name: [value]}, f"`{call}`")
+        tuples = self.resolver.dims.groups.get(group)
+        if tuples is None:
+            msg = f"`{call}` finds no tuple of {group!r}; `add_group` them first"
+            raise KeyError(msg)
+        selected = nw.from_native(tuples).lazy()
+        for field, given in coords.items():
+            labels = list(given) if _is_labels(given) else [given]
+            selected = selected.filter(nw.col(group).struct.field(field).is_in(labels))
+        rel = cast("DuckDBPyRelation", selected.select(group).to_native())
+        if coords and rel.limit(1).fetchone() is None:
+            scope = ", ".join(f"{c}={v!r}" for c, v in coords.items())
+            msg = f"`{call}` selects no tuple of {group!r} at {scope}"
+            raise KeyError(msg)
+        duck_types = DuckTypes(rel)
+        dtype = self.schema.column_type(name) or nw.String()
+        edit = rel.project(col(group), duck_types.lit(value, dtype).alias(name))
+        self._patch_axis(
+            group, name, self._ensure(group), edit, self._base.dims.groups.get(group)
+        )
+
+    def _require_existing(
+        self, dim: str, labels: Sequence[Any], keys: Sequence[str] = ()
+    ) -> dict[str, dict[str, str]]:
+        """Reject labels of `dim` the record as staged does not resolve.
+
+        Returns
+        -------
+        dict of str to dict of str to str
+            Per label, its value of each of `keys` that is not NULL.
+
+        Raises
+        ------
+        KeyError
+            Naming the unknown labels.
+        """
+        wanted = list(dict.fromkeys(str(n) for n in labels if n is not None))
+        axis = self.resolver.axis(dim)
+        rows = (
+            []
+            if axis is None
+            else nw.from_native(axis)
+            .lazy()
+            .filter(nw.col(dim).cast(nw.String()).is_in(wanted))
+            .select(dim, *keys)
+            .collect()
+            .iter_rows()
+        )
+        found = {
+            str(row[0]): {k: str(v) for k, v in zip(keys, row[1:]) if v is not None}
+            for row in rows
+        }
+        unknown = [n for n in wanted if n not in found]
+        if unknown:
+            msg = (
+                f"no {dim!r} label {unknown}; `add` them first - a value for a "
+                f"label no layer declares would resolve to nothing"
+            )
+            raise KeyError(msg)
+        return found
+
+    def _select(self, name: str, coords: Mapping[str, Any]) -> dict[str, Any]:
+        """`coords` with each property keyword replaced by the labels it selects.
+
+        Those of its dim storing one of the keyword's values, as staged, each
+        under the one coordinate of attribute or dim property `name` over the
+        dim.
+
+        Raises
+        ------
+        ValueError
+            Where `name` reaches the dim through no coordinate or several, the
+            coordinate is also given as a keyword, or a value is not one of an
+            `Enum` property's categories.
+
+        Notes
+        -----
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        """
+        call = f"set({name!r}, ...)"
+        by_dim: dict[str, dict[str, list[Any]]] = {}
+        rest: dict[str, Any] = {}
+        for c, given in coords.items():
+            dim = self.schema.subject_of(c)
+            if dim is None:
+                rest[c] = given
+            else:
+                values = list(given) if _is_labels(given) else [given]
+                by_dim.setdefault(dim, {})[c] = values
+        subject = self.schema.subject_of(name)
+        flat = {subject: subject} if subject else _flat_coordinates(self.schema, name)
+        for dim, wanted in by_dim.items():
+            drawing = [c for c, d in flat.items() if d == dim]
+            if len(drawing) != 1:
+                msg = (
+                    f"`{call}` selects by {sorted(wanted)}, properties of "
+                    f"{dim!r}, but {name!r} reaches {dim!r} through "
+                    f"{drawing or 'no coordinate'}, not exactly one"
+                )
+                raise ValueError(msg)
+            (coordinate,) = drawing
+            if coordinate in rest:
+                msg = (
+                    f"`{call}` names {coordinate}= and selects it by "
+                    f"{sorted(wanted)} too; give its labels one way"
+                )
+                raise ValueError(msg)
+            self.schema.require_listed(dim, wanted, f"`{call}`")
+            rest[coordinate] = self._labels_matching(dim, wanted)
+        return rest
+
+    def _labels_matching(self, dim: str, wanted: Mapping[str, list[Any]]) -> list[Any]:
+        """The labels of `dim`, as staged, storing one of `wanted`'s values of each property."""
+        axis = self.resolver.axis(dim)
+        if axis is None:
+            return []
+        return [r[0] for r in matching(axis, wanted).project(col(dim)).fetchall()]
 
     def _validate_frame(
         self, lazy: nw.LazyFrame, attribute: str, coords: Mapping[str, Any]
@@ -1387,25 +1512,26 @@ class WorkingRecord(Record):
     def add(self, dim: str, labels: Sequence[Any], **columns: Any) -> None:
         """Stage labels of `dim`, each as one whole row of its axis file.
 
-        `columns` are that file's other columns - `dim`'s properties, the
-        attributes addressed by `dim` alone, and a nested dim's parent keys -
-        each a scalar for every label or a sequence aligned to `labels`. A column
+        `columns` are that file's other columns - `dim`'s properties and a
+        nested dim's parent keys - each a scalar for every label or a sequence
+        aligned to `labels`. A column
         no keyword names is NULL on these rows: `add` restates a label's row
         whole, replacing any this record staged for it, a `remove`'s tombstone
         included.
 
         Not a sequence of `set` calls: a label exists by virtue of its axis row,
-        so adding one with no columns at all is an edit. A value varying beyond
-        the label goes through `set`, a group's row through `add_group`.
+        so adding one with no columns at all is an edit. An attribute's value,
+        whatever its `dims`, goes through `set`, a group's row through
+        `add_group`.
 
         Raises
         ------
         KeyError
             If the schema declares no `dim`.
         ValueError
-            On a column the axis file has no place for, a nested dim's missing
-            parent key, a sequence of the wrong length, or a discriminator value
-            its `Enum` does not list.
+            On an attribute, a column the axis file has no place for, a nested
+            dim's missing parent key, a sequence of the wrong length, or a
+            value an `Enum` property does not list.
 
         Notes
         -----
@@ -1437,16 +1563,7 @@ class WorkingRecord(Record):
                     f"`{call}` has {len(data[c])} {c!r} values for {len(names)} labels"
                 )
                 raise ValueError(msg)
-        found = self.schema.discriminators.get(dim)
-        if found is not None and found in data:
-            known = self.schema.labels(dim)
-            unknown = sorted({str(v) for v in data[found] if v is not None} - known)
-            if unknown:
-                msg = (
-                    f"`{call}` gives {found!r} values {unknown}, which its Enum "
-                    f"does not list; it declares {sorted(known)}"
-                )
-                raise ValueError(msg)
+        self.schema.require_listed(dim, data, f"`{call}`")
         rel = self._values_relation(data, {c: self._column_type(c) for c in data})
         self._insert(
             rel,
@@ -1530,22 +1647,18 @@ class WorkingRecord(Record):
             self.con.execute(f"DROP TABLE {snapshot}")
 
     def _reject_undeclared(self, call: str, table: str, columns: Sequence[str]) -> None:
-        """Refuse a column the staging table's file has no place for.
+        """Refuse a column the staging table's file has no place for, an attribute's included.
 
         A staging table is shaped from the schema, like the file it becomes, so
-        a column outside that shape has no declared dtype and no reader that
-        knows what it means - the same thing `_validate_frame` refuses of an
-        axis file, at the edit rather than at the write. Widening the table to
-        fit instead would have to guess the dtype from the caller's frame.
-
-        A tool that grows a column changes its schema first, which
-        `_reconcile_schema` accepts as a widening; there is no path here that
-        needs a column the record cannot describe.
+        a column outside that shape has no declared dtype; widening the table
+        would have to guess it. A tool that grows a column changes its schema
+        first.
 
         Raises
         ------
         ValueError
-            Naming the columns and what the file does hold.
+            Naming the columns, what the file does hold, and pointing an
+            attribute at `set`.
 
         Notes
         -----
@@ -1557,10 +1670,19 @@ class WorkingRecord(Record):
         extra = sorted(c for c in columns if c.lower() not in allowed)
         if not extra:
             return
+        attributes = [
+            c for c in extra if c in {*self.schema.attributes, *self.schema.results}
+        ]
+        hint = (
+            f"; attributes {attributes} are long rows whatever their `dims` - "
+            f"stage them with `set` once the row exists"
+            if attributes
+            else ""
+        )
         msg = (
             f"`{call}` was given columns {extra} the schema does not declare "
-            f"there; it holds {sorted(known)}. An attribute's `dims` are what "
-            f"put it in a file, so declare it before writing it (https://energy-models.github.io/datarecord/design/schema/#versioning)"
+            f"there; it holds {sorted(known)}. A column there is a property, so "
+            f"declare it on its subject before writing it (https://energy-models.github.io/datarecord/design/schema/#versioning){hint}"
         )
         raise ValueError(msg)
 
@@ -1568,14 +1690,14 @@ class WorkingRecord(Record):
         """Stage rows of one declared group from a frame keyed by its struct column.
 
         The frame carries the group as one struct column named for it, its
-        `into` label and any attribute over the group as plain columns - the
-        shape of `groups/<group>.parquet`. The one path every group is added
+        `into` label and the group's properties as plain columns - the shape of
+        `groups/<group>.parquet`. The one path every group is added
         through, a record's `connection` group included.
 
         Raises
         ------
         ValueError
-            On a missing group or `into` column, and as
+            On a missing group or `into` column, an attribute column, and as
             `Schema.check_group_columns` does.
 
         Notes
@@ -1851,29 +1973,19 @@ def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
 
 
 def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
-    """One group's staged columns: its struct column, `into`, and the fold's own.
-
-    An attribute over the group is a column of the group's file, so it is
-    declared here too. `role` on a connection reads as a framework's own label,
-    but the framework declaring it is what puts it in the schema - and an
-    undeclared one has no dtype to give the column.
+    """One group's staged columns: its struct column, `into`, its tombstone and its properties.
 
     Notes
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    over = {
-        name: schema.value_type(name) or nw.String()
-        for name, spec in schema.attributes.items()
-        if not spec.varying and group in schema.groups_of(name)
-    }
     into = schema.groups[group].into
     return {
         group: schema.group_type(group),
         **({into: schema.dimensions[into].dtype} if into else {}),
         "deleted": nw.Boolean(),
-        **over,
+        **{p: spec.dtype for p, spec in schema.properties.get(group, {}).items()},
     }
 
 
@@ -1909,13 +2021,13 @@ def _packed(
     """`group`'s struct column, packed from flat coordinates.
 
     A field is the column of that name where the relation carries one, else
-    the caller's keyword.
+    the caller's keyword. No field given at all is a NULL struct, every tuple.
 
     Raises
     ------
     ValueError
-        Where a field is neither: a struct NULL in some fields and not all
-        matches no tuple.
+        Where some fields are given and others not: a struct NULL in some
+        fields and not all matches no tuple.
 
     Notes
     -----
@@ -1924,6 +2036,8 @@ def _packed(
     """
     over = schema.groups[group].over
     missing = [c for c in over if c not in present and c not in dims]
+    if len(missing) == len(over):
+        return duck_types.null(schema.group_type(group))
     if missing:
         msg = (
             f"{group!r} is keyed by {list(over)}, and {missing} was not given; "
@@ -1941,10 +2055,7 @@ def _packed(
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
-    """One axis's staged columns: its key, its tombstone, its properties and attributes.
-
-    The shape of `dims/{dim}.parquet`: the axis key, `deleted`, and every
-    column `attributes_on` places there.
+    """One axis's staged columns - the shape of `dims/{dim}.parquet`: its key, its tombstone, its properties.
 
     Notes
     -----
@@ -1953,7 +2064,7 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
     return {
         **{c: _column_type(schema, c) for c in schema.axis_key(dim)},
         "deleted": nw.Boolean(),
-        **{a: schema.column_type(a) or nw.String() for a in schema.attributes_on(dim)},
+        **{p: spec.dtype for p, spec in schema.properties.get(dim, {}).items()},
     }
 
 

@@ -398,7 +398,7 @@ def test_an_enum_dim_resolves_from_fold_tables_after_a_widening(store):
     write_entity_type(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
     write_scenarios(
         layer,
-        [{"scenario": "low", "weight": 0.5}, {"scenario": "high", "weight": 0.5}],
+        [{"scenario": "low"}, {"scenario": "high"}],
     )
     write_input(
         layer,

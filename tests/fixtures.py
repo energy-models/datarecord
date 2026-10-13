@@ -187,7 +187,7 @@ def tombstone_connection(layer: str, pairs: list[tuple[str, str]]) -> None:
 
 
 def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:
-    """Append rows of discriminator label `ctype` to `dims/entity.parquet`.
+    """Append rows of category `ctype` to `dims/entity.parquet`.
 
     The label is the `entity_type` property column; tombstones ride along as
     `deleted`. Appended rather than replaced: several labels land in one entity
@@ -224,7 +224,7 @@ def tombstone(layer: str, ctype: str, names: list[str]) -> None:
 
 
 def write_scenarios(layer: str, rows: list[dict]) -> None:
-    """Write `dims/scenario.parquet`; each row needs `scenario` and `weight`."""
+    """Write `dims/scenario.parquet`; each row needs `scenario`."""
     df = pd.DataFrame(rows)
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
@@ -262,8 +262,7 @@ def write_axis(layer: str, dim: str, rows: list[dict]) -> None:
     """Write `dims/<dim>.parquet` from plain rows, whatever columns they carry.
 
     The generic form of `write_scenarios`/`write_periods`: an axis file is its
-    key column plus whatever else it holds - a mapping's column, an attribute
-    addressed by the axis alone.
+    key columns plus the dim's properties.
 
     Notes
     -----
@@ -437,10 +436,8 @@ def _default_attributes(
     `efficiency` is the exception, being over the `connection` group where one
     is declared: that is what puts a `connection` struct column on its file.
 
-    `weight` is the other, addressed by `scenario` alone - so it is a column of
-    `dims/scenario.parquet` rather than a long row, and it is declared because
-    `write_scenarios` writes that column and an axis file rejects one no
-    declaration accounts for.
+    `weight` is the other, addressed by `scenario` alone - long rows of
+    `inputs/weight.parquet` like any attribute, whatever its `dims`.
     """
     varying = {"entity", *dims}
     connection = "connection" if "connection" in groups else "entity"
@@ -484,7 +481,7 @@ def schema(
     """A schema shaped like the PyPSA records most tests build on.
 
     Defaults match `PyPSA.to_datarecord`: the `entity` axis carrying the
-    `entity_type` discriminator (labels `TYPES`), a `connection` group over
+    `entity_type` property (categories `TYPES`), a `connection` group over
     `(entity, bus)`, and three declared dims. Override `partial` to pin a
     different layering granularity, `dims` to declare another axis, `groups` to
     declare a different sparse relation, `within` to nest one axis inside
@@ -534,11 +531,7 @@ def schema(
             d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))
             for d, t in declared.items()
         },
-        properties={
-            "entity": {
-                "entity_type": PropertySpec(dtype=nw.Enum(TYPES), discriminator=True)
-            }
-        },
+        properties={"entity": {"entity_type": PropertySpec(dtype=nw.Enum(TYPES))}},
         attributes=flat,
         traits=traits,
         # The default names `connection`, which a caller's own `groups` may drop.

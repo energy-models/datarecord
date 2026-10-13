@@ -20,7 +20,14 @@ from datarecord.record import (
     LazyFrames,
     RecordLike,
 )
-from datarecord.schema import AttributeSpec, Dimension, Group, Schema, Trait
+from datarecord.schema import (
+    AttributeSpec,
+    Dimension,
+    Group,
+    PropertySpec,
+    Schema,
+    Trait,
+)
 from datarecord.store import Store, Workspace
 
 __all__ = [
@@ -30,6 +37,7 @@ __all__ = [
     "Frames",
     "Group",
     "LazyFrames",
+    "PropertySpec",
     "Record",
     "RecordLike",
     "Revision",

@@ -405,7 +405,6 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
                 "entity": {
                     "entity_type": {
                         "dtype": {"Enum": ["Generator"]},
-                        "discriminator": True,
                     }
                 }
             },
@@ -461,7 +460,6 @@ def test_the_fold_broadcasts_by_hash_join(store):
                 "entity": {
                     "entity_type": {
                         "dtype": {"Enum": ["Generator"]},
-                        "discriminator": True,
                     }
                 }
             },
@@ -476,6 +474,7 @@ def test_the_fold_broadcasts_by_hash_join(store):
     base = empty_root(store)
     staged = WorkingRecord(base.record)
     staged.add("entity", ["wind"], entity_type="Generator")
+    staged.add("snapshot", [0, 1])
     staged.set("weight", {0: 1.0, 1: 1.0})
     staged.set(
         "p_max_pu",

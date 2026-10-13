@@ -16,7 +16,7 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
@@ -151,19 +151,46 @@ class RecordLike(Protocol):
 
     @property
     def dims(self) -> Frames:
-        """Axis frames, keyed by dim (`"scenario"` -> `dims/scenario.parquet`).
+        """Axis frames, keyed by dim: each one's key columns, nothing else.
 
-        An axis frame is its key column, its properties and the attributes
-        addressed by it alone (`Schema.attributes_on`) - so a per-country CO2
-        budget is read from here rather than from `attributes`, which holds long
-        frames only. A column absent from the frame is one no layer wrote, whose
-        value is that attribute's `default`. One label's members are this frame
-        filtered on the dim's discriminator column (`Schema.discriminators`).
+        The labels and their `within` parents; properties are in
+        `properties`, attributes in `attributes`.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+        """
+        ...
+
+    @property
+    def properties(self) -> Frames:
+        """Per dim or group declaring properties, its key and their stored values, no default applied.
+
+        Notes
+        -----
+        - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+        """
+        ...
+
+    def members(self, dim: str, **categories: str | Sequence[str]) -> nw.LazyFrame:
+        """The labels of `dim` among `categories`, with the properties they carry, defaulted.
+
+        A property a label does not carry reads NULL; no `categories` selects
+        every label.
+
+        Raises
+        ------
+        KeyError
+            If `dim` has no axis.
+        ValueError
+            If a keyword does not categorize `dim`, or a value is none of its
+            categories.
+
+        Notes
+        -----
+        - [default_by](https://energy-models.github.io/datarecord/design/schema/#default_by-a-default-per-category)
+        - [properties and categories](https://energy-models.github.io/datarecord/design/record/#properties-and-categories)
         """
         ...
 
@@ -187,8 +214,8 @@ class RecordLike(Protocol):
     def attributes(self) -> Frames:
         """Long input frames, keyed by attribute name - one per file.
 
-        A row carries its coordinates and no property of them, so a reader
-        wanting one discriminator label joins the axis in `dims`.
+        A row carries its coordinates alone; select by category through
+        `members`.
 
         Notes
         -----
@@ -212,11 +239,16 @@ class RecordLike(Protocol):
         """
         ...
 
-    def flags(self) -> dict[str, Flags]:
-        """Every attribute, mapped to the shape its rows take.
+    def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
+        """Every attribute with rows, mapped to the shape its rows take.
 
-        Only attributes with rows are present, so the key set also answers
-        which attributes the record has at all.
+        Given `categories` of one dim, only rows reaching a label among them
+        count, and only attributes those labels carry.
+
+        Raises
+        ------
+        ValueError
+            If the keywords categorize no dim or several.
 
         Notes
         -----
