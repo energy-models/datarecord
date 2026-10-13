@@ -21,6 +21,7 @@ import shutil
 from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import narwhals as nw
 from duckdb import ColumnExpression as col
@@ -29,13 +30,17 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import as_relation, fn, union_all_by_name
 from datarecord.files import Absent, PreconditionFailedError, Version
-from datarecord.layered.resolve import cast_declared
+from datarecord.layered.resolve import cast_declared, resolve_coords
+from datarecord.layered.sources import DirectorySource
 from datarecord.record import Frames, LayerData, RecordLike, collision_detail
 from datarecord.schema import DERIVED, Schema
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
+    from datarecord.layered.sources import LayerSource
     from datarecord.store import Store, Workspace
 
 
@@ -60,6 +65,7 @@ def write_layer(
     workspace: Workspace,
     *,
     manifest: str | None = None,
+    parents: Sequence[LayerSource] = (),
 ) -> None:
     """Write `data` as the layer directory `base`, which must not exist yet.
 
@@ -79,6 +85,9 @@ def write_layer(
     manifest
         A standalone record's `manifest.json` text, written into the
         directory last; a tree layer holds only data.
+    parents
+        The sources the layer folds over, root first; none for a root or a
+        standalone record.
 
     Raises
     ------
@@ -87,6 +96,7 @@ def write_layer(
     ValueError
         If a long frame is missing a long-schema column, or the schema declares a key
         dim no frame carries - either would make the fold misresolve the layer.
+        If a group tuple alive after the layer names a label dead after it.
 
     Notes
     -----
@@ -151,6 +161,9 @@ def write_layer(
                     drop=("entity_type",) if kind == "entities" else (),
                 )
         _require_unique(tagged, con)
+        if data.groups() or data.axes():
+            layer = DirectorySource(staging, schema, workspace, uuid4())
+            _require_living_tuples([*parents, layer], con, schema)
         # A standalone directory *is* one record, so its schema is in it, and
         # written last: a directory without one reads as no record.
         if manifest is not None:
@@ -300,6 +313,55 @@ def _require_unique(tagged: list[DuckDBPyRelation], con: DuckDBPyConnection) -> 
         msg = (
             f"entity types reuse names: {detail}; a name identifies one "
             f"entity across every type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
+        )
+        raise ValueError(msg)
+
+
+def _require_living_tuples(
+    sources: Sequence[LayerSource], con: DuckDBPyConnection, schema: Schema
+) -> None:
+    """Reject a layer leaving a group tuple alive that names a dead label.
+
+    Removing a label tombstones the tuples naming it in the same layer, which
+    `WorkingRecord.remove` writes; a layer written otherwise carries its own.
+    Only a field over a dim keyed by its label alone is checked: a nested dim's
+    label names no point without its parents, which a tuple does not carry.
+
+    Raises
+    ------
+    ValueError
+        Naming up to three such tuples per group field.
+
+    Notes
+    -----
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    """
+    coords = resolve_coords(schema, sources, con)
+    problems = []
+    for g, tuples in coords.groups.items():
+        if g not in schema.group_columns:
+            continue
+        for field, dim in schema.groups[g].over.items():
+            dead = coords.dead.get(dim)
+            if dead is None or len(schema.axis_key(dim)) > 1:
+                continue
+            on = fn.struct_extract(col("t", g), lit(field)) == col("x", dim)
+            hits = (
+                tuples.set_alias("t")
+                .join(dead.set_alias("x"), on, how="semi")
+                .project(col(g))
+                .limit(3)
+                .fetchall()
+            )
+            if hits:
+                problems.append(
+                    f"{g} {[h for (h,) in hits]} name{'s' if len(hits) == 1 else ''} "
+                    f"a removed {dim} in {field!r}"
+                )
+    if problems:
+        msg = (
+            f"{'; '.join(problems)}; removing a label removes the tuples naming "
+            f"it, so tombstone them in the same layer (https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)"
         )
         raise ValueError(msg)
 

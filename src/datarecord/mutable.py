@@ -15,9 +15,11 @@ Notes
 
 from __future__ import annotations
 
+import operator
 import re
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
+from functools import reduce
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID, uuid4
@@ -32,11 +34,12 @@ from duckdb import SQLExpression as sql
 from datarecord.duck import (
     DuckTypes,
     as_relation,
+    fn,
     null_safe,
     struct_of,
     union_all_by_name,
 )
-from datarecord.layered.fold import Fold, entity_coordinates
+from datarecord.layered.fold import Fold
 from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver
 from datarecord.record import (
@@ -1279,7 +1282,7 @@ class WorkingRecord(Record):
         the same NULL rather than sitting beside it (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         `rel` must not read `table`, or the delete changes what the insert then
         reads: a caller deriving from the staged rows snapshots them first
-        (`_stage_resolved`), and the one path that patches columns in place
+        (`_insert_snapshot`), and the one path that patches columns in place
         (`_patch_axis`) passes no `key`.
 
         Notes
@@ -1589,23 +1592,16 @@ class WorkingRecord(Record):
             dtype = nw.Float64() if c == "breakpoint" else self._column_type(c)
             return duck_types.null(dtype).alias(c)
 
-        # Snapshotted into a table first: the frame reads this very table
-        # through the fold, and the replace-by-key delete would otherwise change
-        # what it reads.
-        snapshot = f"{table}_derived"
-        rel.project(
-            *(column(c) for c in self.schema.long_columns_for(attribute))
-        ).create(snapshot)
-        try:
-            # Keyed the same whether input or result: a repeat coordinate is the
-            # caller restating one, and replacing it is the answer folding it gave.
-            # No `_complete_owned_whole`: the derived frame resolved the current
-            # value, so it already carries the extent an edit would have to.
-            self._insert(
-                self.con.table(snapshot), table, {}, key=self._long_key(attribute)
-            )
-        finally:
-            self.con.execute(f"DROP TABLE {snapshot}")
+        # Keyed the same whether input or result: a repeat coordinate is the
+        # caller restating one, and replacing it is the answer folding it gave.
+        # No `_complete_owned_whole`: the derived frame resolved the current
+        # value, so it already carries the extent an edit would have to.
+        self._insert_snapshot(
+            rel.project(*(column(c) for c in self.schema.long_columns_for(attribute))),
+            table,
+            {},
+            key=self._long_key(attribute),
+        )
 
     def add(self, ctype: str, frame: Any) -> None:
         """Stage new entities from a wide frame.
@@ -1795,24 +1791,26 @@ class WorkingRecord(Record):
         raise ValueError(msg)
 
     def remove(self, ctype: str, names: Sequence[str]) -> None:
-        """Stage a tombstone per entity.
+        """Stage a tombstone per entity, and per group tuple naming one.
 
         Need not enumerate what it deletes: one row per key, and the fold
         applies it to every attribute. Nor scope it - an entity exists or it
         does not, so a deletion removes it whole.
 
-        One row, on the entity axis, which is where membership lives and the only
-        place the fold reads an entity's tombstone from - a group attribute's row
-        included, by each entity inside its struct (`entity_coordinates`). A member
+        One row on the entity axis, which is where membership lives. A member
         file holds values, never a `deleted` (`_member_columns`), so no second
         write there keeps step with this one. The axis row carries the type only
         where a group declares the axis; the delete keys on `entity` alone
-        regardless, so it lands whatever type the `add` named.
+        regardless, so it lands whatever type the `add` named. And one row per
+        tuple, of any group, with a field over `entity` naming one of `names`,
+        read from the record as it currently resolves: a group attribute's value
+        goes with its tuple.
 
         Notes
         -----
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
         """
         columns = {"entity": list(names)}
         if self.schema.entity_type_dim is not None:
@@ -1821,6 +1819,43 @@ class WorkingRecord(Record):
         self._insert(
             rel, self._ensure(_ENTITY_AXIS), {"deleted": lit(True)}, key=("entity",)
         )  # noqa: FBT003
+        groups = self.resolver.dims.groups
+        for g in self.schema.group_columns:
+            fields = self.schema.entity_fields(g)
+            if not fields or g not in groups:
+                continue
+            naming = reduce(
+                operator.or_,
+                (
+                    fn.struct_extract(col(g), lit(f)).isin(*(lit(n) for n in names))
+                    for f in fields
+                ),
+            )
+            self._insert_snapshot(
+                groups[g].filter(naming).project(col(g)),
+                self._ensure(g),
+                {"deleted": lit(True)},  # noqa: FBT003
+                key=(g,),
+            )
+
+    def _insert_snapshot(
+        self,
+        rel: DuckDBPyRelation,
+        table: str,
+        supplied: Mapping[str, Expression],
+        key: Sequence[str],
+    ) -> None:
+        """`_insert`, for a `rel` read from `table` itself.
+
+        Snapshotted into a table first: the replace-by-key delete would
+        otherwise change what `rel` reads.
+        """
+        snapshot = f"{table}_snapshot"
+        rel.create(snapshot)
+        try:
+            self._insert(self.con.table(snapshot), table, supplied, key=key)
+        finally:
+            self.con.execute(f"DROP TABLE {snapshot}")
 
     def add_group(self, group: str, frame: Any) -> None:
         """Stage rows of one declared group from a frame keyed by its struct column.
@@ -1907,10 +1942,8 @@ class WorkingRecord(Record):
         being a cross-table fact rather than an ordering one, and the fold
         applies a layer's tombstones to its parents only: a `remove` has to
         clear this attribute's rows for the name too, and a `remove_group` its
-        rows for the tuple.
-
-        An entity tombstone reaches a group attribute's row too, by any of its
-        `entity_coordinates` - as the fold does.
+        rows for the tuple. A group attribute's row naming a removed entity
+        goes by its tuple, which `remove` tombstoned.
 
         None where nothing is staged for it, which is what says the base's rows
         stand alone.
@@ -1926,11 +1959,12 @@ class WorkingRecord(Record):
         dead = self._tombstoned()
         # Matched on `name` alone: the tombstone carries a type and a staged
         # input row does not (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-        if dead is not None:
-            for on in entity_coordinates(self.schema, "l", rel.columns):
-                rel = rel.set_alias("l").join(
-                    dead.set_alias("d"), on == col("d", "entity"), how="anti"
-                )
+        if dead is not None and "entity" in rel.columns:
+            rel = rel.set_alias("l").join(
+                dead.set_alias("d"),
+                col("l", "entity") == col("d", "entity"),
+                how="anti",
+            )
         for g in self.schema.groups_of(attribute):
             tuples = self._rows(g)
             if tuples is None:

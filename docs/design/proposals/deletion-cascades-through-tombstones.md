@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Proposal: deletion cascades through tombstones, not through filters
 
-Status: **Proposed** · Drafted 2026-10-13
+Status: **Implemented** · Drafted 2026-10-13
 
 A label is removed by a tombstone, and only by a tombstone: removing one tombstones every [group](../schema.md#groups) tuple naming it, a layer leaving such a tuple alive is refused, and nothing is inferred on read from a dead label a row refers to.
 
@@ -47,7 +47,7 @@ So rule 4 cannot take its dead labels from the layers above the base alone:
 
 Dead labels from above the base alone do not name `(g1, bus0)`, so `x(g1, bus0)` would come back with nothing re-added.
 The fold cannot cut them earlier either: along an unkeyed coordinate the owner map holds one row per attribute, not per label, so there is no row for a dead label to remove, only an exception to carry.
-So the cache keeps them, as `dead/<coord>.parquet` beside `dims/` and `groups/`, for each dim and group outside `partial` — a keyed coordinate's dead labels are already cut by the fold — and rule 4 reads the base's dead labels plus those of the layers above it.
+So the cache keeps them, as `dead/<coord>.parquet` beside `dims/` and `groups/`, for each dim and group outside `partial` — a keyed coordinate's dead labels are already cut by the fold — and for each dim a group draws on, which rule 2 checks tuples against below the base too, and rule 4 reads the base's dead labels plus those of the layers above it.
 The resolved axes and groups stay tombstone-free for every reader that expects them so; `fold_axis` hands the dead labels back as a by-product of the fold it already does.
 
 A semi-join against the live labels, which the cache already holds, would need no new file, but it runs on every read, where the anti-join against a usually empty set is skipped.
@@ -76,5 +76,10 @@ This is accepted: it is what a coordinate outside `partial` means — values own
 
 ## To check before building
 
-- That nested dims (`within`) follow rule 1 too: `fold_axis` keys a nested dim by its `axis_key`, `(period, timestep)`, so a parent's tombstone does not reach its children today; removing `period=2030` would tombstone `(2030, t)` for every `t`.
-- Tests pinning the materialised case above, and revival across every unkeyed attribute of a tuple.
+- That nested dims (`within`) follow rule 1 too: `fold_axis` keys a nested dim by its `axis_key`, `(period, timestep)`, so a parent's tombstone does not reach its children today; removing `period=2030` would tombstone `(2030, t)` for every `t`. Not built: `WorkingRecord` removes no dim label, and rule 2 checks no tuple field over a nested dim.
+
+## As built
+
+- Rule 1 is `WorkingRecord.remove`; a dim label other than an entity is removed only by a layer written directly, which carries its own cascade.
+- Rule 2 runs in `write_layer` for a layer writing any axis or group, folding the parent's sources and the staged layer.
+- Rule 4's anti-join is `_living`; `dead/` holds the coordinates `resolve.mortal` names.

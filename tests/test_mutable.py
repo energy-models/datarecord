@@ -1072,14 +1072,12 @@ def test_a_result_takes_a_bus_keyword(staged):
 
 
 def test_remove_drops_the_values_on_its_connections(staged, root):
-    """The entity tombstone reaches a connection attribute by the struct's entity.
-
-    The connection tuples are not cascaded to: `remove` stages the entity alone.
+    """`remove` tombstones the entity's connections, and their values go with them.
 
     Notes
     -----
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
     """
     assert _efficiency(staged), "the base carries a value to lose"
     staged.set("efficiency", 0.5, entity=["Manchester Wind"], bus="Manchester")
@@ -1091,27 +1089,26 @@ def test_remove_drops_the_values_on_its_connections(staged, root):
     child = root.child(staged.edits)
     assert _efficiency(child.record) == {}
     assert _efficiency(child.record, "Manchester Gas")
-    assert "Manchester Wind" in set(_connections(child.record)["entity"]), (
-        "the tuples stand, dangling"
+    assert "Manchester Wind" not in set(_connections(child.record)["entity"]), (
+        "the tuples went with it"
     )
 
 
-def test_remove_then_add_keeps_the_parents_connection_values(staged, root):
-    """A re-added entity has its connections and their values back.
-
-    `add` replaces the staged tombstone, so nothing of the parent's is dropped.
+def test_remove_then_add_starts_without_the_parents_connections(staged, root):
+    """`add` replaces the entity's tombstone, not its connections'.
 
     Notes
     -----
     - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
     """
-    before = _efficiency(staged)
-    assert before, "the base carries a value to keep"
+    assert _efficiency(staged), "the base carries a value to lose"
     staged.remove(GEN, ["Manchester Wind"])
     staged.add(GEN, pd.DataFrame([{"entity": "Manchester Wind"}]))
 
     child = root.child(staged.edits)
-    assert _efficiency(child.record).keys() == before.keys()
+    assert "Manchester Wind" in set(child.record.entity_types[GEN].collect()["entity"])
+    assert _efficiency(child.record) == {}, "its connections are re-added by hand"
 
 
 def _connections(record):
