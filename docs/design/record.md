@@ -113,7 +113,7 @@ A connection is one row of the **`connection` [group](schema.md#groups)** — `G
 A connection is identified by **the bus it attaches to**, never by position.
 An attribute is a connection attribute because its `dims` name the group, so a per-connection value is otherwise an ordinary long row: `efficiency` may vary by timestep and scenario like any other attribute, and decodes by the same rules with no special case.
 
-**A connection attribute is keyed by the connection, not the entity.** Its row carries no top-level `entity`; the entity's tombstone reaches it by the entity inside the struct, as does the connection's own.
+**A connection attribute is keyed by the connection, not the entity.** Its row carries no top-level `entity`; the entity's tombstone reaches it by the entity inside the struct, in [the fold](read-path.md#owner-map) where the group is `partial` and at read where it is not.
 Removing an entity therefore drops its connections' values, while the connection tuples stay until [removed in turn](working-record.md#add_group-remove_group).
 
 A record declaring no such group has no connections, and one declaring it with no rows answers `groups["connection"]` empty.
@@ -124,14 +124,13 @@ Nothing about the mechanism is particular to buses — `corridor` over `(from, t
 A row's `value` applies to every combination of its NULL dim columns, enumerated from the axis frames in `dims`.
 A NULL dim means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep.
 
-**Two kinds of coordinate do not broadcast**, and for the same reason — neither has an axis to expand against:
+**`entity` does not broadcast.** A NULL there is a value belonging to no entity rather than to every entity. It is the one dim the format knows by name, being [the axis the entity types partition](format.md#the-entity-axis), and the one coordinate always in [the fold key](schema.md#partial-the-granularity-of-an-override): every layer patches it row by row.
 
-- **`entity`.** A NULL there is a value belonging to no entity rather than to every entity. It is the one dim the format knows by name, being [the axis the entity types partition](format.md#the-entity-axis).
-- **A [group](schema.md#groups)'s column.** It addresses a sparse subset only the group's table knows, compared NULL-safely as one value: a NULL field matches a NULL field and nothing else, so a connection value staged without a `bus` is keyed `{entity, NULL}` and matches no connection.
+Every other declared dim but [the type axis](schema.md#entity_type-the-axis-of-kinds) broadcasts, **the dims a group draws on included**: a connection's `bus` is a field of the `connection` column, not the dim `bus`, so a per-bus `marginal_price` with `bus = NULL` holds one value for every bus.
 
-Every declared dim but `entity` and [the type axis](schema.md#entity_type-the-axis-of-kinds) broadcasts, **the dims a group draws on included**: a connection's `bus` is a field of the `connection` column, not the dim `bus`, so a per-bus `marginal_price` with `bus = NULL` holds one value for every bus.
-
-Both are _membership keys_, in [the fold key](schema.md#partial-the-granularity-of-an-override) by being membership rather than `partial`: a coordinate addressed individually is one every layer patches row by row.
+**A [group](schema.md#groups)'s column broadcasts too**, its axis the resolved group: a NULL `connection` means every connection, expanded against `groups/connection.parquet` as a NULL `timestep` is against `dims/timestep.parquet`.
+A group value is therefore a whole tuple or NULL. A struct with some fields NULL, `{entity: dc, bus: NULL}`, names a tuple no group row matches, so it is refused wherever a row comes in rather than stored.
+A NULL struct reaches every tuple of the group, whatever the type of the entities in it — [open](open-questions.md) where a type does not carry the attribute.
 
 Rows never overlap, so at most one covers any coordinate.
 A coordinate no row covers — including an attribute with no rows at all — takes that attribute's `default` from [the schema](schema.md#attributespec).
@@ -194,7 +193,8 @@ So an attribute addressed by `entity` alone reports both sets empty, and that is
 
 Per entity type, because one file holds every type's rows: unioning across types would report a Generator's per-timestep rows and a Link's single row as one shape, which describes neither.
 Scoping is a join to the entity_types map on `entity`, not a filter on the attribute rows ([entity is unique across types](format.md#entity-is-unique-across-types)).
-A row keyed by a group joins on each entity inside the group's column — a group drawing twice on `entity` counts towards the type of either — and an attribute addressing no entity at all, a per-bus value, is in no type's `flags`.
+A row keyed by a [`partial`](schema.md#partial-the-granularity-of-an-override) group joins on each entity inside the group's column — a group drawing twice on `entity` counts towards the type of either.
+An attribute whose owner-map rows name no entity is in no type's `flags`: one addressing no entity at all, a per-bus value, and one over a group outside `partial`, whose map rows carry no group column to join on ([open](open-questions.md)).
 
 ## The protocol names no engine
 

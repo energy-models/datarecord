@@ -23,6 +23,16 @@ All notable changes to datarecord are documented here. The format follows
   carries the struct, its coordinates flat being rejected. Naming a group
   beside a dim its key is named for (`dims={"connection", "bus"}`) is
   rejected.
+- A group is a broadcast coordinate like a dim, its axis the resolved group:
+  a NULL struct means every tuple of the group, and a struct with some
+  fields NULL is refused by `set`, `add_group` and the writer. The owner
+  map's key is `entity` plus the `partial` dims and groups; `partial` may now
+  name a group, and a group outside it is owned whole, so a layer patching
+  one connection's value restates every connection's. The PyPSA tool
+  declares `partial={"scenario", "connection"}`, keeping per-connection
+  ownership. `Schema.membership_keys` is gone, and `Schema.group_columns` is
+  every group but the entity-type group. Materialised owner maps are
+  rebuilt.
 - A group file is keyed by one struct column named for the group, as an
   axis file is by its dim: `groups/connection.parquet` is
   `connection STRUCT(entity, bus) | role | deleted`, an `into` label a plain

@@ -29,7 +29,7 @@ w.set("p", solved_frame, kind="outputs")  # a result
 
 **There is no `entity_type` keyword.** A name identifies one entity across every type, so the record looks the type up and checks that each name's type carries the attribute — one call may legitimately span types ([design](../design/working-record.md#set)).
 
-`entity=None` means every entity whose type carries this attribute. Every other coordinate goes through `**dims`, a group's included — `bus="north"` addresses one connection, `from=`/`to=` one corridor. A plain dim's absence means "every value of that dim" by the NULL broadcast rule; a group coordinate's means "every row of the group for this entity" ([design](../design/record.md#the-broadcast-rule)).
+`entity=None` means every entity whose type carries this attribute. Every other coordinate goes through `**dims`, a group's included — `bus="north"` addresses one connection, `from=`/`to=` one corridor. A plain dim's absence means "every value of that dim" by the NULL broadcast rule; a group's key coordinates must all be given, since a group value is a whole tuple ([design](../design/working-record.md#set)).
 
 An `nw.Expr` value is a **function of the current value**: it reads the resolved value including earlier pending edits, so two such calls compose, and what gets staged is the result rather than the expression ([design](../design/working-record.md#an-nwexpr-value-derived-from-the-current-one)). A named target that resolves to no row raises — the caller asked for those rows to take a new value and there is nothing to compute one from.
 

@@ -116,7 +116,7 @@ An `entity` identifies one entity across the whole record.
 Two types may not share one: a `Bus` and a `Generator` both called `north` are a collision, not two entities.
 
 That is what removes `entity_type` from every attribute key.
-An `inputs/` row addresses `(entity, connection, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
+An `inputs/` row addresses `(entity, …, attribute)`, a group in place of `entity` where the attribute is over one, and the type it belongs to is recoverable but not part of the address.
 The alternative — carrying the type in the key — makes it an _entity's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
 
 **The entity axis carries the classification**, where a group [declares one](schema.md#entity_type-the-axis-of-kinds). `dims/entity.parquet` carries `entity_type` as a column, so `entity -> entity_type` is one read of one file rather than a glob over every type's — the [entity-type group](schema.md#entity_type-the-axis-of-kinds)'s rows, stored here rather than in `groups/` because an entity's type is part of the identity this file already states. A schema declaring no type axis has no such column and no types to recover; the rest of this section is the typed case.
@@ -128,7 +128,7 @@ That join is what the `entity_type` filter used to be, and it is against a relat
 
 Two things follow, and they are the reason to want this.
 An attribute row is addressed the way an entity is, so `set("p_nom", 150.0, entity=["wind1"])` needs no type: the entity determines it ([set](working-record.md#set)).
-And the inputs key loses a column, so the fold's key is `(entity, connection, *owned_per dims, attribute)` — one less column to compare NULL-safely in every join in [the read path](read-path.md).
+And the inputs key loses a column, so the fold's key is `(entity, *partial dims and groups, attribute)` — one less column to compare NULL-safely in every join in [the read path](read-path.md).
 
 **Enforced, not assumed.** [The writer](writing.md) rejects a record whose entity tables share an entity, and `add` rejects an entity the record already resolves under another type ([add / remove](working-record.md#add-remove)).
 A collision cannot be left to be discovered: it would silently merge two entities' attribute rows, since the rows themselves no longer record which type they meant.

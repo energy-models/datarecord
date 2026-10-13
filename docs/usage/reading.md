@@ -34,9 +34,9 @@ gens = record.entity_types["Generator"].collect().to_pandas()
 <coordinate> ... | attribute | breakpoint | value
 ```
 
-The coordinates are the attribute's own, from its declared `dims` — `entity` for `p_max_pu`, `entity | bus` for a connection attribute like `efficiency`, and no entity column at all for one addressed by an axis alone ([design](../design/format.md#the-long-schema)).
+The coordinates are the attribute's own, from its declared `dims` — `entity` for `p_max_pu`, one `connection` struct column for a connection attribute like `efficiency`, and no entity column at all for one addressed by an axis alone ([design](../design/format.md#the-long-schema)).
 
-A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). Two coordinates are the exception and never broadcast — `entity`, and a group's key coordinate such as `bus`, where a NULL means "every connection of this entity" rather than every bus. `breakpoint` carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's `default` from the schema.
+A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). A group column broadcasts the same way, a NULL `connection` meaning every connection. `entity` is the exception and never broadcasts: a NULL there belongs to no entity. `breakpoint` carries the abscissa of a piecewise-linear value. A coordinate no row covers takes the attribute's `default` from the schema.
 
 There is no `entity_type` column, in an attribute's key or a group's — `attributes["p_max_pu"]` and `groups["connection"]` each hold every type's rows together. An `entity` identifies one entity **across every type**, so the type is something the record knows about a name rather than part of its address ([design](../design/format.md#entity-is-unique-across-types)). To scope to one type, join `entity_types` on `entity`.
 

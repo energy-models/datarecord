@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Proposal: a group is one struct column
 
-Status: **Implemented** · Drafted 2026-10-12 · Implemented 2026-10-12 · [Amendment](#amendment-a-group-is-a-dim) proposed 2026-10-13
+Status: **Implemented** · Drafted 2026-10-12 · Implemented 2026-10-12 · [Amendment](#amendment-a-group-is-a-dim) implemented 2026-10-13
 
 Landed in the [steps below](#landing) on [the schema](../schema.md#groups), [the record](../record.md#the-broadcast-rule), [the format](../format.md#the-long-schema), [the read path](../read-path.md#owner-map), [the working record](../working-record.md#set) and [consuming a record](../tools.md#results-on-connections); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 [What the implementation found](#what-the-implementation-found) records where it departs from or adds to the argument below.
@@ -137,7 +137,9 @@ It is the same "keyed twice over" rule [`into`](../schema.md#into-a-group-that-c
 
 ## Amendment: a group is a dim
 
-Status: **Proposed** · 2026-10-13
+Status: **Implemented** · Drafted 2026-10-13 · Implemented 2026-10-13
+
+As for the proposal above, the [schema](../schema.md#groups), [record](../record.md#the-broadcast-rule), [read-path](../read-path.md#owner-map) and [working-record](../working-record.md#set) pages are authoritative; [what the implementation found](#what-the-amendment-found) records where it departs.
 
 Once a group is one column, the reasons it stayed a membership key, apart from the dims, are gone.
 **A group is a dim whose axis is the resolved group**: `groups/<group>.parquet`, keyed by the column named for the group, as `dims/<dim>.parquet` is.
@@ -194,8 +196,11 @@ What goes is the group's separate path through the key:
 | the group-tombstone membership in `fold_inputs`, separate from the partial dims'                                 | a partial coordinate's tombstone reading `source.group(g)` for a group |
 | the docs' account of which groups are keyed and why                                                              | the whole-or-NULL check at the three entry points                      |
 
-An estimate of **40–80 lines net out of `src/`** and the "which groups are keyed" sections of the design pages — modest, because `_complete_owned_whole`, `entity_coordinates` and the tombstones on value rows already treat the group generically.
-The larger gain is one rule where there were two: everything said of a dim — broadcast, `partial`, owned whole, flags — is said of a group, with the group's file as its axis.
+It was estimated at 40–80 lines net out of `src/`.
+**Measured, it saved none: `src/` grew by 19 lines net** (119 added, 100 removed).
+The derivation of keyed groups and `membership_keys` went as planned, and three things the estimate did not foresee added back as much — [the read-time entity filter, the attribute-scoped expansion](#what-the-amendment-found) and the whole-or-NULL check against data rather than dtypes.
+The "which groups are keyed" sections of the design pages went.
+The gain is one rule where there were two: everything said of a dim — broadcast, `partial`, owned whole, flags — is said of a group, with the group's file as its axis.
 
 ### Landing
 
@@ -204,3 +209,12 @@ The larger gain is one rule where there were two: everything said of a dim — b
 3. The whole-or-NULL check in staging and the writer; `set` stages a NULL struct where no coordinate is given.
 4. The PyPSA tool declares `connection` partial.
 5. [Schema](../schema.md#groups), [record](../record.md#the-broadcast-rule), [read-path](../read-path.md#owner-map) and [working-record](../working-record.md#set) pages; the open question widened.
+
+### What the amendment found
+
+- **A NULL is expanded only for the attributes over its coordinate.** The fold key is one tuple over every attribute, so an attribute not over `connection` holds NULL there for want of the column; expanding every NULL multiplied its rows by the group's size. `expand_dims` now broadcasts a NULL only on rows whose attribute's coordinates include it, for a plain dim as for a group.
+- **Removing an entity needs a filter at read.** With `connection` outside `partial`, a connection attribute's map row names no entity, so the fold's entity anti-join cannot reach it. The read drops a row naming, in an unkeyed group's entity field, an entity the resolved axis no longer holds ([an entity outside the key](../read-path.md#an-entity-outside-the-key)) — so removing an entity still drops its connections' values.
+- **A NULL struct crosses entity types.** It expands to every tuple of the group, and `connection` spans every type, so a constant meant for links reaches buses' connections too. Left [open](../open-questions.md).
+- **`group_columns` stayed, with a smaller meaning**: every group but the entity-type group, the coordinates `broadcast_dims` appends. What went is the derivation of which groups are keyed.
+- **`set`'s keywords stage no NULL struct**, unlike landing step 3 planned. A missing key coordinate is still refused rather than staged as NULL, as [`set`](../working-record.md#set) already did; a NULL struct comes in through a long frame.
+- **It grew `src/` by 19 lines net** rather than shrinking it by 40–80: the read-time filter, the attribute-scoped expansion and the whole-or-NULL check, which reads data where the struct check read only dtypes, cost what the removed derivation saved ([what it saves](#what-it-saves)).
