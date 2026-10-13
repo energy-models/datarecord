@@ -29,11 +29,11 @@ from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 
-from datarecord.duck import as_relation, fn, union_all_by_name
+from datarecord.duck import as_relation, fn
 from datarecord.files import Absent, PreconditionFailedError, Version
 from datarecord.layered.resolve import cast_declared, resolve_coords
 from datarecord.layered.sources import DirectorySource
-from datarecord.record import Frames, LayerData, RecordLike, collision_detail
+from datarecord.record import Frames, LayerData, RecordLike
 from datarecord.schema import DERIVED, Schema
 
 if TYPE_CHECKING:
@@ -105,7 +105,6 @@ def write_layer(
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/writing/#a-revision-exists-only-by-its-file)
     """
-    con = workspace.con
     local = "://" not in base
     if local and Path(base).exists():
         msg = f"layer {base} already exists; a write creates a new layer (https://energy-models.github.io/datarecord/design/writing/)"
@@ -121,7 +120,6 @@ def write_layer(
     try:
         kinds = [
             ("dims", data.axes(), data.axis, "dims"),
-            ("entities", data.entity_types(), data.entity_type, "dims/entity_type"),
             ("groups", data.groups(), data.group, "groups"),
             ("attributes", data.attributes(), data.attribute, "inputs"),
         ]
@@ -137,9 +135,6 @@ def write_layer(
                     "outputs",
                 )
             )
-        # Each type's names, to check record-wide uniqueness once every entity
-        # frame has been seen (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-        tagged: list[DuckDBPyRelation] = []
         for kind, keys, read, subdir in kinds:
             for key in keys:
                 rel = read(
@@ -148,23 +143,10 @@ def write_layer(
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
-                if kind == "entities":
-                    tagged.append(rel.project("entity", lit(key).alias("entity_type")))
-                _write_frame(
-                    rel,
-                    f"{staging}{subdir}/{key}.parquet",
-                    schema,
-                    # A per-type member file is indexed by `entity` and holds
-                    # one column per attribute; the type is the file it is in,
-                    # and `dims/entity.parquet` is what carries it for every
-                    # later reader. A column repeating it here would be a third
-                    # copy that can disagree.
-                    drop=("entity_type",) if kind == "entities" else (),
-                )
-        _require_unique(tagged, con)
+                _write_frame(rel, f"{staging}{subdir}/{key}.parquet", schema)
         if data.groups() or data.axes():
             layer = DirectorySource(staging, schema, workspace, uuid4())
-            _require_living_tuples(parents, layer, con, schema)
+            _require_living_tuples(parents, layer, workspace.con, schema)
         # A standalone directory *is* one record, so its schema is in it, and
         # written last: a directory without one reads as no record.
         if manifest is not None:
@@ -242,20 +224,13 @@ _ATTEMPTS = 10
 """How many times `reconcile_schema` writes the manifest before giving up."""
 
 
-def _write_frame(
-    rel: DuckDBPyRelation,
-    uri: str,
-    schema: Schema,
-    *,
-    drop: tuple[str, ...] = (),
-) -> None:
+def _write_frame(rel: DuckDBPyRelation, uri: str, schema: Schema) -> None:
     """Persist one relation as parquet, unmaterialised.
 
     Columns are cast to their declared types on the way out, so a reader can
     trust them rather than re-casting an all-NULL column pandas typed as float.
 
-    `DERIVED` is dropped from every file, and `drop` names what is redundant in
-    *this* one - both here rather than in the callers, so a column a source
+    `DERIVED` is dropped here rather than in the callers, so a column a source
     happens to carry cannot reach a file by a path that forgot to strip it.
 
     Notes
@@ -265,57 +240,10 @@ def _write_frame(
     """
     if "://" not in uri:
         Path(uri).parent.mkdir(parents=True, exist_ok=True)
-    unwritable = [c for c in (*DERIVED, *drop) if c in rel.columns]
+    unwritable = [c for c in DERIVED if c in rel.columns]
     if unwritable:
         rel = rel.project(star(exclude=unwritable))
     cast_declared(schema, rel).to_parquet(uri)
-
-
-def _require_unique(tagged: list[DuckDBPyRelation], con: DuckDBPyConnection) -> None:
-    """Reject a record whose entity types share a name.
-
-    Unlike `_validate_frame`'s checks this reads the rows, uniqueness being a
-    property of the data. A tombstone still occupies the name, so `deleted` is
-    not filtered out.
-
-    Parameters
-    ----------
-    tagged
-        One relation per entity type, each `(entity, entity_type)`.
-
-    Raises
-    ------
-    ValueError
-        Naming each clashing name and the types claiming it.
-
-    Notes
-    -----
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-    """
-    if len(tagged) < 2:  # nothing to collide with
-        return
-    pairs = union_all_by_name(tagged, con).distinct()
-    clashing = (
-        pairs.set_alias("p")
-        .join(
-            pairs.aggregate(
-                [col("entity"), fn.count(col("entity_type")).alias("_types")]
-            )
-            .filter(col("_types") > lit(1))
-            .project("entity")
-            .set_alias("c"),
-            "p.entity = c.entity",
-        )
-        .project(col("p", "entity").alias("entity"), col("p", "entity_type"))
-    )
-    rows = clashing.fetchall()
-    if rows:
-        detail = collision_detail(rows)
-        msg = (
-            f"entity types reuse names: {detail}; a name identifies one "
-            f"entity across every type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
-        )
-        raise ValueError(msg)
 
 
 def _require_living_tuples(
@@ -391,7 +319,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
 
     Structural only: a long frame carries its own attribute's coordinates, and a
     `dims/` frame carries every dim the schema declares it keyed by. Values
-    are not checked - which entity types and attribute names are valid
+    are not checked - which labels and attribute names are valid
     belongs to whatever vocabulary the schema declares, and the record layer
     knows none.
 
@@ -483,9 +411,9 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
                 f"its labels identify a point only within them (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)"
             )
             raise ValueError(msg)
-        # An attribute addressed by this axis alone is a column here, and not
-        # required: a record may declare one before any layer sets it, which
-        # resolves to its `default` (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
+        # An attribute addressed by this axis alone, or a property of it, is a
+        # column here, and not required: a record may declare one before any
+        # layer sets it, which resolves to its `default` (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
         #
         # A column no declaration accounts for is rejected, as a long frame's
         # extras are: one riding along uninvited would be read back as data
@@ -499,22 +427,12 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             # be a long frame written to the wrong place.
             | {"deleted", "order_key"}
         )
-        # The one classification column an axis file carries, every other group
-        # being its own file. Admitted only where a group declares the type axis:
-        # the label then says which `dims/entity_type/<Type>.parquet` a
-        # entity's non-varying attributes are in. Where no group declares it
-        # there is no member file and no column - those attributes are
-        # `attributes_on("entity")`, columns of this file, already in `known` -
-        # and an `entity_type` column is rejected as any undeclared one is
-        # (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-        if key == "entity" and schema.entity_type_dim is not None:
-            known.add("entity_type")
         extra = sorted(columns - known)
         if extra:
             msg = (
                 f"dims/{key}.parquet carries columns {extra} the schema does not "
-                f"declare for the {key!r} axis; an axis file holds its key and "
-                f"the attributes addressed by it alone (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+                f"declare for the {key!r} axis; an axis file holds its key, its "
+                f"properties and the attributes addressed by it alone (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
             )
             raise ValueError(msg)
         return
@@ -573,12 +491,6 @@ class _RecordLikeAsLayerData:
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         return self._read(self._source.dims, dim)
-
-    def entity_types(self) -> set[str]:
-        return set(self._source.entity_types)
-
-    def entity_type(self, name: str) -> DuckDBPyRelation | None:
-        return self._read(self._source.entity_types, name)
 
     def groups(self) -> set[str]:
         return set(self._source.groups)

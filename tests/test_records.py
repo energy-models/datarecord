@@ -30,7 +30,7 @@ from tests.fixtures import (
     write_schema,
 )
 
-MEMBERS = ("dims", "entity_types", "attributes")
+MEMBERS = ("dims", "groups", "attributes")
 
 
 @pytest.fixture
@@ -96,16 +96,6 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
     -----
     - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
     """
-    members = nw.from_native(
-        store.workspace.con.sql(
-            "SELECT 'Generator' AS entity_type, 'wind' AS entity,"
-            " NULL::VARCHAR AS scenario"
-        )
-    )
-    # The entity axis is its own dim, supplied like any other - a record states
-    # its membership rather than leaving the writer to reconstruct it from the
-    # per-type frames, which are optional (a tombstone-only or all-long component
-    # has none).
     entity_axis = nw.from_native(
         store.workspace.con.sql(
             "SELECT 'wind' AS entity, 'Generator' AS entity_type, FALSE AS deleted"
@@ -127,18 +117,16 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
     class DictRecord:
         schema: Schema
         dims: Frames
-        entity_types: Frames
         groups: dict[str, Frames]
         attributes: Frames
         outputs: Frames
 
-        def flags(self, ctype: str) -> dict[str, Flags]:
+        def flags(self) -> dict[str, Flags]:
             return {}
 
     record = DictRecord(
         schema(),
         {"entity": entity_axis},
-        {"Generator": members},
         {},
         {"p_nom": long},
         EMPTY,
@@ -180,8 +168,7 @@ def test_constructions_agree_on_flags(both):
     """
     node, *rest = both
     for other in rest:
-        for ctype in sorted(node.entity_types):
-            assert node.flags(ctype) == other.flags(ctype), ctype
+        assert node.flags() == other.flags()
 
 
 def test_constructions_agree_on_rows(both):
@@ -236,35 +223,6 @@ def test_keys_list_without_building(both):
 # -- flags, the one non-frame member (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) ----------------------------------
 
 
-def test_flags_are_per_component_type(store):
-    """One file, two types, different shapes - OR-ing across them would lose both."""
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
-    write_entity_type(layer, "Generator", [{"entity": "wind"}])
-    write_entity_type(layer, "Link", [{"entity": "dc"}])
-    write_input(
-        layer,
-        "p_max_pu",
-        [
-            # Generator: series only. Link: static only.
-            {"entity": "wind", "snapshot": s, "value": v}
-            for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
-        ]
-        + [{"entity": "dc", "value": 1.0}],
-    )
-
-    record = revision.record
-    generator = record.flags("Generator")["p_max_pu"]
-    link = record.flags("Link")["p_max_pu"]
-    # The Generator's rows set `snapshot`; the Link's leaves it NULL. Naming
-    # the dim is what makes these two answers distinguishable at all.
-    assert "snapshot" in generator.varies
-    assert "snapshot" not in generator.broadcast
-    assert "snapshot" in link.broadcast
-    assert "snapshot" not in link.varies
-
-
 def test_a_materialised_map_survives_a_dim_being_declared(store):
     """Adding a dim is compatible, and the persisted owner map too.
 
@@ -302,7 +260,7 @@ def test_a_materialised_map_survives_a_dim_being_declared(store):
     # The dim arrives after the map is on disk.
     write_schema(schema(dims={**narrow, "scenario": nw.String()}, partial=set()), store)
     child = empty_child(revision)
-    flags = Record(child.resolver).flags("Generator")["p_max_pu"]
+    flags = Record(child.resolver).flags()["p_max_pu"]
     assert "snapshot" in flags.varies
     assert "scenario" not in flags.varies
     assert "scenario" not in flags.broadcast
@@ -334,7 +292,7 @@ def test_flags_report_both_sets_where_components_disagree(store):
     )
 
     record = revision.record
-    combined = record.flags("Generator")["p_max_pu"]
+    combined = record.flags()["p_max_pu"]
     assert "snapshot" in combined.varies
     assert "snapshot" in combined.broadcast
 
@@ -376,9 +334,9 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
     write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
 
     record = revision.record
-    flags = record.flags("Generator")
-    # Addressed by `entity` alone, so no axis is reportable either way.
-    assert flags["p_nom"].varies == frozenset()
+    flags = record.flags()
+    # Addressed by `entity` alone, so no other axis is reportable either way.
+    assert flags["p_nom"].varies == {"entity"}
     assert flags["p_nom"].broadcast == frozenset(), (
         "a dim `p_nom` has no column for is not one it broadcasts over"
     )
@@ -408,7 +366,7 @@ def test_flags_report_a_curve(store):
     )
 
     record = revision.record
-    assert record.flags("Process")["marginal_cost"].breakpoints
+    assert record.flags()["marginal_cost"].breakpoints
 
 
 # -- more than one layer, which is where the fold stops being a scan ---------
@@ -455,13 +413,8 @@ def test_node_record_orders_members(store, ac_dc):
     child = empty_child(root)
     write_entity_type(store.layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
-    names = list(
-        Record(child.resolver)
-        .entity_types["Generator"]
-        .collect()
-        .to_native()
-        .to_pandas()["entity"]
-    )
+    axis = Record(child.resolver).dims["entity"].collect().to_native().to_pandas()
+    names = list(axis[axis["entity_type"] == "Generator"]["entity"])
     # First-introduced order: the root's members, then the child's addition.
     assert names == [*ac_dc.c["Generator"].static.index, "New Solar"]
 
@@ -475,7 +428,7 @@ def test_a_directory_at_a_uri_reads_a_plain_record(store, ac_dc, tmp_path):
 
     record = store.layer(revision.id)
     assert isinstance(record, RecordLike)
-    assert "Generator" in record.entity_types
+    assert "entity" in record.dims
     assert "p_max_pu" in record.attributes
     assert record.schema.attributes
 
@@ -560,7 +513,6 @@ def test_write_record_omits_outputs_for_an_unsolved_source(store, ac_dc):
 
         schema = solved.schema
         dims = solved.dims
-        entity_types = solved.entity_types
         groups = solved.groups
         attributes = solved.attributes
         outputs = EMPTY
@@ -601,13 +553,15 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
         stores[name] = (store, revision)
 
     (_, revision_a), (store_b, revision_b) = stores["a"], stores["b"]
-    # Beyond `entity`: `bus`, which every schema here declares for its group, and the group.
-    assert revision_a.record.schema.broadcast_dims == ("bus", "scenario", "connection")
-    assert revision_b.record.schema.broadcast_dims == ("bus", "vintage", "connection")
+    # Beyond `entity` and `bus`, which every schema here declares, the group.
+    a, b = revision_a.record.schema, revision_b.record.schema
+    assert a.broadcast_dims == ("entity", "bus", "scenario", "connection")
+    assert b.broadcast_dims == ("entity", "bus", "vintage", "connection")
 
     # A layer read directly needs no schema supplied either: its own directory
     # carries none (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record), so its store's answers.
     assert store_b.layer(revision_b.id).schema.broadcast_dims == (
+        "entity",
         "bus",
         "vintage",
         "connection",

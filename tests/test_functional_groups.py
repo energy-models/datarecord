@@ -77,20 +77,6 @@ def test_a_group_may_not_share_a_dims_name():
         _schema(groups={"country": Group(over=["state"], into="country")})
 
 
-def test_the_entity_type_group_may_share_its_dims_name():
-    """It has no file or column of its own: its rows are the entity axis."""
-    s = Schema(
-        dimensions={
-            "entity": Dimension(dtype=nw.String()),
-            "entity_type": Dimension(dtype=nw.String()),
-        },
-        groups={"entity_type": Group(over=["entity"], into="entity_type")},
-        attributes={"icon": AttributeSpec(dtype=nw.String(), dims={"entity_type"})},
-    )
-    assert s.coordinates_of("icon") == ("entity_type",), "the dim"
-    assert s.groups_of("icon") == ()
-
-
 def test_an_into_less_group_in_dims_is_one_struct_column():
     """A group in `dims` is carried as itself, a struct over its coordinates."""
     s = _schema(

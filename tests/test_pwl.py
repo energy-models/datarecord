@@ -31,8 +31,8 @@ def _curve(revision, attribute: str) -> list[tuple[float, float]]:
     return list(zip(df["breakpoint"], df["value"], strict=True))
 
 
-def _flags(revision, ctype: str, attribute: str) -> Flags:
-    flags = revision.record.flags(ctype)
+def _flags(revision, attribute: str) -> Flags:
+    flags = revision.record.flags()
     if attribute not in flags:
         raise AssertionError(f"{attribute} not in the owner map")
     return flags[attribute]
@@ -83,14 +83,15 @@ def test_breakpoints_distinguishes_curve_from_scalar(store):
         [{"entity_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
     )
 
-    curve = _flags(revision, PROCESS, "marginal_cost")
-    scalar = _flags(revision, PROCESS, "p_nom")
-    # A curve and a scalar are shaped alike - both rows leave every dim NULL,
-    # so all three are in `broadcast` - and `breakpoints` is what separates
-    # them, without opening the file.
+    curve = _flags(revision, "marginal_cost")
+    scalar = _flags(revision, "p_nom")
+    # A curve and a scalar are shaped alike - both rows name the entity and
+    # leave every other dim NULL - and `breakpoints` is what separates them,
+    # without opening the file.
     assert curve.broadcast == scalar.broadcast
+    assert curve.varies == scalar.varies
     assert "snapshot" in curve.broadcast
-    assert not curve.varies
+    assert curve.varies == {"entity"}, "only the entity is named"
     assert curve.breakpoints
     assert not scalar.breakpoints
 
@@ -216,7 +217,7 @@ def test_curve_varying_by_snapshot(store):
         ],
     )
 
-    flags = _flags(revision, PROCESS, "marginal_cost")
+    flags = _flags(revision, "marginal_cost")
     # A curve that varies over snapshots: on the snapshot axis and a curve too.
     assert "snapshot" in flags.varies
     assert "snapshot" not in flags.broadcast
@@ -253,4 +254,4 @@ def test_scalar_replaced_by_a_curve(store):
     )
 
     assert _curve(child, "marginal_cost") == [(0.0, 18.0), (40.0, 26.0)]
-    assert _flags(child, PROCESS, "marginal_cost").breakpoints
+    assert _flags(child, "marginal_cost").breakpoints

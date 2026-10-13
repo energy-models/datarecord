@@ -56,6 +56,10 @@ class Requirements:
     names : frozenset of str
         Names two of the framework's entities claim, which a record scopes
         across every type.
+    columns : frozenset of tuple of (str, str)
+        `(entity_type, column)` pairs of a framework's own static column whose
+        name the record declares with another shape, so it has nowhere to be
+        stored: one name is one spec record-wide.
 
     Notes
     -----
@@ -70,6 +74,7 @@ class Requirements:
     unsupported_keys: frozenset[tuple[str, str]] = frozenset()
     unsupported_values: frozenset[tuple[str, str]] = frozenset()
     names: frozenset[str] = frozenset()
+    columns: frozenset[tuple[str, str]] = frozenset()
 
     def __bool__(self) -> bool:
         """Whether anything is required (or, for a `verify` result, missing)."""
@@ -80,6 +85,7 @@ class Requirements:
             or self.unsupported_keys
             or self.unsupported_values
             or self.names
+            or self.columns
         )
 
     def describe(self) -> str:
@@ -104,6 +110,11 @@ class Requirements:
             parts.append(
                 f"names claimed by more than one entity "
                 f"{sorted(self.names)} (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
+            )
+        if self.columns:
+            parts.append(
+                f"columns whose name is declared with another shape "
+                f"{sorted(self.columns)}"
             )
         return ", ".join(parts) if parts else "nothing"
 

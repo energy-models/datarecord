@@ -7,10 +7,10 @@
 One schema per record, and `manifest.json` is how it is written down - the two
 words name the same thing, the file and the object.
 
-Framework-independent. `entity_type`, `name` and `attribute` are strings
-because those vocabularies belong to a modelling framework and this package
-knows none: a type no tool recognises reads back fine and is reported by the
-tool that cannot build it, not rejected here.
+Framework-independent. Dims, properties and attributes are names a schema
+declares, because those vocabularies belong to a modelling framework and this
+package knows none: a label no tool recognises reads back fine and is reported
+by the tool that cannot build it, not rejected here.
 
 Notes
 -----
@@ -91,10 +91,10 @@ def _parse_dtype(value: Any) -> nw.dtypes.DType:
 
 
 # Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Not the
-# dims: `entity`, a group's `bus` and the entity-type axis are declared like any
-# other axis and typed from that declaration, which is what lets an `Enum` there
-# pin its vocabulary. These are the ones no schema names - `breakpoint` is NULL
-# for the ordinary entity-level scalar, so one column set serves every row.
+# dims or properties: each is declared and typed from that declaration, which is
+# what lets an `Enum` there pin its vocabulary. These are the ones no schema
+# names - `breakpoint` is NULL for an ordinary scalar, so one column set serves
+# every row.
 STRUCTURAL_TYPES = {
     "attribute": nw.String(),
     "breakpoint": nw.Float64(),
@@ -135,18 +135,6 @@ where the fold always re-derives it from file order.
 Notes
 -----
 - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-"""
-
-
-ENTITY_TYPE_COLUMN = "entity_type"
-"""The column `dims/entity.parquet` carries an entity's type under.
-
-Whatever the entity-type dim is called, so an attribute or result of this name
-would be dropped from a member file as that type's copy.
-
-Notes
------
-- [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
 """
 
 
@@ -245,7 +233,84 @@ class Dimension(BaseModel):
         return _dump_dtype(value)
 
 
-class AttributeSpec(BaseModel):
+class _ValueSpec(BaseModel):
+    """What `AttributeSpec` and `PropertySpec` share: a typed value and its defaults.
+
+    The `default`/`default_by` encoding lives here once, so a property and an
+    attribute round-trip `manifest.json` identically.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    dtype: nw.dtypes.DType
+    default: Any | None = None
+    default_by: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    unit: str | None = None
+    description: str | None = None
+
+    @field_validator("dtype", mode="before")
+    @classmethod
+    def _parse_dtype(cls, value: Any) -> Any:
+        return _parse_dtype(value)
+
+    @field_serializer("dtype")
+    def _dump_dtype(self, value: nw.dtypes.DType) -> Any:
+        return _dump_dtype(value)
+
+    @field_serializer("default")
+    def _serialise_default(self, value: Any) -> Any:
+        return _encode_default(value)
+
+    @field_validator("default", mode="before")
+    @classmethod
+    def _parse_default(cls, value: Any) -> Any:
+        return _decode_default(value)
+
+    @field_serializer("default_by")
+    def _serialise_default_by(
+        self, value: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        return {
+            key: {label: _encode_default(v) for label, v in by.items()}
+            for key, by in value.items()
+        }
+
+    @field_validator("default_by", mode="before")
+    @classmethod
+    def _parse_default_by(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        return {
+            key: {label: _decode_default(v) for label, v in by.items()}
+            if isinstance(by, dict)
+            else by
+            for key, by in value.items()
+        }
+
+
+def _encode_default(value: Any) -> Any:
+    """Encode a non-finite default as a string; JSON has no literal for one.
+
+    `inf` is an ordinary default for an unbounded capacity, and JSON's
+    `Infinity` is not valid JSON - a plain dump reads back as `None`,
+    turning "unbounded" into "no default". `_decode_default` reverses this.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return f"__{value}__"
+    return value
+
+
+def _decode_default(value: Any) -> Any:
+    """Decode what `_encode_default` encoded."""
+    if isinstance(value, str) and value.startswith("__") and value.endswith("__"):
+        try:
+            return float(value[2:-2])
+        except ValueError:
+            return value
+    return value
+
+
+class AttributeSpec(_ValueSpec):
     """What shape one attribute's data may take.
 
     Attributes
@@ -255,11 +320,15 @@ class AttributeSpec(BaseModel):
         `nw.Datetime()`, ...) - translated to its DuckDB name only where a
         column of it is built.
     dims
-        Dims this attribute may vary over; a subset of those declared. Varying
-        over nothing is what puts it in `dims/entity_type/<Type>.parquet` rather
-        than `inputs/`, so the schema decides the file split.
+        Dims and groups this attribute may vary over; a subset of those
+        declared. Exactly one dim makes it a column of that dim's axis file
+        rather than `inputs/`, so the schema decides the file split.
     default
         The value a coordinate no row covers takes.
+    default_by
+        The discriminator's name -> label -> the default for members of that
+        label, overriding `default`. Read through `Schema.default_for`; never
+        applied by the record layer.
     breakpoints
         Whether it may carry a piecewise-linear curve.
     unit
@@ -278,46 +347,8 @@ class AttributeSpec(BaseModel):
     - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    dtype: nw.dtypes.DType
-    default: Any | None = None
     dims: frozenset[str] = frozenset()
     breakpoints: bool = False
-    unit: str | None = None
-    description: str | None = None
-
-    @field_validator("dtype", mode="before")
-    @classmethod
-    def _parse_dtype(cls, value: Any) -> Any:
-        return _parse_dtype(value)
-
-    @field_serializer("dtype")
-    def _dump_dtype(self, value: nw.dtypes.DType) -> Any:
-        return _dump_dtype(value)
-
-    @field_serializer("default")
-    def _serialise_default(self, value: Any) -> Any:
-        """Encode a non-finite default as a string; JSON has no literal for one.
-
-        `inf` is an ordinary default for an unbounded capacity, and JSON's
-        `Infinity` is not valid JSON - a plain dump reads back as `None`,
-        turning "unbounded" into "no default". `_parse_default` reverses this.
-        """
-        if isinstance(value, float) and not math.isfinite(value):
-            return f"__{value}__"
-        return value
-
-    @field_validator("default", mode="before")
-    @classmethod
-    def _parse_default(cls, value: Any) -> Any:
-        """Decode what `_serialise_default` encoded."""
-        if isinstance(value, str) and value.startswith("__") and value.endswith("__"):
-            try:
-                return float(value[2:-2])
-            except ValueError:
-                return value
-        return value
 
     @property
     def varying(self) -> bool:
@@ -325,18 +356,48 @@ class AttributeSpec(BaseModel):
 
         "Varies beyond its address", not "has dims": naming exactly one
         addressing coordinate is a column on that thing's own table, so
-        `dims={"entity"}` is an entity column and `dims={"connection"}` a
-        column of the group's table. Anything more is `inputs/<attr>.parquet`.
-
-        A bare `bool(dims)` was the test before `entity` was a declared dim,
-        when an entity attribute declared none - it would now call every
-        attribute varying and route every constant to `inputs/`.
+        `dims={"bus"}` is a column of the bus axis and `dims={"connection"}`
+        a column of the group's table. Anything more is `inputs/<attr>.parquet`.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
         return len(self.dims) > 1
+
+
+class PropertySpec(_ValueSpec):
+    """One column of a dim's axis file that describes its labels.
+
+    A property is keyed by its subject dim (`Schema.properties`) and stored as a
+    column of `dims/{dim}.parquet`, beside the attributes addressed by that dim
+    alone.
+
+    Attributes
+    ----------
+    dtype
+        The column's type, as a narwhals dtype instance.
+    default
+        The value a label no row sets takes.
+    default_by
+        The discriminator's name -> label -> the default for members of that
+        label, overriding `default`. Read through `Schema.default_for`.
+    discriminator
+        Whether this property partitions its dim's labels into the kinds traits
+        are `on`. At most one per schema, and its `dtype` must be an `Enum`,
+        whose categories are the labels.
+    unit
+        What the values measure; `None` is undeclared.
+    description
+        What the property is, in prose. Never interpreted.
+
+    Notes
+    -----
+    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+
+    discriminator: bool = False
 
 
 class Group(BaseModel):
@@ -396,13 +457,13 @@ class Group(BaseModel):
 
 
 class Trait(BaseModel):
-    """A named bundle of attributes, and which entity types and entities carry it.
+    """A named bundle of attributes, and which discriminator labels and members carry it.
 
     The narrowing direction: an attribute the schema declares is carried by
-    every entity type it can address, and a trait is how that is cut down to
-    some of them, and further to some of those. A trait bundling `p_max_pu`
-    `on={"entity_type": {"Generator"}}` says those attributes reach generators
-    and nothing else.
+    every label of the discriminator, and a trait is how that is cut down to
+    some of them, and further to some of their members. A trait bundling
+    `p_max_pu` `on={"entity_type": {"Generator"}}` says those attributes reach
+    generators and nothing else.
 
     Attributes
     ----------
@@ -410,14 +471,13 @@ class Trait(BaseModel):
         The attributes this trait bundles. Each must be declared. Includes
         `switch` once parsed, whatever the author wrote.
     on
-        Mapping dim -> the labels of it this trait applies to. Only the
-        entity-type axis may key this, since that is the axis an attribute
-        vocabulary partitions - `Schema` rejects any other. Empty means this
-        narrowing does not apply, reaching every type.
+        Mapping discriminator name -> the labels of it this trait applies to.
+        Only the discriminator may key this - `Schema` rejects any other. Empty
+        means this narrowing does not apply, reaching every label.
     switch
-        The attribute deciding, per entity, whether this trait applies -
-        `dims={"entity"}` exactly. `None` means this narrowing does not
-        apply, reaching every entity.
+        The attribute deciding, per member of the discriminator's dim, whether
+        this trait applies - addressed by that dim exactly. `None` means this
+        narrowing does not apply, reaching every member.
     description
         What the trait is, in prose. Never interpreted.
 
@@ -453,14 +513,16 @@ class Schema(BaseModel):
     attributes
         Attribute -> spec, flat and record-wide. One attribute is one spec and
         one `inputs/<attr>.parquet`, so a dtype cannot differ per type.
+    properties
+        Subject dim -> property name -> spec: the columns of `dims/{dim}.parquet`
+        that describe its labels. One of them may be the `discriminator`.
     groups
-        Group name -> which tuples over several dims exist. `connection` is
-        the one every record with connections declares, and the entity-type
-        axis is the group `into` that axis over `[entity]`.
+        Group name -> which tuples over several dims exist.
     traits
-        Trait -> the attributes it bundles and the entity types carrying them.
-        A vocabulary a consumer dispatches on, declared rather than derived,
-        and the only thing that narrows an attribute to some entity types.
+        Trait -> the attributes it bundles and the discriminator labels
+        carrying them. A vocabulary a consumer dispatches on, declared rather
+        than derived, and the only thing that narrows an attribute to some
+        labels.
     partial
         Which dims a layer may patch value by value. `None` for a record
         with no layers, since nothing overrides anything. A dim outside it is
@@ -491,6 +553,7 @@ class Schema(BaseModel):
     validation, neither of which a result should meet.
     """
 
+    properties: dict[str, dict[str, PropertySpec]] = Field(default_factory=dict)
     groups: dict[str, Group] = Field(default_factory=dict)
     traits: dict[str, Trait] = Field(default_factory=dict)
     partial: frozenset[str] | None = None
@@ -540,17 +603,12 @@ class Schema(BaseModel):
             msg = f"`within` is cyclic: {' -> '.join(e.args[1])}"
             raise ValueError(msg) from e
 
-        classifies_entity = [
-            g
-            for g, spec in self.groups.items()
-            if spec.into is not None and tuple(spec.over.values()) == ("entity",)
-        ]
         for group, group_spec in self.groups.items():
             unknown = sorted(set(group_spec.over.values()) - declared)
             if unknown:
                 msg = f"group {group!r} is over undeclared dims {unknown}"
                 raise ValueError(msg)
-            if group in declared and group not in classifies_entity:
+            if group in declared:
                 renamed = "_".join((*group_spec.over, group))
                 msg = (
                     f"group {group!r} shares its name with the dim {group!r}; a "
@@ -574,27 +632,7 @@ class Schema(BaseModel):
                 )
                 raise ValueError(msg)
 
-        # One group may classify `entity`, or none: every caller of
-        # `attributes_for` asks for exactly one vocabulary.
-        classifying = sorted(str(self.groups[g].into) for g in classifies_entity)
-        if len(classifying) > 1:
-            msg = (
-                f"{classifying} all classify `entity`; an entity has one type, "
-                f"so at most one group may be `into` a dim over `entity` alone"
-            )
-            raise ValueError(msg)
-        entity_type = classifying[0] if classifying else None
-
-        # One name means one file with one `value` column, so a name declared as
-        # both would have to be an input and a result at once - two files, two
-        # governing rules, one key.
-        clashing = sorted(set(self.attributes) & set(self.results))
-        if clashing:
-            msg = (
-                f"{clashing} are declared as both an attribute and a result; "
-                f"one name is one file, so it is one or the other"
-            )
-            raise ValueError(msg)
+        self._check_properties()
 
         addressable = declared | set(self.groups)
         for attr, attr_spec in (*self.attributes.items(), *self.results.items()):
@@ -636,27 +674,35 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"trait {trait!r} bundles undeclared attributes {unknown}"
                 raise ValueError(msg)
-            # Only the entity-type axis may scope a trait. Any other
-            # classification would make the vocabulary depend on data rather
-            # than on the schema - which attributes an entity carries would
-            # follow from what its bus maps to, a per-entity lookup every caller
-            # of `attributes_for` treats as answerable from the schema alone.
-            for dim in trait_spec.on:
-                if dim != entity_type:
+            # Only the discriminator may scope a trait. Any other property would
+            # make the vocabulary depend on something no schema pins - which
+            # attributes a member carries is then answerable from the schema
+            # alone, as every caller of `attributes_for` assumes.
+            discriminator = self.discriminator
+            for name in trait_spec.on:
+                if discriminator is None or name != discriminator[1]:
                     msg = (
-                        f"trait {trait!r} is `on` {dim!r}, which does not classify "
-                        f"`entity`; only the entity-type axis partitions an "
-                        f"attribute vocabulary"
+                        f"trait {trait!r} is `on` {name!r}, which is not the "
+                        f"schema's discriminator {discriminator}; only the "
+                        f"discriminator partitions an attribute vocabulary"
                     )
                     raise ValueError(msg)
             if trait_spec.switch is not None:
                 switch_spec = self.attributes.get(trait_spec.switch)
-                if switch_spec is not None and switch_spec.dims != {"entity"}:
+                subject = (
+                    {discriminator[0]}
+                    if discriminator is not None
+                    else switch_spec.dims
+                    if switch_spec is not None and len(switch_spec.dims) == 1
+                    else None
+                )
+                if switch_spec is not None and switch_spec.dims != subject:
                     msg = (
                         f"trait {trait!r} is switched on {trait_spec.switch!r}, "
                         f"which is addressed by {sorted(switch_spec.dims)}; a "
-                        f"switch decides a trait per entity, so it is "
-                        f"addressed by `entity` alone"
+                        f"switch decides a trait per member of one dim - the "
+                        f"discriminator's, where one is declared - so it is "
+                        f"addressed by that dim alone"
                     )
                     raise ValueError(msg)
 
@@ -665,28 +711,104 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"`partial` names undeclared dims or groups {unknown}"
                 raise ValueError(msg)
-            # `entity` is in the fold key always, so naming it is a category
-            # error (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-            keys = sorted(set(self.partial) - set(self.broadcast_dims) - {entity_type})
-            if keys:
+        return self
+
+    def _check_properties(self) -> None:
+        """Refuse a property on an undeclared dim, and a malformed discriminator or `default_by`.
+
+        Run after `_check_names`, so a property name is already known not to
+        clash with an attribute's.
+        """
+        unknown = sorted(set(self.properties) - set(self.dimensions))
+        if unknown:
+            msg = (
+                f"properties are declared on undeclared dims {unknown}; a "
+                f"property is a column of its subject dim's axis file"
+            )
+            raise ValueError(msg)
+        flagged = [
+            (dim, name)
+            for dim, specs in self.properties.items()
+            for name, spec in specs.items()
+            if spec.discriminator
+        ]
+        if len(flagged) > 1:
+            msg = (
+                f"{flagged} are all flagged `discriminator`; a schema has at "
+                f"most one, every caller of `attributes_for` asking for one "
+                f"vocabulary"
+            )
+            raise ValueError(msg)
+        for dim, name in flagged:
+            dtype = self.properties[dim][name].dtype
+            if not isinstance(dtype, nw.Enum):
                 msg = (
-                    f"`partial` names {keys}, which no layer patches per value: "
-                    f"`entity` is keyed per row already, and the entity-type "
-                    f"group is no column"
+                    f"discriminator {name!r} on {dim!r} is {dtype}; a "
+                    f"discriminator is an `Enum`, its categories being the "
+                    f"labels traits are `on`"
                 )
                 raise ValueError(msg)
-        return self
+        subject, discriminator = flagged[0] if flagged else (None, None)
+        specs: list[tuple[str, _ValueSpec, bool]] = [
+            *(
+                (f"property {n!r}", s, d == subject)
+                for d, by_name in self.properties.items()
+                for n, s in by_name.items()
+            ),
+            *(
+                (
+                    f"attribute {a!r}",
+                    s,
+                    subject is not None and self.addresses(a, subject),
+                )
+                for a, s in (*self.attributes.items(), *self.results.items())
+            ),
+        ]
+        labels = self.discriminator_labels
+        for what, spec, reaches in specs:
+            if not spec.default_by:
+                continue
+            keys = sorted(spec.default_by)
+            if keys != [discriminator]:
+                msg = (
+                    f"{what} has `default_by` keyed by {keys}; its one key is "
+                    f"the discriminator, {discriminator!r}"
+                )
+                raise ValueError(msg)
+            if not reaches:
+                msg = (
+                    f"{what} has `default_by` but does not reach the "
+                    f"discriminator's dim {subject!r}, so no member of it has a "
+                    f"label to default by"
+                )
+                raise ValueError(msg)
+            unknown = sorted(set(spec.default_by[keys[0]]) - labels)
+            if unknown:
+                msg = (
+                    f"{what} has `default_by` for {unknown}, which are not "
+                    f"categories of the discriminator {keys[0]!r}"
+                )
+                raise ValueError(msg)
 
     def _check_names(self) -> None:
         """Refuse every declared name that cannot be a column of its own.
 
-        A group's name is a column too, its struct column. `entity_type` is the
-        one name legal as a dim or group and not as an attribute: the type axis
-        is spelled so, and its column is no attribute's to take. Two spellings
-        of one name differing only in case are refused, DuckDB resolving both
-        to one column; one spelling declared twice, as a group's coordinate
-        naming a dim, is left to the rules that govern it.
+        A group's name is a column too, its struct column, and so is a
+        property's. Two spellings of one name differing only in case are
+        refused, DuckDB resolving both to one column; one spelling declared
+        twice, as a group's coordinate naming a dim, is left to the rules that
+        govern it - except across attributes, results and properties, where one
+        name is one spec.
         """
+        valued = [
+            *(("attribute", a) for a in self.attributes),
+            *(("result", r) for r in self.results),
+            *(
+                (f"property of {d!r}", p)
+                for d, specs in self.properties.items()
+                for p in specs
+            ),
+        ]
         declared = [
             *(("dim", d) for d in self.dimensions),
             *(("group", g) for g in self.groups),
@@ -695,20 +817,25 @@ class Schema(BaseModel):
                 for g, spec in self.groups.items()
                 for c in spec.over
             ),
-            *(("attribute", a) for a in self.attributes),
-            *(("result", r) for r in self.results),
+            *valued,
         ]
         problems = []
         for kind, name in declared:
             why = _misnamed(name)
-            typed = kind in ("attribute", "result")
-            if why is None and typed and name.lower() == ENTITY_TYPE_COLUMN:
-                why = (
-                    f"is `{ENTITY_TYPE_COLUMN}`, the column an entity's type is "
-                    f"written under"
-                )
             if why is not None:
                 problems.append(f"{kind} {name!r} {why}")
+        kinds: dict[str, list[str]] = {}
+        for kind, name in valued:
+            kinds.setdefault(name, []).append(kind)
+        clashing = {n: k for n, k in kinds.items() if len(k) > 1}
+        if clashing:
+            detail = "; ".join(
+                f"{n!r} as {' and '.join(k)}" for n, k in clashing.items()
+            )
+            msg = (
+                f"one name is one spec, but these are declared more than once: {detail}"
+            )
+            raise ValueError(msg)
         spellings: dict[str, dict[str, str]] = {}
         for kind, name in declared:
             spellings.setdefault(name.lower(), {}).setdefault(name, kind)
@@ -739,23 +866,11 @@ class Schema(BaseModel):
 
     @property
     def broadcast_dims(self) -> tuple[str, ...]:
-        """The coordinates a NULL broadcasts over: every dim but `entity` and the type axis, and every group column.
+        """The coordinates a NULL broadcasts over: every declared dim and every group column.
 
         A NULL here means "every value of this dim", which the fold expands
-        against the axis. The two exclusions cannot mean that:
-
-        - `entity`, because a NULL there is a value belonging to no entity
-          rather than to all of them. The one dim named literally, being the
-          one every entity-type axis classifies.
-        - The entity-type axis, because it inherits `entity`'s exclusion: its
-          labels are a column of `dims/entity.parquet`, so a NULL there is an
-          entity whose type is unknown rather than one of every type. An
-          attribute addressed by the type *alone* never reaches here: it is a
-          column of the type axis file rather than a long row, so it has no
-          NULL to expand.
-
-        A group broadcasts like a dim, a NULL struct meaning every tuple of the
-        resolved group.
+        against the axis; a NULL struct means every tuple of the resolved
+        group.
 
         What the `varies`/`broadcast` structs have a field per, and what
         `expand_dims` joins.
@@ -765,11 +880,7 @@ class Schema(BaseModel):
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        entity_type = self.entity_type_dim
-        return (
-            *(d for d in self.dims if d not in ("entity", entity_type)),
-            *self.group_columns,
-        )
+        return (*self.dims, *self.group_columns)
 
     def coordinates_of(self, attribute: str) -> tuple[str, ...]:
         """The coordinate columns one attribute's rows carry, groups first.
@@ -779,8 +890,8 @@ class Schema(BaseModel):
         `("connection", "snapshot")`.
 
         Per attribute rather than schema-wide: one file per attribute means one
-        column set per attribute, and an all-NULL `entity` on a record-level
-        weighting would be a column claiming an entity the value has none of.
+        column set per attribute, and an all-NULL column of a dim the attribute
+        is not addressed by would claim a coordinate the value has none of.
 
         Notes
         -----
@@ -795,13 +906,13 @@ class Schema(BaseModel):
 
     @property
     def group_columns(self) -> tuple[str, ...]:
-        """Every group a row may carry as a column: all but the entity-type group.
+        """Every group, each carried in a row as one struct column named for it.
 
         Notes
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        return tuple(g for g in self.groups if g not in self.dimensions)
+        return tuple(self.groups)
 
     def group_type(self, group: str) -> nw.dtypes.DType:
         """The struct a row carries `group` as: a field per key coordinate.
@@ -880,8 +991,7 @@ class Schema(BaseModel):
         """One attribute's full long column set, in order - input or result.
 
         An attribute carries the coordinates its `dims` name and no others, so a
-        record-level weighting has no `entity` column and an entity attribute
-        has no `bus`.
+        per-snapshot weighting has no column for any other dim.
 
         An attribute neither vocabulary declares is `long_columns` - every
         declared dim, the widest shape. That is a schema with no manifest yet,
@@ -897,96 +1007,114 @@ class Schema(BaseModel):
         return (*self.coordinates_of(attribute), *LONG_TAIL)
 
     @property
-    def entity_type_dim(self) -> str | None:
-        """The dim classifying `entity`, or `None` where none does.
-
-        The `into` of the group over `entity` alone, of which the schema admits
-        at most one.
+    def discriminator(self) -> tuple[str, str] | None:
+        """`(dim, property)` of the one property flagged `discriminator`, or `None`.
 
         Notes
         -----
-        - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
+        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         """
         return next(
             (
-                g.into
-                for g in self.groups.values()
-                if g.into is not None and tuple(g.over.values()) == ("entity",)
+                (dim, name)
+                for dim, specs in self.properties.items()
+                for name, spec in specs.items()
+                if spec.discriminator
             ),
             None,
         )
 
     @property
-    def entity_types(self) -> frozenset[str]:
-        """Every declared entity-type label - the types an entity may be.
-
-        The entity-type axis's enum categories, so a schema declaring it as a
-        plain `String` has none: the labels are then data rather than
-        declarations, and `attributes_for` accepts any of them.
+    def discriminator_labels(self) -> frozenset[str]:
+        """The discriminator's `Enum` categories; empty where none is declared.
 
         Notes
         -----
-        - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
+        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         """
-        dim = self.entity_type_dim
-        if dim is None:
+        found = self.discriminator
+        if found is None:
             return frozenset()
-        dtype = self.dimensions[dim].dtype
+        dim, name = found
+        dtype = self.properties[dim][name].dtype
         return (
             frozenset(dtype.categories) if isinstance(dtype, nw.Enum) else frozenset()
         )
 
-    def addresses_entity(self, attribute: str) -> bool:
-        """Whether `attribute` reaches an entity at all.
+    def default_for(self, name: str, label: str | None = None) -> Any:
+        """The default of attribute, result or property `name`, for discriminator `label`.
 
-        True where its `dims` name `entity`, or a group one of whose
-        coordinates draws on `entity`. False for an attribute over an axis
-        alone - a snapshot weighting belongs to the record, so no entity type
-        carries it however few traits mention it.
+        `label`'s entry in `default_by` where it has one, else `default`.
+
+        Raises
+        ------
+        KeyError
+            If no attribute, result or property is called `name`.
+
+        Notes
+        -----
+        - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+        """
+        spec: _ValueSpec | None = self.spec_for(name)
+        if spec is None:
+            spec = next((s[name] for s in self.properties.values() if name in s), None)
+        if spec is None:
+            raise KeyError(name)
+        found = self.discriminator
+        if label is None or found is None:
+            return spec.default
+        return spec.default_by.get(found[1], {}).get(label, spec.default)
+
+    def addresses(self, attribute: str, dim: str) -> bool:
+        """Whether `attribute` reaches a label of `dim` at all.
+
+        True where its `dims` name `dim`, or a group one of whose coordinates
+        draws on `dim`.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
         spec = self.spec_for(attribute)
-        return (spec is not None and "entity" in spec.dims) or any(
-            "entity" in self.groups[g].over.values() for g in self.groups_of(attribute)
+        return (spec is not None and dim in spec.dims) or any(
+            dim in self.groups[g].over.values() for g in self.groups_of(attribute)
         )
 
-    def attributes_for(self, ctype: str) -> dict[str, AttributeSpec]:
-        """Which attributes entity type `ctype` carries.
+    def attributes_for(self, label: str) -> dict[str, AttributeSpec]:
+        """Which attributes the discriminator's `label` carries.
 
-        Every attribute addressed by `entity` that no trait narrows, plus those
-        the traits naming `ctype` bundle. Untraited is carried by all: writing
-        `entity` in an attribute's `dims` is what says it is per entity, and
-        declining to bundle it says it is so for every type - the same thing
-        `dims={"scenario"}` already means along the scenario axis.
+        Every attribute addressing the discriminator's dim that no trait
+        narrows, plus those the traits naming `label` bundle. Untraited is
+        carried by all: declining to bundle an attribute says it is carried by
+        every label.
 
-        Empty for a label no declared entity-type axis lists, which is why
-        callers rejecting an unknown type test `entity_types` rather than this.
-        A schema declaring no entity type at all carries everything addressed
-        by `entity`, whatever `ctype` is asked for.
+        Empty for a label the discriminator's categories do not list. A schema
+        declaring no discriminator narrows nothing, so every attribute is
+        carried whatever `label` is asked for.
 
         Notes
         -----
         - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         """
-        known = self.entity_types
-        if known and ctype not in known:
+        found = self.discriminator
+        if found is None:
+            return dict(sorted(self.attributes.items()))
+        if label not in self.discriminator_labels:
             return {}
         narrowed: set[str] = set()
         names: set[str] = set()
         for trait in self.traits.values():
             # A trait with no `on` narrows nothing: it is a bundle to dispatch
-            # on, so its attributes stay carried by every type.
-            scoped = {ctype for labels in trait.on.values() for ctype in labels}
-            if not scoped:
+            # on, so its attributes stay carried by every label.
+            if not any(trait.on.values()):
                 continue
             narrowed |= trait.attributes
-            if any(ctype in labels for labels in trait.on.values()):
+            if any(label in labels for labels in trait.on.values()):
                 names |= trait.attributes
         names |= {
-            a for a in self.attributes if a not in narrowed and self.addresses_entity(a)
+            a
+            for a in self.attributes
+            if a not in narrowed and self.addresses(a, found[0])
         }
         return {a: self.attributes[a] for a in sorted(names)}
 
@@ -994,8 +1122,8 @@ class Schema(BaseModel):
         """Which dims a layer owns `attribute` per.
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
-        attribute may vary over, `partial_dims` the fold key (membership keys
-        plus the `partial` value dims), and ownership is their intersection. A
+        attribute may vary over, `partial_dims` the fold key (group columns
+        plus the `partial` dims), and ownership is their intersection. A
         dim in `dims` but not the fold key - a non-`partial` value axis like
         `timestep` - is owned whole, so a patch to one of its values restates the
         attribute's entire extent along it (`_owned_whole`).
@@ -1014,10 +1142,8 @@ class Schema(BaseModel):
     def partial_dims(self) -> tuple[str, ...]:
         """The fold key's coordinates, in declaration order.
 
-        `entity`, a layer patching one entity's value at a time, plus the
-        dims and groups a layer may patch per value (`partial`). The fold's key
-        is one fixed tuple over all
-        attributes, so it carries every axis *any* layer may patch by value or
+        The dims and groups a layer may patch per value (`partial`). The fold's
+        key is one fixed tuple over all attributes, so it carries every axis *any* layer may patch by value or
         by row, not only those some currently declared attribute varies over. An
         attribute not owned per one of them writes NULL there, the "NULL means
         all values" rule - which also lets a schema declare an axis before any
@@ -1030,8 +1156,7 @@ class Schema(BaseModel):
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         partial = self.partial or frozenset()
-        entity = ("entity",) if "entity" in self.dimensions else ()
-        return (*entity, *(d for d in self.broadcast_dims if d in partial))
+        return tuple(d for d in self.broadcast_dims if d in partial)
 
     def axis_key(self, dim: str) -> tuple[str, ...]:
         """A dim's axis-table key: `(*parents, dim)`, parents first.
@@ -1047,40 +1172,30 @@ class Schema(BaseModel):
         return (*(d for d in self.dims if d in seen), dim)
 
     def attributes_on(self, dim: str) -> tuple[str, ...]:
-        """Attributes stored as columns of `dims/{dim}.parquet`.
+        """Attributes and properties stored as columns of `dims/{dim}.parquet`.
 
-        An attribute addressed by `dim` alone: a per-country CO2 budget, a
-        snapshot weighting, a per-type icon. `AttributeSpec.varying` is False
-        for exactly these, and this is the axis-side counterpart of
-        `addresses_entity` - what `dims/entity_type/<Type>.parquet` is to an
-        entity's constant columns, the axis file is to these.
-
-        `entity` is one of these axes only where no group declares the type
-        axis: with no type to classify an entity into there is no member file
-        for its constant columns, so they live on `dims/entity.parquet` like any
-        other axis's (`entity_type_dim`). Where a group *does* declare the axis
-        this returns `()` for `entity` - the columns are the *entity* frame's,
-        `dims/entity_type/<Type>.parquet`, a different destination with a
-        different key.
+        An attribute addressed by `dim` alone - a per-country CO2 budget, a
+        snapshot weighting - for which `AttributeSpec.varying` is False, then
+        the properties declared on `dim`.
 
         Keyed off `dims` rather than `coordinates_of`, because a group with one
         coordinate is indistinguishable there: `dims={"connection"}` over a
         single `bus` coordinate also yields `("bus",)`, and it belongs in the
-        group's file rather than on the bus axis. A group over `entity` alone is
-        keyed by the group name, not `entity`, so its `into` label and any
-        attribute it bundles never match here.
+        group's file rather than on the bus axis.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
         """
         if dim not in self.dimensions:
             return ()
-        if dim == "entity" and self.entity_type_dim is not None:
-            return ()
-        return tuple(
-            a for a, spec in self.attributes.items() if spec.dims == frozenset({dim})
+        return (
+            *(
+                a
+                for a, spec in self.attributes.items()
+                if spec.dims == frozenset({dim})
+            ),
+            *self.properties.get(dim, {}),
         )
 
     # -- key and column sets (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/read-path/#owner-map) -----------------------------------
@@ -1094,32 +1209,18 @@ class Schema(BaseModel):
         its own attribute's columns (`long_columns_for`), and `union_by_name`
         supplies NULL for the rest when the fold unions them here.
 
-        No `entity_type`: a row here is keyed by entity, and an entity is unique
-        record-wide, so a type column would restate what the entity already says
-        and let the two disagree. Every *declared* attribute is shaped by
-        `long_columns_for` rather than by this, where naming both is rejected
-        outright and one addressed by the type alone is a column of the type
-        axis file (`attributes_on`) rather than a long row at all.
-
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
-        entity_type = self.entity_type_dim
-        return (
-            *self.group_columns,
-            *(d for d in self.dims if d != entity_type),
-            *LONG_TAIL,
-        )
+        return (*self.group_columns, *self.dims, *LONG_TAIL)
 
     @property
     def input_key(self) -> tuple[str, ...]:
         """Inputs-map key columns, compared NULL-safely when folding.
 
-        `partial_dims`, plus `attribute`: `entity`, so a layer may patch one
-        entity's value without restating every other's, and the `partial`
-        dims and groups beside it.
+        `partial_dims`, plus `attribute`: a layer may patch one value along a
+        `partial` dim or group without restating every other's.
 
         A coordinate an attribute's own file does not carry reads as NULL,
         which is what makes the key one fixed tuple over attributes whose
@@ -1140,9 +1241,6 @@ class Schema(BaseModel):
         `connection` group - not because a separate field says so. That is
         what lets a second group exist without a second field.
 
-        A name in `dims` is the dim where one is declared, which only the
-        entity-type group may share a name with.
-
         Notes
         -----
         - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
@@ -1150,9 +1248,7 @@ class Schema(BaseModel):
         spec = self.spec_for(attribute)
         if spec is None:
             return ()
-        return tuple(
-            g for g in self.groups if g in spec.dims and g not in self.dimensions
-        )
+        return tuple(g for g in self.groups if g in spec.dims)
 
     def group_key(self, group: str) -> tuple[str, ...]:
         """One group's key coordinates - its struct column's fields - or `()` if undeclared.
@@ -1166,20 +1262,6 @@ class Schema(BaseModel):
         """
         spec = self.groups.get(group)
         return () if spec is None else spec.key
-
-    def entity_fields(self, group: str) -> tuple[str, ...]:
-        """The key coordinates of `group` that name an entity, whatever they are called.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        """
-        spec = self.groups.get(group)
-        return (
-            ()
-            if spec is None
-            else tuple(c for c in spec.key if spec.over[c] == "entity")
-        )
 
     @property
     def input_columns(self) -> tuple[str, ...]:
@@ -1197,15 +1279,14 @@ class Schema(BaseModel):
         """The declared type for one column, or None if the schema declares none.
 
         Covers the structural columns the format fixes, the declared dims, the
-        attributes an axis file carries as columns (`attributes_on`), and the
-        owner map's two flag structs, whose fields follow the schema's dims. A
-        narwhals dtype, translated to DuckDB (`duck.DuckTypes`) only where a
-        caller builds a column of it.
+        attributes and properties an axis file carries as columns
+        (`attributes_on`), and the owner map's two flag structs, whose fields
+        follow the schema's dims. A narwhals dtype, translated to DuckDB
+        (`duck.DuckTypes`) only where a caller builds a column of it.
 
-        No dim is structural - `entity` and a group's `bus` included: each is
-        declared, and typed from that declaration. So an `Enum` on the entity-type
-        axis pins its vocabulary everywhere the column is built, and an axis a
-        schema happens to call `kind` is typed no differently.
+        No dim is structural: each is declared, and typed from that
+        declaration. So an `Enum` property pins its vocabulary everywhere the
+        column is built.
 
         An attribute addressed by one axis alone is a *column* rather than a
         `value` cell, so this is where its type is read from - `cast_declared`
@@ -1236,6 +1317,9 @@ class Schema(BaseModel):
             (dim,) = spec.dims
             if column in self.attributes_on(dim):
                 return spec.dtype
+        for specs in self.properties.values():
+            if column in specs:
+                return specs[column].dtype
         return None
 
     def spec_for(self, attribute: str) -> AttributeSpec | None:
@@ -1269,20 +1353,18 @@ class Schema(BaseModel):
         spec = self.spec_for(attribute)
         return None if spec is None else spec.dtype
 
-    def types_declaring(self, attribute: str) -> frozenset[str]:
-        """Which entity types carry `attribute` - what `names=None` targets.
+    def labels_declaring(self, attribute: str) -> frozenset[str]:
+        """Which discriminator labels carry `attribute`.
 
-        Empty for a record-level attribute, which no type carries and which
-        therefore targets no names at all, and empty too for a schema declaring
-        no entity-type labels, where the caller has no type vocabulary to
-        enumerate and works from the resolved entities instead.
+        Empty for an attribute not addressing the discriminator's dim, which no
+        label carries, and empty too for a schema declaring no discriminator.
 
         Notes
         -----
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         return frozenset(
-            c for c in self.entity_types if attribute in self.attributes_for(c)
+            c for c in self.discriminator_labels if attribute in self.attributes_for(c)
         )
 
     # -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) --------------------------------------------------
@@ -1341,15 +1423,26 @@ class Schema(BaseModel):
                         f"rows setting those dims have no valid reading"
                     )
 
-        # A type losing an attribute is incompatible for the same reason a
+        for dim, specs in other.properties.items():
+            for name, was_prop in specs.items():
+                now_prop = self.properties.get(dim, {}).get(name)
+                if now_prop is None:
+                    problems.append(f"property {name!r} of {dim!r} removed")
+                elif now_prop.dtype != was_prop.dtype:
+                    problems.append(
+                        f"property {name!r} of {dim!r} dtype {was_prop.dtype} "
+                        f"-> {now_prop.dtype}"
+                    )
+
+        # A label losing an attribute is incompatible for the same reason a
         # narrowed `dims` is: its rows are still in the file, now unreadable
-        # for that type. Losing a whole type says the same of all of them.
-        for ctype in other.entity_types:
-            was_attrs = set(other.attributes_for(ctype))
-            dropped = sorted(was_attrs - set(self.attributes_for(ctype)))
+        # for that label. Losing a whole label says the same of all of them.
+        for label in other.discriminator_labels:
+            was_attrs = set(other.attributes_for(label))
+            dropped = sorted(was_attrs - set(self.attributes_for(label)))
             if dropped:
                 problems.append(
-                    f"entity type {ctype!r} no longer carries {dropped}; "
+                    f"label {label!r} no longer carries {dropped}; "
                     f"rows written for it have no valid reading"
                 )
 

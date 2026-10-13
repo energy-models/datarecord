@@ -101,11 +101,6 @@ class Record:
         return LazyFrames(names, lambda dim: nw.from_native(self.resolver.axis(dim)))
 
     @_stable_cache
-    def entity_types(self) -> LazyFrames:
-        types = tuple(sorted(self.resolver.entity_types()))
-        return LazyFrames(types, self._entity_type_frame)
-
-    @_stable_cache
     def groups(self) -> LazyFrames:
         """Each declared group's rows, keyed by group - one frame each.
 
@@ -135,19 +130,16 @@ class Record:
             names, lambda attr: nw.from_native(self.resolver.attribute(attr, "outputs"))
         )
 
-    def flags(self, ctype: str) -> dict[str, Flags]:
+    def flags(self) -> dict[str, Flags]:
         """Straight off the `inputs` owner map, which folded these in for free.
 
         Notes
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return self.resolver.attributes_of(ctype)
+        return self.resolver.fold.flags()
 
     # -- frames, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) --
-
-    def _entity_type_frame(self, ctype: str) -> nw.LazyFrame:
-        return self._frame(self.resolver.entity_type(ctype), ctype)
 
     def _group_frame(self, group: str) -> nw.LazyFrame:
         return self._frame(self.resolver.group_frame(group), group)
@@ -162,8 +154,8 @@ class Record:
         Parameters
         ----------
         key
-            What the frame was looked up by - an entity type or a group name -
-            so a miss raises the `KeyError` the caller asked with.
+            The group name the frame was looked up by, so a miss raises the
+            `KeyError` the caller asked with.
 
         Notes
         -----

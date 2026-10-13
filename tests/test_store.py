@@ -342,7 +342,7 @@ def test_a_dim_declared_after_the_fold_table_is_in_neither_flag_set(store):
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
-    flags = _folded_then_widened(store).record.flags("Generator")["p_max_pu"]
+    flags = _folded_then_widened(store).record.flags()["p_max_pu"]
     assert "scenario" not in flags.varies
     assert "scenario" not in flags.broadcast, "a missing flag field reads as unset"
     assert "snapshot" in flags.broadcast, "a field the fold had still reads"
@@ -375,7 +375,7 @@ def test_a_staged_tail_folds_onto_a_fold_table_from_before_a_widening(store):
     assert rows == [(2030, "high", 0.7), (None, None, 0.4)], (
         "the staged row and the frozen one both resolve"
     )
-    flags = w.flags("Generator")["p_max_pu"]
+    flags = w.flags()["p_max_pu"]
     assert "scenario" in flags.varies, "the staged row sets it"
     assert "scenario" not in flags.broadcast, "the frozen row's missing field is unset"
 
@@ -459,6 +459,6 @@ def test_a_relation_from_another_connection_is_rejected(tree):
         w = WorkingRecord(root.record)
         frame = foreign.sql("SELECT 'Manchester Wind' AS entity, 1.0 AS value")
         with pytest.raises(ValueError, match="another connection or thread"):
-            w.add("Generator", frame)
+            w.set("p_nom", frame)
     finally:
         foreign.close()

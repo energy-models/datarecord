@@ -134,18 +134,23 @@ def test_verify_reports_a_type_the_tool_does_not_know(store, ac_dc):
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = export_network(ac_dc, store)
-    # Declared alongside PyPSA's own types, since the axis pins the vocabulary.
+    # Declared alongside PyPSA's own types, since the discriminator pins the
+    # vocabulary.
     declared = read_schema(store)
-    axis = declared.dimensions[ENTITY_TYPE]
-    assert isinstance(axis.dtype, nw.Enum), "PyPSA declares its types as an enum"
+    assert declared.discriminator == ("entity", ENTITY_TYPE)
+    prop = declared.properties["entity"][ENTITY_TYPE]
+    assert isinstance(prop.dtype, nw.Enum), "PyPSA declares its types as an enum"
     write_schema(
         declared.model_copy(
             update={
-                "dimensions": {
-                    **declared.dimensions,
-                    ENTITY_TYPE: axis.model_copy(
-                        update={"dtype": nw.Enum([*axis.dtype.categories, "Widget"])}
-                    ),
+                "properties": {
+                    "entity": {
+                        ENTITY_TYPE: prop.model_copy(
+                            update={
+                                "dtype": nw.Enum([*prop.dtype.categories, "Widget"])
+                            }
+                        )
+                    }
                 }
             }
         ),
@@ -201,6 +206,7 @@ def _with_schema(revision, **kwargs) -> None:
         update={
             "attributes": attributes,
             "groups": was.groups,
+            "properties": was.properties,
             "traits": traits,
             "meta": was.meta,
         }
@@ -330,6 +336,34 @@ def test_to_datarecord_rejects_a_cross_type_name_collision(workspace):
         PyPSA.to_datarecord(n, workspace.con)
 
 
+def test_to_datarecord_rejects_a_custom_column_declared_with_another_shape(workspace):
+    """A carrier's own `efficiency` has nowhere to go: the name is a per-port attribute."""
+    import pypsa
+
+    n = pypsa.Network()
+    n.add("Carrier", "AC")
+    n.c.Carrier.static["efficiency"] = 0.9
+
+    with pytest.raises(UnsupportedRecordError, match="another shape") as raised:
+        PyPSA.to_datarecord(n, workspace.con)
+    assert raised.value.missing.columns == {("Carrier", "efficiency")}
+
+
+def test_a_custom_column_round_trips_on_its_own_type(store):
+    """A column PyPSA's registry lacks is an entity column carried by its type alone."""
+    import pypsa
+
+    n = pypsa.Network()
+    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
+    n.add("Bus", "north")
+    n.add("Generator", "gen", bus="north")
+    n.c.Bus.static["country"] = "DE"
+
+    built = PyPSA.build(export_network(n, store).record)
+    assert built.c.Bus.static.loc["north", "country"] == "DE"
+    assert "country" not in built.c.Generator.static, "a Generator does not carry it"
+
+
 def test_to_datarecord_accepts_distinct_names(workspace):
     """The negative half: the same network with distinct names is buildable."""
     import pypsa
@@ -353,7 +387,8 @@ def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
     assert set(n.c["SubNetwork"].static.index) & set(n.c["Line"].static.index)
 
     record = export_network(n, store).record
-    names = record.entity_types["SubNetwork"].collect().to_pandas()["entity"]
+    members = record.members("entity", entity_type="SubNetwork")
+    names = members.collect().to_pandas()["entity"]
     assert sorted(names) == [f"{i} SubNetwork" for i in range(4)]
     results = PyPSA.results(n, store.workspace.con)
     pointed = set(results["sub_network"].collect().to_pandas()["value"])
@@ -752,6 +787,19 @@ def test_process_rates_survive_a_round_trip(store):
     assert_networks_equal(built, n)
 
 
+def test_a_default_differing_per_type_is_default_by():
+    """One attribute PyPSA defaults per type declares the exceptions in `default_by`.
+
+    Notes
+    -----
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    """
+    declared = _registry_schema()
+    assert declared.default_for("sign") == 1.0
+    assert declared.default_for("sign", "Load") == -1.0, "a load's sign is its own"
+    assert declared.default_for("sign", "Generator") == 1.0, "others take `default`"
+
+
 def test_delays_are_columns_of_their_connections(workspace, store):
     """A Process's `delay0`/`delay1` and a Link's `delay`/`delay2` are one `delay` per bus.
 
@@ -768,13 +816,11 @@ def test_delays_are_columns_of_their_connections(workspace, store):
     n.add("Link", "split", bus0="a", bus1="b", bus2="c", delay=3, delay2=4)
 
     record = PyPSA.to_datarecord(n, workspace.con)
-    members = {
-        c: set(record.entity_types[c].collect_schema()) for c in record.entity_types
-    }
-    assert not {"delay", "delay0", "delay2", "cyclic_delay1"} & set().union(
-        *members.values()
-    ), "no positional names on the members"
-    connections = _flat(record.groups["connection"])
+    members = set(record.dims["entity"].collect_schema())
+    assert not {"delay", "delay0", "delay2", "cyclic_delay1"} & members, (
+        "no positional names on the members"
+    )
+    connections = unpacked(record.groups["connection"])
     delay = connections.set_index(["entity", "bus"])["delay"].dropna().to_dict()
     assert delay == {
         ("dri", "a"): 1,
