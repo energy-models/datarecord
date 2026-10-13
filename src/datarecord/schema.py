@@ -326,9 +326,10 @@ class AttributeSpec(_ValueSpec):
     default
         The value a coordinate no row covers takes.
     default_by
-        The discriminator's name -> label -> the default for members of that
-        label, overriding `default`. Read through `Schema.default_for`; never
-        applied by the record layer.
+        One discriminator's name -> label -> the default for members of that
+        label, overriding `default`. The discriminator's dim must be one the
+        attribute reaches. Read through `Schema.default_for`; never applied by
+        the record layer.
     breakpoints
         Whether it may carry a piecewise-linear curve.
     unit
@@ -380,11 +381,12 @@ class PropertySpec(_ValueSpec):
     default
         The value a label no row sets takes.
     default_by
-        The discriminator's name -> label -> the default for members of that
-        label, overriding `default`. Read through `Schema.default_for`.
+        The subject dim's discriminator's name -> label -> the default for
+        members of that label, overriding `default`. Read through
+        `Schema.default_for`.
     discriminator
         Whether this property partitions its dim's labels into the kinds traits
-        are `on`. At most one per schema, and its `dtype` must be an `Enum`,
+        are `on`. At most one per dim, and its `dtype` must be an `Enum`,
         whose categories are the labels.
     unit
         What the values measure; `None` is undeclared.
@@ -460,10 +462,10 @@ class Trait(BaseModel):
     """A named bundle of attributes, and which discriminator labels and members carry it.
 
     The narrowing direction: an attribute the schema declares is carried by
-    every label of the discriminator, and a trait is how that is cut down to
-    some of them, and further to some of their members. A trait bundling
+    every label of a dim's discriminator, and a trait is how that is cut down
+    to some of them, and further to some of their members. A trait bundling
     `p_max_pu` `on={"entity_type": {"Generator"}}` says those attributes reach
-    generators and nothing else.
+    generators and no other entity.
 
     Attributes
     ----------
@@ -471,13 +473,15 @@ class Trait(BaseModel):
         The attributes this trait bundles. Each must be declared. Includes
         `switch` once parsed, whatever the author wrote.
     on
-        Mapping discriminator name -> the labels of it this trait applies to.
-        Only the discriminator may key this - `Schema` rejects any other. Empty
-        means this narrowing does not apply, reaching every label.
+        Mapping one discriminator's name -> the labels of it this trait
+        applies to. At most one key, and only a discriminator - `Schema`
+        rejects any other. Empty means this narrowing does not apply,
+        reaching every label.
     switch
-        The attribute deciding, per member of the discriminator's dim, whether
-        this trait applies - addressed by that dim exactly. `None` means this
-        narrowing does not apply, reaching every member.
+        The attribute deciding, per member of the dim the `on` key
+        discriminates, whether this trait applies - addressed by that dim
+        exactly, so it needs an `on` key. `None` means this narrowing does not
+        apply, reaching every member.
     description
         What the trait is, in prose. Never interpreted.
 
@@ -515,7 +519,7 @@ class Schema(BaseModel):
         one `inputs/<attr>.parquet`, so a dtype cannot differ per type.
     properties
         Subject dim -> property name -> spec: the columns of `dims/{dim}.parquet`
-        that describe its labels. One of them may be the `discriminator`.
+        that describe its labels. One per dim may be its `discriminator`.
     groups
         Group name -> which tuples over several dims exist.
     traits
@@ -674,37 +678,7 @@ class Schema(BaseModel):
             if unknown:
                 msg = f"trait {trait!r} bundles undeclared attributes {unknown}"
                 raise ValueError(msg)
-            # Only the discriminator may scope a trait. Any other property would
-            # make the vocabulary depend on something no schema pins - which
-            # attributes a member carries is then answerable from the schema
-            # alone, as every caller of `attributes_for` assumes.
-            discriminator = self.discriminator
-            for name in trait_spec.on:
-                if discriminator is None or name != discriminator[1]:
-                    msg = (
-                        f"trait {trait!r} is `on` {name!r}, which is not the "
-                        f"schema's discriminator {discriminator}; only the "
-                        f"discriminator partitions an attribute vocabulary"
-                    )
-                    raise ValueError(msg)
-            if trait_spec.switch is not None:
-                switch_spec = self.attributes.get(trait_spec.switch)
-                subject = (
-                    {discriminator[0]}
-                    if discriminator is not None
-                    else switch_spec.dims
-                    if switch_spec is not None and len(switch_spec.dims) == 1
-                    else None
-                )
-                if switch_spec is not None and switch_spec.dims != subject:
-                    msg = (
-                        f"trait {trait!r} is switched on {trait_spec.switch!r}, "
-                        f"which is addressed by {sorted(switch_spec.dims)}; a "
-                        f"switch decides a trait per member of one dim - the "
-                        f"discriminator's, where one is declared - so it is "
-                        f"addressed by that dim alone"
-                    )
-                    raise ValueError(msg)
+            self._check_trait(trait, trait_spec)
 
         if self.partial is not None:
             unknown = sorted(self.partial - declared - set(self.groups))
@@ -712,6 +686,52 @@ class Schema(BaseModel):
                 msg = f"`partial` names undeclared dims or groups {unknown}"
                 raise ValueError(msg)
         return self
+
+    def _check_trait(self, trait: str, spec: Trait) -> None:
+        """Refuse a trait `on` anything but one discriminator, or switched off its dim.
+
+        Only a discriminator may scope a trait: any other property would make
+        which attributes a label carries depend on data no schema pins, where
+        every caller of `attributes_for` answers from the schema alone. One key
+        at most, since the trait then narrows over exactly one dim, the one its
+        switch must be addressed by.
+        """
+        if len(spec.on) > 1:
+            msg = (
+                f"trait {trait!r} is `on` {sorted(spec.on)}; a trait is `on` one "
+                f"discriminator, narrowing over that discriminator's dim alone - "
+                f"split it into one trait per discriminator"
+            )
+            raise ValueError(msg)
+        owners = {name: dim for dim, name in self.discriminators.items()}
+        subject = None
+        for name in spec.on:
+            if name not in owners:
+                msg = (
+                    f"trait {trait!r} is `on` {name!r}, which is not a "
+                    f"discriminator; the schema's are {sorted(owners)}, and only "
+                    f"a discriminator partitions an attribute vocabulary"
+                )
+                raise ValueError(msg)
+            subject = owners[name]
+        if spec.switch is None:
+            return
+        if subject is None:
+            msg = (
+                f"trait {trait!r} is switched on {spec.switch!r} but `on` no "
+                f"discriminator; a switch decides a trait per label of the dim "
+                f"its `on` key discriminates"
+            )
+            raise ValueError(msg)
+        switch_spec = self.attributes.get(spec.switch)
+        if switch_spec is not None and switch_spec.dims != {subject}:
+            msg = (
+                f"trait {trait!r} is switched on {spec.switch!r}, which is "
+                f"addressed by {sorted(switch_spec.dims)}; a switch decides a "
+                f"trait per label of {subject!r}, the dim its `on` key "
+                f"discriminates, so it is addressed by that dim alone"
+            )
+            raise ValueError(msg)
 
     def _check_properties(self) -> None:
         """Refuse a property on an undeclared dim, and a malformed discriminator or `default_by`.
@@ -726,32 +746,27 @@ class Schema(BaseModel):
                 f"property is a column of its subject dim's axis file"
             )
             raise ValueError(msg)
-        flagged = [
-            (dim, name)
-            for dim, specs in self.properties.items()
-            for name, spec in specs.items()
-            if spec.discriminator
-        ]
-        if len(flagged) > 1:
-            msg = (
-                f"{flagged} are all flagged `discriminator`; a schema has at "
-                f"most one, every caller of `attributes_for` asking for one "
-                f"vocabulary"
-            )
-            raise ValueError(msg)
-        for dim, name in flagged:
-            dtype = self.properties[dim][name].dtype
-            if not isinstance(dtype, nw.Enum):
+        for dim, specs in self.properties.items():
+            flagged = [name for name, spec in specs.items() if spec.discriminator]
+            if len(flagged) > 1:
                 msg = (
-                    f"discriminator {name!r} on {dim!r} is {dtype}; a "
-                    f"discriminator is an `Enum`, its categories being the "
-                    f"labels traits are `on`"
+                    f"{flagged} on {dim!r} are all flagged `discriminator`; a "
+                    f"dim has at most one, a label having one kind"
                 )
                 raise ValueError(msg)
-        subject, discriminator = flagged[0] if flagged else (None, None)
-        specs: list[tuple[str, _ValueSpec, bool]] = [
+            for name in flagged:
+                dtype = specs[name].dtype
+                if not isinstance(dtype, nw.Enum):
+                    msg = (
+                        f"discriminator {name!r} on {dim!r} is {dtype}; a "
+                        f"discriminator is an `Enum`, its categories being the "
+                        f"labels traits are `on`"
+                    )
+                    raise ValueError(msg)
+        owners = {name: dim for dim, name in self.discriminators.items()}
+        valued: list[tuple[str, _ValueSpec, frozenset[str]]] = [
             *(
-                (f"property {n!r}", s, d == subject)
+                (f"property {n!r}", s, frozenset({d}))
                 for d, by_name in self.properties.items()
                 for n, s in by_name.items()
             ),
@@ -759,30 +774,31 @@ class Schema(BaseModel):
                 (
                     f"attribute {a!r}",
                     s,
-                    subject is not None and self.addresses(a, subject),
+                    frozenset(d for d in self.dimensions if self.addresses(a, d)),
                 )
                 for a, s in (*self.attributes.items(), *self.results.items())
             ),
         ]
-        labels = self.discriminator_labels
-        for what, spec, reaches in specs:
+        for what, spec, reached in valued:
             if not spec.default_by:
                 continue
             keys = sorted(spec.default_by)
-            if keys != [discriminator]:
+            if len(keys) > 1 or keys[0] not in owners:
                 msg = (
-                    f"{what} has `default_by` keyed by {keys}; its one key is "
-                    f"the discriminator, {discriminator!r}"
+                    f"{what} has `default_by` keyed by {keys}; its one key is a "
+                    f"discriminator, one of {sorted(owners)} - two would leave "
+                    f"no precedence between them"
                 )
                 raise ValueError(msg)
-            if not reaches:
+            subject = owners[keys[0]]
+            if subject not in reached:
                 msg = (
-                    f"{what} has `default_by` but does not reach the "
-                    f"discriminator's dim {subject!r}, so no member of it has a "
-                    f"label to default by"
+                    f"{what} has `default_by` {keys[0]!r} but does not reach "
+                    f"its dim {subject!r}, so no label of it has a kind to "
+                    f"default by"
                 )
                 raise ValueError(msg)
-            unknown = sorted(set(spec.default_by[keys[0]]) - labels)
+            unknown = sorted(set(spec.default_by[keys[0]]) - self.labels(subject))
             if unknown:
                 msg = (
                     f"{what} has `default_by` for {unknown}, which are not "
@@ -1007,35 +1023,30 @@ class Schema(BaseModel):
         return (*self.coordinates_of(attribute), *LONG_TAIL)
 
     @property
-    def discriminator(self) -> tuple[str, str] | None:
-        """`(dim, property)` of the one property flagged `discriminator`, or `None`.
+    def discriminators(self) -> dict[str, str]:
+        """Dim -> the one property of it flagged `discriminator`, for each dim declaring one.
 
         Notes
         -----
         - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         """
-        return next(
-            (
-                (dim, name)
-                for dim, specs in self.properties.items()
-                for name, spec in specs.items()
-                if spec.discriminator
-            ),
-            None,
-        )
+        return {
+            dim: name
+            for dim, specs in self.properties.items()
+            for name, spec in specs.items()
+            if spec.discriminator
+        }
 
-    @property
-    def discriminator_labels(self) -> frozenset[str]:
-        """The discriminator's `Enum` categories; empty where none is declared.
+    def labels(self, dim: str) -> frozenset[str]:
+        """The `Enum` categories of `dim`'s discriminator; empty where it has none.
 
         Notes
         -----
         - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         """
-        found = self.discriminator
-        if found is None:
+        name = self.discriminators.get(dim)
+        if name is None:
             return frozenset()
-        dim, name = found
         dtype = self.properties[dim][name].dtype
         return (
             frozenset(dtype.categories) if isinstance(dtype, nw.Enum) else frozenset()
@@ -1045,6 +1056,8 @@ class Schema(BaseModel):
         """The default of attribute, result or property `name`, for discriminator `label`.
 
         `label`'s entry in `default_by` where it has one, else `default`.
+        `default_by` has one key, so `label` is read as a label of that one
+        discriminator.
 
         Raises
         ------
@@ -1060,10 +1073,10 @@ class Schema(BaseModel):
             spec = next((s[name] for s in self.properties.values() if name in s), None)
         if spec is None:
             raise KeyError(name)
-        found = self.discriminator
-        if label is None or found is None:
+        if label is None:
             return spec.default
-        return spec.default_by.get(found[1], {}).get(label, spec.default)
+        by_label = next(iter(spec.default_by.values()), {})
+        return by_label.get(label, spec.default)
 
     def addresses(self, attribute: str, dim: str) -> bool:
         """Whether `attribute` reaches a label of `dim` at all.
@@ -1080,41 +1093,39 @@ class Schema(BaseModel):
             dim in self.groups[g].over.values() for g in self.groups_of(attribute)
         )
 
-    def attributes_for(self, label: str) -> dict[str, AttributeSpec]:
-        """Which attributes the discriminator's `label` carries.
+    def attributes_for(self, dim: str, label: str) -> dict[str, AttributeSpec]:
+        """Which attributes a member of `dim` whose discriminator reads `label` carries.
 
-        Every attribute addressing the discriminator's dim that no trait
-        narrows, plus those the traits naming `label` bundle. Untraited is
-        carried by all: declining to bundle an attribute says it is carried by
-        every label.
+        Every attribute addressing `dim` that no trait `on` `dim`'s
+        discriminator narrows, plus those the traits naming `label` bundle.
+        Untraited is carried by all: declining to bundle an attribute says it
+        is carried by every label. A trait `on` another dim's discriminator
+        narrows nothing here.
 
-        Empty for a label the discriminator's categories do not list. A schema
-        declaring no discriminator narrows nothing, so every attribute is
-        carried whatever `label` is asked for.
+        Empty for a label the discriminator's categories do not list. A dim
+        with no discriminator narrows nothing, so every attribute addressing
+        it is carried whatever `label` is asked for.
 
         Notes
         -----
         - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         """
-        found = self.discriminator
-        if found is None:
-            return dict(sorted(self.attributes.items()))
-        if label not in self.discriminator_labels:
+        name = self.discriminators.get(dim)
+        if name is not None and label not in self.labels(dim):
             return {}
         narrowed: set[str] = set()
         names: set[str] = set()
         for trait in self.traits.values():
-            # A trait with no `on` narrows nothing: it is a bundle to dispatch
-            # on, so its attributes stay carried by every label.
-            if not any(trait.on.values()):
+            # A trait with no labels `on` narrows nothing: it is a bundle to
+            # dispatch on, so its attributes stay carried by every label.
+            on = trait.on.get(name) if name is not None else None
+            if not on:
                 continue
             narrowed |= trait.attributes
-            if any(label in labels for labels in trait.on.values()):
+            if label in on:
                 names |= trait.attributes
         names |= {
-            a
-            for a in self.attributes
-            if a not in narrowed and self.addresses(a, found[0])
+            a for a in self.attributes if a not in narrowed and self.addresses(a, dim)
         }
         return {a: self.attributes[a] for a in sorted(names)}
 
@@ -1353,18 +1364,18 @@ class Schema(BaseModel):
         spec = self.spec_for(attribute)
         return None if spec is None else spec.dtype
 
-    def labels_declaring(self, attribute: str) -> frozenset[str]:
-        """Which discriminator labels carry `attribute`.
+    def labels_declaring(self, attribute: str, dim: str) -> frozenset[str]:
+        """Which labels of `dim`'s discriminator carry `attribute`.
 
-        Empty for an attribute not addressing the discriminator's dim, which no
-        label carries, and empty too for a schema declaring no discriminator.
+        Empty for an attribute not addressing `dim`, which no label carries,
+        and empty too for a dim with no discriminator.
 
         Notes
         -----
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         return frozenset(
-            c for c in self.discriminator_labels if attribute in self.attributes_for(c)
+            c for c in self.labels(dim) if attribute in self.attributes_for(dim, c)
         )
 
     # -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) --------------------------------------------------
@@ -1437,14 +1448,15 @@ class Schema(BaseModel):
         # A label losing an attribute is incompatible for the same reason a
         # narrowed `dims` is: its rows are still in the file, now unreadable
         # for that label. Losing a whole label says the same of all of them.
-        for label in other.discriminator_labels:
-            was_attrs = set(other.attributes_for(label))
-            dropped = sorted(was_attrs - set(self.attributes_for(label)))
-            if dropped:
-                problems.append(
-                    f"label {label!r} no longer carries {dropped}; "
-                    f"rows written for it have no valid reading"
-                )
+        for dim in other.discriminators:
+            for label in sorted(other.labels(dim)):
+                was_attrs = set(other.attributes_for(dim, label))
+                dropped = sorted(was_attrs - set(self.attributes_for(dim, label)))
+                if dropped:
+                    problems.append(
+                        f"label {label!r} of {dim!r} no longer carries {dropped}; "
+                        f"rows written for it have no valid reading"
+                    )
 
         if other.partial is not None and self.partial is not None:
             lost = other.partial - self.partial

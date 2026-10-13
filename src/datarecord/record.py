@@ -158,7 +158,7 @@ class RecordLike(Protocol):
         budget is read from here rather than from `attributes`, which holds long
         frames only. A column absent from the frame is one no layer wrote, whose
         value is that attribute's `default`. One label's members are this frame
-        filtered on the discriminator column (`Schema.discriminator`).
+        filtered on the dim's discriminator column (`Schema.discriminators`).
 
         Notes
         -----

@@ -162,9 +162,9 @@ def test_an_untraited_attribute_is_carried_by_every_type():
             "sign": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
         }
     )
-    assert "p_max_pu" not in s.attributes_for("Link"), "narrowed to Generator"
-    assert "sign" in s.attributes_for("Link"), "untraited, so carried by all"
-    assert "sign" in s.attributes_for("Generator")
+    assert "p_max_pu" not in s.attributes_for("entity", "Link"), "narrowed to Generator"
+    assert "sign" in s.attributes_for("entity", "Link"), "untraited, so carried by all"
+    assert "sign" in s.attributes_for("entity", "Generator")
 
 
 def test_an_attribute_addressing_no_entity_reaches_no_type():
@@ -181,21 +181,21 @@ def test_an_attribute_addressing_no_entity_reaches_no_type():
         }
     )
     assert not s.addresses("weighting", "entity")
-    assert "weighting" not in s.attributes_for("Generator")
-    assert s.labels_declaring("weighting") == frozenset()
-    assert s.labels_declaring("p_max_pu") == {"Generator"}
+    assert "weighting" not in s.attributes_for("entity", "Generator")
+    assert s.labels_declaring("weighting", "entity") == frozenset()
+    assert s.labels_declaring("p_max_pu", "entity") == {"Generator"}
 
 
 def test_a_group_addressed_attribute_reaches_the_types_it_coordinates():
     """`efficiency` is over `connection`, whose coordinates include `entity`."""
     s = _schema()
     assert s.addresses("efficiency", "entity")
-    assert "efficiency" in s.attributes_for("Link")
+    assert "efficiency" in s.attributes_for("entity", "Link")
 
 
-def test_a_trait_may_only_be_scoped_by_the_discriminator():
+def test_a_trait_may_only_be_scoped_by_a_discriminator():
     """Any other property would make the vocabulary a per-entity data lookup."""
-    with pytest.raises(ValidationError, match="not the schema's discriminator"):
+    with pytest.raises(ValidationError, match="which is not a discriminator"):
         Schema(
             dimensions={
                 "entity": Dimension(dtype=nw.String()),
@@ -239,24 +239,24 @@ def test_a_trait_switch_narrows_neither_attributes_for_nor_the_switch_itself():
             ),
         },
     )
-    assert "start_up_cost" in s.attributes_for("Generator")
-    assert "committable" in s.attributes_for("Generator")
-    assert "start_up_cost" not in s.attributes_for("Link")
+    assert "start_up_cost" in s.attributes_for("entity", "Generator")
+    assert "committable" in s.attributes_for("entity", "Generator")
+    assert "start_up_cost" not in s.attributes_for("entity", "Link")
 
 
-def test_a_switched_trait_needs_no_entity_type_axis():
-    """A switch alone narrows by component, with no type scope at all."""
-    s = Schema(
-        dimensions={"entity": Dimension(dtype=nw.String())},
-        attributes={
-            "committable": AttributeSpec(
-                dtype=nw.Boolean(), dims={"entity"}, default=False
-            ),
-        },
-        traits={"committable": Trait(switch="committable")},
-        partial=frozenset(),
-    )
-    assert s.traits["committable"].attributes == {"committable"}
+def test_a_switched_trait_needs_an_on_key():
+    """A switch decides per label of a dim, which only the `on` key names."""
+    with pytest.raises(ValidationError, match="`on` no discriminator"):
+        Schema(
+            dimensions={"entity": Dimension(dtype=nw.String())},
+            attributes={
+                "committable": AttributeSpec(
+                    dtype=nw.Boolean(), dims={"entity"}, default=False
+                ),
+            },
+            traits={"committable": Trait(switch="committable")},
+            partial=frozenset(),
+        )
 
 
 def test_a_trait_switch_must_be_addressed_by_the_discriminators_dim_alone():
@@ -271,7 +271,10 @@ def test_a_trait_switch_must_be_addressed_by_the_discriminators_dim_alone():
             },
             traits={
                 **_schema().traits,
-                "committable": Trait(switch="committable"),
+                "committable": Trait(
+                    on={"entity_type": frozenset({"Generator"})},
+                    switch="committable",
+                ),
             },
         )
 
@@ -296,8 +299,8 @@ def test_a_property_is_a_column_of_its_subjects_axis():
     """Beside the attributes addressed by that dim alone, and no long coordinate."""
     s = _schema()
     assert s.attributes_on("entity") == ("p_nom", "carrier", "entity_type")
-    assert s.discriminator == ("entity", "entity_type")
-    assert s.discriminator_labels == {"Generator", "Link"}
+    assert s.discriminators == {"entity": "entity_type"}
+    assert s.labels("entity") == {"Generator", "Link"}
     assert "entity_type" not in s.long_columns
     assert "entity_type" not in s.broadcast_dims
     assert "entity_type" not in s.partial_dims
@@ -308,9 +311,9 @@ def test_a_property_must_be_on_a_declared_dim():
         _schema(properties={"nope": {"kind": PropertySpec(dtype=nw.String())}})
 
 
-def test_only_one_property_may_be_the_discriminator():
+def test_a_dim_has_at_most_one_discriminator():
     """An entity has one label, so two vocabularies have no resolved answer."""
-    with pytest.raises(ValidationError, match="all flagged `discriminator`"):
+    with pytest.raises(ValidationError, match="a dim has at most one"):
         _schema(
             properties={
                 "entity": {
@@ -348,7 +351,7 @@ def test_a_name_is_one_spec_across_attributes_and_properties():
 
 
 def test_a_record_may_declare_no_discriminator_at_all():
-    """Labels are optional: with no discriminator nothing narrows an attribute.
+    """Labels are optional: with no discriminator nothing narrows an attribute of a dim.
 
     A tool needing labels requires the discriminator in the schema it builds,
     which is where that requirement belongs.
@@ -364,11 +367,12 @@ def test_a_record_may_declare_no_discriminator_at_all():
         },
         partial=frozenset(),
     )
-    assert s.discriminator is None
-    assert s.discriminator_labels == frozenset(), "no vocabulary declared"
-    assert sorted(s.attributes_for("anything")) == ["p_nom", "weighting"], (
+    assert s.discriminators == {}
+    assert s.labels("entity") == frozenset(), "no vocabulary declared"
+    assert sorted(s.attributes_for("entity", "anything")) == ["p_nom"], (
         "nothing narrows, whatever label is asked for"
     )
+    assert sorted(s.attributes_for("timestep", "anything")) == ["weighting"]
 
 
 # -- defaults by label -------------------------------------------------------
@@ -401,7 +405,7 @@ def test_default_for_reads_a_labels_default_over_the_plain_one():
             AttributeSpec(
                 dtype=nw.Float64(), dims={"entity"}, default_by={"kind": {"Link": 1.0}}
             ),
-            "its one key is the discriminator",
+            "its one key is a discriminator",
         ),
         (
             AttributeSpec(
@@ -417,13 +421,97 @@ def test_default_for_reads_a_labels_default_over_the_plain_one():
                 dims={"timestep"},
                 default_by={"entity_type": {"Link": 1.0}},
             ),
-            "does not reach the discriminator's dim",
+            "does not reach its dim 'entity'",
         ),
     ],
 )
 def test_default_by_is_validated_against_the_discriminator(spec, match):
     with pytest.raises(ValidationError, match=match):
         _schema(attributes={**_schema().attributes, "x": spec})
+
+
+def _two_subjects(**overrides) -> Schema:
+    """`_schema` with `bus` discriminated by `bus_type` beside `entity_type`."""
+    kwargs: dict[str, Any] = {
+        "properties": {
+            **_schema().properties,
+            "bus": {
+                "bus_type": PropertySpec(
+                    dtype=nw.Enum(["AC", "DC"]), discriminator=True
+                )
+            },
+        },
+        "attributes": {
+            **_schema().attributes,
+            "v_nom": AttributeSpec(dtype=nw.Float64(), dims={"bus"}),
+            "frequency": AttributeSpec(dtype=nw.Float64(), dims={"bus"}),
+        },
+        "traits": {
+            **_schema().traits,
+            "alternating": Trait(
+                attributes={"frequency"}, on={"bus_type": frozenset({"AC"})}
+            ),
+        },
+    }
+    kwargs.update(overrides)
+    return _schema(**kwargs)
+
+
+def test_each_dim_has_its_own_discriminator():
+    """A trait `on` `bus_type` narrows bus attributes and leaves entity ones alone."""
+    s = _two_subjects()
+    assert s.discriminators == {"entity": "entity_type", "bus": "bus_type"}
+    assert s.labels("bus") == {"AC", "DC"}
+    assert s.labels("entity") == {"Generator", "Link"}
+    assert s.labels("scenario") == frozenset(), "no discriminator, no labels"
+    assert sorted(s.attributes_for("bus", "AC")) == [
+        "efficiency",
+        "frequency",
+        "v_nom",
+    ], "`efficiency` reaches buses through `connection`, untraited on `bus_type`"
+    assert sorted(s.attributes_for("bus", "DC")) == ["efficiency", "v_nom"], (
+        "AC alone has frequency"
+    )
+    assert "frequency" not in s.attributes_for("entity", "Generator"), (
+        "a bus attribute reaches no entity"
+    )
+    assert "p_nom" in s.attributes_for("entity", "Generator")
+    assert s.attributes_for("bus", "Generator") == {}, "not a bus_type label"
+    assert s.labels_declaring("frequency", "bus") == {"AC"}
+    assert s.labels_declaring("frequency", "entity") == frozenset()
+
+
+def test_a_trait_is_on_one_discriminator():
+    """Two keys would narrow over two dims at once, with no one label deciding."""
+    with pytest.raises(ValidationError, match="a trait is `on` one"):
+        _two_subjects(
+            traits={
+                "both": Trait(
+                    attributes={"efficiency"},
+                    on={
+                        "entity_type": frozenset({"Link"}),
+                        "bus_type": frozenset({"DC"}),
+                    },
+                )
+            }
+        )
+
+
+def test_a_default_by_names_one_discriminator():
+    """An attribute reaching two discriminated dims may default by either, not both."""
+    by_bus = AttributeSpec(
+        dtype=nw.Float64(),
+        dims={"connection"},
+        default=1.0,
+        default_by={"bus_type": {"DC": 0.0}},
+    )
+    s = _two_subjects(attributes={**_two_subjects().attributes, "loss": by_bus})
+    assert s.default_for("loss", "DC") == 0.0
+    both = by_bus.model_copy(
+        update={"default_by": {"bus_type": {"DC": 0.0}, "entity_type": {"Link": 0.5}}}
+    )
+    with pytest.raises(ValidationError, match="no precedence between them"):
+        _two_subjects(attributes={**_two_subjects().attributes, "loss": both})
 
 
 # -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------

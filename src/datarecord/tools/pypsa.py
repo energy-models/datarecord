@@ -1058,7 +1058,7 @@ class PyPSATool(Tool):
             if ctype not in known:
                 entity_types.add(ctype)
                 continue
-            specs = declared.attributes_for(ctype)
+            specs = declared.attributes_for(ENTITY, ctype)
             # A curve, not a scalar (https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows). PyPSA takes a scalar for every
             # attribute this build assigns, so the record is storing something
             # correct that this translation cannot express - reported here
@@ -1147,7 +1147,7 @@ class PyPSATool(Tool):
             # Frames are built and released per type, so peak memory is one
             # type's wide frames rather than the whole network (https://energy-models.github.io/datarecord/design/tools/).
             attributes = {}
-            carried = schema.attributes_for(ctype)
+            carried = schema.attributes_for(ENTITY, ctype)
             for attr, flags in flagged.items():
                 if attr not in carried:
                     continue
@@ -2444,7 +2444,7 @@ def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
     """`ctype`'s rows of the entity axis, in axis order, with the columns it carries.
 
     The axis holds every type's static columns, each NULL on the rows of a
-    type lacking it, so projecting to `attributes_for(ctype)` keeps another
+    type lacking it, so projecting to `attributes_for(ENTITY, ctype)` keeps another
     type's columns out of this type's PyPSA frame. `None` where the record has
     no entity axis or no `entity_type` column on it.
 
@@ -2459,7 +2459,7 @@ def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
     rel = to_relation(axis)
     if ENTITY_TYPE not in rel.columns:
         return None
-    carried = record.schema.attributes_for(ctype)
+    carried = record.schema.attributes_for(ENTITY, ctype)
     label = col(ENTITY_TYPE).cast(DuckTypes(rel)(nw.String()))
     return rel.filter(label == lit(ctype)).project(
         *(col(c) for c in rel.columns if c == ENTITY or c in carried)

@@ -137,7 +137,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(store, ac_dc):
     # Declared alongside PyPSA's own types, since the discriminator pins the
     # vocabulary.
     declared = read_schema(store)
-    assert declared.discriminator == ("entity", ENTITY_TYPE)
+    assert declared.discriminators == {"entity": ENTITY_TYPE}
     prop = declared.properties["entity"][ENTITY_TYPE]
     assert isinstance(prop.dtype, nw.Enum), "PyPSA declares its types as an enum"
     write_schema(

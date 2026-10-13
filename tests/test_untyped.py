@@ -67,8 +67,10 @@ def _entities(record) -> dict:
 def test_every_attribute_is_carried(untyped_schema):
     """With no discriminator there is nothing to narrow against."""
     s = untyped_schema
-    assert s.discriminator_labels == frozenset(), "no discriminator, so no labels"
-    assert sorted(s.attributes_for("thing")) == ["p_max_pu", "p_nom", "weighting"]
+    assert s.labels("entity") == frozenset(), "no discriminator, so no labels"
+    assert sorted(s.attributes_for("entity", "thing")) == ["p_max_pu", "p_nom"], (
+        "every attribute addressing the dim"
+    )
     assert s.attributes_on("entity") == ("p_nom",), (
         "the non-varying entity-addressed attribute is a column of the entity axis"
     )

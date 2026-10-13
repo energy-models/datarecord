@@ -1399,7 +1399,7 @@ def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(staged):
     """`entity=None` and no scope means "whatever resolves", so empty is an answer."""
     absent = next(
         a
-        for a in sorted(staged.schema.attributes_for(GEN))
+        for a in sorted(staged.schema.attributes_for("entity", GEN))
         if a not in staged.attributes
     )
     staged.set(absent, nw.col("value") * 2)

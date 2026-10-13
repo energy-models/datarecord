@@ -825,16 +825,15 @@ class WorkingRecord(Record):
         axis = self.resolver.axis(dim)
         if not wanted or axis is None:
             return
-        discriminator = self.schema.discriminator
+        discriminator = self.schema.discriminators.get(dim)
         drawing = [
             c for c, d in _flat_coordinates(self.schema, attribute).items() if d == dim
         ]
         kind = (
-            discriminator[1]
+            discriminator
             if discriminator is not None
-            and discriminator[0] == dim
             and len(drawing) == 1
-            and discriminator[1] in axis.columns
+            and discriminator in axis.columns
             else None
         )
         rows = (
@@ -855,7 +854,8 @@ class WorkingRecord(Record):
         refused = sorted(
             f"{n!r} is a {k}"
             for n, k in found.items()
-            if k is not None and attribute not in self.schema.attributes_for(str(k))
+            if k is not None
+            and attribute not in self.schema.attributes_for(dim, str(k))
         )
         if refused:
             msg = f"{attribute!r} is not carried where {', '.join(refused)}"
@@ -1437,13 +1437,13 @@ class WorkingRecord(Record):
                     f"`{call}` has {len(data[c])} {c!r} values for {len(names)} labels"
                 )
                 raise ValueError(msg)
-        found = self.schema.discriminator
-        if found is not None and found[0] == dim and found[1] in data:
-            known = self.schema.discriminator_labels
-            unknown = sorted({str(v) for v in data[found[1]] if v is not None} - known)
+        found = self.schema.discriminators.get(dim)
+        if found is not None and found in data:
+            known = self.schema.labels(dim)
+            unknown = sorted({str(v) for v in data[found] if v is not None} - known)
             if unknown:
                 msg = (
-                    f"`{call}` gives {found[1]!r} values {unknown}, which its Enum "
+                    f"`{call}` gives {found!r} values {unknown}, which its Enum "
                     f"does not list; it declares {sorted(known)}"
                 )
                 raise ValueError(msg)
