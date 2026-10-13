@@ -350,16 +350,9 @@ class Store:
         The revision file is what makes the layer real, so it is written last;
         the manifest before it is widened only for a layer that exists.
         """
-        from datarecord.layered.resolve import sources_to_read
-        from datarecord.layered.revision import ancestry
-
         id = uuid4()
         data = layer_data(source, self.workspace.con)
-        parents = (
-            []
-            if parent is None
-            else sources_to_read(ancestry(self, parent), self, data.schema)
-        )
+        parents = [] if parent is None else self.revision(parent).resolver.sources
         write_layer(data, self.layer_dir(id), self.workspace, parents=parents)
         reconcile_schema(data.schema, self)
         return self._create(parent, id)
