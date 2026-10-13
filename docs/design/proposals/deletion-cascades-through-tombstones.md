@@ -47,7 +47,7 @@ So rule 4 cannot take its dead labels from the layers above the base alone:
 
 Dead labels from above the base alone do not name `(g1, bus0)`, so `x(g1, bus0)` would come back with nothing re-added.
 The fold cannot cut them earlier either: along an unkeyed coordinate the owner map holds one row per attribute, not per label, so there is no row for a dead label to remove, only an exception to carry.
-So the cache keeps them, as `dead/<coord>.parquet` beside `dims/` and `groups/`, and rule 4 reads the base's dead labels plus those of the layers above it.
+So the cache keeps them, as `dead/<coord>.parquet` beside `dims/` and `groups/`, for each dim and group outside `partial` — a keyed coordinate's dead labels are already cut by the fold — and rule 4 reads the base's dead labels plus those of the layers above it.
 The resolved axes and groups stay tombstone-free for every reader that expects them so; `fold_axis` hands the dead labels back as a by-product of the fold it already does.
 
 A semi-join against the live labels, which the cache already holds, would need no new file, but it runs on every read, where the anti-join against a usually empty set is skipped.
@@ -64,7 +64,7 @@ This is accepted: it is what a coordinate outside `partial` means — values own
 
 - **`write_layer` depends on the ancestry.** "Dead after the layer" needs the parent's resolved axes and groups, so rule 2 is a fold plus one semi-join per group field over the written layer. Today the writer's checks are layer-local but for name uniqueness.
 - **Removing a bus removes its connections.** A PyPSA component whose bus is removed is left with no connection row, which `build` reports as a missing `bus`.
-- **The resolved cache grows** by a dead-labels file per dim and group.
+- **The resolved cache grows** by a dead-labels file per dim and group outside `partial`.
 
 ## What goes
 
