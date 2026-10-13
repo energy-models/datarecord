@@ -81,5 +81,5 @@ This is accepted: it is what a coordinate outside `partial` means — values own
 ## As built
 
 - Rule 1 is `WorkingRecord.remove`; a dim label other than an entity is removed only by a layer written directly, which carries its own cascade.
-- Rule 2 runs in `write_layer` for a layer writing any axis or group, folding the parent's sources and the staged layer.
+- Rule 2 runs in `write_layer` for a layer writing any axis or group, folding the parent's sources and the staged layer. It checks only what the layer does — the tuples it adds, and the tuples still naming a label it removes — so a tuple an ancestor left dangling blocks no later write.
 - Rule 4's anti-join is `_living`; `dead/` holds the coordinates `resolve.mortal` names.

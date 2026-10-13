@@ -72,7 +72,7 @@ An _attribute's_ orphaned rows stop surfacing the same way, for every key column
 A label of a dim or group outside `partial` is in no key, so its rows are [dropped at read](read-path.md#a-label-outside-the-key) against that coordinate's dead labels instead.
 Each axis and group honours only its **own** tombstones, read from the same file it folds from, and nothing is inferred from a dead label a row refers to.
 So removing an entity is written as a cascade: [`remove`](working-record.md#add-remove) tombstones the entity and every group tuple with a field naming it, in one layer, and the tuples' values go with them.
-A layer leaving a tuple alive that names a label dead after it, or adding one, is refused by the writer, which folds the parent's axes and groups to tell; a nested dim's labels are not checked, a tuple carrying no parents to place them by.
+A layer adding a tuple that names a dead label, or removing a label a tuple still names, is refused by the writer, which folds the parent's axes and groups to tell. A tuple an ancestor left dangling fails no later write, the check being of what the layer does. A nested dim's labels are not checked, a tuple carrying no parents to place them by.
 Re-adding the entity does not revive its tuples. Re-adding a tuple outside `partial` revives its values, which are owned per attribute rather than per tuple.
 A tombstone only affects the branch that carries it; sibling branches keep the entity.
 

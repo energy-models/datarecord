@@ -97,9 +97,9 @@ All notable changes to datarecord are documented here. The format follows
 - Removing an entity removes the group tuples naming it: `WorkingRecord.remove`
   tombstones every tuple with a field over `entity` naming it, in the same
   layer, and a value over a group goes with its tuple rather than with the
-  entity. An `add` of the name revives the entity alone. A layer leaving a
-  tuple alive that names a label dead after it, or adding one, is refused at
-  write. A value over a dim or group outside `partial` naming a removed label
+  entity. An `add` of the name revives the entity alone. A layer adding a
+  tuple that names a dead label, or removing a label a tuple still names, is
+  refused at write. A value over a dim or group outside `partial` naming a removed label
   is dropped at read, a removed `bus` label's per-bus values included. A
   materialised node caches the dead labels in `resolved/dead/`; one
   materialised before reads as having none.
