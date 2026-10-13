@@ -378,7 +378,9 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             raise ValueError(msg)
         if kind == "attributes":
             schema.check_group_columns(
-                schema.groups_of(key), _types(rel), carrier=f"inputs/{key}.parquet"
+                schema.groups_of(key),
+                nw.from_native(rel),
+                carrier=f"inputs/{key}.parquet",
             )
         return
 
@@ -446,12 +448,9 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             f"it (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
         )
         raise ValueError(msg)
-    schema.check_group_columns([key], _types(rel), carrier=f"groups/{key}.parquet")
-
-
-def _types(rel: DuckDBPyRelation) -> nw.Schema:
-    """`rel`'s column types as narwhals dtypes, what `Schema` checks against."""
-    return nw.from_native(rel).collect_schema()
+    schema.check_group_columns(
+        [key], nw.from_native(rel), carrier=f"groups/{key}.parquet"
+    )
 
 
 class _RecordLikeAsLayerData:

@@ -489,11 +489,12 @@ class WorkingRecord(Record):
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
         """`AttributeSpec.dims` minus the fold key - the value axes owned whole.
 
-        The complement of `owned_per`: a dim the attribute varies over but that is
-        not in `partial_dims` (a non-`partial` value axis like `timestep`) is
-        owned whole, so a patch to one value restates the attribute's whole extent
-        along it. Membership keys are in `partial_dims`, so never here - a layer
-        patches one entity's or connection's value, never restating the rest.
+        The complement of `owned_per`: a dim or group the attribute varies over
+        but that is not in `partial_dims` (a non-`partial` `timestep`, or
+        `connection`) is owned whole, so a patch to one value restates the
+        attribute's whole extent along it. `entity` is always in `partial_dims`,
+        so never here - a layer patches one entity's value, never restating the
+        rest.
 
         Notes
         -----
@@ -504,7 +505,9 @@ class WorkingRecord(Record):
         whole = (
             frozenset() if spec is None else spec.dims - set(self.schema.partial_dims)
         )
-        return tuple(d for d in self.schema.dims if d in whole)
+        return tuple(
+            d for d in (*self.schema.group_columns, *self.schema.dims) if d in whole
+        )
 
     @property
     def outputs(self) -> Frames:
@@ -1038,7 +1041,7 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
             self.schema.check_group_columns(
                 self.schema.groups_of(attribute),
-                lazy.collect_schema(),
+                lazy,
                 carrier=f"`set({attribute!r}, <frame>)`",
             )
             if kind == "inputs":
@@ -1843,7 +1846,7 @@ class WorkingRecord(Record):
         call = f"`add_group({group!r}, ...)`"
         lazy = _incoming(frame, self.con)
         columns = lazy.collect_schema()
-        self.schema.check_group_columns([group], columns, carrier=call)
+        self.schema.check_group_columns([group], lazy, carrier=call)
         into = self.schema.groups[group].into
         for required in (group, *([into] if into else [])):
             if required not in columns:

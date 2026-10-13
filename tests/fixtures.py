@@ -462,7 +462,7 @@ def _default_attributes(
 
 def schema(
     *,
-    partial: set[str] = {"scenario"},
+    partial: set[str] = {"scenario", "connection"},
     attributes: dict[str, dict[str, AttributeSpec]] | None = None,
     dims: dict[str, nw.dtypes.DType] = {
         "snapshot": nw.Datetime(),
@@ -482,9 +482,9 @@ def schema(
     `groups` to declare a different sparse relation, `within` to nest one axis
     inside another.
 
-    A group's coordinates are declared dims; `entity` and the group's column are
-    membership keys, so a layer patches one component's value, or one
-    connection's, without restating the rest.
+    A group's coordinates are declared dims. `connection` is `partial` by
+    default, as the PyPSA tool declares it, so a layer patches one
+    connection's value without restating the rest.
 
     Notes
     -----
@@ -534,10 +534,8 @@ def schema(
         | {"entity_type": Dimension(dtype=nw.String())},
         attributes=flat,
         traits=traits,
-        # `partial` names value dims a layer patches per value; membership keys
-        # (`entity`, a group's coordinates) are in the fold key by being
-        # membership, not by being `partial` (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-        partial=frozenset(partial),
+        # The default names `connection`, which a caller's own `groups` may drop.
+        partial=frozenset(p for p in partial if p in declared or p in groups),
     )
 
 
