@@ -1352,6 +1352,9 @@ def test_a_standalone_write_of_the_record_is_flattened(staged, root, tmp_path):
     assert _entity_values(record, "p_nom")["Manchester Wind"] == 150.0
     # Flattened: every component is present, not left to a parent to supply.
     assert (members["entity_type"] == GEN).sum() == 6
+    assert not root.store.workspace.con.sql(
+        "FROM duckdb_tables() WHERE table_name LIKE '_pinned_%'"
+    ).fetchall(), "the write drops the owner map it held for its fold"
 
 
 # -- the `Expr` value form's raise rule (https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one) -------------------------------

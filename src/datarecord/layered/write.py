@@ -16,6 +16,7 @@ Notes
 
 from __future__ import annotations
 
+import copy
 import random
 import shutil
 from pathlib import Path
@@ -32,7 +33,8 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import as_relation, fn, null_safe
 from datarecord.files import Absent, PreconditionFailedError, Version
-from datarecord.layered.resolve import cast_declared, resolve_coords
+from datarecord.layered.record import Record
+from datarecord.layered.resolve import PinnedResolver, cast_declared, resolve_coords
 from datarecord.layered.sources import DirectorySource
 from datarecord.record import Frames, LayerData, RecordLike
 from datarecord.schema import DERIVED, Schema
@@ -58,7 +60,22 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     """
     if isinstance(source, LayerData):
         return source
-    return _RecordLikeAsLayerData(source, con)
+    return _RecordLikeAsLayerData(_pinned(source), con)
+
+
+def _pinned(source: RecordLike) -> RecordLike:
+    """`source`, or where it is a `Record` past a staging area, a copy over a `PinnedResolver`.
+
+    The copy keeps every member of `source`'s class - a `WorkingRecord`'s own
+    `outputs` among them - and swaps only the resolver, so it reads what
+    `source` reads with the fold done once. Held only for one write, during
+    which nothing stages.
+    """
+    if not isinstance(source, Record) or source.resolver.frozen:
+        return source
+    pinned = copy.copy(source)
+    object.__setattr__(pinned, "resolver", PinnedResolver.of(source.resolver))
+    return pinned
 
 
 def write_layer(
@@ -158,6 +175,9 @@ def write_layer(
         if local:
             shutil.rmtree(staging, ignore_errors=True)
         raise
+    finally:
+        if isinstance(data, _RecordLikeAsLayerData):
+            data.release()
     if local:
         Path(staging).rename(base.rstrip("/"))
 
@@ -514,6 +534,7 @@ class _RecordLikeAsLayerData:
     def __init__(self, source: RecordLike, con: DuckDBPyConnection) -> None:
         self._source = source
         self._con = con
+        self._mappings: dict[str, Frames] = {}
 
     @property
     def schema(self) -> Schema:
@@ -525,13 +546,30 @@ class _RecordLikeAsLayerData:
         # under a reader, so there is nothing for staleness to mean here.
         return True
 
+    def release(self) -> None:
+        """Drop what a pinned source holds for this write."""
+        if isinstance(self._source, Record) and isinstance(
+            self._source.resolver, PinnedResolver
+        ):
+            self._source.resolver.release()
+
+    def _frames(self, kind: str) -> Frames:
+        """The source's `Frames` mapping named `kind`, enumerated once per adapter.
+
+        A `RecordLike`'s mappings may be properties that re-enumerate the whole
+        source on each access, which per key would be quadratic in the keys.
+        """
+        if kind not in self._mappings:
+            self._mappings[kind] = getattr(self._source, kind)
+        return self._mappings[kind]
+
     def _read(self, frames: Frames, key: str) -> DuckDBPyRelation | None:
         if key not in frames:
             return None
         return as_relation(frames[key], self._con)
 
     def axes(self) -> set[str]:
-        return set(self._source.dims)
+        return set(self._frames("dims"))
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """`dims[dim]` with `properties[dim]` joined on the axis key, in `dims[dim]`'s row order.
@@ -540,10 +578,10 @@ class _RecordLikeAsLayerData:
         layer's, and the `ORDER BY` on it is the outermost clause, since a
         join defines no order.
         """
-        axis = self._read(self._source.dims, dim)
-        if axis is None or dim not in self._source.properties:
+        axis = self._read(self._frames("dims"), dim)
+        if axis is None or dim not in self._frames("properties"):
             return axis
-        props = self._read(self._source.properties, dim)
+        props = self._read(self._frames("properties"), dim)
         if props is None:
             return axis
         values = [c for c in props.columns if c not in axis.columns]
@@ -566,15 +604,15 @@ class _RecordLikeAsLayerData:
         return joined.query("j", "SELECT * EXCLUDE (_row) FROM j ORDER BY _row")
 
     def groups(self) -> set[str]:
-        return set(self._source.groups)
+        return set(self._frames("groups"))
 
     def group(self, name: str) -> DuckDBPyRelation | None:
-        return self._read(self._source.groups, name)
+        return self._read(self._frames("groups"), name)
 
     def attributes(self, kind: str = "inputs") -> set[str]:
-        frames = self._source.attributes if kind == "inputs" else self._source.outputs
+        frames = self._frames("attributes" if kind == "inputs" else "outputs")
         return set(frames)
 
     def attribute(self, name: str, kind: str = "inputs") -> DuckDBPyRelation | None:
-        frames = self._source.attributes if kind == "inputs" else self._source.outputs
+        frames = self._frames("attributes" if kind == "inputs" else "outputs")
         return self._read(frames, name)
