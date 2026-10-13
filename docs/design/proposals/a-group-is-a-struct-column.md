@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Proposal: a group is one struct column
 
-Status: **Implemented** · Drafted 2026-10-12 · Implemented 2026-10-12
+Status: **Implemented** · Drafted 2026-10-12 · Implemented 2026-10-12 · [Amendment](#amendment-a-group-is-a-dim) proposed 2026-10-13
 
 Landed in the [steps below](#landing) on [the schema](../schema.md#groups), [the record](../record.md#the-broadcast-rule), [the format](../format.md#the-long-schema), [the read path](../read-path.md#owner-map), [the working record](../working-record.md#set) and [consuming a record](../tools.md#results-on-connections); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 [What the implementation found](#what-the-implementation-found) records where it departs from or adds to the argument below.
@@ -134,3 +134,73 @@ It is the same "keyed twice over" rule [`into`](../schema.md#into-a-group-that-c
 - **Shadowing went.** A group sharing a dim's name was resolved to the dim, which every place that tells a group column from a dim had to repeat. Once a group is a column named for itself, the collision is two columns under one name, so the schema rejects it; only the entity-type group, which never becomes a column, keeps its dim's name.
 - **A flat group file cost a conversion wherever a row met it.** The fold's group tombstones, the staged collapse, `remove_group` and `add` each packed the file's coordinates into the struct. Keying `groups/<group>.parquet` by its struct column, as an axis file is keyed by its dim, removed every one; packing survives only where a caller hands flat values in — `set`'s coordinate keywords, `remove_group`'s tuples, `add`'s wide frame — and in the PyPSA tool, whose network is flat.
 - **PyPSA's `bus` was an attribute and a coordinate at once.** The tool declared the port stem `bus` as an attribute over `connection`, which in a flat file was the same column as the coordinate. Under the struct it would be a second column beside the key, so the tool declares no such attribute: a port's bus is the connection tuple, and a component with no connection row lacks it whatever default PyPSA registers.
+
+## Amendment: a group is a dim
+
+Status: **Proposed** · 2026-10-13
+
+Once a group is one column, the reasons it stayed a membership key, apart from the dims, are gone.
+**A group is a dim whose axis is the resolved group**: `groups/<group>.parquet`, keyed by the column named for the group, as `dims/<dim>.parquet` is.
+It broadcasts, enters the owner map only where `partial` names it, and is owned whole otherwise — the rules `snapshot` follows, unchanged.
+
+### A group value is a whole tuple or NULL
+
+A struct is either complete or NULL as a whole; `{entity: dc, bus: NULL}` is no value.
+A NULL struct means every tuple of the group, by [the broadcast rule](../record.md#the-broadcast-rule), expanded against the resolved group as a NULL dim is against its axis.
+A partly NULL struct is refused wherever a row comes in — `set`'s keywords and frames, `add_group`, and the writer — since it would name a tuple no group row matches.
+This replaces "a group column does not broadcast" [above](#the-construct), whose reason was that only the group's table knows its tuples; the fold has that table already (`Coords.groups`).
+
+### The owner map
+
+The membership key is `entity` alone, and a group is keyed exactly where a dim is: in `partial_dims` if `partial` names it, absent otherwise.
+
+```text
+# inputs
+entity        -- NULL on a row over a group, which names its entities inside it
+<partial dims, groups among them>
+attribute
+layer_uuid
+varies        STRUCT(<broadcast coordinate>: BOOLEAN, ...)   -- a field per group too
+broadcast     STRUCT(<broadcast coordinate>: BOOLEAN, ...)
+breakpoints   BOOLEAN
+```
+
+[Only the groups a long input row can carry are keyed](#the-owner-map) goes, and `Schema.group_columns` with it: which coordinates key the map is `partial`'s to say, for a group as for a dim.
+
+**Not `partial`, a layer writes the attribute's whole extent along the group.**
+A connection attribute carries no top-level `entity`, so its key is `(attribute)`, and a layer touching `{steel_dri, h2_north}` owns every connection's value — the granularity an attribute over `{snapshot}` alone, a weighting, has today.
+Staging carries the rest of the extent, as it does for a non-`partial` dim (`_complete_owned_whole`); a layer written directly has to hold it.
+Pulling the struct's entity fields out into the key would narrow that to one entity's connections, at the price of the map reaching into struct fields; not worth it, since `partial` gives the finer grain where a tool wants it.
+
+**`partial`, a layer patches one tuple.**
+The group is in the key, a NULL struct expands against the resolved group in the fold, and a group tombstone anti-joins the parent on it, as a partial dim's does on its axis.
+The PyPSA tool declares `connection` partial: `Link.efficiency` may vary over `snapshot`, and restating every link's series to patch one is the cost `partial` exists to avoid.
+
+### What it costs
+
+- **`flags(ctype)` cannot scope a non-`partial` group attribute.** Its map rows name no entity, so no type claims them — the position an axis-only attribute is in today, and the [record-level flags question](../open-questions.md) widens from a corner to every such attribute. With `connection` partial, PyPSA's are unaffected.
+- **An owner-map format change**, materialised maps rebuilt; pre-1.0, no reader for the old key survives.
+- **The default grain coarsens.** A schema that relied on per-connection ownership without saying so now says `partial={"connection"}`.
+
+### What it saves
+
+The struct change left `src/` about 340 lines larger than the flat layout it replaced, most of it in packing, validation and the PyPSA tool's conversion, which this does not touch.
+What goes is the group's separate path through the key:
+
+| goes                                                                                                             | comes                                                                  |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `group_columns`, and the derivation of which groups are keyed                                                    | `broadcast_dims` naming groups, the entity-type group excepted         |
+| group columns as a second key family in `membership_keys`, `long_columns`, `fold_inputs`' padding and projection | `expand_dims` taking a group's relation where it takes an axis         |
+| the group-tombstone membership in `fold_inputs`, separate from the partial dims'                                 | a partial coordinate's tombstone reading `source.group(g)` for a group |
+| the docs' account of which groups are keyed and why                                                              | the whole-or-NULL check at the three entry points                      |
+
+An estimate of **40–80 lines net out of `src/`** and the "which groups are keyed" sections of the design pages — modest, because `_complete_owned_whole`, `entity_coordinates` and the tombstones on value rows already treat the group generically.
+The larger gain is one rule where there were two: everything said of a dim — broadcast, `partial`, owned whole, flags — is said of a group, with the group's file as its axis.
+
+### Landing
+
+1. `Schema`: groups among the broadcast coordinates; `membership_keys` is `entity`; `partial` may name a group; `group_columns` goes.
+2. The fold: `expand_dims` over a group's relation; a partial group's tombstone; the flags gain a field per group.
+3. The whole-or-NULL check in staging and the writer; `set` stages a NULL struct where no coordinate is given.
+4. The PyPSA tool declares `connection` partial.
+5. [Schema](../schema.md#groups), [record](../record.md#the-broadcast-rule), [read-path](../read-path.md#owner-map) and [working-record](../working-record.md#set) pages; the open question widened.
