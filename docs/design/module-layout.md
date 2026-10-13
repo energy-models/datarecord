@@ -10,7 +10,7 @@ The target, once the split below is done:
 
 ```text
 datarecord/                     # the standalone concept
-├── schema.py                   # Dimension, AttributeSpec, Schema
+├── schema.py                   # Dimension, AttributeSpec, PropertySpec, Schema
 ├── record.py                   # RecordLike, LayerData, Frames, LazyFrames, Flags
 ├── store.py                    # Workspace, Store
 ├── files.py                    # Files: manifests and revision files, local or remote
@@ -19,6 +19,7 @@ datarecord/                     # the standalone concept
 │   ├── record.py               # Record, the narwhals face of a Resolver
 │   ├── revision.py             # Revision, the node tree
 │   ├── resolve.py              # owner-map fold
+│   ├── categories.py           # which labels a NULL reaches on a categorized dim
 │   ├── sources.py              # LayerSource: where a layer's files are
 │   └── write.py                # the writer root, child and ws.write share
 └── duck.py                     # relation helpers

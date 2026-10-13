@@ -38,7 +38,7 @@ So a tool's results go straight to [a write](writing.md), or one at a time to [`
 
 A framework holds its results per entity type, so reaching this shape means concatenating each attribute's types into one frame.
 That is free: the frames are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller collects.
-The concatenation needs no `entity_type` column to distinguish the arms, since [`entity` is unique across them](format.md#entity-is-unique-across-types) — which is what makes the union a plain one rather than a tagged one.
+The concatenation needs no category column to distinguish the arms, since [`entity` is unique across them](format.md#entity-is-unique-across-types) — which is what makes the union a plain one rather than a tagged one.
 
 A framework's per-port results are [stored on connections](#results-on-connections), like its per-port inputs.
 
@@ -50,7 +50,7 @@ A record is the input to a translation, not the owner of one, so there is no reg
 
 `build` takes a [`Record`](record.md) rather than a record, so a tool builds from a directory as readily as from an overlay and has no reason to know layering exists.
 
-A tool's `verify` catches what the record layer cannot: an entity type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks the framework's constant-versus-varying split.
+A tool's `verify` catches what the record layer cannot: an entity type the framework has no registry entry for — the record checks a category against its `Enum`, not against the framework — a connection `role` it cannot place, a `partial` set that breaks the framework's constant-versus-varying split.
 It is also where a framework scoping names **per type** meets [a record scoping them record-wide](format.md#entity-is-unique-across-types).
 PyPSA permits a `Bus` and a `Generator` both called `north`, so `to_datarecord` reports such a network as unbuildable rather than writing a record whose two entities share one key.
 Reported rather than repaired: renaming to `Generator:north` would hand back a network whose components the framework can no longer find by their own names, and the record layer does not own a framework's vocabulary.
@@ -58,11 +58,13 @@ PyPSA is itself moving to record-wide unique names, so this is a constraint that
 SubNetworks are the exception: PyPSA names them `0`, `1`, … on every topology pass, as it numbers Lines, so there is no caller to report to. The record keys them `0 SubNetwork`, …, as a caller suffixes a clashing `Load`, the `sub_network` results pointing at them likewise, and `build` takes the suffix off, so the framework finds them by their own names again.
 It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by [`order_key`](read-path.md#owner-map), and where a curve is either translated or reported unbuildable.
 A per-connection input follows its connection's position: `efficiency` on a Link's `bus2` connection is PyPSA's `efficiency2`, static or per snapshot.
-The PyPSA schema declares `partial={"scenario", "connection"}`, so a layer patches one link's `efficiency` series without restating every other link's ([`partial`](schema.md#partial-the-granularity-of-an-override)).
+The PyPSA schema declares `partial={"entity", "scenario", "connection"}`, so a layer patches one link's `efficiency` series without restating every other link's ([`partial`](schema.md#partial-the-granularity-of-an-override)); `entity` is there because `entity_type` [categorizes it](schema.md#categories-an-enum-property-of-a-partial-dim), and `bus` is not, its connections' deletion being [a cascade](layers.md#deletion).
 A Process's `rate0`, `rate1`, `rate2`, … are likewise the one input `rate`, numbered from `0` because PyPSA registers `rate0` where it leaves port `1`'s `efficiency` unsuffixed.
 Its ports default differently, `-1` at the input end and `1` at the others, so `rate` declares no default and a port with no row keeps PyPSA's own.
 Which stems are per-port is read off PyPSA's registry, a name ending in a port index plus a Link's unsuffixed `efficiency`, `delay` and `cyclic_delay`.
-One that never varies, `delay` and `cyclic_delay`, is a column of the connection row, as `role` is, rather than a long row in `inputs/`.
+Every per-port input, `delay` and `cyclic_delay` included, is long rows of `inputs/` over `connection`: a number is an attribute whatever its `dims`.
+
+**Properties and attributes are read off the registry.** The properties of `entity` are exactly `entity_type`, `carrier`, `sign` and `type`, and `role` is a property of `connection`; every other input, every number among them, is an attribute, so `p_nom` is long rows of `inputs/p_nom.parquet` ([where a value lives](format.md#where-a-value-lives)). A default that differs per component — `sign`, `carrier`, `p_min_pu`, `p_set` — is a [`default_by`](schema.md#default_by-a-default-per-category) on `entity_type`, and `entity_types` applies it when it builds a component's static frame from `members` and the entity-only rows of its attributes.
 
 The tool's own `Schema` reconciles vocabularies: per entity type, which record attribute a tool's attribute is renamed from, or which several it is computed from.
 Since [the schema](schema.md) makes a record's attribute names _declared_ rather than conventional, this maps one declared vocabulary to another.

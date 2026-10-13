@@ -13,6 +13,29 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- **Properties**, metadata apart from data: a new `properties` section of
+  the schema (`PropertySpec`) declares per dim or group the values describing
+  one label, stored as columns of `dims/<dim>.parquet` or
+  `groups/<group>.parquet`. An `Enum` property of a `partial` dim
+  categorizes it; traits key on categories, and `default_by` gives a default
+  per category (`Schema.categorizing`, `attributes_for(dim, **categories)`,
+  `properties_for`, `default_for`). This replaces the `entity_type` dim, its
+  group over `entity` and the `dims/entity_type/<Type>.parquet` member files.
+  `entity` is an ordinary dim: it broadcasts, and must be in `partial` to be
+  patched per label or categorized; a NULL on a categorized dim reaches only
+  the labels whose categories carry the attribute. Every attribute,
+  whatever its `dims`, is stored in `inputs/`. On reading, `dims[dim]` holds
+  key columns only, `properties[subject]` the stored property values,
+  `members(dim, **categories)` one category with defaults applied, and
+  `attributes` every attribute; `entity_types` is gone and `flags` takes
+  categories (`flags(entity_type="Generator")`). `WorkingRecord` edits any
+  dim: `add(dim, labels, **properties)`, `remove(dim, labels)` (cascading to
+  group tuples), and `set(name, value, **coords)` writing attributes and
+  properties alike, a categorizing property keyword selecting labels at call
+  time; `set` loses `indexed_by`. The PyPSA tool declares `entity_type`,
+  `carrier`, `sign` and `type` as properties of `entity` and `role` of
+  `connection`, with `partial={"entity", "scenario", "connection"}`. Every
+  manifest and record is rewritten.
 - An attribute over a group carries it as one struct column named for the
   group, a field per key coordinate (`connection STRUCT(entity, bus)`), in
   place of the coordinates flat. This is an on-disk

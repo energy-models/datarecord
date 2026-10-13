@@ -10,15 +10,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 The owner map answers, for a node, which layer owns each key.
 **One map: `inputs`.** It is the only relation whose winning _key_ and winning row's _values_ live in different files — an attribute's ownership spans every `inputs/<attr>.parquet`, so the map names the owning layer per key and a read then goes to that layer's file for the value.
-Every axis — a [dim](schema.md#partial-the-granularity-of-an-override)'s coordinates, the entity axis, a [group](schema.md#groups) — is a single keyed file whose winning row _is_ the whole row, so none needs a map; each folds to a [resolved relation](#one-fold-for-every-axis) read inline.
+Every axis — a [dim](schema.md#partial-the-granularity-of-an-override)'s coordinates, the entity axis among them, and a [group](schema.md#groups) — is a single keyed file whose winning row _is_ the whole row, so none needs a map; each folds to a [resolved relation](#one-fold-for-every-axis) read inline.
 
 The inputs map's columns, keys first:
 
 ```text
 # inputs
-<partial dims>          -- the fold key: entity + the partial dims and groups
-  entity                -- NULL where the row is keyed by a group or by no entity
-  <owned_per coordinates> -- a partial group as one STRUCT: connection STRUCT(entity, bus)
+<partial dims>          -- the fold key: exactly the partial dims and groups
+  <owned_per coordinates> -- e.g. entity, scenario; a partial group as one STRUCT: connection STRUCT(entity, bus)
 attribute
 layer_uuid              -- the owning layer
 varies      STRUCT(<coordinate>: BOOLEAN, ...)   -- a field per broadcast dim and group
@@ -30,43 +29,44 @@ It maps each key to the owning `layer_uuid`, with deletions already applied.
 It carries no `value`, no varying dim's value, and no `breakpoint`, so it stays small regardless of the series data or the size of a curve.
 
 The **inputs key is schema-derived**, not spelled: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`.
-`partial_dims` is `entity`, which [does not broadcast](record.md#the-broadcast-rule), plus the broadcast coordinates — dims and groups alike — a layer may patch per value (`partial`).
+`partial_dims` is exactly the broadcast coordinates — dims and groups alike — a layer may patch per value (`partial`); no dim is in it by name, `entity` included.
 A coordinate an attribute's own file does not carry reads as NULL, which is what keeps the key one fixed tuple across attributes whose columns differ.
 A group is one column, so which columns name a connection is legible from the map itself, with no schema to say which belong together.
 
 **A group outside `partial` is not in the key**, as a dim outside it is not: a layer touching one connection's value owns the attribute's whole extent along the group.
-An attribute over such a group carries no top-level `entity`, so its key is `(attribute)` alone, the grain of a record-level weighting.
+An attribute over such a group and no other `partial` coordinate has the key `(attribute)` alone, the grain of a record-level weighting.
 
-`entity_type` is **not** on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the resolved entity axis is what says which type an entity is.
-That axis is the entity mapping every type-scoped question goes through — [`flags(ctype)`](record.md#flags) joins it, as does a consumer wanting one type's frame — and it carries `entity_type` as a column, functionally determined by `entity` rather than keyed alongside it.
-Keying on the type would let an entity resolve to two rows, admitting at read time the collision [name uniqueness](format.md#entity-is-unique-across-types) rejects at write time; so the fold aggregates the type over the group-by instead of grouping on it, and the staging area collapses a `remove` under one type followed by an `add` under another to the later edit ([edits](working-record.md#edits)).
+No category is on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the resolved entity axis is what says which categories an entity has.
+That axis is what every category-scoped question goes through — [per-category `flags`](record.md#flags) join it, as do `members` and a consumer wanting one type's frame — and it carries each [categorizing property](schema.md#categories-an-enum-property-of-a-partial-dim) as a column, functionally determined by the label rather than keyed alongside it, so a re-categorized label is one row with a new value.
 
 The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
-Every key column's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of the entity axis and of each partial dim and group — read from the same file that axis or group folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
-A group's tombstones are one NULL-safe anti-join on its struct column, the group file's own key — the same shape as the entity axis's.
+Every key column's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of each partial dim and group — read from the same file that axis or group folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
+A group's tombstones are one NULL-safe anti-join on its struct column, the group file's own key — the same shape as a dim's.
 A layer's tombstones apply to its parents' keys, not to its own rows.
-The entity axis's anti-join matches the key's top-level `entity` only. An entity inside a struct is reached through its tuple: [removing an entity](layers.md#deletion) tombstones the tuples naming it in the same layer, and each group honours its _own_ tombstones.
+A dim's anti-join matches its top-level column only. A label inside a struct is reached through its tuple: [removing a label](layers.md#deletion) tombstones the live tuples naming it in the same layer, and each group honours its _own_ tombstones.
 A row leaving a key column NULL is not addressed by it, and its NULL-safe anti-join never takes it; only a row naming a dead entity, tuple or label is dropped.
+
+**On a categorized dim a NULL reaches the labels carrying the attribute.** Where the fold expands a NULL against the axis, an attribute some trait narrows on that dim joins a carriers relation — `(label, attribute)`, built through [`attributes_for`](schema.md#traits) once per category combination the resolved axis holds — so `set("p_max_pu", 0.9)` reaches every generator and never a bus; a label with a NULL category carries none of the narrowed attributes. An attribute no trait narrows expands over every label, as before. A materialised ancestor's map is seeded already expanded, so its NULL rows do not reach labels a descendant adds or re-categorizes ([what it opens](proposals/properties.md#what-it-opens)).
 
 ## One fold for every axis
 
 A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer patches per key — a group's key being its one struct column, as a dim's is the column named for it.
-They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), static columns carried on the winning row (`weight` on `dims/scenario.parquet`, `entity_type` on the entity axis, `into` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
+They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), its other columns carried on the winning row (`entity_type` on the entity axis, `role` and `into` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
 
 The resolved relation is returned **in first-introduced member order** — root first, then file order within a layer — and a node's caches persist it _in that order_, so a reader recovers member order from the resolved file's own row number.
 There is no persisted `order_key` column: member order is the file's row order.
 A consumer wanting positional ports numbers an entity's connections by this order, so a patch layer adding a connection appends rather than renumbering — the [positional-keying failure](record.md#connections) that order exists to prevent.
 Across a materialised parent it still holds: the resolved seed is read in its own row order and a descendant's new rows number after it.
 
-An entity's wide static columns are the one axis value that lives in another file — per type, in `dims/entity_type/<ctype>.parquet`, not on the entity axis — so a node materialises the resolved per-type frames beside the axis, and [`entity_type`](#resolving-a-relation) reads them and gates against the resolved entity axis.
+Every property is a column of its subject's file, so the resolved axis or group is the whole of what a per-category read needs: `members` filters it on categorizing columns and projects to `properties_for`, with no second file to gate against.
 
 The fold runs live over an unmaterialised tail, cached in the workspace's database as [shared tables](#a-cursor-per-thread); since [layers are write-once](layers.md#a-layers-data-is-write-once), such a cache never needs invalidating.
 
 The [flags](record.md#flags) are folded in alongside the ownership group-by, so they cost nothing beyond it.
 They are computed **per key**, so per entity: whether _this_ entity's `p_max_pu` sets `timestep` is a different question from whether any does.
 
-The structs have a field per **broadcast** coordinate rather than per declared dim: `entity` [does not broadcast](record.md#the-broadcast-rule), so "did a row set it" is not a question about it.
+The structs have a field per **broadcast** coordinate: every declared dim, `entity` included, and every group.
 A group broadcasts and has its field, as does a dim a group draws on, so a constant-over-buses `marginal_price` reports `bus` as broadcast.
 
 Two **structs** rather than a `varies_<dim>` column per dim, because which dims exist is [declared](schema.md#dimensions) and a flat layout would make the map's _column set_ depend on the schema.
@@ -77,15 +77,15 @@ The map's columns are then fixed, and only the fields move.
 `breakpoints` stays outside both structs, being no dim ([wide and long rows](record.md#wide-and-long-rows)).
 That also means the dim namespace lives entirely inside `varies`/`broadcast`, so a dim named `breakpoints` would collide with nothing.
 
-`Record.flags(ctype)` unions them over the entities of one type, which is [the granularity every consumer works at](record.md#flags) — where what the union means, and why it stops at the type boundary, is argued.
+`Record.flags()` unions them over the record, and `flags(**categories)` over the labels of those categories, restricted to what they carry — [the granularity a consumer works at](record.md#flags), where what the union means is argued.
 
 ## Resolving a relation
 
 A resolved relation joins the owning layers' files to the `inputs` map, keeping only owned rows:
 
 ```sql
-SELECT u.entity, u.timestep,
-       COALESCE(u.scenario, o.__owned_scenario) AS scenario,   -- one per owned_per coordinate
+SELECT u.timestep,
+       COALESCE(u.scenario, o.__owned_scenario) AS scenario,   -- one per owned_per coordinate, entity likewise
        u.attribute, u.breakpoint, u.value
 FROM ( -- one arm per distinct layer the map names for this attribute
   SELECT ?::UUID AS layer_uuid, * FROM read_parquet(<layer>/inputs/<attr>.parquet)
@@ -100,8 +100,7 @@ JOIN ( -- the map keyed as its owning layer stored each key
          )) AS scenario
   FROM inputs
 ) o
-  ON o.entity     IS NOT DISTINCT FROM u.entity    -- entity: NULL-safe, never expanded
- AND o.attribute  = u.attribute
+  ON o.attribute  = u.attribute
  AND o.layer_uuid = u.layer_uuid
  AND o.scenario   IS NOT DISTINCT FROM u.scenario  -- owned-per coordinates: as stored, NULL included
 ```
@@ -143,7 +142,7 @@ There is one `Record`, and it is the narwhals interface over a [`Resolver`](#own
 
 So a directory takes the same properties as a tree node, rather than its own column of exceptions:
 
-- **`flags`** are computed in the ownership `GROUP BY`, one scan rather than the second one a separate aggregate would cost. They need a real aggregate either way: parquet's footer statistics are per row group, not per entity type, so a file mixing one type's series rows with another's constant says nothing about either.
+- **`flags`** are computed in the ownership `GROUP BY`, one scan rather than the second one a separate aggregate would cost. They need a real aggregate either way: parquet's footer statistics are per row group, not per category, so a file mixing one type's series rows with another's constant says nothing about either.
 - **Member order** is `order_key`, which over one source is `(0, file order)` — file order, arrived at by the general rule.
 - **`schema.partial`** is the granularity of a patch, and one layer patches nothing, so it is inert rather than absent.
 
