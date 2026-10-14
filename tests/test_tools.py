@@ -20,7 +20,6 @@ import pytest
 
 from datarecord import Workspace
 from datarecord.layered.resolve import read_schema, write_schema
-from datarecord.mutable import WorkingRecord
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
     ENTITY_TYPE,
@@ -1027,41 +1026,72 @@ def test_snapshot_weightings_survive_a_round_trip(store, ac_dc):
     )
 
 
-@pytest.mark.parametrize("column", ["objective", "years"])
-def test_a_period_weighting_survives_a_round_trip(store, column):
-    """`investment_period_weightings` are `period_weighting_*` attributes over `period`.
-
-    A multi-period network's snapshot axis does not export yet, so the rows
-    `to_datarecord` writes for one are set on a single-period record given
-    its periods.
-    """
-    import pypsa
-
-    n = pypsa.Network()
-    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
-    n.add("Bus", "north")
-    root = export_network(n, store)
+@pytest.fixture(scope="module")
+def multiperiod(ac_dc):
+    """`ac_dc` over two investment periods, with weightings of its own on both axes."""
+    n = ac_dc.copy()
     n.set_investment_periods([2030, 2040])
-    n.investment_period_weightings[column] = [3.0, 2.0]
-    attribute = f"period_weighting_{column}"
-    rows = PyPSA.to_datarecord(n, store.workspace.con).attributes[attribute]
+    n.investment_period_weightings = pd.DataFrame(
+        {"objective": [1.0, 0.6], "years": [10.0, 5.0]}, index=n.investment_periods
+    )
+    n.snapshot_weightings["objective"] = np.arange(len(n.snapshots), dtype=float)
+    return n
 
-    staged = WorkingRecord(root.record)
-    staged.add("period", [2030, 2040])
-    staged.set(attribute, rows)
-    built = PyPSA.build(root.child(staged.edits).record)
+
+@pytest.fixture(scope="module")
+def multiperiod_built(tmp_path_factory, multiperiod):
+    """`multiperiod` exported and built back once for the module."""
+    workspace = Workspace()
+    store = workspace.store(str(tmp_path_factory.mktemp("multiperiod")))
+    yield PyPSA.build(export_network(multiperiod, store).record)
+    workspace.close()
+
+
+@pytest.mark.parametrize(
+    "axis",
+    [
+        pytest.param(lambda n: pd.DataFrame(index=n.snapshots), id="snapshots"),
+        pytest.param(lambda n: pd.DataFrame(index=n.investment_periods), id="periods"),
+        pytest.param(lambda n: n.snapshot_weightings, id="snapshot_weightings"),
+        pytest.param(lambda n: n.investment_period_weightings, id="period_weightings"),
+    ],
+)
+def test_a_multi_period_axis_survives_a_round_trip(
+    multiperiod, multiperiod_built, axis
+):
+    """`snapshot` is `within` `period`, so a timestep keeps a row per period.
+
+    Notes
+    -----
+    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
+    """
     pd.testing.assert_frame_equal(
-        built.investment_period_weightings, n.investment_period_weightings
+        axis(multiperiod_built), axis(multiperiod), check_index_type=False
     )
 
 
-def test_multi_period_snapshot_weightings_are_refused(store):
-    """Weightings over `(period, timestep)` are not an attribute over `snapshot`."""
-    import pypsa
+def test_a_multi_period_network_survives_a_round_trip(multiperiod, multiperiod_built):
+    assert_networks_equal(multiperiod_built, multiperiod)
 
-    n = pypsa.Network()
-    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
-    n.set_investment_periods([2030, 2040])
-    source = PyPSA.to_datarecord(n, store.workspace.con)
-    with pytest.raises(NotImplementedError, match="multi-period"):
-        source.attributes["snapshot_weighting_objective"]
+
+def test_a_snapshot_weighting_reaches_the_labels_its_key_names():
+    """A NULL `period` reaches its timestep in every period, a NULL key every snapshot."""
+    index = pd.MultiIndex.from_product(
+        [[2030, 2040], pd.to_datetime(["2030-01-01 00:00", "2030-01-01 01:00"])],
+        names=["period", "timestep"],
+    )
+    rows = pd.DataFrame(
+        {
+            "period": [None, None, 2040],
+            "snapshot": pd.to_datetime([None, "2030-01-01 00:00", "2030-01-01 00:00"]),
+            "value": [1.0, 2.0, 3.0],
+        }
+    )
+    record = SimpleNamespace(
+        attributes={"snapshot_weighting_objective": nw.from_native(rows).lazy()}
+    )
+    table = pd.DataFrame({"objective": 0.0}, index=index)
+    weights = _weightings(record, "snapshot", table)  # type: ignore[arg-type]
+    assert weights["objective"].tolist() == [2.0, 1.0, 3.0, 1.0], (
+        "the row naming more of `(period, snapshot)` wins"
+    )

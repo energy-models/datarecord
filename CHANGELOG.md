@@ -142,6 +142,13 @@ All notable changes to datarecord are documented here. The format follows
   `period_weighting_objective` and `_years` over `period`, beside
   `scenario_weight`, and `build` sets them back rather than leaving PyPSA's
   defaults.
+- The PyPSA tool round-trips a multi-period network, which `to_datarecord`
+  failed to write: its schema declares `snapshot` `within` `period` where the
+  network has investment periods, keying the snapshot axis by
+  `(period, snapshot)`, and declares every input and result over `snapshot`
+  over `period` too. A single-period network's schema is unchanged. `build`
+  restores the snapshots, investment periods, time series and both
+  weightings.
 - Removing an entity drops the values of every group row naming it, not only
   where it is the group's first entity coordinate: a `contract` over
   `(from, to)` loses its values when either party is removed, and

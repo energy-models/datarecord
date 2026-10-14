@@ -66,9 +66,12 @@ Every per-port input, `delay` and `cyclic_delay` included, is long rows of `inpu
 
 **Properties and attributes are read off the registry.** The properties of `entity` are exactly `entity_type`, `carrier`, `sign` and `type`, and `role` is a property of `connection`; every other input, every number among them, is an attribute, so `p_nom` is long rows of `inputs/p_nom.parquet` ([where a value lives](format.md#where-a-value-lives)). A default that differs per component — `sign`, `carrier`, `p_min_pu`, `p_set` — is a [`default_by`](schema.md#default_by-a-default-per-category) on `entity_type`, and `entity_types` applies it when it builds a component's static frame from `members` and the entity-only rows of its attributes.
 
-**A weighting is an attribute over its axis alone.** PyPSA's weighting frames become `scenario_weight` over `scenario`, `snapshot_weighting_objective`, `snapshot_weighting_stores` and `snapshot_weighting_generators` over `snapshot`, and `period_weighting_objective` and `period_weighting_years` over `period`, written for each axis the network holds.
+**A multi-period network nests `snapshot` [`within`](schema.md#within-an-axis-inside-an-axis) `period`.** PyPSA's `(period, timestep)` snapshots are the `snapshot` axis keyed by `(period, snapshot)`, so one timestep in two periods is two points.
+Every input and result over `snapshot` is then over `period` too, its rows carrying the period that places their snapshot; a NULL `period` reaches the snapshot in every period.
+Both are declared only where the network has investment periods, so a single-period network's schema is unchanged, and a layer cannot turn one into the other, [changing `within`](schema.md#versioning) being incompatible.
+
+**A weighting is an attribute over its axis.** PyPSA's weighting frames become `scenario_weight` over `scenario`, `snapshot_weighting_objective`, `snapshot_weighting_stores` and `snapshot_weighting_generators` over `snapshot`, and `period_weighting_objective` and `period_weighting_years` over `period`, written for each axis the network holds.
 `build` sets them back, a label no row reaches keeping PyPSA's own default, an equal share for a scenario.
-A multi-period network's snapshot weightings vary per `(period, timestep)`, which an attribute over `snapshot` alone cannot hold, so `to_datarecord` refuses them.
 
 The tool's own `Schema` reconciles vocabularies: per entity type, which record attribute a tool's attribute is renamed from, or which several it is computed from.
 Since [the schema](schema.md) makes a record's attribute names _declared_ rather than conventional, this maps one declared vocabulary to another.
