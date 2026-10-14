@@ -205,7 +205,7 @@ def test_no_layer_file_carries_order_key(store, tmp_path):
 
     written = sorted(Path(out).rglob("*.parquet"))
     assert {"dims/entity.parquet", "groups/connection.parquet"} <= {
-        str(path.relative_to(out)) for path in written
+        path.relative_to(out).as_posix() for path in written
     }, "the frames the fold orders must be among those written"
     for path in written:
         columns = store.workspace.con.sql(
