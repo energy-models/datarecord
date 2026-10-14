@@ -43,6 +43,16 @@ All notable changes to datarecord are documented here. The format follows
   Such a name used to collide silently: a dim named `deleted` read every
   label as a tombstone. A manifest declaring one no longer loads; rename it.
   Based on #26 by @FBumann.
+- The PyPSA tool stores per-port results on connections, like per-port
+  inputs: `p0`, `p1`, `p2`, ... and a one-port type's `p` are one result `p`
+  over the `connection` group, a row per `(entity, bus)` keeping each port's
+  sign, and likewise `q`. `Bus.p` and `Bus.q`, the sum of those rows at a
+  bus, are no longer written, and `Link.p`/`Process.p` are `p_internal`. A
+  three-port Link's `p2` is now a declared result.
+- The PyPSA tool stores a Process's `rate0`, `rate1`, `rate2`, ... as one
+  input `rate` over the `connection` group, like `efficiency`, and `build`
+  puts each row back in its port's column, static or per snapshot. `rate`
+  declares no default, its ports defaulting to `-1` and `1`.
 
 ### Added
 
@@ -91,3 +101,11 @@ All notable changes to datarecord are documented here. The format follows
 - `PyPSA.to_datarecord` accepts components whose names differ only by case,
   such as `Gen` and `gen`, rather than reporting them as one name: neither
   the melt nor the pivot folds case any more.
+- `PyPSA.results` and a network's `outputs` key exactly the results the
+  PyPSA schema declares, so setting each one with `kind="outputs"` no longer
+  raises `KeyError`: `Bus.control` and `SubNetwork.carrier`, which PyPSA
+  also registers as inputs, are no longer emitted as results.
+- `PyPSA.build` turns a per-connection input back into PyPSA's port columns:
+  `efficiency` on a Link's bus2 connection is `efficiency2` again, static or
+  per snapshot, rather than every port's value landing in `efficiency` and
+  `efficiency2` reading as its default.
