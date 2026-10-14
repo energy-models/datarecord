@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Proposal: a member file holds values, and nothing else
 
-Status: **Landed** · Drafted 2026-09-02 · Landed 2026-09-04
+Status: **Superseded** · Drafted 2026-09-02 · Implemented 2026-09-04 · Superseded 2026-10-13
 
 > **Superseded** by [properties](012-properties.md#one-file-per-subject-on-disk):
 > the entity-type axis is now an `Enum` property of `entity`, and a record with

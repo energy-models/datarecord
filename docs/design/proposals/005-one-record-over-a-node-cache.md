@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Proposal: one `Record`, over a `NodeCache`
 
-Status: **Implemented** · Drafted 2026-09-01 · Landed 2026-09-01
+Status: **Implemented** · Drafted 2026-09-01 · Implemented 2026-09-01
 
 The design is [the read path](../read-path.md#one-record-over-one-fold) and [the Record protocol](../record.md); this page is the argument for the change rather than the current description, and those pages are authoritative where the two disagree.
 

@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Proposal: groups — one construct for classification and sparsity
 
-Status: **Accepted** · Drafted 2026-08-27 · Implemented 2026-09-01
+Status: **Implemented** · Drafted 2026-08-27 · Implemented 2026-09-01
 
 Landed in [the schema](../schema.md#groups) and [the record format](../format.md#where-a-value-lives); this page is kept as the argument for the change rather than as the current description.
 

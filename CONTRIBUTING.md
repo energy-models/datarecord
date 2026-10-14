@@ -68,6 +68,31 @@ Open a GitHub issue to report a bug or request a feature:
   everything framework-specific lives under `datarecord/tools/` behind an
   optional extra.
 
+## Design proposals
+
+A change to the design starts as a proposal: the argument for it, the design it
+lands, and usage examples.
+
+- It lives at `docs/design/proposals/NNN-slug.md`, where `NNN` is the next free
+  three-digit number, and is appended to the end of the `Proposals` nav in
+  `mkdocs.yml`. A number is never reused or reassigned.
+- Below the title, a status line:
+  `Status: **Draft | Accepted | Implemented | Superseded** · Drafted <date>`,
+  followed by the date of each later status.
+- Implementing it moves the design into the
+  [design pages](https://energy-models.github.io/datarecord/design/) and the
+  usage examples into the
+  [usage pages](https://energy-models.github.io/datarecord/usage/), with as much
+  of the argument as they need to stand on their own. The proposal stays as the
+  record of the argument, and its header links to the pages that are now
+  authoritative.
+- **Nothing outside the proposals links to one** — not a design or usage page, a
+  docstring, a test or an error message — except
+  [open questions](https://energy-models.github.io/datarecord/design/open-questions/).
+  A proposal that is not yet implemented is not the design, and one that is has
+  been superseded by the pages it landed in. `pixi run lint` fails on such a
+  link.
+
 ## Architecture in one paragraph
 
 datarecord stores dimensioned attribute data with a declared schema: entities

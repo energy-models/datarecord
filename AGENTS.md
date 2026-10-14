@@ -135,7 +135,9 @@ name is the _caller_, not the implementer.
   cannot see.
 - **Cite the design pages, don't restate them.** A `Notes` section at the end of
   the docstring, listing the [`docs/design/`](docs/design/) pages it depends on
-  by link; the argument stays there. A docstring that re-argues the design is a
+  by link — never a proposal (see
+  [design proposals](CONTRIBUTING.md#design-proposals)); the argument stays
+  there. A docstring that re-argues the design is a
   defect. `Notes` rather than `References`, which numpydoc reserves for sources
   that augment a docstring rather than ones it needs to be understood.
 - **The form is
