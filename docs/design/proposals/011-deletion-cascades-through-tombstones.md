@@ -10,7 +10,7 @@ Status: **Implemented** · Drafted 2026-10-13
 
 A label is removed by a tombstone, and only by a tombstone: removing one tombstones every [group](../schema.md#groups) tuple naming it, a layer leaving such a tuple alive is refused, and nothing is inferred on read from a dead label a row refers to.
 
-This supersedes the no-cascade rule [the struct proposal](a-group-is-a-struct-column.md#one-behaviour-that-must-not-move) kept — "the tuples stand, dangling" — for group tuples; values still never cascade further than the rules below say.
+This supersedes the no-cascade rule [the struct proposal](010-a-group-is-a-struct-column.md#one-behaviour-that-must-not-move) kept — "the tuples stand, dangling" — for group tuples; values still never cascade further than the rules below say.
 
 ## What is wrong today
 

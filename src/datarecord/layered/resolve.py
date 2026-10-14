@@ -154,7 +154,7 @@ def mortal(schema: Schema) -> tuple[str, ...]:
 
     Notes
     -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/)
     """
     drawn = {d for g in schema.group_columns for d in schema.groups[g].over.values()}
     unkeyed = set(schema.broadcast_dims) - set(schema.partial_dims)
@@ -178,7 +178,7 @@ def _resolve_dead(
 
     Notes
     -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/#dead-labels-survive-materialisation)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/#dead-labels-survive-materialisation)
     """
     dead = {}
     for name in mortal(schema):
@@ -504,7 +504,7 @@ def _living(
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/)
     """
     schema = keys.schema
     for c in unkeyed:
@@ -656,7 +656,7 @@ def fold_inputs(
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/)
     """
     schema = keys.schema
     rel = source.all_attributes("inputs")

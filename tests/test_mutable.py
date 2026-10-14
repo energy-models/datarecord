@@ -938,7 +938,7 @@ def test_a_layer_touching_no_tuple_resolves_no_ancestry_to_check(
 
     Notes
     -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/)
     """
     import datarecord.layered.write as write
 
@@ -961,7 +961,7 @@ def test_remove_then_add_starts_without_the_parents_connections(staged, root):
     Notes
     -----
     - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/)
     """
     assert _efficiency(staged), "the base carries a value to lose"
     staged.remove("entity", ["Manchester Wind"])
