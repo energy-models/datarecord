@@ -12,7 +12,7 @@ Two changes that are one. **Properties** — what classifies or describes one la
 
 It builds on [a group is one struct column](a-group-is-a-struct-column.md) — a group is a dim, referenced in rows by one struct column — and on [deletion cascading through tombstones](deletion-cascades-through-tombstones.md).
 
-It lands in two steps. **Step 1** — properties, categories, and `entity` as an ordinary dim — is being built. **Step 2** — the section, not the shape, deciding where a value lives, and the per-category read — is the rest of the design below, sequenced after. An [optional stage](#optional-stage-categories-in-attribute-rows), storing a category in an attribute row, is to be decided.
+It lands in two steps. **Step 1** — properties, categories, and `entity` as an ordinary dim — is being built. **Step 2** — the section, not the shape, deciding where a value lives — is the rest of the design below, sequenced after. A per-category read, [`members`](#optional-members), is deferred. An [optional stage](#optional-stage-categories-in-attribute-rows), storing a category in an attribute row, is to be decided.
 
 ## What starts it
 
@@ -164,7 +164,7 @@ With the categories a property and the fold key a schema declaration, nothing in
 
 - **The fold key** is exactly what `partial` lists — dims and groups alike. Every dim and every group broadcasts. A dim a group draws on need not be in `partial`: its dead labels are kept and dropped on read ([deletion](deletion-cascades-through-tombstones.md)).
 - **Deletion** is [tombstones cascading](deletion-cascades-through-tombstones.md): `remove(dim, labels)` tombstones the labels and every live tuple of a group with a field over `dim` naming one; the fold anti-joins the tombstones of every `partial` dim and group.
-- **The read API** answers per record, not per type: `Record`, `Resolver`, `Fold` and `LayerData` lose `entity_types`, `entity_type(ctype)` and `entity_axis`, and `flags()` takes no type. A per-category frame is `dims[dim]` filtered on a categorizing column, until step 2's per-category read.
+- **The read API** answers per record, not per type: `Record`, `Resolver`, `Fold` and `LayerData` lose `entity_types`, `entity_type(ctype)` and `entity_axis`, and `flags()` takes no type. A per-category frame is `dims[dim]` filtered on a categorizing column.
 - **Uniqueness** across types is structural: one axis row per label.
 
 ### One file per subject on disk
@@ -211,16 +211,25 @@ Step 1 keeps single-dim attributes as axis columns, so no file moves yet.
 ```python
 record.dims["entity"]  # entity — labels only
 record.properties["entity"]  # entity | entity_type | carrier | sign | ...
-record.members(
-    "entity", entity_type="Generator"
-)  # entity | carrier | sign | ... — its rows, its properties
 record.attributes["p_nom"]  # entity | attribute | breakpoint | value
 record.attributes["p_max_pu"]  # entity | snapshot | attribute | breakpoint | value
 ```
 
-A per-category read — `members` here, the name open — filters a dim's labels on its categorizing properties and projects to the properties those labels carry, with `default_by` applied; no attribute columns. A framework's static frame — PyPSA's `n.generators` — is that frame joined with the entity-only rows of its attributes; the tool keeps calling it `entity_types`. `Schema.attributes_for` splits into `properties_for` and `attributes_for`, both narrowed by the same traits.
+`properties[dim]` holds stored values, no defaults applied. A framework's static frame — PyPSA's `n.generators` — is that frame filtered on a category, its `default_by` filled, and joined with the entity-only rows of its attributes; the tool keeps calling it `entity_types`. `Schema.attributes_for` splits into `properties_for` and `attributes_for`, both narrowed by the same traits.
 
 Also step 2: **properties of a group** (`connection.role`, today an attribute over `connection`), and **per-category flags** — `flags()` per record loses what PyPSA's `verify` checked per type.
+
+## Optional: `members`
+
+Status: **deferred** — not part of the accepted scope, until a caller needs it. `properties[dim]`, stored values without defaults, and `flags(**categories)` cover what is read today.
+
+```python
+record.members(
+    "entity", entity_type="Generator"
+)  # entity | carrier | sign | ... — its rows, its properties
+```
+
+A per-category read — `members` here, the name open — would filter a dim's labels on its categorizing properties and project to the properties those labels carry, with `default_by` applied; no attribute columns. A framework's static frame would be that frame joined with the entity-only rows of its attributes.
 
 ## Optional stage: categories in attribute rows
 
@@ -263,7 +272,7 @@ What would decide it: a case where layer data, not the schema, must reach every 
 
 ## What it costs
 
-**The read API answers less, for now.** No per-type frame, no per-type flags, no applied defaults until step 2; PyPSA filters the entity axis itself, and its `verify` counts an attribute one type owns as owned by every type.
+**The read API answers less, for now.** No per-type flags until step 2, no per-type frame and no applied defaults; PyPSA filters the entity axis itself, and its `verify` counts an attribute one type owns as owned by every type.
 
 **`partial` must list what used to be implicit.** A schema keying traits or defaults on `entity`'s categories must put `entity` in `partial`; a schema omitting it is refused rather than silently keyed.
 
@@ -294,9 +303,9 @@ What would decide it: a case where layer data, not the schema, must reach every 
 Steps 1 and 2 are built on `feat/properties-structs`, and the design pages, usage pages and changelog follow them. Two departures from the text above:
 
 - **No `partial` rule for groups.** A dim a group draws on need not be in `partial`; its dead labels already cover deletion. The only `partial` requirement is a categorized dim's.
-- **An attribute's `default_by` is applied by its reader.** `members` applies defaults to properties; `record.attributes` shows stored rows, and a reader fills an attribute's per-category default through `Schema.default_for`, as the PyPSA tool does.
+- **A `default_by` is applied by its reader.** `record.properties` and `record.attributes` show stored rows, and a reader fills a per-category default through `Schema.default_for`, as the PyPSA tool does.
 
-The optional stage is not built.
+Neither [`members`](#optional-members) nor the optional stage is built.
 
 ## How to know it worked
 
