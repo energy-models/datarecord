@@ -47,7 +47,7 @@ nav:
       - Module layout: design/module-layout.md
       - Open questions: design/open-questions.md
       - Enhancement proposals:
-          - Template: design/proposals/dep-0000-template.md
+          - Template: design/proposals/dep-NNNN-template.md
           - "DEP 1: Dims, mappings, groups and traits": design/proposals/dep-0001-dims-groups-traits.md
           - "DEP 2: Groups": design/proposals/dep-0002-groups.md
           - "DEP 3: Trait switches": design/proposals/dep-0003-trait-switches.md
