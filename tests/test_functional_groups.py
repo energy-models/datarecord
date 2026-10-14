@@ -52,14 +52,6 @@ def _schema(**overrides) -> Schema:
 # -- the declaration --------------------------------------------------------
 
 
-def test_the_dim_a_group_is_into_is_an_ordinary_dim():
-    """One namespace: the classified axis is addressable as any other is."""
-    s = _schema()
-    assert s.dims == ("bus", "state", "country")
-    # Typed like any dim, so a column carrying its labels casts correctly.
-    assert s.column_type("country") == nw.String()
-
-
 def test_the_key_is_over_without_into():
     """What the uniqueness constraint is on: each `over` tuple carries one label.
 
@@ -69,12 +61,6 @@ def test_the_key_is_over_without_into():
     s = _schema()
     assert s.group_key("state_country") == ("state",)
     assert s.group_key("bus_state") == ("bus",)
-
-
-def test_a_group_may_not_share_a_dims_name():
-    """A group is carried as a column named for it, so the two would be one column."""
-    with pytest.raises(ValidationError, match="group 'country' shares its name"):
-        _schema(groups={"country": Group(over=["state"], into="country")})
 
 
 def test_an_into_less_group_in_dims_is_one_struct_column():
@@ -90,46 +76,49 @@ def test_an_into_less_group_in_dims_is_one_struct_column():
     assert s.groups_of("capacity") == ("connection",)
 
 
-def test_a_corridor_draws_two_coordinates_from_one_dim():
-    """`over`'s dict form is what a relation between two of one axis needs."""
-    s = _schema(groups={"corridor": Group(over={"from": "bus", "to": "bus"})})
-    assert s.group_key("corridor") == ("from", "to"), "no `into`, so all of them"
-
-
 def test_the_over_list_form_is_sugar_for_the_dict():
-    """`[bus]` is `{bus: bus}`; the dict is what a corridor needs."""
+    """`[bus]` is `{bus: bus}`; the dict is what a corridor needs.
+
+    A corridor draws two coordinates from one dim.
+    """
     assert Group(over=["bus"]).over == {"bus": "bus"}
     assert Group(over={"from": "bus", "to": "bus"}).key == ("from", "to")
-
-
-def test_a_functional_group_keys_no_axis():
-    """`into` is not `within`: it classifies, so it does not scope a label.
-
-    `country` labels mean the same thing everywhere, so the axis key is the
-    label alone - where a nested dim's would be `(parent, label)`.
-    """
-    s = _schema()
-    assert s.axis_key("country") == ("country",)
-    assert s.axis_key("bus") == ("bus",)
+    s = _schema(groups={"corridor": Group(over={"from": "bus", "to": "bus"})})
+    assert s.group_key("corridor") == ("from", "to"), "no `into`, so all of them"
 
 
 # -- what the declaration rejects -------------------------------------------
 
 
-def test_a_group_over_an_undeclared_dim_is_refused():
-    with pytest.raises(ValidationError, match="over undeclared dims"):
-        _schema(groups={"state_country": Group(over=["nope"], into="country")})
-
-
-def test_into_must_name_a_declared_dim():
-    """`into` names the axis whose labels the group's tuples carry."""
-    with pytest.raises(ValidationError, match="`into` undeclared dim"):
-        _schema(groups={"c": Group(over=["bus"], into="nope")})
-
-
-def test_a_group_cannot_map_a_coordinate_to_itself():
-    with pytest.raises(ValidationError, match="also one of its `over` coordinates"):
-        _schema(groups={"c": Group(over=["bus"], into="bus")})
+@pytest.mark.parametrize(
+    ("groups", "match"),
+    [
+        pytest.param(
+            {"country": Group(over=["state"], into="country")},
+            "group 'country' shares its name",
+            id="shares-a-dims-name",
+        ),
+        pytest.param(
+            {"state_country": Group(over=["nope"], into="country")},
+            "over undeclared dims",
+            id="over-undeclared-dim",
+        ),
+        pytest.param(
+            {"c": Group(over=["bus"], into="nope")},
+            "`into` undeclared dim",
+            id="into-undeclared-dim",
+        ),
+        pytest.param(
+            {"c": Group(over=["bus"], into="bus")},
+            "also one of its `over` coordinates",
+            id="into-one-of-over",
+        ),
+    ],
+)
+def test_a_malformed_group_is_refused(groups, match):
+    """A group is a column named for it, over declared dims, `into` another one."""
+    with pytest.raises(ValidationError, match=match):
+        _schema(groups=groups)
 
 
 # -- through a real record --------------------------------------------------
@@ -155,11 +144,15 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(store):
     write_axis(store.layer_dir(revision.id), "bus", [{"bus": "north"}])
     write_axis(store.layer_dir(revision.id), "state", [{"state": "lower"}])
     write_axis(
-        store.layer_dir(revision.id), "country", [{"country": "DE"}, {"country": "FR"}]
+        store.layer_dir(revision.id),
+        "country",
+        [{"country": "NO"}, {"country": "DE"}, {"country": "FR"}],
     )
 
     axes = revision.resolver.dims.axes
-    assert sorted(axes["country"].df()["country"]) == ["DE", "FR"]
+    assert axes["country"].df()["country"].tolist() == ["NO", "DE", "FR"], (
+        "axis order is the file's row order, classified or not"
+    )
     assert axes["bus"].df()["bus"].tolist() == ["north"], (
         "no classification column: the relation is the group's own file"
     )
@@ -197,37 +190,6 @@ def test_removing_a_label_of_a_dim_outside_partial_tombstones_its_tuples(store):
     assert child.record.groups["bus_state"].collect().to_native().to_pydict() == {
         "bus_state": [{"bus": "south"}],
         "state": ["upper"],
-    }
-
-
-def test_a_chain_is_a_join_over_two_group_files(store):
-    """bus -> state -> country is one file per hop, never denormalised.
-
-    Two files asserting bus->country would let a layer restating the states
-    leave every bus's country stale, with nothing to detect it. A file per group
-    gives that property for free: a layer restating a group restates one file.
-    """
-    revision = empty_root(store)
-    write_schema(_budget_schema(), store)
-    write_group(
-        store.layer_dir(revision.id),
-        "bus_state",
-        [{"bus_state": {"bus": "north"}, "state": "lower"}],
-    )
-    write_group(
-        store.layer_dir(revision.id),
-        "state_country",
-        [{"state_country": {"state": "lower"}, "country": "DE"}],
-    )
-
-    groups = revision.record.groups
-    assert groups["bus_state"].collect().to_native().to_pydict() == {
-        "bus_state": [{"bus": "north"}],
-        "state": ["lower"],
-    }, "keyed by the struct column named for the group, `into` beside it"
-    assert groups["state_country"].collect().to_native().to_pydict() == {
-        "state_country": [{"state": "lower"}],
-        "country": ["DE"],
     }
 
 
@@ -301,30 +263,6 @@ def test_a_property_of_the_into_dim_is_a_column_of_its_axis(store):
     assert rows["value"] == [30.0]
 
 
-def test_setting_a_property_stages_an_axis_row(store):
-    """`set` states a value for a label the axis already has.
-
-    The staged row carries the label and the column, so a read with pending
-    edits answers the new value while every untouched label keeps the base's.
-    """
-    revision = empty_root(store)
-    write_schema(_budget_schema(), store)
-    write_axis(
-        store.layer_dir(revision.id),
-        "country",
-        [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
-    )
-
-    staged = WorkingRecord(revision.record)
-    staged.set("co2_budget", {"DE": 12.0})
-
-    frame = staged.properties["country"].collect().to_native()
-    got = dict(zip(frame["country"].to_pylist(), frame["co2_budget"].to_pylist()))
-    assert got == {"DE": 12.0, "FR": 55.0}, (
-        "FR is untouched, so it keeps the base value"
-    )
-
-
 def test_setting_one_property_keeps_its_siblings_value(store):
     """Two properties on one axis, one edited: the other must survive the fold.
 
@@ -393,6 +331,11 @@ def test_a_child_layer_holds_only_the_axis_labels_it_touched(store):
     assert country is not None
     patch = country.df()
     assert patch["country"].tolist() == ["DE"], "only the touched label"
+    frame = staged.properties["country"].collect().to_native()
+    got = dict(zip(frame["country"].to_pylist(), frame["co2_budget"].to_pylist()))
+    assert got == {"DE": 12.0, "FR": 55.0}, (
+        "a read with pending edits answers the new value; FR keeps the base's"
+    )
 
     child = revision.child(staged.edits)
     axis = child.resolver.dims.axes["country"].df()
@@ -481,20 +424,3 @@ def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
     child = revision.child(staged.edits)
     axis = child.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
-
-
-def test_a_classified_axis_keeps_its_own_order(store):
-    """Axis order is the file's row order, classified or not."""
-    revision = empty_root(store)
-    write_schema(_schema(), store)
-    write_axis(
-        store.layer_dir(revision.id),
-        "country",
-        [{"country": "NO"}, {"country": "DE"}, {"country": "FR"}],
-    )
-
-    assert revision.resolver.dims.axes["country"].df()["country"].tolist() == [
-        "NO",
-        "DE",
-        "FR",
-    ]

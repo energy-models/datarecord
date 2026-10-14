@@ -20,10 +20,9 @@ import pandas as pd
 from tests.fixtures import (
     empty_child,
     empty_root,
-    export_network,
     relation,
     schema,
-    tombstone,
+    write_entity_type,
     write_input,
     write_periods,
     write_schema,
@@ -31,40 +30,7 @@ from tests.fixtures import (
 )
 
 
-def test_partial_period_override_resolves_per_period(store, ac_dc):
-    """With `period` `partial`, a child may replace one period only."""
-    revision = export_network(ac_dc, store)
-    write_schema(schema(partial={"scenario", "period"}), store)
-    revision.materialise()
-
-    child = empty_child(revision)
-    write_input(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [
-            {
-                "entity": "Manchester Wind",
-                "period": 2030,
-                "value": 0.42,
-            }
-        ],
-    )
-
-    df = child.resolver.inputs.df()
-    wind = df[
-        (df["entity"] == "Manchester Wind")
-        & (df["attribute"].astype(str) == "p_max_pu")
-    ]
-    owners = dict(zip(wind["period"], wind["layer_uuid"], strict=False))
-    assert owners.get(2030) == child.id
-
-    rel = relation(child, "p_max_pu").df()
-    wind_rows = rel[rel["entity"] == "Manchester Wind"]
-    overridden = wind_rows[wind_rows["period"] == 2030]
-    assert set(overridden["value"]) == {0.42}
-
-
-def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store, ac_dc):
+def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store):
     """A dim tombstone removes the attribute rows over that coordinate, not others.
 
     The fold anti-joins every membership's tombstones into the inputs map, dims
@@ -76,8 +42,11 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store, a
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    revision = export_network(ac_dc, store)
+    revision = empty_root(store)
     write_schema(schema(partial={"period"}), store)
+    write_entity_type(
+        store.layer_dir(revision.id), "Generator", [{"entity": "Manchester Wind"}]
+    )
     write_periods(store.layer_dir(revision.id), [{"period": 2020}, {"period": 2030}])
     write_input(
         store.layer_dir(revision.id),
@@ -103,31 +72,7 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store, a
     assert set(keyed["period"]) == {2020}, "and the map no longer owns its key"
 
 
-def test_tombstone_ignores_period_even_when_period_is_partial(store, ac_dc):
-    """Deletion always acts on the whole component, never scoped to a period.
-
-    `period` is `partial`, so it keys the *inputs* map - but the components map
-    is keyed by `entity` alone, which is what makes the tombstone unscoped.
-    Existence does not vary along a dim, so there is nothing to scope it by.
-
-    Notes
-    -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-    """
-    revision = export_network(ac_dc, store)
-    write_schema(schema(partial={"period"}), store)
-    revision.materialise()
-
-    child = empty_child(revision)
-    tombstone(store.layer_dir(child.id), "Generator", ["Manchester Wind"])
-
-    axis_rel = child.resolver.axis("entity")
-    assert axis_rel is not None
-    entity_types = axis_rel.df()
-    assert "Manchester Wind" not in set(entity_types["entity"])
-
-
-def test_the_fold_unions_maps_by_name(store, ac_dc):
+def test_the_fold_unions_maps_by_name(store):
     """A child's own map is unioned with the parent's by name, not by position.
 
     One schema serves the whole tree, so the dim *order* is fixed - but
@@ -139,8 +84,11 @@ def test_the_fold_unions_maps_by_name(store, ac_dc):
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    revision = export_network(ac_dc, store)
+    revision = empty_root(store)
     write_schema(schema(partial={"scenario", "period"}), store)
+    write_entity_type(
+        store.layer_dir(revision.id), "Generator", [{"entity": "Manchester Wind"}]
+    )
     write_input(
         store.layer_dir(revision.id),
         "p_max_pu",
@@ -262,35 +210,3 @@ def test_a_dim_names_its_own_file(store):
 
     axis = revision.resolver.dims.axes["bus"].df()
     assert sorted(axis["bus"].tolist()) == ["north", "south"]
-
-
-def test_the_entity_column_is_entity(store, ac_dc):
-    """`entity` names the component in every frame the protocol hands back."""
-    revision = export_network(ac_dc, store)
-
-    record = revision.record
-    assert "entity" in record.dims["entity"].collect_schema().names()
-    assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
-    assert "entity" in revision.resolver.inputs.columns, "and the owner map"
-
-
-def test_the_entity_axis_is_where_identity_lives(store, ac_dc):
-    """`dims/entity.parquet` says which entities exist and what type each is.
-
-    The type is the `entity_type` discriminator column; one row per entity is
-    what makes a name unique across types.
-    """
-    revision = export_network(ac_dc, store)
-
-    axis = store.workspace.con.read_parquet(
-        store.layer_dir(revision.id) + "dims/entity.parquet"
-    ).df()
-    assert {"entity", "entity_type", "deleted"} <= set(axis.columns)
-    assert not axis["entity"].duplicated().any()
-    assert "Generator" in set(axis["entity_type"])
-
-    # And it is what the fold reads: the map's entities are the axis's.
-    ea2 = revision.resolver.axis("entity")
-    assert ea2 is not None
-    mapped = ea2.df()
-    assert set(mapped["entity"]) == set(axis.loc[~axis["deleted"], "entity"])

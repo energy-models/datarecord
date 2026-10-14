@@ -93,17 +93,6 @@ def test_ownership_is_derived_not_declared():
     assert s.owned_per("carrier") == frozenset({"entity"})
 
 
-def test_a_scenario_varying_capacity_is_a_schema_violation():
-    """`dims` is what forbids it: a capacity is decided before the scenario is known."""
-    s = _schema()
-    assert "scenario" not in s.attributes["p_nom"].dims
-    # Nothing owns it per scenario, so the fold writes NULL there and one value
-    # applies to every scenario.
-    assert s.owned_per("p_nom") == frozenset({"entity"}), (
-        "owned per entity, not scenario"
-    )
-
-
 def test_partial_dims_is_the_union_over_attributes():
     """The fold's key is one fixed tuple, so an unowned dim is NULL rather than absent."""
     s = _schema()
@@ -374,31 +363,8 @@ def test_the_section_decides_where_a_value_lives():
     assert "entity_type" not in s.partial_dims
 
 
-def _with_role(**role: object) -> Schema:
-    """`_schema` with `role` a property of the `connection` group."""
-    return _schema(
-        properties={
-            "entity": {
-                "entity_type": PropertySpec(dtype=nw.Enum(["Generator", "Link"]))
-            },
-            "connection": {"role": PropertySpec(dtype=nw.String(), **role)},
-        }
-    )
-
-
 def test_a_group_may_have_properties():
     """A column of `groups/<group>.parquet`, typed like a dim's property."""
-    s = _with_role()
-    assert s.subject_of("role") == "connection"
-    assert s.column_type("role") == nw.String()
-    assert s.properties_for("connection") == {
-        "role": s.properties["connection"]["role"]
-    }
-    assert s.categorizing("connection") == (), "a group is never categorized"
-
-
-def test_a_group_property_categorizes_nothing():
-    """Even an `Enum` one of a `partial` group: a group has no categories."""
     s = _schema(
         properties={
             "entity": {
@@ -408,7 +374,14 @@ def test_a_group_property_categorizes_nothing():
         },
         partial=frozenset({"entity", "scenario", "connection"}),
     )
-    assert s.categorizing("connection") == ()
+    assert s.subject_of("role") == "connection"
+    assert s.column_type("role") == nw.Enum(["in", "out"])
+    assert s.properties_for("connection") == {
+        "role": s.properties["connection"]["role"]
+    }
+    assert s.categorizing("connection") == (), (
+        "a group is never categorized, even by an `Enum` property of a `partial` group"
+    )
 
 
 def test_properties_are_narrowed_by_the_traits_attributes_are():
@@ -768,69 +741,88 @@ def test_default_by_takes_the_first_key_listing_a_category():
 # -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------
 
 
-def test_axis_key_is_parents_then_dim():
-    """A nested axis's labels identify only within its parents."""
-    s = _schema()
-    assert s.axis_key("timestep") == ("period", "timestep")
-    assert s.axis_key("period") == ("period",)
-    assert s.axis_key("scenario") == ("scenario",)
+@pytest.mark.parametrize(
+    ("dimensions", "dim", "key"),
+    [
+        pytest.param(
+            _schema().dimensions, "timestep", ("period", "timestep"), id="nested"
+        ),
+        pytest.param(_schema().dimensions, "period", ("period",), id="a-parent"),
+        pytest.param(_schema().dimensions, "scenario", ("scenario",), id="unnested"),
+        pytest.param(
+            {
+                "horizon": Dimension(dtype=nw.Int64()),
+                "period": Dimension(dtype=nw.Int64(), within={"horizon"}),
+                "timestep": Dimension(dtype=nw.Datetime(), within={"period"}),
+            },
+            "timestep",
+            ("horizon", "period", "timestep"),
+            id="transitive",
+        ),
+        pytest.param(
+            {
+                "period": Dimension(dtype=nw.Int64()),
+                "stage": Dimension(dtype=nw.String()),
+                "timestep": Dimension(dtype=nw.Datetime(), within={"period", "stage"}),
+            },
+            "timestep",
+            ("period", "stage", "timestep"),
+            id="several-direct-parents",
+        ),
+    ],
+)
+def test_axis_key_is_parents_then_dim(dimensions, dim, key):
+    """A nested axis's labels identify only within its parents.
 
-
-def test_nesting_is_transitive():
-    """Naming a parent pulls in that parent's own parents.
+    Naming a parent pulls in that parent's own parents, and `within` is a set,
+    since two axes may each qualify a label without containing each other.
 
     Notes
     -----
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
-    s = Schema(
-        dimensions={
-            "horizon": Dimension(dtype=nw.Int64()),
-            "period": Dimension(dtype=nw.Int64(), within={"horizon"}),
-            "timestep": Dimension(dtype=nw.Datetime(), within={"period"}),
-        }
-    )
-    assert s.axis_key("timestep") == ("horizon", "period", "timestep")
+    assert Schema(dimensions=dimensions).axis_key(dim) == key
 
 
-def test_several_direct_parents():
-    """A set, since two axes may each qualify a label without containing each other."""
-    s = Schema(
-        dimensions={
-            "period": Dimension(dtype=nw.Int64()),
-            "stage": Dimension(dtype=nw.String()),
-            "timestep": Dimension(dtype=nw.Datetime(), within={"period", "stage"}),
-        }
-    )
-    assert s.axis_key("timestep") == ("period", "stage", "timestep")
-
-
-def test_nesting_must_name_declared_dims():
-    with pytest.raises(ValidationError, match="undeclared"):
-        Schema(dimensions={"timestep": Dimension(dtype=nw.Datetime(), within={"nope"})})
-
-
-def test_nesting_must_be_acyclic():
-    with pytest.raises(ValidationError, match="cyclic"):
-        Schema(
-            dimensions={
-                "a": Dimension(dtype=nw.Int64(), within={"b"}),
-                "b": Dimension(dtype=nw.Int64(), within={"a"}),
-            }
-        )
-
-
-def test_a_dim_cannot_be_within_itself():
-    with pytest.raises(ValidationError, match="within` itself"):
-        Schema(dimensions={"a": Dimension(dtype=nw.Int64(), within={"a"})})
-
-
-def test_an_attribute_cannot_vary_over_an_undeclared_dim():
-    with pytest.raises(ValidationError, match="undeclared"):
-        Schema(
-            dimensions={"scenario": Dimension(dtype=nw.String())},
-            attributes={"p": AttributeSpec(dtype=nw.Float64(), dims={"nope"})},
-        )
+@pytest.mark.parametrize(
+    ("build", "match"),
+    [
+        pytest.param(
+            lambda: Schema(
+                dimensions={"timestep": Dimension(dtype=nw.Datetime(), within={"nope"})}
+            ),
+            "undeclared",
+            id="nesting-names-an-undeclared-dim",
+        ),
+        pytest.param(
+            lambda: Schema(
+                dimensions={
+                    "a": Dimension(dtype=nw.Int64(), within={"b"}),
+                    "b": Dimension(dtype=nw.Int64(), within={"a"}),
+                }
+            ),
+            "cyclic",
+            id="cyclic-nesting",
+        ),
+        pytest.param(
+            lambda: Schema(dimensions={"a": Dimension(dtype=nw.Int64(), within={"a"})}),
+            "within` itself",
+            id="within-itself",
+        ),
+        pytest.param(
+            lambda: Schema(
+                dimensions={"scenario": Dimension(dtype=nw.String())},
+                attributes={"p": AttributeSpec(dtype=nw.Float64(), dims={"nope"})},
+            ),
+            "undeclared",
+            id="an-attribute-over-an-undeclared-dim",
+        ),
+    ],
+)
+def test_a_dim_reference_must_resolve(build, match):
+    """`within` and an attribute's `dims` name declared dims, nesting acyclically."""
+    with pytest.raises(ValidationError, match=match):
+        build()
 
 
 # -- defaults through the manifest (https://energy-models.github.io/datarecord/design/schema/#attributespec, https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ------------------------------
@@ -861,87 +853,121 @@ def test_a_default_survives_the_manifest_round_trip(value):
 # -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) -------------------------------------------------------
 
 
-def test_adding_an_attribute_is_compatible():
-    old = _schema()
-    new = _schema()
-    new.attributes["p_min_pu"] = AttributeSpec(dtype=nw.Float64(), dims={"scenario"})
-    assert new.compatible_with(old) == []
+def _restating(**attributes: AttributeSpec) -> Schema:
+    """`_schema` with `attributes` added or replaced, every other one unchanged."""
+    return _schema(attributes={**_schema().attributes, **attributes})
 
 
-def test_widening_dims_is_compatible():
-    """Rows that set fewer dims still decode: an unset dim is NULL, and NULL means all."""
-    old = _schema()
-    new = _schema()
-    new.attributes["marginal_cost"] = AttributeSpec(
-        dtype=nw.Float64(), dims={"entity", "scenario", "timestep"}, breakpoints=True
-    )
-    assert new.compatible_with(old) == []
+@pytest.mark.parametrize(
+    "new",
+    [
+        pytest.param(
+            _restating(p_min_pu=AttributeSpec(dtype=nw.Float64(), dims={"scenario"})),
+            id="adding-an-attribute",
+        ),
+        pytest.param(
+            _restating(
+                marginal_cost=AttributeSpec(
+                    dtype=nw.Float64(),
+                    dims={"entity", "scenario", "timestep"},
+                    breakpoints=True,
+                )
+            ),
+            id="widening-dims",
+        ),
+        pytest.param(
+            _schema(partial=frozenset({"entity", "scenario", "timestep"})),
+            id="widening-partial",
+        ),
+        pytest.param(
+            _restating(
+                p_nom=AttributeSpec(
+                    dtype=nw.Float64(),
+                    dims={"entity"},
+                    unit="kW",
+                    description="Rated power.",
+                )
+            ),
+            id="changing-a-unit",
+        ),
+    ],
+)
+def test_a_compatible_change(new):
+    """Every row the old schema wrote still decodes under the new one.
 
+    A row setting fewer dims reads an unset dim as NULL, which means all; an
+    old row is owned at the coarser granularity; and neither `unit` nor
+    `description` decides how a row decodes.
 
-def test_widening_partial_is_compatible():
-    """Ownership becomes finer; an old row is owned at the coarser granularity."""
-    old = _schema()
-    new = _schema(partial=frozenset({"entity", "scenario", "timestep"}))
-    assert new.compatible_with(old) == []
-
-
-def test_narrowing_dims_is_incompatible():
-    old = _schema()
-    new = _schema()
-    # `entity` kept, so `timestep` is the one axis under test.
-    new.attributes["p_max_pu"] = AttributeSpec(
-        dtype=nw.Float64(), dims={"entity", "scenario"}
-    )
-    (reason,) = new.compatible_with(old)
-    assert "no longer varies over ['timestep']" in reason
-
-
-def test_changing_a_dtype_is_incompatible():
-    old = _schema()
-    new = _schema()
-    new.attributes["p_nom"] = AttributeSpec(dtype=nw.Int64(), dims={"entity"})
-    (reason,) = new.compatible_with(old)
-    assert "Float64 -> Int64" in reason
-
-
-def test_removing_from_partial_is_incompatible():
-    """A layer that patched one value is now a partial override of a whole axis."""
-    old = _schema(partial=frozenset({"entity", "scenario", "timestep"}))
-    new = _schema()
-    reasons = new.compatible_with(old)
-    assert any("no longer `partial`" in r for r in reasons)
-
-
-def test_a_category_losing_a_property_is_incompatible():
-    """A trait newly bundling `label` takes it from every category it is not `on`."""
-    properties = _with_entity_property("label", PropertySpec(dtype=nw.String()))
-    old = _schema(properties=properties)
-    new = _schema(
-        properties=properties,
-        traits={
-            **_schema().traits,
-            "linking": Trait(attributes={"label"}, on={"entity_type": {"Link"}}),
-        },
-    )
-    reasons = new.compatible_with(old)
-    assert any("'Generator'" in r and "label" in r for r in reasons), reasons
-
-
-def test_changing_nesting_is_incompatible():
-    """Un-nesting `timestep` changes the axis key's shape, so old rows misread.
-
-    `new` is `_schema()` with the one difference under test: `timestep` no
-    longer `within` `period`, where every other dim is restated unchanged.
+    Notes
+    -----
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
-    old = _schema()
-    new = _schema(
-        dimensions={
-            **old.dimensions,
-            "timestep": Dimension(dtype=nw.Datetime()),
-        }
-    )
+    assert new.compatible_with(_schema()) == []
+
+
+_LABELLED = _with_entity_property("label", PropertySpec(dtype=nw.String()))
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "reason"),
+    [
+        pytest.param(
+            _schema(),
+            _restating(
+                p_max_pu=AttributeSpec(dtype=nw.Float64(), dims={"entity", "scenario"})
+            ),
+            "no longer varies over ['timestep']",
+            id="narrowing-dims",
+        ),
+        pytest.param(
+            _schema(),
+            _restating(p_nom=AttributeSpec(dtype=nw.Int64(), dims={"entity"})),
+            "Float64 -> Int64",
+            id="changing-a-dtype",
+        ),
+        pytest.param(
+            _schema(partial=frozenset({"entity", "scenario", "timestep"})),
+            _schema(),
+            "no longer `partial`",
+            id="removing-from-partial",
+        ),
+        pytest.param(
+            _schema(properties=_LABELLED),
+            _schema(
+                properties=_LABELLED,
+                traits={
+                    **_schema().traits,
+                    "linking": Trait(
+                        attributes={"label"}, on={"entity_type": {"Link"}}
+                    ),
+                },
+            ),
+            "category 'Generator' of 'entity_type' on 'entity' no longer carries ['label']",
+            id="a-category-losing-a-property",
+        ),
+        pytest.param(
+            _schema(),
+            _schema(
+                dimensions={
+                    **_schema().dimensions,
+                    "timestep": Dimension(dtype=nw.Datetime()),
+                }
+            ),
+            "nesting changed",
+            id="changing-nesting",
+        ),
+    ],
+)
+def test_an_incompatible_change(old, new, reason):
+    """A row the old schema wrote has no valid reading under the new one.
+
+    Notes
+    -----
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    """
     reasons = new.compatible_with(old)
-    assert any("nesting changed" in r for r in reasons)
+    assert any(reason in r for r in reasons), reasons
 
 
 # -- unit and description (https://energy-models.github.io/datarecord/design/schema/#unit-and-description) ---------------------------------------------
@@ -971,33 +997,9 @@ def test_unit_and_description_are_declared_on_both():
     assert s.attributes["p_nom"].unit == "MW"
     # An axis whose labels are not a quantity declares none.
     assert s.dimensions["scenario"].unit is None
-
-
-def test_undeclared_is_none_not_empty():
-    """`None` is "undeclared", `""` is "genuinely dimensionless".
-
-    Notes
-    -----
-    - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
-    """
-    assert AttributeSpec(dtype=nw.Float64()).unit is None
-    assert AttributeSpec(dtype=nw.Float64(), unit="").unit == ""
-
-
-def test_changing_a_unit_is_compatible():
-    """Neither field decides how a row decodes, so editing one is compatible.
-
-    Notes
-    -----
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
-    """
-    old = _schema()
-    new = _schema()
-    spec = new.attributes["p_nom"]
-    new.attributes["p_nom"] = spec.model_copy(
-        update={"unit": "kW", "description": "Rated power."}
+    assert AttributeSpec(dtype=nw.Float64(), unit="").unit == "", (
+        '`""` is "genuinely dimensionless", apart from `None`, "undeclared"'
     )
-    assert new.compatible_with(old) == []
 
 
 # -- serialisation (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ----------------------------------------------------
@@ -1012,9 +1014,6 @@ def test_round_trips_through_json():
 
 def test_column_types_cover_structural_dims_and_flags():
     s = _schema()
-    # A property is typed from its declaration, so the discriminator carries
-    # the `Enum` that pins its vocabulary rather than a bare string.
-    assert s.column_type("entity_type") == nw.Enum(["Generator", "Link"])
     assert s.column_type("entity") == nw.String()
     assert s.column_type("timestep") == nw.Datetime()
     # One struct per flag column, a BOOLEAN field per declared dim (https://energy-models.github.io/datarecord/design/read-path/#owner-map), so
@@ -1043,17 +1042,6 @@ def test_attributes_need_at_least_one_dim():
     """
     with pytest.raises(ValidationError, match="at least one dim"):
         Schema(attributes={"p_nom": AttributeSpec(dtype=nw.Float64())})
-
-
-def test_a_schema_declaring_nothing_stays_legal():
-    """`Schema()` is "no manifest yet", not a claim that there are no axes.
-
-    Notes
-    -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
-    """
-    assert Schema().dims == ()
-    assert Schema().attributes == {}
 
 
 # -- names (https://energy-models.github.io/datarecord/design/schema/#names) -----

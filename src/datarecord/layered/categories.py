@@ -53,7 +53,8 @@ def label_carriers(
     """
 
     def carried(cats: dict[str, str]) -> list[Expression]:
-        names = [a for a in attributes if a in schema.attributes_for(dim, **cats)]
+        carrying = schema.attributes_for(dim, **cats)
+        names = [a for a in attributes if a in carrying]
         return [lit(names).cast("VARCHAR[]").alias("attribute")]
 
     return _per_combination(schema, dim, axis, carried, con).project(

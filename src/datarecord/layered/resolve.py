@@ -19,6 +19,7 @@ Notes
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import time
 from collections.abc import Callable, Sequence
@@ -1474,3 +1475,50 @@ class Resolver:
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         return self.group(group)
+
+
+@dataclass(frozen=True)
+class PinnedResolver(Resolver):
+    """A `Resolver` folding its unfrozen tail once rather than per access.
+
+    For a reader that reads many keys while nothing stages, as `write_layer`
+    does: the folded coords and owner map are built on first access and kept,
+    so each key costs its own join rather than a re-fold. Held correct only
+    while no source changes, and only on the cursor of the thread that built
+    it, the relations kept being planned on that cursor. The owner map is a
+    table in the database until `release`, which the reader must call.
+
+    Notes
+    -----
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    """
+
+    @classmethod
+    def of(cls, resolver: Resolver) -> PinnedResolver:
+        """`resolver` pinned at what its sources hold now."""
+        return cls(
+            resolver.revision_id, resolver.sources, resolver.workspace, resolver.schema
+        )
+
+    @cached_property
+    def dims(self) -> Coords:  # type: ignore[override]
+        return super().dims
+
+    @cached_property
+    def fold(self) -> Fold:  # type: ignore[override]
+        fold = super().fold
+        fold.owner_map.create(self._table)
+        return dataclasses.replace(fold, owner_map=self.con.table(self._table))
+
+    @cached_property
+    def _table(self) -> str:
+        return f"_pinned_{uuid4().hex}"
+
+    def release(self) -> None:
+        """Drop the table the fold is held in; nothing reads the fold after."""
+        if "fold" in self.__dict__:
+            self.con.execute(f"DROP TABLE IF EXISTS {self._table}")
+
+    def _layers_owning(self, attribute: str) -> list[UUID]:
+        return self._cached_layers_owning.get(attribute, [])

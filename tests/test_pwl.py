@@ -9,6 +9,8 @@ Notes
 - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
 """
 
+import pytest
+
 from datarecord.layered.revision import Revision
 from datarecord.record import Flags
 from tests.fixtures import (
@@ -38,13 +40,42 @@ def _flags(revision, attribute: str) -> Flags:
     return flags[attribute]
 
 
-def _root_with_curve(store) -> Revision:
+def _root_with_curve(store, *, scalar: float | None = None) -> Revision:
+    """A root whose `steel_dri` has a three-point `marginal_cost`, or `scalar` instead."""
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
     write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
+    rows = (
+        [{"entity_type": PROCESS, "entity": "steel_dri", "value": scalar}]
+        if scalar is not None
+        else [
+            {
+                "entity_type": PROCESS,
+                "entity": "steel_dri",
+                "breakpoint": x,
+                "value": v,
+            }
+            for x, v in ((0.0, 20.0), (50.0, 35.0), (80.0, 60.0))
+        ]
+    )
+    write_input(layer, "marginal_cost", rows)
+    return revision
+
+
+@pytest.mark.parametrize("scalar", [None, 20.0], ids=["over-a-curve", "over-a-scalar"])
+def test_a_child_curve_replaces_the_parents_value_whole(store, scalar):
+    """`breakpoint` is not in `input_key`: one layer owns every breakpoint of a key.
+
+    So a child's curve replaces a parent's curve entirely - never a mix of the
+    two - and may turn a scalar into a curve, it being one key either way.
+    """
+    root = _root_with_curve(store, scalar=scalar)
+    root.materialise()
+
+    child = empty_child(root)
     write_input(
-        layer,
+        store.layer_dir(child.id),
         "marginal_cost",
         [
             {
@@ -53,20 +84,14 @@ def _root_with_curve(store) -> Revision:
                 "breakpoint": x,
                 "value": v,
             }
-            for x, v in ((0.0, 20.0), (50.0, 35.0), (80.0, 60.0))
+            for x, v in ((0.0, 25.0), (90.0, 70.0))
         ],
     )
-    return revision
 
-
-def test_curve_resolves_as_breakpoint_rows(store):
-    """A curve is N rows of one key, ordered by sorting on `breakpoint`."""
-    revision = _root_with_curve(store)
-    assert _curve(revision, "marginal_cost") == [
-        (0.0, 20.0),
-        (50.0, 35.0),
-        (80.0, 60.0),
-    ]
+    assert _curve(child, "marginal_cost") == [(0.0, 25.0), (90.0, 70.0)], (
+        "the child's breakpoints only"
+    )
+    assert _flags(child, "marginal_cost").breakpoints
 
 
 def test_breakpoints_distinguishes_curve_from_scalar(store):
@@ -94,31 +119,11 @@ def test_breakpoints_distinguishes_curve_from_scalar(store):
     assert curve.varies == {"entity"}, "only the entity is named"
     assert curve.breakpoints
     assert not scalar.breakpoints
-
-
-def test_patch_replaces_the_whole_curve(store):
-    """`breakpoint` is not in `input_key`: one layer owns every breakpoint of a key."""
-    root = _root_with_curve(store)
-    root.materialise()
-
-    child = empty_child(root)
-    write_input(
-        store.layer_dir(child.id),
-        "marginal_cost",
-        [
-            {
-                "entity_type": PROCESS,
-                "entity": "steel_dri",
-                "breakpoint": x,
-                "value": v,
-            }
-            for x, v in ((0.0, 25.0), (90.0, 70.0))
-        ],
-    )
-
-    # The child's curve replaces the parent's entirely - never a mix of the
-    # two, which is the hole-in-the-curve resolution the key shape rules out.
-    assert _curve(child, "marginal_cost") == [(0.0, 25.0), (90.0, 70.0)]
+    assert _curve(revision, "marginal_cost") == [
+        (0.0, 20.0),
+        (50.0, 35.0),
+        (80.0, 60.0),
+    ], "a curve is N rows of one key, ordered by sorting on `breakpoint`"
 
 
 def test_curve_on_a_connection(store):
@@ -223,35 +228,3 @@ def test_curve_varying_by_snapshot(store):
     assert "snapshot" not in flags.broadcast
     assert flags.breakpoints
     assert len(relation(revision, "marginal_cost").df()) == 4
-
-
-def test_scalar_replaced_by_a_curve(store):
-    """A child may turn a scalar into a curve; it is one key either way."""
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
-    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_input(
-        layer,
-        "marginal_cost",
-        [{"entity_type": PROCESS, "entity": "steel_dri", "value": 20.0}],
-    )
-    revision.materialise()
-
-    child = empty_child(revision)
-    write_input(
-        store.layer_dir(child.id),
-        "marginal_cost",
-        [
-            {
-                "entity_type": PROCESS,
-                "entity": "steel_dri",
-                "breakpoint": x,
-                "value": v,
-            }
-            for x, v in ((0.0, 18.0), (40.0, 26.0))
-        ],
-    )
-
-    assert _curve(child, "marginal_cost") == [(0.0, 18.0), (40.0, 26.0)]
-    assert _flags(child, "marginal_cost").breakpoints

@@ -12,6 +12,7 @@ Notes
 import pandas as pd
 import pytest
 
+from datarecord import Workspace
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network
 
@@ -70,14 +71,19 @@ def assert_networks_equal(got, expected):
             )
 
 
-@pytest.fixture
-def single_revision(store, ac_dc):
-    revision = export_network(ac_dc, store)
-    return revision
+@pytest.fixture(scope="module")
+def built(tmp_path_factory, ac_dc):
+    """`ac_dc` exported and built back once for the module; tests only read it."""
+    workspace = Workspace()
+    revision = export_network(
+        ac_dc, workspace.store(str(tmp_path_factory.mktemp("ac_dc")))
+    )
+    yield PyPSA.build(revision.record)
+    workspace.close()
 
 
 @needs_export_to_parquet
-def test_roundtrip_matches_pypsa_reader(tmp_path, single_revision, ac_dc):
+def test_roundtrip_matches_pypsa_reader(tmp_path, built, ac_dc):
     """Our reader agrees with `import_from_parquet` on the network each produces.
 
     Not over the same directory: a record blocks writes declares its schema in
@@ -97,22 +103,22 @@ def test_roundtrip_matches_pypsa_reader(tmp_path, single_revision, ac_dc):
     reference = pypsa.Network()
     reference.import_from_parquet(plain)  # type: ignore[attr-defined]
 
-    assert_networks_equal(PyPSA.build(single_revision.record), reference)
+    assert_networks_equal(built, reference)
 
 
-def test_roundtrip_matches_original(store, single_revision, ac_dc):
+def test_roundtrip_matches_original(built, ac_dc):
     """Genuine data loss surfaces here even if it is shared with upstream."""
-    assert_networks_equal(PyPSA.build(single_revision.record), ac_dc)
+    assert_networks_equal(built, ac_dc)
 
 
-def test_static_series_split_preserved(store, single_revision):
+def test_static_series_split_preserved(built):
     """A static-valued varying attribute stays out of `dynamic`.
 
     Notes
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    n = PyPSA.build(single_revision.record)
+    n = built
     # Only the three wind generators carry a p_max_pu series in ac_dc_meshed.
     assert set(n.c["Generator"].dynamic["p_max_pu"].columns) == {
         "Manchester Wind",

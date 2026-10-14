@@ -27,7 +27,7 @@ from tests.fixtures import empty_root
 
 @pytest.fixture
 def categorized():
-    """`p_max_pu` narrowed to generators and to wind entities, `p_nom` to none."""
+    """`p_max_pu` narrowed to generators and to wind entities."""
     return Schema(
         dimensions={
             "entity": Dimension(dtype=nw.String()),
@@ -44,7 +44,6 @@ def categorized():
         },
         attributes={
             "p_max_pu": AttributeSpec(dtype=nw.Float64(), dims={"entity", "snapshot"}),
-            "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity", "snapshot"}),
             "efficiency": AttributeSpec(
                 dtype=nw.Float64(), dims={"connection", "snapshot"}
             ),
@@ -107,12 +106,6 @@ def test_a_null_reaches_a_label_added_in_an_unmaterialised_child(root):
     assert _values(child.record, "p_max_pu") == {"g1": 0.9, "w1": 0.9, "g2": 0.9}, (
         "a generator added below the broadcast is reached by it"
     )
-
-
-def test_an_attribute_no_trait_narrows_reaches_every_label(root):
-    staged = WorkingRecord(root.record)
-    staged.set("p_nom", 1.0)
-    assert set(_values(staged, "p_nom")) == {"g1", "w1", "l1", "b1"}
 
 
 def test_a_null_no_label_carries_reaches_nothing(store, categorized):

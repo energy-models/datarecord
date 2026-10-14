@@ -75,6 +75,9 @@ def write_input(
     otherwise, for an attribute over the `bus` dim itself; `breakpoint` marks a
     piecewise-linear one; neither is the ordinary component-level scalar.
 
+    Write every file of a layer before its first read: a read freezes the
+    layer for its workspace, as a layer is write-once.
+
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
@@ -345,12 +348,19 @@ def empty_root(store: Store) -> Revision:
 
     No public API makes an empty revision; this is the store's private
     revision-file write.
+
+    Write every file of a layer before its first read: a read freezes the
+    layer for its workspace, as a layer is write-once.
     """
     return store._create(None)
 
 
 def empty_child(parent: Revision) -> Revision:
-    """A new child of `parent` with no layer, like `empty_root`."""
+    """A new child of `parent` with no layer, like `empty_root`.
+
+    Write every file of a layer before its first read: a read freezes the
+    layer for its workspace, as a layer is write-once.
+    """
     return parent.store._create(parent.id)
 
 

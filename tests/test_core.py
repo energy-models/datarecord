@@ -8,14 +8,6 @@ from collections.abc import Iterator
 from pathlib import Path
 
 
-def test_hard():
-    import datarecord  # noqa
-
-    # this is just a demo that pytest can produce good error messages just by
-    # parsing assert statements
-    assert {"a": 1, "b": 2} == {"a": 1, "b": 2}
-
-
 def _code_strings(path: Path) -> Iterator[tuple[int, str]]:
     """Every string constant in `path` that is not a bare expression statement (a docstring)."""
     tree = ast.parse(path.read_text())

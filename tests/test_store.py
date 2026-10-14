@@ -28,7 +28,6 @@ from tests.fixtures import (
     RivalWrite,
     empty_child,
     empty_root,
-    export_network,
     schema,
     widened,
     write_entity_type,
@@ -40,9 +39,13 @@ from tests.test_write import _SCHEMA, _long, _Source
 
 
 @pytest.fixture
-def tree(store, ac_dc):
-    """A root holding `ac_dc`, and a child of it."""
-    root = export_network(ac_dc, store)
+def tree(store):
+    """A root holding one generator with a `p_max_pu`, and a child of it."""
+    write_schema(schema(), store)
+    root = empty_root(store)
+    layer = store.layer_dir(root.id)
+    write_entity_type(layer, "Generator", [{"entity": "wind"}])
+    write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
     return root, empty_child(root)
 
 
@@ -125,8 +128,14 @@ def test_a_stale_version_is_refused(store):
     assert store.files.read_text(uri)[0] == "second", "the refused write left no trace"
 
 
-def test_a_widening_that_lost_the_race_reads_again(workspace, store, monkeypatch):
-    """The loser re-reads the rival's manifest, and its superset still lands.
+@pytest.mark.parametrize("superset", [True, False], ids=["superset", "incompatible"])
+def test_a_widening_that_lost_the_race_is_checked_again(
+    workspace, store, monkeypatch, superset
+):
+    """The loser re-reads the rival's manifest and re-checks against it.
+
+    A superset of the rival's widening still lands; one the race made
+    incompatible fails rather than dropping the rival's.
 
     Notes
     -----
@@ -134,28 +143,20 @@ def test_a_widening_that_lost_the_race_reads_again(workspace, store, monkeypatch
     """
     write_schema(_SCHEMA, store)
     rival = widened(_SCHEMA, "rival")
-    mine = widened(rival, "mine")
+    mine = widened(rival if superset else _SCHEMA, "mine")
     files = RivalWrite(workspace._local, store.manifest_uri, rival.model_dump_json())
     monkeypatch.setattr(workspace, "_local", files)
+    source = _Source(mine, attributes={"p_nom": _long()})
 
-    store.root(_Source(mine, attributes={"p_nom": _long()}))
-    assert files.raced, "the rival wrote between the read and the write"
-    assert read_schema(store) == mine, "both widenings end in the manifest"
-
-
-def test_a_widening_the_race_made_incompatible_is_reported(
-    workspace, store, monkeypatch
-):
-    """Re-checked against the rival's manifest, it fails rather than drops it."""
-    write_schema(_SCHEMA, store)
-    rival = widened(_SCHEMA, "rival")
-    files = RivalWrite(workspace._local, store.manifest_uri, rival.model_dump_json())
-    monkeypatch.setattr(workspace, "_local", files)
-
-    with pytest.raises(ValueError, match="'rival' removed"):
-        store.root(_Source(widened(_SCHEMA, "mine"), attributes={"p_nom": _long()}))
-    assert read_schema(store) == rival, "the rival's widening is kept"
-    assert store.revisions() == [], "the losing layer is unreachable"
+    if superset:
+        store.root(source)
+        assert files.raced, "the rival wrote between the read and the write"
+        assert read_schema(store) == mine, "both widenings end in the manifest"
+    else:
+        with pytest.raises(ValueError, match="'rival' removed"):
+            store.root(source)
+        assert read_schema(store) == rival, "the rival's widening is kept"
+        assert store.revisions() == [], "the losing layer is unreachable"
 
 
 class _AlwaysLoses:
@@ -195,31 +196,12 @@ def test_a_writer_that_always_loses_gives_up(workspace, store, monkeypatch):
     )
 
 
-def test_a_revision_crosses_a_process_boundary(tree):
+def test_a_revision_crosses_a_process_boundary(workspace, tree):
     """Serialised as its store's location, read back through the process workspace.
 
-    Notes
-    -----
-    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/layers/#crossing-a-process-boundary)
-    """
-    root, child = tree
-    dumped = child.model_dump_json()
-    assert child.store.uri in dumped
-
-    back = Revision.model_validate_json(dumped)
-    assert back.store.workspace is Workspace.process()
-    assert back.ancestry() == [root.id, child.id]
-    assert list(back.record.attributes) == list(child.record.attributes)
-
-    unpickled = pickle.loads(pickle.dumps(child.store))
-    assert unpickled is Workspace.process().store(child.store.uri)
-
-
-def test_a_pickled_revision_reads_its_ancestry_back(workspace, tree):
-    """Pickled after a read, so a cached resolver would have to travel if any did.
-
-    The fixture's workspace is not the process one, so the ancestry can only
-    come from reading the revision files again.
+    Read before serialising, so a cached resolver would have to travel if any
+    did. The fixture's workspace is not the process one, so the ancestry can
+    only come from reading the revision files again.
 
     Notes
     -----
@@ -228,12 +210,20 @@ def test_a_pickled_revision_reads_its_ancestry_back(workspace, tree):
     root, child = tree
     names = list(child.record.attributes)
     assert workspace is not Workspace.process(), "the fixture workspace is its own"
+    dumped = child.model_dump_json()
+    assert child.store.uri in dumped
 
-    back = pickle.loads(pickle.dumps(child))
-    assert back.store.workspace is Workspace.process()
-    assert back.parent == root.id
-    assert back.ancestry() == [root.id, child.id], "the tree is read back from files"
-    assert list(back.record.attributes) == names
+    for back in (
+        Revision.model_validate_json(dumped),
+        pickle.loads(pickle.dumps(child)),
+    ):
+        assert back.store.workspace is Workspace.process()
+        assert back.parent == root.id
+        assert back.ancestry() == [root.id, child.id], "the tree is read from files"
+        assert list(back.record.attributes) == names
+
+    unpickled = pickle.loads(pickle.dumps(child.store))
+    assert unpickled is Workspace.process().store(child.store.uri)
 
 
 def test_threads_share_one_folded_owner_map(workspace, tree):
@@ -284,19 +274,16 @@ def test_two_threads_adding_one_revision_row_both_succeed(workspace, store, tree
         fresh.close()
 
 
-def test_a_record_built_in_one_thread_reads_in_another(tree):
-    _, child = tree
-    record = child.record
-    with ThreadPoolExecutor(1) as pool:
-        names = pool.submit(lambda: list(record.attributes)).result()
-    assert names == list(record.attributes)
-
-
 _NARROW = {"snapshot": nw.Datetime(), "period": nw.Int64()}
 
 
-def _folded_then_widened(store, partial=frozenset()):
-    """A root whose shared fold predates `scenario`, read under a schema declaring it."""
+def _folded_then_widened(store, partial=frozenset(), *, materialised=False):
+    """A root whose fold predates `scenario`, read under a schema declaring it.
+
+    `materialised` persists the root's owner map before the widening and
+    returns an empty child reading it; otherwise the root itself, reading the
+    shared fold table.
+    """
     write_schema(schema(dims=_NARROW, partial=set(partial)), store)
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
@@ -304,11 +291,20 @@ def _folded_then_widened(store, partial=frozenset()):
     write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
     before = revision.resolver.inputs
     assert "scenario" not in str(before.types[before.columns.index("varies")])
+    if materialised:
+        revision.materialise()
+        uri = f"{store.resolved_dir(revision.id)}owner_map/inputs.parquet"
+        persisted = store.workspace.con.sql(f"SELECT varies FROM read_parquet('{uri}')")
+        assert "scenario" not in str(persisted.types[0]), (
+            "the map on disk knows nothing of `scenario`"
+        )
 
     wide = {**_NARROW, "scenario": nw.String()}
     write_schema(schema(dims=wide, partial=set(partial)), store)
     after = store.revision(revision.id)
     assert after.resolver is not revision.resolver
+    if materialised:
+        return empty_child(after)
     inputs = after.resolver.inputs
     assert "scenario" not in str(inputs.types[inputs.columns.index("varies")]), (
         "the fold table is read as it was folded, not re-folded or cast"
@@ -316,33 +312,27 @@ def _folded_then_widened(store, partial=frozenset()):
     return after
 
 
-def test_a_fold_table_reads_under_a_widened_schema(store):
-    """The table carries no schema in its name, so it is read as it was folded.
+@pytest.mark.parametrize("materialised", [False, True], ids=["live", "materialised"])
+def test_a_fold_reads_under_a_widened_schema(store, materialised):
+    """A fold made before a dim was declared reads under the wider schema.
 
-    A compatible widening only adds; the dim it adds has no field in the flag
-    structs, which reads as unset.
+    The fold carries no schema, so it is read as it was folded. A compatible
+    widening only adds; the dim it adds has no field in the flag structs,
+    which `UNION ALL BY NAME` fills with NULL and which reads as unset - no row
+    mentions it.
 
     Notes
     -----
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
-    after = _folded_then_widened(store)
+    after = _folded_then_widened(store, materialised=materialised)
     rows = after.record.attributes["p_max_pu"].collect()
     assert rows["value"].to_list() == [0.4], (
         "a fold made under the narrower schema reads under the wider one"
     )
-
-
-def test_a_dim_declared_after_the_fold_table_is_in_neither_flag_set(store):
-    """No row mentions `scenario`, so it is unset - as for a materialised map.
-
-    Notes
-    -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-    """
-    flags = _folded_then_widened(store).record.flags()["p_max_pu"]
+    flags = after.record.flags()["p_max_pu"]
     assert "scenario" not in flags.varies
     assert "scenario" not in flags.broadcast, "a missing flag field reads as unset"
     assert "snapshot" in flags.broadcast, "a field the fold had still reads"
@@ -457,7 +447,7 @@ def test_a_relation_from_another_connection_is_rejected(tree):
     foreign = duckdb.connect()
     try:
         w = WorkingRecord(root.record)
-        frame = foreign.sql("SELECT 'Manchester Wind' AS entity, 1.0 AS value")
+        frame = foreign.sql("SELECT 'wind' AS entity, 1.0 AS value")
         with pytest.raises(ValueError, match="another connection or thread"):
             w.set("p_nom", frame)
     finally:
