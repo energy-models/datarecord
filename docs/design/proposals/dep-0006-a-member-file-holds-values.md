@@ -4,11 +4,18 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: a member file holds values, and nothing else
+# DEP 6: a member file holds values, and nothing else
 
-Status: **Landed** · Drafted 2026-09-02 · Landed 2026-09-04
+| DEP           | 6                                              |
+| ------------- | ---------------------------------------------- |
+| Title         | a member file holds values, and nothing else   |
+| Author        | Jonas Hörsch                                   |
+| Status        | Superseded 2026-10-13 (implemented 2026-09-04) |
+| Created       | 2026-09-02                                     |
+| Version       | v0.1.0a1                                       |
+| Superseded-By | [DEP 12](dep-0012-properties.md)               |
 
-> **Superseded** by [properties](properties.md#one-file-per-subject-on-disk):
+> **Superseded** by [properties](dep-0012-properties.md#one-file-per-subject-on-disk):
 > the entity-type axis is now an `Enum` property of `entity`, and a record with
 > and one without categories share one entity-axis layout with no member files.
 > The authoritative account is [the entity axis](../format.md#the-entity-axis),
@@ -121,7 +128,7 @@ Three of the four sources need no code change at all: `_FileLayer` reads whateve
 
 `ResolvedLayer` overrides `axis` and `axes` to read `resolved/dims/` — the _folded_ answer, standing for everything above this node — so `axis(dim)` means something different on it than on every other source, where it means "this layer's own rows". Moving a component's attribute columns onto the entity axis brings them into the reach of a source read that expects layer-local rows, so the override has to go first.
 
-That untangling is [`one-interface-source-and-fold`](one-interface-source-and-fold.md)'s subject in full: the `ResolvedLayer` masquerade — a persisted fold typed as a source — is the root, and once the base is a `Resolver` and the head a plain `ParquetLayer`, `axis` is layer-local on every source with no exception. This proposal depends on that split; it adds no new argument to it.
+That untangling is [`one-interface-source-and-fold`](dep-0008-one-interface-source-and-fold.md)'s subject in full: the `ResolvedLayer` masquerade — a persisted fold typed as a source — is the root, and once the base is a `Resolver` and the head a plain `ParquetLayer`, `axis` is layer-local on every source with no exception. This proposal depends on that split; it adds no new argument to it.
 
 ## What this buys
 

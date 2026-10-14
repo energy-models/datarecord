@@ -4,9 +4,15 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: a `Workspace` holds the connection, a `Store` holds a location
+# DEP 9: a `Workspace` holds the connection, a `Store` holds a location
 
-Status: **Implemented** · Drafted 2026-10-09 · Implemented 2026-10-10
+| DEP     | 9                                                              |
+| ------- | -------------------------------------------------------------- |
+| Title   | a `Workspace` holds the connection, a `Store` holds a location |
+| Author  | Jonas Hörsch                                                   |
+| Status  | Implemented 2026-10-10                                         |
+| Created | 2026-10-09                                                     |
+| Version | Unreleased                                                     |
 
 Landed in four steps ([landing](#landing)) on [layers](../layers.md#the-store), [writing](../writing.md), [the working record](../working-record.md#edits), [the read path](../read-path.md#a-cursor-per-thread), [consuming a record](../tools.md) and [the module layout](../module-layout.md); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 
@@ -134,7 +140,7 @@ The write path itself — staging into a sibling locally, the refusal of an exis
 
 ### A `WorkingRecord` does not write
 
-`WorkingRecord(record)` takes no `con`: it stages on `record.con`, and `_base_resolver`'s "base reads through another connection" check has nothing left to check. It loses `commit`, and `NewChild`, `Directory` and `Target` go with it. What it gains is **`edits`**, its staged layer as the `LayerData` it already is (`StagedSource`, [staging as a layer](staging-as-a-layer.md)):
+`WorkingRecord(record)` takes no `con`: it stages on `record.con`, and `_base_resolver`'s "base reads through another connection" check has nothing left to check. It loses `commit`, and `NewChild`, `Directory` and `Target` go with it. What it gains is **`edits`**, its staged layer as the `LayerData` it already is (`StagedSource`, [staging as a layer](dep-0004-staging-as-a-layer.md)):
 
 ```python
 w = WorkingRecord(rev.record)

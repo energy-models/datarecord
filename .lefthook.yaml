@@ -51,6 +51,14 @@ pre-commit:
           - name: zizmor
             glob: "*.{yml,yaml}"
             run: pixi {run} zizmor --no-progress --min-severity high --fix --offline .
+          - name: no-proposal-links
+            glob: "*"
+            file_types: text
+            exclude:
+              - docs/design/proposals/*
+              - docs/design/open-questions.md
+              - mkdocs.yml
+            run: "! grep -nE 'proposals/dep-[0-9]{4}-' {staged_files}"
           - name: reuse
             glob: "*"
             # `--no-multiprocessing` because it is faster here (0.5s against

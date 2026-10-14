@@ -4,13 +4,20 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: one `Record`, over a `NodeCache`
+# DEP 5: one `Record`, over a `NodeCache`
 
-Status: **Implemented** · Drafted 2026-09-01 · Landed 2026-09-01
+| DEP      | 5                                       |
+| -------- | --------------------------------------- |
+| Title    | one `Record`, over a `NodeCache`        |
+| Author   | Jonas Hörsch                            |
+| Status   | Implemented 2026-09-01                  |
+| Requires | [DEP 4](dep-0004-staging-as-a-layer.md) |
+| Created  | 2026-09-01                              |
+| Version  | v0.1.0a1                                |
 
 The design is [the read path](../read-path.md#one-record-over-one-fold) and [the Record protocol](../record.md); this page is the argument for the change rather than the current description, and those pages are authoritative where the two disagree.
 
-Stacked on [staging as a layer](staging-as-a-layer.md), which made a staging area a source of one fold. This is the same observation one level up: a plain directory is a source too, so `DirectoryRecord` is a second reading of what the fold already does.
+Stacked on [staging as a layer](dep-0004-staging-as-a-layer.md), which made a staging area a source of one fold. This is the same observation one level up: a plain directory is a source too, so `DirectoryRecord` is a second reading of what the fold already does.
 
 ## What starts it
 
@@ -82,12 +89,12 @@ class WorkingRecord(Record):
     """A `Record` whose last source is a staging area."""
 ```
 
-The `NodeCache` it holds is the base's with a `StagedSource` appended, which is [what the last proposal established](staging-as-a-layer.md) — so "a record with pending edits" is literally "a record whose last layer is unwritten", in the type as well as in the fold. The `_resolved` property and the internal `LayeredRecord` it constructs both go: `self` is the resolved record.
+The `NodeCache` it holds is the base's with a `StagedSource` appended, which is [what the last proposal established](dep-0004-staging-as-a-layer.md) — so "a record with pending edits" is literally "a record whose last layer is unwritten", in the type as well as in the fold. The `_resolved` property and the internal `LayeredRecord` it constructs both go: `self` is the resolved record.
 
 Two constraints this puts on the base class, neither of which is an obstacle:
 
 - **`frozen=True` has to accommodate a staging area.** `_staged` is mutated per edit, and a frozen dataclass holds a mutable container fine — `DirectoryRecord._flags_cache` does it today via `object.__setattr__` in `__post_init__`. What must stay true is that the _`NodeCache`_ is fixed at construction, which it is: a staged edit changes the tables the last source reads, never which sources there are.
-- **Every read member must be inherited unchanged.** That is the property worth having and worth asserting — a member `WorkingRecord` overrides is a member where staging is not just another layer, which is the duplication [the last proposal existed to delete](staging-as-a-layer.md#what-starts-it). `outputs` is the one genuine exception, results not overlaying, and it should carry a comment saying so.
+- **Every read member must be inherited unchanged.** That is the property worth having and worth asserting — a member `WorkingRecord` overrides is a member where staging is not just another layer, which is the duplication [the last proposal existed to delete](dep-0004-staging-as-a-layer.md#what-starts-it). `outputs` is the one genuine exception, results not overlaying, and it should carry a comment saying so.
 
 ### What the implementation had to add
 
@@ -101,7 +108,7 @@ Two things this page did not see, both found by writing it:
 
 ## What this deletes
 
-- **`directory.py` entirely** — `DirectoryRecord`, its `_read`/`_require`/`_keyed_by`, and its `flags` aggregate, which is [the second of the two the last proposal left](staging-as-a-layer.md#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares). With one caller the question that proposal deferred answers itself: there is nothing to share the fold's aggregate _with_, so the parameterised helper it declined to write is not needed at all.
+- **`directory.py` entirely** — `DirectoryRecord`, its `_read`/`_require`/`_keyed_by`, and its `flags` aggregate, which is [the second of the two the last proposal left](dep-0004-staging-as-a-layer.md#6-what-directoryrecordflags-keeps-and-the-aggregate-it-shares). With one caller the question that proposal deferred answers itself: there is nothing to share the fold's aggregate _with_, so the parameterised helper it declined to write is not needed at all.
 - **`LayeredRecord`**, as a distinct name — it becomes the one class.
 - **The read-path table**, and the paragraph under it about a `WorkingRecord` over a directory building a map. Both describe a distinction that is not there.
 

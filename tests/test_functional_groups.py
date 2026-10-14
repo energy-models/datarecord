@@ -163,7 +163,7 @@ def test_removing_a_label_of_a_dim_outside_partial_tombstones_its_tuples(store):
 
     Notes
     -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     revision = empty_root(store)
     write_schema(_schema(), store)

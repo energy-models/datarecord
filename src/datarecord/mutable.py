@@ -1590,7 +1590,7 @@ class WorkingRecord(Record):
         -----
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-        - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+        - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
         """
         if not labels:
             return

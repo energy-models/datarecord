@@ -4,9 +4,15 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: a group is one struct column
+# DEP 10: a group is one struct column
 
-Status: **Implemented** · Drafted 2026-10-12 · Implemented 2026-10-12 · [Amendment](#amendment-a-group-is-a-dim) implemented 2026-10-13
+| DEP     | 10                                                                          |
+| ------- | --------------------------------------------------------------------------- |
+| Title   | a group is one struct column                                                |
+| Author  | Jonas Hörsch                                                                |
+| Status  | Implemented 2026-10-12, [amendment](#amendment-a-group-is-a-dim) 2026-10-13 |
+| Created | 2026-10-12                                                                  |
+| Version | Unreleased                                                                  |
 
 Landed in the [steps below](#landing) on [the schema](../schema.md#groups), [the record](../record.md#the-broadcast-rule), [the format](../format.md#the-long-schema), [the read path](../read-path.md#owner-map), [the working record](../working-record.md#set) and [consuming a record](../tools.md#results-on-connections); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 [What the implementation found](#what-the-implementation-found) records where it departs from or adds to the argument below.
@@ -213,7 +219,7 @@ The gain is one rule where there were two: everything said of a dim — broadcas
 ### What the amendment found
 
 - **A NULL is expanded only for the attributes over its coordinate.** The fold key is one tuple over every attribute, so an attribute not over `connection` holds NULL there for want of the column; expanding every NULL multiplied its rows by the group's size. `expand_dims` now broadcasts a NULL only on rows whose attribute's coordinates include it, for a plain dim as for a group.
-- **Removing an entity needs a filter at read.** With `connection` outside `partial`, a connection attribute's map row names no entity, so the fold's entity anti-join cannot reach it. The read drops a row naming, in an unkeyed group's entity field, an entity the resolved axis no longer holds (since [deletion cascades through tombstones](deletion-cascades-through-tombstones.md), against the group's dead tuples: [a label outside the key](../read-path.md#a-label-outside-the-key)) — so removing an entity still drops its connections' values.
+- **Removing an entity needs a filter at read.** With `connection` outside `partial`, a connection attribute's map row names no entity, so the fold's entity anti-join cannot reach it. The read drops a row naming, in an unkeyed group's entity field, an entity the resolved axis no longer holds (since [deletion cascades through tombstones](dep-0011-deletion-cascades-through-tombstones.md), against the group's dead tuples: [a label outside the key](../read-path.md#a-label-outside-the-key)) — so removing an entity still drops its connections' values.
 - **A NULL struct crosses entity types.** It expands to every tuple of the group, and `connection` spans every type, so a constant meant for links reaches buses' connections too. Left [open](../open-questions.md).
 - **`group_columns` stayed, with a smaller meaning**: every group but the entity-type group, the coordinates `broadcast_dims` appends. What went is the derivation of which groups are keyed.
 - **`set`'s keywords stage no NULL struct**, unlike landing step 3 planned. A missing key coordinate is still refused rather than staged as NULL, as [`set`](../working-record.md#set) already did; a NULL struct comes in through a long frame.

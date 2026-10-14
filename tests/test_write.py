@@ -674,7 +674,7 @@ def test_categories_add_one_column_to_the_entity_axis_and_nothing_else(tmp_path)
 
     Notes
     -----
-    - [one file per subject on disk](https://energy-models.github.io/datarecord/design/proposals/properties/#one-file-per-subject-on-disk)
+    - [the entity axis](https://energy-models.github.io/datarecord/design/format/#the-entity-axis)
     """
     layouts = {}
     for categorized in (False, True):

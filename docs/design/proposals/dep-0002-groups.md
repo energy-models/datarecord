@@ -4,13 +4,19 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: groups — one construct for classification and sparsity
+# DEP 2: groups — one construct for classification and sparsity
 
-Status: **Accepted** · Drafted 2026-08-27 · Implemented 2026-09-01
+| DEP     | 2                                                      |
+| ------- | ------------------------------------------------------ |
+| Title   | groups — one construct for classification and sparsity |
+| Author  | Jonas Hörsch                                           |
+| Status  | Implemented 2026-09-01                                 |
+| Created | 2026-08-27                                             |
+| Version | v0.1.0a1                                               |
 
 Landed in [the schema](../schema.md#groups) and [the record format](../format.md#where-a-value-lives); this page is kept as the argument for the change rather than as the current description.
 
-Supersedes the split between [groups](../schema.md#groups) and [`on`](dims-groups-traits.md#mappings) that [dims, mappings, groups and traits](dims-groups-traits.md) landed.
+Supersedes the split between [groups](../schema.md#groups) and [`on`](dep-0001-dims-groups-traits.md#mappings) that [dims, mappings, groups and traits](dep-0001-dims-groups-traits.md) landed.
 Those two are one mechanism with one field's difference, and the field is worth having where the two models are not.
 
 ## What starts it
@@ -77,7 +83,7 @@ A schema whose purpose is to make the shape of data checkable should not inherit
 Not a name the group invents.
 
 That is what keeps the axis file, and the axis file is the whole of what a functional group has over a bare tuple set: `dims/country.parquet` gives `country` its [order](../record.md#axis-order) and somewhere for a per-country CO2 budget to live.
-A group whose `into` named nothing would be a tuple set with a labelled column — expressible, and it loses the axis, which is [the argument the superseded page makes](dims-groups-traits.md#mappings) and which survives this refactor unchanged.
+A group whose `into` named nothing would be a tuple set with a labelled column — expressible, and it loses the axis, which is [the argument the superseded page makes](dep-0001-dims-groups-traits.md#mappings) and which survives this refactor unchanged.
 
 **A group may share its name with a dim**, and the [existing prohibition](../schema.md#groups) on the two colliding is dropped rather than narrowed.
 
@@ -166,7 +172,7 @@ A group's rows are keyed by its coordinates, and `entity_type` is not one of the
 
 **No column on the classified axis.** `dims/bus.parquet` does not gain a `country` column; `groups/country.parquet` carries `(bus, country)`.
 
-The column form is what forces the [no-denormalisation argument](dims-groups-traits.md#mappings) — `bus → state → country` as one hop per file, because two files asserting bus→country would let a layer restating states leave every bus's country stale.
+The column form is what forces the [no-denormalisation argument](dep-0001-dims-groups-traits.md#mappings) — `bus → state → country` as one hop per file, because two files asserting bus→country would let a layer restating states leave every bus's country stale.
 A file per group gives that property for free: the chain is a join over two files either way, and a layer restating a group restates exactly one file.
 The cost is that reading a bus's country is a join rather than a column read, which is cheap and buys a uniform rule — `into` no longer decides storage, so nothing about the file layout branches on it.
 

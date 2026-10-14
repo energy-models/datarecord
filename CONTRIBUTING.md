@@ -68,6 +68,33 @@ Open a GitHub issue to report a bug or request a feature:
   everything framework-specific lives under `datarecord/tools/` behind an
   optional extra.
 
+## Design enhancement proposals
+
+A change to the design starts as a design enhancement proposal (DEP): the
+argument for it, the design it lands, and usage examples.
+
+- Start from the
+  [template](https://energy-models.github.io/datarecord/design/proposals/dep-NNNN-template/):
+  copy it to `docs/design/proposals/dep-NNNN-slug.md`, where `NNNN` is the next
+  free four-digit number, and append it to the end of the `Enhancement proposals`
+  nav in `mkdocs.yml`. A number is never reused or reassigned.
+- Its header carries `Status` — `Draft`, `Accepted`, `Implemented` or
+  `Superseded`, with the date — and `Version`, the release it ships in:
+  `Unreleased` until the release that sets it.
+- Implementing it moves the design into the
+  [design pages](https://energy-models.github.io/datarecord/design/) and the
+  usage examples into the
+  [usage pages](https://energy-models.github.io/datarecord/usage/), with as much
+  of the argument as they need to stand on their own, and what it leaves open
+  into [open questions](https://energy-models.github.io/datarecord/design/open-questions/).
+  The DEP stays as the record of the argument, and is not revised after: a
+  change is a new DEP that replaces it.
+- **Nothing outside the DEPs links to one** — not a design or usage page, a
+  docstring, a test or an error message — except open questions and the
+  template. A DEP that is not yet implemented is not the design, and one that
+  is has been superseded by the pages it landed in. `pixi run lint` fails on
+  such a link.
+
 ## Architecture in one paragraph
 
 datarecord stores dimensioned attribute data with a declared schema: entities
@@ -94,7 +121,8 @@ To cut `vX.Y.Z`:
 1. Confirm `pixi run test` and `pixi run -e docs docs-build` pass — best done on
    a release pull request.
 2. Rename the `[Unreleased]` heading in `CHANGELOG.md` to
-   `vX.Y.Z` with the release date, and set `version` in `pyproject.toml`.
+   `vX.Y.Z` with the release date, set `version` in `pyproject.toml`, and set
+   `Version` to `vX.Y.Z` in every DEP header reading `Unreleased`.
 3. Merge the release pull request, then tag the merge commit `vX.Y.Z` and create
    the GitHub release from that tag.
 4. Open a follow-up adding a fresh `[Unreleased]` heading to `CHANGELOG.md`.

@@ -37,8 +37,6 @@ It is **an axis file like any other**, with nothing about it particular to `enti
 
 **One layout, categories or none.** A record whose entities have categories and one whose entities have none differ by a column: there is no per-category member file. Per-type files existed because every type had a different column set; the schema now says which properties each category carries (`properties_for`), so a category's frame is a filter on its property and a projection to those columns — recoverable from one file, where per-category files would state each entity's category twice, once in a column and once in a filename. Parquet stores an all-NULL column chunk for almost nothing and DuckDB reads only what it projects. Only a per-category `dtype` would need per-category files, and [one name has one spec](schema.md#properties).
 
-This supersedes the second entity-axis layout [the member-file proposal](proposals/a-member-file-holds-values.md) introduced; the [properties proposal](proposals/properties.md#one-file-per-subject-on-disk) gives the argument.
-
 ## Where a value lives
 
 Decided by the section a name is [declared in](schema.md#properties), not by how many coordinates address it:

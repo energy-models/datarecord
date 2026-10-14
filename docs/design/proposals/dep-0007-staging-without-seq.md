@@ -4,9 +4,15 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: staging without `_seq`
+# DEP 7: staging without `_seq`
 
-Status: **Implemented** · Drafted 2026-09-02 · Implemented 2026-09-02
+| DEP     | 7                      |
+| ------- | ---------------------- |
+| Title   | staging without `_seq` |
+| Author  | Jonas Hörsch           |
+| Status  | Implemented 2026-09-02 |
+| Created | 2026-09-02             |
+| Version | v0.1.0a1               |
 
 Landed in [staging](../working-record.md#staging) and [committing](../working-record.md#edits); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 

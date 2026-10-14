@@ -4,11 +4,16 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: trait switches — a trait a component opts into
+# DEP 3: trait switches — a trait a component opts into
 
-Status: **Draft** · Drafted 2026-08-27
+| DEP     | 3                                              |
+| ------- | ---------------------------------------------- |
+| Title   | trait switches — a trait a component opts into |
+| Author  | Jonas Hörsch                                   |
+| Status  | Draft                                          |
+| Created | 2026-08-27                                     |
 
-Stacked on [groups](groups.md), which it does not depend on but shares a direction with: what a record can say about a component should be declared rather than encoded in a type name.
+Stacked on [groups](dep-0002-groups.md), which it does not depend on but shares a direction with: what a record can say about a component should be declared rather than encoded in a type name.
 
 ## What starts it
 
@@ -120,7 +125,7 @@ Trait(attributes={"start_up_cost", ...}, switch="committable")   # what the auth
 Trait(attributes={"start_up_cost", ..., "committable"}, ...)     # what `attributes` returns
 ```
 
-`switch` is retained on the model, for the same reason [`into`](groups.md#implementation-sketch) is: two things still need it, and both are leaves.
+`switch` is retained on the model, for the same reason [`into`](dep-0002-groups.md#implementation-sketch) is: two things still need it, and both are leaves.
 
 - **`attributes_for`** excludes the switch from its own trait's narrowing — one membership test, where a trait's bundle is already being resolved.
 - **The write-time check** reads it to find the column gating a value.

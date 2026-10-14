@@ -291,7 +291,7 @@ def _require_living_tuples(
 
     Notes
     -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     drawn = {
         d
@@ -346,7 +346,7 @@ def _require_living_tuples(
     if problems:
         msg = (
             f"{'; '.join(problems)}; removing a label removes the tuples naming "
-            f"it, so tombstone them in the same layer (https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)"
+            f"it, so tombstone them in the same layer (https://energy-models.github.io/datarecord/design/layers/#deletion)"
         )
         raise ValueError(msg)
 

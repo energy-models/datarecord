@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [a NULL reaches the labels carrying the attribute](https://energy-models.github.io/datarecord/design/proposals/properties/#a-null-reaches-the-labels-carrying-the-attribute)
+- [owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
 """
 
 import narwhals as nw
