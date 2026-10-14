@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [step 2](https://energy-models.github.io/datarecord/design/proposals/012-properties/#step-2-the-section-decides-where-a-value-lives)
+- [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
 """
 
 import narwhals as nw

@@ -265,7 +265,7 @@ def test_a_component_tombstone_reaches_its_connections_through_theirs(store):
 
     Notes
     -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     root = _root(store)
     root.materialise()
@@ -384,7 +384,7 @@ def test_remove_tombstones_the_tuples_naming_the_entity(store):
 
     Notes
     -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     base = _root(store)
     other = WorkingRecord(base.record)
@@ -415,7 +415,7 @@ def test_the_writer_refuses_a_tuple_naming_a_removed_entity(store):
 
     Notes
     -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     root = _root(store)
     staged = WorkingRecord(root.record)
@@ -434,7 +434,7 @@ def test_a_tuple_an_ancestor_left_dangling_fails_no_later_write(store):
 
     Notes
     -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     root = _root(store)
     dangling = empty_child(root)
@@ -465,7 +465,7 @@ def test_a_removed_tuple_outside_partial_stays_removed_past_a_cache(store):
 
     Notes
     -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/#dead-labels-survive-materialisation)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     root = _root(store)
     write_schema(schema(partial={"scenario"}), store)
@@ -488,7 +488,7 @@ def test_readding_a_tuple_outside_partial_revives_its_values(store):
 
     Notes
     -----
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/#re-adding-a-label-revives-its-unkeyed-values)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     root = _root(store)
     write_schema(schema(partial={"scenario"}), store)
@@ -563,7 +563,7 @@ def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
     Notes
     -----
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
-    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/011-deletion-cascades-through-tombstones/)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     root = _contract_root(store)
     assert _prices(root.record) == {"mill": 10.0, "smelter": 20.0}

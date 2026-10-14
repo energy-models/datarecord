@@ -176,13 +176,13 @@ properties = {
 
 **One name, one spec, across every section.** A name declared as a property and as an attribute or result, or as a property of two subjects, is refused — [`flags`](record.md#flags) would have two answers for it. So is a property sharing a dim's or a group's name, which would collide with that coordinate's column, and a group's property sharing one of its coordinates' names, which name the tuple's fields. This is the [flat-attributes argument](#attributespec) extended to the new section. `Schema.subject_of(name)` and `Schema.property_spec(name)` find a property whatever its subject.
 
-The argument for the split is the [properties proposal](proposals/012-properties.md#what-starts-it).
+**Why the split.** Without it, where a value is stored follows how many coordinates address it rather than what it is: `p_nom`, data a model optimises against, and `carrier`, a label describing a generator, would both be columns of the entity axis, and widening `p_nom` to `dims: [entity, scenario]` — a [compatible](#versioning) change — would move it to `inputs/p_nom.parquet`, away from the rows earlier layers wrote.
 
 ### Categories — an `Enum` property of a `partial` dim
 
 **Any `Enum`-typed property of a dim listed in [`partial`](#partial-the-granularity-of-an-override) categorizes it**: its values are that dim's **categories** along it, which a [trait's `on`](#traits) and a [`default_by`](#default_by-a-default-per-category) key on. `Schema.categorizing(dim)` lists them in declaration order. There is no flag declaring the role and no limit of one per dim — an `Enum` `carrier` would categorize `entity` beside `entity_type`. Keying on any other property — a `str` one, one of a dim outside `partial`, or one of a group — is refused, naming the property and why.
 
-The two conditions are what a category needs: an `Enum`, so a category a trait or a default names is checked against a declared vocabulary; and the dim in `partial`, because only there is a dim owned and checked per label ([why](proposals/012-properties.md#an-enum-property-of-a-partial-dim-categorizes-its-subject)). A schema whose entities have no kinds declares no `Enum` property of `entity`, and nothing else about it differs.
+The two conditions are what a category needs: an `Enum`, so a category a trait or a default names is checked against a declared vocabulary; and the dim in `partial`, because only there is a dim owned and checked per label. A schema whose entities have no kinds declares no `Enum` property of `entity`, and nothing else about it differs.
 
 **Category**, because **label** already names an axis value — what `add(dim, labels)` takes. What a label carries is asked by its categories, the label's value of each categorizing property:
 
@@ -231,7 +231,7 @@ traits = {
 **A trait narrows; it does not grant.** An attribute the schema declares is carried by every label it can address, and a trait is the only thing that cuts that down.
 Writing `entity` in an attribute's `dims` is what says it is per entity; declining to bundle it says it is so for every category — the same thing `dims={"scenario"}` already means along the scenario axis, where no subscription mechanism exists and nobody finds it surprising.
 
-That direction is why [an attribute belonging to no type](proposals/001-dims-groups-traits.md#what-starts-it) has somewhere to live at all.
+That direction is why an attribute belonging to no type has somewhere to live at all.
 Under the previous shape a type _subscribed_ and an attribute reached nothing until one did, which is what forced `attributes` to be nested under types and left snapshot weightings homeless.
 
 **Whichever property each trait keys on.** An attribute no trait claims is carried by every label; a claimed one by every label some claiming trait matches. A trait `on` `entity_type: [Generator]` and one `on` `carrier: [wind]`, both claiming `p_max_pu`, give it to every generator and every wind entity.
@@ -271,14 +271,14 @@ attributes = {
 
 The two never interact: `on` first, then `switch`. A trait with neither reaches every label; **a switch needs an `on`**, and is addressed by exactly the dim its `on` property categorizes — the dim it decides the trait per label of.
 
-**The switch is an ordinary attribute**, with a `dtype`, a `default` and long rows in `inputs/` like any other ([where a value lives](format.md#where-a-value-lives)). `bool` is the dtype the [proposal](proposals/003-trait-switches.md#which-dtypes) admits; an `Enum` switch selecting among several traits is deferred.
+**The switch is an ordinary attribute**, with a `dtype`, a `default` and long rows in `inputs/` like any other ([where a value lives](format.md#where-a-value-lives)). `bool` is the only dtype admitted; an `Enum` switch selecting among several traits is deferred.
 Its default decides the unset case, and `false` keeps the bundle off every entity that predates the trait.
 
 **It joins the trait's `attributes` on its own**, folded in at parse rather than listed by the author, so a consumer asking what `committable` bundles gets the switch with the rest.
 Being in the bundle it would otherwise be narrowed by its own trait, which nothing could then turn on — so it is in `attributes` for discovery and out of the narrowing.
 
 **`attributes_for` is unchanged by it.** A switched trait's attributes are carried by the category, because the question it answers is which attributes a generator _may_ have; the switch narrows which entities carry a _value_, which is a question about data.
-So the switch is a validation and query mechanism rather than a change to the vocabulary. What it is declared for — rejecting a value set on an entity whose switch is false, and asking which entities a trait reaches — reads the switch column, and neither is wired up yet: the declaration lands first, the [checks that read data](proposals/003-trait-switches.md#what-it-costs) after. Whether `attributes_for` grows a per-label counterpart is [open](open-questions.md).
+So the switch is a validation and query mechanism rather than a change to the vocabulary. What it is declared for — rejecting a value set on an entity whose switch is false, and asking which entities a trait reaches — reads the switch column, and neither is wired up yet: the declaration lands first, the checks that read data after. Whether `attributes_for` grows a per-label counterpart is [open](open-questions.md).
 
 ## Groups
 

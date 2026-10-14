@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Proposal: properties — metadata declared apart from data
 
-Status: **Accepted** (steps 1 and 2) · Drafted 2026-10-12 · Revised 2026-10-13 · Built on `feat/properties-structs`
+Status: **Implemented** (steps 1 and 2) · Drafted 2026-10-12 · Revised 2026-10-13 · Built on `feat/properties-structs`
 
 Two changes that are one. **Properties** — what classifies or describes one label of a dim, its metadata — get their own section of the manifest, apart from **attributes**, the data. And the entity-type axis stops being a dim with a group over `entity`: it becomes an ordinary `Enum` property of `entity`, whose values — **categories** — per-category defaults and trait scoping key on. With it goes every special case of `entity` and `entity_type` in core: `entity` becomes a dim like any other, listed in `partial`, and the name `entity_type` is data a schema happens to declare.
 
