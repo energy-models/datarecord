@@ -107,12 +107,13 @@ def test_a_scenario_varying_capacity_is_a_schema_violation():
 def test_partial_dims_is_the_union_over_attributes():
     """The fold's key is one fixed tuple, so an unowned dim is NULL rather than absent."""
     s = _schema()
-    # `entity` and `bus` are always partial - they do not broadcast.
-    assert s.partial_dims == ("entity", "bus", "scenario")
+    # `entity` and the `connection` column are always in it - they do not
+    # broadcast - while `bus`, inside the struct, is no key of its own.
+    assert s.partial_dims == ("entity", "connection", "scenario")
 
     # Make `timestep` partial too and it joins the key.
     wider = _schema(partial=frozenset({"scenario", "timestep"}))
-    assert wider.partial_dims == ("entity", "bus", "timestep", "scenario")
+    assert wider.partial_dims == ("entity", "connection", "timestep", "scenario")
 
 
 def test_file_split_follows_dims():
@@ -216,7 +217,7 @@ def test_a_trait_may_only_be_scoped_by_an_entity_type_axis():
                 "bus": Dimension(dtype=nw.String()),
                 "country": Dimension(dtype=nw.String()),
             },
-            groups={"country": Group(over=["bus"], into="country")},
+            groups={"bus_country": Group(over=["bus"], into="country")},
             attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
             traits={"t": Trait(attributes={"p_nom"}, on={"country": {"DE"}})},
             partial=frozenset(),

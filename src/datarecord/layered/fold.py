@@ -43,9 +43,9 @@ from datarecord.duck import (
 from datarecord.record import Flags
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Container, Iterable, Mapping
 
-    from duckdb import DuckDBPyConnection, DuckDBPyRelation
+    from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 
     from datarecord.schema import Schema
     from datarecord.store import Store
@@ -155,7 +155,9 @@ class Fold:
         """Per attribute, which dims its rows use - whole-record, or one type.
 
         Whole-record when `entity_type` is `None`; scoped to a type's entities
-        when named, by a semi-join to the resolved entity axis. A type whose
+        when named, by a semi-join to the resolved entity axis on each entity the
+        row names (`entity_coordinates`). A row naming entities of two types -
+        a contract `(from, to)` across them - counts towards both. A type whose
         entities disagree yields a dim in both sets - the instruction to use
         both containers, each taking the rows it matches. The union stops at the
         type boundary: across types it would describe neither.
@@ -193,12 +195,20 @@ class Fold:
             axis = self.entity_axis
             if axis is None:
                 return None
-            of_type = axis.filter(col("entity_type") == lit(entity_type)).project(
-                "entity"
+            of_type = (
+                axis.filter(col("entity_type") == lit(entity_type))
+                .project("entity")
+                .distinct()
+                .set_alias("e")
             )
-            rel = rel.join(
-                of_type.distinct().set_alias("e"), "i.entity = e.entity", how="semi"
-            )
+            # One join per coordinate, an `OR` of them being unhashable. A row
+            # matched twice is harmless under `bool_or`, so no distinct.
+            scoped = rel.limit(0)
+            for on in entity_coordinates(self.schema, "i", rel.columns):
+                scoped = scoped.union(
+                    rel.join(of_type, on == col("e", "entity"), how="semi")
+                )
+            rel = scoped
         flag = {
             c: struct_of(
                 {d: fn.bool_or(struct_field(rel, c, d, lit(False))) for d in dims}
@@ -239,6 +249,38 @@ class Fold:
             entity_types=_read_dir(f"{base}dims/entity_type/", con),
             owner_map=owner_map,
         )
+
+
+def entity_coordinates(
+    schema: Schema, alias: str, columns: Container[str]
+) -> list[Expression]:
+    """Every entity a long row of `alias` names, wherever it sits.
+
+    `entity` itself, and each key coordinate over `entity` of every keyed
+    group's struct: a connection row has no top-level `entity`, its entity
+    riding inside `connection`, and a group drawing twice on `entity` - a
+    contract `(from, to)` - names both. A row naming none belongs to no type and
+    no entity tombstone reaches it.
+
+    Parameters
+    ----------
+    columns
+        The relation's columns; an entity column it lacks is skipped.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
+    return [
+        *([col(alias, "entity")] if "entity" in columns else []),
+        *(
+            fn.struct_extract(col(alias, g), lit(c))
+            for g in schema.group_columns
+            if g in columns
+            for c in schema.entity_fields(g)
+        ),
+    ]
 
 
 def _read_dir(dir_uri: str, con: DuckDBPyConnection) -> dict[str, DuckDBPyRelation]:

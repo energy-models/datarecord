@@ -21,7 +21,7 @@ from datarecord.layered.resolve import read_schema
 from datarecord.record import EMPTY, LazyFrames, RecordLike
 from datarecord.schema import AttributeSpec, Dimension, Schema
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import empty_child, export_network, relation, schema
+from tests.fixtures import empty_child, export_network, relation, schema, unpacked
 
 
 class _Source:
@@ -96,6 +96,7 @@ def _long(**overrides) -> pd.DataFrame:
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     row = {
+        "connection": None,
         "entity": "steel_dri",
         "bus": None,
         "snapshot": None,
@@ -428,7 +429,8 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store, ac_dc):
     }, "a component attribute carries `entity`, not the connection group's `bus`"
 
     efficiency = columns("efficiency")
-    assert "bus" in efficiency, "a connection attribute carries the group's coordinates"
+    assert "connection" in efficiency, "a connection attribute carries the group"
+    assert "bus" not in efficiency, "as one struct column, not its coordinates"
     assert "period" not in efficiency, "and no dim it is not addressed by"
 
 
@@ -474,6 +476,37 @@ def test_a_write_rejects_a_coordinate_the_attribute_lacks(store):
         store.root(source)
 
 
+def test_a_write_rejects_a_group_column_that_is_not_its_key(store):
+    """A group's column is a struct of exactly its key coordinates.
+
+    DuckDB casts a struct by field name, so a missing field would be written as
+    NULL rather than refused, re-keying every row.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    row = {"attribute": "efficiency", "breakpoint": None, "value": 1.0}
+    row |= {"snapshot": None, "scenario": None, "period": None}
+    short = pd.DataFrame([{"connection": {"entity": "steel_dri"}, **row}])
+    source = _Source(_SCHEMA, attributes={"efficiency": short})
+
+    with pytest.raises(ValueError, match=r"'connection' as .*\['entity', 'bus'\]"):
+        store.root(source)
+
+
+def test_a_group_column_round_trips_as_a_struct(store):
+    """What a source hands over as the group's struct reads back as one."""
+    row = {"attribute": "efficiency", "breakpoint": None, "value": 1.0}
+    row |= {"snapshot": None, "scenario": None, "period": None}
+    connection = {"entity": "steel_dri", "bus": "h2_north"}
+    frame = pd.DataFrame([{"connection": connection, **row}])
+    revision = store.root(_Source(_SCHEMA, attributes={"efficiency": frame}))
+
+    rows = relation(revision, "efficiency").project("connection, value").fetchall()
+    assert rows == [(connection, 1.0)]
+
+
 def test_a_write_rejects_a_missing_long_column(store):
     """A frame the fold could not resolve is refused before anything is written."""
     short = _long().drop(columns=["breakpoint"])
@@ -484,19 +517,31 @@ def test_a_write_rejects_a_missing_long_column(store):
     _nothing_reachable(store)
 
 
-def test_a_write_rejects_a_group_frame_missing_a_coordinate(store):
-    """A group's row is keyed by its coordinates, so one lacking them misresolves.
+def test_a_write_rejects_a_flat_group_frame(store):
+    """A group file is keyed by the struct column named for it, not its coordinates.
 
     Notes
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
-    source = _Source(
-        _SCHEMA,
-        connections={"connection": pd.DataFrame({"entity": ["steel_dri"]})},  # no `bus`
-    )
+    flat = pd.DataFrame({"entity": ["steel_dri"], "bus": ["h2"]})
+    source = _Source(_SCHEMA, connections={"connection": flat})
 
-    with pytest.raises(ValueError, match="coordinates.*bus"):
+    with pytest.raises(ValueError, match=r"missing \['connection'\]"):
+        store.root(source)
+
+
+def test_a_write_rejects_a_group_struct_not_of_its_key(store):
+    """A struct missing a key field would re-key every row once cast.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    partial = pd.DataFrame({"connection": [{"entity": "steel_dri"}]})
+    source = _Source(_SCHEMA, connections={"connection": partial})
+
+    with pytest.raises(ValueError, match="one struct column"):
         store.root(source)
 
 
@@ -763,9 +808,11 @@ def test_multi_port_links_round_trip_through_connections(store, ac_dc):
 
     # Stored bus-keyed, with a role from PyPSA's sign convention. One file for
     # every type, so the Links are reached by their entities.
-    rows = store.workspace.con.read_parquet(
-        store.layer_dir(revision.id) + "groups/connection.parquet"
-    ).df()
+    rows = unpacked(
+        store.workspace.con.read_parquet(
+            store.layer_dir(revision.id) + "groups/connection.parquet"
+        )
+    )
     links = rows[rows["entity"].isin(ac_dc.c["Link"].static.index)]
     assert set(links["role"]) == {"input", "output"}
     assert set(links["bus"]) >= set(ac_dc.c["Link"].static["bus0"])
@@ -784,9 +831,11 @@ def test_single_port_components_keep_their_unsuffixed_bus(store, ac_dc):
     """
     revision = export_network(ac_dc, store)
 
-    rows = store.workspace.con.read_parquet(
-        store.layer_dir(revision.id) + "groups/connection.parquet"
-    ).df()
+    rows = unpacked(
+        store.workspace.con.read_parquet(
+            store.layer_dir(revision.id) + "groups/connection.parquet"
+        )
+    )
     mine = rows[rows["entity"].isin(ac_dc.c["Generator"].static.index)]
     assert set(mine["role"]) == {"attached"}
 

@@ -29,6 +29,7 @@ from tests.fixtures import (
     outputs,
     relation,
     schema,
+    unpacked,
     write_entity_type,
     write_input,
 )
@@ -39,6 +40,18 @@ from tests.test_roundtrip import assert_networks_equal
 def single_revision(store, ac_dc):
     revision = export_network(ac_dc, store)
     return revision
+
+
+def _flat(frame) -> pd.DataFrame:
+    """A connection attribute's rows with the `connection` struct spread to `entity` and `bus`."""
+    connection = nw.col("connection").struct
+    return (
+        nw.from_native(frame)
+        .with_columns(entity=connection.field("entity"), bus=connection.field("bus"))
+        .lazy()
+        .collect(backend="pandas")
+        .to_native()
+    )
 
 
 def test_requirements_falsy_when_empty():
@@ -155,19 +168,6 @@ _DIMS = {
 }
 
 
-def _without_default(revision, ctype: str, attribute: str) -> None:
-    """Drop one attribute's declared default, leaving the rest of the schema.
-
-    `ctype` says which type the caller means it for; the spec itself is
-    declared once record-wide, so dropping the default drops it everywhere.
-    """
-    was = read_schema(revision.store)
-    assert attribute in was.attributes_for(ctype)
-    spec = was.attributes[attribute]
-    was.attributes[attribute] = spec.model_copy(update={"default": None})
-    write_schema(was, revision.store)
-
-
 def _with_schema(revision, **kwargs) -> None:
     """Redeclare the record's schema, keeping the attributes it already declares.
 
@@ -234,18 +234,22 @@ def test_verify_reports_a_snapshot_key(store, ac_dc):
 
 
 def test_verify_reports_a_missing_required_attribute(store, ac_dc):
-    """A component type with no `bus` anywhere - not in the frame, not in the catalog."""
+    """A component type with no `bus` anywhere - no connection row supplies it.
+
+    A port's bus is the `connection` tuple itself, declared as no attribute, so
+    no default can stand in for it.
+    """
     revision = export_network(ac_dc, store)
-    # A Generator member carrying no `bus` column at all, no connection row
-    # supplying one (https://energy-models.github.io/datarecord/design/record/#connections), and a schema with no default for it either.
+    # A Generator member with no connection row supplying its bus
+    # (https://energy-models.github.io/datarecord/design/record/#connections).
     write_entity_type(store.layer_dir(revision.id), "Generator", [{"entity": "g1"}])
     # One file across every type, so the Generators' rows are dropped from it
     # rather than a per-type file being unlinked.
     path = Path(store.layer_dir(revision.id), "groups", "connection.parquet")
     rows = pd.read_parquet(path)
     generators = set(ac_dc.c["Generator"].static.index) | {"g1"}
-    rows[~rows["entity"].isin(generators)].to_parquet(path, index=False)
-    _without_default(revision, "Generator", "bus")
+    entities = rows["connection"].map(lambda c: c["entity"])
+    rows[~entities.isin(generators)].to_parquet(path, index=False)
 
     missing = PyPSA.verify(revision.record)
     assert ("Generator", "bus") in missing.attributes
@@ -259,11 +263,11 @@ def test_verify_accepts_a_declared_default_for_a_required_attribute(store, ac_dc
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
     """
     revision = export_network(ac_dc, store)
-    write_entity_type(store.layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    write_entity_type(store.layer_dir(revision.id), "Line", [{"entity": "l1"}])
 
-    # PyPSA's own registry already declares `bus` with a `""` default, which
-    # is exactly the case this pins - so the record is left as written.
-    assert ("Generator", "bus") not in PyPSA.verify(revision.record).attributes
+    # PyPSA's own registry already declares the required `x` with a default,
+    # which is exactly the case this pins - so the record is left as written.
+    assert ("Line", "x") not in PyPSA.verify(revision.record).attributes
 
 
 def test_verify_reports_a_piecewise_linear_attribute(store, ac_dc):
@@ -437,13 +441,13 @@ def test_results_extracts_long_form_outputs(single_revision):
     p = results["p"].collect()
     # The long schema's columns (https://energy-models.github.io/datarecord/design/record/), so the write path can persist it as-is -
     # and no `entity_type`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-    assert {"entity", "snapshot", "scenario", "period", "value"} <= set(p.columns)
+    assert {"connection", "snapshot", "scenario", "period", "value"} <= set(p.columns)
     assert "entity_type" not in p.columns
     assert set(p["attribute"].to_list()) == {"p"}
     # Series output: one row per (name, snapshot), for the Generator rows -
     # selected by name, since the frame no longer carries the type.
     gens = set(n.c["Generator"].static.index)
-    gen = p.filter(nw.col("entity").is_in(list(gens)))
+    gen = _flat(p).query("entity in @gens")
     assert len(gen) == len(n.snapshots) * len(gens)
 
     # A static output has no snapshot, and only the components whose value
@@ -465,8 +469,8 @@ def test_results_concatenate_every_type_under_one_attribute(single_revision):
     n = PyPSA.build(single_revision.record)
     n.optimize(solver_name="highs")
 
-    p = PyPSA.results(n, single_revision.record.con)["p"].collect()
-    names = set(p["entity"].to_list())
+    p = _flat(PyPSA.results(n, single_revision.record.con)["p"])
+    names = set(p["entity"])
     # `p` is a result of several types, so the concat is what is being tested;
     # keying by `(type, attribute)` would have split these into separate frames.
     # The names identify which type each row came from, no tag column needed -
@@ -477,7 +481,7 @@ def test_results_concatenate_every_type_under_one_attribute(single_revision):
         if not c.static.empty and set(c.static.index) & names
     }
     assert len(contributing) > 1
-    assert not p["entity"].is_null().any()
+    assert not p["entity"].isna().any()
 
 
 def test_results_skips_outputs_still_at_their_default(single_revision):
@@ -514,10 +518,10 @@ def test_results_set_on_the_working_record_they_were_planned_on(single_revision)
         w.set(attr, frame, kind="outputs")
 
     assert not {"p0", "p1"} & set(results), "port flows land in `p`, not per port"
-    p = w.outputs["p"].collect()
+    p = _flat(w.outputs["p"])
     gens = list(n.c["Generator"].static.index)
-    assert len(p.filter(nw.col("entity").is_in(gens))) == len(n.snapshots) * len(gens)
-    assert "bus" in p.columns, "a staged `p` keeps the bus of its connection"
+    assert p["entity"].isin(gens).sum() == len(n.snapshots) * len(gens)
+    assert p["bus"].notna().all(), "a staged `p` keeps the bus of its connection"
 
 
 def test_a_solved_p_is_one_row_per_connection(single_revision):
@@ -530,14 +534,8 @@ def test_a_solved_p_is_one_row_per_connection(single_revision):
     n = PyPSA.build(single_revision.record)
     n.optimize(solver_name="highs")
 
-    p = PyPSA.results(n, single_revision.record.con)["p"].collect(backend="pandas")
-    p = p.to_native()
-    connections = (
-        single_revision.record.groups["connection"]
-        .collect(backend="pandas")
-        .to_native()
-    )
-    assert "bus" in p.columns
+    p = _flat(PyPSA.results(n, single_revision.record.con)["p"])
+    connections = unpacked(single_revision.record.groups["connection"])
     per_connection = p.groupby(["entity", "bus"]).size()
     assert set(per_connection.index) == set(
         zip(connections["entity"], connections["bus"])
@@ -565,9 +563,9 @@ def test_bus_power_is_not_a_result(single_revision):
     n = PyPSA.build(single_revision.record)
     n.optimize(solver_name="highs")
 
-    p = PyPSA.results(n, single_revision.record.con)["p"].collect()
+    p = _flat(PyPSA.results(n, single_revision.record.con)["p"])
     buses = list(n.c["Bus"].static.index)
-    assert p.filter(nw.col("entity").is_in(buses)).is_empty()
+    assert not p["entity"].isin(buses).any()
     assert not n.c["Bus"].dynamic["p"].empty, "PyPSA did compute a `Bus.p`"
 
 
@@ -615,7 +613,7 @@ def test_a_third_port_result_lands_on_its_connection(workspace):
     results = PyPSA.results(n, workspace.con)
     assert "p2" not in results
     assert "p" in _registry_schema().results, "the bare registry declares `p`"
-    p = results["p"].collect()
+    p = _flat(results["p"])
     assert p["bus"].to_list() == ["c", "c"], "a third port's flow is on bus2"
     assert p["value"].to_list() == [1.0, 2.0]
     inputs = PyPSA.to_datarecord(n, workspace.con).attributes
@@ -636,7 +634,7 @@ def test_a_three_port_record_writes_p_on_each_connection(store):
 
     revision = export_network(n, store)
 
-    p = outputs(revision, "p").df().sort_values(["bus", "snapshot"])
+    p = _flat(outputs(revision, "p")).sort_values(["bus", "snapshot"])
     assert p.groupby("bus")["value"].apply(list).to_dict() == {
         "a": flows["p0"],
         "b": flows["p1"],
@@ -728,7 +726,7 @@ def test_process_rate_is_one_attribute_on_its_connections(workspace):
 
     inputs = PyPSA.to_datarecord(n, workspace.con).attributes
     assert not {"rate0", "rate1", "rate2"} & set(inputs), "no positional names"
-    rate = inputs["rate"].collect().to_pandas()
+    rate = _flat(inputs["rate"])
     assert rate.set_index("bus")["value"].to_dict() == {"a": -2.0, "b": 1.5, "c": 0.3}
     spec = _registry_schema().attributes["rate"]
     assert "connection" in spec.dims
@@ -776,7 +774,7 @@ def test_delays_are_columns_of_their_connections(workspace, store):
     assert not {"delay", "delay0", "delay2", "cyclic_delay1"} & set().union(
         *members.values()
     ), "no positional names on the members"
-    connections = record.groups["connection"].collect().to_pandas()
+    connections = _flat(record.groups["connection"])
     delay = connections.set_index(["entity", "bus"])["delay"].dropna().to_dict()
     assert delay == {
         ("dri", "a"): 1,

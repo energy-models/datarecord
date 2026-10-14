@@ -21,6 +21,8 @@ Notes
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable, Mapping
+from functools import cached_property
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
@@ -346,10 +348,11 @@ class Group(BaseModel):
     no axis can say because the product is sparse - an entity attaches to two
     buses out of a thousand.
 
-    An attribute names the group in its `dims` and its rows carry the group's
-    *coordinate* names as columns, never the group's own name. Coordinates
-    rather than dims because two of them may draw on the same axis: a corridor
-    between two entities is `(from, to)`, which a set of dims could not spell.
+    An attribute names the group in its `dims` and its rows carry the group as
+    one struct column of the group's name, a field per key coordinate
+    (`Schema.group_type`). Coordinates rather than dims because two of them may
+    draw on the same axis: a corridor between two entities is `(from, to)`,
+    which a set of dims could not spell.
 
     Attributes
     ----------
@@ -381,22 +384,10 @@ class Group(BaseModel):
         return value
 
     @property
-    def coordinates(self) -> tuple[str, ...]:
-        """This group's columns in declaration order, `into` last where declared.
-
-        Notes
-        -----
-        - [into](https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)
-        """
-        if self.into is None:
-            return tuple(self.over)
-        return (*self.over, self.into)
-
-    @property
     def key(self) -> tuple[str, ...]:
-        """The coordinates a row is unique over: `coordinates` minus `into`.
+        """The coordinates a row is unique over: `over`'s, in declaration order.
 
-        Every coordinate for a group without one.
+        `into` is none of them: it follows from the key.
 
         Notes
         -----
@@ -550,13 +541,24 @@ class Schema(BaseModel):
             msg = f"`within` is cyclic: {' -> '.join(e.args[1])}"
             raise ValueError(msg) from e
 
-        # A group's coordinates draw their labels from declared dims, and so
-        # does `into`. No check that the name is free of the dims: a collision
-        # is shadowing rather than an ambiguity (https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x).
+        classifies_entity = [
+            g
+            for g, spec in self.groups.items()
+            if spec.into is not None and tuple(spec.over.values()) == ("entity",)
+        ]
         for group, group_spec in self.groups.items():
             unknown = sorted(set(group_spec.over.values()) - declared)
             if unknown:
                 msg = f"group {group!r} is over undeclared dims {unknown}"
+                raise ValueError(msg)
+            if group in declared and group not in classifies_entity:
+                renamed = "_".join((*group_spec.over, group))
+                msg = (
+                    f"group {group!r} shares its name with the dim {group!r}; a "
+                    f"group is carried as a column named for it, so the two would "
+                    f"be one column. Rename the group, e.g. {renamed!r} into "
+                    f"{group!r} (https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)"
+                )
                 raise ValueError(msg)
             if group_spec.into is not None and group_spec.into not in declared:
                 msg = (
@@ -575,11 +577,7 @@ class Schema(BaseModel):
 
         # One group may classify `entity`, or none: every caller of
         # `attributes_for` asks for exactly one vocabulary.
-        classifying = sorted(
-            g.into
-            for g in self.groups.values()
-            if g.into is not None and tuple(g.over.values()) == ("entity",)
-        )
+        classifying = sorted(str(self.groups[g].into) for g in classifies_entity)
         if len(classifying) > 1:
             msg = (
                 f"{classifying} all classify `entity`; an entity has one type, "
@@ -609,6 +607,16 @@ class Schema(BaseModel):
                 )
                 raise ValueError(msg)
             for group, group_spec in self.groups.items():
+                if group in self.groups_of(attr):
+                    twice = sorted(set(group_spec.key) & attr_spec.dims)
+                    if twice:
+                        msg = (
+                            f"attribute {attr!r} is addressed by the group "
+                            f"{group!r} and by {twice}, which the group's "
+                            f"column already carries; naming both keys a row "
+                            f"twice over (https://energy-models.github.io/datarecord/design/schema/#groups)"
+                        )
+                        raise ValueError(msg)
                 if group_spec.into is None or group_spec.into not in attr_spec.dims:
                     continue
                 both = sorted(set(group_spec.over) & attr_spec.dims)
@@ -672,34 +680,12 @@ class Schema(BaseModel):
                     f"dims a layer patches per value"
                 )
                 raise ValueError(msg)
-
-        # The fold key rests on every dim being exactly one of: a broadcast dim
-        # (NULL means all-values), a membership key (a row exists or not), or the
-        # entity-type axis (a column of `dims/entity.parquet`, not addressable).
-        # All three derive from `broadcast_dims`, so this cannot fail unless that
-        # derivation drifts - which would silently drop a coordinate from the fold
-        # key or double-count it, the one broadcasting bug worth an assertion
-        # (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-        broadcast = set(self.broadcast_dims)
-        membership = set(self.membership_keys)
-        type_axis = {entity_type} & set(self.dims) if entity_type else set()
-        covered = broadcast | membership | type_axis
-        disjoint = len(broadcast) + len(membership) + len(type_axis) == len(covered)
-        if covered != set(self.dims) or not disjoint:
-            msg = (
-                f"every dim must be exactly one of broadcast, membership key or "
-                f"the entity-type axis; got broadcast {sorted(broadcast)}, "
-                f"membership {sorted(membership)}, type axis {sorted(type_axis)} "
-                f"over dims {sorted(self.dims)}"
-            )
-            raise ValueError(msg)
         return self
 
     def _check_names(self) -> None:
         """Refuse every declared name that cannot be a column of its own.
 
-        Group names are checked with the rest though no file has a column of
-        one, since `dims` spells a group and a dim alike. `entity_type` is the
+        A group's name is a column too, its struct column. `entity_type` is the
         one name legal as a dim or group and not as an attribute: the type axis
         is spelled so, and its column is no attribute's to take. Two spellings
         of one name differing only in case are refused, DuckDB resolving both
@@ -758,10 +744,10 @@ class Schema(BaseModel):
 
     @property
     def broadcast_dims(self) -> tuple[str, ...]:
-        """The dims a NULL broadcasts over: every dim but `entity`, the type axis and a group's key.
+        """The dims a NULL broadcasts over: every dim but `entity` and the type axis.
 
         A NULL here means "every value of this dim", which the fold expands
-        against the axis. The three exclusions cannot mean that:
+        against the axis. The two exclusions cannot mean that:
 
         - `entity`, because a NULL there is a value belonging to no entity
           rather than to all of them. The one dim named literally, being the
@@ -772,17 +758,10 @@ class Schema(BaseModel):
           attribute addressed by the type *alone* never reaches here: it is a
           column of the type axis file rather than a long row, so it has no
           NULL to expand.
-        - A coordinate a group is keyed by, because there is no axis to expand
-          against. "Every bus of this entity" is the group's rows, not the
-          bus axis - a sparse subset only the group's table knows.
 
-        A functional group's `into` dim is *not* excluded, though it is one of
-        the group's `coordinates`: only `key` addresses a row, so `country`
-        broadcasts like any other axis.
-
-        The complement of this is what `Schema` requires to be `partial`: a dim
-        whose values are addressed individually is one a layer patches value by
-        value.
+        A group is no dim and so never here: a row carries it as one struct
+        column of its own (`group_columns`), so the dims its coordinates draw
+        on stay free to broadcast.
 
         What the `varies`/`broadcast` structs have a field per, and what
         `expand_dims` joins.
@@ -792,21 +771,15 @@ class Schema(BaseModel):
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        sparse = {c for g in self.groups.values() for c in g.key}
         entity_type = self.entity_type_dim
-        return tuple(
-            d for d in self.dims if d not in ("entity", entity_type) and d not in sparse
-        )
+        return tuple(d for d in self.dims if d not in ("entity", entity_type))
 
     def coordinates_of(self, attribute: str) -> tuple[str, ...]:
-        """The dim columns one attribute's rows carry, groups expanded.
+        """The coordinate columns one attribute's rows carry, groups first.
 
-        One rule resolves a name in `dims`: **it is the dim of that name if one
-        is declared, and otherwise the group of that name expanded to its
-        coordinates**. So `dims={"connection", "snapshot"}` gives `("entity",
-        "bus", "snapshot")` where no dim `connection` exists, and
-        `dims={"country"}` gives `("country",)` - the dim, where a group of that
-        name is shadowed.
+        A group in `dims` is carried as one struct column named for it
+        (`group_type`), so `dims={"connection", "snapshot"}` gives
+        `("connection", "snapshot")`.
 
         Per attribute rather than schema-wide: one file per attribute means one
         column set per attribute, and an all-NULL `entity` on a record-level
@@ -821,12 +794,83 @@ class Schema(BaseModel):
         spec = self.spec_for(attribute)
         if spec is None:
             return ()
-        named: set[str] = set()
-        for d in spec.dims:
-            group = None if d in self.dimensions else self.groups.get(d)
-            named.update(group.coordinates if group is not None else (d,))
-        # Declaration order, so every consumer sees one column order.
-        return tuple(d for d in self.dims if d in named)
+        return (*self.groups_of(attribute), *(d for d in self.dims if d in spec.dims))
+
+    @cached_property
+    def group_columns(self) -> tuple[str, ...]:
+        """The groups the owner map is keyed by, in declaration order.
+
+        Notes
+        -----
+        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        """
+        keyed = {
+            g
+            for a, s in self.attributes.items()
+            if s.varying
+            for g in self.groups_of(a)
+        }
+        return tuple(g for g in self.groups if g in keyed)
+
+    def group_type(self, group: str) -> nw.dtypes.DType:
+        """The struct a row carries `group` as: a field per key coordinate.
+
+        Each field typed as the dim the coordinate draws on. `into` is no field:
+        it follows from the key, so carrying it would key a row twice over.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        spec = self.groups[group]
+        return nw.Struct({c: self.dimensions[spec.over[c]].dtype for c in spec.key})
+
+    def check_group_columns(
+        self,
+        groups: Iterable[str],
+        columns: Mapping[str, nw.dtypes.DType],
+        *,
+        carrier: str,
+    ) -> None:
+        """Reject each of `groups` carried other than as one struct column of exactly its key.
+
+        A carrier without a group's column passes.
+
+        Parameters
+        ----------
+        columns
+            The carrier's column types - a narwhals frame's `collect_schema()`.
+        carrier
+            What carries the columns, named in the message.
+
+        Raises
+        ------
+        ValueError
+            On a key coordinate as a column of its own, or a group column not
+            a struct of exactly the key, naming the struct to pass instead.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        for group in groups:
+            key = self.group_key(group)
+            flat = [c for c in key if c in columns]
+            dtype = columns.get(group)
+            fields = (
+                key
+                if dtype is None
+                else [f.name for f in dtype.fields]
+                if isinstance(dtype, nw.Struct)
+                else None
+            )
+            if flat or fields is None or set(fields) != set(key):
+                carried = f"{flat} flat" if flat else f"{group!r} as {dtype}"
+                msg = (
+                    f"{carrier} carries {carried}; pass {group!r} as one struct "
+                    f"column with a field per key coordinate, {list(key)} (https://energy-models.github.io/datarecord/design/schema/#groups)"
+                )
+                raise ValueError(msg)
 
     def long_columns_for(self, attribute: str) -> tuple[str, ...]:
         """One attribute's full long column set, in order - input or result.
@@ -900,7 +944,10 @@ class Schema(BaseModel):
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
-        return "entity" in self.coordinates_of(attribute)
+        spec = self.spec_for(attribute)
+        return (spec is not None and "entity" in spec.dims) or any(
+            "entity" in self.groups[g].over.values() for g in self.groups_of(attribute)
+        )
 
     def attributes_for(self, ctype: str) -> dict[str, AttributeSpec]:
         """Which attributes entity type `ctype` carries.
@@ -961,13 +1008,10 @@ class Schema(BaseModel):
 
     @property
     def membership_keys(self) -> tuple[str, ...]:
-        """The dims addressed per row rather than broadcast: `entity` and group coords.
+        """The columns addressed per row rather than broadcast: `entity` and `group_columns`.
 
         A membership key is a coordinate a layer patches one row of at a time -
-        one entity, one connection - never "every value" of an axis. It is
-        the non-broadcast, addressable dims: every dim but the broadcast ones
-        and the entity-type axis, which is a column of `dims/entity.parquet`
-        rather than an addressable coordinate.
+        one entity, one connection - never "every value" of an axis.
 
         These land in the fold key by being membership, not by being `partial`.
 
@@ -976,9 +1020,8 @@ class Schema(BaseModel):
         - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         """
-        broadcast = set(self.broadcast_dims)
-        entity_type = self.entity_type_dim
-        return tuple(d for d in self.dims if d not in broadcast and d != entity_type)
+        entity = ("entity",) if "entity" in self.dimensions else ()
+        return (*entity, *self.group_columns)
 
     @property
     def partial_dims(self) -> tuple[str, ...]:
@@ -999,8 +1042,10 @@ class Schema(BaseModel):
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         partial = self.partial or frozenset()
-        keys = set(self.membership_keys)
-        return tuple(d for d in self.dims if d in keys or d in partial)
+        return (
+            *self.membership_keys,
+            *(d for d in self.broadcast_dims if d in partial),
+        )
 
     def axis_key(self, dim: str) -> tuple[str, ...]:
         """A dim's axis-table key: `(*parents, dim)`, parents first.
@@ -1076,13 +1121,17 @@ class Schema(BaseModel):
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         """
         entity_type = self.entity_type_dim
-        return (*(d for d in self.dims if d != entity_type), *LONG_TAIL)
+        return (
+            *self.group_columns,
+            *(d for d in self.dims if d != entity_type),
+            *LONG_TAIL,
+        )
 
     @property
     def input_key(self) -> tuple[str, ...]:
         """Inputs-map key columns, compared NULL-safely when folding.
 
-        `partial_dims`, plus `attribute`. `entity` and a group's coordinates are
+        `partial_dims`, plus `attribute`. `entity` and a group's column are
         in it as membership keys - a layer may patch one entity's value, or
         one connection's, without restating every other's - and the broadcast
         `partial` value dims beside them.
@@ -1100,44 +1149,30 @@ class Schema(BaseModel):
         return (*self.partial_dims, "attribute")
 
     def groups_of(self, attribute: str) -> tuple[str, ...]:
-        """Which declared groups address `attribute`, in declaration order.
+        """Which declared groups address `attribute`, input or result, in declaration order.
 
         An attribute is a connection attribute because its `dims` name the
         `connection` group - not because a separate field says so. That is
         what lets a second group exist without a second field.
 
-        A group a dim shadows is not one of them, `dims: [country]` naming the
-        axis.
+        A name in `dims` is the dim where one is declared, which only the
+        entity-type group may share a name with.
 
         Notes
         -----
         - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
         """
-        spec = self.attributes.get(attribute)
+        spec = self.spec_for(attribute)
         if spec is None:
             return ()
         return tuple(
             g for g in self.groups if g in spec.dims and g not in self.dimensions
         )
 
-    def group_coordinates(self, group: str) -> tuple[str, ...]:
-        """One group's columns, or `()` if it is not declared.
-
-        Every column of the group's file, `into` included. Coordinate names
-        rather than dim names, so two drawing on one axis stay two columns.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        """
-        spec = self.groups.get(group)
-        return () if spec is None else spec.coordinates
-
     def group_key(self, group: str) -> tuple[str, ...]:
-        """One group's key columns, or `()` if it is not declared.
+        """One group's key coordinates - its struct column's fields - or `()` if undeclared.
 
-        `group_coordinates` minus `into` - what the fold keys ownership by and
-        what a tombstone names.
+        `into` is none of them: the tuple is the key, whatever label it carries.
 
         Notes
         -----
@@ -1146,6 +1181,20 @@ class Schema(BaseModel):
         """
         spec = self.groups.get(group)
         return () if spec is None else spec.key
+
+    def entity_fields(self, group: str) -> tuple[str, ...]:
+        """The key coordinates of `group` that name an entity, whatever they are called.
+
+        Notes
+        -----
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        """
+        spec = self.groups.get(group)
+        return (
+            ()
+            if spec is None
+            else tuple(c for c in spec.key if spec.over[c] == "entity")
+        )
 
     @property
     def input_columns(self) -> tuple[str, ...]:
@@ -1193,6 +1242,8 @@ class Schema(BaseModel):
             return STRUCTURAL_TYPES[column]
         if column in self.dimensions:
             return self.dimensions[column].dtype
+        if column in self.groups:
+            return self.group_type(column)
         if column in ("varies", "broadcast"):
             return flag_type(self.broadcast_dims) if self.broadcast_dims else None
         spec = self.attributes.get(column)

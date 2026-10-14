@@ -9,7 +9,16 @@ Notes
 - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
 """
 
+from pathlib import Path
+from typing import Any
+
+import duckdb
+import narwhals as nw
+import pytest
+
 from datarecord.layered.revision import Revision
+from datarecord.mutable import WorkingRecord
+from datarecord.schema import AttributeSpec, Schema
 from tests.fixtures import (
     empty_child,
     empty_root,
@@ -17,8 +26,11 @@ from tests.fixtures import (
     schema,
     tombstone,
     tombstone_connection,
+    unpacked,
+    write_axis,
     write_connections,
     write_entity_type,
+    write_group,
     write_input,
     write_schema,
 )
@@ -70,14 +82,14 @@ def _root(store) -> Revision:
 
 
 def _efficiencies(revision) -> dict[str, float]:
-    df = relation(revision, "efficiency").df()
+    df = relation(revision, "efficiency").project("connection.bus AS bus, value").df()
     return dict(zip(df["bus"], df["value"], strict=True))
 
 
 def test_connections_resolve_in_order(store):
     """A component's connections come back in first-introduced order."""
     revision = _root(store)
-    frame = _connections(revision).df()
+    frame = unpacked(_connections(revision))
     assert list(frame["bus"]) == ["h2_north", "iron_ore", "dri"]
     # `role` describes the connection rather than keying it, so it rides along
     # from the owning layer's file (https://energy-models.github.io/datarecord/design/record/#connections).
@@ -248,7 +260,7 @@ def test_connection_tombstone_removes_one_connection(store):
     child = empty_child(root)
     tombstone_connection(store.layer_dir(child.id), [("steel_dri", "iron_ore")])
 
-    frame = _connections(child).df()
+    frame = unpacked(_connections(child))
     assert set(frame["bus"]) == {"h2_north", "dri"}
     # ... and the attribute rows go with it, which the map can scope per
     # connection only because `bus` is in `input_key`.
@@ -270,10 +282,14 @@ def test_component_tombstone_does_not_cascade_to_its_connections(store):
     root = _root(store)
     root.materialise()
 
-    # The component alone: its connections survive, dangling.
+    # The component alone: its connections survive, dangling, but not their
+    # values - the entity tombstone reaches the entity inside `connection`.
     child = empty_child(root)
     tombstone(store.layer_dir(child.id), PROCESS, ["steel_dri"])
-    assert child.resolver.group_frame("connection") is not None
+    frame = child.resolver.group_frame("connection")
+    assert frame is not None
+    assert frame.count("*").fetchone() == (3,), "the tuples are not cascaded to"
+    assert _efficiencies(child) == {}, "the entity's tombstone drops their values"
 
     # The connections too: now both are gone.
     both = empty_child(root)
@@ -285,3 +301,204 @@ def test_component_tombstone_does_not_cascade_to_its_connections(store):
     frame = both.resolver.group_frame("connection")
     assert frame is not None, "the group was written, so it is present"
     assert frame.count("*").fetchone() == (0,), "every connection row is tombstoned"
+    assert _efficiencies(both) == {}, "and their values go with them"
+
+
+def test_a_dim_a_group_draws_on_still_broadcasts(store):
+    """A NULL `bus` on a per-bus attribute is every bus, beside a `connection` group.
+
+    The group carries its `bus` inside its own struct column, so the dim keeps
+    its axis to expand against.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    price = AttributeSpec(dtype=nw.Float64(), dims={"bus", "snapshot"})
+    write_schema(
+        schema(attributes={"Bus": {"marginal_price": price}}, partial={"bus"}), store
+    )
+    root = empty_root(store)
+    layer = store.layer_dir(root.id)
+    write_axis(layer, "bus", [{"bus": "north"}, {"bus": "south"}])
+    write_input(layer, "marginal_price", [{"value": 5.0}], connection=False)
+    root.materialise()
+
+    child = empty_child(root)
+    write_input(
+        store.layer_dir(child.id),
+        "marginal_price",
+        [{"bus": "south", "value": 7.0}],
+        connection=False,
+    )
+
+    def prices(revision):
+        df = relation(revision, "marginal_price").df()
+        return dict(zip(df["bus"], df["value"], strict=True))
+
+    assert prices(root) == {"north": 5.0, "south": 5.0}, "one row, every bus"
+    assert prices(child) == {"north": 5.0, "south": 7.0}, "a patch hits its bus"
+    assert "bus" in root.resolver.fold.flags()["marginal_price"].broadcast
+
+
+def test_a_map_folded_before_the_group_was_keyed_reads_it_as_null(store):
+    """Declaring the first attribute over a group widens the fold key.
+
+    A map materialised before has no `connection` column; no row there names a
+    connection, so it reads as NULL and the fold carries on over it.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    """
+    full = schema()
+    narrow = Schema(
+        **{
+            **dict(full),
+            "attributes": {
+                a: s for a, s in full.attributes.items() if a != "efficiency"
+            },
+        }
+    )
+    assert narrow.group_columns == (), "nothing names the group beside a dim"
+    write_schema(narrow, store)
+    root = empty_root(store)
+    layer = store.layer_dir(root.id)
+    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_input(layer, "p_nom", [{"entity": "steel_dri", "value": 100.0}])
+    root.materialise()
+
+    write_schema(full, store)
+    child = empty_child(root)
+    write_input(
+        store.layer_dir(child.id),
+        "efficiency",
+        [{"entity": "steel_dri", "bus": "h2_north", "value": 2.0}],
+    )
+
+    assert _efficiencies(child) == {"h2_north": 2.0}
+    assert list(relation(child, "p_nom").df()["value"]) == [100.0]
+
+
+# -- a group drawing twice on `entity` --------------------------------------
+
+SELLER, BUYER = "Generator", "Load"
+
+
+def _contract_root(store) -> Revision:
+    """Two contracts `(from, to)`, from one seller to two buyers.
+
+    `price` is over `{contract, snapshot}`, so no top-level `entity` names
+    either party: both ride inside the `contract` struct.
+    """
+    price = AttributeSpec(dtype=nw.Float64(), dims={"contract", "snapshot"})
+    write_schema(
+        schema(
+            attributes={SELLER: {"price": price}},
+            groups={
+                "connection": {"entity": "entity", "bus": "bus"},
+                "contract": {"from": "entity", "to": "entity"},
+            },
+        ),
+        store,
+    )
+    revision = empty_root(store)
+    layer = store.layer_dir(revision.id)
+    write_entity_type(layer, SELLER, [{"entity": "plant"}])
+    write_entity_type(layer, BUYER, [{"entity": "mill"}, {"entity": "smelter"}])
+    write_group(
+        layer,
+        "contract",
+        [
+            {"contract": {"from": "plant", "to": "mill"}},
+            {"contract": {"from": "plant", "to": "smelter"}},
+        ],
+    )
+    Path(layer, "inputs").mkdir(parents=True, exist_ok=True)
+    duckdb.sql(
+        """
+        SELECT {'from': 'plant', 'to': c}::STRUCT("from" VARCHAR, "to" VARCHAR)
+                   AS contract,
+               NULL::TIMESTAMP AS snapshot, 'price' AS attribute, v AS value
+        FROM (VALUES ('mill', 10.0), ('smelter', 20.0)) t(c, v)
+        """
+    ).to_parquet(str(Path(layer, "inputs", "price.parquet")))
+    return revision
+
+
+def _prices(record) -> dict[str, float]:
+    df = record.attributes["price"].collect().to_native().to_pandas()
+    return {c["to"]: v for c, v in zip(df["contract"], df["value"], strict=True)}
+
+
+def test_an_entity_tombstone_reaches_a_groups_second_entity(store):
+    """Removing the buyer drops its contract's values, as removing the seller would.
+
+    Every key coordinate over `entity` names an owner, so a row dies when any of
+    them is tombstoned; the contract tuple stands, as a connection's does.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
+    root = _contract_root(store)
+    assert _prices(root.record) == {"mill": 10.0, "smelter": 20.0}
+
+    child = empty_child(root)
+    tombstone(store.layer_dir(child.id), BUYER, ["mill"])
+    assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
+    contracts = child.record.groups["contract"].collect().to_native()
+    assert len(contracts) == 2, "the tuples are not cascaded to"
+
+
+def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
+    """Staging drops the parent's and its own rows for the `to` entity, as the fold.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    root = _contract_root(store)
+    staged = WorkingRecord(root.record)
+    contract: dict[str, Any] = {"from": "plant", "to": "mill"}
+    staged.set("price", 30.0, **contract)
+    assert _prices(staged)["mill"] == 30.0, "the staged value reads before removal"
+    staged.remove(BUYER, ["mill"])
+    assert _prices(staged) == {"smelter": 20.0}, "neither the base's nor the staged"
+
+    child = root.child(staged.edits)
+    assert _prices(child.record) == {"smelter": 20.0}
+
+
+def test_set_names_a_contracts_parties_by_keyword_only(store):
+    """No field is called `entity`, so `entity=` has nothing to fill; one row per call.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    staged = WorkingRecord(_contract_root(store).record)
+    contract: dict[str, Any] = {"from": "plant", "to": "mill"}
+    staged.set("price", 30.0, **contract)
+    assert len(staged.attributes["price"].collect()) == 2, "one row per contract"
+    assert _prices(staged) == {"mill": 30.0, "smelter": 20.0}
+
+    with pytest.raises(ValueError, match="no `entity` coordinate"):
+        staged.set("price", 50.0, entity=["plant"], to="smelter")
+    with pytest.raises(ValueError, match="no `entity` coordinate"):
+        staged.set("price", 50.0, to="smelter")
+
+
+def test_flags_scope_a_two_entity_row_to_the_type_of_each(store):
+    """A contract across two types counts towards both; a third sees nothing.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    """
+    record = _contract_root(store).record
+    assert "price" in record.flags(SELLER), "the `from` entity's type"
+    assert "price" in record.flags(BUYER), "the `to` entity's type too"
+    assert "price" not in record.flags("Store"), "no party is of this type"

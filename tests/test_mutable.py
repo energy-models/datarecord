@@ -21,7 +21,7 @@ from datarecord.mutable import WorkingRecord, normalise_value
 from datarecord.record import RecordLike
 from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import empty_root, export_network, schema
+from tests.fixtures import empty_root, export_network, schema, unpacked
 
 GEN = "Generator"
 
@@ -73,6 +73,13 @@ def _layer_rows(revision, attribute, kind="inputs"):
         revision.id, read_schema(revision.store), revision.store
     ).attribute(attribute, kind)
     return rel.to_df() if rel is not None else pd.DataFrame()
+
+
+def _unpacked(frame, group="connection"):
+    """A group attribute's rows with the group's struct spread flat, as pandas."""
+    native = frame.collect().to_native().to_pandas()
+    fields = pd.DataFrame(native.pop(group).tolist(), index=native.index)
+    return pd.concat([fields, native], axis=1)
 
 
 # -- the protocol (https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit) ----------------------------------------------------
@@ -812,6 +819,18 @@ def test_add_routes_a_port_attribute_to_the_connections(staged, root):
     assert buses["Manchester Wind"] == "Manchester"
 
 
+def test_add_refuses_a_connection_row_without_its_bus(staged):
+    """A `role` with no `bus` would stage a connection keyed by half its tuple.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    frame = pd.DataFrame([{"entity": "NewSolar", "role": "attached", "p_nom": 1.0}])
+    with pytest.raises(ValueError, match=r"\['bus'\]"):
+        staged.add(GEN, frame)
+
+
 def test_add_rejects_a_column_the_schema_does_not_declare(staged):
     """A member column no declaration accounts for is an error, not a new column.
 
@@ -903,16 +922,21 @@ def test_add_group_stages_a_new_connection(staged, root):
     staged.add_group(
         "connection",
         pd.DataFrame(
-            [{"entity": "Manchester Wind", "bus": "Norway", "role": "attached"}]
+            [
+                {
+                    "connection": {"entity": "Manchester Wind", "bus": "Norway"},
+                    "role": "attached",
+                }
+            ]
         ),
     )
-    staged_rows = staged.groups["connection"].collect().to_native().to_pandas()
+    staged_rows = unpacked(staged.groups["connection"])
     assert "Norway" in set(
         staged_rows[staged_rows["entity"] == "Manchester Wind"]["bus"]
     ), "the new connection reads back before commit"
 
     child = root.child(staged.edits)
-    rows = child.resolver.group_frame("connection").df()
+    rows = unpacked(child.resolver.group_frame("connection"))
     got = set(rows[rows["entity"] == "Manchester Wind"]["bus"])
     assert "Norway" in got
 
@@ -925,13 +949,13 @@ def test_remove_group_stages_a_tombstone(staged, root):
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     staged.remove_group("connection", [("Norwich Converter", "Norwich")])
-    before = staged.groups["connection"].collect().to_native().to_pandas()
+    before = unpacked(staged.groups["connection"])
     ports = set(before[before["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in ports, "the removal reads back before commit"
     assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
     child = root.child(staged.edits)
-    rows = child.resolver.group_frame("connection").df()
+    rows = unpacked(child.resolver.group_frame("connection"))
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     # The component's other port survives: deletion is per connection, not per
@@ -939,9 +963,168 @@ def test_remove_group_stages_a_tombstone(staged, root):
     assert "Norwich DC" in left
 
 
-def test_add_group_needs_every_coordinate(staged):
-    with pytest.raises(ValueError, match="'bus'"):
-        staged.add_group("connection", pd.DataFrame([{"entity": "Manchester Wind"}]))
+def _efficiency(record, entity="Manchester Wind"):
+    """`efficiency` per bus for one entity, as the record resolves it."""
+    rows = _unpacked(record.attributes["efficiency"])
+    return rows[rows["entity"] == entity].groupby("bus")["value"].unique().to_dict()
+
+
+def test_a_bus_keyword_addresses_one_connection(staged, root):
+    """`bus=` names one connection, which the stage packs into its struct.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    staged.set("efficiency", 0.5, entity=["Manchester Wind"], bus="Manchester")
+
+    own = staged.edits.attribute("efficiency")
+    assert "bus" not in own.columns, "the row carries the connection, not its bus"
+    assert own.project("connection").distinct().fetchall() == [
+        ({"entity": "Manchester Wind", "bus": "Manchester"},)
+    ]
+    assert list(_efficiency(staged)["Manchester"]) == [0.5]
+
+    child = root.child(staged.edits)
+    assert list(_efficiency(child.record)["Manchester"]) == [0.5]
+
+
+def test_an_omitted_group_coordinate_is_rejected(staged):
+    """No `bus=` would key a row by `{entity, NULL}`, which no connection matches.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    with pytest.raises(ValueError, match=r"\['bus'\] was not given"):
+        staged.set("efficiency", 0.5, entity=["Manchester Wind"])
+
+
+def test_a_frame_carries_a_group_as_its_struct(staged):
+    """A packed struct passes through, one key replacing the last.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    for value in (0.5, 0.25):
+        staged.set(
+            "efficiency",
+            staged.con.sql(
+                "SELECT {'entity': 'Manchester Wind', 'bus': 'Manchester'} "
+                f"AS connection, {value} AS value"
+            ),
+        )
+    assert list(_efficiency(staged)["Manchester"]) == [0.25], "one key, replaced"
+
+
+@pytest.mark.parametrize(
+    "select",
+    [
+        "'Manchester Wind' AS entity, 'Manchester' AS bus, 0.5 AS value",
+        "{'entity': 'Manchester Wind', 'bus': 'Manchester'} AS connection, "
+        "'Manchester' AS bus, 0.5 AS value",
+        "{'entity': 'Manchester Wind'} AS connection, 0.5 AS value",
+        "'Manchester' AS connection, 0.5 AS value",
+    ],
+    ids=["flat", "both", "partial-struct", "not-a-struct"],
+)
+def test_a_frame_carrying_a_group_but_as_its_struct_is_rejected(staged, select):
+    """Flat coordinates, beside the struct or not, or a wrong struct, are refused.
+
+    Notes
+    -----
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    with pytest.raises(ValueError, match="'connection'"):
+        staged.set("efficiency", staged.con.sql(f"SELECT {select}"))
+
+
+def test_an_expression_scoped_by_bus_derives_one_connection(staged):
+    """`bus=` scopes a derived value through the struct field.
+
+    Notes
+    -----
+    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
+    """
+    staged.set("efficiency", 0.5, entity=["Manchester Gas"], bus="Manchester")
+    staged.set(
+        "efficiency", nw.col("value") * 2, entity=["Manchester Gas"], bus="Manchester"
+    )
+    assert list(_efficiency(staged, "Manchester Gas")["Manchester"]) == [1.0]
+
+
+def test_a_result_takes_a_bus_keyword(staged):
+    """A result over `connection` is addressed by `bus=` like an input.
+
+    Notes
+    -----
+    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
+    """
+    staged.set("p", 1.0, entity=["Manchester Wind"], bus="Manchester", kind="outputs")
+    rows = _unpacked(staged.outputs["p"])
+    assert list(zip(rows["entity"], rows["bus"], strict=True)) == [
+        ("Manchester Wind", "Manchester")
+    ]
+
+
+def test_remove_drops_the_values_on_its_connections(staged, root):
+    """The entity tombstone reaches a connection attribute by the struct's entity.
+
+    The connection tuples are not cascaded to: `remove` stages the entity alone.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    """
+    assert _efficiency(staged), "the base carries a value to lose"
+    staged.set("efficiency", 0.5, entity=["Manchester Wind"], bus="Manchester")
+    staged.remove(GEN, ["Manchester Wind"])
+
+    assert _efficiency(staged) == {}, "neither the base's nor the staged values"
+    assert _efficiency(staged, "Manchester Gas"), "another entity keeps its own"
+
+    child = root.child(staged.edits)
+    assert _efficiency(child.record) == {}
+    assert _efficiency(child.record, "Manchester Gas")
+    assert "Manchester Wind" in set(_connections(child.record)["entity"]), (
+        "the tuples stand, dangling"
+    )
+
+
+def test_remove_then_add_keeps_the_parents_connection_values(staged, root):
+    """A re-added entity has its connections and their values back.
+
+    `add` replaces the staged tombstone, so nothing of the parent's is dropped.
+
+    Notes
+    -----
+    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    """
+    before = _efficiency(staged)
+    assert before, "the base carries a value to keep"
+    staged.remove(GEN, ["Manchester Wind"])
+    staged.add(GEN, pd.DataFrame([{"entity": "Manchester Wind"}]))
+
+    child = root.child(staged.edits)
+    assert _efficiency(child.record).keys() == before.keys()
+
+
+def _connections(record):
+    return unpacked(record.groups["connection"])
+
+
+def test_add_group_rejects_flat_coordinates(staged):
+    frame = pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
+    with pytest.raises(ValueError, match="pass 'connection' as one struct column"):
+        staged.add_group("connection", frame)
+
+
+def test_add_group_needs_the_struct_column(staged):
+    with pytest.raises(ValueError, match="needs a 'connection' column"):
+        staged.add_group("connection", pd.DataFrame([{"role": "attached"}]))
 
 
 def test_every_declared_group_reads_its_staged_rows(store, ac_dc):
@@ -969,18 +1152,20 @@ def test_every_declared_group_reads_its_staged_rows(store, ac_dc):
     staged = WorkingRecord(revision.record)
 
     staged.add_group(
-        "connection", pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}])
+        "connection",
+        pd.DataFrame([{"connection": {"entity": "Manchester Wind", "bus": "Norway"}}]),
     )
     staged.add_group(
-        "corridor", pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}])
+        "corridor",
+        pd.DataFrame([{"corridor": {"from": "Manchester Wind", "to": "Norway"}}]),
     )
 
-    connections = staged.groups["connection"].collect().to_native().to_pandas()
+    connections = unpacked(staged.groups["connection"])
     assert "Norway" in set(
         connections[connections["entity"] == "Manchester Wind"]["bus"]
     )
 
-    corridors = staged.groups["corridor"].collect().to_native().to_pandas()
+    corridors = unpacked(staged.groups["corridor"], "corridor")
     assert list(zip(corridors["from"], corridors["to"], strict=True)) == [
         ("Manchester Wind", "Norway")
     ], "the second group reads its own rows, not the first's"
@@ -1327,9 +1512,9 @@ def test_results_stage_and_read_back_without_committing(staged):
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
     assert list(staged.outputs) == []
-    staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
+    staged.set("p", 42.0, entity=["Manchester Wind"], bus="Manchester", kind="outputs")
 
-    rows = staged.outputs["p"].collect().to_native().to_pandas()
+    rows = _unpacked(staged.outputs["p"])
     assert dict(zip(rows["entity"], rows["value"], strict=True)) == {
         "Manchester Wind": 42.0
     }
@@ -1345,7 +1530,7 @@ def test_results_survive_a_commit_into_the_new_layer(staged, root, store):
     - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
     """
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
-    staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
+    staged.set("p", 42.0, entity=["Manchester Wind"], bus="Manchester", kind="outputs")
     child = root.child(staged.edits)
 
     rows = _layer_rows(child, "p", kind="outputs")
@@ -1427,7 +1612,7 @@ def test_a_results_value_keeps_its_declared_type(staged):
 
     # The other half: dropping the cast altogether would answer '42.0' here,
     # a number read back as the text the staging column holds it as.
-    staged.set("p", 42.0, entity=["Manchester Wind"], kind="outputs")
+    staged.set("p", 42.0, entity=["Manchester Wind"], bus="Manchester", kind="outputs")
     numeric = staged.outputs["p"].collect().to_native().to_pandas()
     assert numeric["value"].tolist() == [42.0], "a numeric result comes back a number"
 
@@ -1444,15 +1629,13 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, store):
     - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    frame = pd.DataFrame(
-        [
-            {"entity": "Manchester Wind", "value": 1.0},
-            {"entity": "0", "value": 2.0},
-        ]
+    frame = staged.con.sql(
+        "SELECT {'entity': entity, 'bus': NULL::VARCHAR} AS connection, value "
+        "FROM (VALUES ('Manchester Wind', 1.0), ('0', 2.0)) t(entity, value)"
     )
     staged.set("p", frame, kind="outputs")
 
-    rows = staged.outputs["p"].collect().to_native().to_pandas()
+    rows = _unpacked(staged.outputs["p"])
     assert dict(zip(rows["entity"], rows["value"], strict=True)) == {
         "Manchester Wind": 1.0,
         "0": 2.0,
@@ -1460,9 +1643,9 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, store):
 
     # And it survives the commit into the layer's own `outputs/`.
     child = root.child(staged.edits)
-    got = store.layer(child.id).outputs["p"].collect().to_native().to_pandas()
-    assert set(got["entity"]) == {"Manchester Wind", "0"}
-    assert "entity_type" not in got.columns
+    got = store.layer(child.id).outputs["p"]
+    assert set(_unpacked(got)["entity"]) == {"Manchester Wind", "0"}
+    assert "entity_type" not in got.collect_schema().names()
 
 
 def test_a_frame_carrying_component_type_is_rejected(staged):

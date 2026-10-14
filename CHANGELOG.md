@@ -13,6 +13,36 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- An attribute over a group carries it as one struct column named for the
+  group, a field per key coordinate (`connection STRUCT(entity, bus)`), in
+  place of the coordinates flat. This is an on-disk
+  format change: `inputs/` and `outputs/` files over a group are rewritten.
+  The dims a group draws on now broadcast, so a per-bus value with
+  `bus = NULL` holds for every bus, and patching one bus at a time needs
+  `bus` in `partial`. `WorkingRecord.set` still takes `bus=`; a long frame
+  carries the struct, its coordinates flat being rejected. Naming a group
+  beside a dim its key is named for (`dims={"connection", "bus"}`) is
+  rejected.
+- A group file is keyed by one struct column named for the group, as an
+  axis file is by its dim: `groups/connection.parquet` is
+  `connection STRUCT(entity, bus) | role | deleted`, an `into` label a plain
+  column beside it. This is an on-disk format change. `Record.groups[...]`
+  hands back that shape; `add_group` takes the struct column and rejects the
+  coordinates flat; `remove_group` still takes a tuple per key. The PyPSA
+  tool no longer declares `bus` as an attribute: a port's bus is the
+  connection tuple. `Schema.group_coordinates` and `Group.coordinates` are
+  gone.
+- `WorkingRecord.set(..., entity=...)` fills only a coordinate named
+  `entity`. An attribute over a group with no such field, a contract
+  `(from, to)`, takes every party as a keyword and refuses `entity=`; it
+  used to stage one duplicate row per entity of the type. `add` refuses a
+  frame carrying a group's columns without its full key, which used to
+  stage a half-keyed row. Likewise `set` on a group attribute without one
+  of its key coordinates (`set("efficiency", 0.9, entity=["dc"])`, no
+  `bus=`) is refused; it used to store a value no read reached.
+- A group may not share a dim's name, the entity-type group excepted: a
+  group is carried as a column named for it. Rename a functional group for
+  the relation, `bus_country` into `country`.
 - A `Workspace` holds the DuckDB connection and a `Store` one location;
   `connect`, `layer_dir`, `DATARECORD_BASE_URI`, `Record.at` and the process
   default connection are gone. A store's revisions live beside its layers as
@@ -64,6 +94,10 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- Removing an entity drops the values of every group row naming it, not only
+  where it is the group's first entity coordinate: a `contract` over
+  `(from, to)` loses its values when either party is removed, and
+  `flags(ctype)` counts such a row towards the type of each party.
 - Writing a layer whose `manifest.json` write keeps losing, as it does with a
   credential that can write the manifest but not read it, gives up after ten
   attempts with an error naming `s3:GetObject`, rather than looping forever.

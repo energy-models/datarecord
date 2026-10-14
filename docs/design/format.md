@@ -61,7 +61,7 @@ The rule: **an attribute naming exactly one addressing coordinate is a column on
 | `{"entity"}`, no type axis   | `dims/entity.parquet` — a column of the entity axis itself             |
 | `{"connection"}`             | `groups/connection.parquet` — the group's own file                     |
 | `{"scenario"}`               | `dims/scenario.parquet` — the axis file                                |
-| `{"country"}`                | `dims/country.parquet` — the axis file, a dim shadowing the group      |
+| `{"country"}`                | `dims/country.parquet` — the axis file                                 |
 | `{"entity", "snapshot"}`     | `inputs/<attr>.parquet`                                                |
 | `{"connection", "snapshot"}` | `inputs/<attr>.parquet`                                                |
 
@@ -78,14 +78,15 @@ So "varying" is not "has dims" but **"has dims beyond its address"**, and one ru
 
 So an entity type's constant frame is assembled from both: the non-varying columns, and the dim-NULL rows of the varying files.
 
-A [group](schema.md#groups)'s rows are in `groups/<group>.parquet`, keyed by that group's coordinates and carrying their own tombstones — `groups/connection.parquet` for the `connection` group over `(entity, bus)`.
+A [group](schema.md#groups)'s rows are in `groups/<group>.parquet`, keyed by that group's tuple and carrying their own tombstones — `groups/connection.parquet` for the `connection` group over `(entity, bus)`.
+**The file is keyed by one struct column named for the group**, `connection STRUCT(entity, bus) | role | deleted`, exactly as `dims/<dim>.parquet` is keyed by the column named for the dim: the column an attribute row carries the group as is the one the group's own file is keyed by, so no read or write converts between two shapes.
 A record with no such file has no rows of that group.
 
 **One file per group, never split by type.** A group's rows are keyed by its coordinates and `entity_type` is not one of them: splitting put `connection` rows for a `Link` and a `Line` in different files despite identical keys, forcing a union on every read and privileging `entity` among the coordinates. A `corridor` between two buses has no type to split on at all, and a `contract` between two entities has two — one per coordinate, neither of them the row's — so the split never generalised beyond the case it was written for.
 
 The [entity-type group](schema.md#entity_type-the-axis-of-kinds) is the one exception, its rows being the [entity axis file](#the-entity-axis) rather than a `groups/` file of their own: an entity's type is what its identity already states, so storing it twice is what would let the two disagree.
 
-A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a column of the group's file like any coordinate, so `groups/country.parquet` is `bus | country`. No column on the classified axis: `dims/bus.parquet` does not gain a `country`, the relation being the group's own file. That costs a join where a column read would have done, and buys a uniform rule — `into` decides nothing about storage, so nothing in the layout branches on it.
+A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a plain column of the group's file beside the key, so `groups/bus_country.parquet` is `bus_country STRUCT(bus) | country`. No column on the classified axis: `dims/bus.parquet` does not gain a `country`, the relation being the group's own file. That costs a join where a column read would have done, and buys a uniform rule — `into` decides nothing about storage, so nothing in the layout branches on it.
 
 ## The long schema
 
@@ -95,7 +96,8 @@ Every `inputs/` and `outputs/` file carries its attribute's own coordinates, the
 <coordinate> ... | attribute | breakpoint | value
 ```
 
-The coordinates are what the attribute's [`dims`](schema.md#attributespec) declare, with a [group](schema.md#groups) expanding to its coordinate names — so `inputs/efficiency.parquet` over the `connection` group carries `entity | bus`, and `inputs/p_max_pu.parquet` over `entity` and `snapshot` carries `entity | snapshot` and no `bus`.
+The coordinates are what the attribute's [`dims`](schema.md#attributespec) declare, groups first, with a [group](schema.md#groups) carried as **one struct column named for it**, a field per key coordinate — so `inputs/efficiency.parquet` over the `connection` group carries `connection STRUCT(entity, bus)`, and `inputs/p_max_pu.parquet` over `entity` and `snapshot` carries `entity | snapshot` and no `bus`.
+The writer rejects a group column that is not a struct of exactly the group's key: DuckDB casts a struct by field name, so a missing field would turn NULL and an extra one be dropped, silently re-keying every row.
 An attribute over one dim alone has no file here at all: it is [a column of that dim's own table](#where-a-value-lives).
 
 **Per attribute rather than schema-wide.** One attribute is one file, so one column set per file; a fixed prefix of `entity | bus` would put an all-NULL `entity` on a record-level weighting, claiming an entity the value has none of, and would privilege one group's spelling of `bus` over every other group's coordinates.
@@ -114,7 +116,7 @@ An `entity` identifies one entity across the whole record.
 Two types may not share one: a `Bus` and a `Generator` both called `north` are a collision, not two entities.
 
 That is what removes `entity_type` from every attribute key.
-An `inputs/` row addresses `(entity, bus, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
+An `inputs/` row addresses `(entity, connection, …, attribute)`, and the type it belongs to is recoverable but not part of the address.
 The alternative — carrying the type in the key — makes it an _entity's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
 
 **The entity axis carries the classification**, where a group [declares one](schema.md#entity_type-the-axis-of-kinds). `dims/entity.parquet` carries `entity_type` as a column, so `entity -> entity_type` is one read of one file rather than a glob over every type's — the [entity-type group](schema.md#entity_type-the-axis-of-kinds)'s rows, stored here rather than in `groups/` because an entity's type is part of the identity this file already states. A schema declaring no type axis has no such column and no types to recover; the rest of this section is the typed case.
@@ -126,7 +128,7 @@ That join is what the `entity_type` filter used to be, and it is against a relat
 
 Two things follow, and they are the reason to want this.
 An attribute row is addressed the way an entity is, so `set("p_nom", 150.0, entity=["wind1"])` needs no type: the entity determines it ([set](working-record.md#set)).
-And the inputs key loses a column, so the fold's key is `(entity, bus, *owned_per dims, attribute)` — one less column to compare NULL-safely in every join in [the read path](read-path.md).
+And the inputs key loses a column, so the fold's key is `(entity, connection, *owned_per dims, attribute)` — one less column to compare NULL-safely in every join in [the read path](read-path.md).
 
 **Enforced, not assumed.** [The writer](writing.md) rejects a record whose entity tables share an entity, and `add` rejects an entity the record already resolves under another type ([add / remove](working-record.md#add-remove)).
 A collision cannot be left to be discovered: it would silently merge two entities' attribute rows, since the rows themselves no longer record which type they meant.

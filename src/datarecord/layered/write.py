@@ -22,6 +22,7 @@ from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
 
+import narwhals as nw
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
@@ -375,6 +376,10 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
                 f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
             )
             raise ValueError(msg)
+        if kind == "attributes":
+            schema.check_group_columns(
+                schema.groups_of(key), _types(rel), carrier=f"inputs/{key}.parquet"
+            )
         return
 
     if kind == "dims":
@@ -432,15 +437,21 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
 
     if kind != "groups" or key not in schema.groups:
         return
-    # A group's row is keyed by its coordinates, `into` among them, so a frame
-    # lacking one would be keyed by a column that is not there.
-    missing = sorted(set(schema.group_coordinates(key)) - columns)
+    into = schema.groups[key].into
+    missing = sorted({key, *([into] if into else [])} - columns)
     if missing:
         msg = (
-            f"groups/{key}.parquet is missing the group's coordinates "
-            f"{missing}; the fold would key by a column that is not there (https://energy-models.github.io/datarecord/design/schema/#groups)"
+            f"groups/{key}.parquet is missing {missing}; a group file is keyed "
+            f"by one struct column named for the group, its `into` label beside "
+            f"it (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
         )
         raise ValueError(msg)
+    schema.check_group_columns([key], _types(rel), carrier=f"groups/{key}.parquet")
+
+
+def _types(rel: DuckDBPyRelation) -> nw.Schema:
+    """`rel`'s column types as narwhals dtypes, what `Schema` checks against."""
+    return nw.from_native(rel).collect_schema()
 
 
 class _RecordLikeAsLayerData:
