@@ -150,9 +150,7 @@ def test_a_write_failing_part_way_leaves_no_revision(workspace, bucket):
     source = _Source(
         _SCHEMA,
         dims={
-            "entity": pd.DataFrame(
-                {"entity": ["steel_dri"], "entity_type": ["Process"]}
-            )
+            "entity": pd.DataFrame({"entity": ["steel_dri"], "component": ["Process"]})
         },
         attributes={"p_nom": short},
     )

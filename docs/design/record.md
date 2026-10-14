@@ -81,7 +81,7 @@ The rest is data, and comes in two shapes.
 
 ```text
 dims["entity"]                     entity                              key columns only
-properties["entity"]               entity | entity_type | carrier | ... stored values
+properties["entity"]               entity | component | carrier | ... stored values
 groups["connection"]               connection STRUCT(entity, bus) | role | ...
 ```
 
@@ -192,7 +192,7 @@ class Flags:
 `flags()` answers for the whole record in one query, keyed by attribute.
 Only attributes with rows are present, so `set(record.flags())` also answers which attributes the record has at all.
 
-**`flags(**categories)`** answers for one category: the keywords are categorizing properties of one dim by their plain names, `entity_type="Generator"` rather than the [`subject.name`](schema.md#properties) a schema addresses one by, each one category or a list ([categories](#properties-and-categories)).
+**`flags(**categories)`** answers for one category: the keywords are categorizing properties of one dim by their plain names, `component="Generator"` rather than the [`subject.name`](schema.md#properties) a schema addresses one by, each one category or a list ([categories](#properties-and-categories)).
 Only rows reaching a matching label count — on the dim's own column, or through a group's single field over it — and only attributes those labels carry are present.
 Keywords categorizing several dims, or a group reaching the dim through two fields, are refused: there is no one label a row would count towards.
 

@@ -23,7 +23,7 @@ from tests.fixtures import (
     empty_child,
     empty_root,
     schema,
-    write_entity_type,
+    write_component,
     write_group,
     write_input,
     write_schema,
@@ -42,7 +42,7 @@ def written(store):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_entity_type(layer, "Generator", [{"entity": "wind"}])
+    write_component(layer, "Generator", [{"entity": "wind"}])
     write_group(
         layer, "connection", [{"connection": {"entity": "wind", "bus": "north"}}]
     )
@@ -116,10 +116,10 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
     """
     entity_axis = nw.from_native(
         store.workspace.con.sql(
-            "SELECT 'wind' AS entity, 'Generator' AS entity_type, FALSE AS deleted"
+            "SELECT 'wind' AS entity, 'Generator' AS component, FALSE AS deleted"
         )
     )
-    # `p_nom`'s own coordinates and no others: no `entity_type` in a long
+    # `p_nom`'s own coordinates and no others: no `component` in a long
     # row, and no `bus`, which is the connection group's coordinate rather than
     # a column every attribute carries.
     long = nw.from_native(
@@ -236,7 +236,7 @@ def test_flags_report_both_sets_where_components_disagree(store):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_entity_type(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
+    write_component(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
     write_input(
         layer,
         "p_max_pu",
@@ -285,7 +285,7 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
         ),
         store,
     )
-    write_entity_type(layer, "Generator", [{"entity": "wind"}])
+    write_component(layer, "Generator", [{"entity": "wind"}])
     write_input(layer, "p_nom", [{"entity": "wind", "value": 100.0}])
     write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
 
@@ -317,7 +317,7 @@ def test_node_record_orders_members(store):
     """
     root = empty_root(store)
     write_schema(schema(), store)
-    write_entity_type(
+    write_component(
         store.layer_dir(root.id),
         "Generator",
         [{"entity": "wind"}, {"entity": "gas"}, {"entity": "coal"}],
@@ -327,10 +327,10 @@ def test_node_record_orders_members(store):
     middle.materialise()
 
     child = empty_child(middle)
-    write_entity_type(store.layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
+    write_component(store.layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
     axis = Record(child.resolver).properties["entity"].collect().to_native().to_pandas()
-    names = list(axis[axis["entity_type"] == "Generator"]["entity"])
+    names = list(axis[axis["component"] == "Generator"]["entity"])
     assert names == ["wind", "gas", "coal", "New Solar"], (
         "first-introduced order: the root's members, then the child's addition"
     )
@@ -349,7 +349,7 @@ def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_entity_type(layer, "Generator", [{"entity": "wind"}])
+    write_component(layer, "Generator", [{"entity": "wind"}])
 
     assert "connection" not in store.layer(revision.id).groups
 

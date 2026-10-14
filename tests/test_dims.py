@@ -22,7 +22,7 @@ from tests.fixtures import (
     empty_root,
     relation,
     schema,
-    write_entity_type,
+    write_component,
     write_input,
     write_periods,
     write_schema,
@@ -44,7 +44,7 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store):
     """
     revision = empty_root(store)
     write_schema(schema(partial={"period"}), store)
-    write_entity_type(
+    write_component(
         store.layer_dir(revision.id), "Generator", [{"entity": "Manchester Wind"}]
     )
     write_periods(store.layer_dir(revision.id), [{"period": 2020}, {"period": 2030}])
@@ -86,7 +86,7 @@ def test_the_fold_unions_maps_by_name(store):
     """
     revision = empty_root(store)
     write_schema(schema(partial={"scenario", "period"}), store)
-    write_entity_type(
+    write_component(
         store.layer_dir(revision.id), "Generator", [{"entity": "Manchester Wind"}]
     )
     write_input(

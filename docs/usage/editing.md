@@ -23,9 +23,7 @@ w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per label, keyed
 w.set("p_max_pu", frame, entity=["wind1"])  # a long frame
 w.set("p_max_pu", series.rename_axis("snapshot"), entity="wind1")  # a series
 w.set("p_max_pu", 0.9)  # every label carrying it, now and later
-w.set(
-    "p_max_pu", 0.8, entity_type="Generator", carrier="wind"
-)  # the ones there are now
+w.set("p_max_pu", 0.8, component="Generator", carrier="wind")  # the ones there are now
 w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
 w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped to one scenario
 w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
@@ -35,11 +33,11 @@ w.set("p", solved_frame, kind="outputs")  # a result
 
 **Every coordinate is a keyword**, a group's fields included — `bus="north"` with `entity="dc"` addresses one connection, `from=`/`to=` one corridor. A coordinate no keyword names is NULL, which means "every label of it": on a categorized dim, every label whose categories carry the attribute, including ones added later. A group's fields must all be given or none, since a group value is a whole tuple ([design](../design/working-record.md#set)).
 
-**A property as a keyword selects labels at call time**: a keyword is bare, a coordinate of the attribute first, else a property of a dim it reaches, so `entity_type="Generator", carrier="wind"` stages one row per label matching both on the record as staged. A label added later is not reached; a plain NULL is how a value reaches those.
+**A property as a keyword selects labels at call time**: a keyword is bare, a coordinate of the attribute first, else a property of a dim it reaches, so `component="Generator", carrier="wind"` stages one row per label matching both on the record as staged. A label added later is not reached; a plain NULL is how a value reaches those.
 
 A mapping's keys or a series' index are labels of the one coordinate no keyword names, unless the series' index is named after a coordinate; where neither says, the call is refused rather than guessed.
 
-`set` writes **properties** too, a category included, each named by its subject: `set("entity.entity_type", "Load", entity="g1")` patches one column of `g1`'s axis row. A plain name is an attribute or result; `set("carrier", ...)` with only properties so called is refused, suggesting `entity.carrier`.
+`set` writes **properties** too, a category included, each named by its subject: `set("entity.component", "Load", entity="g1")` patches one column of `g1`'s axis row. A plain name is an attribute or result; `set("carrier", ...)` with only properties so called is refused, suggesting `entity.carrier`.
 
 An `nw.Expr` value is a **function of the current value**: it reads the resolved value including earlier pending edits, so two such calls compose, and what gets staged is the result rather than the expression ([design](../design/working-record.md#an-nwexpr-value-derived-from-the-current-one)). A named target that resolves to no row raises — the caller asked for those rows to take a new value and there is nothing to compute one from.
 
@@ -49,8 +47,8 @@ An `nw.Expr` value is a **function of the current value**: it reads the resolved
 import pandas as pd
 
 w.add("bus", ["north", "south"])
-w.add("entity", ["wind1", "wind2"], entity_type="Generator", carrier="wind")
-w.add("entity", ["dc"], entity_type="Link")
+w.add("entity", ["wind1", "wind2"], component="Generator", carrier="wind")
+w.add("entity", ["dc"], component="Link")
 w.set("p_nom", [100.0, 80.0], entity=["wind1", "wind2"])
 
 w.remove("entity", ["old_coal"])

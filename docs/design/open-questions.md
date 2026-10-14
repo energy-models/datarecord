@@ -34,7 +34,7 @@ SPDX-License-Identifier: CC-BY-4.0
   Creating a view binds its schema, so registering N attributes costs N footer reads; and catalog reopen cost is linear in view count, which argues for one catalog per record rather than one shared.
 
 - **What else a `Record` should answer about its labels without handing over a frame.** [`flags`](record.md#flags) sets the shape — cheap derived metadata a consumer plans against without opening a file — but answers only per attribute.
-  `entity -> entity_type` is now a column of the resolved axis, [names being unique record-wide](format.md#entity-is-unique-across-types), so it is one frame rather than one per type; "which categories have live labels" and "how many labels a category has" are still frames to collect.
+  `entity -> component` is now a column of the resolved axis, [names being unique record-wide](format.md#entity-is-unique-across-types), so it is one frame rather than one per type; "which categories have live labels" and "how many labels a category has" are still frames to collect.
   What is open is the granularity: those are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
   Whatever is chosen, it has to be answerable off the fold, which is where a record's membership already lives.
 

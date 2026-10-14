@@ -42,9 +42,9 @@ TYPES = (
     "Transformer",
     "Widget",
 )
-"""The `entity_type` labels `schema()` declares - every one a test writes."""
+"""The `component` labels `schema()` declares - every one a test writes."""
 
-# No `entity_type`: an attribute row is keyed by `name`, unique across every type
+# No `component`: an attribute row is keyed by `name`, unique across every type
 # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
 LONG_COLUMNS = [
     "entity",
@@ -189,20 +189,20 @@ def tombstone_connection(layer: str, pairs: list[tuple[str, str]]) -> None:
     )
 
 
-def write_entity_type(layer: str, ctype: str, rows: list[dict]) -> None:
+def write_component(layer: str, ctype: str, rows: list[dict]) -> None:
     """Append rows of category `ctype` to `dims/entity.parquet`.
 
-    The label is the `entity_type` property column; tombstones ride along as
+    The label is the `component` property column; tombstones ride along as
     `deleted`. Appended rather than replaced: several labels land in one entity
     axis, and a layer may write them one call at a time.
     """
     df = pd.DataFrame(rows)
-    df["entity_type"] = ctype
+    df["component"] = ctype
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["entity", "entity_type", "deleted"]
+    lead = ["entity", "component", "deleted"]
     entities = df[lead + [c for c in df.columns if c not in lead]]
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
@@ -219,7 +219,7 @@ def tombstone(layer: str, ctype: str, names: list[str]) -> None:
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    write_entity_type(
+    write_component(
         layer,
         ctype,
         [{"entity": n, "deleted": True} for n in names],
@@ -491,7 +491,7 @@ def schema(
     """A schema shaped like the PyPSA records most tests build on.
 
     Defaults match `PyPSA.to_datarecord`: the `entity` axis carrying the
-    `entity_type` property (categories `TYPES`), a `connection` group over
+    `component` property (categories `TYPES`), a `connection` group over
     `(entity, bus)`, and three declared dims. Override `partial` to pin a
     different layering granularity, `dims` to declare another axis, `groups` to
     declare a different sparse relation, `within` to nest one axis inside
@@ -519,7 +519,7 @@ def schema(
         for attr, spec in attrs.items():
             flat.setdefault(attr, spec)
         traits[ctype] = Trait(
-            attributes=frozenset(attrs), on={"entity.entity_type": frozenset({ctype})}
+            attributes=frozenset(attrs), on={"entity.component": frozenset({ctype})}
         )
     # Declared whether or not a caller named them: a test writing `p_max_pu`
     # needs it declared, and one passing `attributes=` is narrowing what a type
@@ -541,7 +541,7 @@ def schema(
             d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))
             for d, t in declared.items()
         },
-        properties={"entity": {"entity_type": PropertySpec(dtype=nw.Enum(TYPES))}},
+        properties={"entity": {"component": PropertySpec(dtype=nw.Enum(TYPES))}},
         attributes=flat,
         traits=traits,
         # The default names `connection`, which a caller's own `groups` may drop.

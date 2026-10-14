@@ -22,7 +22,7 @@ from datarecord import Workspace
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
-    ENTITY_TYPE,
+    COMPONENT,
     PyPSA,
     _colliding_names,
     _registry_schema,
@@ -35,7 +35,7 @@ from tests.fixtures import (
     relation,
     schema,
     unpacked,
-    write_entity_type,
+    write_component,
     write_input,
 )
 from tests.test_roundtrip import assert_networks_equal
@@ -154,15 +154,15 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
 
     Notes
     -----
-    - [entity types](https://energy-models.github.io/datarecord/design/schema/#entity_type-the-axis-of-kinds)
+    - [entity types](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision, store = exported, exported.store
     # Declared alongside PyPSA's own types, since the `Enum` pins the
     # vocabulary.
     declared = read_schema(store)
-    assert declared.categorizing("entity") == (ENTITY_TYPE,)
-    prop = declared.properties["entity"][ENTITY_TYPE]
+    assert declared.categorizing("entity") == (COMPONENT,)
+    prop = declared.properties["entity"][COMPONENT]
     assert isinstance(prop.dtype, nw.Enum), "PyPSA declares its types as an enum"
     write_schema(
         declared.model_copy(
@@ -171,7 +171,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
                     **declared.properties,
                     "entity": {
                         **declared.properties["entity"],
-                        ENTITY_TYPE: prop.model_copy(
+                        COMPONENT: prop.model_copy(
                             update={
                                 "dtype": nw.Enum([*prop.dtype.categories, "Widget"])
                             }
@@ -182,7 +182,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
         ),
         revision.store,
     )
-    write_entity_type(store.layer_dir(revision.id), "Widget", [{"entity": "w1"}])
+    write_component(store.layer_dir(revision.id), "Widget", [{"entity": "w1"}])
 
     missing = PyPSA.verify(revision.record)
     assert missing.categories == {"Widget"}
@@ -273,7 +273,7 @@ def test_verify_reports_a_missing_required_attribute(exported, ac_dc):
     revision, store = exported, exported.store
     # A Generator member with no connection row supplying its bus
     # (https://energy-models.github.io/datarecord/design/record/#connections).
-    write_entity_type(store.layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    write_component(store.layer_dir(revision.id), "Generator", [{"entity": "g1"}])
     # One file across every type, so the Generators' rows are dropped from it
     # rather than a per-type file being unlinked.
     path = Path(store.layer_dir(revision.id), "groups", "connection.parquet")
@@ -282,7 +282,7 @@ def test_verify_reports_a_missing_required_attribute(exported, ac_dc):
     entities = rows["connection"].map(lambda c: c["entity"])
     rows[~entities.isin(generators)].to_parquet(path, index=False)
 
-    write_entity_type(store.layer_dir(revision.id), "Line", [{"entity": "l1"}])
+    write_component(store.layer_dir(revision.id), "Line", [{"entity": "l1"}])
 
     missing = PyPSA.verify(revision.record)
     assert ("Generator", "bus") in missing.attributes
@@ -439,7 +439,7 @@ def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
 
     record = export_network(n, store).record
     entities = record.properties["entity"]
-    sub_networks = entities.filter(nw.col("entity_type") == "SubNetwork")
+    sub_networks = entities.filter(nw.col("component") == "SubNetwork")
     names = sub_networks.collect().to_pandas()["entity"]
     assert sorted(names) == [f"{i} SubNetwork" for i in range(4)]
     results = PyPSA.results(n, store.workspace.con)
@@ -526,9 +526,9 @@ def test_results_extracts_long_form_outputs(single_revision, solved):
     assert isinstance(results["p"], nw.LazyFrame)
     p = results["p"].collect()
     # The long schema's columns (https://energy-models.github.io/datarecord/design/record/), so the write path can persist it as-is -
-    # and no `entity_type`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+    # and no `component`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
     assert {"connection", "snapshot", "scenario", "period", "value"} <= set(p.columns)
-    assert "entity_type" not in p.columns
+    assert "component" not in p.columns
     assert set(p["attribute"].to_list()) == {"p"}
     # Series output: one row per (name, snapshot), for the Generator rows -
     # selected by name, since the frame no longer carries the type.
@@ -845,7 +845,7 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
     from datarecord.mutable import WorkingRecord
 
     sign = _registry_schema().properties["entity"]["sign"]
-    assert sign.default_by["entity.entity_type"]["Load"] == -1.0, (
+    assert sign.default_by["entity.component"]["Load"] == -1.0, (
         "PyPSA declares a load's sign through `default_by`"
     )
 
@@ -855,8 +855,8 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
     root = export_network(n, store)
 
     staged = WorkingRecord(root.record)
-    staged.add("entity", ["l1"], entity_type="Load")
-    staged.add("entity", ["su1"], entity_type="StorageUnit")
+    staged.add("entity", ["l1"], component="Load")
+    staged.add("entity", ["su1"], component="StorageUnit")
     staged.add_group(
         "connection",
         pd.DataFrame(

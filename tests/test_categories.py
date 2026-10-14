@@ -36,7 +36,7 @@ def categorized():
         },
         properties={
             "entity": {
-                "entity_type": PropertySpec(
+                "component": PropertySpec(
                     dtype=nw.Enum(["Bus", "Generator", "Link", "Load"])
                 ),
                 "carrier": PropertySpec(dtype=nw.Enum(["gas", "wind"])),
@@ -52,7 +52,7 @@ def categorized():
         traits={
             "generator": Trait(
                 attributes=frozenset({"p_max_pu"}),
-                on={"entity.entity_type": frozenset({"Generator"})},
+                on={"entity.component": frozenset({"Generator"})},
             ),
             "wind": Trait(
                 attributes=frozenset({"p_max_pu"}),
@@ -60,7 +60,7 @@ def categorized():
             ),
             "link": Trait(
                 attributes=frozenset({"efficiency"}),
-                on={"entity.entity_type": frozenset({"Link"})},
+                on={"entity.component": frozenset({"Link"})},
             ),
         },
         partial=frozenset({"entity", "bus", "connection"}),
@@ -73,10 +73,10 @@ def root(store, categorized):
     write_schema(categorized, store)
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
-    staged.add("entity", ["g1"], entity_type="Generator", carrier="gas")
-    staged.add("entity", ["w1"], entity_type="Load", carrier="wind")
-    staged.add("entity", ["l1"], entity_type="Load", carrier="gas")
-    staged.add("entity", ["b1"], entity_type="Bus")
+    staged.add("entity", ["g1"], component="Generator", carrier="gas")
+    staged.add("entity", ["w1"], component="Load", carrier="wind")
+    staged.add("entity", ["l1"], component="Load", carrier="gas")
+    staged.add("entity", ["b1"], component="Bus")
     return revision.child(staged.edits)
 
 
@@ -90,7 +90,7 @@ def _values(record, attribute: str) -> dict:
 def test_a_null_reaches_a_label_added_in_the_same_staged_record(root):
     staged = WorkingRecord(root.record)
     staged.set("p_max_pu", 0.9)
-    staged.add("entity", ["g2"], entity_type="Generator")
+    staged.add("entity", ["g2"], component="Generator")
     assert _values(staged, "p_max_pu") == {"g1": 0.9, "w1": 0.9, "g2": 0.9}, (
         "every generator and every wind entity, never the bus or the gas load"
     )
@@ -101,7 +101,7 @@ def test_a_null_reaches_a_label_added_in_an_unmaterialised_child(root):
     staged.set("p_max_pu", 0.9)
     layer = root.child(staged.edits)
     later = WorkingRecord(layer.record)
-    later.add("entity", ["g2"], entity_type="Generator", carrier="gas")
+    later.add("entity", ["g2"], component="Generator", carrier="gas")
     child = layer.child(later.edits)
     assert _values(child.record, "p_max_pu") == {"g1": 0.9, "w1": 0.9, "g2": 0.9}, (
         "a generator added below the broadcast is reached by it"
@@ -111,7 +111,7 @@ def test_a_null_reaches_a_label_added_in_an_unmaterialised_child(root):
 def test_a_null_no_label_carries_reaches_nothing(store, categorized):
     write_schema(categorized, store)
     staged = WorkingRecord(empty_root(store).record)
-    staged.add("entity", ["l1"], entity_type="Load", carrier="gas")
+    staged.add("entity", ["l1"], component="Load", carrier="gas")
     staged.set("p_max_pu", 0.9)
     assert "p_max_pu" not in staged.attributes, "no generator and no wind entity"
 
@@ -121,13 +121,13 @@ def test_a_re_categorized_label_drops_out_of_the_broadcast(root):
     staged.set("p_max_pu", 0.5, entity="g1")
     explicit = root.child(staged.edits)
     staged = WorkingRecord(explicit.record)
-    staged.add("entity", ["g2"], entity_type="Generator", carrier="gas")
+    staged.add("entity", ["g2"], component="Generator", carrier="gas")
     staged.set("p_max_pu", 0.9)
     broadcast = explicit.child(staged.edits)
     assert _values(broadcast.record, "p_max_pu") == {"g1": 0.9, "g2": 0.9, "w1": 0.9}
 
     staged = WorkingRecord(broadcast.record)
-    staged.add("entity", ["g1", "g2"], entity_type="Load", carrier="gas")
+    staged.add("entity", ["g1", "g2"], component="Load", carrier="gas")
     re_categorized = broadcast.child(staged.edits)
     assert _values(re_categorized.record, "p_max_pu") == {"g1": 0.5, "w1": 0.9}, (
         "g2 is out of the broadcast's reach, g1's explicit row stays"
@@ -137,8 +137,8 @@ def test_a_re_categorized_label_drops_out_of_the_broadcast(root):
 def test_a_null_over_a_group_reaches_the_tuples_carrying_it(store, categorized):
     write_schema(categorized, store)
     staged = WorkingRecord(empty_root(store).record)
-    staged.add("entity", ["k1"], entity_type="Link")
-    staged.add("entity", ["g1"], entity_type="Generator")
+    staged.add("entity", ["k1"], component="Link")
+    staged.add("entity", ["g1"], component="Generator")
     staged.add("bus", ["b0", "b1"])
     staged.add_group(
         "connection",

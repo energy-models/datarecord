@@ -22,7 +22,7 @@ All notable changes to datarecord are documented here. The format follows
   property `into` the dim instead.
 - **A property's name is its subject's**, addressed as `subject.name`:
   `set("entity.carrier", ...)`, a trait's `on` and bundled properties, and
-  `default_by` keys (`{"entity.entity_type": {...}}`). A plain name is an
+  `default_by` keys (`{"entity.component": {...}}`). A plain name is an
   attribute or result; one only properties are called is refused naming
   their dotted forms. One name, one spec now holds across attributes and
   results only, so a property may share its name with an attribute, a dim
@@ -47,11 +47,11 @@ All notable changes to datarecord are documented here. The format follows
   whatever its `dims`, is stored in `inputs/`. On reading, `dims[dim]` holds
   key columns only, `properties[subject]` the stored property values, and
   `attributes` every attribute; `entity_types` is gone and `flags` takes
-  categories (`flags(entity_type="Generator")`). `WorkingRecord` edits any
+  categories (`flags(component="Generator")`). `WorkingRecord` edits any
   dim: `add(dim, labels, **properties)`, `remove(dim, labels)` (cascading to
   group tuples), and `set(name, value, **coords)` writing attributes and
   properties alike, a categorizing property keyword selecting labels at call
-  time; `set` loses `indexed_by`. The PyPSA tool declares `entity_type`,
+  time; `set` loses `indexed_by`. The PyPSA tool declares `component`,
   `carrier`, `sign` and `type` as properties of `entity` and `role` of
   `connection`, with `partial={"entity", "scenario", "connection"}`. Every
   manifest and record is rewritten.

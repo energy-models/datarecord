@@ -25,9 +25,9 @@ from datarecord import Workspace
 ws = Workspace()
 record = ws.at("s3://bucket/my-record/")
 
-record.entity_types["Generator"].collect()  # wide member rows
+record.properties["entity"].collect()  # one row per entity, its properties
 record.attributes["p_max_pu"].collect()  # long value rows
-record.flags("Generator")  # which axes each attribute uses
+record.flags(component="Generator")  # which axes each attribute uses
 ```
 
 ## Where to go

@@ -79,10 +79,10 @@ TIMESTEP = "timestep"
 # weighting is renamed on the way in and back to `weight` on build.
 SCENARIO_WEIGHT = "scenario_weight"
 ENTITY, BUS, CONNECTION = "entity", "bus", "connection"
-ENTITY_TYPE = "entity_type"
-#: `entity_type` as a trait's `on` and a `default_by` name it, by its subject.
-BY_TYPE = f"{ENTITY}.{ENTITY_TYPE}"
-#: The registry inputs declared as properties of `entity`, beside `entity_type`:
+COMPONENT = "component"
+#: `component` as a trait's `on` and a `default_by` name it, by its subject.
+BY_COMPONENT = f"{ENTITY}.{COMPONENT}"
+#: The registry inputs declared as properties of `entity`, beside `component`:
 #: what describes a component rather than data a model optimises against.
 ENTITY_PROPERTIES = ("carrier", "sign", "type")
 #: A property of the `connection` group, its port vocabulary being this tool's.
@@ -1203,7 +1203,7 @@ class PyPSATool(Tool):
         computed one names what the record must actually supply.
         """
         known = self.component_types()
-        ctypes = {ct for ct in _entity_types(record) if ct in known}
+        ctypes = {ct for ct in _components(record) if ct in known}
         return Requirements(
             dims=REQUIRED_DIMS,
             categories=frozenset(ctypes),
@@ -1225,7 +1225,7 @@ class PyPSATool(Tool):
         renamed or computed attribute is checked against its sources
         (`Schema.sources`), which is also how it is reported.
 
-        Row ownership and curves are read per type, from `flags(entity_type=...)`.
+        Row ownership and curves are read per type, from `flags(component=...)`.
 
         The key checks come first and return early: the owner-map fold keys
         its relations by those dims, so reading the map at all could raise a
@@ -1260,7 +1260,7 @@ class PyPSATool(Tool):
         known = self.component_types()
         declared = record.schema
         read: dict[str, _TypeMembers] = {}
-        ctypes = _entity_types(record)
+        ctypes = _components(record)
         connection_frame = _connection_frame(record) if known & set(ctypes) else None
         for ctype in ctypes:
             # A type PyPSA has no registry entry for, though the record's own
@@ -1271,8 +1271,8 @@ class PyPSATool(Tool):
             if ctype not in known:
                 categories.add(ctype)
                 continue
-            specs = declared.attributes_for(ENTITY, **{ENTITY_TYPE: ctype})
-            resolved = record.flags(**{ENTITY_TYPE: ctype})
+            specs = declared.attributes_for(ENTITY, **{COMPONENT: ctype})
+            resolved = record.flags(**{COMPONENT: ctype})
             # A curve, not a scalar (https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows). PyPSA takes a scalar for every
             # attribute this build assigns, so the record is storing something
             # correct that this translation cannot express - reported here
@@ -1294,8 +1294,7 @@ class PyPSATool(Tool):
                     # with no row anywhere (the broadcast rule).
                     if (
                         src in specs
-                        and declared.default_for(src, **{ENTITY_TYPE: ctype})
-                        is not None
+                        and declared.default_for(src, **{COMPONENT: ctype}) is not None
                     ):
                         continue
                     attributes.add((ctype, src))
@@ -1364,7 +1363,7 @@ class PyPSATool(Tool):
             # Frames are built and released per type, so peak memory is one
             # type's wide frames rather than the whole network (https://energy-models.github.io/datarecord/design/tools/).
             attributes = {}
-            carried = schema.attributes_for(ENTITY, **{ENTITY_TYPE: ctype})
+            carried = schema.attributes_for(ENTITY, **{COMPONENT: ctype})
             for attr, flags in flagged.items():
                 if attr not in carried:
                     continue
@@ -1397,7 +1396,7 @@ class PyPSATool(Tool):
         Keyed by attribute, matching `outputs/<attr>.parquet`: every component
         type's rows for one attribute are concatenated into one frame, exactly as
         `attributes` presents `inputs/`. The union needs no
-        `entity_type` to tell the arms apart. Which attributes count as
+        `component` to tell the arms apart. Which attributes count as
         results comes from PyPSA's registry, so an upgrade that adds one is
         picked up, by the same rule the schema declares `results` by: a per-port
         result (`p0`, `p1`, a Generator's `p`) is one `p` row per connection,
@@ -1540,7 +1539,7 @@ def _port_spec(
 def _with_default_by(
     attributes: dict[str, AttributeSpec], by_type: dict[str, dict[str, Any]]
 ) -> dict[str, AttributeSpec]:
-    """`attributes`, each given `default_by` over `entity_type` where a type's default differs.
+    """`attributes`, each given `default_by` over `component` where a type's default differs.
 
     Parameters
     ----------
@@ -1558,7 +1557,9 @@ def _with_default_by(
             ct: v for ct, v in defaults_of.items() if not _same(v, spec.default)
         }
         if differing:
-            widened[name] = spec.model_copy(update={"default_by": {BY_TYPE: differing}})
+            widened[name] = spec.model_copy(
+                update={"default_by": {BY_COMPONENT: differing}}
+            )
     return widened
 
 
@@ -1591,7 +1592,7 @@ def _registry_schema() -> RecordSchema:
     `default_by` (`_with_default_by`). A per-port column collapses to its stem
     (`_port_spec`), and a port's bus is the `connection` tuple itself.
 
-    The properties of `entity` are `entity_type`, an `Enum` over the
+    The properties of `entity` are `component`, an `Enum` over the
     registry's types so a type outside it is refused on write, and
     `ENTITY_PROPERTIES`; `role` is a property of `connection`. Every other
     input, each axis weighting (`_WEIGHTINGS`) over its axis included, is an
@@ -1664,7 +1665,7 @@ def _registry_schema() -> RecordSchema:
             attributes=frozenset(
                 f"{ENTITY}.{a}" if a in properties else a for a in carried
             ),
-            on={BY_TYPE: frozenset({ctype})},
+            on={BY_COMPONENT: frozenset({ctype})},
         )
         for ctype, carried in carries.items()
     }
@@ -1688,7 +1689,7 @@ def _registry_schema() -> RecordSchema:
         },
         properties={
             ENTITY: {
-                ENTITY_TYPE: PropertySpec(
+                COMPONENT: PropertySpec(
                     dtype=nw.Enum(ctypes),
                     description="What kind of entity an entity is.",
                 ),
@@ -1780,7 +1781,7 @@ class _NetworkSource:
                 attributes.setdefault(
                     name, AttributeSpec(dtype=dtype, dims=frozenset({ENTITY}))
                 )
-            trait = traits.get(ctype, Trait(on={BY_TYPE: frozenset({ctype})}))
+            trait = traits.get(ctype, Trait(on={BY_COMPONENT: frozenset({ctype})}))
             traits[ctype] = trait.model_copy(
                 update={"attributes": trait.attributes | frozenset(columns)}
             )
@@ -1825,7 +1826,7 @@ class _NetworkSource:
     def _entity_frame(self) -> pd.DataFrame:
         """Every exported type's members and their properties.
 
-        One row per entity, typed by the `entity_type` column; a property
+        One row per entity, typed by the `component` column; a property
         one type lacks is NULL on that type's rows.
 
         Notes
@@ -1834,14 +1835,14 @@ class _NetworkSource:
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
         frames = [
-            self._static_frame(c.name).assign(**{ENTITY_TYPE: c.name})
+            self._static_frame(c.name).assign(**{COMPONENT: c.name})
             for c in self.n.components
             if _exported(c)
         ]
         if not frames:
-            return pd.DataFrame(columns=[ENTITY, ENTITY_TYPE, "deleted"])
+            return pd.DataFrame(columns=[ENTITY, COMPONENT, "deleted"])
         merged = pd.concat(frames, ignore_index=True)
-        lead = [ENTITY, ENTITY_TYPE, "deleted"]
+        lead = [ENTITY, COMPONENT, "deleted"]
         return merged[[*lead, *(c for c in merged.columns if c not in lead)]]
 
     @property
@@ -2722,21 +2723,21 @@ def _port_columns(
     }
 
 
-def _entity_types(record: RecordLike) -> list[str]:
-    """The `entity_type` labels `record`'s entity axis has members of, sorted."""
+def _components(record: RecordLike) -> list[str]:
+    """The `component` labels `record`'s entity axis has members of, sorted."""
     frame = record.properties.get(ENTITY)
-    if frame is None or ENTITY_TYPE not in frame.collect_schema().names():
+    if frame is None or COMPONENT not in frame.collect_schema().names():
         return []
-    labels = to_relation(frame).project(col(ENTITY_TYPE)).distinct().fetchall()
+    labels = to_relation(frame).project(col(COMPONENT)).distinct().fetchall()
     return sorted(str(label) for (label,) in labels if label is not None)
 
 
 def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
     """`ctype`'s members in axis order, with the properties it carries, defaults applied.
 
-    The static frame PyPSA's `n.<type>` starts from, `entity_type` left out;
+    The static frame PyPSA's `n.<type>` starts from, `component` left out;
     `build` joins the entity-only attribute rows to it. `None` where the
-    record has no `entity_type` property on its entity axis.
+    record has no `component` property on its entity axis.
 
     Notes
     -----
@@ -2744,13 +2745,13 @@ def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
     - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
     """
     schema = record.schema
-    if ENTITY_TYPE not in schema.categorizing(ENTITY):
+    if COMPONENT not in schema.categorizing(ENTITY):
         return None
-    rel = matching(to_relation(record.properties[ENTITY]), {ENTITY_TYPE: (ctype,)})
+    rel = matching(to_relation(record.properties[ENTITY]), {COMPONENT: (ctype,)})
     names = carried_properties(schema, ENTITY, rel)
     key = schema.axis_key(ENTITY)
     defaulted = with_defaults(schema, ENTITY, rel, key, names, _connection(record))
-    return defaulted.project(star(exclude=[ENTITY_TYPE]))
+    return defaulted.project(star(exclude=[COMPONENT]))
 
 
 # The tool is a module-level singleton, imported rather than looked up by
