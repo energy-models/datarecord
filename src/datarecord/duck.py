@@ -408,3 +408,42 @@ def fold_axis(
         *(["deleted"] if has_deleted else []),
     ]
     return winners.order("_first").project(star(exclude=scaffold))
+
+
+def dead_keys(
+    axes: Sequence[DuckDBPyRelation | None],
+    key: tuple[str, ...],
+    con: DuckDBPyConnection,
+) -> DuckDBPyRelation | None:
+    """The keys `fold_axis` drops: those whose deepest row is a tombstone.
+
+    A hash aggregate rather than `fold_axis`'s window, there being no row to
+    carry and no order to keep. `None` where no layer carries a `deleted`
+    column, so nothing is dead.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    present = [(depth, rel) for depth, rel in enumerate(axes) if rel is not None]
+    if not any("deleted" in rel.columns for _, rel in present):
+        return None
+    layers = [
+        rel.project(
+            *(col(c) for c in key),
+            lit(depth).alias("_depth"),
+            (
+                coalesce(col("deleted"), lit(False))  # noqa: FBT003
+                if "deleted" in rel.columns
+                else lit(False)  # noqa: FBT003
+            ).alias("_dead"),
+        )
+        for depth, rel in present
+    ]
+    deepest = union_all_by_name(layers, con).aggregate(
+        [
+            *(col(c) for c in key),
+            fn.arg_max(col("_dead"), col("_depth")).alias("_dead"),
+        ]
+    )
+    return deepest.filter(col("_dead")).project(*(col(c) for c in key))

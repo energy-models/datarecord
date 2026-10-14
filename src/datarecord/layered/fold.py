@@ -116,6 +116,8 @@ class Fold:
     owner_map
         The resolved `inputs` owner map: `(input_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per owned key.
+    dead
+        Each `resolve.mortal` coordinate's dead labels, where it has any.
     """
 
     schema: Schema
@@ -123,6 +125,7 @@ class Fold:
     groups: dict[str, DuckDBPyRelation]
     entity_types: dict[str, DuckDBPyRelation]
     owner_map: DuckDBPyRelation
+    dead: dict[str, DuckDBPyRelation]
 
     @property
     def entity_axis(self) -> DuckDBPyRelation | None:
@@ -248,6 +251,7 @@ class Fold:
             groups=_read_dir(f"{base}groups/", con),
             entity_types=_read_dir(f"{base}dims/entity_type/", con),
             owner_map=owner_map,
+            dead=_read_dir(f"{base}dead/", con),
         )
 
 
@@ -259,8 +263,7 @@ def entity_coordinates(
     `entity` itself, and each key coordinate over `entity` of every keyed
     group's struct: a connection row has no top-level `entity`, its entity
     riding inside `connection`, and a group drawing twice on `entity` - a
-    contract `(from, to)` - names both. A row naming none belongs to no type and
-    no entity tombstone reaches it.
+    contract `(from, to)` - names both. A row naming none belongs to no type.
 
     Parameters
     ----------

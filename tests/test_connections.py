@@ -267,31 +267,16 @@ def test_connection_tombstone_removes_one_connection(store):
     assert _efficiencies(child) == {"h2_north": 2.1, "dri": 1.0}
 
 
-def test_component_tombstone_does_not_cascade_to_its_connections(store):
-    """Deleting a component does not auto-remove its connections; the author does.
-
-    A component tombstone drops the component from the entity axis, but its
-    connection rows stay in `groups/connection.parquet` — deletion is not
-    cascaded across membership relations, so the two must be kept consistent by
-    hand. Removing the component *and* its connections is what clears both.
+def test_a_component_tombstone_reaches_its_connections_through_theirs(store):
+    """The fold infers nothing from the entity: the tuples' own tombstones clear them.
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
     """
     root = _root(store)
     root.materialise()
 
-    # The component alone: its connections survive, dangling, but not their
-    # values - the entity tombstone reaches the entity inside `connection`.
-    child = empty_child(root)
-    tombstone(store.layer_dir(child.id), PROCESS, ["steel_dri"])
-    frame = child.resolver.group_frame("connection")
-    assert frame is not None
-    assert frame.count("*").fetchone() == (3,), "the tuples are not cascaded to"
-    assert _efficiencies(child) == {}, "the entity's tombstone drops their values"
-
-    # The connections too: now both are gone.
     both = empty_child(root)
     tombstone(store.layer_dir(both.id), PROCESS, ["steel_dri"])
     tombstone_connection(
@@ -365,7 +350,7 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
 def test_a_group_outside_partial_is_owned_whole(store):
     """Not `partial`, a layer touching one connection owns them all.
 
-    A removed entity's values still go, though no owner key names it.
+    A removed tuple's values still go, though no owner key names it.
 
     Notes
     -----
@@ -382,8 +367,126 @@ def test_a_group_outside_partial_is_owned_whole(store):
     assert _efficiencies(child) == {"h2_north": 9.9}, "the child restates the attribute"
 
     gone = empty_child(root)
-    tombstone(store.layer_dir(gone.id), PROCESS, ["steel_dri"])
-    assert _efficiencies(gone) == {}
+    tombstone_connection(store.layer_dir(gone.id), [("steel_dri", "iron_ore")])
+    assert _efficiencies(gone) == {"h2_north": 2.1, "dri": 1.0}
+
+
+def _connection_frame(staged, entity, bus):
+    """A one-tuple `connection` frame for `add_group`."""
+    return staged.con.sql(
+        f"SELECT {{'entity': '{entity}', 'bus': '{bus}'}}"
+        "::STRUCT(entity VARCHAR, bus VARCHAR) AS connection"
+    )
+
+
+def test_remove_tombstones_the_tuples_naming_the_entity(store):
+    """`remove` writes the cascade: the connections go, and their values with them.
+
+    Notes
+    -----
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    """
+    root = _root(store)
+    staged = WorkingRecord(root.record)
+    staged.remove(PROCESS, ["steel_dri"])
+    assert len(staged.groups["connection"].collect()) == 0, "every tuple names it"
+    assert "efficiency" not in staged.attributes, "no owned key is left"
+
+    child = root.child(staged.edits)
+    assert len(child.record.groups["connection"].collect()) == 0
+    assert _efficiencies(child) == {}
+
+
+def test_the_writer_refuses_a_tuple_naming_a_removed_entity(store):
+    """Below a materialised node too: the dead labels survive in its cache.
+
+    Notes
+    -----
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    """
+    root = _root(store)
+    staged = WorkingRecord(root.record)
+    staged.remove(PROCESS, ["steel_dri"])
+    removed = root.child(staged.edits)
+    removed.materialise()
+
+    revived = WorkingRecord(removed.record)
+    revived.add_group("connection", _connection_frame(revived, "steel_dri", "dri"))
+    with pytest.raises(ValueError, match=r"a removed entity in 'entity'"):
+        removed.child(revived.edits)
+
+
+def test_a_tuple_an_ancestor_left_dangling_fails_no_later_write(store):
+    """The writer checks what a layer does, not what it inherits.
+
+    Notes
+    -----
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    """
+    root = _root(store)
+    dangling = empty_child(root)
+    tombstone(store.layer_dir(dangling.id), PROCESS, ["steel_dri"])
+
+    staged = WorkingRecord(dangling.record)
+    staged.add(PROCESS, staged.con.sql("SELECT 'blast_furnace' AS entity"))
+    child = dangling.child(staged.edits)
+    assert "blast_furnace" in set(_entity_type_frame(child).df()["entity"])
+
+
+def test_set_requires_every_party_to_exist(store):
+    """The buyer need not carry `price`, but it must be an entity.
+
+    Notes
+    -----
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    """
+    staged = WorkingRecord(_contract_root(store).record)
+    contract: dict[str, Any] = {"from": "plant", "to": "nobody"}
+    with pytest.raises(KeyError, match="nobody"):
+        staged.set("price", 3.0, **contract)
+
+
+def test_a_removed_tuple_outside_partial_stays_removed_past_a_cache(store):
+    """Its values are owned per attribute, so only the cached dead tuples drop them.
+
+    Notes
+    -----
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/#dead-labels-survive-materialisation)
+    """
+    root = _root(store)
+    write_schema(schema(partial={"scenario"}), store)
+    dead = Path(store.resolved_dir(root.id), "dead")
+    root.materialise()
+    assert not dead.exists() or not any(dead.iterdir()), "nothing dead, no file"
+
+    staged = WorkingRecord(root.record)
+    staged.remove(PROCESS, ["steel_dri"])
+    removed = root.child(staged.edits)
+    removed.materialise()
+    assert Path(store.resolved_dir(removed.id), "dead", "connection.parquet").exists()
+
+    leaf = empty_child(removed)
+    assert _efficiencies(leaf) == {}
+
+
+def test_readding_a_tuple_outside_partial_revives_its_values(store):
+    """Owned per attribute, not per tuple: the root's value is the owner again.
+
+    Notes
+    -----
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/#re-adding-a-label-revives-its-unkeyed-values)
+    """
+    root = _root(store)
+    write_schema(schema(partial={"scenario"}), store)
+    staged = WorkingRecord(root.record)
+    staged.remove(PROCESS, ["steel_dri"])
+    removed = root.child(staged.edits)
+    removed.materialise()
+
+    revived = WorkingRecord(removed.record)
+    revived.add(PROCESS, revived.con.sql("SELECT 'steel_dri' AS entity"))
+    revived.add_group("connection", _connection_frame(revived, "steel_dri", "dri"))
+    assert _efficiencies(removed.child(revived.edits)) == {"dri": 1.0}
 
 
 # -- a group drawing twice on `entity` --------------------------------------
@@ -438,24 +541,22 @@ def _prices(record) -> dict[str, float]:
     return {c["to"]: v for c, v in zip(df["contract"], df["value"], strict=True)}
 
 
-def test_an_entity_tombstone_reaches_a_groups_second_entity(store):
-    """Removing the buyer drops its contract's values, as removing the seller would.
-
-    Every key coordinate over `entity` names an owner, so a row dies when any of
-    them is tombstoned; the contract tuple stands, as a connection's does.
+def test_remove_reaches_a_groups_second_entity(store):
+    """Removing the buyer removes its contract, as removing the seller would.
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
     """
     root = _contract_root(store)
     assert _prices(root.record) == {"mill": 10.0, "smelter": 20.0}
 
-    child = empty_child(root)
-    tombstone(store.layer_dir(child.id), BUYER, ["mill"])
+    staged = WorkingRecord(root.record)
+    staged.remove(BUYER, ["mill"])
+    child = root.child(staged.edits)
     assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
     contracts = child.record.groups["contract"].collect().to_native()
-    assert len(contracts) == 2, "the tuples are not cascaded to"
+    assert len(contracts) == 1, "its tuple went with it"
 
 
 def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):

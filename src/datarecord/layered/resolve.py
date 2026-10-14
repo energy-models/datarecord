@@ -39,6 +39,7 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import (
     DuckTypes,
+    dead_keys,
     distinct_values,
     ensure_local_dir,
     fn,
@@ -49,7 +50,7 @@ from datarecord.duck import (
     try_read_parquet,
     union_all_by_name,
 )
-from datarecord.layered.fold import Fold, entity_coordinates
+from datarecord.layered.fold import Fold
 from datarecord.layered.sources import LayerSource, ParquetLayer
 from datarecord.record import Flags
 from datarecord.schema import LAYER_COLUMN, Schema
@@ -138,7 +139,61 @@ def resolve_coords(
         schema=schema,
         axes=axes,
         groups=resolve_groups(schema, base, above, con),
+        dead=_resolve_dead(schema, base, above, present, con),
     )
+
+
+def mortal(schema: Schema) -> tuple[str, ...]:
+    """The coordinates a fold keeps the dead labels of.
+
+    One the owner map does not key, whose values naming a dead label only the
+    read can drop (`_living`), and a dim a group's tuples name, which the
+    writer checks them against (`write._require_living_tuples`). A keyed
+    coordinate's values the fold drops itself (`fold_inputs`).
+
+    Notes
+    -----
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    """
+    drawn = {d for g in schema.group_columns for d in schema.groups[g].over.values()}
+    unkeyed = set(schema.broadcast_dims) - set(schema.partial_dims)
+    return tuple(
+        c for c in (*schema.dims, *schema.group_columns) if c in drawn | unkeyed
+    )
+
+
+def _resolve_dead(
+    schema: Schema,
+    base: Fold | None,
+    above: Sequence[LayerSource],
+    present: Sequence[set[str]],
+    con: DuckDBPyConnection,
+) -> dict[str, DuckDBPyRelation]:
+    """Each `mortal` coordinate's dead labels: those whose winning row is a tombstone.
+
+    The base's resolved axes and groups are tombstone-free, so its dead labels
+    seed depth 0 from its own cache, a label a layer above restates reviving.
+    Absent where nothing is dead.
+
+    Notes
+    -----
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/#dead-labels-survive-materialisation)
+    """
+    dead = {}
+    for name in mortal(schema):
+        if name in schema.groups:
+            key: tuple[str, ...] = (name,)
+            rows = [source.group(name) for source in above]
+        else:
+            key = schema.axis_key(name)
+            rows = [s.axis(name) for s, names in zip(above, present) if name in names]
+        seed = None if base is None else base.dead.get(name)
+        if seed is not None:
+            seed = seed.project(*(col(c) for c in key), lit(True).alias("deleted"))  # noqa: FBT003
+        rel = dead_keys([seed, *rows], key, con)
+        if rel is not None:
+            dead[name] = rel
+    return dead
 
 
 def resolve_groups(
@@ -193,6 +248,8 @@ class Coords:
         Each declared group's folded relation, keyed by its struct column,
         carrying its static columns, in member order - a group folds like an
         axis, no owner map. Absent where no layer wrote a row.
+    dead : dict of str to DuckDBPyRelation
+        Each `mortal` coordinate's dead labels, keyed as its axis or group.
 
     Notes
     -----
@@ -204,6 +261,7 @@ class Coords:
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
     groups: dict[str, DuckDBPyRelation] = field(default_factory=dict)
+    dead: dict[str, DuckDBPyRelation] = field(default_factory=dict)
 
     def expand_dims(
         self, rel: DuckDBPyRelation, layer_keys: tuple[str, ...]
@@ -379,24 +437,27 @@ def _shared(
 def _living(
     rel: DuckDBPyRelation, keys: Coords, unkeyed: Sequence[str]
 ) -> DuckDBPyRelation:
-    """`rel` without the rows naming, in one of `unkeyed`, an entity since removed.
+    """`rel` without the rows naming, in one of `unkeyed`, a dead label.
 
-    The fold drops a removed entity's rows by anti-joining the owner map on the
-    entities its key names. `entity` or a group outside `partial` is no key
-    column, so the fold cannot reach the rows naming an entity there: they are
-    dropped here instead, against the resolved entity axis.
+    The fold drops a removed label's rows by anti-joining the owner map on its
+    key. A coordinate outside `partial` is no key column, so the fold cannot
+    reach the rows naming a label there: they are dropped here instead, against
+    that coordinate's dead labels (`Coords.dead`).
 
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
     """
-    entities = keys.axes.get("entity")
-    if entities is None:
-        return rel
-    living = entities.project(col("entity")).set_alias("e")
-    for on in entity_coordinates(keys.schema, "r", unkeyed):
-        rel = rel.set_alias("r").join(living, on == col("e", "entity"), how="semi")
+    schema = keys.schema
+    for c in unkeyed:
+        dead = keys.dead.get(c)
+        key = (c,) if c in schema.groups else schema.axis_key(c)
+        if dead is None or not set(key) <= set(rel.columns):
+            continue
+        rel = rel.set_alias("r").join(
+            dead.set_alias("x"), null_safe("r", "x", key), how="anti"
+        )
     return rel
 
 
@@ -531,13 +592,14 @@ def fold_inputs(
 ) -> DuckDBPyRelation:
     """This layer's inputs map: its `inputs/` keys, folded over `parent`.
 
-    An entity tombstone drops a parent row naming the entity anywhere among its
-    `entity_coordinates`, so removing an entity drops its connections' values
-    while the connection tuples stand.
+    A tombstone drops the parent rows keyed by its label: `entity`, a
+    `partial` dim, a `partial` group's tuple. An entity inside a struct is
+    reached through its tuple's tombstone, which removing it wrote.
 
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
     """
     schema = keys.schema
     rel = source.all_attributes("inputs")
@@ -606,11 +668,16 @@ def fold_inputs(
             f"partial dim keyed by {schema.axis_key(d)} outruns `input_key` "
             f"{schema.input_key}; a nested dim needs its parents in the fold key"
         )
-    dead_entities = _deleted_relation(source.axis("entity"), keys, con)
     memberships = [
         *(
-            (dead_entities, on == col("x", "entity"))
-            for on in entity_coordinates(schema, "p", keyed)
+            [
+                (
+                    _deleted_relation(source.axis("entity"), keys, con),
+                    col("p", "entity") == col("x", "entity"),
+                )
+            ]
+            if "entity" in keyed
+            else []
         ),
         *(
             (
@@ -837,6 +904,7 @@ def _frozen_coords(
         made = [
             *(("dims", dim, rel) for dim, rel in coords.axes.items()),
             *(("group", group, rel) for group, rel in coords.groups.items()),
+            *(("dead", name, rel) for name, rel in coords.dead.items()),
         ]
         for kind, name, rel in made:
             table = _coord_table(kind, name, revision_id)
@@ -896,6 +964,24 @@ def _to_parquet(rel: DuckDBPyRelation, uri: str) -> None:
     os.replace(tmp, uri)
 
 
+def _to_parquet_unless_empty(
+    rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection
+) -> None:
+    """`_to_parquet`, writing nothing where `rel` has no row.
+
+    `rel` is evaluated once, into a temporary table, rather than once to
+    probe and again to write.
+    """
+    table = f"_unless_empty_{uuid4().hex}"
+    rel.create(table)
+    try:
+        rows = con.table(table)
+        if rows.limit(1).fetchone() is not None:
+            _to_parquet(rows, uri)
+    finally:
+        con.execute(f"DROP TABLE {table}")
+
+
 def _materialise_dims(
     revision_id: UUID,
     sources: Sequence[LayerSource],
@@ -919,6 +1005,10 @@ def _materialise_dims(
     ensure_local_dir(groups)
     for group, rel in dims.groups.items():
         _to_parquet(rel, f"{groups}{group}.parquet")
+    dead = store.resolved_dir(revision_id) + "dead/"
+    ensure_local_dir(dead)
+    for name, rel in dims.dead.items():
+        _to_parquet_unless_empty(rel, f"{dead}{name}.parquet", con)
     # The per-type wide static frames, folded across sources. An entity's wide
     # columns live in a per-type file, not on the axis, so they are the one
     # membership value that needs materialising beside the axis for a descendant
@@ -1094,6 +1184,7 @@ class Resolver:
             groups=coords.groups,
             entity_types={},
             owner_map=self._map("inputs"),
+            dead=coords.dead,
         )
 
     @property
@@ -1180,6 +1271,7 @@ class Resolver:
             schema=self.schema,
             axes={n: rel for (k, n), rel in tables.items() if k == "dims"},
             groups={n: rel for (k, n), rel in tables.items() if k == "group"},
+            dead={n: rel for (k, n), rel in tables.items() if k == "dead"},
         )
 
     @cached_property

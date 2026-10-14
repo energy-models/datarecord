@@ -352,7 +352,8 @@ class Store:
         """
         id = uuid4()
         data = layer_data(source, self.workspace.con)
-        write_layer(data, self.layer_dir(id), self.workspace)
+        parents = [] if parent is None else self.revision(parent).resolver.sources
+        write_layer(data, self.layer_dir(id), self.workspace, parents=parents)
         reconcile_schema(data.schema, self)
         return self._create(parent, id)
 

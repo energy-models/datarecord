@@ -56,6 +56,9 @@ That truncation is what keeps a deep chain cheap.
 The same rule decides where resolved dims come from — a node's own `resolved/dims/` where materialised, its raw `dims/` otherwise — answered by the cache's presence rather than by any recorded state.
 The two are distinct paths within one directory, so a record read as an ancestor and the same record read as itself never alias.
 
+Beside the resolved dims and groups, `resolved/dead/<coord>.parquet` holds the [dead labels](read-path.md#a-label-outside-the-key) of each coordinate outside `partial` and each dim a group draws on, written only where there are any.
+A read above the node seeds its dead labels from these, the resolved relations themselves holding no tombstones.
+
 Materialising is a policy: every N layers, at a branch point, on demand.
 It is purely additive, writing files under `resolved/` and changing no answer, only how many layers a read touches to reach it.
 
@@ -66,8 +69,11 @@ A `deleted = true` row in `groups/<group>.parquet` tombstones one row of that gr
 
 A tombstone is honoured by the [one fold](read-path.md#one-fold-for-every-axis) that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
 An _attribute's_ orphaned rows stop surfacing the same way, for every key column: an attribute row is keyed by `entity` and the partial dims and groups its `dims` name, and [`fold_inputs`](read-path.md#owner-map) anti-joins the map against each one's `deleted` rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map.
-An entity inside a group outside `partial` is in no key, so its rows are [dropped at read](read-path.md#an-entity-outside-the-key) against the resolved entity axis instead.
-Each axis and group honours only its **own** tombstones, read from the same file it folds from: deletion is never a cascade across them, so deleting an entity drops its own row and every attribute row it owns — its connections' values included, by the entity inside the `connection` column — but leaves its connection tuples until they are deleted in turn.
+A label of a dim or group outside `partial` is in no key, so its rows are [dropped at read](read-path.md#a-label-outside-the-key) against that coordinate's dead labels instead.
+Each axis and group honours only its **own** tombstones, read from the same file it folds from, and nothing is inferred from a dead label a row refers to.
+So removing an entity is written as a cascade: [`remove`](working-record.md#add-remove) tombstones the entity and every group tuple with a field naming it, in one layer, and the tuples' values go with them.
+A layer adding a tuple that names a dead label, or removing a label a tuple still names, is refused by the writer, which folds the parent's axes and groups to tell. A tuple an ancestor left dangling fails no later write, the check being of what the layer does. A nested dim's labels are not checked, a tuple carrying no parents to place them by.
+Re-adding the entity does not revive its tuples. Re-adding a tuple outside `partial` revives its values, which are owned per attribute rather than per tuple.
 A tombstone only affects the branch that carries it; sibling branches keep the entity.
 
 The fold treats an absent `deleted` column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.

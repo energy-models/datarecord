@@ -46,8 +46,7 @@ A node whose caches are [materialised](layers.md#materialised-node-caches) persi
 Every key column's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of the entity axis and of each partial dim and group — read from the same file that axis or group folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
 A group's tombstones are one NULL-safe anti-join on its struct column, the group file's own key — the same shape as the entity axis's.
 A layer's tombstones apply to its parents' keys, not to its own rows.
-The entity axis's anti-join matches every entity a key names: its `entity`, and each key coordinate over `entity` inside a partial group's struct — both of a group drawing twice on `entity` — one anti-join per coordinate, so deleting an entity drops its connections' values too.
-This is not a cascade: each axis and group honours only its _own_ tombstones, so deleting an entity leaves its connection tuples in the group file until they are deleted in turn.
+The entity axis's anti-join matches the key's top-level `entity` only. An entity inside a struct is reached through its tuple: [removing an entity](layers.md#deletion) tombstones the tuples naming it in the same layer, and each group honours its _own_ tombstones.
 A row leaving a key column NULL is not addressed by it, and its NULL-safe anti-join never takes it; only a row naming a dead entity, tuple or label is dropped.
 
 ## One fold for every axis
@@ -112,7 +111,7 @@ The join's arms follow from the same place — the key columns the attribute's f
 A coordinate outside the key, `timestep` here or a group outside `partial`, is in no arm and passes straight through.
 
 The map already names the winning layer per key, so resolution reads only the owning layers' files.
-There is no per-read `MAX`/group-by, and the only tombstone filter is for what the map cannot see — see [below](#an-entity-outside-the-key).
+There is no per-read `MAX`/group-by, and the only tombstone filter is for what the map cannot see — see [below](#a-label-outside-the-key).
 
 Each owned-per coordinate's arm is **NULL-aware**: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.
 The arm cannot be the obvious condition: `u.scenario IS NULL OR u.scenario IS NOT DISTINCT FROM o.scenario` is no hash key, so DuckDB joins on the other columns and filters the dim afterwards, which costs the square of the dim's length per key.
@@ -130,11 +129,13 @@ Non-key dims pass through unchanged, because within one key-dim combination the 
 
 An attribute no layer wrote is absent from the map; its relation is empty, and the consumer applies [the schema's `default`](schema.md#attributespec).
 
-### An entity outside the key
+### A label outside the key
 
 Every coordinate in the key is [tombstone-pruned in the fold](#owner-map), so a row whose entity, partial connection tuple or partial dim label was deleted is already gone from the map.
-A group outside `partial` is not in the key, so the fold cannot see the entities inside it: a connection attribute's row carries no top-level `entity`, and with `connection` owned whole its map row is `(attribute)` alone.
-The read drops those rows instead, semi-joining each entity field of an unkeyed group against the resolved entity axis, so removing an entity drops its connections' values whichever way the group is keyed.
+A dim or group outside `partial` is not in the key, so the fold cannot see its labels: with `connection` owned whole, a connection attribute's map row is `(attribute)` alone, and owns every tuple's value.
+The read drops those rows instead, anti-joining each such coordinate against its **dead labels** — those whose winning row in the fold is a tombstone, a group's being its dead tuples — so a removed tuple's values go whichever way the group is keyed.
+The fold keeps them beside the resolved axes and groups, and a [materialised node](layers.md#materialised-node-caches) caches them, since its resolved relations hold no tombstones and a read above it would otherwise not see a label removed below.
+The set is usually empty, and the join against it cheap.
 
 ## One record over one fold
 

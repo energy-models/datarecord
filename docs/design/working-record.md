@@ -258,7 +258,7 @@ Membership is not reducible to attribute values.
 
 `remove` stages a tombstone on the [entity axis](format.md#the-entity-axis), one row per entity and no dim scope: an entity [exists or it does not](schema.md#existence-does-not-vary-along-a-dim), so there is no axis to scope a deletion along.
 It need not enumerate what it deletes: [the fold](layers.md#deletion) applies it to every attribute row the entity owns, a connection attribute's by the entity inside its struct ([the owner map](read-path.md#owner-map)).
-It does not tombstone the entity's group tuples, which stay until [`remove_group`](#add_group-remove_group) deletes them.
+It also tombstones every group tuple with a field over `entity` naming one of `names`, read from the record as it resolves with pending edits, so the [writer](layers.md#deletion) never meets a dangling tuple. An `add` of the same name revives the entity alone: its tuples are re-added through [`add_group`](#add_group-remove_group).
 
 ## `add_group` / `remove_group`
 
@@ -324,7 +324,7 @@ Three interactions need stating, because each is where replacing by coordinate a
 
 - **`remove` after `set`** on the same entity: the tombstone wins, since a deleted entity has no attributes.
   An entity tombstone reaches another file's rows, so it stays an anti-join at read and write rather than a replace — the attribute rows are keyed by coordinate, the tombstone by name.
-  A layer's tombstones apply only to its parents in [the fold](read-path.md#owner-map), so the staged collapse drops its own rows itself: a row naming a removed entity, top-level or inside a group's struct, and a row whose group column names a tuple `remove_group` staged deleted.
+  A layer's tombstones apply only to its parents in [the fold](read-path.md#owner-map), so the staged collapse drops its own rows itself: a row naming a removed entity, and a row whose group column names a tuple staged deleted, by `remove_group` or by `remove`'s cascade.
 - **`add` after `remove`** of the same name: the entity exists again.
   The entity axis replaces on `entity` alone, so the `add` row displaces the tombstone by construction — no member row and tombstone both.
   So do its parent's connection values, which only the displaced tombstone reached.
