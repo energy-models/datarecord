@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://energy-models.github.io/datarecord/contributing/">
       
       
-        <link rel="prev" href="../design/proposals/one-interface-source-and-fold/">
+        <link rel="prev" href="../design/proposals/dep-0012-properties/">
       
       
         <link rel="next" href="../changelog/">
@@ -716,6 +716,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#design-enhancement-proposals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design enhancement proposals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#architecture-in-one-paragraph" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -910,6 +921,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#design-enhancement-proposals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design enhancement proposals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#architecture-in-one-paragraph" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1026,17 +1048,45 @@ original work and that you agree to license it under the project's MIT license.<
   everything framework-specific lives under <code>datarecord/tools/</code> behind an
   optional extra.</li>
 </ul>
+<h2 id="design-enhancement-proposals">Design enhancement proposals<a class="headerlink" href="#design-enhancement-proposals" title="Permanent link">&para;</a></h2>
+<p>A change to the design starts as a design enhancement proposal (DEP): the
+argument for it, the design it lands, and usage examples.</p>
+<ul>
+<li>Start from the
+  <a href="https://energy-models.github.io/datarecord/design/proposals/dep-NNNN-template/">template</a>:
+  copy it to <code>docs/design/proposals/dep-NNNN-slug.md</code>, where <code>NNNN</code> is the next
+  free four-digit number, and append it to the end of the <code>Enhancement proposals</code>
+  nav in <code>mkdocs.yml</code>. A number is never reused or reassigned.</li>
+<li>Its header carries <code>Status</code> — <code>Draft</code>, <code>Accepted</code>, <code>Implemented</code> or
+  <code>Superseded</code>, with the date — and <code>Version</code>, the release it ships in:
+  <code>Unreleased</code> until the release that sets it.</li>
+<li>Implementing it moves the design into the
+  <a href="https://energy-models.github.io/datarecord/design/">design pages</a> and the
+  usage examples into the
+  <a href="https://energy-models.github.io/datarecord/usage/">usage pages</a>, with as much
+  of the argument as they need to stand on their own, and what it leaves open
+  into <a href="https://energy-models.github.io/datarecord/design/open-questions/">open questions</a>.
+  The DEP stays as the record of the argument, and is not revised after: a
+  change is a new DEP that replaces it.</li>
+<li><strong>Nothing outside the DEPs links to one</strong> — not a design or usage page, a
+  docstring, a test or an error message — except open questions and the
+  template. A DEP that is not yet implemented is not the design, and one that
+  is has been superseded by the pages it landed in. <code>pixi run lint</code> fails on
+  such a link.</li>
+</ul>
 <h2 id="architecture-in-one-paragraph">Architecture in one paragraph<a class="headerlink" href="#architecture-in-one-paragraph" title="Permanent link">&para;</a></h2>
-<p>datarecord stores dimensioned attribute data with a declared schema: components
-(named members of a type, unique record-wide), connections, attribute values over
-both, and the axes those values vary along. A record is defined by the <code>Record</code>
-protocol — what it answers, not how it is stored — and a parquet directory is its
-on-disk form. Two implementations serve that protocol — <code>DirectoryRecord</code> over a
-single directory, and <code>LayeredRecord</code> over a tree of layers resolved
-last-writer-wins — so a consumer cannot tell which it holds. Queries are built
-with <code>narwhals</code> and executed by <code>duckdb</code>, staying lazy until collected. Beyond
-those and <code>pydantic</code>, core depends on nothing. Keep new features consistent with
-this schema-declared, backend-agnostic, lazily-evaluated design.</p>
+<p>datarecord stores dimensioned attribute data with a declared schema: entities
+(named members of a type, unique record-wide), groups of them — a <code>connection</code>
+over <code>(entity, bus)</code> being the one every network has — attribute values over
+both, and the axes those values vary along. A record is defined by the
+<code>RecordLike</code> protocol — what it answers, not how it is stored — and a parquet
+directory is its on-disk form. The concrete <code>Record</code> folds a tree of layers
+resolved last-writer-wins, degenerating to a scan over a single directory
+(<code>Record.at(uri)</code>), so a consumer cannot tell how many layers it holds. Queries
+are built with <code>narwhals</code> and executed by <code>duckdb</code>, staying lazy until
+collected. Beyond those and <code>pydantic</code>, core depends on nothing. Keep new
+features consistent with this schema-declared, backend-agnostic,
+lazily-evaluated design.</p>
 <h2 id="releasing">Releasing<a class="headerlink" href="#releasing" title="Permanent link">&para;</a></h2>
 <p>The version lives in <code>[project].version</code> in <code>pyproject.toml</code>; there is no
 VCS-derived versioning. <code>CHANGELOG.md</code> tracks user-facing changes under an
@@ -1046,7 +1096,8 @@ VCS-derived versioning. <code>CHANGELOG.md</code> tracks user-facing changes und
 <li>Confirm <code>pixi run test</code> and <code>pixi run -e docs docs-build</code> pass — best done on
    a release pull request.</li>
 <li>Rename the <code>[Unreleased]</code> heading in <code>CHANGELOG.md</code> to
-   <code>vX.Y.Z</code> with the release date, and set <code>version</code> in <code>pyproject.toml</code>.</li>
+   <code>vX.Y.Z</code> with the release date, set <code>version</code> in <code>pyproject.toml</code>, and set
+   <code>Version</code> to <code>vX.Y.Z</code> in every DEP header reading <code>Unreleased</code>.</li>
 <li>Merge the release pull request, then tag the merge commit <code>vX.Y.Z</code> and create
    the GitHub release from that tag.</li>
 <li>Open a follow-up adding a fresh <code>[Unreleased]</code> heading to <code>CHANGELOG.md</code>.</li>
@@ -1090,7 +1141,7 @@ by hand.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../design/proposals/one-interface-source-and-fold/" class="md-footer__link md-footer__link--prev" aria-label="Previous: One interface, source and fold">
+          <a href="../design/proposals/dep-0012-properties/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 12: Properties">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1100,7 +1151,7 @@ by hand.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                One interface, source and fold
+                DEP 12: Properties
               </div>
             </div>
           </a>

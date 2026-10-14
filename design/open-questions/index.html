@@ -16,7 +16,7 @@
         <link rel="prev" href="../module-layout/">
       
       
-        <link rel="next" href="../proposals/dims-groups-traits/">
+        <link rel="next" href="../proposals/dep-NNNN-template/">
       
       
         
@@ -994,6 +994,16 @@
       
         
       
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -1012,14 +1022,14 @@
   
   
   
-    <a href="../proposals/dims-groups-traits/" class="md-nav__link">
+    <a href="../proposals/dep-NNNN-template/" class="md-nav__link">
       
   
   
   <span class="md-ellipsis">
     
   
-    Proposals
+    Enhancement proposals
   
 
     
@@ -1232,9 +1242,9 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <h1 id="open-questions">Open questions<a class="headerlink" href="#open-questions" title="Permanent link">&para;</a></h1>
 <ul>
-<li><strong>May an entity's existence depend on a dim?</strong> <code>Dimension.keys</code> said yes — a generator present in scenario <code>high</code> and absent from <code>low</code> — and is <a href="../schema/#existence-does-not-vary-along-a-dim">now deleted</a>, with nothing in its place. A component exists or it does not.</li>
+<li><strong>May an entity's existence depend on a dim?</strong> <code>Dimension.keys</code> said yes — a generator present in scenario <code>high</code> and absent from <code>low</code> — and is <a href="../schema/#existence-does-not-vary-along-a-dim">now deleted</a>, with nothing in its place. An entity exists or it does not.</li>
 </ul>
-<p>What it cost to keep was a second question with no good answer: what a component tombstone means for a connection keyed by fewer dims. Deleting a component in one scenario removed a connection that was not scenario-scoped, even though the component survived elsewhere, and no projection recovers the difference — the connection row has no scenario column to write it into. The conservative reading was implemented and pinned by an <code>xfail</code>.</p>
+<p>What it cost to keep was a second question with no good answer: what an entity tombstone means for a connection keyed by fewer dims. Deleting an entity in one scenario removed a connection that was not scenario-scoped, even though the entity survived elsewhere, and no projection recovers the difference — the connection row has no scenario column to write it into. The conservative reading was implemented and pinned by an <code>xfail</code>.</p>
 <p>What it cost to drop is narrower than it looks. A <strong>value</strong> may still vary along any axis; it is the <strong>thing</strong> that may not. A stochastic network with a different <code>capital_cost</code> per scenario is an attribute over <code>{entity, scenario}</code>, which <a href="../format/#where-a-value-lives">the file split</a> already places in <code>inputs/</code>. Only membership itself is unrepresentable.</p>
 <p>Reopening it means deciding all three: whether it is needed at all, whether an entity table and a group may disagree about which dims scope them, and what the coarser one's rows mean if they may.</p>
 <ul>
@@ -1243,9 +1253,14 @@ SPDX-License-Identifier: CC-BY-4.0
   A counter-example would be an attribute whose series a consumer <em>can</em> accept in pieces while others cannot — none known, and permitting it would make the fold's key vary per attribute, which the fixed inputs key assumes it does not.</p>
 </li>
 <li>
+<p><strong>Whether a broadcast survives materialisation.</strong> A materialised ancestor's owner map stores a NULL row already expanded to the labels that existed then, and seeds a child's fold without re-expanding.
+  So <code>set("p_max_pu", 0.9)</code> reaches a generator added — or re-categorized — in a child only while the ancestor is unmaterialised; plain NULLs behave the same.
+  One level down, a <code>WorkingRecord</code> folds its committed prefix once, so a label staged or re-categorized there is not reached by a parent's NULL even while the parent is unmaterialised.</p>
+</li>
+<li>
 <p><strong>Whether staged results should be invalidated by a later input edit.</strong> Results attached through <a href="../working-record/#results-through-kindoutputs"><code>set(..., kind="outputs")</code></a> were computed from the inputs pending at that moment, so editing an input afterwards leaves them describing a record that no longer exists.
   Dropping them on the next input edit was considered and rejected: it silently discards work the caller may have wanted, and a record that guesses which of the two the caller meant to keep is worse than one that keeps both and says so.
-  Coherence is the caller's business, and a commit writes whatever is staged.
+  Coherence is the caller's business, and writing <code>edits</code> writes whatever is staged.
   If this bites in practice, a <code>pending</code>-level warning is the cheap next step rather than a silent truncation.</p>
 </li>
 <li>
@@ -1258,24 +1273,36 @@ SPDX-License-Identifier: CC-BY-4.0
   Creating a view binds its schema, so registering N attributes costs N footer reads; and catalog reopen cost is linear in view count, which argues for one catalog per record rather than one shared.</p>
 </li>
 <li>
-<p><strong>What else a <code>Record</code> should answer about its entities without handing over a frame.</strong> <a href="../record/#flags"><code>flags</code></a> sets the shape — cheap derived metadata a consumer plans against without opening a file — but answers only per attribute, per type.
-  The entity-level case is <code>entity -&gt; entity_type</code>: a question a record can answer, <a href="../format/#entity-is-unique-across-types">names being unique record-wide</a>, and one the layered <code>components</code> owner map is keyed by before it opens a file.
-  Asking it through the protocol costs a frame per type instead, which <code>WorkingRecord</code> pays on every <a href="../working-record/#validation"><code>set</code></a>.
-  What is open is the granularity: "which types have live rows" and "how many members a type has" are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
-  Whatever is chosen, it has to be answerable off the owner map, which is where a record's membership already lives.</p>
+<p><strong>What else a <code>Record</code> should answer about its labels without handing over a frame.</strong> <a href="../record/#flags"><code>flags</code></a> sets the shape — cheap derived metadata a consumer plans against without opening a file — but answers only per attribute.
+  <code>entity -&gt; entity_type</code> is now a column of the resolved axis, <a href="../format/#entity-is-unique-across-types">names being unique record-wide</a>, so it is one frame rather than one per type; "which categories have live labels" and "how many labels a category has" are still frames to collect.
+  What is open is the granularity: those are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
+  Whatever is chosen, it has to be answerable off the fold, which is where a record's membership already lives.</p>
 </li>
 <li>
-<p><strong>Whether <a href="../record/#flags"><code>flags(ctype)</code></a> needs a record-level counterpart.</strong> It takes a component type, which two kinds of attribute do not have: one addressed by an axis alone, and one addressed by a <a href="../schema/#groups">group</a>'s coordinates. Neither has a <code>ctype</code> to ask about, so neither is reachable through it.</p>
+<p><strong>What a NULL group struct reaches when two of its fields are categorized.</strong> A NULL <code>connection</code> reaches the tuples whose <code>entity</code> field names a label <a href="../read-path/#owner-map">carrying the attribute</a>. A group with two fields over categorized dims — a <code>contract</code> between two entities — has no single label to ask, and its NULL reaches every tuple; requiring both, or either, would each be a reading the schema does not state.</p>
 </li>
 </ul>
-<p>A second method keyed by attribute and scoped record-wide would answer it — which attributes have rows at all, which coordinates they use, which types they touch — and the <a href="../read-path/#owner-map">owner map</a> already computes the material, so it costs a projection rather than a scan.
-  What is unsettled is whether that replaces <code>flags</code> or sits beside it. <code>flags</code> is per type <em>by construction</em>, its union deliberately stopping at the type boundary, and a record-level answer filtered by type would have to reproduce that.</p>
 <h2 id="settled">Settled<a class="headerlink" href="#settled" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Whether <code>within</code> should subsume <code>bus</code></strong> — no; <a href="../schema/#groups">groups</a> do it.
+<li>
+<p><strong>Whether <a href="../record/#flags"><code>flags</code></a> needs a record-level counterpart</strong> — it is one. <code>flags()</code> answers per record, every attribute included, and <code>flags(**categories)</code> per category, restricted to what those categories carry (<a href="../proposals/dep-0012-properties/#entity-is-an-ordinary-dim">properties</a>). An attribute over an axis alone or a group outside <code>partial</code> is reachable through the first.</p>
+</li>
+<li>
+<p><strong>What a NULL group struct reaches across entity types</strong> — the tuples whose field over the categorized dim names a label carrying the attribute, as a NULL on the dim itself reaches its carrying labels (<a href="../read-path/#owner-map">the owner map</a>). A constant link <code>efficiency</code> no longer lands on generators' connections.</p>
+</li>
+<li>
+<p><strong>What a connection value staged without its <code>bus</code> should mean</strong> — nothing; the call is <a href="../working-record/#set">rejected</a>.
+  <code>{entity: dc, bus: NULL}</code> is <a href="../record/#the-broadcast-rule">no group value</a>, a group value being a whole tuple or NULL, so it is refused wherever a row comes in.
+  The alternative, "every connection of this entity", would broadcast over part of a tuple — a group column broadcasts only whole, a NULL struct meaning every tuple.</p>
+</li>
+<li>
+<p><strong>Whether <code>within</code> should subsume <code>bus</code></strong> — no; <a href="../schema/#groups">groups</a> do it.
   The recorded blocker was that <code>bus</code> inverts the rule NULL follows for a dim: a NULL declared dim means "all values" and the fold expands it against the axis, while a NULL <code>bus</code> is compared NULL-safely and never expanded.
   That premise did not survive. Expansion is governed by whether a coordinate is in the fold's key set, and a non-<code>partial</code> dim is never expanded either — so the behaviour that "makes a dim a dim" was never uniform, and <code>bus</code> was not an exception to it.
-  A group states the rule instead of carrying an exception: a group coordinate addresses a sparse subset with no axis to expand against, which is <a href="../record/#the-broadcast-rule">the broadcast rule</a> rather than a special case in it.</li>
+  A group states the rule instead of carrying an exception: a group coordinate addresses a sparse subset with no axis to expand against, which is <a href="../record/#the-broadcast-rule">the broadcast rule</a> rather than a special case in it.
+  Since <a href="../proposals/dep-0010-a-group-is-a-struct-column/">a group is one struct column</a>, a connection's <code>bus</code> is a field of <code>connection</code> rather than the dim's column, so the dim <code>bus</code> broadcasts like any other and the exception is gone from the dim entirely.
+  Since <a href="../proposals/dep-0010-a-group-is-a-struct-column/#amendment-a-group-is-a-dim">a group is a dim</a> it is gone from the group too: a NULL struct expands against the resolved group, as a NULL dim does against its axis.</p>
+</li>
 </ul>
 
 
@@ -1329,13 +1356,13 @@ SPDX-License-Identifier: CC-BY-4.0
         
         
           
-          <a href="../proposals/dims-groups-traits/" class="md-footer__link md-footer__link--next" aria-label="Next: Dims, mappings, groups and traits">
+          <a href="../proposals/dep-NNNN-template/" class="md-footer__link md-footer__link--next" aria-label="Next: Template">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Dims, mappings, groups and traits
+                Template
               </div>
             </div>
             <div class="md-footer__button md-icon">

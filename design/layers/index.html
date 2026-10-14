@@ -814,6 +814,56 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#the-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The store
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The store">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-tree-beside-the-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tree beside the layers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#files-local-and-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files, local and remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#crossing-a-process-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Crossing a process boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1016,6 +1066,16 @@
       
         
       
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -1034,14 +1094,14 @@
   
   
   
-    <a href="../proposals/dims-groups-traits/" class="md-nav__link">
+    <a href="../proposals/dep-NNNN-template/" class="md-nav__link">
       
   
   
   <span class="md-ellipsis">
     
   
-    Proposals
+    Enhancement proposals
   
 
     
@@ -1248,6 +1308,56 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#the-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The store
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The store">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-tree-beside-the-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tree beside the layers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#files-local-and-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files, local and remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#crossing-a-process-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Crossing a process boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1280,22 +1390,23 @@ Each node adds one layer; a node's data is its layer resolved over its ancestors
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Revision</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="nb">id</span><span class="p">:</span> <span class="n">UUID</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">parent</span><span class="p">:</span> <span class="n">UUID</span> <span class="o">|</span> <span class="kc">None</span>  <span class="c1"># None for a root</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">store</span><span class="p">:</span> <span class="n">Store</span>  <span class="c1"># serialised as its location</span>
 </code></pre></div>
-<p>Each record has one layer at <code>layers/&lt;id&gt;/</code>; the path derives from the UUID rather than being stored.
+<p>Each revision has one layer at <code>&lt;location&gt;/layers/&lt;id&gt;/</code>; the path derives from the UUID and its <a href="#the-store">store</a> rather than being stored.
 Caches derived from the ancestry rather than from layer data live in a <code>resolved/</code> subdirectory of it, so the layer's own top level stays exactly what that layer wrote.</p>
 <p>Nodes form a tree: branching is several children sharing a parent, and they share the parent's layer and all further ancestry by pointing at it, not by duplication.
 Resolution order along a root→node path is ancestry order; a node's own layer is last and wins.</p>
-<p>The node metadata — <code>(id, parent)</code> — is persisted in the <code>revisions</code> table, so a revision id resolves to its ancestry, and thus its layer set, through it.</p>
+<p>The node metadata — <code>(id, parent)</code> — is persisted <a href="#the-tree-beside-the-layers">beside the layers</a>, one file per revision, so a revision id resolves to its ancestry, and thus its layer set, from the location alone.</p>
 <p>Two of <a href="../record/">the protocol's</a> columns take their meaning from the overlay key.</p>
-<p>A <a href="../schema/#groups">group</a>'s coordinates are part of the <strong>inputs</strong> key, <code>(*partial dims, attribute)</code> — <code>bus</code> among them for the <code>connection</code> group, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
-That is what makes a per-connection attribute owned <em>per connection</em>: without it, a patch changing one connection's <code>efficiency</code> would own — and so have to restate — every connection's.
+<p>A <a href="../schema/#groups">group</a> <a href="../schema/#partial-the-granularity-of-an-override"><code>partial</code></a> names is part of the <strong>inputs</strong> key, <code>(*partial dims, attribute)</code> — the <code>connection</code> column, NULL for an entity-level attribute and NULL-safe-compared so that case is unaffected.
+That is what makes a per-connection attribute owned <em>per connection</em>: without it, a patch changing one connection's <code>efficiency</code> owns — and so restates — every connection's, which is what a group outside <code>partial</code> costs.
 It is also why a connection is keyed by its bus rather than by position: a patch layer would otherwise have to know a connection's current index, so an ancestor inserting one earlier would silently redirect that patch to a different bus.</p>
 <p><code>breakpoint</code> (<a href="../record/#wide-and-long-rows">wide and long rows</a>), by contrast, is deliberately <strong>not</strong> part of the overlay key.
 A layer owns a whole curve, the same rule a non-<code>partial</code> dim follows (<a href="../schema/#partial-the-granularity-of-an-override">partial</a>), so a parent's breakpoints and a descendant's can never resolve into one curve with a hole.</p>
 <h2 id="a-layers-data-is-write-once">A layer's data is write-once<a class="headerlink" href="#a-layers-data-is-write-once" title="Permanent link">&para;</a></h2>
 <p>A node has no mutable state.</p>
-<p>A layer's data is created by one act — <a href="../writing/"><code>write_record</code></a>, whether called directly or by a <a href="../working-record/#committing">commit</a> — which refuses an existing directory and stages into a sibling path, so a layer is complete when it first becomes visible and never changes afterwards.
-Editing needs no mutable layer: edits accumulate in <a href="../working-record/#staging">the staging area</a> and become a layer at commit.</p>
+<p>A layer's data is created by one act — <a href="../writing/"><code>store.root</code> or <code>rev.child</code></a>, the latter also how a <code>WorkingRecord</code>'s <a href="../working-record/#edits">edits</a> are written — which refuses an existing directory and stages into a sibling path, so a layer is complete when it first becomes visible and never changes afterwards; and its <a href="../writing/#a-revision-exists-only-by-its-file">revision file, written last</a>, is what makes it reachable at all.
+Editing needs no mutable layer: edits accumulate in <a href="../working-record/#staging">the staging area</a> and become a layer when written as a child.</p>
 <p>The one thing written into a layer directory after that act is its <a href="#materialised-node-caches"><code>resolved/</code> cache</a>, which is why the invariant is stated over the layer's <em>data</em> rather than over the directory.
 That is not a loosening that costs anything: a cache is derived from immutable layers, so writing one cannot change an answer, and nothing downstream reads it as data.</p>
 <p>Two properties follow. <strong>Any node may be a parent</strong>, since an immutable base cannot shift under its descendants.
@@ -1307,18 +1418,59 @@ Not the schema: there is <a href="../schema/#one-schema-per-record">one for the 
 That truncation is what keeps a deep chain cheap.
 The same rule decides where resolved dims come from — a node's own <code>resolved/dims/</code> where materialised, its raw <code>dims/</code> otherwise — answered by the cache's presence rather than by any recorded state.
 The two are distinct paths within one directory, so a record read as an ancestor and the same record read as itself never alias.</p>
+<p>Beside the resolved dims and groups, <code>resolved/dead/&lt;coord&gt;.parquet</code> holds the <a href="../read-path/#a-label-outside-the-key">dead labels</a> of each coordinate outside <code>partial</code> and each dim a group draws on, written only where there are any.
+A read above the node seeds its dead labels from these, the resolved relations themselves holding no tombstones.</p>
 <p>Materialising is a policy: every N layers, at a branch point, on demand.
 It is purely additive, writing files under <code>resolved/</code> and changing no answer, only how many layers a read touches to reach it.</p>
 <h2 id="deletion">Deletion<a class="headerlink" href="#deletion" title="Permanent link">&para;</a></h2>
-<p>A <code>deleted = true</code> row on <a href="../format/#the-entity-axis">the entity axis</a> tombstones a component from every attribute, and from every value of every dim — <a href="../schema/#existence-does-not-vary-along-a-dim">existence does not vary along one</a>, so there is nothing to scope a deletion by.
-A <code>deleted = true</code> row in <code>groups/&lt;group&gt;.parquet</code> tombstones one row of that group — the row itself and its <code>inputs/</code> rows — leaving the component and its other rows intact, so a connection is removed without touching the component it attached.</p>
+<p>A <code>deleted = true</code> row in <code>dims/&lt;dim&gt;.parquet</code> — <a href="../format/#the-entity-axis">the entity axis</a> like any other — tombstones a label from every attribute, and from every value of every other dim — <a href="../schema/#existence-does-not-vary-along-a-dim">existence does not vary along one</a>, so there is nothing to scope a deletion by.
+A <code>deleted = true</code> row in <code>groups/&lt;group&gt;.parquet</code> tombstones one row of that group — the row itself, and its <code>inputs/</code> rows where the group is <code>partial</code> — leaving the labels it names and their other rows intact, so a connection is removed without touching the entity it attached.</p>
 <p>A tombstone is honoured by the <a href="../read-path/#one-fold-for-every-axis">one fold</a> that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
-An <em>attribute's</em> orphaned rows stop surfacing the same way, for every membership: an attribute row is keyed by the entity, group tuple and dim coordinates its <code>dims</code> name, and <a href="../read-path/#owner-map"><code>fold_inputs</code></a> anti-joins the map against each membership's <code>deleted</code> rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map, not filtered at read.
-Each membership honours only its <strong>own</strong> tombstones, read from the same file it folds from: deletion is never a cascade, so deleting a component drops its own row but leaves its connection tuples until they are deleted in turn.
-A tombstone only affects the branch that carries it; sibling branches keep the component.</p>
+An <em>attribute's</em> orphaned rows stop surfacing the same way, for every key column: an attribute row is keyed by the partial dims and groups its <code>dims</code> name, and <a href="../read-path/#owner-map"><code>fold_inputs</code></a> anti-joins the map against each one's <code>deleted</code> rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map.
+A label of a dim or group outside <code>partial</code> is in no key, so its rows are <a href="../read-path/#a-label-outside-the-key">dropped at read</a> against that coordinate's dead labels instead.
+Each axis and group honours only its <strong>own</strong> tombstones, read from the same file it folds from, and nothing is inferred from a dead label a row refers to.
+So removing a label is written as a cascade, the same for every dim: <a href="../working-record/#add-remove"><code>remove(dim, labels)</code></a> tombstones the labels and every live group tuple with a field over <code>dim</code> naming one, in one layer, and the tuples' values go with them.
+A layer adding a tuple that names a dead label, or removing a label a tuple still names, is refused by the writer, which folds the parent's axes and groups to tell. A tuple an ancestor left dangling fails no later write, the check being of what the layer does. A nested dim's labels are not checked, a tuple carrying no parents to place them by.
+Re-adding the label does not revive its tuples. Re-adding a tuple outside <code>partial</code> revives its values, which are owned per attribute rather than per tuple.
+A tombstone only affects the branch that carries it; sibling branches keep the label.</p>
 <p>The fold treats an absent <code>deleted</code> column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.
-Every derived cache lives under <code>resolved/</code> for the same reason: every glob the read path issues into a layer is single-level — <code>inputs/*.parquet</code>, <code>dims/*.parquet</code>, <code>dims/*/*.parquet</code> — so nothing under <code>resolved/</code> is reachable by one.
+Every derived cache lives under <code>resolved/</code> for the same reason: every glob the read path issues into a layer is single-level — <code>inputs/*.parquet</code>, <code>dims/*.parquet</code>, <code>groups/*.parquet</code> — so nothing under <code>resolved/</code> is reachable by one.
 A reader pointed at a layer directory therefore sees exactly what that layer wrote, and materialising a node's caches never changes what it sees.</p>
+<h2 id="the-store">The store<a class="headerlink" href="#the-store" title="Permanent link">&para;</a></h2>
+<p>What a process holds is two objects' state. A <strong><code>Workspace</code></strong> holds the DuckDB database and the means to reach files, local or remote, which is all a standalone directory needs. A <strong><code>Store</code></strong> holds one store location — its manifest, its revision tree, its layers — and works through a workspace, which several stores share so that records from them join.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span>  <span class="c1"># ":memory:" by default</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">store</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="s2">"/data/a"</span><span class="p">)</span>  <span class="c1"># one Store per normalised location</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">rev</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">rid</span><span class="p">)</span>  <span class="c1"># look one up</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># a standalone directory, read under its own manifest</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">layer</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">layer</span><span class="p">(</span><span class="n">rid</span><span class="p">)</span>  <span class="c1"># one layer read alone, under the store's manifest</span>
+</code></pre></div>
+<p>A call reaches the workspace explicitly only where nothing in hand carries one: <code>ws.store</code>, <code>ws.at</code>, and the <code>con</code> a tool converting a framework object is handed. Everything built <em>from</em> something takes it from that: a revision from its store, a <code>Record</code> from its <code>Resolver</code>, a <code>WorkingRecord</code> from its base record.</p>
+<p><strong>The location is required and absolute.</strong> <code>ws.store("")</code> raises, and a local path is resolved, so neither a later <code>chdir</code> nor a process with another cwd moves it — there is no default location left to fall back to. <code>layer_dir</code>, <code>resolved_dir</code> and the manifest's location derive from it and nothing else.</p>
+<p><strong>The location is authoritative, the database is disposable.</strong> What lives in a workspace's <code>database</code> is never the record: deleting it loses at most uncommitted edits. A file-backed one keeps staged edits across a crash, the <code>revisions</code> cache across runs, and gives DuckDB room to spill. A location is not reused: every cache keyed by id assumes what an id names never changes, which a fresh UUID over write-once files guarantees and a location wiped and written again does not.</p>
+<h3 id="the-tree-beside-the-layers">The tree beside the layers<a class="headerlink" href="#the-tree-beside-the-layers" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>&lt;location&gt;/
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>├── manifest.json
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>├── revisions/&lt;id&gt;.json        # {"id": ..., "parent": ...}
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>└── layers/&lt;id&gt;/
+</code></pre></div>
+<p>Beside <code>layers/</code> rather than inside a layer, so a layer directory stays exactly what the layer wrote and listing the tree is one listing over small files. One file per revision because a file named by a fresh UUID is write-once like a layer, so two processes creating revisions in one location never write the same object; it is written create-only through <a href="#files-local-and-remote">files</a>, so that is enforced rather than assumed.</p>
+<p>The workspace's <code>revisions</code> table is a cache of those files for every store on it, keyed by <code>(location, id)</code>. It cannot go stale, only incomplete, since a revision's parent never changes, so it is only ever added to: <code>revisions()</code> lists <code>revisions/</code> once and reads only the files the table lacks, and <code>revision(id)</code> that misses reads the file and each parent not yet held, raising <code>KeyError</code> where the first is absent. Two cursors adding one row at once conflict, and the row is the same whoever wins, so the loser moves on.</p>
+<h3 id="files-local-and-remote">Files, local and remote<a class="headerlink" href="#files-local-and-remote" title="Permanent link">&para;</a></h3>
+<p>Tables go through DuckDB. Everything else — the manifest, the revision files, listing them — goes through the workspace's <code>Files</code>, picked by the URI's scheme: a URI without <code>://</code> is local, and any scheme but <code>s3://</code> raises.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Files</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">read_text</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Version</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># None on a miss</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">write_text</span><span class="p">(</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">expect</span><span class="p">:</span> <span class="n">Version</span> <span class="o">|</span> <span class="n">Absent</span> <span class="o">|</span> <span class="kc">None</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Version</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>  <span class="c1"># names directly under prefix</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p><code>expect</code> is the precondition: <code>Absent</code> writes only if nothing is there, a <code>Version</code> only if the object is unchanged since it was read, <code>None</code> unconditionally. Locally every write lands under a temporary name and is moved into place, so a reader meets a whole file or none: <code>Absent</code> is a hard link, which the OS refuses over an existing file, and a <code>Version</code> — the content's SHA-256 — is checked and replaced while holding a lock on a sibling <code>&lt;name&gt;.lock</code>, which is what makes the check and the write one step.</p>
+<p>Remotely, <code>Files</code> is on <a href="https://boto3.amazonaws.com/">boto3</a>, behind the optional extra <code>datarecord[remote]</code>. <code>expect</code> maps to <code>put_object</code>'s conditional headers — <code>IfNoneMatch="*"</code> for <code>Absent</code>, <code>IfMatch</code> for a <code>Version</code>, which is the object's ETag — and a refused write (<code>412</code>, or <code>409</code> for a racing one) raises <code>PreconditionFailedError</code>. They guard the revision files, create-only by the server's guarantee, and the <a href="../writing/#the-manifests-compare-and-swap">manifest's compare-and-swap</a>; not the layer's parquet, which DuckDB's <code>httpfs</code> writes unconditionally under a fresh UUID. They hold only as far as the server honours them: SeaweedFS checks them atomically from 4.18, AWS S3 since November 2024.</p>
+<p>The configuration is the AWS environment and config files, and nothing datarecord-specific. boto3 reads it itself; DuckDB gets <code>CREATE SECRET (TYPE s3, PROVIDER credential_chain)</code>, to which a set <code>AWS_ENDPOINT_URL</code> adds its <code>ENDPOINT</code>, <code>URL_STYLE 'path'</code>, <code>USE_SSL</code> per its scheme and <code>CHAIN 'env;config'</code>, since a self-hosted server has no bucket-subdomain DNS and no instance-metadata service to probe. Both are set up on the first <code>s3://</code> URI a workspace is handed, so a purely local one never pays for either.</p>
+<h3 id="crossing-a-process-boundary">Crossing a process boundary<a class="headerlink" href="#crossing-a-process-boundary" title="Permanent link">&para;</a></h3>
+<p><code>Revision</code> serialises its store as its location, <code>{"id": …, "parent": …, "store": "/data/a"}</code>, and validates back through <code>Workspace.process().store(uri).revision(id)</code>, reading the revision file and each parent the process lacks — so <code>ancestry()</code> answers in a fresh process. <code>Store</code> pickles the same way.</p>
+<p>That is the one default that survives, and nothing reaches it implicitly but deserialisation: <code>Workspace.process()</code> is created on first use, on <code>:memory:</code>, and code wanting its own records joinable with deserialised ones names it.</p>
 
 
 

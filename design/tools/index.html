@@ -843,6 +843,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Consuming a record
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -859,6 +877,36 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#results-on-connections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Results on connections
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -946,6 +994,16 @@
       
         
       
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -964,14 +1022,14 @@
   
   
   
-    <a href="../proposals/dims-groups-traits/" class="md-nav__link">
+    <a href="../proposals/dep-NNNN-template/" class="md-nav__link">
       
   
   
   <span class="md-ellipsis">
     
   
-    Proposals
+    Enhancement proposals
   
 
     
@@ -1139,6 +1197,25 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#results-on-connections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Results on connections
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1173,28 +1250,57 @@ The call runs from the tool inward:</p>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">requires</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">Record</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Requirements</span><span class="p">:</span> <span class="o">...</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">verify</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">Record</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Requirements</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># falsy when usable</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">build</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">Record</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span> <span class="o">...</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">to_datarecord</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Record</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># inverse of build</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">results</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Frames</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">to_datarecord</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Record</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">results</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Frames</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p><code>to_datarecord</code> is the inverse of <code>build</code>. It and <code>results</code> take the connection their frames are planned on, required; in practice <code>ws.con</code> of the <a href="../layers/#the-store">workspace</a> that writes them, or the <code>con</code> of the record they are <code>set</code> on.
+A tool is handed a connection, not a workspace or a store: it plans relations and has no business with directories, locations or the tree.
+A frame planned on another connection is <a href="../read-path/#a-relation-from-another-connection-is-rejected">rejected at the boundary</a>, so a tool that picked its own would fail on the first write.
+<code>build</code> takes none: it reads <code>record.con</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">root</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">root</span><span class="p">(</span><span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ws</span><span class="o">.</span><span class="n">con</span><span class="p">))</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">root</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">for</span> <span class="n">attr</span><span class="p">,</span> <span class="n">frame</span> <span class="ow">in</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">results</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">w</span><span class="o">.</span><span class="n">con</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">attr</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">"outputs"</span><span class="p">)</span>
 </code></pre></div>
 <p><code>results</code> returns <a href="../record/#frames"><code>Frames</code></a> — the same type <code>Record.outputs</code> presents, keyed by attribute, each frame in <a href="../format/#the-long-schema">the long schema</a>.
-So a tool's results go straight to <a href="../writing/"><code>write_record</code></a>, or one at a time to <a href="../working-record/#results-through-kindoutputs"><code>set(attr, frame, kind="outputs")</code></a> with no key to unpack.</p>
-<p>A framework holds its results per component type, so reaching this shape means concatenating each attribute's types into one frame.
+So a tool's results go straight to <a href="../writing/">a write</a>, or one at a time to <a href="../working-record/#results-through-kindoutputs"><code>set(attr, frame, kind="outputs")</code></a> with no key to unpack.</p>
+<p>A framework holds its results per entity type, so reaching this shape means concatenating each attribute's types into one frame.
 That is free: the frames are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller collects.
-The concatenation needs no <code>entity_type</code> column to distinguish the arms, since <a href="../format/#entity-is-unique-across-types"><code>entity</code> is unique across them</a> — which is what makes the union a plain one rather than a tagged one.</p>
+The concatenation needs no category column to distinguish the arms, since <a href="../format/#entity-is-unique-across-types"><code>entity</code> is unique across them</a> — which is what makes the union a plain one rather than a tagged one.</p>
+<p>A framework's per-port results are <a href="#results-on-connections">stored on connections</a>, like its per-port inputs.</p>
 <p>Lazy is what the protocol asks for rather than what any implementation must do.
 A tool reshaping a solved model's in-memory containers has nothing to defer and wraps its eager frames with <code>.lazy()</code>; one that could fetch a result attribute from a solver on demand is free to, and a caller wanting three of forty then pays for three.
 That is <a href="../record/#frames">the <code>Frames</code> argument</a>, on the write side.</p>
 <p>A record is the input to a translation, not the owner of one, so there is no registry and no name dispatch: a tool is a module-level singleton reached by importing it, <code>build</code> returns the framework's own type, and nothing in the record layer imports a tool.</p>
 <p><code>build</code> takes a <a href="../record/"><code>Record</code></a> rather than a record, so a tool builds from a directory as readily as from an overlay and has no reason to know layering exists.</p>
-<p>A tool's <code>verify</code> catches what the record layer cannot: a component type the framework has no registry entry for, a connection <code>role</code> it cannot place, a <code>partial</code> set that breaks the framework's constant-versus-varying split.
+<p>A tool's <code>verify</code> catches what the record layer cannot: an entity type the framework has no registry entry for — the record checks a category against its <code>Enum</code>, not against the framework — a connection <code>role</code> it cannot place, a <code>partial</code> set that breaks the framework's constant-versus-varying split.
 It is also where a framework scoping names <strong>per type</strong> meets <a href="../format/#entity-is-unique-across-types">a record scoping them record-wide</a>.
-PyPSA permits a <code>Bus</code> and a <code>Generator</code> both called <code>north</code>, so <code>to_datarecord</code> reports such a network as unbuildable rather than writing a record whose two components share one key.
+PyPSA permits a <code>Bus</code> and a <code>Generator</code> both called <code>north</code>, so <code>to_datarecord</code> reports such a network as unbuildable rather than writing a record whose two entities share one key.
 Reported rather than repaired: renaming to <code>Generator:north</code> would hand back a network whose components the framework can no longer find by their own names, and the record layer does not own a framework's vocabulary.
 PyPSA is itself moving to record-wide unique names, so this is a constraint that resolves rather than one to design around.
-It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by <a href="../read-path/#owner-map"><code>order_key</code></a>, and where a curve is either translated or reported unbuildable.</p>
-<p>The tool's own <code>Schema</code> reconciles vocabularies: per component type, which record attribute a tool's attribute is renamed from, or which several it is computed from.
+SubNetworks are the exception: PyPSA names them <code>0</code>, <code>1</code>, … on every topology pass, as it numbers Lines, so there is no caller to report to. The record keys them <code>0 SubNetwork</code>, …, as a caller suffixes a clashing <code>Load</code>, the <code>sub_network</code> results pointing at them likewise, and <code>build</code> takes the suffix off, so the framework finds them by their own names again.
+It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by <a href="../read-path/#owner-map"><code>order_key</code></a>, and where a curve is either translated or reported unbuildable.
+A per-connection input follows its connection's position: <code>efficiency</code> on a Link's <code>bus2</code> connection is PyPSA's <code>efficiency2</code>, static or per snapshot.
+The PyPSA schema declares <code>partial={"entity", "scenario", "connection"}</code>, so a layer patches one link's <code>efficiency</code> series without restating every other link's (<a href="../schema/#partial-the-granularity-of-an-override"><code>partial</code></a>); <code>entity</code> is there because <code>entity_type</code> <a href="../schema/#categories-an-enum-property-of-a-partial-dim">categorizes it</a>, and <code>bus</code> is not, its connections' deletion being <a href="../layers/#deletion">a cascade</a>.
+A Process's <code>rate0</code>, <code>rate1</code>, <code>rate2</code>, … are likewise the one input <code>rate</code>, numbered from <code>0</code> because PyPSA registers <code>rate0</code> where it leaves port <code>1</code>'s <code>efficiency</code> unsuffixed.
+Its ports default differently, <code>-1</code> at the input end and <code>1</code> at the others, so <code>rate</code> declares no default and a port with no row keeps PyPSA's own.
+Which stems are per-port is read off PyPSA's registry, a name ending in a port index plus a Link's unsuffixed <code>efficiency</code>, <code>delay</code> and <code>cyclic_delay</code>.
+Every per-port input, <code>delay</code> and <code>cyclic_delay</code> included, is long rows of <code>inputs/</code> over <code>connection</code>: a number is an attribute whatever its <code>dims</code>.</p>
+<p><strong>Properties and attributes are read off the registry.</strong> The properties of <code>entity</code> are exactly <code>entity_type</code>, <code>carrier</code>, <code>sign</code> and <code>type</code>, and <code>role</code> is a property of <code>connection</code>; every other input, every number among them, is an attribute, so <code>p_nom</code> is long rows of <code>inputs/p_nom.parquet</code> (<a href="../format/#where-a-value-lives">where a value lives</a>). A default that differs per component — <code>sign</code>, <code>carrier</code>, <code>p_min_pu</code>, <code>p_set</code> — is a <a href="../schema/#default_by-a-default-per-category"><code>default_by</code></a> on <code>entity_type</code>, and <code>entity_types</code> applies it when it builds a component's static frame from <code>members</code> and the entity-only rows of its attributes.</p>
+<p>The tool's own <code>Schema</code> reconciles vocabularies: per entity type, which record attribute a tool's attribute is renamed from, or which several it is computed from.
 Since <a href="../schema/">the schema</a> makes a record's attribute names <em>declared</em> rather than conventional, this maps one declared vocabulary to another.</p>
-<p>Frames are built and handed over one component type at a time, so peak memory is one type's frames rather than the whole model.</p>
+<p>Frames are built and handed over one entity type at a time, so peak memory is one type's frames rather than the whole model.</p>
+<h2 id="results-on-connections">Results on connections<a class="headerlink" href="#results-on-connections" title="Permanent link">&para;</a></h2>
+<p>A per-port result is stored exactly like a per-port input: one attribute over the <a href="../record/#connections"><code>connection</code> group</a>, one row per <code>(entity, bus)</code>, carried as the one <code>connection</code> struct column — <code>to_datarecord</code> packs it and <code>build</code> unpacks it back to <code>entity</code> and <code>bus</code> where it places ports.
+PyPSA's <code>p0</code>, <code>p1</code>, <code>p2</code>, … on a Line, Transformer, Link or Process and the one-port <code>p</code> on a Generator, Load, Store, StorageUnit or ShuntImpedance are all the result <code>p</code>, each row on the connection its port attaches to and keeping PyPSA's sign for that port; <code>q0</code>, <code>q1</code> and the one-port <code>q</code> are <code>q</code>.
+So a third port needs no declaration of its own: a Link's <code>p2</code> is <code>p</code> on its <code>bus2</code> connection, which the schema built from the bare registry already declares.</p>
+<p>Two results do not follow that rule, and the tool names both rather than inferring them:</p>
+<ul>
+<li><strong><code>Bus.p</code> and <code>Bus.q</code> are not written.</strong> Each is the signed sum of the connection <code>p</code>/<code>q</code> at that bus, so it is derivable, and as an entity-level <code>p</code> it would collide with the connection-level one.</li>
+<li><strong><code>Link.p</code> and <code>Process.p</code> are <code>p_internal</code>.</strong> PyPSA's "internal power" is at no bus, so it is an entity-level result, renamed because one name holds one spec record-wide.</li>
+</ul>
+<p>The schema's <code>results</code> and the frames <code>results</code> returns are read off one rule, so every frame is set with <code>kind="outputs"</code> under a name the schema declares.
+<code>build</code> reads only inputs, so no result is turned back into PyPSA's per-port columns.</p>
 
 
 

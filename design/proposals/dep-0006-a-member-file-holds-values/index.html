@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://energy-models.github.io/datarecord/design/proposals/trait-switches/">
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/design/proposals/dep-0006-a-member-file-holds-values/">
       
       
-        <link rel="prev" href="../groups/">
+        <link rel="prev" href="../dep-0005-one-record-over-a-node-cache/">
       
       
-        <link rel="next" href="../staging-as-a-layer/">
+        <link rel="next" href="../dep-0007-staging-without-seq/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Trait switches - datarecord</title>
+        <title>DEP 6: A member file holds values - datarecord</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#proposal-trait-switches-a-trait-a-component-opts-into" class="md-skip">
+        <a href="#dep-6-a-member-file-holds-values-and-nothing-else" class="md-skip">
           Skip to content
         </a>
       
@@ -118,7 +118,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Trait switches
+              DEP 6: A member file holds values
             
           </span>
         </div>
@@ -938,6 +938,16 @@
       
         
       
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -961,7 +971,7 @@
   <span class="md-ellipsis">
     
   
-    Proposals
+    Enhancement proposals
   
 
     
@@ -977,7 +987,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Proposals
+    Enhancement proposals
   
 
           </label>
@@ -990,14 +1000,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../dims-groups-traits/" class="md-nav__link">
+      <a href="../dep-NNNN-template/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Dims, mappings, groups and traits
+    Template
   
 
     
@@ -1018,14 +1028,126 @@
   
   
     <li class="md-nav__item">
-      <a href="../groups/" class="md-nav__link">
+      <a href="../dep-0001-dims-groups-traits/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Groups
+    DEP 1: Dims, mappings, groups and traits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0002-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 2: Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0003-trait-switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 3: Trait switches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0004-staging-as-a-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 4: Staging as a layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0005-one-record-over-a-node-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 5: One Record over a NodeCache
   
 
     
@@ -1062,7 +1184,7 @@
   <span class="md-ellipsis">
     
   
-    Trait switches
+    DEP 6: A member file holds values
   
 
     
@@ -1080,7 +1202,7 @@
   <span class="md-ellipsis">
     
   
-    Trait switches
+    DEP 6: A member file holds values
   
 
     
@@ -1117,6 +1239,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#why-it-cannot-simply-be-dropped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why it cannot simply be dropped
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-construct" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1129,10 +1262,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#the-four-combinations" class="md-nav__link">
+  <a href="#the-column-leaves-the-entity-axis-too" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The four combinations
+        The column leaves the entity axis too
       
     </span>
   </a>
@@ -1140,10 +1273,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#the-switch-is-an-ordinary-attribute" class="md-nav__link">
+  <a href="#deleted-belongs-to-the-axis-alone" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The switch is an ordinary attribute
+        deleted belongs to the axis alone
       
     </span>
   </a>
@@ -1151,10 +1284,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#which-dtypes" class="md-nav__link">
+  <a href="#what-a-schema-declaring-the-axis-does-unchanged" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Which dtypes
+        What a schema declaring the axis does, unchanged
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#every-source-and-every-producer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Every source and every producer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-prerequisite-axis-means-one-thing-on-every-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The prerequisite: axis means one thing on every source
       
     </span>
   </a>
@@ -1167,21 +1322,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-it-changes-for-attributes_for" class="md-nav__link">
+  <a href="#what-this-buys" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it changes for attributes_for
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#implementation-sketch" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Implementation sketch
+        What this buys
       
     </span>
   </a>
@@ -1200,10 +1344,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-it-opens" class="md-nav__link">
+  <a href="#what-it-opens-rather-than-settles" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it opens
+        What it opens rather than settles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-know-it-worked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to know it worked
       
     </span>
   </a>
@@ -1226,14 +1381,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../staging-as-a-layer/" class="md-nav__link">
+      <a href="../dep-0007-staging-without-seq/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Staging as a layer
+    DEP 7: Staging without _seq
   
 
     
@@ -1254,14 +1409,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../one-record-over-a-node-cache/" class="md-nav__link">
+      <a href="../dep-0008-one-interface-source-and-fold/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    One Record over a NodeCache
+    DEP 8: One interface, source and fold
   
 
     
@@ -1282,14 +1437,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../a-member-file-holds-values/" class="md-nav__link">
+      <a href="../dep-0009-store/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    A member file holds values
+    DEP 9: A Workspace and a Store
   
 
     
@@ -1310,14 +1465,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../staging-without-seq/" class="md-nav__link">
+      <a href="../dep-0010-a-group-is-a-struct-column/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Staging without _seq
+    DEP 10: A group is one struct column
   
 
     
@@ -1338,14 +1493,42 @@
   
   
     <li class="md-nav__item">
-      <a href="../one-interface-source-and-fold/" class="md-nav__link">
+      <a href="../dep-0011-deletion-cascades-through-tombstones/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    One interface, source and fold
+    DEP 11: Deletion cascades through tombstones
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0012-properties/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 12: Properties
   
 
     
@@ -1533,6 +1716,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#why-it-cannot-simply-be-dropped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why it cannot simply be dropped
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-construct" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1545,10 +1739,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#the-four-combinations" class="md-nav__link">
+  <a href="#the-column-leaves-the-entity-axis-too" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The four combinations
+        The column leaves the entity axis too
       
     </span>
   </a>
@@ -1556,10 +1750,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#the-switch-is-an-ordinary-attribute" class="md-nav__link">
+  <a href="#deleted-belongs-to-the-axis-alone" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The switch is an ordinary attribute
+        deleted belongs to the axis alone
       
     </span>
   </a>
@@ -1567,10 +1761,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#which-dtypes" class="md-nav__link">
+  <a href="#what-a-schema-declaring-the-axis-does-unchanged" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Which dtypes
+        What a schema declaring the axis does, unchanged
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#every-source-and-every-producer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Every source and every producer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-prerequisite-axis-means-one-thing-on-every-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The prerequisite: axis means one thing on every source
       
     </span>
   </a>
@@ -1583,21 +1799,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-it-changes-for-attributes_for" class="md-nav__link">
+  <a href="#what-this-buys" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it changes for attributes_for
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#implementation-sketch" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Implementation sketch
+        What this buys
       
     </span>
   </a>
@@ -1616,10 +1821,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-it-opens" class="md-nav__link">
+  <a href="#what-it-opens-rather-than-settles" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What it opens
+        What it opens rather than settles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-know-it-worked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to know it worked
       
     </span>
   </a>
@@ -1652,118 +1868,188 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-<h1 id="proposal-trait-switches-a-trait-a-component-opts-into">Proposal: trait switches — a trait a component opts into<a class="headerlink" href="#proposal-trait-switches-a-trait-a-component-opts-into" title="Permanent link">&para;</a></h1>
-<p>Status: <strong>Draft</strong> · Drafted 2026-08-27</p>
-<p>Stacked on <a href="../groups/">groups</a>, which it does not depend on but shares a direction with: what a record can say about a component should be declared rather than encoded in a type name.</p>
-<h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
-<p>A trait is scoped by entity type and by nothing else, so a distinction that is not about the type has nowhere to go — whether finer than a type, or orthogonal to types in a record that declares none.</p>
-<p><code>committable</code> is the case. In PyPSA a generator may be unit-committed, which decides whether <code>start_up_cost</code>, <code>min_up_time</code> and <code>ramp_limit_start_up</code> mean anything for it — and it is a property of the individual generator, not of <code>Generator</code>. Today the schema can only say that every generator carries them, so a record holds the attributes on all 3000 generators to describe the fifty that are committable, and a consumer that wants the distinction reads a boolean attribute the schema never connected to the bundle.</p>
-<p>The same shape recurs wherever a framework has an opt-in behaviour: <code>cyclic_state_of_charge</code> on a storage unit, <code>e_cyclic</code> on a store, transmission losses on a link, an extendable-versus-fixed capacity split.</p>
-<p>It is the minority of traits. <code>investable</code> and <code>dispatchable</code> are properties of a <em>type</em> — every generator is dispatchable — and the type scope is the right and only scope for them. What is missing is a way to say the other thing, not a replacement for what <code>on</code> says.</p>
-<p><a href="../../schema/#traits">Only an entity-type axis may scope a trait</a>, and that rule is right: a trait scoped to <code>country</code> would make an attribute's vocabulary depend on what a bus maps to, a per-entity lookup every caller of <code>attributes_for</code> treats as answerable from the schema alone. The rule bans scoping a trait on <em>data</em>.</p>
-<p>But a switch is not data of that kind. It is a declared attribute of the component itself, with a known dtype and a default, and the vocabulary it selects is fixed by the schema — which of two known answers applies is per entity, and both answers are on the page before any row is read.</p>
-<h2 id="the-construct">The construct<a class="headerlink" href="#the-construct" title="Permanent link">&para;</a></h2>
-<p><strong>A trait narrows two ways, and both are optional.</strong> <code>on</code> says which entity types carry it and reaches every type when absent; <code>switch</code> names an attribute deciding it per component, and gates nothing when absent.
-Neither is the primary mechanism the other qualifies — a trait may use either, both or <a href="#the-four-combinations">neither</a>, and <code>on</code> reaching everywhere is <a href="../../schema/#traits">what it already means</a> rather than anything this proposal adds.</p>
-<p>The new half is <code>switch</code>, an attribute of the trait's own that turns it on:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">traits</span><span class="p">:</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">committable</span><span class="p">:</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">attributes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">start_up_cost</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">shut_down_cost</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">min_up_time</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ramp_limit_start_up</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">on</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> entity_type</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">Generator</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">Link</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">switch</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">committable</span><span class="w"> </span><span class="c1"># joins `attributes` on its own</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="nt">attributes</span><span class="p">:</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">committable</span><span class="p">:</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bool</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">entity</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
-</code></pre></div>
-<p><code>switch</code> names an attribute the schema declares, <code>dims: [entity]</code> exactly — the switch is per component, which is the whole of what it adds over <code>on</code>.</p>
-<p><strong>The switch joins the trait's <code>attributes</code> on its own</strong>, added during <a href="#implementation-sketch">normalisation</a> rather than listed by the author.
-Naming it twice would be two ways to say one thing: a trait whose <code>switch</code> is not among its attributes is not a coherent declaration, so the schema completes it instead of rejecting it.
-A consumer asking what <code>committable</code> bundles gets the switch along with the rest, which is what makes the trait queryable as one object.</p>
-<p><strong><code>switch</code> is optional, and most traits want none.</strong> A behaviour every component of a type has is not a switch — every generator is dispatchable, so <code>dispatchable</code> stays exactly as it is:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">dispatchable</span><span class="p">:</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">attributes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">p_min_pu</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">p_max_pu</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">p_set</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">on</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> entity_type</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">Generator</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">Link</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span>
-</code></pre></div>
-<p>No switch column, no per-component narrowing, nothing new to read. A switch earns its place only where a framework has a genuine opt-in — where the answer differs between two components of one type — and adding one where it does not is a column of <code>true</code> that says nothing.</p>
-<h3 id="the-four-combinations">The four combinations<a class="headerlink" href="#the-four-combinations" title="Permanent link">&para;</a></h3>
+<h1 id="dep-6-a-member-file-holds-values-and-nothing-else">DEP 6: a member file holds values, and nothing else<a class="headerlink" href="#dep-6-a-member-file-holds-values-and-nothing-else" title="Permanent link">&para;</a></h1>
 <table>
 <thead>
 <tr>
-<th><code>on</code></th>
-<th><code>switch</code></th>
-<th>reaches</th>
+<th>DEP</th>
+<th>6</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>—</td>
-<td>—</td>
-<td>every component, of every type</td>
+<td>Title</td>
+<td>a member file holds values, and nothing else</td>
 </tr>
 <tr>
-<td>yes</td>
-<td>—</td>
-<td>every component of the listed types</td>
+<td>Author</td>
+<td>Jonas Hörsch</td>
 </tr>
 <tr>
-<td>—</td>
-<td>yes</td>
-<td>the components whose switch is true</td>
+<td>Status</td>
+<td>Superseded 2026-10-13 (implemented 2026-09-04)</td>
 </tr>
 <tr>
-<td>yes</td>
-<td>yes</td>
-<td>those of the listed types, switch true</td>
+<td>Created</td>
+<td>2026-09-02</td>
+</tr>
+<tr>
+<td>Version</td>
+<td>v0.1.0a1</td>
+</tr>
+<tr>
+<td>Superseded-By</td>
+<td><a href="../dep-0012-properties/">DEP 12</a></td>
 </tr>
 </tbody>
 </table>
-<p>The third row is the one worth naming: <strong>a switched trait needs no entity-type axis at all.</strong> A record declaring no types can still say that some components are committable and others are not, which the type scope could never express — and a schema with types may still gate a trait without listing any, where the opt-in is genuinely orthogonal to what kind of thing a component is.</p>
-<p>The two never interact. <code>committable</code> <code>on</code> <code>{Generator, Link}</code> reaches no <code>Store</code> whatever its switch column says, and reaches a generator only where its <code>committable</code> is true — <code>on</code> first, then <code>switch</code>, with no case where one changes what the other means.</p>
-<h3 id="the-switch-is-an-ordinary-attribute">The switch is an ordinary attribute<a class="headerlink" href="#the-switch-is-an-ordinary-attribute" title="Permanent link">&para;</a></h3>
-<p>Not a new kind of declaration. It has a <code>dtype</code>, a <code>default</code>, a <code>unit</code> if it wants one, it is written and read like anything else addressed by <code>entity</code>, and it lives where <a href="../../format/#where-a-value-lives">an attribute over <code>entity</code> alone</a> already lives.</p>
-<p>That it also names a trait changes nothing about it, which is what keeps the mechanism cheap: no new file, no new column kind, no new resolution rule, and a record whose consumer does not care about traits sees a boolean it can read.</p>
-<p><strong>Its default decides the unset case</strong>, and <code>false</code> is the one to declare. A component that never mentions the switch is not committable, which is what a reader expects and what keeps the bundle off every component that predates the trait.</p>
-<p><strong>A switch is not narrowed by its own trait.</strong> Being <a href="#the-construct">in the bundle</a> it would otherwise be, and the attribute deciding a trait cannot be gated by the trait it decides — nothing could ever turn it on.</p>
-<p>So the switch is in <code>attributes</code> for discovery and out of the narrowing: <code>committable</code> the attribute is carried by every type <code>committable</code> the trait is <code>on</code>, whatever any component's value.
-It is the one attribute a trait bundles without restricting, which is what being the switch means.</p>
-<h3 id="which-dtypes">Which dtypes<a class="headerlink" href="#which-dtypes" title="Permanent link">&para;</a></h3>
-<p><code>bool</code> is the case that motivates this and the one to allow first.</p>
-<p>An <code>Enum</code> switch selecting among several traits is the obvious generalisation — <code>capacity_mode</code> of <code>fixed</code>/<code>extendable</code>/<code>committable</code>, with three traits each naming the same attribute and a different label — and it is deferred rather than rejected: it needs a way to say <em>which label</em> turns a trait on, which is a second field (<code>switch_value</code>), and no case in the tools demands it yet.</p>
-<p>A <code>bool</code> switch is that generalisation with the label fixed at <code>true</code>, so admitting it later widens rather than reshapes.</p>
-<h2 id="what-it-changes-for-attributes_for">What it changes for <code>attributes_for</code><a class="headerlink" href="#what-it-changes-for-attributes_for" title="Permanent link">&para;</a></h2>
-<p><code>Schema.attributes_for(ctype)</code> answers from the schema alone, and it must keep doing so.</p>
-<p>A switched trait's attributes are <strong>carried by the type</strong> — <code>attributes_for("Generator")</code> includes <code>start_up_cost</code> — because the question it answers is which attributes a generator <em>may</em> have, which is what <a href="../../record/#flags"><code>flags</code></a> and the <a href="../../working-record/#add-remove"><code>add</code> routing</a> need. A schema-level answer cannot depend on a row, and it does not have to: the switch narrows which components carry a <em>value</em>, not which the type admits.</p>
-<p>A trait gated only by a switch is therefore invisible to <code>attributes_for</code>, which is the right answer for the same reason: its attributes reach every type, and which components hold a value is a question about data.
-A schema with no entity-type axis already has <code>attributes_for</code> <a href="../../schema/#traits">returning everything addressed by <code>entity</code></a> whatever it is asked, and a switch does not change that.</p>
-<p>So the switch is a <strong>validation and query mechanism, not a change to the vocabulary</strong>:</p>
-<ul>
-<li><strong>A value set on a component whose switch is false is an error on write.</strong> That is the check the mechanism exists for, and it is the one thing today's schema cannot express — it turns "these 3000 generators all have a <code>min_up_time</code> column, mostly NULL" into "fifty of them may, and setting the fifty-first is a mistake".</li>
-<li><strong>A consumer may ask which components a trait reaches.</strong> <code>record.entities_with("committable")</code> is a filter on the switch column, which is the queryable half of what makes a trait worth declaring, now at component granularity rather than type.</li>
-</ul>
-<p>Whether <code>attributes_for</code> grows a per-entity counterpart is left open below.</p>
-<h2 id="implementation-sketch">Implementation sketch<a class="headerlink" href="#implementation-sketch" title="Permanent link">&para;</a></h2>
-<p><strong>The switch is folded into <code>attributes</code> at parse</strong>, so nothing downstream has to remember it is special:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">Trait</span><span class="p">(</span><span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">"start_up_cost"</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span> <span class="n">switch</span><span class="o">=</span><span class="s2">"committable"</span><span class="p">)</span>   <span class="c1"># what the author writes</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">Trait</span><span class="p">(</span><span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">"start_up_cost"</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="s2">"committable"</span><span class="p">},</span> <span class="o">...</span><span class="p">)</span>     <span class="c1"># what `attributes` returns</span>
+<blockquote>
+<p><strong>Superseded</strong> by <a href="../dep-0012-properties/#one-file-per-subject-on-disk">properties</a>:
+the entity-type axis is now an <code>Enum</code> property of <code>entity</code>, and a record with
+and one without categories share one entity-axis layout with no member files.
+The authoritative account is <a href="../../format/#the-entity-axis">the entity axis</a>,
+<a href="../../format/#where-a-value-lives">where a value lives</a> and
+<a href="../../schema/#categories-an-enum-property-of-a-partial-dim">categories</a>; this
+page is kept as the argument that led to the intermediate layout. It keys on <code>entity_type_dim is None</code> (no group over
+<code>entity</code> alone), leaving a <code>String</code>-typed <strong>declared</strong> axis on today's per-type
+layout — the <a href="#what-it-opens-rather-than-settles">open question</a> below was
+resolved that way. <code>entity_type(ctype)</code> <strong>raises</strong> where no type axis is
+declared rather than answering <code>None</code>. Cache invalidation on schema change is
+still not settled: a materialised cache written under the old layout is a
+rebuild, <a href="#the-column-leaves-the-entity-axis-too">as noted below</a>.</p>
+</blockquote>
+<p>Two claims about <code>dims/entity_type/&lt;Type&gt;.parquet</code>, which are one claim: that file holds a type's attribute values, and everything about a component's <em>existence</em> belongs to the <a href="../../format/#the-entity-axis">entity axis</a>.</p>
+<p>Today it holds more. A record whose schema declares no entity-type axis still writes one member file per type — types that are not declared, not validated and not constrainable, yet decide which file a value is in, so a reader must know them to reach it. And every member file carries <code>deleted</code>, which the fold reads as a tombstone alongside the axis's own, so a removal is written twice to say one thing.</p>
+<p>This proposal puts those values on <code>dims/entity.parquet</code> where the schema declares no entity-type axis, and takes <code>deleted</code> off the member file in every record. What is left in a member file is <code>entity</code> and one column per attribute.</p>
+<p>The related concern — <code>entity_type</code> asserted rather than derived in the read path — is already settled: the <a href="../../read-path/#one-fold-for-every-axis">entity axis folds like any dim</a> rather than through an owner map, so <code>entity_types()</code> reads the resolved axis directly and there is no map column set to make conditional. What remains is the member file itself.</p>
+<h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
+<p><a href="../../schema/#properties">The schema</a> is explicit that the axis is optional, and that omitting it makes the labels data:</p>
+<blockquote>
+<p>The entity-type axis's enum categories, so a schema declaring it as a plain <code>String</code> has none: the labels are then data rather than declarations, and <code>attributes_for</code> accepts any of them.</p>
+</blockquote>
+<p><code>tests/test_untyped.py</code> exercises that: a schema with two attributes over <code>entity</code> and no classifying group, components added under <code>thing</code> and <code>other</code>, and both round-trip. So far so good.</p>
+<p>The problem is where their values land. <code>p_nom</code> is <code>dims={"entity"}</code> and non-varying, and the format gives that exactly one home — <a href="../../format/#where-a-value-lives"><code>dims/entity_type/&lt;Type&gt;.parquet</code></a>. It cannot be a column of <code>dims/entity.parquet</code>, because <code>attributes_on("entity")</code> returns <code>()</code> by explicit early return; it cannot be an <code>inputs/</code> row, because it does not vary. So a label the schema never declared becomes a filename:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>dims/entity.parquet             entity, entity_type, deleted
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>dims/entity_type/thing.parquet  entity, p_nom
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>dims/entity_type/other.parquet  entity, p_nom
 </code></pre></div>
-<p><code>switch</code> is retained on the model, for the same reason <a href="../groups/#implementation-sketch"><code>into</code></a> is: two things still need it, and both are leaves.</p>
+<p><strong><code>entity_type</code> there is a column no declaration accounts for.</strong> Every other column of an axis file answers to something: its key comes from <code>axis_key</code>, its attribute columns from <code>attributes_on</code>, <code>deleted</code> is structural. This one is admitted by a special case in <code>_validate_frame</code> and typed as a plain <code>String</code> by a fallback in <code>_axis_columns</code>, because there is no <code>Dimension</code> to read a dtype from. It is the one column in the format whose presence is not derivable from the schema.</p>
+<h2 id="why-it-cannot-simply-be-dropped">Why it cannot simply be dropped<a class="headerlink" href="#why-it-cannot-simply-be-dropped" title="Permanent link">&para;</a></h2>
+<p>The obvious move — no declared axis, no <code>entity_type</code> column — does not close, because the label carries the type wherever a per-type question is asked:</p>
+<table>
+<thead>
+<tr>
+<th>reader</th>
+<th>what it does with it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NodeCache.entity_types()</code></td>
+<td><code>distinct_values(entity_axis, "entity_type")</code></td>
+</tr>
+<tr>
+<td><code>NodeCache.entity_type_frame</code></td>
+<td>scopes to one type, then reads its file</td>
+</tr>
+<tr>
+<td><code>NodeCache.attributes_of</code></td>
+<td>scopes the flags to one type</td>
+</tr>
+</tbody>
+</table>
+<p>The label lives on the <a href="../../read-path/#one-fold-for-every-axis">resolved entity axis</a>, carried on the winning row like <code>weight</code> on <code>dims/scenario.parquet</code> — not in an owner map, since the entity axis folds like every other dim. So gating only the member file, and leaving <code>entity_type</code> on the axis filled with NULLs, leaves <code>entity_types()</code> yielding <code>{None}</code> rather than <code>{thing, other}</code>.</p>
+<p>Deriving the label from the filenames instead works, but costs a <code>LayerSource.entity_types()</code> listing member files and a per-layer <code>LIST</code> on the read path — which is what <a href="../../format/#the-entity-axis">the entity axis exists to avoid</a>. Trading a stored string for a directory listing per layer per fold is the wrong direction.</p>
+<p>So the label is load-bearing <em>given the current layout</em>. The layout is what this proposal changes.</p>
+<h2 id="the-construct">The construct<a class="headerlink" href="#the-construct" title="Permanent link">&para;</a></h2>
+<p><strong>Where a schema declares no entity-type axis, a non-varying attribute over <code>entity</code> is a column of <code>dims/entity.parquet</code>.</strong> No <code>dims/entity_type/</code> directory, no per-type files, and <code>entity_type</code> is then genuinely absent — nothing classifies, so there is nothing to classify into.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>dims/entity.parquet   entity, deleted, p_nom, ...
+</code></pre></div>
+<p>Which is what the entity axis already is for every other purpose: the file keyed by <code>entity</code> that carries what is true of a component. <code>attributes_on</code>'s early return — "Never <code>entity</code>, whose sole-coordinate attributes are the <em>component</em> frame's columns" — becomes conditional on a type axis existing, which is the one line of schema that decides the whole layout.</p>
+<h3 id="the-column-leaves-the-entity-axis-too">The column leaves the entity axis too<a class="headerlink" href="#the-column-leaves-the-entity-axis-too" title="Permanent link">&para;</a></h3>
+<p>The layout change is not enough on its own: the resolved entity axis carries <code>entity_type</code> on its winning row, so <strong>that</strong> is where the column has to become conditional. The axis frame a source supplies is <code>(entity, entity_type, deleted)</code>; where the schema declares no type axis it is <code>(entity, deleted, *attrs)</code> instead — no <code>entity_type</code>, the attribute columns in its place.</p>
+<p>The readers follow from the column's absence:</p>
 <ul>
-<li><strong><code>attributes_for</code></strong> excludes the switch from its own trait's narrowing — one membership test, where a trait's bundle is already being resolved.</li>
-<li><strong>The write-time check</strong> reads it to find the column gating a value.</li>
+<li><strong><code>entity_types()</code></strong> returns the empty set — <code>distinct_values</code> is not called on the axis, rather than called on a column of NULLs.</li>
+<li><strong><code>entity_type_frame(ctype)</code></strong> has no type to be asked for. <code>Record.entity_types</code> iterates an empty mapping, so nothing reaches it; a direct call is a caller error, and should say so rather than filter on a missing column.</li>
+<li><strong><code>attributes_of(ctype)</code></strong> scopes the flags by type, which is meaningless without types. Its semi-join to <code>of_type</code> becomes the whole axis — every component, which is what "no types" means for a per-type question.</li>
 </ul>
-<p>Validation is the <a href="../../schema/#traits">existing trait validator</a>, which already rejects a bundled attribute the schema does not declare; <code>switch</code> is checked the same way, plus that its <code>dims</code> are exactly <code>{"entity"}</code>.
-Folding it into <code>attributes</code> before that check runs means the declared-attribute half needs no second call site.</p>
+<p><strong>The materialised axis is the consequence to be deliberate about.</strong> <code>resolved/dims/entity.parquet</code> is written from the folded axis, so the cache of a record with no declared type axis stops carrying <code>entity_type</code> — and a cache written before the change has it. <a href="../../layers/#materialised-node-caches">Materialised node caches</a> are derived data that can be rebuilt, so this is a rebuild rather than a migration; but a stale cache read against the new column set is the failure mode to check for, and it argues for the cache carrying a schema version or being invalidated on schema change. This proposal does not settle that.</p>
+<h3 id="deleted-belongs-to-the-axis-alone"><code>deleted</code> belongs to the axis alone<a class="headerlink" href="#deleted-belongs-to-the-axis-alone" title="Permanent link">&para;</a></h3>
+<p>A member file carries <code>deleted</code> today, and the fold reads it from there as well as from the entity axis. That is the same duplication the axis exists to remove: <a href="../../format/#the-entity-axis">membership is the axis's</a> — "a component exists because it has a row here, not because some type's file mentions it" — and a tombstone is a statement about membership.</p>
+<p>It shows up as a coupling in the staging area. <code>remove</code> has to write twice, once to the axis and once to the type's member table, because a removal that left no member row would read as a member the layer never mentioned. Two writes to say one thing, kept in step by hand.</p>
+<p>So this proposal also takes <code>deleted</code> off the member file: a member file holds <code>entity</code> and that type's columns, nothing else. <code>remove</code> then writes one row, on the axis, and the fold reads tombstones from one place.</p>
+<p>The two changes belong together because they are the same claim about that file — a member file holds <em>values</em>, and everything about a component's existence is the axis's. Separately each looks like a detail; together they leave the member file with no column that is not an attribute.</p>
+<h3 id="what-a-schema-declaring-the-axis-does-unchanged">What a schema declaring the axis does, unchanged<a class="headerlink" href="#what-a-schema-declaring-the-axis-does-unchanged" title="Permanent link">&para;</a></h3>
+<p>A schema declaring the axis keeps today's layout exactly: <code>dims/entity_type/&lt;Type&gt;.parquet</code> per type, <code>entity_type</code> on the entity axis, typed by the declared <code>Dimension</code>. This proposal adds no case there; it removes one from the side where nothing declares the axis.</p>
+<h3 id="every-source-and-every-producer">Every source and every producer<a class="headerlink" href="#every-source-and-every-producer" title="Permanent link">&para;</a></h3>
+<p>The layout is one thing; what each implementation of it must do is another, and the change is only coherent if all of them agree. There are four <code>LayerSource</code>s and two record-side producers.</p>
+<table>
+<thead>
+<tr>
+<th>implementation</th>
+<th><code>axis("entity")</code> under this proposal</th>
+<th><code>entity_type(name)</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>_FileLayer</code> (shared)</td>
+<td><code>dims/entity.parquet</code>, now with attribute columns</td>
+<td><code>None</code> — no such directory</td>
+</tr>
+<tr>
+<td><code>ParquetLayer</code></td>
+<td>inherited</td>
+<td>inherited</td>
+</tr>
+<tr>
+<td><code>ResolvedLayer</code></td>
+<td><code>layers/&lt;id&gt;/dims/entity.parquet</code> — <strong>see below</strong></td>
+<td>inherited, from <code>layers/&lt;id&gt;/</code></td>
+</tr>
+<tr>
+<td><code>DirectorySource</code></td>
+<td>inherited</td>
+<td>inherited</td>
+</tr>
+<tr>
+<td><code>StagedSource</code> / <code>WorkingRecord</code></td>
+<td><code>_ENTITY_AXIS</code> table, now with attribute columns</td>
+<td><code>None</code> — no member tables staged</td>
+</tr>
+<tr>
+<td><code>PyPSA</code> (tool)</td>
+<td><code>dims["entity"]</code>, its member frames merged in</td>
+<td><code>entity_types</code> empty</td>
+</tr>
+</tbody>
+</table>
+<p>Three of the four sources need no code change at all: <code>_FileLayer</code> reads whatever columns the file has, and <code>ParquetLayer</code> and <code>DirectorySource</code> inherit it. <code>entity_type(name)</code> answering <code>None</code> follows from the directory being absent, which <code>try_read_parquet</code> already handles. That is the test of whether the layout is right — a file-backed source should not have to know which configuration it is reading.</p>
+<p><strong>The <code>PyPSA</code> tool</strong> currently supplies <code>entity_types</code> per type and, since the entity axis became a supplied member, <code>dims["entity"]</code> from <code>_entity_axis_frame</code>. Under this proposal an untyped export merges the member columns into that frame and stops supplying <code>entity_types</code> — but PyPSA always has types (<code>n.components</code>), so it is unaffected in practice. It matters as a statement about the protocol rather than about this tool: a producer with no types has one axis frame to fill and no <code>entity_types</code> mapping, which is exactly what the <code>Record</code> protocol should let it say.</p>
+<h3 id="the-prerequisite-axis-means-one-thing-on-every-source">The prerequisite: <code>axis</code> means one thing on every source<a class="headerlink" href="#the-prerequisite-axis-means-one-thing-on-every-source" title="Permanent link">&para;</a></h3>
+<p><code>ResolvedLayer</code> overrides <code>axis</code> and <code>axes</code> to read <code>resolved/dims/</code> — the <em>folded</em> answer, standing for everything above this node — so <code>axis(dim)</code> means something different on it than on every other source, where it means "this layer's own rows". Moving a component's attribute columns onto the entity axis brings them into the reach of a source read that expects layer-local rows, so the override has to go first.</p>
+<p>That untangling is <a href="../dep-0008-one-interface-source-and-fold/"><code>one-interface-source-and-fold</code></a>'s subject in full: the <code>ResolvedLayer</code> masquerade — a persisted fold typed as a source — is the root, and once the base is a <code>Resolver</code> and the head a plain <code>ParquetLayer</code>, <code>axis</code> is layer-local on every source with no exception. This proposal depends on that split; it adds no new argument to it.</p>
+<h2 id="what-this-buys">What this buys<a class="headerlink" href="#what-this-buys" title="Permanent link">&para;</a></h2>
+<p><strong>Every column of the format answers to a declaration.</strong> <code>entity_type</code> stops being the exception admitted by a special case, because it appears only where a group declares the axis — which is also when it has a dtype. The <code>_validate_frame</code> special case and the <code>_axis_columns</code> <code>String</code> fallback both go, and so does the <code>nw.String()</code> fallback that types a column no <code>Dimension</code> describes.</p>
+<p><strong>The entity axis's shape follows the schema.</strong> Where a schema declares no type axis, the folded entity axis stops carrying <code>entity_type</code> — on disk in a materialised cache too — rather than carrying it filled with NULLs. The three per-type readers then all resolve to "there are no types" rather than to "the type is NULL".</p>
+<p><strong>A record whose schema declares no type axis has one member file, not N.</strong> Today <code>add("thing", …)</code> and <code>add("other", …)</code> write two files that no declaration distinguishes, and a reader must enumerate them to find a component. One axis file is the honest shape of "these components have no kinds".</p>
+<p><strong><code>Record.entity_types</code> stops lying.</strong> It currently returns <code>{thing, other}</code> where the schema declares no entity-type axis — reporting filenames as a vocabulary. Empty is the true answer, and <code>entity_types</code> being empty is already what <code>schema.entity_types</code> says.</p>
 <h2 id="what-it-costs">What it costs<a class="headerlink" href="#what-it-costs" title="Permanent link">&para;</a></h2>
-<p><strong>A second narrowing axis to explain.</strong> A trait now cuts by type and by component, and a reader has to hold both. The saving grace is that they compose in one direction — <code>on</code> first, then <code>switch</code> — with no case where they interact.</p>
-<p><strong>A validation that reads data.</strong> Rejecting a value whose switch is false means the writer consults the switch column, which no <code>AttributeSpec</code> check does today. It is a join against <code>dims/entity.parquet</code> on write, in a path that already reads that file to check the entity exists.</p>
-<p><strong>One more way to spell a boolean.</strong> A record may carry <code>committable</code> as a plain attribute and ignore the trait, and both spellings will exist in the wild. The trait is the one that connects it to a bundle; nothing forces its use.</p>
-<h2 id="what-it-opens">What it opens<a class="headerlink" href="#what-it-opens" title="Permanent link">&para;</a></h2>
-<p><strong>An <code>Enum</code> switch and <code>switch_value</code></strong>, deferred above.</p>
-<p><strong>Whether <code>attributes_for</code> needs a per-entity counterpart.</strong> The schema-level answer stays type-scoped, and a caller wanting "what does <em>this</em> generator carry" has to read the switch column itself. That is the same shape as the <a href="../../open-questions/">open question</a> about a record-level <code>flags</code>, and probably wants the same answer.</p>
-<p><strong>Whether a switch may be addressed by more than <code>entity</code>.</strong> <code>dims: [entity, scenario]</code> would be a component committable in one scenario and not another, which is coherent and is the <a href="../../schema/#existence-does-not-vary-along-a-dim">existence-does-not-vary</a> argument in a milder form — the component exists either way, only its vocabulary moves. Rejected here for the same reason that page gives, that what a tombstone or a coarser row means is unsettled, and worth revisiting only with a case.</p>
+<p><strong>A second layout for one construct.</strong> The entity axis carries attribute columns in one configuration and not the other, which is a branch in <code>_axis_columns</code>, in <code>_validate_frame</code>'s <code>known</code> set, and in whatever <code>add</code> uses to route a wide frame. Against that: the branch replaces the <code>entity_type</code>-column special case rather than adding to it, and it is keyed on one schema property.</p>
+<p><strong>A prerequisite in <code>ResolvedLayer</code>.</strong> Its <code>axis</code>/<code>axes</code> must become layer-local first, with the folded read moved to the seed path (above). That is a small change and a defect fix in its own right, but it lands before this proposal rather than with it, and it touches <code>resolve_dims</code> - the one place the fold reads axes across sources.</p>
+<p><strong><code>attributes_on("entity")</code> changes meaning.</strong> Its early return is load-bearing in more places than the writer — worth auditing every caller before moving it, since "never <code>entity</code>" is currently an invariant a reader may lean on.</p>
+<p><strong>Migration.</strong> A record written under the old layout has <code>dims/entity_type/thing.parquet</code> and an <code>entity_type</code> column; one written under the new has neither. Pre-1.0 and <a href="https://github.com/energy-models/datarecord/blob/main/AGENTS.md">breaking changes are free</a>, so this is a re-export rather than a compatibility path — but it is a re-export of every existing record whose schema declares no type axis, not a no-op.</p>
+<h2 id="what-it-opens-rather-than-settles">What it opens rather than settles<a class="headerlink" href="#what-it-opens-rather-than-settles" title="Permanent link">&para;</a></h2>
+<p><strong>Whether a declared axis with no <code>Enum</code> is the same case.</strong> <code>schema.entity_types</code> is empty for a <code>String</code>-typed entity-type dim too — the labels are data there as well, yet a group declares the axis, so the type is a real dim with a dtype. This proposal keys on <code>entity_type_dim is None</code>, not on whether the labels are enumerable, and the two differ for exactly that schema. Which side it belongs on is a question about what declaring the axis <em>means</em>, and this page does not answer it.</p>
+<p><strong>Whether <code>attributes_for</code> should narrow at all without types.</strong> It currently returns every entity-addressed attribute for any label. If there are no types, "which attributes does type X carry" has no meaning, and the method's contract could say so rather than accepting any string.</p>
+<h2 id="how-to-know-it-worked">How to know it worked<a class="headerlink" href="#how-to-know-it-worked" title="Permanent link">&para;</a></h2>
+<p><strong><code>tests/test_untyped.py</code> changes shape, and that is the deliverable.</strong> <code>test_a_component_round_trips_without_a_type</code> and <code>test_an_unknown_label_is_accepted</code> both assert on <code>record.entity_types</code> returning labels; under this proposal they assert it is empty and read the values off <code>dims["entity"]</code> instead. The round trip is the same round trip — a value written and read back — through one file rather than two.</p>
+<p><strong>A written untyped layer has no <code>dims/entity_type/</code> at all.</strong> The clearest single assertion: the directory does not exist, where today it holds one file per label an <code>add</code> happened to use.</p>
+<p><strong>The <code>_validate_frame</code> special case is gone.</strong> Asserting that an <code>entity_type</code> column on the entity axis of a record with no declared type axis is now <em>rejected</em> is what says the exception was removed rather than relocated.</p>
+<p><strong><code>sources.py</code> is untouched, <code>ResolvedLayer</code> aside.</strong> The strongest signal that the layout is right rather than merely different: if <code>_FileLayer</code>, <code>ParquetLayer</code> and <code>DirectorySource</code> need no edit, then a file-backed source genuinely does not have to know which configuration it reads. A diff that adds a branch to any of them means the layout is being carried by the readers instead of by the format.</p>
+<p><strong>A resolved record with no declared types reads the same as an unresolved one.</strong> Materialise a node of such a record and read a component's value through both; they must agree. This is the assertion the <code>ResolvedLayer</code> prerequisite above exists to protect, so it belongs in the suite before either change rather than after.</p>
+<p><strong>The resolved entity axis has no <code>entity_type</code> column where the schema declares no type axis</strong> — asserted on the relation's columns, and on the materialised <code>resolved/dims/entity.parquet</code> for a node that was materialised. Today both carry it, filled with NULLs, which is the state that makes <code>entity_types()</code> answer <code>{None}</code>; a test that only checks <code>entity_types() == set()</code> would pass with the column still there and still NULL.</p>
 
 
 
@@ -1799,7 +2085,7 @@ Folding it into <code>attributes</code> before that check runs means the declare
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../groups/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Groups">
+          <a href="../dep-0005-one-record-over-a-node-cache/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 5: One Record over a NodeCache">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1809,20 +2095,20 @@ Folding it into <code>attributes</code> before that check runs means the declare
                 Previous
               </span>
               <div class="md-ellipsis">
-                Groups
+                DEP 5: One Record over a NodeCache
               </div>
             </div>
           </a>
         
         
           
-          <a href="../staging-as-a-layer/" class="md-footer__link md-footer__link--next" aria-label="Next: Staging as a layer">
+          <a href="../dep-0007-staging-without-seq/" class="md-footer__link md-footer__link--next" aria-label="Next: DEP 7: Staging without _seq">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Staging as a layer
+                DEP 7: Staging without _seq
               </div>
             </div>
             <div class="md-footer__button md-icon">

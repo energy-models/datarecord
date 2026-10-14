@@ -946,6 +946,16 @@
       
         
       
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -964,14 +974,14 @@
   
   
   
-    <a href="../proposals/dims-groups-traits/" class="md-nav__link">
+    <a href="../proposals/dep-NNNN-template/" class="md-nav__link">
       
   
   
   <span class="md-ellipsis">
     
   
-    Proposals
+    Enhancement proposals
   
 
     
@@ -1166,18 +1176,23 @@ SPDX-License-Identifier: CC-BY-4.0
 <h1 id="module-layout">Module layout<a class="headerlink" href="#module-layout" title="Permanent link">&para;</a></h1>
 <p>The target, once the split below is done:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>datarecord/                     # the standalone concept
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── schema.py                   # Dimension, AttributeSpec, Schema
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── record.py                   # Record, Frames, LazyFrames, Flags
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── mutable.py                  # WorkingRecord, the edit/commit path
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── layered/                    # Record and its resolution
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│   ├── revision.py             # Revision, the node tree
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│   ├── resolve.py              # owner-map fold
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│   ├── sources.py              # LayerSource: where a layer's files are
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   └── write.py                # write_record
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>└── duck.py                     # connection setup, path derivation
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── schema.py                   # Dimension, AttributeSpec, PropertySpec, Schema
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── record.py                   # RecordLike, LayerData, Frames, LazyFrames, Flags
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── store.py                    # Workspace, Store
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── files.py                    # Files: manifests and revision files, local or remote
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── mutable.py                  # WorkingRecord, the edit path
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>├── layered/                    # Record and its resolution
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│   ├── record.py               # Record, the narwhals face of a Resolver
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   ├── revision.py             # Revision, the node tree
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   ├── resolve.py              # owner-map fold
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│   ├── categories.py           # which labels a NULL reaches on a categorized dim
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│   ├── sources.py              # LayerSource: where a layer's files are
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│   └── write.py                # the writer root, child and ws.write share
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>└── duck.py                     # relation helpers
 </code></pre></div>
+<p><code>Record</code> lives beside its backing, the <code>Resolver</code>, rather than in the top-level <code>record.py</code>, which holds the vocabulary a record speaks — the protocols and the value types their members use. Its own module rather than <code>resolve.py</code>, so that file stays the DuckDB fold alone; the dependency runs one way, <code>layered/record.py</code> importing <code>Resolver</code> and nothing importing back. Where a connection and a location come from is <code>store.py</code>'s, so <code>duck.py</code> holds no state.</p>
 <p>"<a href="../#what-a-data-record-is">Depends on <code>duckdb</code>, <code>narwhals</code> and <code>pydantic</code>, and on nothing else</a>" is achieved at this layer — <code>datarecord/tools/</code> is where a framework-specific tool lives instead (below), and nothing under it is imported by the package's own <code>__init__.py</code>.</p>
-<p>The protocols live with their implementations rather than with any one consumer, because there are several: a <a href="../tools/">tool</a> both implements and consumes <code>RecordLike</code>, <a href="../working-record/"><code>WorkingRecord</code></a> satisfies it, and <a href="../writing/"><code>write_record</code></a> takes a <a href="../record/#layerdata"><code>LayerData</code></a> — the write-side protocol a source and a resolver share — wrapping a <code>RecordLike</code> in an adapter where a tool hands one over instead.</p>
+<p>The protocols live with their implementations rather than with any one consumer, because there are several: a <a href="../tools/">tool</a> both implements and consumes <code>RecordLike</code>, <a href="../working-record/"><code>WorkingRecord</code></a> satisfies it, and <a href="../writing/">the writer</a> takes a <a href="../record/#layerdata"><code>LayerData</code></a> — the write-side protocol a source and a resolver share — wrapping a <code>RecordLike</code> in an adapter where a tool hands one over instead.</p>
 <p>A tool lives outside this core, under <code>datarecord/tools/&lt;name&gt;.py</code> — one module per modelling framework, imported explicitly (<code>from datarecord.tools.pypsa import PyPSA</code>) rather than through <code>datarecord.tools</code> itself, which imports none of them.
 What decides the side is one question: <strong>does it name a modelling framework?</strong> Nothing in <code>datarecord</code>'s core may.
 The dependency runs strictly one way, so importing the record layer pulls in no framework, and importing one tool pulls in no other.</p>

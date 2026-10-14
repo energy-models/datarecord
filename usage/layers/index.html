@@ -1072,22 +1072,28 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <h1 id="layers">Layers<a class="headerlink" href="#layers" title="Permanent link">&para;</a></h1>
 <p>A <code>Revision</code> is a node in a tree of layers. Each node adds one layer; what it resolves to is that layer over its ancestors', last-writer-wins (<a href="../../design/layers/">design</a>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Revision</span><span class="p">,</span> <span class="n">connect</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workspace</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">con</span> <span class="o">=</span> <span class="n">connect</span><span class="p">(</span><span class="n">base_uri</span><span class="o">=</span><span class="s2">"s3://bucket/my-record"</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">store</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="s2">"/data/my-record"</span><span class="p">)</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">root</span> <span class="o">=</span> <span class="n">Revision</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">con</span><span class="p">)</span>  <span class="c1"># a new node</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">child</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">child</span><span class="p">()</span>  <span class="c1"># branch off it</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">root</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">root</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>  <span class="c1"># a new node, with `source` as its layer</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">child</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">patch</span><span class="p">)</span>  <span class="c1"># branch off it, with `patch` as its layer</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">record</span> <span class="o">=</span> <span class="n">child</span><span class="o">.</span><span class="n">record</span>  <span class="c1"># the resolved overlay, as a `Record`</span>
 </code></pre></div>
+<p>There is no empty revision: a revision exists by writing its layer.</p>
+<p>Each revision is a file under <code>revisions/</code> beside <code>layers/</code>, so a location alone
+is enough to find the tree, and a <code>Revision</code> serialises as its id, its parent and
+its store's location (<a href="../../design/layers/#the-tree-beside-the-layers">design</a>).</p>
 <p>A layer's data is <strong>write-once</strong>, so any node may be a parent and no cache ever needs invalidating (<a href="../../design/layers/#a-layers-data-is-write-once">design</a>). Branching is several children sharing a parent by pointing at it, not by duplication.</p>
 <h2 id="materialising">Materialising<a class="headerlink" href="#materialising" title="Permanent link">&para;</a></h2>
 <p><code>materialise()</code> writes a node's owner map and resolved dims under <code>layers/&lt;id&gt;/resolved/</code>, so descendants' reads stop there instead of walking to the root. Purely additive — a policy, not a lifecycle step, changing no answer, only how many layers a read touches (<a href="../../design/layers/#materialised-node-caches">design</a>):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">child</span><span class="o">.</span><span class="n">materialise</span><span class="p">()</span>
 </code></pre></div>
 <h2 id="navigating">Navigating<a class="headerlink" href="#navigating" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">revision</span> <span class="o">=</span> <span class="n">Revision</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">uuid</span><span class="p">,</span> <span class="n">con</span><span class="p">)</span>  <span class="c1"># load one by id</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">revision</span><span class="o">.</span><span class="n">ancestry</span><span class="p">()</span>  <span class="c1"># the root→node path</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">revision</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">uuid</span><span class="p">)</span>  <span class="c1"># load one by id</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">store</span><span class="o">.</span><span class="n">revisions</span><span class="p">()</span>  <span class="c1"># every revision, unordered</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">revision</span><span class="o">.</span><span class="n">ancestry</span><span class="p">()</span>  <span class="c1"># the root→node path</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">store</span><span class="o">.</span><span class="n">layer</span><span class="p">(</span><span class="n">uuid</span><span class="p">)</span>  <span class="c1"># one layer read alone</span>
 </code></pre></div>
 
 

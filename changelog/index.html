@@ -722,6 +722,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#fixed" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -851,6 +873,28 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#fixed" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -902,10 +946,183 @@ SPDX-License-Identifier: CC-BY-4.0
 <p>All notable changes to datarecord are documented here. The format follows
 <a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Properties</strong>, metadata apart from data: a new <code>properties</code> section of
+  the schema (<code>PropertySpec</code>) declares per dim or group the values describing
+  one label, stored as columns of <code>dims/&lt;dim&gt;.parquet</code> or
+  <code>groups/&lt;group&gt;.parquet</code>. An <code>Enum</code> property of a <code>partial</code> dim
+  categorizes it; traits key on categories, and <code>default_by</code> gives a default
+  per category (<code>Schema.categorizing</code>, <code>attributes_for(dim, **categories)</code>,
+  <code>properties_for</code>, <code>default_for</code>). This replaces the <code>entity_type</code> dim, its
+  group over <code>entity</code> and the <code>dims/entity_type/&lt;Type&gt;.parquet</code> member files.
+  <code>entity</code> is an ordinary dim: it broadcasts, and must be in <code>partial</code> to be
+  patched per label or categorized; a NULL on a categorized dim reaches only
+  the labels whose categories carry the attribute. Every attribute,
+  whatever its <code>dims</code>, is stored in <code>inputs/</code>. On reading, <code>dims[dim]</code> holds
+  key columns only, <code>properties[subject]</code> the stored property values, and
+  <code>attributes</code> every attribute; <code>entity_types</code> is gone and <code>flags</code> takes
+  categories (<code>flags(entity_type="Generator")</code>). <code>WorkingRecord</code> edits any
+  dim: <code>add(dim, labels, **properties)</code>, <code>remove(dim, labels)</code> (cascading to
+  group tuples), and <code>set(name, value, **coords)</code> writing attributes and
+  properties alike, a categorizing property keyword selecting labels at call
+  time; <code>set</code> loses <code>indexed_by</code>. The PyPSA tool declares <code>entity_type</code>,
+  <code>carrier</code>, <code>sign</code> and <code>type</code> as properties of <code>entity</code> and <code>role</code> of
+  <code>connection</code>, with <code>partial={"entity", "scenario", "connection"}</code>. Every
+  manifest and record is rewritten.</li>
+<li>An attribute over a group carries it as one struct column named for the
+  group, a field per key coordinate (<code>connection STRUCT(entity, bus)</code>), in
+  place of the coordinates flat. This is an on-disk
+  format change: <code>inputs/</code> and <code>outputs/</code> files over a group are rewritten.
+  The dims a group draws on now broadcast, so a per-bus value with
+  <code>bus = NULL</code> holds for every bus, and patching one bus at a time needs
+  <code>bus</code> in <code>partial</code>. <code>WorkingRecord.set</code> still takes <code>bus=</code>; a long frame
+  carries the struct, its coordinates flat being rejected. Naming a group
+  beside a dim its key is named for (<code>dims={"connection", "bus"}</code>) is
+  rejected.</li>
+<li>A group is a broadcast coordinate like a dim, its axis the resolved group:
+  a NULL struct means every tuple of the group, and a struct with some
+  fields NULL is refused by <code>set</code>, <code>add_group</code> and the writer. The owner
+  map's key is <code>entity</code> plus the <code>partial</code> dims and groups; <code>partial</code> may now
+  name a group, and a group outside it is owned whole, so a layer patching
+  one connection's value restates every connection's. The PyPSA tool
+  declares <code>partial={"scenario", "connection"}</code>, keeping per-connection
+  ownership. <code>Schema.membership_keys</code> is gone, and <code>Schema.group_columns</code> is
+  every group but the entity-type group. Materialised owner maps are
+  rebuilt.</li>
+<li>A group file is keyed by one struct column named for the group, as an
+  axis file is by its dim: <code>groups/connection.parquet</code> is
+  <code>connection STRUCT(entity, bus) | role | deleted</code>, an <code>into</code> label a plain
+  column beside it. This is an on-disk format change. <code>Record.groups[...]</code>
+  hands back that shape; <code>add_group</code> takes the struct column and rejects the
+  coordinates flat; <code>remove_group</code> still takes a tuple per key. The PyPSA
+  tool no longer declares <code>bus</code> as an attribute: a port's bus is the
+  connection tuple. <code>Schema.group_coordinates</code> and <code>Group.coordinates</code> are
+  gone.</li>
+<li><code>WorkingRecord.set(..., entity=...)</code> fills only a coordinate named
+  <code>entity</code>. An attribute over a group with no such field, a contract
+  <code>(from, to)</code>, takes every party as a keyword and refuses <code>entity=</code>; it
+  used to stage one duplicate row per entity of the type. <code>add</code> refuses a
+  frame carrying a group's columns without its full key, which used to
+  stage a half-keyed row. Likewise <code>set</code> on a group attribute without one
+  of its key coordinates (<code>set("efficiency", 0.9, entity=["dc"])</code>, no
+  <code>bus=</code>) is refused; it used to store a value no read reached.</li>
+<li>A group may not share a dim's name, the entity-type group excepted: a
+  group is carried as a column named for it. Rename a functional group for
+  the relation, <code>bus_country</code> into <code>country</code>.</li>
+<li>A <code>Workspace</code> holds the DuckDB connection and a <code>Store</code> one location;
+  <code>connect</code>, <code>layer_dir</code>, <code>DATARECORD_BASE_URI</code>, <code>Record.at</code> and the process
+  default connection are gone. A store's revisions live beside its layers as
+  <code>revisions/&lt;id&gt;.json</code>, so a <code>Revision</code> serialises as its location and reads
+  its ancestry back in a new process. <code>ws.con</code> is the calling thread's cursor,
+  and a relation from another connection or thread is rejected at the write
+  and edit boundary.</li>
+<li>Writing is <code>store.root(source)</code>, <code>rev.child(source)</code> and
+  <code>ws.write(source, uri)</code>; <code>write_record</code>, <code>Revision.create</code> and the
+  source-less <code>Revision.child()</code> are gone. A <code>WorkingRecord</code> no longer
+  commits: <code>rev.child(w.edits)</code> writes its edits as a child,
+  <code>ws.write(w, uri)</code> the flattened record, and <code>NewChild</code>, <code>Directory</code> and
+  <code>commit</code> are gone. A tree write writes its revision file last, so a failed write leaves
+  no revision and never widens the manifest.</li>
+<li><code>Tool.to_datarecord(model, con)</code> and <code>Tool.results(model, con)</code> take the
+  connection their frames are planned on, so <code>PyPSA.results(n, w.con)</code> sets
+  straight onto <code>w</code> rather than failing on a relation from DuckDB's default
+  connection; <code>on_connection</code> is gone.</li>
+<li><code>Resolver.group_frame</code> and <code>Resolver.entity_type</code> return an empty relation,
+  rather than <code>None</code>, where every row written is tombstoned: telling the two
+  apart ran the whole fold a second time on every read. <code>None</code> still means no
+  layer wrote a row.</li>
+<li>A schema declaring a dim, group, group coordinate, attribute or result
+  whose name holds <code>"</code> or <code>.</code>, starts with <code>_</code>, or is a column datarecord
+  writes itself (<code>value</code>, <code>deleted</code>, <code>layer_uuid</code>, ... ignoring case, and
+  <code>entity_type</code> for an attribute), or that differs from another declared
+  name only in case, is refused at load, naming each offender.
+  Such a name used to collide silently: a dim named <code>deleted</code> read every
+  label as a tombstone. A manifest declaring one no longer loads; rename it.
+  Based on #26 by @FBumann.</li>
+<li>The PyPSA tool stores per-port results on connections, like per-port
+  inputs: <code>p0</code>, <code>p1</code>, <code>p2</code>, ... and a one-port type's <code>p</code> are one result <code>p</code>
+  over the <code>connection</code> group, a row per <code>(entity, bus)</code> keeping each port's
+  sign, and likewise <code>q</code>. <code>Bus.p</code> and <code>Bus.q</code>, the sum of those rows at a
+  bus, are no longer written, and <code>Link.p</code>/<code>Process.p</code> are <code>p_internal</code>. A
+  three-port Link's <code>p2</code> is now a declared result.</li>
+<li>
+<p>The PyPSA tool stores a Process's <code>rate0</code>, <code>rate1</code>, <code>rate2</code>, ... as one
+  input <code>rate</code> over the <code>connection</code> group, like <code>efficiency</code>, and <code>build</code>
+  puts each row back in its port's column, static or per snapshot. <code>rate</code>
+  declares no default, its ports defaulting to <code>-1</code> and <code>1</code>.</p>
+</li>
+<li>
+<p>Removing an entity removes the group tuples naming it: <code>WorkingRecord.remove</code>
+  tombstones every tuple with a field over <code>entity</code> naming it, in the same
+  layer, and a value over a group goes with its tuple rather than with the
+  entity. An <code>add</code> of the name revives the entity alone. A layer adding a
+  tuple that names a dead label, or removing a label a tuple still names, is
+  refused at write. A value over a dim or group outside <code>partial</code> naming a removed label
+  is dropped at read, a removed <code>bus</code> label's per-bus values included. A
+  materialised node caches the dead labels in <code>resolved/dead/</code>; one
+  materialised before reads as having none.</p>
+</li>
+</ul>
+<h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
+<ul>
+<li>A store or standalone directory on <code>s3://</code>, through boto3 behind the
+  <code>datarecord[remote]</code> extra and configured by the AWS environment alone.
+  Revision files are written create-only and the manifest by
+  compare-and-swap, so two writers widening one schema never silently lose
+  a widening.</li>
+</ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Removing an entity drops the values of every group row naming it, not only
+  where it is the group's first entity coordinate: a <code>contract</code> over
+  <code>(from, to)</code> loses its values when either party is removed, and
+  <code>flags(ctype)</code> counts such a row towards the type of each party.</li>
+<li>Writing a layer whose <code>manifest.json</code> write keeps losing, as it does with a
+  credential that can write the manifest but not read it, gives up after ten
+  attempts with an error naming <code>s3:GetObject</code>, rather than looping forever.</li>
+<li><code>materialise()</code> writes <code>owner_map/inputs.parquet</code> last, each file through
+  a temporary name, so a node never reads as materialised from half its
+  cache.</li>
+<li>A fold cached before the manifest widened now reads under the wider schema.</li>
 <li>Reading an attribute over a <code>partial</code> dim no longer slows with the square
   of that dim's length.</li>
+<li>Folding the owner map no longer compares every row with every label of a
+  <code>partial</code> dim's axis; the first read of a record with long series is linear
+  again.</li>
+<li>A record whose layers are all written scans its owner map once for the
+  layers owning each attribute, rather than once per attribute read.</li>
+<li>A pickled <code>Revision</code> unpickles through <code>Workspace.process()</code> and reads its
+  ancestry back, rather than reading empty, and pickles after <code>.record</code> is
+  read rather than failing on its DuckDB connection.</li>
+<li>A standalone record's <code>manifest.json</code> carries an <code>id</code> that <code>ws.write</code>
+  mints, and which keys its folds in the workspace in place of its URI. A
+  record deleted and written again at one URI, or one relative path read
+  from another working directory, no longer reads the folds of the record
+  before it. <code>ws.at</code> resolves a local path as <code>ws.store</code> does, and refuses a
+  manifest without an id: write such a record again.</li>
+<li><code>ws.write</code> to an existing empty directory raises its <code>FileExistsError</code> up
+  front, saying a standalone record is written to a URI that does not exist
+  yet, rather than passing the check and failing inside the write.</li>
+<li><code>PyPSA.to_datarecord</code> melts a time series whose component name holds a
+  <code>"</code>, or is <code>snapshot</code> or <code>period</code>, rather than failing to parse or
+  duplicating an id column: a name is no longer pasted into the <code>UNPIVOT</code>
+  as an SQL identifier.</li>
+<li><code>PyPSA.build</code> keeps the time series of a component named <code>snapshot</code>, or
+  <code>period</code> in a multi-period network, rather than dropping it from
+  <code>dynamic</code>: the <code>PIVOT</code> is on each component's position, so no name
+  becomes an SQL identifier there either.</li>
+<li><code>PyPSA.to_datarecord</code> accepts components whose names differ only by case,
+  such as <code>Gen</code> and <code>gen</code>, rather than reporting them as one name: neither
+  the melt nor the pivot folds case any more.</li>
+<li><code>PyPSA.results</code> and a network's <code>outputs</code> key exactly the results the
+  PyPSA schema declares, so setting each one with <code>kind="outputs"</code> no longer
+  raises <code>KeyError</code>: <code>Bus.control</code> and <code>SubNetwork.carrier</code>, which PyPSA
+  also registers as inputs, are no longer emitted as results.</li>
+<li><code>PyPSA.build</code> turns a per-connection input back into PyPSA's port columns:
+  <code>efficiency</code> on a Link's bus2 connection is <code>efficiency2</code> again, static or
+  per snapshot, rather than every port's value landing in <code>efficiency</code> and
+  <code>efficiency2</code> reading as its default.</li>
 </ul>
 
 

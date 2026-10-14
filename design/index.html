@@ -936,6 +936,16 @@
       
         
       
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -954,14 +964,14 @@
   
   
   
-    <a href="proposals/dims-groups-traits/" class="md-nav__link">
+    <a href="proposals/dep-NNNN-template/" class="md-nav__link">
       
   
   
   <span class="md-ellipsis">
     
   
-    Proposals
+    Enhancement proposals
   
 
     
@@ -1202,31 +1212,31 @@ docstrings in the source cite them by link rather than restating the argument �
 a comment that re-argues the design is a defect.</p>
 <h2 id="what-a-data-record-is">What a data record is<a class="headerlink" href="#what-a-data-record-is" title="Permanent link">&para;</a></h2>
 <p>Dimensioned attribute data with a declared schema.</p>
-<p>A record holds <strong>components</strong> (named members of a type), <strong>groups</strong> of them — connections between components and buses being the one every network has — <strong>attribute values</strong> over both, and the <strong>axes</strong> those values vary along.
+<p>A record holds <strong>entities</strong> (named labels, classified by their categories), <strong>groups</strong> of them — the <code>connection</code> group over <code>(entity, bus)</code> being the one every network has — <strong>attribute values</strong> over both, and the <strong>axes</strong> those values vary along.
 A schema declares what may exist; the data says what does.</p>
 <p>A record exposes seven things:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>record.schema        what may exist: the axes, the attributes
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>record.dims          the axes themselves, keyed by dim
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>record.entity_types  members, keyed by entity type
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>record.groups        which tuples exist, keyed by group then component type
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>record.attributes    the values, keyed by attribute name
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>record.outputs       results, keyed by attribute name
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>record.flags(ctype)  which axes an attribute actually uses
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>record.schema                   what may exist: the axes, properties, attributes
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>record.dims                     the axes themselves, keyed by dim
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>record.properties               what describes each label, keyed by dim or group
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>record.groups                   which tuples exist, keyed by group
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>record.attributes               the values, keyed by attribute name
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>record.outputs                  results, keyed by attribute name
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>record.flags(**cats)            which axes an attribute actually uses
 </code></pre></div>
 <p>That is the <a href="record/"><code>Record</code> protocol</a>, and <a href="record/">The Record protocol</a> gives it precisely.</p>
-<p>A component's <code>entity</code> identifies it <strong>across every type</strong>: names are unique record-wide, not per type (<a href="format/#entity-is-unique-across-types">entity is unique across types</a>).
-That is why the values are keyed by attribute and not by type — an attribute row names a component and nothing more, and a component's type is something the record knows about it rather than part of its address.</p>
+<p>An entity's <code>entity</code> identifies it <strong>across every category</strong>: names are unique record-wide, not per type (<a href="format/#entity-is-unique-across-types">entity is unique across types</a>).
+That is why the values are keyed by attribute and not by type — an attribute row names an entity and nothing more, and an entity's type is a <a href="schema/#properties">property</a> the record knows about it rather than part of its address.</p>
 <p><code>Record</code> is the one class that answers all of this, and it is the narwhals interface over a fold across layers:</p>
 <ul>
 <li><strong>A tree of layers</strong>, each adding a partial record on top of its parent, resolved last-writer-wins. No single directory is the record; the answer is the fold across them. <code>Revision.record</code> gives one.</li>
-<li><strong>One parquet directory</strong>, via <code>Record.at(uri)</code> — folded over the single layer it is, which <a href="read-path/#one-record-over-one-fold">degenerates to a scan of it</a>. Not a second implementation.</li>
+<li><strong>One parquet directory</strong>, via <code>Workspace.at(uri)</code> — folded over the single layer it is, which <a href="read-path/#one-record-over-one-fold">degenerates to a scan of it</a>. Not a second implementation.</li>
 <li><strong><a href="working-record/"><code>WorkingRecord</code></a></strong> — a <code>Record</code> whose last layer is a staging area, so pending edits read back before anything is written.</li>
 </ul>
 <p><code>RecordLike</code> is the protocol all of these satisfy, and so does <strong>a framework's own object</strong> — a PyPSA <code>Network</code> presenting itself as a record, without depending on this package at all.</p>
 <p>A consumer cannot tell which it holds, so a framework reads a hundred-layer overlay through the same call it would use for a single directory.</p>
 <p>Neither the concept nor this package names a modelling framework.
 A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
-<code>datarecord</code> depends only on <code>duckdb</code>, <code>narwhals</code> and <code>pydantic</code>.</p>
+<code>datarecord</code> depends only on <code>duckdb</code>, <code>narwhals</code> and <code>pydantic</code>; its one optional dependency, <code>datarecord[remote]</code>, adds boto3 for a location on S3 (<a href="layers/#files-local-and-remote">files, local and remote</a>).</p>
 <h2 id="scope">Scope<a class="headerlink" href="#scope" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>In scope:</strong> the <a href="record/"><code>Record</code> protocol</a> (the definition) and <a href="working-record/"><code>WorkingRecord</code></a>; the <a href="format/">parquet format</a> that stores it; <a href="schema/">the schema</a>; <a href="layers/">overlay resolution</a> and its <a href="read-path/#owner-map">owner map</a>; <a href="writing/">the write path</a>; <a href="read-path/#one-record-over-one-fold">why one directory needs no second implementation</a>.</li>
@@ -1263,11 +1273,11 @@ A framework consumes a record, a workflow engine produces one, and neither needs
 </tr>
 <tr>
 <td><a href="writing/">Writing a record</a></td>
-<td><code>write_record</code>, and what it validates</td>
+<td><code>root</code>, <code>child</code>, <code>ws.write</code>, and what they validate</td>
 </tr>
 <tr>
 <td><a href="working-record/"><code>WorkingRecord</code></a></td>
-<td>editing: staging, committing, reading back</td>
+<td>editing: staging, <code>edits</code>, reading back</td>
 </tr>
 <tr>
 <td><a href="tools/">Consuming a record</a></td>

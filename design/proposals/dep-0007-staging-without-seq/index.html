@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://energy-models.github.io/datarecord/design/proposals/a-member-file-holds-values/">
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/design/proposals/dep-0007-staging-without-seq/">
       
       
-        <link rel="prev" href="../one-record-over-a-node-cache/">
+        <link rel="prev" href="../dep-0006-a-member-file-holds-values/">
       
       
-        <link rel="next" href="../staging-without-seq/">
+        <link rel="next" href="../dep-0008-one-interface-source-and-fold/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>A member file holds values - datarecord</title>
+        <title>DEP 7: Staging without _seq - datarecord</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#proposal-a-member-file-holds-values-and-nothing-else" class="md-skip">
+        <a href="#dep-7-staging-without-_seq" class="md-skip">
           Skip to content
         </a>
       
@@ -118,7 +118,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              A member file holds values
+              DEP 7: Staging without _seq
             
           </span>
         </div>
@@ -938,6 +938,16 @@
       
         
       
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
     
     
     
@@ -961,7 +971,7 @@
   <span class="md-ellipsis">
     
   
-    Proposals
+    Enhancement proposals
   
 
     
@@ -977,7 +987,7 @@
             <span class="md-nav__icon md-icon"></span>
             
   
-    Proposals
+    Enhancement proposals
   
 
           </label>
@@ -990,14 +1000,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../dims-groups-traits/" class="md-nav__link">
+      <a href="../dep-NNNN-template/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Dims, mappings, groups and traits
+    Template
   
 
     
@@ -1018,14 +1028,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../groups/" class="md-nav__link">
+      <a href="../dep-0001-dims-groups-traits/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Groups
+    DEP 1: Dims, mappings, groups and traits
   
 
     
@@ -1046,14 +1056,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../trait-switches/" class="md-nav__link">
+      <a href="../dep-0002-groups/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Trait switches
+    DEP 2: Groups
   
 
     
@@ -1074,14 +1084,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../staging-as-a-layer/" class="md-nav__link">
+      <a href="../dep-0003-trait-switches/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Staging as a layer
+    DEP 3: Trait switches
   
 
     
@@ -1102,14 +1112,70 @@
   
   
     <li class="md-nav__item">
-      <a href="../one-record-over-a-node-cache/" class="md-nav__link">
+      <a href="../dep-0004-staging-as-a-layer/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    One Record over a NodeCache
+    DEP 4: Staging as a layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0005-one-record-over-a-node-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 5: One Record over a NodeCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0006-a-member-file-holds-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 6: A member file holds values
   
 
     
@@ -1146,7 +1212,7 @@
   <span class="md-ellipsis">
     
   
-    A member file holds values
+    DEP 7: Staging without _seq
   
 
     
@@ -1164,7 +1230,7 @@
   <span class="md-ellipsis">
     
   
-    A member file holds values
+    DEP 7: Staging without _seq
   
 
     
@@ -1201,17 +1267,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-it-cannot-simply-be-dropped" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why it cannot simply be dropped
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#the-construct" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1224,10 +1279,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#the-column-leaves-the-entity-axis-too" class="md-nav__link">
+  <a href="#axis-rows-must-also-become-complete" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The column leaves the entity axis too
+        Axis rows must also become complete
       
     </span>
   </a>
@@ -1235,10 +1290,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#deleted-belongs-to-the-axis-alone" class="md-nav__link">
+  <a href="#_carried_seqs-job-is-already-done-by-an-anti-join" class="md-nav__link">
     <span class="md-ellipsis">
       
-        deleted belongs to the axis alone
+        _CARRIED_SEQ's job is already done by an anti-join
       
     </span>
   </a>
@@ -1246,32 +1301,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#what-a-schema-declaring-the-axis-does-unchanged" class="md-nav__link">
+  <a href="#the-entity-axis-joins-and-the-two-collapse-modes-go-with-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What a schema declaring the axis does, unchanged
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#every-source-and-every-producer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Every source and every producer
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#the-prerequisite-axis-means-one-thing-on-every-source" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The prerequisite: axis means one thing on every source
+        The entity axis joins, and the two collapse modes go with it
       
     </span>
   </a>
@@ -1280,6 +1313,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-alternative-to-re-evaluate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The alternative to re-evaluate
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1299,17 +1343,6 @@
     <span class="md-ellipsis">
       
         What it costs
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-it-opens-rather-than-settles" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What it opens rather than settles
       
     </span>
   </a>
@@ -1343,14 +1376,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../staging-without-seq/" class="md-nav__link">
+      <a href="../dep-0008-one-interface-source-and-fold/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Staging without _seq
+    DEP 8: One interface, source and fold
   
 
     
@@ -1371,14 +1404,98 @@
   
   
     <li class="md-nav__item">
-      <a href="../one-interface-source-and-fold/" class="md-nav__link">
+      <a href="../dep-0009-store/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    One interface, source and fold
+    DEP 9: A Workspace and a Store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0010-a-group-is-a-struct-column/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 10: A group is one struct column
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0011-deletion-cascades-through-tombstones/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 11: Deletion cascades through tombstones
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0012-properties/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 12: Properties
   
 
     
@@ -1566,17 +1683,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-it-cannot-simply-be-dropped" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why it cannot simply be dropped
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#the-construct" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1589,10 +1695,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#the-column-leaves-the-entity-axis-too" class="md-nav__link">
+  <a href="#axis-rows-must-also-become-complete" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The column leaves the entity axis too
+        Axis rows must also become complete
       
     </span>
   </a>
@@ -1600,10 +1706,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#deleted-belongs-to-the-axis-alone" class="md-nav__link">
+  <a href="#_carried_seqs-job-is-already-done-by-an-anti-join" class="md-nav__link">
     <span class="md-ellipsis">
       
-        deleted belongs to the axis alone
+        _CARRIED_SEQ's job is already done by an anti-join
       
     </span>
   </a>
@@ -1611,32 +1717,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#what-a-schema-declaring-the-axis-does-unchanged" class="md-nav__link">
+  <a href="#the-entity-axis-joins-and-the-two-collapse-modes-go-with-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What a schema declaring the axis does, unchanged
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#every-source-and-every-producer" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Every source and every producer
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#the-prerequisite-axis-means-one-thing-on-every-source" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The prerequisite: axis means one thing on every source
+        The entity axis joins, and the two collapse modes go with it
       
     </span>
   </a>
@@ -1645,6 +1729,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-alternative-to-re-evaluate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The alternative to re-evaluate
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1664,17 +1759,6 @@
     <span class="md-ellipsis">
       
         What it costs
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-it-opens-rather-than-settles" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What it opens rather than settles
       
     </span>
   </a>
@@ -1718,153 +1802,126 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-<h1 id="proposal-a-member-file-holds-values-and-nothing-else">Proposal: a member file holds values, and nothing else<a class="headerlink" href="#proposal-a-member-file-holds-values-and-nothing-else" title="Permanent link">&para;</a></h1>
-<p>Status: <strong>Landed</strong> · Drafted 2026-09-02 · Landed 2026-09-04</p>
-<blockquote>
-<p>The construct below is now the behaviour. The authoritative account is <a href="../../format/#the-entity-axis">the
-entity axis</a>, <a href="../../format/#where-a-value-lives">where a value
-lives</a> and <a href="../../schema/#entity_type-the-axis-of-kinds">the entity-type
-axis</a>; this page is kept as the
-argument that led there. It keys on <code>entity_type_dim is None</code> (no group over
-<code>entity</code> alone), leaving a <code>String</code>-typed <strong>declared</strong> axis on today's per-type
-layout — the <a href="#what-it-opens-rather-than-settles">open question</a> below was
-resolved that way. <code>entity_type(ctype)</code> <strong>raises</strong> where no type axis is
-declared rather than answering <code>None</code>. Cache invalidation on schema change is
-still not settled: a materialised cache written under the old layout is a
-rebuild, <a href="#the-column-leaves-the-entity-axis-too">as noted below</a>.</p>
-</blockquote>
-<p>Two claims about <code>dims/entity_type/&lt;Type&gt;.parquet</code>, which are one claim: that file holds a type's attribute values, and everything about a component's <em>existence</em> belongs to the <a href="../../format/#the-entity-axis">entity axis</a>.</p>
-<p>Today it holds more. A record whose schema declares no entity-type axis still writes one member file per type — types that are not declared, not validated and not constrainable, yet decide which file a value is in, so a reader must know them to reach it. And every member file carries <code>deleted</code>, which the fold reads as a tombstone alongside the axis's own, so a removal is written twice to say one thing.</p>
-<p>This proposal puts those values on <code>dims/entity.parquet</code> where the schema declares no entity-type axis, and takes <code>deleted</code> off the member file in every record. What is left in a member file is <code>entity</code> and one column per attribute.</p>
-<p>The related concern — <code>entity_type</code> asserted rather than derived in the read path — is already settled: the <a href="../../read-path/#one-fold-for-every-axis">entity axis folds like any dim</a> rather than through an owner map, so <code>entity_types()</code> reads the resolved axis directly and there is no map column set to make conditional. What remains is the member file itself.</p>
+<h1 id="dep-7-staging-without-_seq">DEP 7: staging without <code>_seq</code><a class="headerlink" href="#dep-7-staging-without-_seq" title="Permanent link">&para;</a></h1>
+<table>
+<thead>
+<tr>
+<th>DEP</th>
+<th>7</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Title</td>
+<td>staging without <code>_seq</code></td>
+</tr>
+<tr>
+<td>Author</td>
+<td>Jonas Hörsch</td>
+</tr>
+<tr>
+<td>Status</td>
+<td>Implemented 2026-09-02</td>
+</tr>
+<tr>
+<td>Created</td>
+<td>2026-09-02</td>
+</tr>
+<tr>
+<td>Version</td>
+<td>v0.1.0a1</td>
+</tr>
+</tbody>
+</table>
+<p>Landed in <a href="../../working-record/#staging">staging</a> and <a href="../../working-record/#edits">committing</a>; this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.</p>
+<p>Two departures from the sketch below are worth naming. An axis edit is not delete-then-insert: an axis row's columns are independently editable, so a <code>set</code> there <strong>patches its one column in place</strong> (<code>UPDATE ... FROM</code>, plus an <code>INSERT</code> for a label no row yet holds), which is what keeps a sibling attribute without a completion step — <code>_complete_axis</code> was drafted and then dropped for it. And <code>_axis_layer</code> stays, reduced to a scan for a <code>partial</code> axis and a union with the untouched base labels for one owned whole, rather than going entirely.</p>
+<p>The residual risk the argument below flags — <code>_complete_owned_whole</code>'s anti-join key and the long-row replace key <em>agreeing</em> rather than being one derivation — was retired as it suggested: both now read <code>_long_key</code>, so the fill an anti-join excludes and the row a later <code>set</code> replaces are one key by construction, not two that happen to match.</p>
+<p>Every staging table carries a <code>_seq</code>, and every read folds on it. Make each edit replace the rows it names — delete then insert — and the column goes from all four kinds, along with the four folds that read it. A staging table then <em>is</em> what the layer will write, and reading one is a table scan.</p>
 <h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
-<p><a href="../../schema/#entity_type-the-axis-of-kinds">The schema</a> is explicit that the axis is optional, and that omitting it makes the labels data:</p>
-<blockquote>
-<p>The entity-type axis's enum categories, so a schema declaring it as a plain <code>String</code> has none: the labels are then data rather than declarations, and <code>attributes_for</code> accepts any of them.</p>
-</blockquote>
-<p><code>tests/test_untyped.py</code> exercises that: a schema with two attributes over <code>entity</code> and no classifying group, components added under <code>thing</code> and <code>other</code>, and both round-trip. So far so good.</p>
-<p>The problem is where their values land. <code>p_nom</code> is <code>dims={"entity"}</code> and non-varying, and the format gives that exactly one home — <a href="../../format/#where-a-value-lives"><code>dims/entity_type/&lt;Type&gt;.parquet</code></a>. It cannot be a column of <code>dims/entity.parquet</code>, because <code>attributes_on("entity")</code> returns <code>()</code> by explicit early return; it cannot be an <code>inputs/</code> row, because it does not vary. So a label the schema never declared becomes a filename:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>dims/entity.parquet             entity, entity_type, deleted
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>dims/entity_type/thing.parquet  entity, p_nom
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>dims/entity_type/other.parquet  entity, p_nom
-</code></pre></div>
-<p><strong><code>entity_type</code> there is a column no declaration accounts for.</strong> Every other column of an axis file answers to something: its key comes from <code>axis_key</code>, its attribute columns from <code>attributes_on</code>, <code>deleted</code> is structural. This one is admitted by a special case in <code>_validate_frame</code> and typed as a plain <code>String</code> by a fallback in <code>_axis_columns</code>, because there is no <code>Dimension</code> to read a dtype from. It is the one column in the format whose presence is not derivable from the schema.</p>
-<h2 id="why-it-cannot-simply-be-dropped">Why it cannot simply be dropped<a class="headerlink" href="#why-it-cannot-simply-be-dropped" title="Permanent link">&para;</a></h2>
-<p>The obvious move — no declared axis, no <code>entity_type</code> column — does not close, because the label carries the type wherever a per-type question is asked:</p>
+<p><a href="../../working-record/#staging">Staging</a> holds the rule this proposal finishes: <strong>every table is shaped like the file it becomes.</strong> No table satisfies it, because every one carries a <code>_seq</code> no file has, and three of the four need a fold to mean anything.</p>
+<p><code>_seq</code> serves four purposes, and they are not the same problem:</p>
 <table>
 <thead>
 <tr>
-<th>reader</th>
-<th>what it does with it</th>
+<th>kind</th>
+<th>what <code>_seq</code> does</th>
+<th>folded by</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>NodeCache.entity_types()</code></td>
-<td><code>distinct_values(entity_axis, "entity_type")</code></td>
+<td>axis</td>
+<td>orders two <strong>partial</strong> rows for one label</td>
+<td><code>_collapsed_axis</code></td>
 </tr>
 <tr>
-<td><code>NodeCache.entity_type_frame</code></td>
-<td>scopes to one type, then reads its file</td>
+<td>entity axis</td>
+<td>orders two whole rows for one name</td>
+<td><code>_collapsed_entities</code></td>
 </tr>
 <tr>
-<td><code>NodeCache.attributes_of</code></td>
-<td>scopes the flags to one type</td>
+<td><code>inputs</code>/<code>outputs</code></td>
+<td>orders two rows for one coordinate</td>
+<td><code>_collapsed_inputs</code></td>
+</tr>
+<tr>
+<td>groups</td>
+<td>orders two rows for one <code>group_key</code></td>
+<td><code>_collapsed_group</code></td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>_CARRIED_SEQ</code>: marks a row a <strong>fill</strong>, not an edit</td>
+<td>(see below)</td>
 </tr>
 </tbody>
 </table>
-<p>The label lives on the <a href="../../read-path/#one-fold-for-every-axis">resolved entity axis</a>, carried on the winning row like <code>weight</code> on <code>dims/scenario.parquet</code> — not in an owner map, since the entity axis folds like every other dim. So gating only the member file, and leaving <code>entity_type</code> on the axis filled with NULLs, leaves <code>entity_types()</code> yielding <code>{None}</code> rather than <code>{thing, other}</code>.</p>
-<p>Deriving the label from the filenames instead works, but costs a <code>LayerSource.entity_types()</code> listing member files and a per-layer <code>LIST</code> on the read path — which is what <a href="../../format/#the-entity-axis">the entity axis exists to avoid</a>. Trading a stored string for a directory listing per layer per fold is the wrong direction.</p>
-<p>So the label is load-bearing <em>given the current layout</em>. The layout is what this proposal changes.</p>
+<p>The last is a different thing wearing the same column, and it is the one that decides whether <code>_seq</code> can go entirely.</p>
 <h2 id="the-construct">The construct<a class="headerlink" href="#the-construct" title="Permanent link">&para;</a></h2>
-<p><strong>Where a schema declares no entity-type axis, a non-varying attribute over <code>entity</code> is a column of <code>dims/entity.parquet</code>.</strong> No <code>dims/entity_type/</code> directory, no per-type files, and <code>entity_type</code> is then genuinely absent — nothing classifies, so there is nothing to classify into.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>dims/entity.parquet   entity, deleted, p_nom, ...
+<p><strong>An edit replaces the rows it names.</strong> Delete the keys, insert the new rows:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">DELETE</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="o">&lt;</span><span class="k">table</span><span class="o">&gt;</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="o">&lt;</span><span class="k">key</span><span class="o">&gt;</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span><span class="k">SELECT</span><span class="w"> </span><span class="o">&lt;</span><span class="k">key</span><span class="o">&gt;</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">_rows</span><span class="p">);</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="k">INSERT</span><span class="w"> </span><span class="k">INTO</span><span class="w"> </span><span class="o">&lt;</span><span class="k">table</span><span class="o">&gt;</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">NAME</span><span class="w"> </span><span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">_rows</span><span class="p">;</span>
 </code></pre></div>
-<p>Which is what the entity axis already is for every other purpose: the file keyed by <code>entity</code> that carries what is true of a component. <code>attributes_on</code>'s early return — "Never <code>entity</code>, whose sole-coordinate attributes are the <em>component</em> frame's columns" — becomes conditional on a type axis existing, which is the one line of schema that decides the whole layout.</p>
-<h3 id="the-column-leaves-the-entity-axis-too">The column leaves the entity axis too<a class="headerlink" href="#the-column-leaves-the-entity-axis-too" title="Permanent link">&para;</a></h3>
-<p>The layout change is not enough on its own: the resolved entity axis carries <code>entity_type</code> on its winning row, so <strong>that</strong> is where the column has to become conditional. The axis frame a source supplies is <code>(entity, entity_type, deleted)</code>; where the schema declares no type axis it is <code>(entity, deleted, *attrs)</code> instead — no <code>entity_type</code>, the attribute columns in its place.</p>
-<p>The readers follow from the column's absence:</p>
+<p><code>_rows</code> is the arrow relation <code>_values_relation</code> builds, registered by replacement scan — the same crossing every insert here already makes, and the same <code>DELETE</code>-by-scan <code>_release_from_other_types</code> uses. Nothing becomes Python objects per row, which rules out <code>INSERT … VALUES</code>.</p>
+<p>The key is per kind, and in each case it is the one the fold already partitions on: the label for an axis, <code>entity</code> for the entity axis, the coordinate set for a long file, <code>group_key</code> for a group. So the delete removes exactly what <code>_latest_per</code> would have discarded.</p>
+<h3 id="axis-rows-must-also-become-complete">Axis rows must also become complete<a class="headerlink" href="#axis-rows-must-also-become-complete" title="Permanent link">&para;</a></h3>
+<p>Delete-then-insert alone is not enough for an axis, because there the <em>rows</em> are partial, not merely duplicated. One <code>set</code> stages a row carrying that attribute's column and NULL for its siblings; replacing the row would clear them.</p>
+<p>So a <code>set</code> on an axis attribute stages <strong>the complete row for each label it touches</strong>: the previously staged row where one exists, otherwise the base's, with this edit's column replaced. Where a label has no base row, the staged columns are the whole of it, as today.</p>
+<p>The base read is already there — <code>_stage_axis</code>'s scalar arm reads <code>self._base.dims.axes.get(dim)</code> to know which labels exist. The mapping arm would start, as a point lookup against a folded relation the <code>NodeCache</code> already holds.</p>
+<p>That is what retires <code>_collapsed_axis</code>'s <code>max_by(a, _seq) FILTER (WHERE a IS NOT NULL)</code> — the <code>FILTER</code> stops a sibling's NULL from winning, and the <code>max_by</code> makes two <code>set</code>s commute. With rows complete, both are what the table already holds.</p>
+<p>Downstream of it, <code>_axis_frame</code>'s outer join and per-column <code>coalesce</code> go — they exist to fill an untouched label that would otherwise read as cleared — and <code>_axis_layer</code>'s semi-join for a <a href="../../schema/#partial-the-granularity-of-an-override"><code>partial</code></a> dim goes with them: with only touched labels present and rows complete, <strong>the table's rows are the touch record.</strong></p>
+<h3 id="_carried_seqs-job-is-already-done-by-an-anti-join"><code>_CARRIED_SEQ</code>'s job is already done by an anti-join<a class="headerlink" href="#_carried_seqs-job-is-already-done-by-an-anti-join" title="Permanent link">&para;</a></h3>
+<p><code>_complete_owned_whole</code> copies base rows into a long staging table so the layer carries an extent it now <a href="../../schema/#partial-the-granularity-of-an-override">owns whole</a>. Those rows are fills, and a real edit on the same coordinate must beat one regardless of arrival order — which is what <code>_CARRIED_SEQ = 0</code>, below every edit's, expresses.</p>
+<p>It never fires. The method's third anti-join drops any coordinate the table already holds, and its key set is the one <code>_collapsed_inputs</code> partitions on, so a fill and an edit cannot coexist on one coordinate. Checked against the fixture's three attribute shapes — no <code>owned_whole</code> dims, one, and one with breakpoints — the anti-join's <code>[*scope, *present, "breakpoint"]</code> and the partition's <code>input_key ∪ dims ∪ {breakpoint}</code>, both intersected with the file's columns, are the same set every time.</p>
+<p>So the priority class is redundant: the anti-join keeps fills out of occupied coordinates, and under this proposal a later <code>set</code> on a filled coordinate deletes the fill before inserting. Two mechanisms, one of which was already sufficient.</p>
+<p><strong>Worth being exact about the residual risk.</strong> The two key sets <em>agree</em> rather than being <em>derived from one place</em> — <code>_complete_owned_whole</code> builds <code>[*scope, *present, "breakpoint"]</code> and <code>_collapsed_inputs</code> builds its own. They match today for every shape the suite exercises, and a schema where they diverge would already be a bug (a fill surviving beside an edit, resolved only by <code>_CARRIED_SEQ</code>). Landing this should make them one derivation rather than two that agree, which is a small refactor and the honest way to retire the guard.</p>
+<h3 id="the-entity-axis-joins-and-the-two-collapse-modes-go-with-it">The entity axis joins, and the two collapse modes go with it<a class="headerlink" href="#the-entity-axis-joins-and-the-two-collapse-modes-go-with-it" title="Permanent link">&para;</a></h3>
+<p><code>dims/entity.parquet</code> has a single-label key and its columns are <a href="../../format/#the-entity-axis">one indivisible fact</a> — a name exists, is of this type, is alive or dead. Delete-then-insert on <code>entity</code> gives <code>remove</code> then <code>add</code> under another type one row by construction, where <code>_collapsed_entities</code> folds whole-row to get the same answer today.</p>
+<p>That retires the last place staging folds differently depending on what it is folding. <code>_collapsed_axis</code> folds per column and <code>_collapsed_entities</code> per row, and the difference is real: an axis row's columns are independently editable, a membership row's are not. Under this proposal neither folds, so the distinction stops being a branch and becomes what it always was — a fact about the data.</p>
+<p>It does change <code>remove</code>, from "append a tombstone" to "replace the row with a tombstone". The semantics are the same because membership is one fact per name, but staging is no longer append-only.</p>
+<h2 id="the-alternative-to-re-evaluate">The alternative to re-evaluate<a class="headerlink" href="#the-alternative-to-re-evaluate" title="Permanent link">&para;</a></h2>
+<p><strong><code>INSERT … SELECT … ON CONFLICT (&lt;key&gt;) DO UPDATE SET</code></strong> is the same idea in one statement, and DuckDB supports it on the arrow-relation form, so the column-wise insert path survives either way.</p>
+<p>Two reasons it is not the proposal:</p>
 <ul>
-<li><strong><code>entity_types()</code></strong> returns the empty set — <code>distinct_values</code> is not called on the axis, rather than called on a column of NULLs.</li>
-<li><strong><code>entity_type_frame(ctype)</code></strong> has no type to be asked for. <code>Record.entity_types</code> iterates an empty mapping, so nothing reaches it; a direct call is a caller error, and should say so rather than filter on a missing column.</li>
-<li><strong><code>attributes_of(ctype)</code></strong> scopes the flags by type, which is meaningless without types. Its semi-join to <code>of_type</code> becomes the whole axis — every component, which is what "no types" means for a per-type question.</li>
+<li><strong>It needs a primary key on the staging table.</strong> Tables are created from a relation by <code>_shape(...).create(name)</code>, which carries no constraint, so this would mean DDL after create — a second step back for exactly the tables that rule was introduced to make uniform.</li>
+<li><strong><code>DO UPDATE SET</code> needs its column list built per call</strong>, where delete-then-insert is the same two statements whatever the edit names.</li>
 </ul>
-<p><strong>The materialised axis is the consequence to be deliberate about.</strong> <code>resolved/dims/entity.parquet</code> is written from the folded axis, so the cache of a record with no declared type axis stops carrying <code>entity_type</code> — and a cache written before the change has it. <a href="../../layers/#materialised-node-caches">Materialised node caches</a> are derived data that can be rebuilt, so this is a rebuild rather than a migration; but a stale cache read against the new column set is the failure mode to check for, and it argues for the cache carrying a schema version or being invalidated on schema change. This proposal does not settle that.</p>
-<h3 id="deleted-belongs-to-the-axis-alone"><code>deleted</code> belongs to the axis alone<a class="headerlink" href="#deleted-belongs-to-the-axis-alone" title="Permanent link">&para;</a></h3>
-<p>A member file carries <code>deleted</code> today, and the fold reads it from there as well as from the entity axis. That is the same duplication the axis exists to remove: <a href="../../format/#the-entity-axis">membership is the axis's</a> — "a component exists because it has a row here, not because some type's file mentions it" — and a tombstone is a statement about membership.</p>
-<p>It shows up as a coupling in the staging area. <code>remove</code> has to write twice, once to the axis and once to the type's member table, because a removal that left no member row would read as a member the layer never mentioned. Two writes to say one thing, kept in step by hand.</p>
-<p>So this proposal also takes <code>deleted</code> off the member file: a member file holds <code>entity</code> and that type's columns, nothing else. <code>remove</code> then writes one row, on the axis, and the fold reads tombstones from one place.</p>
-<p>The two changes belong together because they are the same claim about that file — a member file holds <em>values</em>, and everything about a component's existence is the axis's. Separately each looks like a detail; together they leave the member file with no column that is not an attribute.</p>
-<h3 id="what-a-schema-declaring-the-axis-does-unchanged">What a schema declaring the axis does, unchanged<a class="headerlink" href="#what-a-schema-declaring-the-axis-does-unchanged" title="Permanent link">&para;</a></h3>
-<p>A schema declaring the axis keeps today's layout exactly: <code>dims/entity_type/&lt;Type&gt;.parquet</code> per type, <code>entity_type</code> on the entity axis, typed by the declared <code>Dimension</code>. This proposal adds no case there; it removes one from the side where nothing declares the axis.</p>
-<h3 id="every-source-and-every-producer">Every source and every producer<a class="headerlink" href="#every-source-and-every-producer" title="Permanent link">&para;</a></h3>
-<p>The layout is one thing; what each implementation of it must do is another, and the change is only coherent if all of them agree. There are four <code>LayerSource</code>s and two record-side producers.</p>
-<table>
-<thead>
-<tr>
-<th>implementation</th>
-<th><code>axis("entity")</code> under this proposal</th>
-<th><code>entity_type(name)</code></th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>_FileLayer</code> (shared)</td>
-<td><code>dims/entity.parquet</code>, now with attribute columns</td>
-<td><code>None</code> — no such directory</td>
-</tr>
-<tr>
-<td><code>ParquetLayer</code></td>
-<td>inherited</td>
-<td>inherited</td>
-</tr>
-<tr>
-<td><code>ResolvedLayer</code></td>
-<td><code>layers/&lt;id&gt;/dims/entity.parquet</code> — <strong>see below</strong></td>
-<td>inherited, from <code>layers/&lt;id&gt;/</code></td>
-</tr>
-<tr>
-<td><code>DirectorySource</code></td>
-<td>inherited</td>
-<td>inherited</td>
-</tr>
-<tr>
-<td><code>StagedSource</code> / <code>WorkingRecord</code></td>
-<td><code>_ENTITY_AXIS</code> table, now with attribute columns</td>
-<td><code>None</code> — no member tables staged</td>
-</tr>
-<tr>
-<td><code>PyPSA</code> (tool)</td>
-<td><code>dims["entity"]</code>, its member frames merged in</td>
-<td><code>entity_types</code> empty</td>
-</tr>
-</tbody>
-</table>
-<p>Three of the four sources need no code change at all: <code>_FileLayer</code> reads whatever columns the file has, and <code>ParquetLayer</code> and <code>DirectorySource</code> inherit it. <code>entity_type(name)</code> answering <code>None</code> follows from the directory being absent, which <code>try_read_parquet</code> already handles. That is the test of whether the layout is right — a file-backed source should not have to know which configuration it is reading.</p>
-<p><strong>The <code>PyPSA</code> tool</strong> currently supplies <code>entity_types</code> per type and, since the entity axis became a supplied member, <code>dims["entity"]</code> from <code>_entity_axis_frame</code>. Under this proposal an untyped export merges the member columns into that frame and stops supplying <code>entity_types</code> — but PyPSA always has types (<code>n.components</code>), so it is unaffected in practice. It matters as a statement about the protocol rather than about this tool: a producer with no types has one axis frame to fill and no <code>entity_types</code> mapping, which is exactly what the <code>Record</code> protocol should let it say.</p>
-<h3 id="the-prerequisite-axis-means-one-thing-on-every-source">The prerequisite: <code>axis</code> means one thing on every source<a class="headerlink" href="#the-prerequisite-axis-means-one-thing-on-every-source" title="Permanent link">&para;</a></h3>
-<p><code>ResolvedLayer</code> overrides <code>axis</code> and <code>axes</code> to read <code>resolved/dims/</code> — the <em>folded</em> answer, standing for everything above this node — so <code>axis(dim)</code> means something different on it than on every other source, where it means "this layer's own rows". Moving a component's attribute columns onto the entity axis brings them into the reach of a source read that expects layer-local rows, so the override has to go first.</p>
-<p>That untangling is <a href="../one-interface-source-and-fold/"><code>one-interface-source-and-fold</code></a>'s subject in full: the <code>ResolvedLayer</code> masquerade — a persisted fold typed as a source — is the root, and once the base is a <code>Resolver</code> and the head a plain <code>ParquetLayer</code>, <code>axis</code> is layer-local on every source with no exception. This proposal depends on that split; it adds no new argument to it.</p>
+<p>Neither is fatal, and a true upsert is one statement rather than two. <strong>Re-evaluate once the shape here is settled</strong> — if the delete-then-insert version lands cleanly, the question is only whether <code>_shape</code> can carry a key without giving up being the single source of a table's shape.</p>
 <h2 id="what-this-buys">What this buys<a class="headerlink" href="#what-this-buys" title="Permanent link">&para;</a></h2>
-<p><strong>Every column of the format answers to a declaration.</strong> <code>entity_type</code> stops being the exception admitted by a special case, because it appears only where a group declares the axis — which is also when it has a dtype. The <code>_validate_frame</code> special case and the <code>_axis_columns</code> <code>String</code> fallback both go, and so does the <code>nw.String()</code> fallback that types a column no <code>Dimension</code> describes.</p>
-<p><strong>The entity axis's shape follows the schema.</strong> Where a schema declares no type axis, the folded entity axis stops carrying <code>entity_type</code> — on disk in a materialised cache too — rather than carrying it filled with NULLs. The three per-type readers then all resolve to "there are no types" rather than to "the type is NULL".</p>
-<p><strong>A record whose schema declares no type axis has one member file, not N.</strong> Today <code>add("thing", …)</code> and <code>add("other", …)</code> write two files that no declaration distinguishes, and a reader must enumerate them to find a component. One axis file is the honest shape of "these components have no kinds".</p>
-<p><strong><code>Record.entity_types</code> stops lying.</strong> It currently returns <code>{thing, other}</code> where the schema declares no entity-type axis — reporting filenames as a vocabulary. Empty is the true answer, and <code>entity_types</code> being empty is already what <code>schema.entity_types</code> says.</p>
+<p><strong>Four folds go</strong>, and with them <code>_latest_per</code> itself: <code>_collapsed_axis</code>, <code>_collapsed_entities</code>, <code>_collapsed_inputs</code>, <code>_collapsed_group</code> become the tables they read. The tombstone anti-join in <code>_collapsed_inputs</code> stays — a component tombstone reaching another attribute's rows is a cross-table fact, not an ordering one.</p>
+<p><strong>Reads become table scans.</strong> <code>_axis_layer</code> runs per axis on every commit and every staged read; today each call is an aggregate, an outer join, a per-column <code>coalesce</code> and possibly a semi-join. The work moves to one base lookup per <code>set</code>, paid once.</p>
+<p><strong>The staging rule holds all the way.</strong> "Shaped like the file it becomes" currently means columns; after this it means rows too, and a staged table can be handed to <code>write_record</code> without a fold in between. <code>StagedSource</code> becomes projection-free — its members return tables.</p>
 <h2 id="what-it-costs">What it costs<a class="headerlink" href="#what-it-costs" title="Permanent link">&para;</a></h2>
-<p><strong>A second layout for one construct.</strong> The entity axis carries attribute columns in one configuration and not the other, which is a branch in <code>_axis_columns</code>, in <code>_validate_frame</code>'s <code>known</code> set, and in whatever <code>add</code> uses to route a wide frame. Against that: the branch replaces the <code>entity_type</code>-column special case rather than adding to it, and it is keyed on one schema property.</p>
-<p><strong>A prerequisite in <code>ResolvedLayer</code>.</strong> Its <code>axis</code>/<code>axes</code> must become layer-local first, with the folded read moved to the seed path (above). That is a small change and a defect fix in its own right, but it lands before this proposal rather than with it, and it touches <code>resolve_dims</code> - the one place the fold reads axes across sources.</p>
-<p><strong><code>attributes_on("entity")</code> changes meaning.</strong> Its early return is load-bearing in more places than the writer — worth auditing every caller before moving it, since "never <code>entity</code>" is currently an invariant a reader may lean on.</p>
-<p><strong>Migration.</strong> A record written under the old layout has <code>dims/entity_type/thing.parquet</code> and an <code>entity_type</code> column; one written under the new has neither. Pre-1.0 and <a href="https://github.com/energy-models/datarecord/blob/main/AGENTS.md">breaking changes are free</a>, so this is a re-export rather than a compatibility path — but it is a re-export of every existing record whose schema declares no type axis, not a no-op.</p>
-<h2 id="what-it-opens-rather-than-settles">What it opens rather than settles<a class="headerlink" href="#what-it-opens-rather-than-settles" title="Permanent link">&para;</a></h2>
-<p><strong>Whether a declared axis with no <code>Enum</code> is the same case.</strong> <code>schema.entity_types</code> is empty for a <code>String</code>-typed entity-type dim too — the labels are data there as well, yet a group declares the axis, so the type is a real dim with a dtype. This proposal keys on <code>entity_type_dim is None</code>, not on whether the labels are enumerable, and the two differ for exactly that schema. Which side it belongs on is a question about what declaring the axis <em>means</em>, and this page does not answer it.</p>
-<p><strong>Whether <code>attributes_for</code> should narrow at all without types.</strong> It currently returns every entity-addressed attribute for any label. If there are no types, "which attributes does type X carry" has no meaning, and the method's contract could say so rather than accepting any string.</p>
+<p><strong>A <code>set</code> reads the base, for axes.</strong> The mapping arm gains a point lookup. Against it: the scalar arm already does this, and the relation is one the <code>NodeCache</code> holds.</p>
+<p><strong>Append-only goes.</strong> Staging becomes read-modify-write, so an edit is no longer a pure append. That is what makes a row complete and a key unique — but a reader who assumes "staged rows accumulate" will be wrong.</p>
+<p><strong>Two statements per edit where there was one.</strong> Both are scans over the same registered relation, and edits are not the hot path; the reads are.</p>
+<p><strong>A carried row's protection becomes structural rather than belt-and-braces.</strong> Today the anti-join and <code>_CARRIED_SEQ</code> both keep a fill from beating an edit. After, only the anti-join does — see the residual risk above.</p>
 <h2 id="how-to-know-it-worked">How to know it worked<a class="headerlink" href="#how-to-know-it-worked" title="Permanent link">&para;</a></h2>
-<p><strong><code>tests/test_untyped.py</code> changes shape, and that is the deliverable.</strong> <code>test_a_component_round_trips_without_a_type</code> and <code>test_an_unknown_label_is_accepted</code> both assert on <code>record.entity_types</code> returning labels; under this proposal they assert it is empty and read the values off <code>dims["entity"]</code> instead. The round trip is the same round trip — a value written and read back — through one file rather than two.</p>
-<p><strong>A written untyped layer has no <code>dims/entity_type/</code> at all.</strong> The clearest single assertion: the directory does not exist, where today it holds one file per label an <code>add</code> happened to use.</p>
-<p><strong>The <code>_validate_frame</code> special case is gone.</strong> Asserting that an <code>entity_type</code> column on the entity axis of a record with no declared type axis is now <em>rejected</em> is what says the exception was removed rather than relocated.</p>
-<p><strong><code>sources.py</code> is untouched, <code>ResolvedLayer</code> aside.</strong> The strongest signal that the layout is right rather than merely different: if <code>_FileLayer</code>, <code>ParquetLayer</code> and <code>DirectorySource</code> need no edit, then a file-backed source genuinely does not have to know which configuration it reads. A diff that adds a branch to any of them means the layout is being carried by the readers instead of by the format.</p>
-<p><strong>A resolved record with no declared types reads the same as an unresolved one.</strong> Materialise a node of such a record and read a component's value through both; they must agree. This is the assertion the <code>ResolvedLayer</code> prerequisite above exists to protect, so it belongs in the suite before either change rather than after.</p>
-<p><strong>The resolved entity axis has no <code>entity_type</code> column where the schema declares no type axis</strong> — asserted on the relation's columns, and on the materialised <code>resolved/dims/entity.parquet</code> for a node that was materialised. Today both carry it, filled with NULLs, which is the state that makes <code>entity_types()</code> answer <code>{None}</code>; a test that only checks <code>entity_types() == set()</code> would pass with the column still there and still NULL.</p>
+<p><strong><code>_seq</code> is absent from every staging table.</strong> The single assertion the whole proposal is downstream of: a <code>_shape</code> still declaring it means something still orders rows.</p>
+<p><strong>Two <code>set</code> calls on one axis still commute</strong>, which is what the <code>FILTER</code> bought. Existing coverage should pass unchanged — if <code>set("icon", …)</code> then <code>set("budget", …)</code> on one label loses the icon, the row was not complete.</p>
+<p><strong>A <code>partial</code> dim's layer carries the touched labels and no others.</strong> <code>test_a_partial_axis_stays_a_patch</code> pins this from the outside; it says the semi-join was subsumed rather than dropped.</p>
+<p><strong>A <code>remove</code> then <code>add</code> under another type is one row</strong> — <code>test_a_freed_name_may_be_reclaimed_by_another_type</code>, now by construction.</p>
+<p><strong>A whole-owned extent still carries its untouched coordinates after two edits.</strong> <code>_complete_owned_whole</code>'s idempotence is what this leans on hardest, so the case to pin is a second <code>set</code> on the same attribute at a different coordinate: the first edit's fills must survive, and the second's must replace the fill on its own coordinate.</p>
 
 
 
@@ -1900,7 +1957,7 @@ rebuild, <a href="#the-column-leaves-the-entity-axis-too">as noted below</a>.</p
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../one-record-over-a-node-cache/" class="md-footer__link md-footer__link--prev" aria-label="Previous: One Record over a NodeCache">
+          <a href="../dep-0006-a-member-file-holds-values/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 6: A member file holds values">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1910,20 +1967,20 @@ rebuild, <a href="#the-column-leaves-the-entity-axis-too">as noted below</a>.</p
                 Previous
               </span>
               <div class="md-ellipsis">
-                One Record over a NodeCache
+                DEP 6: A member file holds values
               </div>
             </div>
           </a>
         
         
           
-          <a href="../staging-without-seq/" class="md-footer__link md-footer__link--next" aria-label="Next: Staging without _seq">
+          <a href="../dep-0008-one-interface-source-and-fold/" class="md-footer__link md-footer__link--next" aria-label="Next: DEP 8: One interface, source and fold">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Staging without _seq
+                DEP 8: One interface, source and fold
               </div>
             </div>
             <div class="md-footer__button md-icon">
