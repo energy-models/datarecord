@@ -85,6 +85,40 @@ ENTITY_PROPERTIES = ("carrier", "sign", "type")
 ROLE = "role"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
 
+
+@dataclass(frozen=True)
+class _Weighting:
+    """One column of the weighting frame PyPSA keeps beside an axis."""
+
+    dim: str
+    column: str
+    description: str
+
+
+#: Every axis weighting, by the attribute over its axis it is stored as.
+_WEIGHTINGS = {
+    SCENARIO_WEIGHT: _Weighting(
+        SCENARIO, "weight", "How much this scenario counts in the expectation."
+    ),
+    "snapshot_weighting_objective": _Weighting(
+        SNAPSHOT, "objective", "How much this snapshot counts in the objective."
+    ),
+    "snapshot_weighting_stores": _Weighting(
+        SNAPSHOT, "stores", "How long this snapshot lasts for a store's energy."
+    ),
+    "snapshot_weighting_generators": _Weighting(
+        SNAPSHOT,
+        "generators",
+        "How much this snapshot counts towards a generator's energy limits.",
+    ),
+    "period_weighting_objective": _Weighting(
+        PERIOD, "objective", "How much this period counts in the objective."
+    ),
+    "period_weighting_years": _Weighting(
+        PERIOD, "years", "How many years this period lasts."
+    ),
+}
+
 # PyPSA's `defaults["typ"]` (the attribute's Python type) mapped to the narwhals
 # type the long schema stores, `String` for anything unlisted. Keyed on `typ` -
 # what a value *is* - not `type`, whose `"static or series"`-style strings
@@ -721,38 +755,45 @@ def _new_network(record: RecordLike, shape: NetworkShape) -> pypsa.Network:
 
     _apply_snapshots_import(n, shape.snapshots)
     if shape.multiperiod:
-        ip = shape.periods.set_index(PERIOD)
-        n.periods = ip.index
-        n._investment_periods_data = ip.reindex(n.investment_periods)
+        n.periods = shape.periods[PERIOD]
+        n.investment_period_weightings = _weightings(
+            record, PERIOD, n.investment_period_weightings
+        )
+    n.snapshot_weightings = _weightings(record, SNAPSHOT, n.snapshot_weightings)
     if shape.stochastic:
+        index = pd.Index(shape.scenarios[SCENARIO].astype(str), name=SCENARIO)
+        equal = pd.DataFrame({"weight": 1 / len(index)}, index=index)
         # `set_scenarios` rather than assigning `_scenarios_data`: it rebuilds
         # each component's empty `static`/`dynamic` frames with the `scenario`
         # level, so later imports union against a correctly named 2-level index
         # instead of the single-level one a fresh component carries.
-        n.set_scenarios(_scenario_weights(record, shape))
+        n.set_scenarios(_weightings(record, SCENARIO, equal)["weight"])
     return n
 
 
-def _scenario_weights(record: RecordLike, shape: NetworkShape) -> pd.Series:
-    """Each scenario's `scenario_weight`, in axis order.
+def _weightings(record: RecordLike, dim: str, table: pd.DataFrame) -> pd.DataFrame:
+    """`table`, PyPSA's weightings of `dim`, with each one `record` stores in place.
 
-    A scenario's own row wins over a NULL-scenario row, which reaches every
-    scenario; one reached by neither takes an equal share.
+    A label's own row wins over a NULL-label row, which reaches every label;
+    a label reached by neither keeps `table`'s value. The label is `table`'s
+    innermost level, so on a multi-period network a snapshot's row reaches
+    its timestep in every period.
     """
-    index = pd.Index(shape.scenarios[SCENARIO].astype(str), name=SCENARIO)
-    frame = record.attributes.get(SCENARIO_WEIGHT)
-    stored: dict[str, float] = {}
-    broadcast: list[float] = []
-    if frame is not None:
-        rows = frame.select(SCENARIO, "value")
-        unset = nw.col(SCENARIO).is_null()
-        broadcast = rows.filter(unset).collect()["value"].to_list()
-        own = rows.filter(~unset).collect().iter_rows()
-        stored = {str(scenario): value for scenario, value in own}
-    weights = pd.Series(stored, dtype=float).reindex(index)
-    if broadcast:
-        weights = weights.fillna(float(broadcast[0]))
-    return weights.fillna(1 / len(index)).rename("weight")
+    restored = table.copy()
+    labels = table.index.get_level_values(-1)
+    for attribute, weighting in _WEIGHTINGS.items():
+        frame = record.attributes.get(attribute)
+        if weighting.dim != dim or frame is None:
+            continue
+        rows = frame.select(dim, "value").collect().to_pandas()
+        unset = rows[dim].isna()
+        values = rows[~unset].set_index(dim)["value"].reindex(labels)
+        values.index = table.index
+        broadcast = rows.loc[unset, "value"]
+        if len(broadcast):
+            values = values.fillna(broadcast.iloc[0])
+        restored[weighting.column] = values.fillna(table[weighting.column])
+    return restored
 
 
 def _add_component_type(
@@ -1486,7 +1527,8 @@ def _registry_schema() -> RecordSchema:
     The properties of `entity` are `entity_type`, an `Enum` over the
     registry's types so a type outside it is refused on write, and
     `ENTITY_PROPERTIES`; `role` is a property of `connection`. Every other
-    input, `scenario_weight` over `scenario` included, is an attribute.
+    input, each axis weighting (`_WEIGHTINGS`) over its axis included, is an
+    attribute.
 
     Notes
     -----
@@ -1500,11 +1542,12 @@ def _registry_schema() -> RecordSchema:
 
     n = pypsa.Network()
     attributes: dict[str, AttributeSpec] = {
-        SCENARIO_WEIGHT: AttributeSpec(
+        name: AttributeSpec(
             dtype=nw.Float64(),
-            dims=frozenset({SCENARIO}),
-            description="How much this scenario counts in the expectation.",
-        ),
+            dims=frozenset({weighting.dim}),
+            description=weighting.description,
+        )
+        for name, weighting in _WEIGHTINGS.items()
     }
     carries: dict[str, frozenset[str]] = {}
     by_type: dict[str, dict[str, Any]] = {}
@@ -1903,7 +1946,7 @@ class _NetworkSource:
 
     @property
     def attributes(self) -> LazyFrames:
-        """Every input that is no property, `scenario_weight` among them where scenarios exist."""
+        """Every input that is no property, the weightings of each axis the network holds among them."""
         names = self._attribute_names
         return LazyFrames(
             tuple(names), lambda attr: self._long_frame(attr, names[attr])
@@ -1923,22 +1966,43 @@ class _NetworkSource:
                 continue
             for attr in self._record_attributes(c):
                 names.setdefault(attr, []).append(c.name)
-        if len(self.n.scenario_weightings):
-            names[SCENARIO_WEIGHT] = []
+        for attribute, weighting in _WEIGHTINGS.items():
+            if len(self._weighting_table(weighting.dim)):
+                names[attribute] = []
         return names
 
-    def _scenario_weight_frame(self) -> nw.LazyFrame:
-        """The scenario weightings as long rows of `scenario_weight`."""
+    def _weighting_table(self, dim: str) -> pd.DataFrame:
+        """PyPSA's weighting frame of `dim`, empty where the network lacks the axis."""
+        if dim == SNAPSHOT:
+            return self.n.snapshot_weightings
+        if dim == PERIOD:
+            return self.n.investment_period_weightings
+        return self.n.scenario_weightings
+
+    def _weighting_frame(self, attribute: str) -> nw.LazyFrame:
+        """One axis weighting as long rows over its axis.
+
+        Raises
+        ------
+        NotImplementedError
+            On a multi-period network's snapshot weightings, which vary per
+            `(period, timestep)` and so are not an attribute over `snapshot`
+            alone.
+        """
+        weighting = _WEIGHTINGS[attribute]
+        table = self._weighting_table(weighting.dim)
+        if isinstance(table.index, pd.MultiIndex):
+            raise NotImplementedError(
+                f"{attribute!r} is declared over {weighting.dim!r} alone; a "
+                "multi-period network's snapshot weightings vary per "
+                "(period, timestep) and cannot be written yet"
+            )
         weights = (  # noqa: F841 - bound by name for the query below
-            self.n.scenario_weightings["weight"]
-            .rename("value")
-            .rename_axis(SCENARIO)
-            .reset_index()
+            table[weighting.column].rename("value").reset_index()
         )
         rel = self.con.sql(
-            f"SELECT CAST({SCENARIO} AS VARCHAR) AS {SCENARIO}, "
-            f"{lit(SCENARIO_WEIGHT)} AS attribute, NULL AS breakpoint, "
-            "CAST(value AS DOUBLE) AS value FROM weights"
+            f"SELECT * EXCLUDE (value), {lit(attribute)} AS attribute, "
+            "NULL AS breakpoint, CAST(value AS DOUBLE) AS value FROM weights"
         )
         return nw.from_native(rel).lazy()
 
@@ -2129,8 +2193,8 @@ class _NetworkSource:
         """
         # This attribute's own columns, from its spec: one file is one attribute,
         # so it hands over no dim it is not addressed by (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
-        if attribute == SCENARIO_WEIGHT:
-            return self._scenario_weight_frame()
+        if attribute in _WEIGHTINGS:
+            return self._weighting_frame(attribute)
         registry = _registry_schema()
         columns = list(
             registry.long_columns_for(attribute)

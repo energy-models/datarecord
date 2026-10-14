@@ -136,6 +136,12 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- The PyPSA tool round-trips a network's snapshot and investment period
+  weightings: `to_datarecord` writes them as `snapshot_weighting_objective`,
+  `_stores` and `_generators` over `snapshot` and
+  `period_weighting_objective` and `_years` over `period`, beside
+  `scenario_weight`, and `build` sets them back rather than leaving PyPSA's
+  defaults.
 - Removing an entity drops the values of every group row naming it, not only
   where it is the group's first entity coordinate: a `contract` over
   `(from, to)` loses its values when either party is removed, and

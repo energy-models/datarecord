@@ -20,13 +20,14 @@ import pytest
 
 from datarecord import Workspace
 from datarecord.layered.resolve import read_schema, write_schema
+from datarecord.mutable import WorkingRecord
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
     ENTITY_TYPE,
     PyPSA,
     _colliding_names,
     _registry_schema,
-    _scenario_weights,
+    _weightings,
 )
 from tests.fixtures import (
     empty_child,
@@ -1000,10 +1001,67 @@ def test_a_null_scenario_weight_reaches_every_scenario_its_own_row_does_not():
     record = SimpleNamespace(
         attributes={"scenario_weight": nw.from_native(rows).lazy()}
     )
-    shape = SimpleNamespace(
-        scenarios=pd.DataFrame({"scenario": ["low", "mid", "high"]})
-    )
-    weights = _scenario_weights(record, shape)  # type: ignore[arg-type]
-    assert weights.to_dict() == {"low": 0.25, "mid": 0.25, "high": 0.5}, (
+    index = pd.Index(["low", "mid", "high"], name="scenario")
+    equal = pd.DataFrame({"weight": 1 / 3}, index=index)
+    weights = _weightings(record, "scenario", equal)  # type: ignore[arg-type]
+    assert weights["weight"].to_dict() == {"low": 0.25, "mid": 0.25, "high": 0.5}, (
         "a NULL-scenario row broadcasts; a scenario's own row wins"
     )
+
+
+def test_snapshot_weightings_survive_a_round_trip(store, ac_dc):
+    """Each column of `snapshot_weightings` is a `snapshot_weighting_*` attribute."""
+    n = ac_dc.copy()
+    steps = np.arange(len(n.snapshots), dtype=float)
+    n.snapshot_weightings = pd.DataFrame(
+        {"objective": 2.0 + steps, "stores": 3.0, "generators": 0.5 * steps},
+        index=n.snapshots,
+    )
+
+    built = PyPSA.build(export_network(n, store).record)
+    pd.testing.assert_frame_equal(
+        built.snapshot_weightings,
+        n.snapshot_weightings,
+        check_freq=False,
+        check_index_type=False,
+    )
+
+
+@pytest.mark.parametrize("column", ["objective", "years"])
+def test_a_period_weighting_survives_a_round_trip(store, column):
+    """`investment_period_weightings` are `period_weighting_*` attributes over `period`.
+
+    A multi-period network's snapshot axis does not export yet, so the rows
+    `to_datarecord` writes for one are set on a single-period record given
+    its periods.
+    """
+    import pypsa
+
+    n = pypsa.Network()
+    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
+    n.add("Bus", "north")
+    root = export_network(n, store)
+    n.set_investment_periods([2030, 2040])
+    n.investment_period_weightings[column] = [3.0, 2.0]
+    attribute = f"period_weighting_{column}"
+    rows = PyPSA.to_datarecord(n, store.workspace.con).attributes[attribute]
+
+    staged = WorkingRecord(root.record)
+    staged.add("period", [2030, 2040])
+    staged.set(attribute, rows)
+    built = PyPSA.build(root.child(staged.edits).record)
+    pd.testing.assert_frame_equal(
+        built.investment_period_weightings, n.investment_period_weightings
+    )
+
+
+def test_multi_period_snapshot_weightings_are_refused(store):
+    """Weightings over `(period, timestep)` are not an attribute over `snapshot`."""
+    import pypsa
+
+    n = pypsa.Network()
+    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
+    n.set_investment_periods([2030, 2040])
+    source = PyPSA.to_datarecord(n, store.workspace.con)
+    with pytest.raises(NotImplementedError, match="multi-period"):
+        source.attributes["snapshot_weighting_objective"]
