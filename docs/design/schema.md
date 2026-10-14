@@ -35,7 +35,8 @@ class AttributeSpec(BaseModel):
 class PropertySpec(BaseModel):
     """One value per label of its subject, describing the label."""
 
-    dtype: str
+    dtype: str | None = None  # the `into` dim's where omitted
+    into: str | None = None  # a dim whose labels its values are
     default: Any | None = None
     default_by: dict[str, dict[str, Any]] = {}
     unit: str | None = None
@@ -165,7 +166,10 @@ properties = {
             dtype="str", default="", default_by={"entity.entity_type": {"Bus": "AC"}}
         ),
     },
-    "bus": {"x": PropertySpec(dtype="float64", unit="°")},
+    "bus": {
+        "x": PropertySpec(dtype="float64", unit="°"),
+        "country": PropertySpec(into="country"),
+    },
     "connection": {"role": PropertySpec(dtype="str")},
 }
 ```
@@ -178,11 +182,13 @@ properties = {
 
 **A property is addressed as `subject.name`** — `entity.entity_type`, `bus.x`, `connection.role` — wherever a caller names one: [`set`](working-record.md#set), a [trait](#traits)'s `on` and bundle, a [`default_by`](#default_by-a-default-per-category) key, `default_for`. A plain name is an attribute or result, never a property, however few subjects declare it, so its meaning does not change when another subject declares it later. `Schema.resolve(name)` returns the `AttributeSpec`, or the subject and the `PropertySpec`, and refuses an unknown plain name naming the dotted forms of the properties so called. A column keeps its plain name: the frames of `properties[subject]`, the categories [`flags`](record.md#flags) and `attributes_for` take, and a [selector keyword](working-record.md#set) are each read against one subject already.
 
+**A property may be `into` a dim**: its values are that dim's labels and its `dtype` is the dim's, so `bus.country` above names a label of `country`, and any subject may declare one. A stored value that is not NULL must name a live label, checked where a group's field is: [`set` and `add`](working-record.md#validation) refuse one the record as staged lacks, the [writer](layers.md#deletion) a layer storing one it removed, and [`remove`](working-record.md#add-remove) a label one still names. NULL names none. Refused at load are `into` an undeclared dim and a `dtype` other than the dim's. It does not [categorize](#categories-an-enum-property-of-a-partial-dim): a category is a declared `Enum`, a label is data a layer adds and removes. One coordinate classified [`into`](#into-a-group-that-classifies) a dim is such a property, never a group.
+
 **Why the split.** Without it, where a value is stored follows how many coordinates address it rather than what it is: `p_nom`, data a model optimises against, and `carrier`, a label describing a generator, would both be columns of the entity axis, and widening `p_nom` to `dims: [entity, scenario]` — a [compatible](#versioning) change — would move it to `inputs/p_nom.parquet`, away from the rows earlier layers wrote.
 
 ### Categories — an `Enum` property of a `partial` dim
 
-**Any `Enum`-typed property of a dim listed in [`partial`](#partial-the-granularity-of-an-override) categorizes it**: its values are that dim's **categories** along it, which a [trait's `on`](#traits) and a [`default_by`](#default_by-a-default-per-category) key on. `Schema.categorizing(dim)` lists them in declaration order. There is no flag declaring the role and no limit of one per dim — an `Enum` `carrier` would categorize `entity` beside `entity_type`. Keying on any other property — a `str` one, one of a dim outside `partial`, or one of a group — is refused, naming the property and why.
+**Any `Enum`-typed property of a dim listed in [`partial`](#partial-the-granularity-of-an-override) categorizes it**: its values are that dim's **categories** along it, which a [trait's `on`](#traits) and a [`default_by`](#default_by-a-default-per-category) key on. `Schema.categorizing(dim)` lists them in declaration order. There is no flag declaring the role and no limit of one per dim — an `Enum` `carrier` would categorize `entity` beside `entity_type`. Keying on any other property — a `str` one, one [`into`](#properties) a dim, one of a dim outside `partial`, or one of a group — is refused, naming the property and why.
 
 The two conditions are what a category needs: an `Enum`, so a category a trait or a default names is checked against a declared vocabulary; and the dim in `partial`, because only there is a dim owned and checked per label. A schema whose entities have no kinds declares no `Enum` property of `entity`, and nothing else about it differs.
 
@@ -291,8 +297,8 @@ groups = {
     "connection": Group(over={"entity": "entity", "bus": "bus"}),
     "corridor": Group(over={"from": "bus", "to": "bus"}),
     "bus_country": Group(
-        over=["bus"], into="country"
-    ),  # functional: one country per bus
+        over=["bus", "scenario"], into="country"
+    ),  # functional: one country per bus and scenario
 }
 ```
 
@@ -332,17 +338,17 @@ Every group is such a coordinate (`Schema.group_columns`).
 
 ### `into` — a group that classifies
 
-`into` names the dim a group is **functional into**: each tuple of `over` carries exactly one of its labels. `bus_country` over `[bus]` into `country` says every bus is in one country.
+`into` names the dim a group is **functional into**: each tuple of `over` carries exactly one of its labels. `bus_country` over `[bus, scenario]` into `country` says every bus is in one country per scenario.
+
+**A group needs two coordinates or more.** One `over` coordinate `into` a dim is refused at load, naming the property to declare instead: a bus in one country is [`bus.country` `into` `country`](#properties), a column of the bus axis whose label is checked live, rather than a file of its own.
 
 It is a declaration a bare group cannot make. A group can only _happen_ to be single-valued, which leaves a duplicate row a data error the schema has no name for; `into` names it, so the constraint is declared and checkable on write. No existing system declares it — GAMS's `map(b,c)` is a set over a tuple of sets with single-valuedness left to convention, and a duplicated `b` silently double-counts — which is the argument for the field rather than against it, a schema whose purpose is making shape checkable having no reason to inherit that gap.
 
 **`into` must name a declared dim.** That is what keeps the axis file, and the axis file is the whole of what a functional group has over a bare tuple set: `dims/country.parquet` gives `country` its [order](record.md#axis-order) and somewhere for a per-country CO2 budget to live.
 
-**`into` is sugar, resolved once at parse.** It is a plain column beside the key, so `groups/bus_country.parquet` is `bus_country STRUCT(bus) | country` and is keyed by its struct exactly as `connection` is, and no read path, file layout or fold key branches on whether a group has one. The field is retained for the three things that still need it: the uniqueness constraint (the key being the coordinates minus `into`), a consumer's aggregation, and round-tripping the manifest — writing back `over: [bus, country]` where the author wrote `into:` would silently rewrite their schema.
+**`into` is sugar, resolved once at parse.** It is a plain column beside the key, so `groups/bus_country.parquet` is `bus_country STRUCT(bus, scenario) | country` and is keyed by its struct exactly as `connection` is, and no read path, file layout or fold key branches on whether a group has one. The field is retained for the three things that still need it: the uniqueness constraint (the key being the coordinates minus `into`), a consumer's aggregation, and round-tripping the manifest — writing back `over: [bus, country]` where the author wrote `into:` would silently rewrite their schema.
 
-**It may not key an attribute alongside what it maps from.** `dims={"bus", "country"}` is rejected: `into` says the country follows from the bus, so the row would be keyed twice over and the two free to disagree.
-
-**Nothing assumes one coordinate.** `over: [bus, scenario]` with `into: country` — a bus whose country varies per scenario — is allowed, the constraint being per-tuple already. It costs nothing in storage because [every group is a file](format.md#where-a-value-lives).
+**It may not key an attribute alongside what it maps from.** `dims={"bus", "country"}` is rejected: `into` says the country follows from the bus and scenario, so the row would be keyed twice over and the two free to disagree.
 
 ### Addressing: `dims: [X]`
 
@@ -402,16 +408,16 @@ The inner dim is named for the thing it indexes (`timestep`) rather than for the
 Both are acyclic and both relate one dim to another. They mean opposite things:
 
 - **`within`** names a dim's _parents_: its label set is **scoped per parent**, so `t1` in 2015 and `t1` in 2020 are different points and the axis key is `(period, timestep)`.
-- **`into`** names the dim a _group_ classifies its coordinates by: one flat label set, each `over` tuple picking one of its labels. `country` is not scoped by `bus`; it is a partition of buses, and its axis key is `country` alone.
+- **`into`** names the dim a _property_ or _group_ classifies its subject by: one flat label set, each label or `over` tuple picking one of its labels. `country` is not scoped by `bus`; it is a partition of buses, and its axis key is `country` alone.
 
-Nesting versus classification. `within` cannot express `country`, and a functional group cannot express `timestep`.
-`within` stays on `Dimension` because nesting is a property of the axis itself; `into` is on `Group` because a classification is a relation, with rows.
+Nesting versus classification. `within` cannot express `country`, and `into` cannot express `timestep`.
+`within` stays on `Dimension` because nesting is a property of the axis itself; `into` is on a property or a `Group` because a classification is a relation: a column of the classified axis, or rows of a group.
 
-A functional group is **single-valued by declaration** rather than by construction, which is the whole of what `into` adds — a many-to-many classification is an ordinary group, and expressible as one.
+A classification is **single-valued by declaration** rather than by construction, which is the whole of what `into` adds — a many-to-many classification is an ordinary group, and expressible as one.
 
-**A chain is not denormalised.** bus→state→country is two group files, never a `country` column on `dims/bus.parquet`. Two files asserting bus→country would let a layer restating the states leave every bus's country stale with nothing to detect it, so the chain is a join over two files — which a file per group gives for free, a layer restating a group restating exactly one file.
+**A chain is not denormalised.** bus→state→country is two properties, `bus.state` and `state.country`, never a `country` column on `dims/bus.parquet`. Two columns asserting bus→country would let a layer restating the states leave every bus's country stale with nothing to detect it, so the chain is a join over two axis files.
 
-**The record does not resolve across levels.** An attribute over `country` is handed back keyed by country; projecting it down to buses is a join through the group, and that is the consumer's work. The fold learns no new operation.
+**The record does not resolve across levels.** An attribute over `country` is handed back keyed by country; projecting it down to buses is a join through the classification, and that is the consumer's work. The fold learns no new operation.
 
 Membership could not vary along a classification either, if it varied along anything: whether an entity exists in Germany is already settled by its bus and that bus's country, so there would be no freedom for it to vary independently ([existence does not vary](#existence-does-not-vary-along-a-dim)).
 

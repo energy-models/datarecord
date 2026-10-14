@@ -177,7 +177,6 @@ def _with_entity_property(name: str, spec: PropertySpec) -> dict:
                     "bus": Dimension(dtype=nw.String()),
                     "country": Dimension(dtype=nw.String()),
                 },
-                groups={"bus_country": Group(over=["bus"], into="country")},
                 attributes={
                     "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})
                 },
@@ -340,9 +339,10 @@ def test_a_functional_group_may_not_key_an_attribute_with_what_it_maps_from():
         Schema(
             dimensions={
                 "bus": Dimension(dtype=nw.String()),
+                "scenario": Dimension(dtype=nw.String()),
                 "country": Dimension(dtype=nw.String()),
             },
-            groups={"in_country": Group(over=["bus"], into="country")},
+            groups={"in_country": Group(over=["bus", "scenario"], into="country")},
             attributes={
                 "x": AttributeSpec(dtype=nw.Float64(), dims={"bus", "country"})
             },
@@ -470,9 +470,10 @@ def test_an_enum_property_categorizes_only_a_partial_dim():
             lambda: Schema(
                 dimensions={
                     "bus": Dimension(dtype=nw.String()),
+                    "scenario": Dimension(dtype=nw.String()),
                     "country": Dimension(dtype=nw.String()),
                 },
-                groups={"bus_country": Group(over=["bus"], into="country")},
+                groups={"bus_country": Group(over=["bus", "scenario"], into="country")},
                 properties={
                     "bus_country": {"country": PropertySpec(dtype=nw.String())}
                 },

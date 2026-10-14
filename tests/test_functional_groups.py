@@ -2,14 +2,16 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Functional groups: a group declaring `into`, which classifies its coordinates.
+"""Classifications: a property `into` a dim, and a group `into` one over several coordinates.
 
-`bus_country` over `[bus]` into `country` says every bus is in exactly one
-country. The relation is a file of its own, `groups/bus_country.parquet`, and the dim it is
-`into` keeps an axis file for its order and for its properties.
+`bus.state` `into` `state` says every bus is in at most one state: a column of
+the bus axis whose values are labels of `state`, which keeps an axis file for
+its order and for its properties. A group needs `into` only for a tuple of two
+coordinates or more.
 
 Notes
 -----
+- [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
 - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
 - [why `into` is the right field](https://energy-models.github.io/datarecord/design/schema/#why-into-is-the-right-field)
 """
@@ -20,8 +22,16 @@ import narwhals as nw
 import pytest
 from pydantic import ValidationError
 
+from datarecord.layered.revision import Revision
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import AttributeSpec, Dimension, Group, PropertySpec, Schema
+from datarecord.schema import (
+    AttributeSpec,
+    Dimension,
+    Group,
+    PropertySpec,
+    Schema,
+    Trait,
+)
 from tests.fixtures import (
     empty_child,
     empty_root,
@@ -32,16 +42,19 @@ from tests.fixtures import (
 
 
 def _schema(**overrides) -> Schema:
-    """A record classified twice over: bus -> state -> country."""
+    """A record classified twice over, bus -> state -> country, and a pair classified into a country."""
     kwargs: dict[str, Any] = {
         "dimensions": {
             "bus": Dimension(dtype=nw.String()),
             "state": Dimension(dtype=nw.String()),
             "country": Dimension(dtype=nw.String()),
+            "scenario": Dimension(dtype=nw.String()),
         },
-        "groups": {
-            "bus_state": Group(over=["bus"], into="state"),
-            "state_country": Group(over=["state"], into="country"),
+        "groups": {"bus_state": Group(over=["bus", "state"])},
+        "properties": {
+            "bus": {"state": PropertySpec(into="state")},
+            "state": {"country": PropertySpec(into="country")},
+            "bus_state": {"country": PropertySpec(into="country")},
         },
         "partial": frozenset(),
     }
@@ -55,18 +68,31 @@ def _schema(**overrides) -> Schema:
 def test_the_key_is_over_without_into():
     """What the uniqueness constraint is on: each `over` tuple carries one label.
 
-    So `groups/state_country.parquet` is keyed by a `state_country` struct over
-    `state`, `country` a plain column beside it.
+    So `groups/bus_state.parquet` is keyed by a `bus_state` struct over `bus`
+    and `scenario`, `state` a plain column beside it.
     """
-    s = _schema()
-    assert s.group_key("state_country") == ("state",)
-    assert s.group_key("bus_state") == ("bus",)
+    s = _schema(groups={"bus_state": Group(over=["bus", "scenario"], into="state")})
+    assert s.group_key("bus_state") == ("bus", "scenario")
+
+
+def test_a_property_into_a_dim_takes_its_dtype_and_does_not_categorize():
+    """Its values are the dim's labels, typed as them, and data rather than categories."""
+    s = _schema(
+        dimensions={
+            **_schema().dimensions,
+            "state": Dimension(dtype=nw.Enum(["lower", "upper"])),
+        },
+        partial=frozenset({"bus"}),
+    )
+    assert s.properties["bus"]["state"].dtype == nw.Enum(["lower", "upper"])
+    assert s.categorizing("bus") == (), "an `Enum` dim's labels are still data"
+    assert Schema.model_validate_json(s.model_dump_json()) == s, "the dtype round-trips"
 
 
 def test_an_into_less_group_in_dims_is_one_struct_column():
     """A group in `dims` is carried as itself, a struct over its coordinates."""
     s = _schema(
-        groups={"connection": Group(over=["bus", "state"])},
+        groups={**_schema().groups, "connection": Group(over=["bus", "state"])},
         attributes={"capacity": AttributeSpec(dtype=nw.Float64(), dims={"connection"})},
     )
     assert s.coordinates_of("capacity") == ("connection",), "the group, not expanded"
@@ -83,7 +109,12 @@ def test_the_over_list_form_is_sugar_for_the_dict():
     """
     assert Group(over=["bus"]).over == {"bus": "bus"}
     assert Group(over={"from": "bus", "to": "bus"}).key == ("from", "to")
-    s = _schema(groups={"corridor": Group(over={"from": "bus", "to": "bus"})})
+    s = _schema(
+        groups={
+            **_schema().groups,
+            "corridor": Group(over={"from": "bus", "to": "bus"}),
+        }
+    )
     assert s.group_key("corridor") == ("from", "to"), "no `into`, so all of them"
 
 
@@ -94,31 +125,69 @@ def test_the_over_list_form_is_sugar_for_the_dict():
     ("groups", "match"),
     [
         pytest.param(
-            {"country": Group(over=["state"], into="country")},
+            {"country": Group(over=["bus", "state"])},
             "group 'country' shares its name",
             id="shares-a-dims-name",
         ),
         pytest.param(
-            {"state_country": Group(over=["nope"], into="country")},
+            {"bus_state": Group(over=["nope"])},
             "over undeclared dims",
             id="over-undeclared-dim",
         ),
         pytest.param(
-            {"c": Group(over=["bus"], into="nope")},
+            {"c": Group(over=["bus", "state"], into="nope")},
             "`into` undeclared dim",
             id="into-undeclared-dim",
         ),
         pytest.param(
-            {"c": Group(over=["bus"], into="bus")},
+            {"c": Group(over=["bus", "state"], into="bus")},
             "also one of its `over` coordinates",
             id="into-one-of-over",
+        ),
+        pytest.param(
+            {"c": Group(over=["bus"], into="state")},
+            "declare the property `bus.state`",
+            id="into-over-one-coordinate",
         ),
     ],
 )
 def test_a_malformed_group_is_refused(groups, match):
     """A group is a column named for it, over declared dims, `into` another one."""
     with pytest.raises(ValidationError, match=match):
-        _schema(groups=groups)
+        _schema(groups=groups, properties={})
+
+
+@pytest.mark.parametrize(
+    ("spec", "extra", "match"),
+    [
+        pytest.param({"into": "nope"}, {}, "`into` undeclared dim", id="undeclared"),
+        pytest.param(
+            {"into": "state", "dtype": "Int64"},
+            {},
+            "its dtype is the dim's",
+            id="dtype",
+        ),
+        pytest.param({}, {}, "declares its `dtype`, or the dim", id="neither"),
+        pytest.param(
+            {"into": "state"},
+            {"traits": {"t": Trait(on={"bus.state": {"lower"}})}},
+            "whose labels are data, not categories",
+            id="a-trait-on-it",
+        ),
+    ],
+)
+def test_a_malformed_property_into_a_dim_is_refused(spec, extra, match):
+    """`into` names a declared dim, whose dtype the property takes, and categorizes nothing."""
+    with pytest.raises(ValidationError, match=match):
+        _schema(
+            dimensions={
+                **_schema().dimensions,
+                "state": Dimension(dtype=nw.Enum(["lower", "upper"])),
+            },
+            properties={"bus": {"state": spec}},
+            partial=frozenset({"bus"}),
+            **extra,
+        )
 
 
 # -- through a real record --------------------------------------------------
@@ -153,9 +222,7 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(store):
     assert axes["country"].df()["country"].tolist() == ["NO", "DE", "FR"], (
         "axis order is the file's row order, classified or not"
     )
-    assert axes["bus"].df()["bus"].tolist() == ["north"], (
-        "no classification column: the relation is the group's own file"
-    )
+    assert axes["bus"].df()["bus"].tolist() == ["north"]
 
 
 def test_removing_a_label_of_a_dim_outside_partial_tombstones_its_tuples(store):
@@ -174,23 +241,23 @@ def test_removing_a_label_of_a_dim_outside_partial_tombstones_its_tuples(store):
         layer,
         "bus_state",
         [
-            {"bus_state": {"bus": "north"}, "state": "lower"},
-            {"bus_state": {"bus": "south"}, "state": "upper"},
+            {"bus_state": {"bus": "north", "state": "lower"}},
+            {"bus_state": {"bus": "south", "state": "upper"}},
         ],
     )
 
     staged = WorkingRecord(revision.record)
     staged.remove("bus", ["north"])
-    assert staged.groups["bus_state"].collect().to_native().to_pydict() == {
-        "bus_state": [{"bus": "south"}],
-        "state": ["upper"],
-    }, "the tuple naming the removed bus is tombstoned"
+    assert _tuples(staged) == [{"bus": "south", "state": "upper"}], (
+        "the tuple naming the removed bus is tombstoned"
+    )
 
     child = revision.child(staged.edits)
-    assert child.record.groups["bus_state"].collect().to_native().to_pydict() == {
-        "bus_state": [{"bus": "south"}],
-        "state": ["upper"],
-    }
+    assert _tuples(child.record) == [{"bus": "south", "state": "upper"}]
+
+
+def _tuples(record) -> list[dict]:
+    return record.groups["bus_state"].collect()["bus_state"].to_list()
 
 
 def test_member_order_survives_a_restate_through_a_materialised_parent(store):
@@ -208,14 +275,14 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
     write_group(
         store.layer_dir(root.id),
         "bus_state",
-        [{"bus_state": {"bus": "north"}, "state": "lower"}],
+        [{"bus_state": {"bus": "north", "state": "lower"}}],
     )
 
     child = empty_child(root)
     write_group(
         store.layer_dir(child.id),
         "bus_state",
-        [{"bus_state": {"bus": "south"}, "state": "upper"}],
+        [{"bus_state": {"bus": "south", "state": "upper"}}],
     )
     child.materialise()
 
@@ -223,7 +290,7 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
     write_group(
         store.layer_dir(grandchild.id),
         "bus_state",
-        [{"bus_state": {"bus": "east"}, "state": "lower"}],
+        [{"bus_state": {"bus": "east", "state": "lower"}}],
     )
 
     rows = grandchild.record.groups["bus_state"].collect().to_native().to_pydict()
@@ -424,3 +491,109 @@ def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
     child = revision.child(staged.edits)
     axis = child.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
+
+
+# -- a property `into` a dim names a live label --------------------------------
+
+
+@pytest.fixture
+def classified(store) -> Revision:
+    """North in lower, south in upper, both in DE, and the pair (north, lower) in DE."""
+    revision = empty_root(store)
+    write_schema(_schema(), store)
+    layer = store.layer_dir(revision.id)
+    write_axis(layer, "country", [{"country": "DE"}, {"country": "NO"}])
+    write_axis(
+        layer,
+        "state",
+        [{"state": "lower", "country": "DE"}, {"state": "upper", "country": "DE"}],
+    )
+    write_axis(
+        layer,
+        "bus",
+        [{"bus": "north", "state": "lower"}, {"bus": "south", "state": "upper"}],
+    )
+    write_group(
+        layer,
+        "bus_state",
+        [{"bus_state": {"bus": "north", "state": "lower"}, "country": "DE"}],
+    )
+    return revision
+
+
+EDITS = [
+    pytest.param(lambda w, v: w.set("bus.state", v, bus="north"), id="set-scalar"),
+    pytest.param(lambda w, v: w.set("bus.state", {"north": v}), id="set-mapping"),
+    pytest.param(lambda w, v: w.add("bus", ["east"], state=v), id="add"),
+    pytest.param(lambda w, v: w.set("bus_state.country", v), id="set-on-a-group"),
+]
+
+
+@pytest.mark.parametrize("edit", EDITS)
+def test_a_property_into_a_dim_refuses_a_label_it_lacks(classified, edit):
+    """`set` and `add` refuse a value naming no label of the dim, as staged.
+
+    Notes
+    -----
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    """
+    staged = WorkingRecord(classified.record)
+    with pytest.raises(KeyError, match=r"no '(state|country)' label \['coal'\]"):
+        edit(staged, "coal")
+
+
+@pytest.mark.parametrize("edit", EDITS)
+@pytest.mark.parametrize("value", [None, "added"])
+def test_a_property_into_a_dim_takes_null_or_a_label_added_first(
+    classified, edit, value
+):
+    """NULL names no label; a label staged by `add` is live."""
+    staged = WorkingRecord(classified.record)
+    staged.add("state", ["added"])
+    staged.add("country", ["added"])
+    edit(staged, value)
+    classified.child(staged.edits)
+
+
+def test_remove_is_refused_while_a_property_names_the_label(classified):
+    """A property's row outlives the label it names, so clearing it comes first.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    staged = WorkingRecord(classified.record)
+    with pytest.raises(
+        ValueError, match=r"`bus.state` names them at \[\('north', 'lower'\)\]"
+    ):
+        staged.remove("state", ["lower"])
+
+    staged.set("bus.state", None, bus="north")
+    staged.remove("state", ["lower"])
+    with pytest.raises(KeyError, match=r"no 'state' label \['lower'\]"):
+        staged.set("bus.state", "lower", bus="south")
+    child = classified.child(staged.edits)
+    assert child.record.dims["state"].collect()["state"].to_list() == ["upper"]
+
+
+def test_the_writer_refuses_a_property_naming_a_removed_label(classified):
+    """`add_group` checks no label, so the writer is what catches it.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    staged = WorkingRecord(classified.record)
+    staged.remove("country", ["NO"])
+    removed = classified.child(staged.edits)
+
+    revived = WorkingRecord(removed.record)
+    revived.add_group(
+        "bus_state",
+        revived.con.sql(
+            "SELECT {'bus': 'south', 'state': 'upper'}"
+            "::STRUCT(bus VARCHAR, state VARCHAR) AS bus_state, 'NO' AS country"
+        ),
+    )
+    with pytest.raises(ValueError, match=r"a removed country in 'country'"):
+        removed.child(revived.edits)

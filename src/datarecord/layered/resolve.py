@@ -148,15 +148,19 @@ def mortal(schema: Schema) -> tuple[str, ...]:
     """The coordinates a fold keeps the dead labels of.
 
     One the owner map does not key, whose values naming a dead label only the
-    read can drop (`_living`), and a dim a group's tuples name, which the
-    writer checks them against (`write._require_living_tuples`). A keyed
-    coordinate's values the fold drops itself (`fold_inputs`).
+    read can drop (`_living`), and a dim a group's tuples or a property `into`
+    it name, which the writer checks them against
+    (`write._require_living_references`). A keyed coordinate's values the fold
+    drops itself (`fold_inputs`).
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    drawn = {d for g in schema.group_columns for d in schema.groups[g].over.values()}
+    drawn = {
+        *(d for g in schema.group_columns for d in schema.groups[g].over.values()),
+        *schema.into_properties().values(),
+    }
     unkeyed = set(schema.broadcast_dims) - set(schema.partial_dims)
     return tuple(
         c for c in (*schema.dims, *schema.group_columns) if c in drawn | unkeyed

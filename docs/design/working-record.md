@@ -217,6 +217,7 @@ Adding a component with its connections and varying values is `add`, then [`add_
 It need not enumerate what it deletes: [the fold](layers.md#deletion) drops every value keyed by the label where `dim` is `partial`, a group attribute's by the label inside its struct ([the owner map](read-path.md#owner-map)).
 It also tombstones every tuple, of any group, with a field over `dim` naming one of `labels`, read from the record as it resolves with pending edits, so the [writer](layers.md#deletion) never meets a dangling tuple. Only for a dim keyed by its label alone: a nested dim's label names no point without its parents, which a tuple does not carry.
 An `add` of the same label revives the label alone: its tuples are re-added through [`add_group`](#add_group-remove_group).
+`remove` is **refused while a [property `into`](schema.md#properties) `dim` names one of the labels**, read from the record as staged: a tuple goes with its label, but a property's row is its subject's and outlives it, so the caller `set`s it to another label or None first. A nested dim is not checked, as above.
 
 ## `add_group` / `remove_group`
 
@@ -303,6 +304,7 @@ What editing adds is edit-level, caught when the edit is **staged**, not at writ
 - a label of a `partial` dim the record does not resolve, `add` them first;
 - a label whose categories do not carry the attribute ([traits](schema.md#traits)), judged by its current categories; a label with no category passes;
 - a value an `Enum` property does not list, in `add` or `set`;
+- a value of a [property `into` a dim](schema.md#properties) naming no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
 - an `add` missing a nested dim's parent key, or naming an attribute.
 
 The label read these need is the one a property keyword already performs, so checking categories costs nothing beyond it. Two coordinates over one categorized dim — a contract's `from` and `to` — name no one label whose categories decide, so neither is checked against them.

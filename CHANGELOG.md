@@ -13,6 +13,13 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- **A property may be `into` a dim** (`PropertySpec.into`): its values are
+  that dim's labels and its dtype the dim's, declared on any subject. `set`
+  and `add` refuse a value naming no label of the dim, NULL naming none; the
+  writer refuses a layer storing one it removed, and `remove(dim, labels)` is
+  refused while such a property still names one. It never categorizes. A
+  group over one coordinate `into` a dim is now refused at load: declare the
+  property `into` the dim instead.
 - **A property's name is its subject's**, addressed as `subject.name`:
   `set("entity.carrier", ...)`, a trait's `on` and bundled properties, and
   `default_by` keys (`{"entity.entity_type": {...}}`). A plain name is an

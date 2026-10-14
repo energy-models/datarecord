@@ -870,7 +870,8 @@ class WorkingRecord(Record):
         KeyError
             On an undeclared attribute, result or keyword, a `partial` dim's
             label the record does not resolve, a property's label no layer
-            wrote, or a label whose categories do not carry `attribute`.
+            wrote, a value of a property `into` a dim naming no label of it, or
+            a label whose categories do not carry `attribute`.
         ValueError
             On a property with `kind="outputs"` or an `nw.Expr` value, a
             keyword the attribute does not vary over, a sequence with no
@@ -997,18 +998,17 @@ class WorkingRecord(Record):
         Raises
         ------
         KeyError
-            On a label the record does not resolve.
+            On a label the record does not resolve, or a value of a property
+            `into` a dim naming no label of it.
         ValueError
             On a value an `Enum` property does not list, and as `_axis_values`
             does.
         """
         values = self._axis_values(dim, name, value, coords)
         keyed = isinstance(values, Mapping)
-        self.schema.require_listed(
-            dim,
-            {name: list(values.values()) if keyed else [values]},
-            f"`set({f'{dim}.{name}'!r}, ...)`",
-        )
+        data = {name: list(values.values()) if keyed else [values]}
+        self.schema.require_listed(dim, data, f"`set({f'{dim}.{name}'!r}, ...)`")
+        self._require_live(dim, data)
         if keyed:
             self._require_existing(dim, list(values))
         self._stage_axis(dim, name, values)
@@ -1021,7 +1021,8 @@ class WorkingRecord(Record):
         Raises
         ------
         KeyError
-            Where keywords are given and select no tuple.
+            Where keywords are given and select no tuple, or on a value of a
+            property `into` a dim naming no label of it.
         ValueError
             On a keyword naming no field of `group`, a value that is not a
             scalar, or one an `Enum` property does not list.
@@ -1043,6 +1044,7 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
         self.schema.require_listed(group, {name: [value]}, f"`{call}`")
+        self._require_live(group, {name: [value]})
         tuples = self.resolver.dims.groups.get(group)
         if tuples is None:
             msg = f"`{call}` finds no tuple of {group!r}; `add_group` them first"
@@ -1064,9 +1066,13 @@ class WorkingRecord(Record):
         )
 
     def _require_existing(
-        self, dim: str, labels: Sequence[Any], keys: Sequence[str] = ()
+        self,
+        dim: str,
+        labels: Sequence[Any],
+        keys: Sequence[str] = (),
+        why: str = "a value for a label no layer declares would resolve to nothing",
     ) -> dict[str, dict[str, str]]:
-        """Reject labels of `dim` the record as staged does not resolve.
+        """Reject labels of `dim` the record as staged does not resolve, saying `why`.
 
         Returns
         -------
@@ -1096,12 +1102,33 @@ class WorkingRecord(Record):
         }
         unknown = [n for n in wanted if n not in found]
         if unknown:
-            msg = (
-                f"no {dim!r} label {unknown}; `add` them first - a value for a "
-                f"label no layer declares would resolve to nothing"
-            )
+            msg = f"no {dim!r} label {unknown}; `add` them first - {why}"
             raise KeyError(msg)
         return found
+
+    def _require_live(self, subject: str, data: Mapping[str, Sequence[Any]]) -> None:
+        """Reject a value of a property of `subject` `into` a dim naming no label of it, as staged.
+
+        NULL names none and passes.
+
+        Raises
+        ------
+        KeyError
+            Naming the unknown labels.
+
+        Notes
+        -----
+        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+        """
+        into = self.schema.into_properties()
+        for name, values in data.items():
+            dim = into.get((subject, name))
+            if dim is not None:
+                self._require_existing(
+                    dim,
+                    values,
+                    why=f"`{subject}.{name}` is `into` {dim!r}, so names its labels",
+                )
 
     def _select(self, name: str, coords: Mapping[str, Any]) -> dict[str, Any]:
         """`coords` with each property keyword replaced by the labels it selects.
@@ -1579,7 +1606,8 @@ class WorkingRecord(Record):
         Raises
         ------
         KeyError
-            If the schema declares no `dim`.
+            If the schema declares no `dim`, or on a value of a property `into`
+            a dim naming no label of it.
         ValueError
             On an attribute, a column the axis file has no place for, a nested
             dim's missing parent key, a sequence of the wrong length, or a
@@ -1616,6 +1644,7 @@ class WorkingRecord(Record):
                 )
                 raise ValueError(msg)
         self.schema.require_listed(dim, data, f"`{call}`")
+        self._require_live(dim, data)
         rel = self._values_relation(data, {c: self._column_type(c, dim) for c in data})
         self._insert(
             rel,
@@ -1638,15 +1667,22 @@ class WorkingRecord(Record):
         its label alone, a nested dim's label naming no point without its
         parents, which a tuple does not carry.
 
+        Raises
+        ------
+        ValueError
+            While a property `into` `dim` stores one of `labels`, the record
+            as staged read.
+
         Notes
         -----
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
-        - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
         - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
         """
         if not labels:
             return
         key = self.schema.axis_key(dim)
+        if len(key) == 1:
+            self._require_unnamed(dim, labels)
         rows = [label if len(key) > 1 else (label,) for label in labels]
         rel = self._values_relation(
             {c: [row[i] for row in rows] for i, c in enumerate(key)},
@@ -1678,6 +1714,46 @@ class WorkingRecord(Record):
                 {"deleted": lit(True)},  # noqa: FBT003
                 key=(g,),
             )
+
+    def _require_unnamed(self, dim: str, labels: Sequence[Any]) -> None:
+        """Refuse removing `labels` of `dim` while a property `into` it stores one.
+
+        A tuple naming a label goes with it, but a property's row is its
+        subject's, which outlives the label; clearing it is the caller's edit.
+
+        Raises
+        ------
+        ValueError
+            Naming up to three rows per such property.
+
+        Notes
+        -----
+        - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+        """
+        problems = []
+        naming = [k for k, d in self.schema.into_properties().items() if d == dim]
+        for subject, name in naming:
+            rows = (
+                self.resolver.dims.groups.get(subject)
+                if subject in self.schema.groups
+                else self.resolver.axis(subject)
+            )
+            if rows is None:
+                continue
+            hits = (
+                rows.filter(col(name).isin(*(lit(n) for n in labels)))
+                .project(col(subject), col(name))
+                .limit(3)
+                .fetchall()
+            )
+            if hits:
+                problems.append(f"`{subject}.{name}` names them at {hits}")
+        if problems:
+            msg = (
+                f"`remove({dim!r}, ...)` is refused: {'; '.join(problems)}; "
+                f"`set` those to another label or None first"
+            )
+            raise ValueError(msg)
 
     def _insert_snapshot(
         self,

@@ -58,7 +58,7 @@ A record with no such file has no rows of that group.
 
 **One file per group, never split by category.** A group's rows are keyed by its coordinates and `entity_type` is not one of them: splitting put `connection` rows for a `Link` and a `Line` in different files despite identical keys, forcing a union on every read and privileging `entity` among the coordinates. A `corridor` between two buses has no type to split on at all, and a `contract` between two entities has two — one per coordinate, neither of them the row's — so the split never generalised beyond the case it was written for.
 
-A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a plain column of the group's file beside the key, so `groups/bus_country.parquet` is `bus_country STRUCT(bus) | country`. No column on the classified axis: `dims/bus.parquet` does not gain a `country`, the relation being the group's own file. That costs a join where a column read would have done, and buys a uniform rule — `into` decides nothing about storage, so nothing in the layout branches on it.
+A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a plain column of the group's file beside the key, so `groups/bus_country.parquet` is `bus_country STRUCT(bus, scenario) | country`. A classification of one coordinate is a [property `into`](schema.md#properties) the dim instead, `bus.country` a column of `dims/bus.parquet` like any property. Either way `into` decides nothing about storage, so nothing in the layout branches on it.
 
 ## The long schema
 

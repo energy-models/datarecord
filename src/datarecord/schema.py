@@ -361,12 +361,16 @@ class PropertySpec(_ValueSpec):
     Its name is its subject's alone, so it is addressed as `subject.name`
     (`Schema.resolve`).
     An `Enum` property of a dim in `partial` categorizes it
-    (`Schema.categorizing`); a group's never does.
+    (`Schema.categorizing`); a group's never does, nor one `into` a dim.
 
     Attributes
     ----------
     dtype
-        The column's type, as a narwhals dtype instance.
+        The column's type, as a narwhals dtype instance. Optional with `into`,
+        whose dim's dtype it takes and must equal.
+    into
+        The dim whose labels this property's values are, or `None`. A stored
+        non-NULL value names a live label of it.
     default
         The value a label no row sets takes.
     default_by
@@ -382,8 +386,20 @@ class PropertySpec(_ValueSpec):
     Notes
     -----
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
+
+    dtype: nw.dtypes.DType = None  # type: ignore[assignment]  # `Schema` types it from `into`
+    into: str | None = None
+
+    @model_validator(mode="after")
+    def _require_dtype(self) -> PropertySpec:
+        """Refuse a property declaring neither a `dtype` nor the dim it is `into`."""
+        if self.dtype is None and self.into is None:
+            msg = "a property declares its `dtype`, or the dim it is `into`"
+            raise ValueError(msg)
+        return self
 
 
 class Group(BaseModel):
@@ -408,7 +424,9 @@ class Group(BaseModel):
         coordinates draw on one dim, as `corridor`'s `{from: bus, to: bus}` does.
     into
         The dim each tuple of `over` carries exactly one label of, or `None` for
-        a bare tuple set. Must name a declared dim.
+        a bare tuple set. Must name a declared dim, and needs two coordinates or
+        more: one coordinate `into` a dim is a property of its dim
+        (`PropertySpec.into`).
     description
         What the group is, in prose. Never interpreted.
 
@@ -616,6 +634,15 @@ class Schema(BaseModel):
                     f"the group's tuples carry (https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)"
                 )
                 raise ValueError(msg)
+            if group_spec.into is not None and len(group_spec.over) == 1:
+                (dim,) = group_spec.over.values()
+                msg = (
+                    f"group {group!r} is over one coordinate and `into` "
+                    f"{group_spec.into!r}; declare the property "
+                    f"`{dim}.{group_spec.into}` `into` {group_spec.into!r} "
+                    f"instead (https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)"
+                )
+                raise ValueError(msg)
             if group_spec.into is not None and group_spec.into in group_spec.over:
                 msg = (
                     f"group {group!r} is `into` {group_spec.into!r}, which is "
@@ -677,6 +704,8 @@ class Schema(BaseModel):
             reason = (
                 f"is a property of the group {subject!r}; a group is never categorized"
             )
+        elif (into := self.properties[subject][prop].into) is not None:
+            reason = f"is `into` {into!r}, whose labels are data, not categories"
         elif not isinstance(self.properties[subject][prop].dtype, nw.Enum):
             reason = "is no `Enum` property"
         elif subject not in (self.partial or set()):
@@ -753,7 +782,7 @@ class Schema(BaseModel):
             raise ValueError(msg)
 
     def _check_properties(self) -> None:
-        """Refuse a property on an undeclared subject, and a malformed `default_by`."""
+        """Refuse a property on an undeclared subject, a malformed `into` or `default_by`."""
         unknown = sorted(set(self.properties) - set(self.dimensions) - set(self.groups))
         if unknown:
             msg = (
@@ -761,6 +790,12 @@ class Schema(BaseModel):
                 f"a property is a column of its subject's axis or group file"
             )
             raise ValueError(msg)
+        for subject, by_name in self.properties.items():
+            for name, declared in by_name.items():
+                if declared.into is not None:
+                    by_name[name] = self._into_dim(
+                        f"{subject}.{name}", declared.into, declared
+                    )
         for subject, by_name in self.properties.items():
             for name in self.categorizing(subject):
                 if by_name[name].default_by:
@@ -802,6 +837,37 @@ class Schema(BaseModel):
                         f"categories of {key!r}"
                     )
                     raise ValueError(msg)
+
+    def _into_dim(self, dotted: str, into: str, spec: PropertySpec) -> PropertySpec:
+        """`spec` typed as the dim it is `into`: an undeclared dim or another `dtype` refused."""
+        if into not in self.dimensions:
+            msg = (
+                f"property {dotted} is `into` undeclared dim {into!r}; `into` "
+                f"names the axis whose labels its values are (https://energy-models.github.io/datarecord/design/schema/#properties)"
+            )
+            raise ValueError(msg)
+        dtype = self.dimensions[into].dtype
+        if spec.dtype is not None and spec.dtype != dtype:
+            msg = (
+                f"property {dotted} is `into` {into!r}, so its dtype is the "
+                f"dim's {dtype}, not {spec.dtype}; drop its `dtype`"
+            )
+            raise ValueError(msg)
+        return spec.model_copy(update={"dtype": dtype})
+
+    def into_properties(self) -> dict[tuple[str, str], str]:
+        """Each property `into` a dim, as `(subject, name)` -> that dim.
+
+        Notes
+        -----
+        - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+        """
+        return {
+            (subject, name): spec.into
+            for subject, by_name in self.properties.items()
+            for name, spec in by_name.items()
+            if spec.into is not None
+        }
 
     def _reached_by(self, subject: str) -> frozenset[str]:
         """The dims a property of `subject` reaches: the dim, or those its group draws on."""
@@ -1067,7 +1133,7 @@ class Schema(BaseModel):
         return (*self.coordinates_of(attribute), *LONG_TAIL)
 
     def categorizing(self, dim: str) -> tuple[str, ...]:
-        """The `Enum` properties of `dim`, if `partial` lists it: what a trait or `default_by` keys on.
+        """The `Enum` properties of `dim` `into` no dim, if `partial` lists it: what a trait or `default_by` keys on.
 
         Notes
         -----
@@ -1078,7 +1144,7 @@ class Schema(BaseModel):
         return tuple(
             name
             for name, spec in self.properties.get(dim, {}).items()
-            if isinstance(spec.dtype, nw.Enum)
+            if isinstance(spec.dtype, nw.Enum) and spec.into is None
         )
 
     def _categories(self, dim: str, name: str) -> tuple[str, ...]:
