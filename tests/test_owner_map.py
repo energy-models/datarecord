@@ -93,7 +93,7 @@ def keys(revision):
 
 
 def entity_names(revision):
-    return set(revision.resolver.entity_axis.df()["entity"])
+    return set(revision.resolver.axis("entity").df()["entity"])
 
 
 def test_root_map_is_its_own_layer(store, parent):
@@ -104,7 +104,7 @@ def test_root_map_is_its_own_layer(store, parent):
     """
     om = parent.resolver
     assert set(om.inputs.df()["layer_uuid"]) == {parent.id}
-    assert "layer_uuid" not in om.entity_axis.columns
+    assert "layer_uuid" not in om.axis("entity").columns
     assert ("Manchester Wind", "p_max_pu") in keys(parent)
 
 
@@ -399,21 +399,26 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
         Schema(
             dimensions={
                 "entity": {"dtype": "String"},
-                "entity_type": {"dtype": "String"},
                 "snapshot": {"dtype": "Int64"},
             },
-            groups={"entity_type": {"over": ["entity"], "into": "entity_type"}},
+            properties={
+                "entity": {
+                    "entity_type": {
+                        "dtype": {"Enum": ["Generator"]},
+                    }
+                }
+            },
             attributes={
                 "p_max_pu": {"dtype": "Float64", "dims": ["entity", "snapshot"]}
             },
-            partial=frozenset({"snapshot"}),
+            partial=frozenset({"entity", "snapshot"}),
         ),
         store,
     )
     names, snapshots = ["wind", "solar"], 200
     base = empty_root(store)
     staged = WorkingRecord(base.record)
-    staged.add("Generator", pd.DataFrame({"entity": names}))
+    staged.add("entity", names, entity_type="Generator")
     staged.set(
         "p_max_pu",
         pd.DataFrame(
@@ -449,21 +454,27 @@ def test_the_fold_broadcasts_by_hash_join(store):
         Schema(
             dimensions={
                 "entity": {"dtype": "String"},
-                "entity_type": {"dtype": "String"},
                 "snapshot": {"dtype": "Int64"},
             },
-            groups={"entity_type": {"over": ["entity"], "into": "entity_type"}},
+            properties={
+                "entity": {
+                    "entity_type": {
+                        "dtype": {"Enum": ["Generator"]},
+                    }
+                }
+            },
             attributes={
                 "p_max_pu": {"dtype": "Float64", "dims": ["entity", "snapshot"]},
                 "weight": {"dtype": "Float64", "dims": ["snapshot"]},
             },
-            partial=frozenset({"snapshot"}),
+            partial=frozenset({"entity", "snapshot"}),
         ),
         store,
     )
     base = empty_root(store)
     staged = WorkingRecord(base.record)
-    staged.add("Generator", pd.DataFrame({"entity": ["wind"]}))
+    staged.add("entity", ["wind"], entity_type="Generator")
+    staged.add("snapshot", [0, 1])
     staged.set("weight", {0: 1.0, 1: 1.0})
     staged.set(
         "p_max_pu",

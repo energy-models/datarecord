@@ -17,25 +17,25 @@ a comment that re-argues the design is a defect.
 
 Dimensioned attribute data with a declared schema.
 
-A record holds **entities** (named members of a type), **groups** of them — the `connection` group over `(entity, bus)` being the one every network has — **attribute values** over both, and the **axes** those values vary along.
+A record holds **entities** (named labels, classified by their categories), **groups** of them — the `connection` group over `(entity, bus)` being the one every network has — **attribute values** over both, and the **axes** those values vary along.
 A schema declares what may exist; the data says what does.
 
 A record exposes seven things:
 
 ```text
-record.schema        what may exist: the axes, the attributes
-record.dims          the axes themselves, keyed by dim
-record.entity_types  members, keyed by entity type
-record.groups        which tuples exist, keyed by group
-record.attributes    the values, keyed by attribute name
-record.outputs       results, keyed by attribute name
-record.flags(ctype)  which axes an attribute actually uses
+record.schema                   what may exist: the axes, properties, attributes
+record.dims                     the axes themselves, keyed by dim
+record.properties               what describes each label, keyed by dim or group
+record.groups                   which tuples exist, keyed by group
+record.attributes               the values, keyed by attribute name
+record.outputs                  results, keyed by attribute name
+record.flags(**cats)            which axes an attribute actually uses
 ```
 
 That is the [`Record` protocol](record.md), and [The Record protocol](record.md) gives it precisely.
 
-An entity's `entity` identifies it **across every type**: names are unique record-wide, not per type ([entity is unique across types](format.md#entity-is-unique-across-types)).
-That is why the values are keyed by attribute and not by type — an attribute row names an entity and nothing more, and an entity's type is something the record knows about it rather than part of its address.
+An entity's `entity` identifies it **across every category**: names are unique record-wide, not per type ([entity is unique across types](format.md#entity-is-unique-across-types)).
+That is why the values are keyed by attribute and not by type — an attribute row names an entity and nothing more, and an entity's type is a [property](schema.md#properties) the record knows about it rather than part of its address.
 
 `Record` is the one class that answers all of this, and it is the narwhals interface over a fold across layers:
 

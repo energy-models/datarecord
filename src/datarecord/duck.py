@@ -7,10 +7,9 @@
 Each takes the connection it composes on as a parameter; where a connection
 comes from is the `Workspace`'s business, and paths are a `Store`'s.
 
-Nothing here knows about a modelling framework: the entity-type axis is typed
-as the *schema* declares it, whatever a tool's registry holds, so a record whose
-types no tool recognises still reads and it is a tool's `verify` that reports
-them.
+Nothing here knows about a modelling framework: every column is typed as the
+*schema* declares it, whatever a tool's registry holds, so a record whose labels
+no tool recognises still reads and it is a tool's `verify` that reports them.
 
 Notes
 -----
@@ -335,7 +334,7 @@ def fold_axis(
 ) -> DuckDBPyRelation | None:
     """Fold one keyed relation over each layer's, keyed by `key`, in member order.
 
-    The one fold for every axis - a dim's coordinates, a group, the entity axis.
+    The one fold for every axis - a dim's coordinates, a group.
     `axes` is root first, one entry per layer - `None` where that layer has no
     rows. Last-writer-wins per `key`, which is `Schema.axis_key` for a dim or
     the group's struct column for a group, so a nested dim is keyed by

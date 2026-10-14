@@ -15,13 +15,15 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import wraps
 from typing import TYPE_CHECKING, cast
 
 import narwhals as nw
+from duckdb import ColumnExpression as col
 
+from datarecord.layered.categories import with_properties
 from datarecord.record import Flags, LazyFrames
 
 if TYPE_CHECKING:
@@ -98,12 +100,15 @@ class Record:
     @_stable_cache
     def dims(self) -> LazyFrames:
         names = tuple(self.resolver.dims.axes)
-        return LazyFrames(names, lambda dim: nw.from_native(self.resolver.axis(dim)))
+        return LazyFrames(names, self._axis_frame)
 
     @_stable_cache
-    def entity_types(self) -> LazyFrames:
-        types = tuple(sorted(self.resolver.entity_types()))
-        return LazyFrames(types, self._entity_type_frame)
+    def properties(self) -> LazyFrames:
+        coords = self.resolver.dims
+        subjects = tuple(
+            s for s in self.schema.properties if s in coords.axes or s in coords.groups
+        )
+        return LazyFrames(subjects, self._property_frame)
 
     @_stable_cache
     def groups(self) -> LazyFrames:
@@ -135,22 +140,41 @@ class Record:
             names, lambda attr: nw.from_native(self.resolver.attribute(attr, "outputs"))
         )
 
-    def flags(self, ctype: str) -> dict[str, Flags]:
+    def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
         """Straight off the `inputs` owner map, which folded these in for free.
 
         Notes
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        return self.resolver.attributes_of(ctype)
+        return self.resolver.fold.flags(**categories)
 
     # -- frames, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) --
 
-    def _entity_type_frame(self, ctype: str) -> nw.LazyFrame:
-        return self._frame(self.resolver.entity_type(ctype), ctype)
+    def _axis_frame(self, dim: str) -> nw.LazyFrame:
+        rel = self._rel(self.resolver.axis(dim), dim)
+        return nw.from_native(rel.project(*(col(k) for k in self.schema.axis_key(dim))))
+
+    def _property_frame(self, subject: str) -> nw.LazyFrame:
+        is_group = subject in self.schema.groups
+        found = (
+            self.resolver.group(subject) if is_group else self.resolver.axis(subject)
+        )
+        key = (subject,) if is_group else self.schema.axis_key(subject)
+        rel = with_properties(
+            self.schema, self._rel(found, subject), subject, self.resolver.con
+        )
+        names = (*key, *self.schema.properties[subject])
+        return nw.from_native(rel.project(*(col(n) for n in names)))
 
     def _group_frame(self, group: str) -> nw.LazyFrame:
         return self._frame(self.resolver.group_frame(group), group)
+
+    @staticmethod
+    def _rel(rel: DuckDBPyRelation | None, key: str) -> DuckDBPyRelation:
+        if rel is None:
+            raise KeyError(key)
+        return rel
 
     def _frame(self, rel: DuckDBPyRelation | None, key: str) -> nw.LazyFrame:
         """`rel` as a frame; it already carries member order as its row order.
@@ -162,8 +186,8 @@ class Record:
         Parameters
         ----------
         key
-            What the frame was looked up by - an entity type or a group name -
-            so a miss raises the `KeyError` the caller asked with.
+            The group name the frame was looked up by, so a miss raises the
+            `KeyError` the caller asked with.
 
         Notes
         -----

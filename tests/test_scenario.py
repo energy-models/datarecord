@@ -68,8 +68,16 @@ def test_map_is_scenario_expanded(store, parent, stochastic):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
+    schema = parent.resolver.schema
     df = parent.resolver.inputs.df()
-    assert set(df["scenario"]) == set(stochastic.scenarios)
+    by_scenario = df[
+        [
+            "scenario" in schema.coordinates_of(str(a))
+            for a in df["attribute"].astype(str)
+        ]
+    ]
+    assert not by_scenario.empty, "some attribute is addressed by scenario"
+    assert set(by_scenario["scenario"]) == set(stochastic.scenarios)
 
     solar = df[
         (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
@@ -121,11 +129,14 @@ def test_child_adds_new_scenario(store, parent, stochastic):
     child = empty_child(parent)
     write_scenarios(
         store.layer_dir(child.id),
+        [{"scenario": s} for s in ("high", "low", "med", "extra")],
+    )
+    write_input(
+        store.layer_dir(child.id),
+        "scenario_weight",
         [
-            {"scenario": "high", "scenario_weight": 0.27},
-            {"scenario": "low", "scenario_weight": 0.36},
-            {"scenario": "med", "scenario_weight": 0.27},
-            {"scenario": "extra", "scenario_weight": 0.1},
+            {"scenario": s, "value": w}
+            for s, w in (("high", 0.27), ("low", 0.36), ("med", 0.27), ("extra", 0.1))
         ],
     )
     write_input(
@@ -168,9 +179,7 @@ def test_scenario_order_survives_a_chain_of_closed_layers(store, parent, stochas
     for i in range(5):
         rec = empty_child(rec)
         name = f"extra{i}"
-        write_scenarios(
-            store.layer_dir(rec.id), [{"scenario": name, "scenario_weight": 0.01}]
-        )
+        write_scenarios(store.layer_dir(rec.id), [{"scenario": name}])
         rec.materialise()
         added.append(name)
 

@@ -40,4 +40,4 @@ for attr, frame in PyPSA.results(n, w.con).items():
 rev.child(w.edits)  # one layer, inputs and results together
 ```
 
-Two checks are skipped for `kind="outputs"`: the attribute need not be schema-declared, and a result's `entity` need not resolve to a declared member — a solve may produce rows for an entity type it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).
+Two checks are skipped for `kind="outputs"`: the attribute need not be schema-declared, and a result's labels need not resolve — a solve may produce rows for labels it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).

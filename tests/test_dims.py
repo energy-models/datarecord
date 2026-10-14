@@ -121,7 +121,7 @@ def test_tombstone_ignores_period_even_when_period_is_partial(store, ac_dc):
     child = empty_child(revision)
     tombstone(store.layer_dir(child.id), "Generator", ["Manchester Wind"])
 
-    axis_rel = child.resolver.entity_axis
+    axis_rel = child.resolver.axis("entity")
     assert axis_rel is not None
     entity_types = axis_rel.df()
     assert "Manchester Wind" not in set(entity_types["entity"])
@@ -265,38 +265,20 @@ def test_a_dim_names_its_own_file(store):
 
 
 def test_the_entity_column_is_entity(store, ac_dc):
-    """`entity` names the component in every frame the protocol hands back.
-
-    The one axis the format knows by name, because it is the axis the component
-    types partition: `entity_type` hangs off it and `dims/entity_type/` is
-    keyed by it. Every other dim is declared.
-
-    Notes
-    -----
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-    """
+    """`entity` names the component in every frame the protocol hands back."""
     revision = export_network(ac_dc, store)
 
     record = revision.record
-    assert "entity" in record.entity_types["Generator"].collect_schema().names()
+    assert "entity" in record.dims["entity"].collect_schema().names()
     assert "entity" in record.attributes["p_max_pu"].collect_schema().names()
-    # And in the owner map the fold builds over them.
-    ea = revision.resolver.entity_axis
-    assert ea is not None
-    assert "entity" in ea.df().columns
+    assert "entity" in revision.resolver.inputs.columns, "and the owner map"
 
 
 def test_the_entity_axis_is_where_identity_lives(store, ac_dc):
     """`dims/entity.parquet` says which entities exist and what type each is.
 
-    Derived by the writer from the per-type frames rather than handed over, so
-    a record cannot disagree with itself about it. The components map folds
-    from this one file, where it used to glob `dims/entity_type/` and take the
-    type from the filename.
-
-    Notes
-    -----
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    The type is the `entity_type` discriminator column; one row per entity is
+    what makes a name unique across types.
     """
     revision = export_network(ac_dc, store)
 
@@ -308,7 +290,7 @@ def test_the_entity_axis_is_where_identity_lives(store, ac_dc):
     assert "Generator" in set(axis["entity_type"])
 
     # And it is what the fold reads: the map's entities are the axis's.
-    ea2 = revision.resolver.entity_axis
+    ea2 = revision.resolver.axis("entity")
     assert ea2 is not None
     mapped = ea2.df()
     assert set(mapped["entity"]) == set(axis.loc[~axis["deleted"], "entity"])

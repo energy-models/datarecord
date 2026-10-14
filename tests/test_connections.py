@@ -49,13 +49,6 @@ def _connections(revision):
     return frame
 
 
-def _entity_type_frame(revision, ctype=PROCESS):
-    """`entity_type`, asserted non-`None` for tests where a row must exist."""
-    frame = revision.resolver.entity_type(ctype)
-    assert frame is not None
-    return frame
-
-
 def _root(store) -> Revision:
     """A record whose layer has one Process with three connections."""
     revision = empty_root(store)
@@ -241,9 +234,9 @@ def test_per_connection_attribute_varies_by_snapshot_and_scenario(store):
         ],
     )
 
-    flags = revision.record.flags(PROCESS)["efficiency"]
+    flags = revision.record.flags()["efficiency"]
     # Both sets hold `snapshot`: one connection's efficiency is per-snapshot,
-    # another's is a single broadcast row, and the union over the type's names
+    # another's is a single broadcast row, and the union over the rows
     # reports both - which is what tells a consumer one container will not do
     # (https://energy-models.github.io/datarecord/design/record/#flags). A per-connection attribute needs no special case for this.
     assert "snapshot" in flags.varies
@@ -388,7 +381,7 @@ def test_remove_tombstones_the_tuples_naming_the_entity(store):
     """
     root = _root(store)
     staged = WorkingRecord(root.record)
-    staged.remove(PROCESS, ["steel_dri"])
+    staged.remove("entity", ["steel_dri"])
     assert len(staged.groups["connection"].collect()) == 0, "every tuple names it"
     assert "efficiency" not in staged.attributes, "no owned key is left"
 
@@ -406,7 +399,7 @@ def test_the_writer_refuses_a_tuple_naming_a_removed_entity(store):
     """
     root = _root(store)
     staged = WorkingRecord(root.record)
-    staged.remove(PROCESS, ["steel_dri"])
+    staged.remove("entity", ["steel_dri"])
     removed = root.child(staged.edits)
     removed.materialise()
 
@@ -428,9 +421,10 @@ def test_a_tuple_an_ancestor_left_dangling_fails_no_later_write(store):
     tombstone(store.layer_dir(dangling.id), PROCESS, ["steel_dri"])
 
     staged = WorkingRecord(dangling.record)
-    staged.add(PROCESS, staged.con.sql("SELECT 'blast_furnace' AS entity"))
+    staged.add("entity", ["blast_furnace"], entity_type=PROCESS)
     child = dangling.child(staged.edits)
-    assert "blast_furnace" in set(_entity_type_frame(child).df()["entity"])
+    entities = child.record.dims["entity"].collect()["entity"].to_list()
+    assert "blast_furnace" in entities
 
 
 def test_set_requires_every_party_to_exist(store):
@@ -460,7 +454,7 @@ def test_a_removed_tuple_outside_partial_stays_removed_past_a_cache(store):
     assert not dead.exists() or not any(dead.iterdir()), "nothing dead, no file"
 
     staged = WorkingRecord(root.record)
-    staged.remove(PROCESS, ["steel_dri"])
+    staged.remove("entity", ["steel_dri"])
     removed = root.child(staged.edits)
     removed.materialise()
     assert Path(store.resolved_dir(removed.id), "dead", "connection.parquet").exists()
@@ -479,12 +473,12 @@ def test_readding_a_tuple_outside_partial_revives_its_values(store):
     root = _root(store)
     write_schema(schema(partial={"scenario"}), store)
     staged = WorkingRecord(root.record)
-    staged.remove(PROCESS, ["steel_dri"])
+    staged.remove("entity", ["steel_dri"])
     removed = root.child(staged.edits)
     removed.materialise()
 
     revived = WorkingRecord(removed.record)
-    revived.add(PROCESS, revived.con.sql("SELECT 'steel_dri' AS entity"))
+    revived.add("entity", ["steel_dri"], entity_type=PROCESS)
     revived.add_group("connection", _connection_frame(revived, "steel_dri", "dri"))
     assert _efficiencies(removed.child(revived.edits)) == {"dri": 1.0}
 
@@ -552,7 +546,7 @@ def test_remove_reaches_a_groups_second_entity(store):
     assert _prices(root.record) == {"mill": 10.0, "smelter": 20.0}
 
     staged = WorkingRecord(root.record)
-    staged.remove(BUYER, ["mill"])
+    staged.remove("entity", ["mill"])
     child = root.child(staged.edits)
     assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
     contracts = child.record.groups["contract"].collect().to_native()
@@ -571,15 +565,15 @@ def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
     contract: dict[str, Any] = {"from": "plant", "to": "mill"}
     staged.set("price", 30.0, **contract)
     assert _prices(staged)["mill"] == 30.0, "the staged value reads before removal"
-    staged.remove(BUYER, ["mill"])
+    staged.remove("entity", ["mill"])
     assert _prices(staged) == {"smelter": 20.0}, "neither the base's nor the staged"
 
     child = root.child(staged.edits)
     assert _prices(child.record) == {"smelter": 20.0}
 
 
-def test_set_names_a_contracts_parties_by_keyword_only(store):
-    """No field is called `entity`, so `entity=` has nothing to fill; one row per call.
+def test_set_addresses_a_groups_fields_by_keyword(store):
+    """Each party is its own keyword, one label or a list; `entity=` is neither.
 
     Notes
     -----
@@ -591,20 +585,11 @@ def test_set_names_a_contracts_parties_by_keyword_only(store):
     assert len(staged.attributes["price"].collect()) == 2, "one row per contract"
     assert _prices(staged) == {"mill": 30.0, "smelter": 20.0}
 
-    with pytest.raises(ValueError, match="no `entity` coordinate"):
-        staged.set("price", 50.0, entity=["plant"], to="smelter")
-    with pytest.raises(ValueError, match="no `entity` coordinate"):
-        staged.set("price", 50.0, to="smelter")
+    plant: dict[str, Any] = {"from": "plant"}
+    staged.set("price", 40.0, to=["smelter"], **plant)
+    assert _prices(staged) == {"mill": 30.0, "smelter": 40.0}, "a list fills `to`"
 
-
-def test_flags_scope_a_two_entity_row_to_the_type_of_each(store):
-    """A contract across two types counts towards both; a third sees nothing.
-
-    Notes
-    -----
-    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-    """
-    record = _contract_root(store).record
-    assert "price" in record.flags(SELLER), "the `from` entity's type"
-    assert "price" in record.flags(BUYER), "the `to` entity's type too"
-    assert "price" not in record.flags("Store"), "no party is of this type"
+    with pytest.raises(ValueError, match=r"\['from', 'to'"):
+        staged.set("price", {"mill": 50.0})
+    with pytest.raises(ValueError, match=r"does not vary over \['entity'\]"):
+        staged.set("price", 50.0, entity=["mill"])

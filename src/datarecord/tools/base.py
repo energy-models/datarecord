@@ -37,25 +37,31 @@ class Requirements:
     ----------
     dims : frozenset of str
         Dims the tool cannot build a model without.
-    entity_types : frozenset of str
-        Entity types the tool requires the record to define members for.
+    categories : frozenset of str
+        Categories the tool requires the record to define labels of, or, in a
+        `verify` result, ones it has no counterpart for.
     attributes : frozenset of tuple of (str, str)
-        `(entity_type, attribute)` pairs the tool requires a value for.
-        Named in the *record's* vocabulary, not the tool's, so a caller can
-        act on them: an attribute the tool renames or computes (`Schema`) is
-        reported by the source attribute it is missing.
+        `(category, attribute)` pairs: an attribute the tool requires a value
+        for on the labels of that category. Named in the *record's*
+        vocabulary, not the tool's, so a caller can act on them: an attribute
+        the tool renames or computes (`Schema`) is reported by the source
+        attribute it is missing.
     unsupported_keys : frozenset of tuple of (str, str)
         `(key, dim)` pairs the schema declares that this tool cannot honour;
         `key` is `"input_key"`, the fold's unit of ownership. The record layer
         trusts every declared key, so this is a tool's verdict on the record it
         was handed, not a schema rejection.
     unsupported_values : frozenset of tuple of (str, str)
-        `(entity_type, attribute)` pairs whose stored *shape* this tool
+        `(category, attribute)` pairs whose stored *shape* this tool
         cannot represent, as opposed to a value it is missing - a
         piecewise-linear attribute where the tool takes a scalar.
     names : frozenset of str
-        Names two of the framework's entities claim, which a record scopes
-        across every type.
+        Labels the framework scopes per category and two of its categories
+        claim, where a record has one axis row per label.
+    columns : frozenset of tuple of (str, str)
+        `(category, column)` pairs of a framework's own column whose name the
+        record declares with another shape, so it has nowhere to be stored:
+        one name is one spec record-wide.
 
     Notes
     -----
@@ -65,21 +71,23 @@ class Requirements:
     """
 
     dims: frozenset[str] = frozenset()
-    entity_types: frozenset[str] = frozenset()
+    categories: frozenset[str] = frozenset()
     attributes: frozenset[tuple[str, str]] = frozenset()
     unsupported_keys: frozenset[tuple[str, str]] = frozenset()
     unsupported_values: frozenset[tuple[str, str]] = frozenset()
     names: frozenset[str] = frozenset()
+    columns: frozenset[tuple[str, str]] = frozenset()
 
     def __bool__(self) -> bool:
         """Whether anything is required (or, for a `verify` result, missing)."""
         return bool(
             self.dims
-            or self.entity_types
+            or self.categories
             or self.attributes
             or self.unsupported_keys
             or self.unsupported_values
             or self.names
+            or self.columns
         )
 
     def describe(self) -> str:
@@ -87,8 +95,8 @@ class Requirements:
         parts = []
         if self.dims:
             parts.append(f"dims {sorted(self.dims)}")
-        if self.entity_types:
-            parts.append(f"entity types {sorted(self.entity_types)}")
+        if self.categories:
+            parts.append(f"categories {sorted(self.categories)}")
         if self.attributes:
             parts.append(f"attributes {sorted(self.attributes)}")
         if self.unsupported_keys:
@@ -102,8 +110,13 @@ class Requirements:
             )
         if self.names:
             parts.append(
-                f"names claimed by more than one entity "
+                f"labels claimed by more than one category "
                 f"{sorted(self.names)} (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
+            )
+        if self.columns:
+            parts.append(
+                f"columns whose name is declared with another shape "
+                f"{sorted(self.columns)}"
             )
         return ", ".join(parts) if parts else "nothing"
 
@@ -264,7 +277,8 @@ class Tool(Protocol):
         """What this tool needs from `record` to build a model.
 
         Record-dependent, not a constant: which attributes are required
-        follows the record's own entity types and its declared schema.
+        follows the categories the record's labels have and its declared
+        schema.
         """
         ...
 
@@ -300,7 +314,7 @@ class Tool(Protocol):
         Keyed by attribute, each frame in the long schema - `name`, the dim
         columns, `value` - the same shape `Record.outputs` presents, so results
         go straight to `write_layer` or to `set(..., kind="outputs")`. One frame
-        spans every entity type, needing no type column.
+        spans every category, needing no category column.
 
         Narwhals frames, so the seam names no one dataframe library, and lazy so
         an implementation may fetch a result attribute on demand rather than

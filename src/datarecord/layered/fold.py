@@ -5,7 +5,7 @@
 """A node's resolved view: the folded axes, groups and owner map, and the reads.
 
 A `Fold` is what `materialise` wrote and what a live resolution computes: the
-folded axes, groups, per-type wide frames, and the `inputs` owner map, each
+folded axes, groups and the `inputs` owner map, each
 folded over the node's whole ancestry. `Resolver.fold` takes the deepest
 materialised source's `Fold` as its base and folds the layers below it on top,
 so a `Fold` read from disk is the prior incarnation of one computed live - the
@@ -25,12 +25,15 @@ Notes
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import reduce
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
+from duckdb import DuckDBPyRelation
 
 from datarecord.duck import (
     distinct_values,
@@ -40,12 +43,18 @@ from datarecord.duck import (
     struct_of,
     try_read_parquet,
 )
+from datarecord.layered.categories import (
+    attributes_among,
+    categorized_dim,
+    matching,
+    selected,
+)
 from datarecord.record import Flags
 
 if TYPE_CHECKING:
-    from collections.abc import Container, Iterable, Mapping
+    from collections.abc import Iterable, Mapping
 
-    from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
+    from duckdb import DuckDBPyConnection
 
     from datarecord.schema import Schema
     from datarecord.store import Store
@@ -108,11 +117,9 @@ class Fold:
     schema
         The record's one schema, which says which broadcast dims the flags carry.
     axes
-        Each resolved dim's axis relation, keyed by dim; `entity` among them.
+        Each resolved dim's axis relation, keyed by dim.
     groups
         Each resolved group's relation, keyed by group.
-    entity_types
-        Each type's resolved wide static frame, keyed by type.
     owner_map
         The resolved `inputs` owner map: `(input_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per owned key.
@@ -123,21 +130,13 @@ class Fold:
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
     groups: dict[str, DuckDBPyRelation]
-    entity_types: dict[str, DuckDBPyRelation]
     owner_map: DuckDBPyRelation
     dead: dict[str, DuckDBPyRelation]
-
-    @property
-    def entity_axis(self) -> DuckDBPyRelation | None:
-        """The resolved entity axis, or `None` where no layer wrote an entity."""
-        return self.axes.get("entity")
 
     def attributes(self) -> list[str]:
         """Every input attribute any layer owns a row for, from the owner map.
 
-        Across entity types, matching the file layout: one
-        `inputs/<attr>.parquet` holds every type's rows. Ordered, so a `Record`
-        over this has a stable key order.
+        Ordered, so a `Record` over this has a stable key order.
 
         Notes
         -----
@@ -154,64 +153,73 @@ class Fold:
         """
         return self.owner_map.filter(col("attribute") == lit(attribute))
 
-    def flags(self, entity_type: str | None = None) -> dict[str, Flags]:
-        """Per attribute, which dims its rows use - whole-record, or one type.
+    def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
+        """Per attribute, which dims its rows use, across the record or one category.
 
-        Whole-record when `entity_type` is `None`; scoped to a type's entities
-        when named, by a semi-join to the resolved entity axis on each entity the
-        row names (`entity_coordinates`). A row naming entities of two types -
-        a contract `(from, to)` across them - counts towards both. A type whose
-        entities disagree yields a dim in both sets - the instruction to use
-        both containers, each taking the rows it matches. The union stops at the
-        type boundary: across types it would describe neither.
+        A dim in both sets is the instruction to use both containers, each
+        taking the rows it matches.
+
+        Parameters
+        ----------
+        categories
+            Categorizing properties of one dim, each one category or several:
+            only rows reaching a matching label count, and only attributes
+            those labels carry (`Schema.attributes_for`) are present. None
+            given, every row counts.
+
+        Raises
+        ------
+        ValueError
+            If the keywords categorize no dim or several.
 
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         """
-        # The flags have a field per *broadcast* dim: an address coordinate never
-        # broadcasts, so "did a row set it" is not a question about it.
         dims = self.schema.broadcast_dims
-        rows = self._flag_rows(entity_type, dims)
-        if rows is None:
+        if not categories:
+            # The structs come back as dicts keyed by dim, so each set is a filter
+            # by name rather than a positional slice.
+            return flags_from_rows(
+                self.schema, dims, self._flag_rows(self.owner_map, dims)
+            )
+        dim = categorized_dim(self.schema, categories)
+        chosen = selected(self.schema, dim, categories)
+        carried = attributes_among(self.schema, dim, chosen)
+        axis = self.axes.get(dim)
+        if axis is None or not carried:
             return {}
-        # The structs come back as dicts keyed by dim, so each set is a filter by
-        # name rather than a positional slice.
-        return flags_from_rows(self.schema, dims, rows)
+        rows = self._owned_reaching(dim, matching(axis, chosen).project(col(dim)))
+        flags = flags_from_rows(self.schema, dims, self._flag_rows(rows, dims))
+        return {a: f for a, f in flags.items() if a in carried}
+
+    def _owned_reaching(self, dim: str, labels: DuckDBPyRelation) -> DuckDBPyRelation:
+        """The owner-map rows naming one of `labels`, on `dim` or a group's field over it.
+
+        One semi-join per path, unioned rather than OR-ed into one condition,
+        which would be a nested loop; a row matched twice changes no flag.
+        """
+        om = self.owner_map.set_alias("o")
+        paths = []
+        if dim in om.columns:
+            paths.append(col("o", dim))
+        for group in self.schema.groups:
+            field = self.schema.field_over(group, dim)
+            if group in om.columns and field is not None:
+                paths.append(fn.struct_extract(col("o", group), lit(field)))
+        reached = [
+            om.join(labels.set_alias("l"), path == col("l", dim), how="semi")
+            for path in paths
+        ]
+        if not reached:
+            return om.filter(lit(False))  # noqa: FBT003
+        return reduce(DuckDBPyRelation.union, reached)
 
     def _flag_rows(
-        self, entity_type: str | None, dims: tuple[str, ...]
-    ) -> list[tuple[Any, ...]] | None:
-        """The aggregated flag rows, scoped to `entity_type` if named.
-
-        `None` when a type is named but no entity axis exists, so `flags` returns
-        empty rather than aggregating an unscoped map.
-
-        A named type where the schema declares no type axis scopes to the whole
-        axis - every entity - since "which dims does type X use" has no
-        narrower meaning without types, and the axis carries no `entity_type`
-        column to filter on (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
-        """
-        rel = self.owner_map.set_alias("i")
-        if entity_type is not None and self.schema.entity_type_dim is not None:
-            axis = self.entity_axis
-            if axis is None:
-                return None
-            of_type = (
-                axis.filter(col("entity_type") == lit(entity_type))
-                .project("entity")
-                .distinct()
-                .set_alias("e")
-            )
-            # One join per coordinate, an `OR` of them being unhashable. A row
-            # matched twice is harmless under `bool_or`, so no distinct.
-            scoped = rel.limit(0)
-            for on in entity_coordinates(self.schema, "i", rel.columns):
-                scoped = scoped.union(
-                    rel.join(of_type, on == col("e", "entity"), how="semi")
-                )
-            rel = scoped
+        self, rel: DuckDBPyRelation, dims: tuple[str, ...]
+    ) -> list[tuple[Any, ...]]:
+        """`rel`'s flag columns, aggregated per attribute."""
         flag = {
             c: struct_of(
                 {d: fn.bool_or(struct_field(rel, c, d, lit(False))) for d in dims}
@@ -237,9 +245,9 @@ class Fold:
     ) -> Fold | None:
         """This node's `Fold`, or `None` if it is not materialised.
 
-        The `inputs` owner map is the presence marker: the maps, dims, groups and
-        per-type frames are written together (`resolve.materialise`), so if the
-        map is absent the node has no `resolved/` cache at all.
+        The `inputs` owner map is the presence marker: the maps, dims and groups
+        are written together (`resolve.materialise`), so if the map is absent
+        the node has no `resolved/` cache at all.
         """
         base = store.resolved_dir(revision_id)
         owner_map = try_read_parquet(f"{base}owner_map/inputs.parquet", con)
@@ -249,41 +257,9 @@ class Fold:
             schema=schema,
             axes=_read_dir(f"{base}dims/", con),
             groups=_read_dir(f"{base}groups/", con),
-            entity_types=_read_dir(f"{base}dims/entity_type/", con),
             owner_map=owner_map,
             dead=_read_dir(f"{base}dead/", con),
         )
-
-
-def entity_coordinates(
-    schema: Schema, alias: str, columns: Container[str]
-) -> list[Expression]:
-    """Every entity a long row of `alias` names, wherever it sits.
-
-    `entity` itself, and each key coordinate over `entity` of every keyed
-    group's struct: a connection row has no top-level `entity`, its entity
-    riding inside `connection`, and a group drawing twice on `entity` - a
-    contract `(from, to)` - names both. A row naming none belongs to no type.
-
-    Parameters
-    ----------
-    columns
-        The relation's columns; an entity column it lacks is skipped.
-
-    Notes
-    -----
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    """
-    return [
-        *([col(alias, "entity")] if "entity" in columns else []),
-        *(
-            fn.struct_extract(col(alias, g), lit(c))
-            for g in schema.group_columns
-            if g in columns
-            for c in schema.entity_fields(g)
-        ),
-    ]
 
 
 def _read_dir(dir_uri: str, con: DuckDBPyConnection) -> dict[str, DuckDBPyRelation]:

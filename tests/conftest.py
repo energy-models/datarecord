@@ -29,6 +29,10 @@ def ac_dc():
     to reconcile the two vocabularies; `test_tools.py` pins the rejection
     itself.
 
+    Its carriers' own `efficiency` and `marginal_cost` columns are dropped
+    for the same reason: one name is one spec record-wide, and PyPSA declares
+    both names with a shape no entity column has.
+
     Notes
     -----
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
@@ -40,4 +44,7 @@ def ac_dc():
 
     n = example(pypsa.examples.ac_dc_meshed)
     rename_components(n, "Load", " Load")
+    n.c.Carrier.static = n.c.Carrier.static.drop(
+        columns=["efficiency", "marginal_cost"]
+    )
     return n

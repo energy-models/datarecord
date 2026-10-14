@@ -8,11 +8,13 @@ SPDX-License-Identifier: CC-BY-4.0
 
 Status: **Landed** · Drafted 2026-09-02 · Landed 2026-09-04
 
-> The construct below is now the behaviour. The authoritative account is [the
-> entity axis](../format.md#the-entity-axis), [where a value
-> lives](../format.md#where-a-value-lives) and [the entity-type
-> axis](../schema.md#entity_type-the-axis-of-kinds); this page is kept as the
-> argument that led there. It keys on `entity_type_dim is None` (no group over
+> **Superseded** by [properties](properties.md#one-file-per-subject-on-disk):
+> the entity-type axis is now an `Enum` property of `entity`, and a record with
+> and one without categories share one entity-axis layout with no member files.
+> The authoritative account is [the entity axis](../format.md#the-entity-axis),
+> [where a value lives](../format.md#where-a-value-lives) and
+> [categories](../schema.md#categories-an-enum-property-of-a-partial-dim); this
+> page is kept as the argument that led to the intermediate layout. It keys on `entity_type_dim is None` (no group over
 > `entity` alone), leaving a `String`-typed **declared** axis on today's per-type
 > layout — the [open question](#what-it-opens-rather-than-settles) below was
 > resolved that way. `entity_type(ctype)` **raises** where no type axis is
@@ -30,7 +32,7 @@ The related concern — `entity_type` asserted rather than derived in the read p
 
 ## What starts it
 
-[The schema](../schema.md#entity_type-the-axis-of-kinds) is explicit that the axis is optional, and that omitting it makes the labels data:
+[The schema](../schema.md#properties) is explicit that the axis is optional, and that omitting it makes the labels data:
 
 > The entity-type axis's enum categories, so a schema declaring it as a plain `String` has none: the labels are then data rather than declarations, and `attributes_for` accepts any of them.
 

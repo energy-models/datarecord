@@ -29,23 +29,18 @@ SPDX-License-Identifier: CC-BY-4.0
 - **Registering a record's relations as named views.** A frontend issuing ad-hoc SQL needs names in a catalog rather than Python objects, which `CREATE VIEW` against a file-backed catalog provides — each view's definition being the resolved overlay, materialising nothing.
   Creating a view binds its schema, so registering N attributes costs N footer reads; and catalog reopen cost is linear in view count, which argues for one catalog per record rather than one shared.
 
-- **What else a `Record` should answer about its entities without handing over a frame.** [`flags`](record.md#flags) sets the shape — cheap derived metadata a consumer plans against without opening a file — but answers only per attribute, per type.
-  The entity-level case is `entity -> entity_type`: a question a record can answer, [names being unique record-wide](format.md#entity-is-unique-across-types), and one the layered `entity_types` owner map is keyed by before it opens a file.
-  Asking it through the protocol costs a frame per type instead, which `WorkingRecord` pays on every [`set`](working-record.md#validation).
-  What is open is the granularity: "which types have live rows" and "how many members a type has" are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
-  Whatever is chosen, it has to be answerable off the owner map, which is where a record's membership already lives.
+- **What else a `Record` should answer about its labels without handing over a frame.** [`flags`](record.md#flags) sets the shape — cheap derived metadata a consumer plans against without opening a file — but answers only per attribute.
+  `entity -> entity_type` is now a column of the resolved axis, [names being unique record-wide](format.md#entity-is-unique-across-types), so it is one frame rather than one per type; "which categories have live labels" and "how many labels a category has" are still frames to collect.
+  What is open is the granularity: those are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
+  Whatever is chosen, it has to be answerable off the fold, which is where a record's membership already lives.
 
-- **Whether [`flags(ctype)`](record.md#flags) needs a record-level counterpart.** It takes an entity type, which an attribute addressed by no entity does not have: one over an axis alone, a per-bus value over `{bus, timestep}`, or one over a [group](schema.md#groups) none of whose coordinates draws on `entity`. None has a `ctype` to ask about, so none is reachable through it.
-  Since [a group is a dim](proposals/a-group-is-a-struct-column.md#amendment-a-group-is-a-dim), every attribute over a group outside [`partial`](schema.md#partial-the-granularity-of-an-override) joins them, `connection` attributes included: its owner-map rows are keyed `(attribute)` alone and name no entity for a type to claim. What was a corner is now every such attribute; PyPSA's are unaffected only because it declares `connection` partial.
-
-  A second method keyed by attribute and scoped record-wide would answer it — which attributes have rows at all, which coordinates they use, which types they touch — and the [owner map](read-path.md#owner-map) already computes the material, so it costs a projection rather than a scan.
-  What is unsettled is whether that replaces `flags` or sits beside it. `flags` is per type _by construction_, its union deliberately stopping at the type boundary, and a record-level answer filtered by type would have to reproduce that.
-
-- **What a NULL group struct reaches across entity types.** A NULL `connection` [broadcasts](record.md#the-broadcast-rule) over every tuple of the group, and `connection` spans every entity type — so a constant `efficiency` meant for links also lands on the connections of buses and generators, whose types do not carry it.
-  The fold expands against the resolved group with no look at [`attributes_for`](schema.md#traits), which a dim never needed: an axis's labels belong to no type.
-  Scoping the expansion to the types carrying the attribute would make it a join through the entity axis per entity field; refusing a NULL struct for a type-scoped attribute would leave it no constant form. Neither is chosen yet.
+- **What a NULL group struct reaches when two of its fields are categorized.** A NULL `connection` reaches the tuples whose `entity` field names a label [carrying the attribute](read-path.md#owner-map). A group with two fields over categorized dims — a `contract` between two entities — has no single label to ask, and its NULL reaches every tuple; requiring both, or either, would each be a reading the schema does not state.
 
 ## Settled
+
+- **Whether [`flags`](record.md#flags) needs a record-level counterpart** — it is one. `flags()` answers per record, every attribute included, and `flags(**categories)` per category, restricted to what those categories carry ([properties](proposals/properties.md#entity-is-an-ordinary-dim)). An attribute over an axis alone or a group outside `partial` is reachable through the first.
+
+- **What a NULL group struct reaches across entity types** — the tuples whose field over the categorized dim names a label carrying the attribute, as a NULL on the dim itself reaches its carrying labels ([the owner map](read-path.md#owner-map)). A constant link `efficiency` no longer lands on generators' connections.
 
 - **What a connection value staged without its `bus` should mean** — nothing; the call is [rejected](working-record.md#set).
   `{entity: dc, bus: NULL}` is [no group value](record.md#the-broadcast-rule), a group value being a whole tuple or NULL, so it is refused wherever a row comes in.

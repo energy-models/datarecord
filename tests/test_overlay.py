@@ -36,7 +36,7 @@ from tests.fixtures import (
 
 
 def _entities(revision) -> set[str]:
-    axis = revision.resolver.entity_axis
+    axis = revision.resolver.axis("entity")
     assert axis is not None, "every revision here has entities"
     return set(axis.df()["entity"])
 
@@ -254,7 +254,7 @@ def test_resolved_reads_same_as_unresolved(store, parent):
         "the owner map folded through the base matches folding from the root"
     )
 
-    t_axis, u_axis = truncated.entity_axis, unresolved.entity_axis
+    t_axis, u_axis = truncated.axis("entity"), unresolved.axis("entity")
     assert t_axis is not None and u_axis is not None
     assert set(t_axis.df()["entity"]) == set(u_axis.df()["entity"]), (
         "the resolved entity axis is the same either way"
@@ -309,7 +309,9 @@ def test_a_new_attribute_is_a_schema_amendment(store, parent):
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
     # And the amendment is visible from the record, not just from the layer
     # that happens to carry a row for it.
-    assert "p_min_pu" in child.record.schema.attributes_for("Generator")
+    assert "p_min_pu" in child.record.schema.attributes_for(
+        "entity", entity_type="Generator"
+    )
 
 
 def test_a_schema_narrowing_is_refused(store, parent, ac_dc):
@@ -330,12 +332,11 @@ def test_a_schema_narrowing_is_refused(store, parent, ac_dc):
 
         schema = narrowed
         dims = EMPTY
-        entity_types = EMPTY
         groups: dict = {}
         attributes = EMPTY
         outputs = EMPTY
 
-        def flags(self, ctype):
+        def flags(self):
             return {}
 
     before = read_schema(store)

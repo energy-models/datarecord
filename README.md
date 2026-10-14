@@ -14,7 +14,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 Dimensioned attribute data with a declared schema.
 
-A record holds **entities** (named members of a type, unique record-wide), **groups** of entities over further dims — a `connection` over `(entity, bus)` is the one every record with connections has — **attribute values** over both, and the **axes** those values vary along. A schema declares what may exist; the data says what does.
+A record holds **entities** (labels unique record-wide, classified by **properties** such as their type), **groups** of entities over further dims — a `connection` over `(entity, bus)` is the one every record with connections has — **attribute values** over both, and the **axes** those values vary along. A schema declares what may exist; the data says what does.
 
 Records stack: a layer is a partial record on top of a parent, resolved last-writer-wins, so a scenario variant costs the rows it changes rather than a copy of everything. On disk a record is a plain parquet directory that a tool knowing nothing about this package can read.
 
@@ -44,9 +44,9 @@ from datarecord import Workspace
 ws = Workspace()
 record = ws.at("s3://bucket/my-record/")
 
-record.entity_types["Generator"].collect()  # wide member rows
+record.properties["entity"].collect()  # each entity's stored properties
 record.attributes["p_max_pu"].collect()  # long value rows, one per value
-record.flags("Generator")  # which axes each attribute uses
+record.flags(entity_type="Generator")  # which axes each attribute uses
 ```
 
 Every frame is a `narwhals.LazyFrame` — a plan, not data. Nothing is read until you `.collect()`.

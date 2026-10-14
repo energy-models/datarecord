@@ -6,7 +6,7 @@
 
 `bus_country` over `[bus]` into `country` says every bus is in exactly one
 country. The relation is a file of its own, `groups/bus_country.parquet`, and the dim it is
-`into` keeps an axis file for its order and for attributes addressed by it.
+`into` keeps an axis file for its order and for its properties.
 
 Notes
 -----
@@ -21,7 +21,7 @@ import pytest
 from pydantic import ValidationError
 
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import AttributeSpec, Dimension, Group, Schema
+from datarecord.schema import AttributeSpec, Dimension, Group, PropertySpec, Schema
 from tests.fixtures import (
     empty_child,
     empty_root,
@@ -75,20 +75,6 @@ def test_a_group_may_not_share_a_dims_name():
     """A group is carried as a column named for it, so the two would be one column."""
     with pytest.raises(ValidationError, match="group 'country' shares its name"):
         _schema(groups={"country": Group(over=["state"], into="country")})
-
-
-def test_the_entity_type_group_may_share_its_dims_name():
-    """It has no file or column of its own: its rows are the entity axis."""
-    s = Schema(
-        dimensions={
-            "entity": Dimension(dtype=nw.String()),
-            "entity_type": Dimension(dtype=nw.String()),
-        },
-        groups={"entity_type": Group(over=["entity"], into="entity_type")},
-        attributes={"icon": AttributeSpec(dtype=nw.String(), dims={"entity_type"})},
-    )
-    assert s.coordinates_of("icon") == ("entity_type",), "the dim"
-    assert s.groups_of("icon") == ()
 
 
 def test_an_into_less_group_in_dims_is_one_struct_column():
@@ -150,9 +136,10 @@ def test_a_group_cannot_map_a_coordinate_to_itself():
 
 
 def _budget_schema() -> Schema:
-    """The mapping chain, with an attribute addressed by `country` alone."""
+    """The mapping chain, with a property of `country` and an attribute over it alone."""
     return _schema(
-        attributes={"co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})},
+        properties={"country": {"co2_budget": PropertySpec(dtype=nw.Float64())}},
+        attributes={"target": AttributeSpec(dtype=nw.Float64(), dims={"country"})},
         partial=frozenset({"country"}),
     )
 
@@ -176,6 +163,41 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(store):
     assert axes["bus"].df()["bus"].tolist() == ["north"], (
         "no classification column: the relation is the group's own file"
     )
+
+
+def test_removing_a_label_of_a_dim_outside_partial_tombstones_its_tuples(store):
+    """A group may draw on a dim `partial` does not list; removal still cascades.
+
+    Notes
+    -----
+    - [deletion cascades through tombstones](https://energy-models.github.io/datarecord/design/proposals/deletion-cascades-through-tombstones/)
+    """
+    revision = empty_root(store)
+    write_schema(_schema(), store)
+    layer = store.layer_dir(revision.id)
+    write_axis(layer, "bus", [{"bus": "north"}, {"bus": "south"}])
+    write_axis(layer, "state", [{"state": "lower"}, {"state": "upper"}])
+    write_group(
+        layer,
+        "bus_state",
+        [
+            {"bus_state": {"bus": "north"}, "state": "lower"},
+            {"bus_state": {"bus": "south"}, "state": "upper"},
+        ],
+    )
+
+    staged = WorkingRecord(revision.record)
+    staged.remove("bus", ["north"])
+    assert staged.groups["bus_state"].collect().to_native().to_pydict() == {
+        "bus_state": [{"bus": "south"}],
+        "state": ["upper"],
+    }, "the tuple naming the removed bus is tombstoned"
+
+    child = revision.child(staged.edits)
+    assert child.record.groups["bus_state"].collect().to_native().to_pydict() == {
+        "bus_state": [{"bus": "south"}],
+        "state": ["upper"],
+    }
 
 
 def test_a_chain_is_a_join_over_two_group_files(store):
@@ -249,11 +271,11 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
     assert "order_key" not in rows
 
 
-def test_an_attribute_addressed_by_the_into_dim_alone_is_a_column_of_its_axis(store):
+def test_a_property_of_the_into_dim_is_a_column_of_its_axis(store):
     """`co2_budget` is a property of the country, so it rides on the axis file.
 
-    Not `inputs/co2_budget.parquet`: one addressing coordinate is a column on
-    that thing's own table, and for a mapping that table is its own axis file.
+    An attribute addressed by `country` alone, `target`, is long rows of
+    `inputs/target.parquet` instead: the section decides, not the shape.
     """
     revision = empty_root(store)
     schema = _budget_schema()
@@ -264,15 +286,22 @@ def test_an_attribute_addressed_by_the_into_dim_alone_is_a_column_of_its_axis(st
         [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
     )
 
-    assert schema.attributes_on("country") == ("co2_budget",)
     axis = revision.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 40.0, "FR": 55.0}
     assert "co2_budget" not in revision.record.attributes, (
         "an axis-file column is no long frame"
     )
 
+    staged = WorkingRecord(revision.record)
+    staged.set("target", {"DE": 30.0})
+    child = revision.child(staged.edits)
+    assert "target" not in child.resolver.dims.axes["country"].columns
+    rows = child.record.attributes["target"].collect().to_native().to_pydict()
+    assert rows["country"] == ["DE"]
+    assert rows["value"] == [30.0]
 
-def test_setting_an_axis_addressed_attribute_stages_an_axis_row(store):
+
+def test_setting_a_property_stages_an_axis_row(store):
     """`set` states a value for a label the axis already has.
 
     The staged row carries the label and the column, so a read with pending
@@ -289,15 +318,15 @@ def test_setting_an_axis_addressed_attribute_stages_an_axis_row(store):
     staged = WorkingRecord(revision.record)
     staged.set("co2_budget", {"DE": 12.0})
 
-    frame = staged.dims["country"].collect().to_native()
+    frame = staged.properties["country"].collect().to_native()
     got = dict(zip(frame["country"].to_pylist(), frame["co2_budget"].to_pylist()))
     assert got == {"DE": 12.0, "FR": 55.0}, (
         "FR is untouched, so it keeps the base value"
     )
 
 
-def test_setting_one_axis_attribute_keeps_its_siblings_value(store):
-    """Two attributes on one axis, one edited: the other must survive the fold.
+def test_setting_one_property_keeps_its_siblings_value(store):
+    """Two properties on one axis, one edited: the other must survive the fold.
 
     The staged row carries only the column its `set` named, and the fold is
     last-writer-wins per label over the whole row - so a source handing over
@@ -308,9 +337,11 @@ def test_setting_one_axis_attribute_keeps_its_siblings_value(store):
     revision = empty_root(store)
     write_schema(
         _schema(
-            attributes={
-                "co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"}),
-                "population": AttributeSpec(dtype=nw.Float64(), dims={"country"}),
+            properties={
+                "country": {
+                    "co2_budget": PropertySpec(dtype=nw.Float64()),
+                    "population": PropertySpec(dtype=nw.Float64()),
+                }
             },
             partial=frozenset({"country"}),
         ),
@@ -325,7 +356,7 @@ def test_setting_one_axis_attribute_keeps_its_siblings_value(store):
     staged = WorkingRecord(revision.record)
     staged.set("co2_budget", {"DE": 12.0})
 
-    frame = staged.dims["country"].collect().to_native()
+    frame = staged.properties["country"].collect().to_native()
     assert frame["co2_budget"].to_pylist() == [12.0], "the edited column takes the edit"
     assert frame["population"].to_pylist() == [83.0], (
         "an axis column no edit named keeps the base's value"
@@ -334,7 +365,7 @@ def test_setting_one_axis_attribute_keeps_its_siblings_value(store):
     # And a second `set` on the sibling composes with the first rather than
     # displacing it, which is the same rule one step further.
     staged.set("population", {"DE": 84.0})
-    frame = staged.dims["country"].collect().to_native()
+    frame = staged.properties["country"].collect().to_native()
     assert frame["co2_budget"].to_pylist() == [12.0], "the earlier edit survives"
     assert frame["population"].to_pylist() == [84.0]
 
@@ -384,9 +415,7 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(store):
     # `partial` left empty, unlike `_budget_schema`.
     write_schema(
         _schema(
-            attributes={
-                "co2_budget": AttributeSpec(dtype=nw.Float64(), dims={"country"})
-            }
+            properties={"country": {"co2_budget": PropertySpec(dtype=nw.Float64())}}
         ),
         store,
     )
@@ -435,12 +464,8 @@ def test_an_axis_resolves_over_an_unmaterialised_parent(store):
     )
 
 
-def test_set_may_name_a_label_no_layer_has_written(store):
-    """`set` introduces the label, the fold keying per label rather than whole.
-
-    So this layer's axis file gains `NO` beside the `DE` it patches, and the
-    parent's `DE` row is what the fold resolves against.
-    """
+def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
+    """A property is a column of a label's row, so `add` makes the label first."""
     revision = empty_root(store)
     write_schema(_budget_schema(), store)
     write_axis(
@@ -448,8 +473,11 @@ def test_set_may_name_a_label_no_layer_has_written(store):
     )
 
     staged = WorkingRecord(revision.record)
-    staged.set("co2_budget", {"DE": 12.0, "NO": 3.0})
+    with pytest.raises(KeyError, match="`add` them first"):
+        staged.set("co2_budget", {"DE": 12.0, "NO": 3.0})
 
+    staged.add("country", ["NO"])
+    staged.set("co2_budget", {"DE": 12.0, "NO": 3.0})
     child = revision.child(staged.edits)
     axis = child.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}

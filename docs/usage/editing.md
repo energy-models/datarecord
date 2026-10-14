@@ -18,46 +18,51 @@ w = WorkingRecord(root.record)
 
 ```python
 w.set("p_nom", 150.0, entity=["wind1", "wind2"])  # broadcast
-w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per name, positional
-w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per name, keyed
+w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per label, positional
+w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per label, keyed
 w.set("p_max_pu", frame, entity=["wind1"])  # a long frame
-w.set("efficiency", 0.9, entity=["dc"], bus="north")  # a connection
-w.set("p_nom", 200.0, entity=["wind1"], scenario="high")  # scoped to one scenario
+w.set("p_max_pu", series.rename_axis("snapshot"), entity="wind1")  # a series
+w.set("p_max_pu", 0.9)  # every label carrying it, now and later
+w.set(
+    "p_max_pu", 0.8, entity_type="Generator", carrier="wind"
+)  # the ones there are now
+w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
+w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped to one scenario
 w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
+w.set("carrier", "solar", entity="g2")  # a property
 w.set("p", solved_frame, kind="outputs")  # a result
 ```
 
-**There is no `entity_type` keyword.** A name identifies one entity across every type, so the record looks the type up and checks that each name's type carries the attribute — one call may legitimately span types ([design](../design/working-record.md#set)).
+**Every coordinate is a keyword**, a group's fields included — `bus="north"` with `entity="dc"` addresses one connection, `from=`/`to=` one corridor. A coordinate no keyword names is NULL, which means "every label of it": on a categorized dim, every label whose categories carry the attribute, including ones added later. A group's fields must all be given or none, since a group value is a whole tuple ([design](../design/working-record.md#set)).
 
-`entity=None` means every entity whose type carries this attribute. Every other coordinate goes through `**dims`, a group's included — `bus="north"` addresses one connection, `from=`/`to=` one corridor. A plain dim's absence means "every value of that dim" by the NULL broadcast rule; a group's key coordinates must all be given, since a group value is a whole tuple ([design](../design/working-record.md#set)).
+**A categorizing property as a keyword selects labels at call time**: `entity_type="Generator", carrier="wind"` stages one row per label matching both on the record as staged. A label added later is not reached; a plain NULL is how a value reaches those.
+
+A mapping's keys or a series' index are labels of the one coordinate no keyword names, unless the series' index is named after a coordinate; where neither says, the call is refused rather than guessed.
+
+`set` writes **properties** too, a category included: `set("entity_type", "Load", entity="g1")` patches one column of `g1`'s axis row.
 
 An `nw.Expr` value is a **function of the current value**: it reads the resolved value including earlier pending edits, so two such calls compose, and what gets staged is the result rather than the expression ([design](../design/working-record.md#an-nwexpr-value-derived-from-the-current-one)). A named target that resolves to no row raises — the caller asked for those rows to take a new value and there is nothing to compute one from.
 
-## `add` / `remove` / `connect` / `disconnect`
+## `add` / `remove` / `add_group` / `remove_group`
 
 ```python
 import pandas as pd
 
-w.add("Bus", pd.DataFrame({"entity": ["north", "south"]}))
-w.add(
-    "Generator",
-    pd.DataFrame(
-        {
-            "entity": ["wind1", "wind2"],
-            "carrier": ["wind", "wind"],
-            "p_nom": [100.0, 80.0],
-        }
-    ),
-)
+w.add("bus", ["north", "south"])
+w.add("entity", ["wind1", "wind2"], entity_type="Generator", carrier="wind")
+w.add("entity", ["dc"], entity_type="Link")
+w.set("p_nom", [100.0, 80.0], entity=["wind1", "wind2"])
 
-w.remove("Generator", ["old_coal"])
+w.remove("entity", ["old_coal"])
 
 w.add_group(
     "connection",
     pd.DataFrame(
         {
-            "entity": ["dc", "dc"],
-            "bus": ["north", "south"],
+            "connection": [
+                {"entity": "dc", "bus": "north"},
+                {"entity": "dc", "bus": "south"},
+            ],
             "role": ["bus0", "bus1"],
         }
     ),
@@ -65,17 +70,17 @@ w.add_group(
 w.remove_group("connection", [("dc", "south")])
 ```
 
-`add` takes a wide frame keyed by `entity` and splits it by the schema: columns addressed by `entity` alone stay in `dims/entity_type/`, ones varying beyond it become `inputs/` rows ([design](../design/format.md#where-a-value-lives)). It keeps its `ctype` argument where `set` loses it — this is the call that _establishes_ what a name's type is, and where record-wide name uniqueness is enforced ([design](../design/working-record.md#add-remove)). An entity exists by virtue of its member row, so `add` is not a sequence of `set` calls: adding a bus with no attributes makes the point.
+`add(dim, labels, **columns)` works on any dim. The keywords are the axis file's other columns — the dim's properties and a nested dim's parent keys — each a scalar or a sequence aligned to `labels`. An attribute keyword is refused: attributes go through `set`, whatever their `dims` ([design](../design/working-record.md#add-remove)). A label exists by virtue of its axis row, so `add` is not a sequence of `set` calls: adding a bus with no properties makes the point.
 
-`remove` stages a tombstone on the entity axis, with no dim scope — an entity [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every attribute, and to every row of a group over the entity ([design](../design/layers.md#deletion)).
+`remove(dim, labels)` stages a tombstone per label, with no dim scope — a label [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every value keyed by the label, and `remove` also tombstones every group tuple naming one ([design](../design/layers.md#deletion)).
 
-`add_group`/`remove_group` take no type at all, unlike `add`: a group's rows are keyed by its coordinates and the type is not one of them, so there is nothing for a type argument to scope ([design](../design/format.md#where-a-value-lives)). Every group is reached the same way — `connection` has no call of its own, being one group among however many the schema declares.
+`add_group`/`remove_group` stage a group's tuples, as one struct column named for the group with the group's properties beside it. Every group is reached the same way — `connection` has no call of its own, being one group among however many the schema declares.
 
 ## Inspecting and rolling back
 
 ```python
 w.attributes["p_nom"]  # the edit applied, over the base's rows
-w.entity_types["Generator"]  # additions in, removals out
+w.properties["entity"]  # additions in, removals out
 w.rollback()  # discard everything staged
 ```
 
@@ -101,7 +106,7 @@ new.record.attributes["p_nom"].collect()
 
 Writing clears nothing: a `WorkingRecord` still holding its edits reads exactly what it did before, until `rollback()`.
 
-An edit replaces the rows it names, so restating a coordinate overwrites it and the last write is what stands. A `remove` after a `set` wins regardless of order — a deleted entity has no attributes — and an `add` after a `remove` brings the entity back.
+An edit replaces the rows it names, so restating a coordinate overwrites it and the last write is what stands. A `remove` after a `set` wins regardless of order — a deleted label has no values — and an `add` after a `remove` brings the label back, without its group tuples.
 
 Neither write carries a **base's** results across: an edit changes the inputs a result was computed from. What it does carry is results staged into this record through `set(..., kind="outputs")`, which were computed against these pending inputs ([design](../design/working-record.md#results-through-kindoutputs)).
 
