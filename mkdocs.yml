@@ -61,6 +61,7 @@ nav:
           - "DEP 11: Deletion cascades through tombstones": design/proposals/dep-0011-deletion-cascades-through-tombstones.md
           - "DEP 12: Properties": design/proposals/dep-0012-properties.md
           - "DEP 13: Buses and carriers are dims": design/proposals/dep-0013-buses-and-carriers-are-dims.md
+          - "DEP 14: Combining a record with an extension": design/proposals/dep-0014-combining-records.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:
