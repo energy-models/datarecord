@@ -80,7 +80,7 @@ w.remove_group("connection", [("dc", "south")])
 
 ```python
 w.attributes["p_nom"]  # the edit applied, over the base's rows
-w.members("entity", entity_type="Generator")  # additions in, removals out
+w.properties["entity"]  # additions in, removals out
 w.rollback()  # discard everything staged
 ```
 

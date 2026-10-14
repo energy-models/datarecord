@@ -14,7 +14,6 @@ Everything a consumer codes against. It is read-only, and structural — a plain
 record.schema  # what may exist: the axes, the properties, the attributes
 record.dims["entity"]  # axis labels, keyed by dim
 record.properties["entity"]  # stored property values, keyed by dim or group
-record.members("entity", entity_type="Generator")  # one category, defaults applied
 record.groups["connection"]  # group rows, keyed by group — one frame each
 record.attributes["p_max_pu"]  # long input frames, keyed by attribute
 record.outputs["p"]  # long result frames, keyed by attribute
@@ -24,24 +23,21 @@ record.flags(entity_type="Generator")  # which axes each attribute actually uses
 Every frame is a `narwhals.LazyFrame` — a plan, not data. Nothing is read until you `.collect()`, and listing the keys reads nothing at all ([design](../design/record.md#frames)).
 
 ```python
-gens = record.members("entity", entity_type="Generator").collect().to_pandas()
+entities = record.properties["entity"]
+gens = entities.filter(nw.col("entity_type") == "Generator").collect().to_pandas()
 ```
 
-## Labels, properties and members
+## Labels and properties
 
 `dims[dim]` is the axis's key columns only — the labels, and a nested dim's parent keys — in axis order.
 
 `properties[subject]` is a dim's or a group's key with every property declared for it, **as stored**: a NULL is a value no layer wrote.
 
-`members(dim, **categories)` is the per-category read. Its keywords are the dim's categorizing properties — `Enum` properties of a `partial` dim — each one category or a list; none selects every label. It projects to the properties the selected labels carry and applies their defaults, `default_by` per category included; a property a label does not carry reads NULL ([design](../design/record.md#properties-and-categories)).
-
-```python
-record.members("entity", entity_type=["Generator", "StorageUnit"], carrier="wind")
-```
+One category's labels are `properties[dim]` filtered on a categorizing property — an `Enum` property of a `partial` dim. Which properties they carry is `Schema.properties_for(dim, **categories)`, and an unset one's default, `default_by` per category included, is `Schema.default_for(name, **categories)` ([design](../design/record.md#properties-and-categories)).
 
 ## Wide and long
 
-`dims`, `properties`, `members` and `groups` are **wide** — one row per label or tuple. `attributes` and `outputs` are **long** — one row per value:
+`dims`, `properties` and `groups` are **wide** — one row per label or tuple. `attributes` and `outputs` are **long** — one row per value:
 
 ```text
 <coordinate> ... | attribute | breakpoint | value
@@ -53,7 +49,7 @@ A NULL dim column means "all values of that dim", not that the attribute lacks t
 
 `attributes` shows stored rows only: a coordinate no row covers takes the attribute's default, which `Schema.default_for(name, **categories)` answers per category.
 
-No property is a column of an attribute row — `attributes["p_max_pu"]` holds every entity's rows together. To scope to one category, join `members` on `entity`.
+No property is a column of an attribute row — `attributes["p_max_pu"]` holds every entity's rows together. To scope to one category, join `properties["entity"]`, filtered on the category, on `entity`.
 
 ## `flags`
 

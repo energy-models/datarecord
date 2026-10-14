@@ -209,7 +209,7 @@ A value read unset takes the first `default_by` key, in declaration order, whose
 - **Never on a categorizing property.** A category defaulted by a category is circular; such a property takes a plain `default`.
 - **Only the default varies.** `dtype`, `unit` and `description` are the spec's own, which is what keeps one name one column and one `inputs/` file.
 
-A default is never stored. [`members`](record.md) applies it to the properties it reads; `record.attributes` hands over stored rows, so a consumer applies an attribute's through `default_for` — the PyPSA tool does, building `entity_types`.
+A default is never stored. `record.properties` and `record.attributes` hand over stored rows, so a consumer applies a default through `default_for` — the PyPSA tool does, building `entity_types`.
 
 ## Traits
 
@@ -236,7 +236,7 @@ Under the previous shape a type _subscribed_ and an attribute reached nothing un
 
 **Whichever property each trait keys on.** An attribute no trait claims is carried by every label; a claimed one by every label some claiming trait matches. A trait `on` `entity_type: [Generator]` and one `on` `carrier: [wind]`, both claiming `p_max_pu`, give it to every generator and every wind entity.
 
-`Schema.attributes_for(dim, **categories)` and `Schema.properties_for(subject, **categories)` ([categories](#categories-an-enum-property-of-a-partial-dim)) are what [`flags`](record.md#flags), [`members`](record.md) and the [validation of `set`](working-record.md#validation) read, so everything downstream asks one question and gets a resolved answer. A trait may bundle properties of the dim its `on` categorizes beside attributes, and both are narrowed alike.
+`Schema.attributes_for(dim, **categories)` and `Schema.properties_for(subject, **categories)` ([categories](#categories-an-enum-property-of-a-partial-dim)) are what [`flags`](record.md#flags), a consumer's per-category frame and the [validation of `set`](working-record.md#validation) read, so everything downstream asks one question and gets a resolved answer. A trait may bundle properties of the dim its `on` categorizes beside attributes, and both are narrowed alike.
 An attribute addressed by an axis alone is carried by no category however few traits mention it: a snapshot weighting belongs to the record.
 
 A trait rather than a bare list of attribute names, for two reasons.

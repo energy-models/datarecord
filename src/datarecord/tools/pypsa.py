@@ -40,7 +40,11 @@ from duckdb import (
 from duckdb import StarExpression as star
 
 from datarecord.duck import DuckTypes, ex_all, fn, struct_of
-from datarecord.layered.categories import members as category_members
+from datarecord.layered.categories import (
+    carried_properties,
+    matching,
+    with_defaults,
+)
 from datarecord.record import Flags, Frames, LazyFrames, RecordLike
 from datarecord.schema import (
     LONG_TAIL,
@@ -1906,21 +1910,6 @@ class _NetworkSource:
 
         return LazyFrames(tuple(frames), frame)
 
-    def members(self, dim: str, **categories: str | Sequence[str]) -> nw.LazyFrame:
-        """The entities in `categories`, their properties defaulted.
-
-        Raises
-        ------
-        KeyError
-            If `dim` is not `entity`, the one axis a network categorizes.
-        """
-        if dim != ENTITY:
-            raise KeyError(dim)
-        rel = self.con.from_df(self._entity_frame().drop(columns="deleted"))
-        return nw.from_native(
-            category_members(self.schema, rel, dim, categories, self.con)
-        )
-
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
         """Never consulted: `write_layer` persists frames, not flags.
 
@@ -2486,10 +2475,14 @@ def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
     """
-    if ENTITY_TYPE not in record.schema.categorizing(ENTITY):
+    schema = record.schema
+    if ENTITY_TYPE not in schema.categorizing(ENTITY):
         return None
-    rel = to_relation(record.members(ENTITY, **{ENTITY_TYPE: ctype}))
-    return rel.project(star(exclude=[ENTITY_TYPE]))
+    rel = matching(to_relation(record.properties[ENTITY]), {ENTITY_TYPE: (ctype,)})
+    names = carried_properties(schema, ENTITY, rel)
+    key = schema.axis_key(ENTITY)
+    defaulted = with_defaults(schema, ENTITY, rel, key, names, _connection(record))
+    return defaulted.project(star(exclude=[ENTITY_TYPE]))
 
 
 # The tool is a module-level singleton, imported rather than looked up by

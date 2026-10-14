@@ -217,8 +217,8 @@ def test_a_category_on_another_dim_than_entity_narrows_the_record(buses):
         "the NULL reaches the AC buses alone"
     )
     assert set(_by_bus(record, "v_nom")) == {"ac1", "ac2", "dc1"}, "untraited"
-    members = record.members("bus", bus_type="DC").collect().to_native().to_pylist()
-    assert members == [{"bus": "dc1", "bus_type": "DC"}]
+    dc = record.properties["bus"].filter(nw.col("bus_type") == "DC").select("bus")
+    assert dc.collect().to_native().to_pylist() == [{"bus": "dc1"}]
     assert set(record.flags(bus_type="AC")) == {"frequency", "v_nom"}
     assert set(record.flags(bus_type="DC")) == {"v_nom"}, "frequency is an AC bus's"
 

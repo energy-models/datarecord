@@ -25,8 +25,7 @@ All notable changes to datarecord are documented here. The format follows
   patched per label or categorized; a NULL on a categorized dim reaches only
   the labels whose categories carry the attribute. Every attribute,
   whatever its `dims`, is stored in `inputs/`. On reading, `dims[dim]` holds
-  key columns only, `properties[subject]` the stored property values,
-  `members(dim, **categories)` one category with defaults applied, and
+  key columns only, `properties[subject]` the stored property values, and
   `attributes` every attribute; `entity_types` is gone and `flags` takes
   categories (`flags(entity_type="Generator")`). `WorkingRecord` edits any
   dim: `add(dim, labels, **properties)`, `remove(dim, labels)` (cascading to

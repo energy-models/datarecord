@@ -122,9 +122,6 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
         attributes: Frames
         outputs: Frames
 
-        def members(self, dim: str, **categories: object) -> nw.LazyFrame:
-            return self.properties[dim]
-
         def flags(self, **categories: object) -> dict[str, Flags]:
             return {}
 
@@ -519,7 +516,6 @@ def test_write_record_omits_outputs_for_an_unsolved_source(store, ac_dc):
         schema = solved.schema
         dims = solved.dims
         properties = solved.properties
-        members = solved.members
         groups = solved.groups
         attributes = solved.attributes
         outputs = EMPTY

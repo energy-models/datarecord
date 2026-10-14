@@ -173,27 +173,6 @@ class RecordLike(Protocol):
         """
         ...
 
-    def members(self, dim: str, **categories: str | Sequence[str]) -> nw.LazyFrame:
-        """The labels of `dim` among `categories`, with the properties they carry, defaulted.
-
-        A property a label does not carry reads NULL; no `categories` selects
-        every label.
-
-        Raises
-        ------
-        KeyError
-            If `dim` has no axis.
-        ValueError
-            If a keyword does not categorize `dim`, or a value is none of its
-            categories.
-
-        Notes
-        -----
-        - [default_by](https://energy-models.github.io/datarecord/design/schema/#default_by-a-default-per-category)
-        - [properties and categories](https://energy-models.github.io/datarecord/design/record/#properties-and-categories)
-        """
-        ...
-
     @property
     def groups(self) -> Frames:
         """Each declared group's rows, keyed by group - one frame each.
@@ -215,7 +194,7 @@ class RecordLike(Protocol):
         """Long input frames, keyed by attribute name - one per file.
 
         A row carries its coordinates alone; select by category through
-        `members`.
+        `properties`.
 
         Notes
         -----

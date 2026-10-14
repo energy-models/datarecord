@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING, cast
 import narwhals as nw
 from duckdb import ColumnExpression as col
 
-from datarecord.layered.categories import members as category_members
 from datarecord.layered.categories import with_properties
 from datarecord.record import Flags, LazyFrames
 
@@ -110,14 +109,6 @@ class Record:
             s for s in self.schema.properties if s in coords.axes or s in coords.groups
         )
         return LazyFrames(subjects, self._property_frame)
-
-    def members(self, dim: str, **categories: str | Sequence[str]) -> nw.LazyFrame:
-        axis = self.resolver.axis(dim)
-        if axis is None:
-            raise KeyError(dim)
-        return nw.from_native(
-            category_members(self.schema, axis, dim, categories, self.resolver.con)
-        )
 
     @_stable_cache
     def groups(self) -> LazyFrames:

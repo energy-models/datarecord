@@ -37,7 +37,7 @@ A group is one column, so which columns name a connection is legible from the ma
 An attribute over such a group and no other `partial` coordinate has the key `(attribute)` alone, the grain of a record-level weighting.
 
 No category is on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the resolved entity axis is what says which categories an entity has.
-That axis is what every category-scoped question goes through — [per-category `flags`](record.md#flags) join it, as do `members` and a consumer wanting one type's frame — and it carries each [categorizing property](schema.md#categories-an-enum-property-of-a-partial-dim) as a column, functionally determined by the label rather than keyed alongside it, so a re-categorized label is one row with a new value.
+That axis is what every category-scoped question goes through — [per-category `flags`](record.md#flags) join it, as does a consumer wanting one type's frame — and it carries each [categorizing property](schema.md#categories-an-enum-property-of-a-partial-dim) as a column, functionally determined by the label rather than keyed alongside it, so a re-categorized label is one row with a new value.
 
 The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
@@ -59,7 +59,7 @@ There is no persisted `order_key` column: member order is the file's row order.
 A consumer wanting positional ports numbers an entity's connections by this order, so a patch layer adding a connection appends rather than renumbering — the [positional-keying failure](record.md#connections) that order exists to prevent.
 Across a materialised parent it still holds: the resolved seed is read in its own row order and a descendant's new rows number after it.
 
-Every property is a column of its subject's file, so the resolved axis or group is the whole of what a per-category read needs: `members` filters it on categorizing columns and projects to `properties_for`, with no second file to gate against.
+Every property is a column of its subject's file, so the resolved axis or group is the whole of what a per-category read needs: `properties[dim]` filtered on categorizing columns and projected to `properties_for`, with no second file to gate against.
 
 The fold runs live over an unmaterialised tail, cached in the workspace's database as [shared tables](#a-cursor-per-thread); since [layers are write-once](layers.md#a-layers-data-is-write-once), such a cache never needs invalidating.
 

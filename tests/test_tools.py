@@ -391,8 +391,9 @@ def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
     assert set(n.c["SubNetwork"].static.index) & set(n.c["Line"].static.index)
 
     record = export_network(n, store).record
-    members = record.members("entity", entity_type="SubNetwork")
-    names = members.collect().to_pandas()["entity"]
+    entities = record.properties["entity"]
+    sub_networks = entities.filter(nw.col("entity_type") == "SubNetwork")
+    names = sub_networks.collect().to_pandas()["entity"]
     assert sorted(names) == [f"{i} SubNetwork" for i in range(4)]
     results = PyPSA.results(n, store.workspace.con)
     pointed = set(results["sub_network"].collect().to_pandas()["value"])

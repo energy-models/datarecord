@@ -23,7 +23,6 @@ class RecordLike(Protocol):
     def dims(self) -> Frames: ...  # axis key columns, keyed by dim
     @property
     def properties(self) -> Frames: ...  # stored property values, keyed by subject
-    def members(self, dim: str, **categories: str | Sequence[str]) -> nw.LazyFrame: ...
     @property
     def groups(self) -> Frames: ...  # each group's rows, keyed by group
     @property
@@ -35,7 +34,7 @@ class RecordLike(Protocol):
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]: ...
 ```
 
-Each accessor holds one section of [the schema](schema.md): `dims` the labels, `properties` and `members` the metadata of those labels, `attributes` the data. Where a value is read follows from what it is declared as, never from how many coordinates address it.
+Each accessor holds one section of [the schema](schema.md): `dims` the labels, `properties` the metadata of those labels, `attributes` the data. Where a value is read follows from what it is declared as, never from how many coordinates address it.
 
 ## `LayerData`
 
@@ -78,13 +77,11 @@ A framework object satisfying `RecordLike` instead (narwhals `Frames`, as [`Tool
 `schema` is [the declaration](schema.md): which axes exist, which properties describe their labels, which attributes each label may carry, and over which axes each may vary.
 The rest is data, and comes in two shapes.
 
-`dims`, `properties`, `members` and `groups` are **wide** — one row per label or tuple:
+`dims`, `properties` and `groups` are **wide** — one row per label or tuple:
 
 ```text
 dims["entity"]                     entity                              key columns only
 properties["entity"]               entity | entity_type | carrier | ... stored values
-members("entity", entity_type="Generator")
-                                   entity | carrier | sign | ...       one category, defaults applied
 groups["connection"]               connection STRUCT(entity, bus) | role | ...
 ```
 
@@ -110,11 +107,11 @@ A consumer wanting a group's coordinates flat takes `nw.col("connection").struct
 `union_by_name` is what lets the fold union files of differing shape, supplying NULL for a coordinate a given file does not carry.
 
 **No property is a column of an attribute row**: `attributes["p_max_pu"]` holds every entity's `p_max_pu` together, whatever its category, since an `entity` identifies one label on its own.
-A consumer wanting one category's rows joins `members` on `entity`.
+A consumer wanting one category's rows joins `properties["entity"]`, filtered on the category, on `entity`.
 
 **`breakpoint`** is NULL for the ordinary case. It carries the abscissa of a piecewise-linear value: a curve is one row per breakpoint, `value` the ordinate at each. Convexity is never checked or recorded — that is a framework's judgement.
 
-`properties` and `attributes` answer **stored values only**; no default is applied, so a NULL property is one no layer wrote, and a coordinate no row covers is absent. `members` applies property defaults; an attribute's default is the consumer's to apply, through `Schema.default_for`.
+`properties` and `attributes` answer **stored values only**; no default is applied, so a NULL property is one no layer wrote, and a coordinate no row covers is absent. A default, a property's or an attribute's, is the consumer's to apply, through `Schema.default_for`.
 
 ## Properties and categories
 
@@ -122,14 +119,7 @@ A [property](schema.md#properties) is one value per label of its subject — a d
 
 **`properties[subject]`** is the subject's key with every property declared for it, as stored: a record-wide view, NULL wherever no layer wrote a value. It is keyed by each subject declaring properties.
 
-**`members(dim, **categories)`** is the per-category read. An `Enum` property of a dim in [`partial`](schema.md#partial-the-granularity-of-an-override) [categorizes](schema.md#categories-an-enum-property-of-a-partial-dim) that dim, and `members` takes those properties only, each one category or a list:
-
-```python
-record.members("entity", entity_type="Generator")
-record.members("entity", entity_type=["Generator", "Link"], carrier="wind")
-```
-
-It filters the labels on every keyword given and projects to the dim's key and the properties some selected label carries (`Schema.properties_for`). A property a label carries reads its stored value, or its [default](schema.md#default_by-a-default-per-category) — `default_by` per category, else `default` — where unset; one the label does not carry reads NULL. No attribute columns: a framework's static frame, PyPSA's `n.generators`, is `members` joined with the entity-only rows of its attributes.
+An `Enum` property of a dim in [`partial`](schema.md#partial-the-granularity-of-an-override) [categorizes](schema.md#categories-an-enum-property-of-a-partial-dim) that dim. One category's labels are `properties[dim]` filtered on it; which properties they carry is `Schema.properties_for`, and a property's [default](schema.md#default_by-a-default-per-category) — `default_by` per category, else `default` — is `Schema.default_for`. A framework's static frame, PyPSA's `n.generators`, is that frame, defaulted, joined with the entity-only rows of its attributes. A per-category read applying the defaults itself is [deferred](proposals/properties.md#optional-members).
 
 Which properties and attributes a label carries is decided by its categories at read time, against the [traits](schema.md#traits). A label whose category changes keeps what it held for attributes it no longer carries — `attributes` shows what was written — but those values fall outside every per-category read and every broadcast.
 
@@ -202,7 +192,7 @@ class Flags:
 `flags()` answers for the whole record in one query, keyed by attribute.
 Only attributes with rows are present, so `set(record.flags())` also answers which attributes the record has at all.
 
-**`flags(**categories)`** answers for one category: the keywords are categorizing properties of one dim, each one category or a list, as for [`members`](#properties-and-categories).
+**`flags(**categories)`** answers for one category: the keywords are categorizing properties of one dim, each one category or a list ([categories](#properties-and-categories)).
 Only rows reaching a matching label count — on the dim's own column, or through a group's single field over it — and only attributes those labels carry are present.
 Keywords categorizing several dims, or a group reaching the dim through two fields, are refused: there is no one label a row would count towards.
 
@@ -223,7 +213,7 @@ Reporting it as broadcast would answer the question above wrongly for every attr
 
 `entity` is a dim like the others here: `p_nom` set per entity reports `entity` in `varies`, and a single `entity = NULL` row puts it in `broadcast`. An attribute with no rows at all is [absent from the mapping](#flags) entirely.
 
-`flags` says nothing about properties, which are columns of their subject's file and read from `properties` or `members`.
+`flags` says nothing about properties, which are columns of their subject's file and read from `properties`.
 
 ## The protocol names no engine
 

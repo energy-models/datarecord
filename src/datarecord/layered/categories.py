@@ -210,27 +210,15 @@ def with_defaults(
     )
 
 
-def members(
-    schema: Schema,
-    axis: DuckDBPyRelation,
-    dim: str,
-    categories: Categories,
-    con: DuckDBPyConnection,
-) -> DuckDBPyRelation:
-    """The labels of `dim` among `categories`, with the properties they carry, defaulted.
+def carried_properties(schema: Schema, dim: str, rel: DuckDBPyRelation) -> list[str]:
+    """The properties of `dim` a label of `rel` carries, in declaration order.
 
-    Raises
-    ------
-    ValueError
-        As `selected`.
+    Judged by the category combinations `rel` holds when called.
     """
-    chosen = selected(schema, dim, categories)
-    rel = matching(with_properties(schema, axis, dim, con), chosen)
     carried = _carried_by_any(
         schema.properties_for, dim, *_combinations(schema, dim, rel)
     )
-    names = [n for n in schema.properties.get(dim, {}) if n in carried]
-    return with_defaults(schema, dim, rel, schema.axis_key(dim), names, con)
+    return [n for n in schema.properties.get(dim, {}) if n in carried]
 
 
 def with_properties(

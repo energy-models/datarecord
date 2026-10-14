@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Each accessor holds one section: `dims`, `properties`, `members`, per-category `flags`.
+"""Each accessor holds one section: `dims`, `properties`, per-category `flags`.
 
 Notes
 -----
@@ -117,47 +117,9 @@ def test_a_group_property_is_in_properties(record):
     assert "role" not in record.properties["entity"].collect_schema().names()
 
 
-def test_members_project_to_the_carried_properties_with_defaults(record):
-    frame = record.members("entity", entity_type="Load")
-    assert "control" not in frame.collect_schema().names(), "a Generator's only"
-    assert _rows(frame) == {
-        "l1": {"entity_type": "Load", "carrier": "", "sign": -1.0}
-    }, "sign reads its default_by with nothing stored, carrier its default"
-
-    rows = _rows(record.members("entity"))
-    assert rows["g1"]["control"] == "PQ"
-    assert rows["l1"]["control"] is None, "a load does not carry control"
-    assert rows["g1"]["sign"] == 1.0
-
-
-def test_members_take_several_categories(record):
-    frame = record.members("entity", entity_type=["Generator", "Load"])
-    assert set(_rows(frame)) == {"g1", "l1"}
-
-
-@pytest.mark.parametrize(
-    ("read", "match"),
-    [
-        pytest.param(
-            lambda r: r.members("entity", carrier="wind"),
-            "do not categorize 'entity'",
-            id="members-by-a-plain-property",
-        ),
-        pytest.param(
-            lambda r: r.members("entity", entity_type="Store"),
-            "not categories of 'entity_type'",
-            id="members-by-a-stray-category",
-        ),
-        pytest.param(
-            lambda r: r.flags(carrier="wind"),
-            "categorize no dim",
-            id="flags-by-a-plain-property",
-        ),
-    ],
-)
-def test_a_category_read_refuses_what_is_no_category(record, read, match):
-    with pytest.raises(ValueError, match=match):
-        read(record)
+def test_flags_refuse_a_plain_property(record):
+    with pytest.raises(ValueError, match="categorize no dim"):
+        record.flags(carrier="wind")
 
 
 def test_flags_per_category_hold_what_the_category_carries(record):
@@ -201,12 +163,12 @@ def test_a_property_keyword_matches_a_label_by_its_stored_value(record):
 
 
 @pytest.mark.parametrize("committed", [False, True], ids=["staged", "committed"])
-def test_set_of_a_category_re_categorizes_members_and_flags(revision, committed):
+def test_set_of_a_category_re_categorizes_labels_and_flags(revision, committed):
     staged = WorkingRecord(revision.record)
     staged.set("entity_type", "Load", entity="g1")
     record = revision.child(staged.edits).record if committed else staged
-    assert set(_rows(record.members("entity", entity_type="Load"))) == {"g1", "l1"}
-    assert _rows(record.members("entity", entity_type="Generator")) == {}
+    types = {e: r["entity_type"] for e, r in _rows(record.properties["entity"]).items()}
+    assert types == {"g1": "Load", "l1": "Load"}, "g1 is a load now"
     assert set(record.flags(entity_type="Generator")) == set(), "no generator is left"
     assert set(record.flags(entity_type="Load")) == {"p_set", "efficiency"}, (
         "the broadcast p_max_pu reaches no load, g1 included"

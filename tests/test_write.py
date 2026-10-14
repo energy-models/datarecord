@@ -72,9 +72,6 @@ class _Source:
     def properties(self):
         return self._frames(self._properties, "properties")
 
-    def members(self, dim, **categories):
-        raise NotImplementedError
-
     @property
     def groups(self):
         """Keyed by group, one frame each."""
