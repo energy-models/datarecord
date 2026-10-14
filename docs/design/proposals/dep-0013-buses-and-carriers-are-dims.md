@@ -19,11 +19,11 @@ Once implemented, [the tool page](../tools.md), [the schema](../schema.md#proper
 
 ## Abstract
 
-In the PyPSA tool, `Bus` and `Carrier` stop being entity types. A bus is a label of the `bus` dim and nothing else; a carrier is a label of a new `carrier` dim. What PyPSA stores on a bus or a carrier is a property of that label or an attribute over that dim, by [the properties rule](../schema.md#properties), and a bus's results are keyed by `bus`. Two changes to core carry it: a component's `carrier` becomes a property **`into`** the `carrier` dim — a property whose values are labels of a dim — and **a property's name is scoped to its subject**, so `x` on a bus and `x` on a line, `carrier` on an entity and `carrier` on a bus, keep PyPSA's names.
+In the PyPSA tool, `Bus` and `Carrier` stop being entity types. A bus is a label of the `bus` dim and nothing else; a carrier is a label of a new `carrier` dim. What PyPSA stores on a bus or a carrier is a property of that label or an attribute over that dim, by [the properties rule](../schema.md#properties), and a bus's results are keyed by `bus`. Two changes to core carry it: a component's `carrier` becomes a property **`into`** the `carrier` dim — a property whose values are labels of a dim — and **a property's name is scoped to its subject and addressed as `subject.name`**, so `x` on a bus and `x` on a line, `carrier` on an entity and `carrier` on a bus, keep PyPSA's names.
 
 ## Motivation
 
-**A bus exists twice.** The `connection` group ranges over `(entity, bus)`, so `north` is a label of the `bus` dim; and `Bus` is a value of `entity_type`, so `north` is also an entity, carrying `v_nom`, `x`, `y`, `carrier` and `control` on the entity axis. The two are joined by nothing but the spelling. `remove("bus", ["north"])` tombstones the label and its connections and leaves the entity; `remove("entity", ["north"])` does the reverse, and a record that did either is half-deleted with nothing to say so.
+**A bus exists twice.** The `connection` group ranges over `(entity, bus)`, so `north` is a label of the `bus` dim; and `Bus` is a value of the category `entity_type`, so `north` is also an entity, carrying `v_nom`, `x`, `y`, `carrier` and `control` on the entity axis. The two are joined by nothing but the spelling. `remove("bus", ["north"])` tombstones the label and its connections and leaves the entity; `remove("entity", ["north"])` does the reverse, and a record that did either is half-deleted with nothing to say so.
 
 **It makes a collision that is not one.** [`entity` is unique across types](../format.md#entity-is-unique-across-types), so `to_datarecord` refuses a network with a Bus and a Generator both named `north`, a shape every pypsa-eur network has after clustering — `DE0 0` is a bus and the name of its load. PyPSA permits it because a bus is not a component to it: it is what components attach to.
 
@@ -51,11 +51,11 @@ groups:
 
 properties:
   entity:
-    entity_type:
+    component: # was `entity_type`: PyPSA's own word for Generator, Line, ...
       dtype: { Enum: [Generator, Line, Link, Load, Process, ShuntImpedance, StorageUnit, Store, SubNetwork, Transformer] }
     carrier: { into: carrier }
-    sign: { dtype: Float64, default: 1, default_by: { entity_type: { Load: -1 } } }
-    type: { dtype: String, default: "" }
+    sign: { dtype: Float64, default: 1, default_by: { entity.component: { Load: -1 } } }
+    type: { dtype: String, default: "" } # PyPSA's standard type, unrenamed
   bus:
     carrier: { into: carrier, default: AC }
     type: { dtype: String, default: "" }
@@ -91,7 +91,7 @@ results:
 partial: [entity, bus, scenario, connection]
 ```
 
-**`entity_type` loses `Bus` and `Carrier`.** Its `Enum` is the component types the tool exports as entities; a bus or a carrier is never an entity row, so `dims/entity.parquet` holds none and `remove("entity", ["north"])` cannot touch a bus. `Shape` and `GlobalConstraint` are out of scope here, as today.
+**The category is `entity.component`, and it loses `Bus` and `Carrier`.** `entity_type` is renamed `component`, PyPSA's own word for Generator, Line and the rest, and its `Enum` is the component types the tool exports as entities; a bus or a carrier is never an entity row, so `dims/entity.parquet` holds none and `remove("entity", ["north"])` cannot touch a bus. PyPSA's `type` column — a Line's or Transformer's standard type — stays `entity.type`, unrenamed; the two no longer clash. `Shape` and `GlobalConstraint` are out of scope here, as today. A trait's `on` and a `default_by` name a categorizing property dotted, as everything else does: `on: {entity.component: [Generator]}`, `default_by: {entity.component: {Load: -1}}`.
 
 **Bus and carrier data is placed by [the properties rule](../schema.md#properties)**, read off the registry per name as `ENTITY_PROPERTIES` is today, not by dtype: a property identifies, classifies or describes the label; an attribute is what a model reads as part of its problem and what a layer would vary. Every name is PyPSA's.
 
@@ -117,36 +117,39 @@ This settles what the properties proposal left open: **a functional group over o
 
 **A property is addressed by `(subject, name)`**, the file it is a column of and the column, and its name is unique there and nowhere else. `x` is a property of `bus` and an attribute over `entity`; `carrier` is a property of `entity`, a property of `bus` and a dim; `type` is a property of both. [One name, one spec](../schema.md#properties) stays the rule for **attributes and results**, where one name is one file in `inputs/` or `outputs/` with one `value` column; a property is a column of its subject's file, and two files may each have a column `x` without either reading the other's.
 
-What is still refused, at schema load, is exactly what would collide in one file or one call:
+What is still refused, at schema load, is exactly what would collide in the subject's own file or in the keywords that address it:
 
 - **A property named like its subject's own key.** `dims/bus.parquet` is keyed by `bus`, and a nested dim's file by `(*parents, dim)` ([`within`](../schema.md#within-an-axis-inside-an-axis)), so a property of `timestep` may be named neither `timestep` nor `period`. A group's file is keyed by its struct column, so a property of `connection` may not be named `connection`.
 - **A property of a group named like one of its coordinates.** The coordinates are the struct's fields, not columns, but they are the keywords a tuple is addressed by — `entity=`, `bus=` — and a property of the group would take the same keyword.
-- **A property named like an attribute or result whose `dims` name its subject.** A `v_nom` property of `bus` beside a `v_nom` attribute over `bus` would both answer `set("v_nom", 380.0, bus="north")`. An attribute reaching the subject only through a group's field — `efficiency` over `connection` — is no collision: a group value is addressed by the whole tuple, never by `bus=` alone.
 - **Two spellings differing only in case**, record-wide, as today: DuckDB resolves `X` and `x` to one column, and the fold unions files by name.
+- **A `.` in any declared name**, as [names](../schema.md#names) already refuses: the dot is what the address below is spelled with.
 
-Two properties of one subject cannot share a name — `properties[subject]` is a mapping — and a trait bundling `x` for a dim it categorizes is unambiguous, since within one dim's reach a name is an attribute or a property of that dim, never both.
+Two properties of one subject cannot share a name — `properties[subject]` is a mapping. A property named like an attribute over its own subject — `v_nom` on `bus` beside `v_nom` over `bus` — is allowed: the two are `bus.v_nom` and `v_nom`. The worked case is `Shape`'s `component` column, an attribute over `entity` that `Shape` alone carries, beside the category `entity.component`: a plain `component` is the attribute, `entity.component` the property, and neither reads the other.
 
-**`set(name, value, **coords)` has as many readings of `name` as there are specs**: its attribute or result, and each subject declaring it. A reading fits when every keyword is one it takes — a coordinate the attribute reaches, or a categorizing property of a dim it reaches, for the attribute; the subject's key, or a group's fields, for a property. Exactly one fitting reading proceeds; none is the error it is today; more than one is refused naming the readings and the keyword that would settle it. A keyword is read as a **coordinate first**: `carrier="gas"` on `co2_emissions` is the dim `carrier`, which the attribute reaches, and on `p_max_pu` it is a property of `entity`, which it does not.
+**A property is always addressed by a dotted name, `subject.name`.** `"bus.carrier"` names the property `carrier` of `bus`, `"connection.role"` the property `role` of the group `connection`, `"entity.component"` the category of an entity. A **plain name** names the attribute or result of that name and nothing else: `set("component", "Load", entity="g1")` is the `Shape` attribute `component`, refused for a Load because it does not carry it, and `set("entity_type", "Load", entity="g1")` is an unknown attribute, the error suggesting `entity.component`; `set("carrier", "AC")` is unknown and may suggest `bus.carrier` and `entity.carrier`. There is no fallback to a property a plain name happens to match uniquely, so no call is ambiguous and no call changes meaning when a second subject declares the name. **Resolution reads the name alone and never the keywords**: keywords select labels and coordinates, as they do today. A declared name may not contain `.`, so the split is unambiguous.
 
 ```python
-w.set("x", 10.1, bus="north")  # the property of `bus`
+w.set("bus.x", 10.1, bus="north")  # the property of `bus`
 w.set("x", 0.05, entity="line1")  # the attribute, a Line's reactance
-w.set("x", 0.0)  # refused: a property of `bus` and an attribute over `entity` both fit
-w.set("carrier", "H2", entity="electrolyser")  # the property of `entity`
-w.set("carrier", "DC", bus="north DC")  # the property of `bus`
-w.set("carrier", {"g1": "wind"})  # refused: keys of `entity` or of `bus`
-w.set("carrier", series.rename_axis("entity"))  # settled by the index's name
-w.set("co2_emissions", 0.2, carrier="gas")  # `carrier` the dim
-w.set("p_max_pu", 0.8, entity_type="Generator")  # `entity_type` a property of `entity`
+w.set("x", 0.0, bus="north")  # the attribute: `bus` is no coordinate of it, refused as today
+w.set("entity.carrier", "H2", entity="electrolyser")  # the property of `entity`
+w.set("bus.carrier", "DC", bus="north DC")  # the property of `bus`
+w.set("bus.carrier", {"north": "AC"})  # keys are labels of `bus`, the subject
+w.set("carrier", "AC")  # unknown attribute; did you mean `bus.carrier` or `entity.carrier`
+w.set("entity.component", "Load", entity="g1")  # a category, dotted like any property
+w.set("co2_emissions", 0.2, carrier="gas")  # `carrier` the dim, a coordinate
+w.set("p_max_pu", 0.8, component="Generator")  # `component=` selects entities
 ```
 
-[`add(dim, labels, **columns)`](../working-record.md#add-remove) is unchanged: the subject is its first argument, so `add("bus", ["north"], x=10.1, carrier="AC")` names the properties of `bus` and nothing else. `kind="outputs"` and an `nw.Expr` select the attribute reading, a property being neither.
+A **selector keyword** cannot be dotted — `entity.carrier=` is not Python — and names only two kinds of thing: a coordinate of the attribute, or a categorizing property of a dim it reaches; an attribute's name is never a keyword, so `component="Generator"` on `p_max_pu` is the category `entity.component` and the `Shape` attribute `component` does not enter into it. A keyword that is not a coordinate is read as a categorizing property, **coordinate first**: `carrier="gas"` on `co2_emissions` is the dim `carrier`, which the attribute reaches; on `p_max_pu` it would be a property of `entity`, which the attribute reaches, and is refused only because `carrier` is not categorizing. A keyword naming a categorizing property declared on two dims the attribute reaches has no qualified form and is refused; whether selectors need one is [open](#open-issues).
 
-**In `Schema`**, every lookup of a property takes its subject. `subject_of(name)` and `property_spec(name)` go; `property_spec(subject, name)` stays, `subjects_of(name)` lists the subjects declaring one, in declaration order, for `set` to enumerate its readings, and `default_for(name, **categories)` answers attributes and results only, a property's default being `property_default(subject, name, **categories)`. `properties_for(subject, **categories)` and `categorizing(dim)` are per subject already. A staging table's column type is looked up by `(subject, name)`, which the table for `dims/<dim>.parquet` knows.
+[`add(dim, labels, **columns)`](../working-record.md#add-remove) is unchanged: the subject is its first argument, so `add("bus", ["north"], x=10.1, carrier="AC")` names the properties of `bus`, bare, and nothing else. `kind="outputs"` and an `nw.Expr` take an attribute or result, so a dotted name is refused there.
 
-**[`flags`](../record.md#flags) says nothing about properties**, so `flags()["x"]` is the attribute's and no change is needed; `record.properties["bus"]` and `record.properties["entity"]` each carry a `carrier` column and `record.dims["carrier"]` the axis, which is what makes `properties["entity"].join(dims["carrier"], on="carrier")` the natural spelling of the reference.
+**In `Schema`, one resolver.** `Schema.resolve(name)` takes a name and returns the `AttributeSpec` of the attribute or result a plain name is, or `(subject, PropertySpec)` for a dotted one, raising `KeyError` on an unknown name with the dotted forms of any property so named. `set`, `default_for(name, **categories)`, the staging table's column typing and `flags` all go through it, so there is one place the rule is stated; `subject_of(name)` and `property_spec(name)` go, being the one-answer-per-name assumption. `properties_for(subject, **categories)`, `categorizing(dim)` and `Trait.on` are per subject already; a trait's `attributes` bundles a property of the dim it categorizes by its dotted name.
 
-**A custom column clashes only with an attribute.** The tool's rule for a custom column — an attribute over its owner's dim — meets one name, one spec where two owners declare the same name with different `dims`: a custom `Bus.country` beside a custom `Generator.country` is `country` over `bus` and over `entity`, and `to_datarecord` reports it as unbuildable, naming the column and both owners (`Requirements.columns`), never renamed. A custom column named like a property of **another** subject — a `Generator.location` beside the registry's `Bus.location` — no longer clashes, and neither does a custom entity column named like a registry attribute of the same shape, as today. `Requirements.columns` keeps its shape, `(owner, column)`, and its meaning narrows to attributes.
+**[`flags`](../record.md#flags) says nothing about properties**, so `flags()["x"]` is the attribute's and keys stay plain; `record.properties["bus"]` and `record.properties["entity"]` each carry a `carrier` column — the frame's columns are the subject's own names, undotted, as the file's are — and `record.dims["carrier"]` the axis, which is what makes `properties["entity"].join(dims["carrier"], on="carrier")` the natural spelling of the reference.
+
+**A custom column clashes only with an attribute.** The tool's rule for a custom column — an attribute over its owner's dim — meets one name, one spec where two owners declare the same name with different `dims`: a custom `Bus.country` beside a custom `Generator.country` is `country` over `bus` and over `entity`, and `to_datarecord` reports it as unbuildable, naming the column and both owners (`Requirements.columns`), never renamed. A custom column named like a property of any subject — a `Generator.location` beside the registry's `Bus.location`, or a `Bus.v_nom`-like custom `Bus.unit` beside the property `bus.unit` — no longer clashes, the two being `location` and `bus.location`; neither does a custom entity column named like a registry attribute of the same shape, as today. `Requirements.columns` keeps its shape, `(owner, column)`, and its meaning narrows to attributes; the dotted address changes nothing here, a custom column being an attribute and so plain.
 
 **Results.** `marginal_price`, `v_mag_pu` and `v_ang` are results over `bus` and the varying dims, read off the registry like every result. `Bus.p` and `Bus.q` stay unwritten, for the reasons they are today — the signed sum of the connection `p`/`q` at the bus, and `p` is one spec record-wide, over `connection`. `Bus.control`, `Bus.generator` and `Bus.sub_network` join them: they are what `determine_network_topology` and a power flow write back from the connections, and `sub_network` is already a result over `entity` on a Line. `_DERIVED_RESULTS["Bus"]` names all five.
 
@@ -158,16 +161,18 @@ w.set("p_max_pu", 0.8, entity_type="Generator")  # `entity_type` a property of `
 
 **`to_datarecord`** writes `dims/bus.parquet` from `n.buses` and `dims/carrier.parquet` from `n.carriers`, in their order. The `carrier` axis also gains every carrier a component or a bus names that `n.carriers` lacks, with no properties, so every stored `carrier` names a live label; `""` is stored as NULL. A bus static column is placed by the table above; `v_mag_pu_set` is long rows keyed by `bus`, constant or per snapshot by PyPSA's own static/series split, as an entity's series is today.
 
-**`build`** reconstructs `n.buses` as `dims["bus"]` in [axis order](../record.md#axis-order), joined with `properties["bus"]` with [`property_default`](../schema.md#default_by-a-default-per-category) applied, and with the bus-only rows of every attribute over `bus`; `v_mag_pu_set` goes static or dynamic by its [flags](../record.md#flags). `n.carriers` likewise, so a carrier `to_datarecord` added comes back as a row `n.carriers` did not have. A component's `carrier` is read from `properties["entity"]`, NULL as `""`. Bus results are set from `outputs` keyed by `bus`, as connection results are from rows keyed by the struct.
+**`build`** reconstructs `n.buses` as `dims["bus"]` in [axis order](../record.md#axis-order), joined with `properties["bus"]` with [`default_for("bus.carrier", ...)`](../schema.md#default_by-a-default-per-category) and the other defaults applied, and with the bus-only rows of every attribute over `bus`; `v_mag_pu_set` goes static or dynamic by its [flags](../record.md#flags). `n.carriers` likewise, so a carrier `to_datarecord` added comes back as a row `n.carriers` did not have. A component's `carrier` is read from `properties["entity"]`, NULL as `""`. Bus results are set from `outputs` keyed by `bus`, as connection results are from rows keyed by the struct.
 
 ### The design pages that change
 
+- **The rename, everywhere `entity_type` is written**: it is `component` in the PyPSA tool (`ENTITY_TYPE`, the registry schema, every `on` and `default_by`), in every design and usage page that names it — [the schema example and categories section](../schema.md#categories-an-enum-property-of-a-partial-dim), [record](../record.md#properties-and-categories), [working record](../working-record.md#set), [tools](../tools.md), [the entity axis](../format.md#the-entity-axis), the usage [schema](../../usage/schema.md), [reading](../../usage/reading.md) and [editing](../../usage/editing.md) pages — and in the tests, some twenty files; core `src/datarecord` outside the tool names it in two docstring examples only.
 - [Tools](../tools.md): the collision example becomes a Generator and a Load; `partial` gains `bus` and loses its sentence about why `bus` was out; the properties list gains `bus` and `carrier`; the PyPSA→record table above; `Bus.p`/`q` keep their paragraph and gain the three topology outputs; the custom-column clash narrowed to attributes.
 - [Format](../format.md#entity-is-unique-across-types): the collision example likewise; [where a value lives](../format.md#where-a-value-lives) loses "no column on the classified axis"; [the entity axis](../format.md#the-entity-axis)'s "one name has one spec" says attributes and results.
-- [Schema](../schema.md#properties): `PropertySpec.into`; **"One name, one spec, across every section"** becomes the per-subject rule and the refused list above; the example drops `Bus` from the `Enum` and declares `carrier: {into: carrier}` on `entity` and `carrier`, `type`, `x` on `bus`; [`into`](../schema.md#into-a-group-that-classifies) states the one-coordinate rule; [names](../schema.md#names) notes a property's name is scoped to its subject; [`partial`](../schema.md#partial-the-granularity-of-an-override)'s "not `timestep` or `bus`" becomes "not `timestep` or `carrier`".
+- [Schema](../schema.md#properties): `PropertySpec.into`; **"One name, one spec, across every section"** becomes the per-subject rule, the dotted address and the refused list above; the example drops `Bus` from the `Enum` and declares `carrier: {into: carrier}` on `entity` and `carrier`, `type`, `x` on `bus`; [`into`](../schema.md#into-a-group-that-classifies) states the one-coordinate rule; [names](../schema.md#names) says a property's name is scoped to its subject and that the `.` it already refuses is the address's separator; [`partial`](../schema.md#partial-the-granularity-of-an-override)'s "not `timestep` or `bus`" becomes "not `timestep` or `carrier`".
 - [Record](../record.md#the-broadcast-rule): `set("p_max_pu", 0.9)` reaches every generator "and never a load" where it said a bus; [`flags`](../record.md#flags) says that a name both an attribute and a property is the attribute's there.
-- [Working record](../working-record.md#set): the readings rule and coordinate-first keywords; [validation](../working-record.md#validation) lists an ambiguous reading; [`add` / `remove`](../working-record.md#add-remove): `remove` refusing a label a property `into` the dim still names.
-- The usage [schema page](../../usage/schema.md), whose "one name, one spec, record-wide, across every section" becomes attributes and results.
+- [Working record](../working-record.md#set): `set` takes a dotted name for a property, a plain one for an attribute or result, and resolves it without the keywords; its examples `set("carrier", "solar", entity="g2")` and `set("entity_type", "Load", entity="g1")` become `entity.carrier` and `entity.component`; selector keywords read coordinate first; [validation](../working-record.md#validation) names the unknown-name error and its suggestion; [`add` / `remove`](../working-record.md#add-remove): `remove` refusing a label a property `into` the dim still names.
+- The usage [schema page](../../usage/schema.md), whose "one name, one spec, record-wide, across every section" becomes attributes and results, and the usage [editing page](../../usage/editing.md), whose `set("carrier", ...)` and `set("entity_type", ...)` examples become dotted.
+- `tests/test_mutable.py` and `tests/test_properties.py`, where every `set` of a property is dotted.
 
 ## Rationale
 
@@ -175,14 +180,16 @@ w.set("p_max_pu", 0.8, entity_type="Generator")  # `entity_type` a property of `
 
 **Placement follows the rule, not the type.** `x` was an attribute over `entity` because `Bus` was an entity; it is a property of `bus` because a coordinate describes a bus, which is the test the schema states. `Bus.x` and `Line.x` stop being one thing by accident — and keep their name, because a property already has a namespace, its subject, and a prefix would spell that namespace into the name a second time.
 
-**The record-wide rule was protecting a file, and a property has one.** One name, one spec exists so that `inputs/x.parquet` is one file with one `value` dtype; a property's file is its subject's, keyed by the subject, and nothing reads a property without naming the subject first. What the rule still has to protect is a column within one file and a keyword within one call, which is the refused list.
+**The record-wide rule was protecting a file, and a property has one.** One name, one spec exists so that `inputs/x.parquet` is one file with one `value` dtype; a property's file is its subject's, keyed by the subject, and nothing reads a property without naming the subject first. What the rule still has to protect is a column within one file and a keyword a tuple is addressed by, which is the refused list; the name a call passes is settled by the dot, not by what else the call passes.
 
 **`into` on a property is the smallest construct that makes `carrier` a reference.** It reuses the word and the check a group already has, answers the open question about single-coordinate `into` groups by removing them, and costs core one optional field, one parse-time check and one write-time join — the join the writer already does for a tuple's field. Sharing the dim's name is what lets the reference column join the axis on its own name.
 
 **What it costs.**
 
-- **Every PyPSA record stops reading.** `entity_type`'s `Enum` shrinks, a [dtype change](../schema.md#versioning); `x`, `type` and `carrier` move subject or section; bus series move from `entity`-keyed rows to `bus`-keyed. A record is re-exported from PyPSA; there is no migration of files, [breaking changes being free](https://github.com/energy-models/datarecord/blob/main/AGENTS.md). Hand-written records following the old tool schema are in the same position.
-- **A name no longer identifies one thing record-wide.** `x` needs a subject to be looked up, so `subject_of` and `property_spec(name)` go, and a `set` that fits two readings needs a keyword where it needed none. A consumer reading `inputs/x.parquet` and `dims/bus.parquet` without the schema finds two `x` columns meaning two things.
+- **Every PyPSA record stops reading.** `entity_type` is renamed `component` and its `Enum` shrinks, a [dtype change](../schema.md#versioning) twice over; `x`, `type` and `carrier` move subject or section; bus series move from `entity`-keyed rows to `bus`-keyed. A record is re-exported from PyPSA; there is no migration of files, [breaking changes being free](https://github.com/energy-models/datarecord/blob/main/AGENTS.md). Hand-written records following the old tool schema are in the same position.
+- **Every property call is dotted, and every existing one breaks.** `set("carrier", "solar", entity="g2")` and `set("entity_type", "Load", entity="g1")` — in the working-record and editing pages, in `tests/test_mutable.py` and `tests/test_properties.py`, and in the PyPSA tool's own calls — stop working with an unknown-name error that suggests `entity.carrier` and `entity.component`. `subject_of` and `property_spec(name)` go for `resolve`.
+- **`entity_type` is gone as a word.** Every `on`, `default_by`, keyword selector and column that spelled it — in the tool, the pages and some twenty test files — spells `component`; a record carrying an `entity_type` column is one the tool no longer reads.
+- **A plain name no longer identifies one thing record-wide.** A consumer reading `inputs/x.parquet` and `dims/bus.parquet` without the schema finds two `x` columns meaning two things.
 - **The fold key widens by one** for every read, `bus` being `partial`.
 - **A round trip can add carrier rows** — the ones a network referenced without listing — and reads a `""` carrier back as `""` through NULL, so a network with `""` listed in `n.carriers` does not round-trip that row.
 - **Removing a carrier is a two-step edit** where it used to be a tombstone plus a dangling string.
@@ -203,7 +210,7 @@ record.attributes[
 record.outputs[
     "marginal_price"
 ]  # bus | snapshot | scenario | attribute | breakpoint | value
-record.properties["entity"]  # entity | entity_type | carrier | sign | type
+record.properties["entity"]  # entity | component | carrier | sign | type
 
 # a generator's carrier's emissions: two frames joined on the label
 emissions = record.attributes["co2_emissions"].select("carrier", "value")
@@ -216,17 +223,20 @@ Writing:
 w.add("carrier", ["H2"], color="#f0f", nice_name="Hydrogen")
 w.set("co2_emissions", 0.0, carrier="H2")
 
-w.add("bus", ["north H2"], carrier="H2", x=10.1, y=52.0)
+w.add("bus", ["north H2"], carrier="H2", x=10.1, y=52.0)  # bare: the dim's own
 w.set("v_nom", 380.0, bus="north")  # one bus, `bus` being partial
-w.set("x", 10.2, bus="north")  # the bus's longitude; `entity=` would be a reactance
+w.set("bus.x", 10.2, bus="north")  # the bus's longitude; `x` alone is a reactance
 w.set("v_mag_pu_set", series.rename_axis("snapshot"), bus=["north"])
 
-w.add("entity", ["electrolyser"], entity_type="Link", carrier="H2")
+w.add("entity", ["electrolyser"], component="Link", carrier="H2")
 w.add_group(
     "connection", frame
 )  # (electrolyser, north) input, (electrolyser, north H2) output
-w.set("carrier", "coal", entity="g1")  # refused: `coal` is no label of `carrier`
-w.set("carrier", "AC")  # refused: a property of `entity` and of `bus`; say which
+w.set("connection.role", "output", entity="electrolyser", bus="north H2")
+w.set("entity.component", "Load", entity="g1")  # a category: dotted like any property
+w.set("entity.carrier", "coal", entity="g1")  # refused: `coal` is no label of `carrier`
+w.set("carrier", "AC")  # unknown attribute; did you mean `bus.carrier` or `entity.carrier`
+w.set("bus.carrier", "AC")  # every bus
 
 w.remove("bus", ["south"])  # tombstones the label and every connection at it
 w.remove("carrier", ["gas"])  # refused while an entity's or a bus's carrier names it
@@ -246,7 +256,7 @@ back.carriers  # every carrier `n` listed, plus any a component named and `n` di
 
 ## Implementation notes
 
-1. **Core: a property's name is its subject's.** `_check_names` keeps one name, one spec for attributes and results, and refuses a property by the list above; `subject_of` and `property_spec(name)` go for `subjects_of(name)`, `property_spec(subject, name)` and `property_default(subject, name, **categories)`; `set` enumerates its readings and refuses an ambiguous call, reading a keyword as a coordinate first; the staging table's column type is looked up per subject. Tests in `tests/test_schema.py` and `tests/test_working_record.py`.
+1. **Core: a property's name is its subject's.** `_check_names` keeps one name, one spec for attributes and results, and refuses a property by the list above; `Schema.resolve(name)` replaces `subject_of` and `property_spec(name)`, and `set`, `default_for`, the staging table's column typing and `flags` call it; a plain name is an attribute or result or unknown, the error suggesting the dotted forms, and a selector keyword reads as a coordinate first; every property `set` in the tool, the pages and the tests becomes dotted, and `entity_type` becomes `component` in the same pass. Tests in `tests/test_schema.py` and `tests/test_working_record.py`.
 2. **Core: `PropertySpec.into`.** Parse and validate — a declared dim, no `dtype` beside it, no `Enum`; a one-coordinate `into` group refused. `set` and `add` refuse a value naming no live label; the writer folds the parent's axis to check a layer's stored values, as it does a tuple's fields; `remove` refuses a label a property `into` the dim still names.
 3. **Tool: the schema.** `_AXIS_TYPES = {"Bus": "bus", "Carrier": "carrier"}` taken out of the entity loop of `_registry_schema`; the `carrier` dim; bus and carrier properties and attributes by the table, through a `BUS_PROPERTIES`/`CARRIER_PROPERTIES` list beside `ENTITY_PROPERTIES`; `_DERIVED_RESULTS["Bus"]` grown; `partial` gains `bus`.
 4. **Tool: the frames.** `_NetworkSource` writes the two axes, their properties and their long rows keyed by `bus` or `carrier`; missing carriers added; `_custom_columns` covers the two axes and `_clashing_columns` reports an attribute-against-attribute clash only; the entity-name collision check drops `Bus`.
@@ -255,11 +265,13 @@ back.carriers  # every carrier `n` listed, plus any a component named and `n` di
 
 The checks that hold once it is built:
 
-- **No `Bus` or `Carrier` in `entity_type`'s `Enum`**, and no row of `dims/entity.parquet` is a bus or a carrier.
+- **No `Bus` or `Carrier` in `entity.component`'s `Enum`**, no `entity_type` anywhere in `src/`, `tests/` or `docs/` outside the proposals, and no row of `dims/entity.parquet` is a bus or a carrier.
+- **`Shape`'s `component` and the category `entity.component` coexist**: `set("component", "Bus", entity="shape0")` and `set("entity.component", "Load", entity="g1")` each reach their own, and `set("p_max_pu", 0.8, component="Generator")` selects by the category.
 - **A Bus and a Generator named `north` round-trip.** `to_datarecord` writes them; `build` finds both by name.
 - **`n.buses` and `n.carriers` round-trip** column for column, under PyPSA's names and in order, a carrier only `n.generators` named appearing as a new row.
-- **A schema declaring `x` as a property of `bus` and an attribute over `entity` loads**, `set("x", v, bus=...)` and `set("x", v, entity=...)` each reach their own, and `set("x", v)` is refused naming both.
-- **A property named like its subject's key, a group's coordinate, or an attribute over its subject is refused** at schema load, naming the collision.
+- **A schema declaring `x` as a property of `bus` and an attribute over `entity` loads**, `set("bus.x", v, bus=...)` and `set("x", v, entity=...)` each reach their own, and `set("x", v, bus=...)` fails as an attribute call with a coordinate it does not reach.
+- **`set("carrier", "AC")` and `set("entity_type", "Load", entity="g1")` are unknown names**, with or without keywords, and the error names `bus.carrier`, `entity.carrier` and `entity.component`; the dotted calls succeed.
+- **A property named like its subject's key or a group's coordinate is refused** at schema load, naming the collision; one named like an attribute over its subject loads, and `v_nom` and `bus.v_nom` resolve apart.
 - **`v_mag_pu_set` and `marginal_price` are keyed by `bus`**, with no `entity` column.
 - **`set("carrier", "coal", entity="g1")` is refused** while `coal` is no label; `remove("carrier", ["gas"])` is refused while a generator names it; `remove("bus", ["north"])` tombstones its connections and drops its `v_nom`.
 - **A `Group` with one coordinate and an `into` is refused** at schema load.
@@ -277,6 +289,12 @@ The checks that hold once it is built:
 
 **Prefixing every bus column.** `bus_v_nom`, `bus_unit`: consistent and unnecessary; the subject is the prefix, and the record's names are PyPSA's.
 
+**Readings chosen by the keywords** — `set("x", v, bus="north")` reading `x` as the bus property because `bus=` fits it, and `set("x", v, entity="l1")` as the attribute, with a call fitting both refused. It makes what a name means depend on which keywords a call passes: the same `"x"` is a longitude in one line and a reactance in the next, a schema change adding a subject silently re-routes calls that used to be unambiguous, and `flags`, `default_for` and a staging table, which have no keywords, would need a second rule. A name resolves on its own; keywords select.
+
+**Renaming PyPSA's `type` to `std_type` so the category could be `type`.** It would keep record names PyPSA's only where convenient: a Line's `type` is PyPSA's word for its standard type, and `component` is PyPSA's word for the kind, so the record takes both as they are and `entity.type` and `entity.component` sit side by side.
+
+**A plain name falls back to a unique property** — `set("component", ...)` reading as `entity.component` while only `entity` declares it. Two rules where one does, and a name's meaning changing the day another subject declares the same property: a call that worked becomes a refusal by a schema change elsewhere. A property is dotted, always, and the cost is the dot.
+
 **Scoping attributes per dim too** — `country` over `bus` and `country` over `entity` as two attributes. An attribute is one file in `inputs/` with one `value` column and one place in the fold key; two shapes under one name would need two files under one name. A property has a file per subject already; an attribute does not.
 
 **`carrier` in `partial`.** Patching one carrier's `co2_emissions` value by value is not worth a key column on every read; the axis is small enough to restate.
@@ -287,9 +305,9 @@ The checks that hold once it is built:
 
 ## Open Issues
 
-- **Whether a property `into` a `partial` dim may categorize it.** A trait `on: {carrier: [wind]}` and a `default_by` keyed on `carrier` would key on an axis's labels rather than a schema's `Enum`; the vocabulary becomes data, checkable only against the resolved axis. With `carrier` a property of two subjects, a trait would also have to say which, as its `on` names one property today.
+- **Whether a property `into` a `partial` dim may categorize it.** A trait `on: {carrier: [wind]}` and a `default_by` keyed on `carrier` would key on an axis's labels rather than a schema's `Enum`; the vocabulary becomes data, checkable only against the resolved axis. Its `on` would name it dotted, `entity.carrier`, as a selector keyword cannot.
 - **Whether a default must name a live label.** A bus's `carrier` defaults to `AC`, which is never stored and so never checked; a record whose `carrier` axis lacks `AC` reads every undeclared bus as `AC` all the same. `to_datarecord` adding `AC` whenever a bus defaults to it would close it at the cost of a row.
 - **Whether `bus` earns its place in `partial`.** The fold-key cost is paid by every read and is to be measured on a pypsa-eur-sized record; the alternative is restating `v_nom` for every bus on a one-bus patch.
 - **Whether a custom bus column can be a property.** `country` and `busmap_5` describe a bus, and the rule makes them attributes because the registry is silent — which is also what makes a custom `Bus.country` beside a `Generator.country` the one clash left. A hint the network carries, or a tool-level list, would turn both into properties and dissolve it.
-- **Whether `set` should fall back to one reading by its value.** A mapping keyed by labels could be matched against each candidate subject's axis; the working-record page refuses that for coordinates — a label is a string like any other — and the same argument applies here, but a name on two subjects makes the refusal bite more often.
+- **Whether selector keywords need a qualified form.** `set("efficiency", 0.9, type="x")` on an attribute over `connection` reaches `entity` and `bus`, and a categorizing `type` on both has no keyword to say which; the coordinate-first rule settles a dim against a property, never two properties. A `select={"entity.type": "x"}` mapping, or a keyword spelled `entity__type`, would; neither is wanted until a schema declares one categorizing name on two dims one attribute reaches.
 - **What PyPSA#1474 lands as.** When PyPSA makes carriers and buses indices, a carrier referenced but unlisted may become an error there, and `""` may stop meaning none.
