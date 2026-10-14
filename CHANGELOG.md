@@ -13,6 +13,20 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- **The PyPSA tool keeps buses and carriers as dims**: `Bus` and `Carrier` are
+  no entity types, a bus being a label of `bus` and a carrier of a new
+  `carrier` dim. `bus.carrier`, `type`, `x`, `y`, `unit` and `location`, and
+  `carrier.color` and `nice_name` are properties; `v_nom`, `v_mag_pu_*`,
+  `co2_emissions`, `max_growth`, `max_relative_growth` and custom bus or
+  carrier columns attributes over their dim; `marginal_price`, `v_mag_pu`
+  and `v_ang` results over `bus`, which `build` sets back. `Bus.p`, `q`,
+  `control`, `generator` and `sub_network` are not written.
+  `entity.carrier` and `bus.carrier` are `into` `carrier`: `to_datarecord`
+  adds every carrier named but not listed and stores `""` as NULL. `bus`
+  joins `partial`. A bus and a load may share a name; a custom column
+  clashes only with an attribute over another dim. `entity_type` is
+  `entity.component`. `verify` reports an entity attached to no bus. Every
+  PyPSA record is re-exported.
 - **A property may be `into` a dim** (`PropertySpec.into`): its values are
   that dim's labels and its dtype the dim's, declared on any subject. `set`
   and `add` refuse a value naming no label of the dim, NULL naming none; the

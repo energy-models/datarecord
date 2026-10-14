@@ -334,7 +334,12 @@ def _require_living_references(
         dead = coords.dead.get(dim)
         if dead is None:
             continue
-        suspects = [] if subject not in written else [(written[subject], dead)]
+        stored = subject if subject in schema.groups else column
+        suspects = (
+            [(written[subject], dead)]
+            if subject in written and stored in written[subject].columns
+            else []
+        )
         resolved = (coords.groups if subject in schema.groups else coords.axes).get(
             subject
         )

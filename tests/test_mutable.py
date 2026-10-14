@@ -63,7 +63,7 @@ def written_directory(root, tmp_path_factory):
 def _small(store, **declared):
     """A root of two generators with a `p_nom`, under `schema(**declared)`.
 
-    `Norway` is both a `Bus` entity and a `bus` label, as in `ac_dc`.
+    `Norway` is both an entity and a `bus` label, as a load and its bus are in `ac_dc`.
     """
     write_schema(schema(**declared), store)
     revision = empty_root(store)
@@ -747,15 +747,15 @@ def test_re_adding_a_label_replaces_its_row(staged, root):
     - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
     """
     staged.remove("entity", ["Manchester Wind"])
-    staged.add("entity", ["Manchester Wind"], component="Bus")
+    staged.add("entity", ["Manchester Wind"], component="Load")
 
     rows = staged.edits.axis("entity").df()
     rows = rows[rows["entity"] == "Manchester Wind"]
     assert len(rows) == 1, "one label, one row"
-    assert list(rows["component"]) == ["Bus"], "the later op wins"
+    assert list(rows["component"]) == ["Load"], "the later op wins"
 
     child = root.child(staged.edits)
-    assert _entity_axis(child.record).loc["Manchester Wind", "component"] == "Bus"
+    assert _entity_axis(child.record).loc["Manchester Wind", "component"] == "Load"
 
 
 def test_add_rejects_a_column_the_schema_does_not_declare(staged):

@@ -113,6 +113,124 @@ def test_verify_accepts_a_complete_record(single_revision):
     assert not PyPSA.verify(single_revision.record)
 
 
+def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
+    """`n.buses` and `n.carriers` are the `bus` and `carrier` axes, under PyPSA's names.
+
+    Notes
+    -----
+    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    """
+    record = single_revision.record
+    component = record.schema.properties["entity"]["component"].dtype
+    assert not {"Bus", "Carrier"} & set(component.categories)
+    assert record.properties["bus"].collect_schema().names() == [
+        "bus",
+        "carrier",
+        "type",
+        "x",
+        "y",
+        "unit",
+        "location",
+    ]
+    assert record.properties["carrier"].collect_schema().names() == [
+        "carrier",
+        "color",
+        "nice_name",
+    ]
+    assert record.schema.attributes["v_nom"].dims == {"bus"}
+    assert record.schema.attributes["co2_emissions"].dims == {"carrier"}
+
+    built = PyPSA.build(record)
+    for ctype in ("Bus", "Carrier"):
+        original = ac_dc.c[ctype].static
+        pd.testing.assert_frame_equal(
+            built.c[ctype].static[original.columns],
+            original,
+            check_dtype=False,
+            check_index_type=False,
+        )
+
+
+def test_an_unlisted_carrier_is_added_and_an_empty_one_is_none(store):
+    """A carrier named but not in `n.carriers` becomes a label; `""` names none.
+
+    Notes
+    -----
+    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    """
+    n = _north()
+    n.add("Carrier", "AC", color="black")
+    n.add("Generator", "wind", bus="north", carrier="wind")
+
+    record = export_network(n, store).record
+    assert record.dims["carrier"].collect()["carrier"].to_list() == ["AC", "wind"]
+    carriers = record.properties["entity"].collect().to_pandas()
+    assert carriers.set_index("entity")["carrier"].isna().to_dict() == {
+        "gen": True,
+        "wind": False,
+    }, "an empty carrier is stored as NULL"
+
+    built = PyPSA.build(record)
+    assert built.c.Carrier.static.index.to_list() == ["AC", "wind"]
+    assert built.c.Generator.static["carrier"].to_dict() == {"gen": "", "wind": "wind"}
+
+
+def test_a_property_is_addressed_by_its_subject(single_revision):
+    """`x` is a line's reactance and `bus.x` a bus's coordinate; `carrier` alone is neither.
+
+    Notes
+    -----
+    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    from datarecord.mutable import WorkingRecord
+
+    w = WorkingRecord(single_revision.record)
+    w.set("x", 0.5, entity="0")
+    w.set("bus.x", 10.2, bus="London")
+
+    x = w.attributes["x"].collect().to_pandas().set_index("entity")["value"]
+    assert x["0"] == 0.5
+    assert "London" not in x.index, "`x` reaches no bus"
+    buses = w.properties["bus"].collect().to_pandas().set_index("bus")
+    assert buses.at["London", "x"] == 10.2
+    with pytest.raises(KeyError, match=r"`bus\.carrier` or `entity\.carrier`"):
+        w.set("carrier", "AC")
+
+
+def test_a_carrier_is_a_live_label(single_revision):
+    """`entity.carrier` names a label, and a label named is not removed.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    from datarecord.mutable import WorkingRecord
+
+    w = WorkingRecord(single_revision.record)
+    with pytest.raises(KeyError, match="coal"):
+        w.set("entity.carrier", "coal", entity="Manchester Gas")
+    with pytest.raises(ValueError, match="entity.carrier"):
+        w.remove("carrier", ["gas"])
+
+
+def test_verify_reports_an_entity_attached_to_no_bus(single_revision):
+    """Removing a bus removes its connections; what was attached to it is unbuildable.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    from datarecord.mutable import WorkingRecord
+
+    w = WorkingRecord(single_revision.record)
+    w.remove("bus", ["Manchester"])
+
+    missing = PyPSA.verify(w).attributes
+    assert {("Generator", "bus"), ("Load", "bus")} <= missing
+    assert ("Link", "bus0") not in missing, "no link is at Manchester"
+
+
 def test_requires_reports_the_records_own_types(single_revision):
     """`requires` is record-dependent: PyPSA's axes plus this record's types."""
     req = PyPSA.requires(single_revision.record)
@@ -212,6 +330,8 @@ def _with_schema(revision, **kwargs) -> None:
     """
     was = read_schema(revision.store)
     now = schema(**kwargs)
+    labelled = {d: spec for d, spec in was.dimensions.items() if d not in _DIMS}
+    now = now.model_copy(update={"dimensions": {**labelled, **now.dimensions}})
     # Keep the old attributes, but drop any dim a redeclaration removed from
     # their address - an attribute over a dim the schema no longer declares is
     # rejected at construction, and the point here is the redeclared dims, not a
@@ -329,8 +449,19 @@ def test_verify_reports_a_piecewise_linear_attribute(exported):
         PyPSA.build(revision.record)
 
 
+def _north():
+    """A bus `north` and a generator at it, over two snapshots."""
+    import pypsa
+
+    n = pypsa.Network()
+    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
+    n.add("Bus", "north")
+    n.add("Generator", "gen", bus="north")
+    return n
+
+
 def test_to_datarecord_rejects_a_cross_type_name_collision(workspace):
-    """PyPSA scopes names per type; a record scopes them across every type.
+    """PyPSA scopes names per type; a record scopes them across every entity type.
 
     Reported rather than repaired: renaming to `Generator:north` would hand back
     a network whose components PyPSA can no longer find by their own names, so
@@ -341,42 +472,74 @@ def test_to_datarecord_rejects_a_cross_type_name_collision(workspace):
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    import pypsa
+    n = _north()
+    n.add("Generator", "north", bus="north")
+    n.add("Load", "north", bus="north")
 
-    n = pypsa.Network()
-    n.add("Bus", "north")
+    with pytest.raises(
+        UnsupportedRecordError, match="more than one category"
+    ) as raised:
+        PyPSA.to_datarecord(n, workspace.con)
+    assert raised.value.missing.names == {"north"}
+
+
+def test_a_bus_and_a_generator_may_share_a_name(store):
+    """A bus is a label of `bus`, not an entity, so `north` is one of each."""
+    n = _north()
     n.add("Generator", "north", bus="north")
 
-    with pytest.raises(UnsupportedRecordError, match="more than one category"):
-        PyPSA.to_datarecord(n, workspace.con)
+    record = export_network(n, store).record
+    assert record.dims["bus"].collect()["bus"].to_list() == ["north"]
+    assert "north" in record.dims["entity"].collect()["entity"].to_list()
+    assert_networks_equal(PyPSA.build(record), n)
 
 
-def test_to_datarecord_rejects_a_custom_column_declared_with_another_shape(workspace):
-    """A carrier's own `efficiency` has nowhere to go: the name is a per-port attribute."""
-    import pypsa
+@pytest.mark.parametrize(
+    ("columns", "clashing"),
+    [
+        ({"Carrier": ("efficiency", 0.9)}, {("Carrier", "efficiency")}),
+        (
+            {"Bus": ("country", "DE"), "Generator": ("country", "DE")},
+            {("Bus", "country"), ("Generator", "country")},
+        ),
+    ],
+    ids=["registry-attribute", "two-dims"],
+)
+def test_to_datarecord_rejects_a_custom_column_declared_over_another_dim(
+    workspace, columns, clashing
+):
+    """A custom column is an attribute over its type's dim, one name one spec.
 
-    n = pypsa.Network()
+    A carrier's own `efficiency` meets the per-port attribute; `country` on a
+    bus and on a generator would be one attribute over two dims.
+    """
+    n = _north()
     n.add("Carrier", "AC")
-    n.c.Carrier.static["efficiency"] = 0.9
+    for ctype, (column, value) in columns.items():
+        n.c[ctype].static[column] = value
 
     with pytest.raises(UnsupportedRecordError, match="another shape") as raised:
         PyPSA.to_datarecord(n, workspace.con)
-    assert raised.value.missing.columns == {("Carrier", "efficiency")}
+    assert raised.value.missing.columns == clashing
 
 
-def test_a_custom_column_round_trips_on_its_own_type(store):
-    """A column PyPSA's registry lacks is an entity column carried by its type alone."""
-    import pypsa
+@pytest.mark.parametrize(
+    ("ctype", "column", "dim"),
+    [("Bus", "country", "bus"), ("Generator", "location", "entity")],
+    ids=["bus", "beside-a-bus-property"],
+)
+def test_a_custom_column_round_trips_on_its_own_type(store, ctype, column, dim):
+    """A column PyPSA's registry lacks is an attribute over its type's dim.
 
-    n = pypsa.Network()
-    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
-    n.add("Bus", "north")
-    n.add("Generator", "gen", bus="north")
-    n.c.Bus.static["country"] = "DE"
+    A generator's own `location` is no clash with `bus.location`, a property.
+    """
+    n = _north()
+    n.c.Bus.static["location"] = "DE1"
+    n.c[ctype].static[column] = "site"
 
-    built = PyPSA.build(export_network(n, store).record)
-    assert built.c.Bus.static.loc["north", "country"] == "DE"
-    assert "country" not in built.c.Generator.static, "a Generator does not carry it"
+    record = export_network(n, store).record
+    assert record.schema.attributes[column].dims == {dim}
+    assert_networks_equal(PyPSA.build(record), n)
 
 
 def test_shapes_round_trip_in_their_crs(store):
@@ -413,18 +576,6 @@ def test_shapes_round_trip_in_their_crs(store):
     built = PyPSA.build(record)
     assert built.crs == n.crs
     assert_geodataframe_equal(built.c.Shape.static, n.c.Shape.static)
-
-
-def test_to_datarecord_accepts_distinct_names(workspace):
-    """The negative half: the same network with distinct names is buildable."""
-    import pypsa
-
-    n = pypsa.Network()
-    n.add("Bus", "north")
-    n.add("Generator", "north gen", bus="north")
-
-    assert not _colliding_names(n)
-    assert PyPSA.to_datarecord(n, workspace.con) is not None
 
 
 def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
@@ -614,19 +765,40 @@ def test_a_solved_p_is_one_row_per_connection(single_revision, solved):
         )
 
 
-def test_bus_power_is_not_a_result(single_revision, solved):
-    """`Bus.p`/`q` sum the connections at a bus, so neither is written.
+def test_bus_results_are_keyed_by_bus(single_revision, solved):
+    """`marginal_price`, `v_mag_pu` and `v_ang` are over `bus`; `Bus.p` and the rest are derived.
+
+    `build` sets the bus results back from `outputs`.
 
     Notes
     -----
     - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
     """
-    n = solved
+    from datarecord.mutable import WorkingRecord
 
-    p = _flat(PyPSA.results(n, single_revision.record.con)["p"])
-    buses = list(n.c["Bus"].static.index)
-    assert not p["entity"].isin(buses).any()
-    assert not n.c["Bus"].dynamic["p"].empty, "PyPSA did compute a `Bus.p`"
+    over_bus = {
+        a for a, spec in _registry_schema().results.items() if "bus" in spec.dims
+    }
+    assert over_bus == {"marginal_price", "v_mag_pu", "v_ang"}
+    assert not solved.c["Bus"].dynamic["p"].empty, "PyPSA did compute a `Bus.p`"
+
+    w = WorkingRecord(single_revision.record)
+    for attr, frame in PyPSA.results(solved, w.con).items():
+        w.set(attr, frame, kind="outputs")
+    price = w.outputs["marginal_price"].collect().to_pandas()
+    assert "entity" not in price
+    wide = price.pivot(index="snapshot", columns="bus", values="value")
+    expected = solved.c["Bus"].dynamic["marginal_price"]
+    assert np.allclose(wide[expected.columns].reindex(expected.index), expected)
+
+    built = PyPSA.build(w).c["Bus"].dynamic["marginal_price"]
+    pd.testing.assert_frame_equal(
+        built[expected.columns],
+        expected,
+        check_names=False,
+        check_freq=False,
+        check_index_type=False,
+    )
 
 
 def test_link_internal_power_is_p_internal(single_revision, solved):
