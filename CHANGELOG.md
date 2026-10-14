@@ -149,6 +149,11 @@ All notable changes to datarecord are documented here. The format follows
   over `period` too. A single-period network's schema is unchanged. `build`
   restores the snapshots, investment periods, time series and both
   weightings.
+- The PyPSA tool round-trips a network's shapes, which `to_datarecord`
+  failed to write: a geometry is stored as WKT in `inputs/geometry.parquet`
+  and the network's CRS as `crs` in the schema's `meta`, and `build` restores
+  `n.shapes` as a GeoDataFrame in that CRS. `srid` is no longer written among
+  the network attributes.
 - Removing an entity drops the values of every group row naming it, not only
   where it is the group's first entity coordinate: a `contract` over
   `(from, to)` loses its values when either party is removed, and

@@ -131,6 +131,8 @@ _DTYPES = {
     float: nw.Float64(),
     str: nw.String(),
 }
+#: PyPSA's `typ` of a geometry column, which a record stores as WKT text.
+GEOMETRY = "geometry"
 
 
 def _default(value: Any) -> Any:
@@ -685,7 +687,8 @@ def _collect_network_attributes(n: pypsa.Network) -> dict[str, Any]:
     """The serializable scalar network attributes (incl. `name`, `pypsa_version`).
 
     Ported from `pypsa.Network._collect_network_attributes` (unreleased),
-    trimmed of nothing - the reflection over `dir(n)` is exactly what decides
+    trimmed of `srid` alone, the EPSG code of the CRS the schema's `meta`
+    carries in full - the reflection over `dir(n)` is exactly what decides
     which attributes are safe to round-trip, so there is no smaller version of
     this that still answers the same question.
 
@@ -704,6 +707,7 @@ def _collect_network_attributes(n: pypsa.Network) -> dict[str, Any]:
         "iterate_components",
         "_name",
         "_pypsa_version",
+        "srid",
     }
 
     attrs: dict[str, Any] = {}
@@ -767,6 +771,9 @@ def _new_network(record: RecordLike, shape: NetworkShape) -> pypsa.Network:
     n = pypsa.Network()
     _apply_network_attributes(n, schema.meta.get("attributes") or {})
     n.meta = schema.meta.get("meta") or {}
+    crs = schema.meta.get("crs")
+    if crs is not None:
+        n.to_crs(crs)
 
     _apply_snapshots_import(n, shape.snapshots)
     if shape.multiperiod:
@@ -842,6 +849,8 @@ def _add_component_type(
     """Assign one type's static frame, then its series."""
     scenarios = Index.of(n.scenarios, con)
     static_df = _assign_static(static, attributes, shape, scenarios, con)
+    for column in _geometries(ctype).intersection(static_df.columns):
+        static_df[column] = _from_wkt(static_df[column], n.crs)
     n._import_components_from_df(static_df, ctype)
 
     periods = Index.of(n.investment_periods, con)
@@ -1078,6 +1087,27 @@ def _is_output(defaults: pd.DataFrame, attr: str) -> bool:
     return str(defaults.at[attr, "status"]).startswith("Output")
 
 
+@cache
+def _geometries(ctype: str) -> frozenset[str]:
+    """`ctype`'s geometry columns in PyPSA's bare registry.
+
+    Notes
+    -----
+    - [geometry](https://energy-models.github.io/datarecord/design/tools/#geometry)
+    """
+    from pypsa.components.types import get as get_component_type
+
+    defaults = get_component_type(ctype).defaults
+    return frozenset(defaults.index[defaults["typ"].astype(str) == GEOMETRY])
+
+
+def _from_wkt(values: pd.Series, crs: Any) -> pd.Series:
+    """A WKT column as the GeoSeries PyPSA keeps, in `crs`."""
+    import geopandas as gpd
+
+    return gpd.GeoSeries.from_wkt(values, crs=crs)
+
+
 def _drop_default_rows(rows: pd.DataFrame, default: Any) -> pd.DataFrame:
     """Remove scalar rows that just repeat the attribute's default value.
 
@@ -1098,6 +1128,8 @@ def _scalar_rows(c: pypsa.Components, attr: str, exclude: pd.Index) -> pd.DataFr
     dominated an export.
     """
     static = c.static[attr]
+    if attr in _geometries(c.name):
+        static = static.to_wkt()
     if len(exclude):
         static = static[~static.index.isin(exclude)]
     index = static.index
@@ -1758,6 +1790,7 @@ class _NetworkSource:
                     "format": "pypsa-parquet",
                     "attributes": _collect_network_attributes(self.n),
                     "meta": dict(self.n.meta),
+                    "crs": self.n.crs.to_string(),
                 },
             }
         )

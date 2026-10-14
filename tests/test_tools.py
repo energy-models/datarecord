@@ -379,6 +379,42 @@ def test_a_custom_column_round_trips_on_its_own_type(store):
     assert "country" not in built.c.Generator.static, "a Generator does not carry it"
 
 
+def test_shapes_round_trip_in_their_crs(store):
+    """A geometry is stored as WKT, its CRS in the schema's `meta`.
+
+    Notes
+    -----
+    - [geometry](https://energy-models.github.io/datarecord/design/tools/#geometry)
+    """
+    import pypsa
+    import shapely
+    from geopandas.testing import assert_geodataframe_equal
+
+    n = pypsa.Network()
+    n.to_crs("EPSG:3035")
+    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
+    n.add("Bus", "north")
+    n.add(
+        "Shape",
+        ["north onshore", "north offshore"],
+        geometry=[shapely.box(0, 0, 1, 1), shapely.Point(2, 3)],
+        idx="north",
+        component="Bus",
+        type=["onshore", "offshore"],
+    )
+
+    record = export_network(n, store).record
+    assert record.schema.meta["crs"] == "EPSG:3035"
+    stored = record.attributes["geometry"].collect().to_pandas()
+    assert sorted(stored["value"]) == [
+        "POINT (2 3)",
+        "POLYGON ((1 0, 1 1, 0 1, 0 0, 1 0))",
+    ]
+    built = PyPSA.build(record)
+    assert built.crs == n.crs
+    assert_geodataframe_equal(built.c.Shape.static, n.c.Shape.static)
+
+
 def test_to_datarecord_accepts_distinct_names(workspace):
     """The negative half: the same network with distinct names is buildable."""
     import pypsa

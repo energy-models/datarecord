@@ -91,3 +91,12 @@ Two results do not follow that rule, and the tool names both rather than inferri
 
 The schema's `results` and the frames `results` returns are read off one rule, so every frame is set with `kind="outputs"` under a name the schema declares.
 `build` reads only inputs, so no result is turned back into PyPSA's per-port columns.
+
+## Geometry
+
+A geometry is text.
+PyPSA's `Shape.geometry`, the column its registry types `geometry`, is an attribute like `idx` and `component` beside it, its values [WKT](https://en.wikipedia.org/wiki/Well-known_text_representation_of_geometry) in `inputs/geometry.parquet`, declared `String`.
+The coordinate reference system is one per network rather than one per value, so it is not data but `crs` in the schema's [`meta`](schema.md), the CRS's authority string (`EPSG:3035`) where it has one.
+PyPSA's `srid` network attribute, that CRS's EPSG code, is not written beside it.
+
+`build` sets the network's CRS from `crs` before adding any component, and parses each geometry back into a GeoSeries in it; a record without `crs` builds in PyPSA's default, `EPSG:4326`.
