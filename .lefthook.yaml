@@ -58,7 +58,7 @@ pre-commit:
               - docs/design/proposals/*
               - docs/design/open-questions.md
               - mkdocs.yml
-            run: "! grep -nE 'proposals/[0-9]{3}-' {staged_files} | grep -v 'proposals/000-template'"
+            run: "! grep -nE 'proposals/dep-[0-9]{4}-' {staged_files} | grep -v 'proposals/dep-0000-template'"
           - name: reuse
             glob: "*"
             # `--no-multiprocessing` because it is faster here (0.5s against

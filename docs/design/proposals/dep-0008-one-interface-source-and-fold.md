@@ -24,14 +24,14 @@ SPDX-License-Identifier: CC-BY-4.0
 > deleted, the base is a `Fold` (`datarecord/layered/fold.py`) discovered from
 > the sources, and `write_record` takes a `LayerData`. The untyped-enumerator
 > `∅`-not-`{None}` half is the subject of its now-landed successor,
-> [`a-member-file-holds-values`](006-a-member-file-holds-values.md). The "Commit N as
+> [`a-member-file-holds-values`](dep-0006-a-member-file-holds-values.md). The "Commit N as
 > landed" notes below record where the implementation departed from this sketch.
 
 One claim: **`axis(dim)` should mean the same thing wherever it is written — "the rows of the thing I am holding".** You pick "one layer's contribution" versus "the resolved answer to here" by _which object you hold_, not by a `resolved_` prefix on a method nor by a mode flag. A [`LayerSource`](../read-path.md#owner-map) answers for its own layer; a fold answers for everything folded into it; both answer under the same names.
 
 The codebase is already most of the way there and inconsistent about the last step. [`WorkingRecord`](../working-record.md) does it the clean way — the fold and the staged-layer's-own-rows are _two objects_ (`WorkingRecord` the [`Record`](../record.md) over a `NodeCache`, `StagedSource` the source). `ResolvedLayer` does it the muddy way — _one object_ that is a fold (a persisted `NodeCache`) but is typed as a source and put in the fold's own input list, so it answers for its own layer through some methods and for the fold-to-here through others.
 
-This is the prerequisite [`a-member-file-holds-values`](006-a-member-file-holds-values.md) names, taken at its root rather than at the symptom. That page proposes adding `resolved_axis`/`resolved_axes` beside `map_uri` — a third folded-answer method under a distinct name, papering the dual role. The root cause is that a fold-result (`ResolvedLayer`, a persisted `NodeCache`) is masquerading as a fold-input (a `LayerSource`); untangle _that_ and no new method name is needed.
+This is the prerequisite [`a-member-file-holds-values`](dep-0006-a-member-file-holds-values.md) names, taken at its root rather than at the symptom. That page proposes adding `resolved_axis`/`resolved_axes` beside `map_uri` — a third folded-answer method under a distinct name, papering the dual role. The root cause is that a fold-result (`ResolvedLayer`, a persisted `NodeCache`) is masquerading as a fold-input (a `LayerSource`); untangle _that_ and no new method name is needed.
 
 ## What starts it
 
@@ -251,7 +251,7 @@ The discipline that keeps this from becoming "one protocol for two unlike things
 
 ### `schema` governs which pairs are live, it is not a peer of them
 
-The table above lists `schema` as one shared member among the enumerate-and-read pairs, but it is not their peer — it is what decides _which of them exist_. [`a-member-file-holds-values`](006-a-member-file-holds-values.md#what-starts-it) establishes that the [entity-type axis is optional](../schema.md#categories-an-enum-property-of-a-partial-dim): where a schema declares no type axis (`entity_type_dim is None`), there are no member files, no `entity_type` column, and a component's attribute values live on `dims/entity.parquet` directly. So the `entity_types()`/`entity_type(name)` pair is not universal — it is populated exactly when the schema declares the axis, and `groups()` reflects only the groups the schema declares.
+The table above lists `schema` as one shared member among the enumerate-and-read pairs, but it is not their peer — it is what decides _which of them exist_. [`a-member-file-holds-values`](dep-0006-a-member-file-holds-values.md#what-starts-it) establishes that the [entity-type axis is optional](../schema.md#categories-an-enum-property-of-a-partial-dim): where a schema declares no type axis (`entity_type_dim is None`), there are no member files, no `entity_type` column, and a component's attribute values live on `dims/entity.parquet` directly. So the `entity_types()`/`entity_type(name)` pair is not universal — it is populated exactly when the schema declares the axis, and `groups()` reflects only the groups the schema declares.
 
 `LayerData` therefore reads _through_ `schema`, not alongside it: `schema` is the one member the other pairs are conditional on, and a `LayerData` for an untyped record is a first-class shape, not the typed shape with types nulled out. The new source enumerators inherit `a-member-file-holds-values`'s own acceptance test on this — the failure mode is an enumerator answering `{None}` rather than `∅`:
 
@@ -262,7 +262,7 @@ This is the point where the two proposals are the same work at two altitudes. `a
 
 ### `axis` is layer-local on every `LayerSource`, no exception
 
-`ResolvedLayer`'s `axis`/`axes` overrides go; it is deleted, and every source inherits the layer-local `_FileLayer` ones. The folded read moves to the base `Fold` a source offers via `materialised(con)`, which is not a `LayerSource`. The test of correctness is [`a-member-file-holds-values`'s own](006-a-member-file-holds-values.md#how-to-know-it-worked): `sources.py` needs no branch, because a file-backed source no longer has to know whether it is being read as a layer or as a fold.
+`ResolvedLayer`'s `axis`/`axes` overrides go; it is deleted, and every source inherits the layer-local `_FileLayer` ones. The folded read moves to the base `Fold` a source offers via `materialised(con)`, which is not a `LayerSource`. The test of correctness is [`a-member-file-holds-values`'s own](dep-0006-a-member-file-holds-values.md#how-to-know-it-worked): `sources.py` needs no branch, because a file-backed source no longer has to know whether it is being read as a layer or as a fold.
 
 ### The writer takes a `LayerData`, and `_Written` disappears
 
@@ -302,7 +302,7 @@ This is the larger of the two halves and the most safely deferred, since it move
 
 **`LayerData` is a `Protocol` both types satisfy structurally, with `layer_id` the sole source-only member.** `LayerSource` is `LayerData` plus `layer_id` (and `uri` on file-backed ones) and `all_attributes` (source-only); `Resolver` is `LayerData` plus the fold machinery and `revision_id`. `frozen` is on `LayerData`, not source-only (above). Neither type inherits from `LayerData` — each `satisfies` it by shape, as `LayerSource` implementations already satisfy that protocol.
 
-**The untyped case keys on `entity_type_dim is None`, enum or not.** An enumerator answers `∅` exactly when the schema declares no entity-type axis — not when `schema.entity_types` is empty, which is also true for a declared `String`-typed axis whose labels are data. A declared-but-non-enum axis is still a declared axis: its member files exist and `entity_types()` lists them. `a-member-file-holds-values` [leaves whether those two cases should ever converge open](006-a-member-file-holds-values.md#what-it-opens-rather-than-settles); this note does not, keying only on declaration.
+**The untyped case keys on `entity_type_dim is None`, enum or not.** An enumerator answers `∅` exactly when the schema declares no entity-type axis — not when `schema.entity_types` is empty, which is also true for a declared `String`-typed axis whose labels are data. A declared-but-non-enum axis is still a declared axis: its member files exist and `entity_types()` lists them. `a-member-file-holds-values` [leaves whether those two cases should ever converge open](dep-0006-a-member-file-holds-values.md#what-it-opens-rather-than-settles); this note does not, keying only on declaration.
 
 ## What it opens rather than settles
 

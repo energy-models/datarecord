@@ -11,13 +11,13 @@ SPDX-License-Identifier: CC-BY-4.0
 | Title    | deletion cascades through tombstones, not through filters |
 | Author   | Jonas Hörsch                                              |
 | Status   | Implemented 2026-10-13                                    |
-| Requires | [010](010-a-group-is-a-struct-column.md)                  |
+| Requires | [010](dep-0010-a-group-is-a-struct-column.md)             |
 | Created  | 2026-10-13                                                |
 | Version  | Unreleased                                                |
 
 A label is removed by a tombstone, and only by a tombstone: removing one tombstones every [group](../schema.md#groups) tuple naming it, a layer leaving such a tuple alive is refused, and nothing is inferred on read from a dead label a row refers to.
 
-This supersedes the no-cascade rule [the struct proposal](010-a-group-is-a-struct-column.md#one-behaviour-that-must-not-move) kept — "the tuples stand, dangling" — for group tuples; values still never cascade further than the rules below say.
+This supersedes the no-cascade rule [the struct proposal](dep-0010-a-group-is-a-struct-column.md#one-behaviour-that-must-not-move) kept — "the tuples stand, dangling" — for group tuples; values still never cascade further than the rules below say.
 
 ## What is wrong today
 

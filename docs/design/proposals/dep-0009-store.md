@@ -140,7 +140,7 @@ The write path itself — staging into a sibling locally, the refusal of an exis
 
 ### A `WorkingRecord` does not write
 
-`WorkingRecord(record)` takes no `con`: it stages on `record.con`, and `_base_resolver`'s "base reads through another connection" check has nothing left to check. It loses `commit`, and `NewChild`, `Directory` and `Target` go with it. What it gains is **`edits`**, its staged layer as the `LayerData` it already is (`StagedSource`, [staging as a layer](004-staging-as-a-layer.md)):
+`WorkingRecord(record)` takes no `con`: it stages on `record.con`, and `_base_resolver`'s "base reads through another connection" check has nothing left to check. It loses `commit`, and `NewChild`, `Directory` and `Target` go with it. What it gains is **`edits`**, its staged layer as the `LayerData` it already is (`StagedSource`, [staging as a layer](dep-0004-staging-as-a-layer.md)):
 
 ```python
 w = WorkingRecord(rev.record)

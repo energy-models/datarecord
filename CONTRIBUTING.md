@@ -74,9 +74,9 @@ A change to the design starts as a design enhancement proposal (DEP): the
 argument for it, the design it lands, and usage examples.
 
 - Start from the
-  [template](https://energy-models.github.io/datarecord/design/proposals/000-template/):
-  copy it to `docs/design/proposals/NNN-slug.md`, where `NNN` is the next free
-  three-digit number, and append it to the end of the `Enhancement proposals`
+  [template](https://energy-models.github.io/datarecord/design/proposals/dep-0000-template/):
+  copy it to `docs/design/proposals/dep-NNNN-slug.md`, where `NNNN` is the next
+  free four-digit number, and append it to the end of the `Enhancement proposals`
   nav in `mkdocs.yml`. A number is never reused or reassigned.
 - Its header carries `Status` — `Draft`, `Accepted`, `Implemented` or
   `Superseded`, with the date — and `Version`, the release it ships in:

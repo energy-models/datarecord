@@ -6,19 +6,19 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 012: properties — metadata declared apart from data
 
-| DEP      | 012                                                                                          |
-| -------- | -------------------------------------------------------------------------------------------- |
-| Title    | properties — metadata declared apart from data                                               |
-| Author   | Jonas Hörsch                                                                                 |
-| Status   | Implemented 2026-10-13 (steps 1 and 2)                                                       |
-| Requires | [010](010-a-group-is-a-struct-column.md), [011](011-deletion-cascades-through-tombstones.md) |
-| Created  | 2026-10-12                                                                                   |
-| Version  | Unreleased                                                                                   |
-| Replaces | [006](006-a-member-file-holds-values.md)                                                     |
+| DEP      | 012                                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------------------ |
+| Title    | properties — metadata declared apart from data                                                         |
+| Author   | Jonas Hörsch                                                                                           |
+| Status   | Implemented 2026-10-13 (steps 1 and 2)                                                                 |
+| Requires | [010](dep-0010-a-group-is-a-struct-column.md), [011](dep-0011-deletion-cascades-through-tombstones.md) |
+| Created  | 2026-10-12                                                                                             |
+| Version  | Unreleased                                                                                             |
+| Replaces | [006](dep-0006-a-member-file-holds-values.md)                                                          |
 
 Two changes that are one. **Properties** — what classifies or describes one label of a dim, its metadata — get their own section of the manifest, apart from **attributes**, the data. And the entity-type axis stops being a dim with a group over `entity`: it becomes an ordinary `Enum` property of `entity`, whose values — **categories** — per-category defaults and trait scoping key on. With it goes every special case of `entity` and `entity_type` in core: `entity` becomes a dim like any other, listed in `partial`, and the name `entity_type` is data a schema happens to declare.
 
-It builds on [a group is one struct column](010-a-group-is-a-struct-column.md) — a group is a dim, referenced in rows by one struct column — and on [deletion cascading through tombstones](011-deletion-cascades-through-tombstones.md).
+It builds on [a group is one struct column](dep-0010-a-group-is-a-struct-column.md) — a group is a dim, referenced in rows by one struct column — and on [deletion cascading through tombstones](dep-0011-deletion-cascades-through-tombstones.md).
 
 It lands in two steps. **Step 1** — properties, categories, and `entity` as an ordinary dim — is being built. **Step 2** — the section, not the shape, deciding where a value lives — is the rest of the design below, sequenced after. A per-category read, [`members`](#optional-members), is deferred. An [optional stage](#optional-stage-categories-in-attribute-rows), storing a category in an attribute row, is to be decided.
 
@@ -28,7 +28,7 @@ It lands in two steps. **Step 1** — properties, categories, and `entity` as an
 
 The same rule makes a compatible schema change move a file. Widening `p_nom` to `dims: [entity, scenario]` is [compatible](../schema.md#versioning) because NULL broadcasts, but it moves `p_nom` from a column of the entity axis to `inputs/p_nom.parquet`, so the rows a layer wrote before are in a file the new schema no longer reads it from.
 
-**The entity-type axis is a special case at every layer.** It is a dim, plus a group over `entity` `into` it, whose rows are [the entity axis file rather than a `groups/` file](../format.md#where-a-value-lives) — the one exception to a file per group. Its name is reserved as an attribute name. Whether it is declared decides the [layout of the entity axis](../format.md#the-entity-axis): per-type member files under `dims/entity_type/` in one case, columns of `dims/entity.parquet` in the other. Traits may be scoped by it. Its `Enum` dtype is what makes it a vocabulary, while a `String`-typed declaration of it is an [open question](006-a-member-file-holds-values.md#what-it-opens-rather-than-settles).
+**The entity-type axis is a special case at every layer.** It is a dim, plus a group over `entity` `into` it, whose rows are [the entity axis file rather than a `groups/` file](../format.md#where-a-value-lives) — the one exception to a file per group. Its name is reserved as an attribute name. Whether it is declared decides the [layout of the entity axis](../format.md#the-entity-axis): per-type member files under `dims/entity_type/` in one case, columns of `dims/entity.parquet` in the other. Traits may be scoped by it. Its `Enum` dtype is what makes it a vocabulary, while a `String`-typed declaration of it is an [open question](dep-0006-a-member-file-holds-values.md#what-it-opens-rather-than-settles).
 
 **`entity` is a special case too.** It is in the fold key whatever `partial` says, a NULL in it never broadcasts, its tombstones alone cascade into a group's fields, and the read API answers per entity type (`entity_types`, `entity_type(ctype)`, `flags(ctype)`). None of that is said in the schema; all of it is code naming `"entity"`.
 
@@ -127,7 +127,7 @@ Which a name is, is the author's declaration, not derived. The test is the one a
 
 The two conditions are what a category needs:
 
-- **`Enum`**, so the categories a trait or a default names are checkable against a declared vocabulary. This settles the [`String`-typed axis question](006-a-member-file-holds-values.md#what-it-opens-rather-than-settles): a set of categories is an `Enum`, or nothing can key on it.
+- **`Enum`**, so the categories a trait or a default names are checkable against a declared vocabulary. This settles the [`String`-typed axis question](dep-0006-a-member-file-holds-values.md#what-it-opens-rather-than-settles): a set of categories is an `Enum`, or nothing can key on it.
 - **The dim in `partial`**, because only there is a dim owned and checked per label. Outside it, a layer setting one entity's value would own every entity's, and a label could not be refused against an axis the fold does not key.
 
 That replaces the whole entity-type construct: no `entity_type` dim, no group over `entity` into it, no exception to a file per group, and no reserved name — `entity_type` is a column of `dims/entity.parquet` because every property of `entity` is. A schema whose entities have no categories declares no `Enum` property of `entity`, and nothing else about it differs. The schema attaches no meaning to the name `entity_type`; it is what PyPSA and every existing record call it.
@@ -160,7 +160,7 @@ Step 1 declares and validates `default_by` and answers it through `Schema.defaul
 
 A switch is addressed by exactly the dim its trait's property categorizes, and a trait with a switch must have an `on`.
 
-**`switch` is not subsumed.** A category is a property — one value per label, never varying along another axis — while a switch may: `p_nom_extendable` per `investment_period` is a trait an entity carries in some periods and not others. Lifting the [trait-switches restriction](003-trait-switches.md#what-it-opens) to the categorized dim exactly is step 2: `switch` would then name a property of the subject or an attribute addressed by it and further dims. Which categories _may_ carry a value stays a schema answer; which labels _do_ in a given period stays a question about data.
+**`switch` is not subsumed.** A category is a property — one value per label, never varying along another axis — while a switch may: `p_nom_extendable` per `investment_period` is a trait an entity carries in some periods and not others. Lifting the [trait-switches restriction](dep-0003-trait-switches.md#what-it-opens) to the categorized dim exactly is step 2: `switch` would then name a property of the subject or an attribute addressed by it and further dims. Which categories _may_ carry a value stays a schema answer; which labels _do_ in a given period stays a question about data.
 
 ### A NULL reaches the labels carrying the attribute
 
@@ -170,14 +170,14 @@ A switch is addressed by exactly the dim its trait's property categorizes, and a
 
 With the categories a property and the fold key a schema declaration, nothing in core names `entity`:
 
-- **The fold key** is exactly what `partial` lists — dims and groups alike. Every dim and every group broadcasts. A dim a group draws on need not be in `partial`: its dead labels are kept and dropped on read ([deletion](011-deletion-cascades-through-tombstones.md)).
-- **Deletion** is [tombstones cascading](011-deletion-cascades-through-tombstones.md): `remove(dim, labels)` tombstones the labels and every live tuple of a group with a field over `dim` naming one; the fold anti-joins the tombstones of every `partial` dim and group.
+- **The fold key** is exactly what `partial` lists — dims and groups alike. Every dim and every group broadcasts. A dim a group draws on need not be in `partial`: its dead labels are kept and dropped on read ([deletion](dep-0011-deletion-cascades-through-tombstones.md)).
+- **Deletion** is [tombstones cascading](dep-0011-deletion-cascades-through-tombstones.md): `remove(dim, labels)` tombstones the labels and every live tuple of a group with a field over `dim` naming one; the fold anti-joins the tombstones of every `partial` dim and group.
 - **The read API** answers per record, not per type: `Record`, `Resolver`, `Fold` and `LayerData` lose `entity_types`, `entity_type(ctype)` and `entity_axis`, and `flags()` takes no type. A per-category frame is `dims[dim]` filtered on a categorizing column.
 - **Uniqueness** across types is structural: one axis row per label.
 
 ### One file per subject on disk
 
-**On disk**, every property of a dim is a column of `dims/<dim>.parquet`, categories and all, NULL on a row whose category does not carry it. `dims/entity_type/<Type>.parquet` goes, and with it the second entity-axis layout [the member-file proposal](006-a-member-file-holds-values.md#what-it-costs) introduced: a record with and one without categories have one layout, differing by one column.
+**On disk**, every property of a dim is a column of `dims/<dim>.parquet`, categories and all, NULL on a row whose category does not carry it. `dims/entity_type/<Type>.parquet` goes, and with it the second entity-axis layout [the member-file proposal](dep-0006-a-member-file-holds-values.md#what-it-costs) introduced: a record with and one without categories have one layout, differing by one column.
 
 Per-type files existed because every type has a different column set. The schema now says which columns each category carries, so a category's frame is a filter on its property and a projection to those columns — recoverable from one file, where per-type files would state each entity's category twice, once in the column and once in the filename. Parquet stores an all-NULL column chunk for almost nothing and DuckDB reads only what it projects. Only a per-category **dtype** would need per-category files, and that is ruled out above.
 
