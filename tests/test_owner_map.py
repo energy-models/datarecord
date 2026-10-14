@@ -362,7 +362,7 @@ def test_a_parquet_layer_takes_the_store_it_was_given(workspace, tmp_path):
     elsewhere = workspace.store(str(tmp_path / "elsewhere"))
     assert ParquetLayer(revision_id, Schema(), elsewhere).uri(
         "dims/entity.parquet"
-    ) == (f"{tmp_path}/elsewhere/layers/{revision_id}/dims/entity.parquet")
+    ) == (f"{tmp_path.as_posix()}/elsewhere/layers/{revision_id}/dims/entity.parquet")
 
 
 def _largest_intermediate(store, rel):

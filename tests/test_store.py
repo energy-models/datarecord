@@ -71,7 +71,7 @@ def test_a_local_location_is_absolute(workspace, tmp_path, monkeypatch):
     """A later `chdir` cannot move it."""
     monkeypatch.chdir(tmp_path)
     store = workspace.store("relative")
-    assert store.uri == str(tmp_path / "relative")
+    assert store.uri == (tmp_path / "relative").as_posix()
 
 
 def test_another_scheme_is_refused(workspace):

@@ -490,7 +490,7 @@ class Store:
 
 def _absolute(uri: str) -> str:
     """`uri` without a trailing slash, a local path resolved against the cwd."""
-    return str(Path(uri).resolve()) if "://" not in uri else uri.rstrip("/")
+    return Path(uri).resolve().as_posix() if "://" not in uri else uri.rstrip("/")
 
 
 def _manifest(schema: Schema, id: UUID) -> str:
