@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 010: a group is one struct column
+# DEP 10: a group is one struct column
 
-| DEP     | 010                                                                         |
+| DEP     | 10                                                                          |
 | ------- | --------------------------------------------------------------------------- |
 | Title   | a group is one struct column                                                |
 | Author  | Jonas Hörsch                                                                |

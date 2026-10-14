@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 003: trait switches — a trait a component opts into
+# DEP 3: trait switches — a trait a component opts into
 
-| DEP     | 003                                            |
+| DEP     | 3                                              |
 | ------- | ---------------------------------------------- |
 | Title   | trait switches — a trait a component opts into |
 | Author  | Jonas Hörsch                                   |

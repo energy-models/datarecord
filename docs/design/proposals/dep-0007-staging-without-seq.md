@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 007: staging without `_seq`
+# DEP 7: staging without `_seq`
 
-| DEP     | 007                    |
+| DEP     | 7                      |
 | ------- | ---------------------- |
 | Title   | staging without `_seq` |
 | Author  | Jonas Hörsch           |

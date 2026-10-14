@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 009: a `Workspace` holds the connection, a `Store` holds a location
+# DEP 9: a `Workspace` holds the connection, a `Store` holds a location
 
-| DEP     | 009                                                            |
+| DEP     | 9                                                              |
 | ------- | -------------------------------------------------------------- |
 | Title   | a `Workspace` holds the connection, a `Store` holds a location |
 | Author  | Jonas Hörsch                                                   |

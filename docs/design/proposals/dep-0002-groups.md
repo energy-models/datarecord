@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 002: groups — one construct for classification and sparsity
+# DEP 2: groups — one construct for classification and sparsity
 
-| DEP     | 002                                                    |
+| DEP     | 2                                                      |
 | ------- | ------------------------------------------------------ |
 | Title   | groups — one construct for classification and sparsity |
 | Author  | Jonas Hörsch                                           |

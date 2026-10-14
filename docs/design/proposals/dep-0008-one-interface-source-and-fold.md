@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 008: one interface, two objects — a source is its own rows, a fold is the resolution
+# DEP 8: one interface, two objects — a source is its own rows, a fold is the resolution
 
-| DEP     | 008                                                                             |
+| DEP     | 8                                                                               |
 | ------- | ------------------------------------------------------------------------------- |
 | Title   | one interface, two objects — a source is its own rows, a fold is the resolution |
 | Author  | Jonas Hörsch                                                                    |

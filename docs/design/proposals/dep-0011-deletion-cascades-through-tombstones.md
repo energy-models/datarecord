@@ -4,14 +4,14 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 011: deletion cascades through tombstones, not through filters
+# DEP 11: deletion cascades through tombstones, not through filters
 
-| DEP      | 011                                                       |
+| DEP      | 11                                                        |
 | -------- | --------------------------------------------------------- |
 | Title    | deletion cascades through tombstones, not through filters |
 | Author   | Jonas Hörsch                                              |
 | Status   | Implemented 2026-10-13                                    |
-| Requires | [010](dep-0010-a-group-is-a-struct-column.md)             |
+| Requires | [DEP 10](dep-0010-a-group-is-a-struct-column.md)          |
 | Created  | 2026-10-13                                                |
 | Version  | Unreleased                                                |
 

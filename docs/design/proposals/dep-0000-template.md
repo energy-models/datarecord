@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP NNN: Title
+# DEP N: Title
 
-| DEP           | NNN                                                                                |
+| DEP           | N                                                                                  |
 | ------------- | ---------------------------------------------------------------------------------- |
 | Title         | Title                                                                              |
 | Author        | Name                                                                               |

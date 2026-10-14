@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 001: dims, mappings, groups and traits
+# DEP 1: dims, mappings, groups and traits
 
-| DEP     | 001                               |
+| DEP     | 1                                 |
 | ------- | --------------------------------- |
 | Title   | dims, mappings, groups and traits |
 | Author  | Jonas Hörsch                      |

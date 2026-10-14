@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 004: staging as a layer — one fold, two sources
+# DEP 4: staging as a layer — one fold, two sources
 
-| DEP     | 004                                        |
+| DEP     | 4                                          |
 | ------- | ------------------------------------------ |
 | Title   | staging as a layer — one fold, two sources |
 | Author  | Jonas Hörsch                               |
