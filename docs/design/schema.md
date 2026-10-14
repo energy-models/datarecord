@@ -105,7 +105,7 @@ The nesting this replaces said an attribute _belongs to_ an entity type, which i
 The storage already disagreed with the nesting. `inputs/p_max_pu.parquet` holds every type's rows in one file with one `value` dtype, so two types declaring one attribute with **different dtypes** was expressible in the schema and unrepresentable on disk — a silent wrong read that nothing rejected.
 Flat declaration makes it unrepresentable instead, which is the stronger form of the same guarantee: one attribute, one spec, one file, one dtype.
 
-`dims` is the **only addressing mechanism**, and it names dims and [groups](#groups) alike, resolved by [one rule](#addressing-dims-x): a name is the dim of that name if one is declared, and otherwise the group of that name expanded to its coordinates.
+`dims` is the **only addressing mechanism**, and it names dims and [groups](#groups) alike, resolved by [one rule](#addressing-dims-x): a name is the dim of that name if one is declared, and otherwise the group of that name, carried as one column.
 Whether a coordinate is the entity axis, a group or a plain axis changes where the labels come from, not how the attribute is declared or stored.
 There is no `bus` field: an attribute is a [connection](record.md#connections) attribute because its `dims` name the `connection` group, which is what lets a second group exist without a second field.
 
@@ -250,7 +250,8 @@ groups = {
 }
 ```
 
-Not a dim. A dim declares an axis of labels and a NULL in its column means "every value of it"; a group declares which _combinations_ are there, which no axis can say because the product is sparse — an entity attaches to two buses out of a thousand.
+Not an axis of labels: a dim declares one, a group declares which _combinations_ are there, which no axis can say because the product is sparse — an entity attaches to two buses out of a thousand.
+As a coordinate, though, a group is a dim whose axis is the resolved group: it [broadcasts](record.md#the-broadcast-rule), and is [`partial`](#partial-the-granularity-of-an-override) or owned whole, by the rules a dim follows.
 
 `over` maps **coordinate name → dim** rather than naming a bare set of dims, because two coordinates may draw on the same axis: a corridor between two nodes is `(from, to)`, which a set could not spell.
 A list is sugar for the dict with identical keys and values, so `over=["bus"]` is `over={"bus": "bus"}`.
@@ -268,17 +269,18 @@ The column's name says which group constrains the row, so two groups may share a
 **A group file is keyed by the same column**: `groups/connection.parquet` is `connection STRUCT(entity, bus) | role`, as `dims/bus.parquet` is keyed by `bus`, so a row and the group it names meet on one column with nothing packed between them.
 
 **A group in `dims` resolves to itself**, so `dims={"connection", "timestep"}` gives the columns `connection | timestep`, groups first — [addressing](#addressing-dims-x) states the full rule.
-The fold's key therefore does not vary per attribute: [`partial_dims`](#partial-the-granularity-of-an-override) is one fixed tuple, `entity`, the keyed group columns and the `partial` value dims.
+The fold's key therefore does not vary per attribute: [`partial_dims`](#partial-the-granularity-of-an-override) is one fixed tuple, `entity` and the dims and groups `partial` names.
 
 **An attribute may not name a group beside a dim its key coordinate is named for.** `dims={"connection", "bus"}` is rejected: the row would hold the bus twice, free to disagree — the same "keyed twice over" rule [`into`](#into-a-group-that-classifies) states.
 
 A group's file columns are **not declared here.** They are the attributes whose `dims` name exactly this group ([where a value lives](format.md#where-a-value-lives)) — PyPSA's `role` on a connection is `AttributeSpec(dtype="VARCHAR", dims={"connection"})`, declared by [the tool](tools.md) whose vocabulary the word is.
 Declaring them a second time on the `Group` would be two ways to say one thing, disagreeing eventually.
 
-**A group column [never broadcasts](record.md#the-broadcast-rule)**, so it is a _membership key_: it lands in the fold's key by being membership, not by being declared `partial`.
-Only a group some varying input attribute names beside another coordinate is keyed (`Schema.group_columns`); any other would be a key column NULL on every row — [the owner map](read-path.md#owner-map) lists them.
-**The dims a group draws on still broadcast**: `bus` is an ordinary axis whose NULL means "every bus", so a per-bus `marginal_price` beside a `connection` group may hold one value for all of them.
-`partial` is for value dims a layer patches per value (see [`partial`](#partial-the-granularity-of-an-override)); a membership key is patched per row by every layer already, so naming `entity` `partial` is a category error the schema rejects.
+**A group column broadcasts, its axis the resolved group.** A NULL struct means every tuple of the group, expanded against `groups/<group>.parquet` as a NULL dim is against `dims/<dim>.parquet` ([the broadcast rule](record.md#the-broadcast-rule)).
+**A group value is a whole tuple or NULL.** A struct with some fields NULL names a tuple no group row matches, so it is refused wherever a row comes in — `set`, `add_group` and the writer.
+**A group is keyed where a dim is**: in the fold key where [`partial`](#partial-the-granularity-of-an-override) names it, owned whole otherwise, so a layer touching one connection's value then restates the attribute's whole extent along the group.
+**The dims a group draws on broadcast on their own**: `bus` is an ordinary axis whose NULL means "every bus", so a per-bus `marginal_price` beside a `connection` group may hold one value for all of them.
+Every group but the [entity-type group](#entity_type-the-axis-of-kinds), which has no column, is such a coordinate (`Schema.group_columns`).
 
 **Connections are one instance**, not a structural category: `Group(over={"entity": "entity", "bus": "bus"})`, with `role` an ordinary attribute over it. `bus` is accordingly one coordinate of one group rather than a column the format fixes, and neither word appears in the record layer — `connection` is whatever a schema calls it, and `role` is [a tool's declaration](tools.md).
 
@@ -391,11 +393,11 @@ The dims a layer owns an attribute per follow from the declarations:
 
 ```text
 owned_per(attribute) = attribute.dims ∩ partial_dims
-partial_dims         = membership_keys ∪ (broadcast dims ∩ schema.partial)
+partial_dims         = {entity} ∪ (broadcast coordinates ∩ schema.partial)
 ```
 
-`partial_dims` is the fold key: the membership keys (`entity` and the keyed group columns — patched per row by every layer) plus the broadcast value dims declared `partial`.
-A dim a group draws on is a broadcast dim like any other, so a layer patching a per-bus `marginal_price` one bus at a time needs `bus` in `partial`; a connection's bus is patched per row regardless, inside the `connection` column.
+`partial_dims` is the fold key: `entity`, patched per row by every layer, plus the broadcast coordinates — dims and groups — declared `partial`.
+A dim a group draws on is a broadcast dim like any other, so a layer patching a per-bus `marginal_price` one bus at a time needs `bus` in `partial`; a layer patching one connection's `efficiency` needs `connection` there, and the connection's bus is patched with it, inside the `connection` column.
 So `p_max_pu` is owned per entity and per scenario — `timestep` is not partial, so a patch to one hour restates that entity-scenario's whole series; `marginal_cost` per entity and scenario; `p_nom` and `carrier` per entity, once across everything else.
 
 Two things this buys.
@@ -409,12 +411,12 @@ So the declarations constrain and validate; they do not make the key vary per ro
 Outside `partial`, a layer touching an axis restates it whole — every label, with the static attributes attached to them — because a layer holding one label is not saying the others are unchanged but that they are not there: the fold keys by the axis key, so what this layer carries is what the axis has here.
 That is the same "no half-owned extent" rule a series obeys, applied to a set of labels rather than a curve.
 
-**Keep it small.** Every `partial` value dim widens the fold key, and the key is paid for by every read of every attribute.
-The cost of leaving a value dim out is paid once per edit and bounded by the axis; the cost of putting it in is paid by every read forever.
-So `partial` names only the broadcast value dims a layer genuinely patches value by value — `scenario`, not `timestep`.
-The membership keys are in the key already, by being membership; `partial` neither adds nor may name them.
+**Keep it small.** Every `partial` coordinate widens the fold key, and the key is paid for by every read of every attribute.
+The cost of leaving one out is paid once per edit and bounded by the axis or group; the cost of putting it in is paid by every read forever.
+So `partial` names only the dims and groups a layer genuinely patches value by value — `scenario` and `connection`, not `timestep`.
+`entity` is in the key already; `partial` may not name it.
 
-The [entity-type axis](#entity_type-the-axis-of-kinds) carries an attribute yet is neither `partial` nor a membership key: its labels are a column of `dims/entity.parquet`, not an addressable coordinate, so it restates whole like any non-`partial` axis and stays out of the fold key.
+The [entity-type axis](#entity_type-the-axis-of-kinds) carries an attribute yet stays out of the fold key: its labels are a column of `dims/entity.parquet`, not an addressable coordinate, so it restates whole like any non-`partial` axis and stays out of the fold key.
 
 ## Names
 
@@ -462,7 +464,7 @@ One schema outlives many layers ([above](#one-schema-per-record)), so a change t
 
 **Compatible** — old layers stay readable, `version` bumps and nothing else happens:
 
-- adding an attribute, an entity type, a trait, or a group — an attribute may add a group to [the owner map](read-path.md#owner-map)'s key, and a map folded before reads the missing column as NULL, which is correct: no row there names the group
+- adding an attribute, an entity type, a trait, or a group — none changes [the owner map](read-path.md#owner-map)'s key, which only `partial` widens
 - adding a dim no existing attribute varies over
 - subscribing a type to a further attribute, whether directly or through a trait
 - widening an `AttributeSpec.dims`: rows that set fewer dims still decode, since an unset dim is NULL and NULL means "all values" ([the broadcast rule](record.md#the-broadcast-rule))

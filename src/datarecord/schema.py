@@ -21,8 +21,7 @@ Notes
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Mapping
-from functools import cached_property
+from collections.abc import Iterable
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
@@ -662,22 +661,18 @@ class Schema(BaseModel):
                     raise ValueError(msg)
 
         if self.partial is not None:
-            unknown = sorted(self.partial - declared)
+            unknown = sorted(self.partial - declared - set(self.groups))
             if unknown:
-                msg = f"`partial` names undeclared dims {unknown}"
+                msg = f"`partial` names undeclared dims or groups {unknown}"
                 raise ValueError(msg)
-            # `partial` names *value* dims a layer patches per value (a
-            # per-scenario weight). A membership key - `entity`, a group's
-            # coordinate - is in the fold key by being membership, not by being
-            # `partial`, so naming it here is a category error: it does not
-            # broadcast and has no "value" to patch, only rows that exist or do
-            # not (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+            # `entity` is in the fold key always, so naming it is a category
+            # error (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
             keys = sorted(set(self.partial) - set(self.broadcast_dims) - {entity_type})
             if keys:
                 msg = (
-                    f"`partial` names membership keys {keys}, which are patched "
-                    f"per row by every layer already; `partial` is for value "
-                    f"dims a layer patches per value"
+                    f"`partial` names {keys}, which no layer patches per value: "
+                    f"`entity` is keyed per row already, and the entity-type "
+                    f"group is no column"
                 )
                 raise ValueError(msg)
         return self
@@ -744,7 +739,7 @@ class Schema(BaseModel):
 
     @property
     def broadcast_dims(self) -> tuple[str, ...]:
-        """The dims a NULL broadcasts over: every dim but `entity` and the type axis.
+        """The coordinates a NULL broadcasts over: every dim but `entity` and the type axis, and every group column.
 
         A NULL here means "every value of this dim", which the fold expands
         against the axis. The two exclusions cannot mean that:
@@ -759,9 +754,8 @@ class Schema(BaseModel):
           column of the type axis file rather than a long row, so it has no
           NULL to expand.
 
-        A group is no dim and so never here: a row carries it as one struct
-        column of its own (`group_columns`), so the dims its coordinates draw
-        on stay free to broadcast.
+        A group broadcasts like a dim, a NULL struct meaning every tuple of the
+        resolved group.
 
         What the `varies`/`broadcast` structs have a field per, and what
         `expand_dims` joins.
@@ -772,7 +766,10 @@ class Schema(BaseModel):
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         entity_type = self.entity_type_dim
-        return tuple(d for d in self.dims if d not in ("entity", entity_type))
+        return (
+            *(d for d in self.dims if d not in ("entity", entity_type)),
+            *self.group_columns,
+        )
 
     def coordinates_of(self, attribute: str) -> tuple[str, ...]:
         """The coordinate columns one attribute's rows carry, groups first.
@@ -796,21 +793,15 @@ class Schema(BaseModel):
             return ()
         return (*self.groups_of(attribute), *(d for d in self.dims if d in spec.dims))
 
-    @cached_property
+    @property
     def group_columns(self) -> tuple[str, ...]:
-        """The groups the owner map is keyed by, in declaration order.
+        """Every group a row may carry as a column: all but the entity-type group.
 
         Notes
         -----
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        keyed = {
-            g
-            for a, s in self.attributes.items()
-            if s.varying
-            for g in self.groups_of(a)
-        }
-        return tuple(g for g in self.groups if g in keyed)
+        return tuple(g for g in self.groups if g not in self.dimensions)
 
     def group_type(self, group: str) -> nw.dtypes.DType:
         """The struct a row carries `group` as: a field per key coordinate.
@@ -828,31 +819,32 @@ class Schema(BaseModel):
     def check_group_columns(
         self,
         groups: Iterable[str],
-        columns: Mapping[str, nw.dtypes.DType],
+        frame: nw.LazyFrame[Any],
         *,
         carrier: str,
     ) -> None:
-        """Reject each of `groups` carried other than as one struct column of exactly its key.
+        """Reject each of `groups` carried other than as one struct column of exactly its key, whole or NULL.
 
         A carrier without a group's column passes.
 
         Parameters
         ----------
-        columns
-            The carrier's column types - a narwhals frame's `collect_schema()`.
         carrier
             What carries the columns, named in the message.
 
         Raises
         ------
         ValueError
-            On a key coordinate as a column of its own, or a group column not
-            a struct of exactly the key, naming the struct to pass instead.
+            On a key coordinate as a column of its own, a group column not a
+            struct of exactly the key, naming the struct to pass instead, or a
+            struct with some fields NULL and not all.
 
         Notes
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         """
+        columns = frame.collect_schema()
         for group in groups:
             key = self.group_key(group)
             flat = [c for c in key if c in columns]
@@ -869,6 +861,18 @@ class Schema(BaseModel):
                 msg = (
                     f"{carrier} carries {carried}; pass {group!r} as one struct "
                     f"column with a field per key coordinate, {list(key)} (https://energy-models.github.io/datarecord/design/schema/#groups)"
+                )
+                raise ValueError(msg)
+            if dtype is None:
+                continue
+            struct = nw.col(group)
+            partly = ~struct.is_null() & nw.any_horizontal(
+                *(struct.struct.field(c).is_null() for c in key), ignore_nulls=True
+            )
+            if not frame.filter(partly).head(1).collect().is_empty():
+                msg = (
+                    f"{carrier} carries a {group!r} with some fields NULL; a "
+                    f"group value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
                 )
                 raise ValueError(msg)
 
@@ -1007,28 +1011,12 @@ class Schema(BaseModel):
         return spec.dims & set(self.partial_dims)
 
     @property
-    def membership_keys(self) -> tuple[str, ...]:
-        """The columns addressed per row rather than broadcast: `entity` and `group_columns`.
-
-        A membership key is a coordinate a layer patches one row of at a time -
-        one entity, one connection - never "every value" of an axis.
-
-        These land in the fold key by being membership, not by being `partial`.
-
-        Notes
-        -----
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-        """
-        entity = ("entity",) if "entity" in self.dimensions else ()
-        return (*entity, *self.group_columns)
-
-    @property
     def partial_dims(self) -> tuple[str, ...]:
-        """The fold key's dims, in declaration order.
+        """The fold key's coordinates, in declaration order.
 
-        The membership keys plus the broadcast value dims a layer may patch per
-        value (`partial`). The fold's key is one fixed tuple over all
+        `entity`, a layer patching one entity's value at a time, plus the
+        dims and groups a layer may patch per value (`partial`). The fold's key
+        is one fixed tuple over all
         attributes, so it carries every axis *any* layer may patch by value or
         by row, not only those some currently declared attribute varies over. An
         attribute not owned per one of them writes NULL there, the "NULL means
@@ -1042,10 +1030,8 @@ class Schema(BaseModel):
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         partial = self.partial or frozenset()
-        return (
-            *self.membership_keys,
-            *(d for d in self.broadcast_dims if d in partial),
-        )
+        entity = ("entity",) if "entity" in self.dimensions else ()
+        return (*entity, *(d for d in self.broadcast_dims if d in partial))
 
     def axis_key(self, dim: str) -> tuple[str, ...]:
         """A dim's axis-table key: `(*parents, dim)`, parents first.
@@ -1131,10 +1117,9 @@ class Schema(BaseModel):
     def input_key(self) -> tuple[str, ...]:
         """Inputs-map key columns, compared NULL-safely when folding.
 
-        `partial_dims`, plus `attribute`. `entity` and a group's column are
-        in it as membership keys - a layer may patch one entity's value, or
-        one connection's, without restating every other's - and the broadcast
-        `partial` value dims beside them.
+        `partial_dims`, plus `attribute`: `entity`, so a layer may patch one
+        entity's value without restating every other's, and the `partial`
+        dims and groups beside it.
 
         A coordinate an attribute's own file does not carry reads as NULL,
         which is what makes the key one fixed tuple over attributes whose

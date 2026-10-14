@@ -1438,12 +1438,9 @@ def _registry_schema() -> RecordSchema:
         attributes=attributes,
         results=results,
         traits=traits,
-        # `partial` names value dims a layer patches per value: a layer may set
-        # one generator's `p_nom` per scenario without restating the rest.
-        # Membership keys - `entity`, the `connection` group's column - are in the
-        # fold key by being membership, not by being `partial`
-        # (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-        partial=frozenset({SCENARIO}),
+        # A layer may set one generator's `p_nom` per scenario, or one link's
+        # time-varying `efficiency` per connection, without restating the rest.
+        partial=frozenset({SCENARIO, CONNECTION}),
     )
 
 

@@ -18,7 +18,7 @@ import pytest
 
 from datarecord.layered.revision import Revision
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import AttributeSpec, Schema
+from datarecord.schema import AttributeSpec
 from tests.fixtures import (
     empty_child,
     empty_root,
@@ -342,44 +342,48 @@ def test_a_dim_a_group_draws_on_still_broadcasts(store):
     assert "bus" in root.resolver.fold.flags()["marginal_price"].broadcast
 
 
-def test_a_map_folded_before_the_group_was_keyed_reads_it_as_null(store):
-    """Declaring the first attribute over a group widens the fold key.
-
-    A map materialised before has no `connection` column; no row there names a
-    connection, so it reads as NULL and the fold carries on over it.
+def test_a_null_connection_broadcasts_to_every_connection(store):
+    """A NULL struct is every tuple of the group, as a NULL dim is every label.
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
-    full = schema()
-    narrow = Schema(
-        **{
-            **dict(full),
-            "attributes": {
-                a: s for a, s in full.attributes.items() if a != "efficiency"
-            },
-        }
-    )
-    assert narrow.group_columns == (), "nothing names the group beside a dim"
-    write_schema(narrow, store)
-    root = empty_root(store)
-    layer = store.layer_dir(root.id)
-    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_input(layer, "p_nom", [{"entity": "steel_dri", "value": 100.0}])
-    root.materialise()
+    root = _root(store)
+    child = empty_child(root)
+    target = Path(store.layer_dir(child.id), "inputs")
+    target.mkdir(parents=True, exist_ok=True)
+    duckdb.sql(
+        """
+        SELECT NULL::STRUCT(entity VARCHAR, bus VARCHAR) AS connection,
+               'efficiency' AS attribute, NULL::DOUBLE AS breakpoint, 0.5 AS value
+        """
+    ).to_parquet(str(target / "efficiency.parquet"))
+    assert _efficiencies(child) == {"h2_north": 0.5, "iron_ore": 0.5, "dri": 0.5}
 
-    write_schema(full, store)
+
+def test_a_group_outside_partial_is_owned_whole(store):
+    """Not `partial`, a layer touching one connection owns them all.
+
+    A removed entity's values still go, though no owner key names it.
+
+    Notes
+    -----
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    """
+    root = _root(store)
+    write_schema(schema(partial={"scenario"}), store)
     child = empty_child(root)
     write_input(
         store.layer_dir(child.id),
         "efficiency",
-        [{"entity": "steel_dri", "bus": "h2_north", "value": 2.0}],
+        [{"entity": "steel_dri", "bus": "h2_north", "value": 9.9}],
     )
+    assert _efficiencies(child) == {"h2_north": 9.9}, "the child restates the attribute"
 
-    assert _efficiencies(child) == {"h2_north": 2.0}
-    assert list(relation(child, "p_nom").df()["value"]) == [100.0]
+    gone = empty_child(root)
+    tombstone(store.layer_dir(gone.id), PROCESS, ["steel_dri"])
+    assert _efficiencies(gone) == {}
 
 
 # -- a group drawing twice on `entity` --------------------------------------
@@ -397,6 +401,7 @@ def _contract_root(store) -> Revision:
     write_schema(
         schema(
             attributes={SELLER: {"price": price}},
+            partial={"scenario", "contract"},
             groups={
                 "connection": {"entity": "entity", "bus": "bus"},
                 "contract": {"from": "entity", "to": "entity"},

@@ -97,7 +97,9 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store, a
     assert set(wind["period"]) == {2020}, "the deleted coordinate's row is gone"
 
     keys = child.resolver.inputs.df()
-    keyed = keys[keys["entity"] == "Manchester Wind"]
+    keyed = keys[
+        (keys["entity"] == "Manchester Wind") & (keys["attribute"] == "p_max_pu")
+    ]
     assert set(keyed["period"]) == {2020}, "and the map no longer owns its key"
 
 

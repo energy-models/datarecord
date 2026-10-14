@@ -69,7 +69,7 @@ Each edit maps onto exactly one part of the format:
 `add_group` names no entity type: a group's rows are keyed by its coordinates and the type is not one of them, so there is nothing for it to scope ([where the rows live](format.md#where-a-value-lives)).
 Nor is there a `connect`/`disconnect` pair beside it — `connection` is one group among however many the schema declares, and a call naming it would be the record layer holding one framework's vocabulary.
 
-The inputs key is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: `partial` necessarily contains `entity` and every [group](schema.md#groups) key coordinate, since neither broadcasts.
+The inputs key is [schema-derived](schema.md#partial-the-granularity-of-an-override) rather than spelled: `entity`, which does not broadcast, and the dims and [groups](schema.md#groups) `partial` names.
 Every key is `entity`-based, because `entity` is [what identifies an entity](format.md#entity-is-unique-across-types).
 An **entity** edit still _names_ a type — `add("Generator", frame)` — because it creates the thing that has one, and the row it writes records it; but the type is a column of that row rather than part of the key it targets.
 That is what makes `remove("Generator", ["x"])` followed by `add("Bus", frame)` collapse to the later edit: one name has one answer, where a type-partitioned key would keep both and write a record whose two types share a name.
@@ -106,7 +106,8 @@ None has a parameter of its own, because which coordinates exist is declared rat
 
 A plain dim keyword scopes the edit and its absence means "every value" by the NULL broadcast rule, so `scenario="high"` patches one scenario.
 A group's key coordinates are packed with the entity into the group's [struct column](schema.md#groups), so `entity=["dc"], bus="north"` stages `connection = {entity: dc, bus: north}`.
-A group column does not broadcast, so every key coordinate must be given: omitting `bus` is refused, since `{entity: dc, bus: NULL}` would [match no connection](record.md#the-broadcast-rule) rather than every connection of the entity.
+A group value is [a whole tuple or NULL](record.md#the-broadcast-rule), so every key coordinate must be given: omitting `bus` is refused, since `{entity: dc, bus: NULL}` names no tuple.
+A NULL struct, every tuple of the group, has no keyword spelling; a long frame carries it.
 
 **`entity=` fills only a coordinate named `entity`**, the row's own or a group field so called.
 A field drawing on `entity` under another name is a keyword like any other: a contract `(from, to)` is addressed as `from="plant", to="mill"`, both required, and `entity=` beside it is refused, since it would have to guess which party it names.
@@ -135,6 +136,7 @@ A frame carrying one is rejected rather than ignored — it says the writer beli
 
 A frame over a group carries it **as the struct column**, `connection STRUCT(entity, bus)`.
 One carrying a key coordinate flat, `entity` or `bus`, is rejected with the struct to pass instead, and so is a struct whose fields are not exactly the group's key, which a cast would silently re-key.
+A struct with some fields NULL is rejected too; a NULL struct broadcasts over every tuple.
 
 The first four normalise to a long frame before staging, so there is one staging path.
 A length mismatch between a sequence and `entity` is an error at the call, not a silently truncated edit.
@@ -333,6 +335,7 @@ Overwriting one value along a non-partial axis means the layer must carry that e
 That is the one read of parent data an edit makes, and it happens as the rows are staged rather than at write: the staging table then already holds what the layer will hold, so a write of `edits` has no completion step of its own.
 
 The scope is the key the edit named, never the attribute: an entity no edit mentioned keeps its rows in the parent, and a layer carrying them would claim an extent it was never given.
+**A group outside `partial` is owned whole the same way.** A `set` on one connection's `efficiency` stages every other connection's resolved value beside it, and the scope is the attribute: a connection attribute's key names no entity, so the key the edit named is `(attribute)` alone.
 A staged row that leaves the axis NULL is the exception, since [the broadcast rule](record.md#the-broadcast-rule) already makes it cover every label — there is nothing left to carry, and a carried row beside it would overlap.
 Carried rows go in only where no edit already holds the coordinate, so a later `set` on a carried coordinate replaces the fill rather than tying with it — the anti-join that keeps a fill off an occupied coordinate is the whole of what orders the two.
 

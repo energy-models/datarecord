@@ -214,9 +214,8 @@ class Coords:
         ----------
         rel : DuckDBPyRelation
         layer_keys : tuple of str
-            The broadcast dims of `schema.partial_dims`. Never `entity` or a
-            group's column, which address a row rather than broadcasting over
-            an axis.
+            The broadcast coordinates of `schema.partial_dims`; a group's
+            axis is its resolved relation.
 
         Returns
         -------
@@ -242,18 +241,22 @@ class Coords:
         alias = rel.alias
         exprs = {}
         for dim in layer_keys:
-            axis = self.axes.get(dim)
-            if axis is None:
+            axis = self.axes.get(dim, self.groups.get(dim))
+            over = [
+                lit(a)
+                for a in self.schema.attributes
+                if dim in self.schema.coordinates_of(a)
+            ]
+            if axis is None or not over:
                 exprs[dim] = col(alias, dim)
                 continue
-            # `dim IS NULL = true` rather than `dim IS NULL`: an equality hashes,
+            # `... = true` rather than the bare condition: an equality hashes,
             # a one-sided condition is a nested loop over every row and label.
+            # An attribute not over `dim` holds NULL there for want of the
+            # column, which is no broadcast.
+            broadcasts = col(alias, dim).isnull() & col(alias, "attribute").isin(*over)
             key = axis.project(col(dim), lit(True).alias("_broadcast"))  # noqa: FBT003
-            rel = rel.join(
-                key,
-                col(alias, dim).isnull() == col(key.alias, "_broadcast"),
-                how="left",
-            )
+            rel = rel.join(key, broadcasts == col(key.alias, "_broadcast"), how="left")
             exprs[dim] = coalesce(col(alias, dim), col(key.alias, dim))
         return rel, exprs
 
@@ -371,6 +374,30 @@ def _shared(
 
 
 # -- fold relations -----------------------------------------------------
+
+
+def _living(
+    rel: DuckDBPyRelation, keys: Coords, unkeyed: Sequence[str]
+) -> DuckDBPyRelation:
+    """`rel` without the rows naming, in one of `unkeyed`, an entity since removed.
+
+    The fold drops a removed entity's rows by anti-joining the owner map on the
+    entities its key names. `entity` or a group outside `partial` is no key
+    column, so the fold cannot reach the rows naming an entity there: they are
+    dropped here instead, against the resolved entity axis.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    """
+    entities = keys.axes.get("entity")
+    if entities is None:
+        return rel
+    living = entities.project(col("entity")).set_alias("e")
+    for on in entity_coordinates(keys.schema, "r", unkeyed):
+        rel = rel.set_alias("r").join(living, on == col("e", "entity"), how="semi")
+    return rel
 
 
 def _deleted_relation(
@@ -540,8 +567,11 @@ def fold_inputs(
         # stored. Together they are every declared dim, exactly once.
         expanded = set(dims)
         tagged = rel.project(
-            *(col("i", g) for g in schema.group_columns),
-            *(col("i", d) for d in schema.dims if d not in expanded),
+            *(
+                col("i", d)
+                for d in (*schema.group_columns, *schema.dims)
+                if d not in expanded
+            ),
             *(expr.alias(d) for d, expr in dims.items()),
             *(col("i", d).alias(f"_raw_{d}") for d in broadcast),
             col("i", "attribute"),
@@ -570,7 +600,8 @@ def fold_inputs(
     # A partial dim's `axis_key` is always in `input_key`, so a miss there is a
     # nested dim whose parents the schema failed to keep in the fold key, and
     # the assert names it.
-    for d in schema.partial or ():
+    partial_dims = [d for d in schema.partial or () if d in schema.dimensions]
+    for d in partial_dims:
         assert keyed.issuperset(schema.axis_key(d)), (
             f"partial dim keyed by {schema.axis_key(d)} outruns `input_key` "
             f"{schema.input_key}; a nested dim needs its parents in the fold key"
@@ -587,13 +618,14 @@ def fold_inputs(
                 null_safe("x", "p", (g,)),
             )
             for g in schema.group_columns
+            if g in keyed
         ),
         *(
             (
                 _deleted_relation(source.axis(d), keys, con, fixed=schema.axis_key(d)),
                 null_safe("x", "p", schema.axis_key(d)),
             )
-            for d in schema.partial or ()
+            for d in partial_dims
         ),
     ]
     kept = parent.set_alias("p")
@@ -1276,9 +1308,9 @@ class Resolver:
         # carries. A dim outside `partial` is in neither: it is not in the map
         # at all, so it constrains nothing and passes straight through.
         #
-        # Of those that are, an address coordinate - `entity`, or a group's one
-        # struct column - matches NULL-safely and a broadcast dim NULL-aware -
-        # the split `broadcast_dims` draws
+        # Of those that are, `entity` matches NULL-safely and a broadcast
+        # coordinate - a dim or a group - NULL-aware, the split `broadcast_dims`
+        # draws
         # (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         coordinates = set(keys.schema.coordinates_of(attribute))
         broadcasts = set(keys.schema.broadcast_dims)
@@ -1298,7 +1330,8 @@ class Resolver:
         if not layers:
             return _empty_relation(keys.schema, con, *columns)
 
-        return (
+        unkeyed = [c for c in columns if c not in partial_dims]
+        return _living(
             union_all_by_name(layers, con)
             .set_alias("l")
             .join(
@@ -1312,7 +1345,9 @@ class Resolver:
                     else col("l", dim)
                     for dim in columns
                 )
-            )
+            ),
+            keys,
+            unkeyed,
         )
 
     def _layers_owning(self, attribute: str) -> list[UUID]:

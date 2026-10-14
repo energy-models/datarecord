@@ -1027,8 +1027,10 @@ def test_a_frame_carries_a_group_as_its_struct(staged):
         "'Manchester' AS bus, 0.5 AS value",
         "{'entity': 'Manchester Wind'} AS connection, 0.5 AS value",
         "'Manchester' AS connection, 0.5 AS value",
+        "{'entity': 'Manchester Wind', 'bus': NULL::VARCHAR} AS connection, "
+        "0.5 AS value",
     ],
-    ids=["flat", "both", "partial-struct", "not-a-struct"],
+    ids=["flat", "both", "partial-struct", "not-a-struct", "partly-null"],
 )
 def test_a_frame_carrying_a_group_but_as_its_struct_is_rejected(staged, select):
     """Flat coordinates, beside the struct or not, or a wrong struct, are refused.
@@ -1630,8 +1632,9 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root, store):
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     frame = staged.con.sql(
-        "SELECT {'entity': entity, 'bus': NULL::VARCHAR} AS connection, value "
-        "FROM (VALUES ('Manchester Wind', 1.0), ('0', 2.0)) t(entity, value)"
+        "SELECT {'entity': entity, 'bus': bus} AS connection, value "
+        "FROM (VALUES ('Manchester Wind', 'Manchester', 1.0), ('0', 'Norway', 2.0)) "
+        "t(entity, bus, value)"
     )
     staged.set("p", frame, kind="outputs")
 

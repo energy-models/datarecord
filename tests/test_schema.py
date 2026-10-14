@@ -107,13 +107,12 @@ def test_a_scenario_varying_capacity_is_a_schema_violation():
 def test_partial_dims_is_the_union_over_attributes():
     """The fold's key is one fixed tuple, so an unowned dim is NULL rather than absent."""
     s = _schema()
-    # `entity` and the `connection` column are always in it - they do not
-    # broadcast - while `bus`, inside the struct, is no key of its own.
-    assert s.partial_dims == ("entity", "connection", "scenario")
+    assert s.partial_dims == ("entity", "scenario"), "`entity` always, a group not"
 
-    # Make `timestep` partial too and it joins the key.
-    wider = _schema(partial=frozenset({"scenario", "timestep"}))
-    assert wider.partial_dims == ("entity", "connection", "timestep", "scenario")
+    wider = _schema(partial=frozenset({"scenario", "timestep", "connection"}))
+    assert wider.partial_dims == ("entity", "timestep", "scenario", "connection"), (
+        "a `partial` dim or group joins the key"
+    )
 
 
 def test_file_split_follows_dims():
@@ -132,13 +131,8 @@ def test_file_split_follows_dims():
 # -- membership keys (https://energy-models.github.io/datarecord/design/schema/#keys-which-entity-tables-a-dim-keys) --------------------------------------------------
 
 
-def test_a_membership_key_is_in_the_fold_key_without_partial():
-    """A non-broadcast dim is a membership key, in the fold key by being one.
-
-    `entity` does not broadcast, so it is patched per row by every layer - it
-    lands in `partial_dims` (the fold key) without being declared `partial`,
-    which is for value dims a layer patches per value.
-    """
+def test_entity_is_in_the_fold_key_without_partial():
+    """`entity` does not broadcast, so every layer patches it per row."""
     s = Schema(
         dimensions={
             "entity": Dimension(dtype=nw.String()),
@@ -146,13 +140,12 @@ def test_a_membership_key_is_in_the_fold_key_without_partial():
         },
         partial=frozenset({"scenario"}),
     )
-    assert s.membership_keys == ("entity",)
     assert s.partial_dims == ("entity", "scenario")
 
 
-def test_partial_may_not_name_a_membership_key():
-    """`partial` is for value dims; a membership key named there is a category error."""
-    with pytest.raises(ValidationError, match="membership keys"):
+def test_partial_may_not_name_entity():
+    """`entity` is keyed already; naming it in `partial` is a category error."""
+    with pytest.raises(ValidationError, match="keyed per row already"):
         Schema(
             dimensions={
                 "entity": Dimension(dtype=nw.String()),
