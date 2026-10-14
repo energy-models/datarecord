@@ -4,9 +4,14 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: trait switches — a trait a component opts into
+# DEP 003: trait switches — a trait a component opts into
 
-Status: **Draft** · Drafted 2026-08-27
+| DEP     | 003                                            |
+| ------- | ---------------------------------------------- |
+| Title   | trait switches — a trait a component opts into |
+| Author  | Jonas Hörsch                                   |
+| Status  | Draft                                          |
+| Created | 2026-08-27                                     |
 
 Stacked on [groups](002-groups.md), which it does not depend on but shares a direction with: what a record can say about a component should be declared rather than encoded in a type name.
 

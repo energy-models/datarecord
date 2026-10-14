@@ -4,9 +4,15 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: groups — one construct for classification and sparsity
+# DEP 002: groups — one construct for classification and sparsity
 
-Status: **Implemented** · Drafted 2026-08-27 · Implemented 2026-09-01
+| DEP     | 002                                                    |
+| ------- | ------------------------------------------------------ |
+| Title   | groups — one construct for classification and sparsity |
+| Author  | Jonas Hörsch                                           |
+| Status  | Implemented 2026-09-01                                 |
+| Created | 2026-08-27                                             |
+| Version | v0.1.0a1                                               |
 
 Landed in [the schema](../schema.md#groups) and [the record format](../format.md#where-a-value-lives); this page is kept as the argument for the change rather than as the current description.
 

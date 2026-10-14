@@ -4,9 +4,15 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: dims, mappings, groups and traits
+# DEP 001: dims, mappings, groups and traits
 
-Status: **Implemented** · Drafted 2026-08-15 · Implemented 2026-08-16
+| DEP     | 001                               |
+| ------- | --------------------------------- |
+| Title   | dims, mappings, groups and traits |
+| Author  | Jonas Hörsch                      |
+| Status  | Implemented 2026-08-16            |
+| Created | 2026-08-15                        |
+| Version | v0.1.0a1                          |
 
 **This page is the argument, not the design.** What shipped is described by [the schema](../schema.md) — [groups](../schema.md#groups), [traits](../schema.md#traits) — together with [the record format](../format.md) and [the read path](../read-path.md), and those pages are authoritative where the two disagree.
 The `on` mapping this page landed has since been [absorbed into groups as `into`](002-groups.md), so its half of the argument describes a construct that no longer exists.

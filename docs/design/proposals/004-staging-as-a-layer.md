@@ -4,9 +4,15 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: staging as a layer — one fold, two sources
+# DEP 004: staging as a layer — one fold, two sources
 
-Status: **Implemented** · Drafted 2026-09-01 · Implemented 2026-09-01
+| DEP     | 004                                        |
+| ------- | ------------------------------------------ |
+| Title   | staging as a layer — one fold, two sources |
+| Author  | Jonas Hörsch                               |
+| Status  | Implemented 2026-09-01                     |
+| Created | 2026-09-01                                 |
+| Version | v0.1.0a1                                   |
 
 Landed in [the read path](../read-path.md#one-record-over-one-fold) and [`WorkingRecord`](../working-record.md#reading-with-pending-edits); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 

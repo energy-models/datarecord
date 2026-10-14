@@ -4,9 +4,15 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: one interface, two objects — a source is its own rows, a fold is the resolution
+# DEP 008: one interface, two objects — a source is its own rows, a fold is the resolution
 
-Status: **Implemented** · Drafted 2026-09-02 · Implemented 2026-09-04
+| DEP     | 008                                                                             |
+| ------- | ------------------------------------------------------------------------------- |
+| Title   | one interface, two objects — a source is its own rows, a fold is the resolution |
+| Author  | Jonas Hörsch                                                                    |
+| Status  | Implemented 2026-09-04                                                          |
+| Created | 2026-09-02                                                                      |
+| Version | v0.1.0a1                                                                        |
 
 > All three commits below landed on `refactor/staging-as-a-layer` (`cd2ce92`,
 > `006c159`, `7f244a9`). The authoritative account is [the read

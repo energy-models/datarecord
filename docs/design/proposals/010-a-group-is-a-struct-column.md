@@ -4,9 +4,15 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: a group is one struct column
+# DEP 010: a group is one struct column
 
-Status: **Implemented** · Drafted 2026-10-12 · Implemented 2026-10-12 · [Amendment](#amendment-a-group-is-a-dim) implemented 2026-10-13
+| DEP     | 010                                                                         |
+| ------- | --------------------------------------------------------------------------- |
+| Title   | a group is one struct column                                                |
+| Author  | Jonas Hörsch                                                                |
+| Status  | Implemented 2026-10-12, [amendment](#amendment-a-group-is-a-dim) 2026-10-13 |
+| Created | 2026-10-12                                                                  |
+| Version | Unreleased                                                                  |
 
 Landed in the [steps below](#landing) on [the schema](../schema.md#groups), [the record](../record.md#the-broadcast-rule), [the format](../format.md#the-long-schema), [the read path](../read-path.md#owner-map), [the working record](../working-record.md#set) and [consuming a record](../tools.md#results-on-connections); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 [What the implementation found](#what-the-implementation-found) records where it departs from or adds to the argument below.

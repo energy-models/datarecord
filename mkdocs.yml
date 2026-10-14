@@ -46,19 +46,20 @@ nav:
       - Consuming a record: design/tools.md
       - Module layout: design/module-layout.md
       - Open questions: design/open-questions.md
-      - Proposals:
-          - Dims, mappings, groups and traits: design/proposals/001-dims-groups-traits.md
-          - Groups: design/proposals/002-groups.md
-          - Trait switches: design/proposals/003-trait-switches.md
-          - Staging as a layer: design/proposals/004-staging-as-a-layer.md
-          - One Record over a NodeCache: design/proposals/005-one-record-over-a-node-cache.md
-          - A member file holds values: design/proposals/006-a-member-file-holds-values.md
-          - Staging without _seq: design/proposals/007-staging-without-seq.md
-          - One interface, source and fold: design/proposals/008-one-interface-source-and-fold.md
-          - A Workspace and a Store: design/proposals/009-store.md
-          - A group is one struct column: design/proposals/010-a-group-is-a-struct-column.md
-          - Deletion cascades through tombstones: design/proposals/011-deletion-cascades-through-tombstones.md
-          - Properties: design/proposals/012-properties.md
+      - Enhancement proposals:
+          - Template: design/proposals/000-template.md
+          - "DEP 001: Dims, mappings, groups and traits": design/proposals/001-dims-groups-traits.md
+          - "DEP 002: Groups": design/proposals/002-groups.md
+          - "DEP 003: Trait switches": design/proposals/003-trait-switches.md
+          - "DEP 004: Staging as a layer": design/proposals/004-staging-as-a-layer.md
+          - "DEP 005: One Record over a NodeCache": design/proposals/005-one-record-over-a-node-cache.md
+          - "DEP 006: A member file holds values": design/proposals/006-a-member-file-holds-values.md
+          - "DEP 007: Staging without _seq": design/proposals/007-staging-without-seq.md
+          - "DEP 008: One interface, source and fold": design/proposals/008-one-interface-source-and-fold.md
+          - "DEP 009: A Workspace and a Store": design/proposals/009-store.md
+          - "DEP 010: A group is one struct column": design/proposals/010-a-group-is-a-struct-column.md
+          - "DEP 011: Deletion cascades through tombstones": design/proposals/011-deletion-cascades-through-tombstones.md
+          - "DEP 012: Properties": design/proposals/012-properties.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:

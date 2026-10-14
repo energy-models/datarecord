@@ -4,9 +4,16 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: deletion cascades through tombstones, not through filters
+# DEP 011: deletion cascades through tombstones, not through filters
 
-Status: **Implemented** · Drafted 2026-10-13
+| DEP      | 011                                                       |
+| -------- | --------------------------------------------------------- |
+| Title    | deletion cascades through tombstones, not through filters |
+| Author   | Jonas Hörsch                                              |
+| Status   | Implemented 2026-10-13                                    |
+| Requires | [010](010-a-group-is-a-struct-column.md)                  |
+| Created  | 2026-10-13                                                |
+| Version  | Unreleased                                                |
 
 A label is removed by a tombstone, and only by a tombstone: removing one tombstones every [group](../schema.md#groups) tuple naming it, a layer leaving such a tuple alive is refused, and nothing is inferred on read from a dead label a row refers to.
 

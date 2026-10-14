@@ -4,9 +4,16 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Proposal: a member file holds values, and nothing else
+# DEP 006: a member file holds values, and nothing else
 
-Status: **Superseded** · Drafted 2026-09-02 · Implemented 2026-09-04 · Superseded 2026-10-13
+| DEP           | 006                                            |
+| ------------- | ---------------------------------------------- |
+| Title         | a member file holds values, and nothing else   |
+| Author        | Jonas Hörsch                                   |
+| Status        | Superseded 2026-10-13 (implemented 2026-09-04) |
+| Created       | 2026-09-02                                     |
+| Version       | v0.1.0a1                                       |
+| Superseded-By | [012](012-properties.md)                       |
 
 > **Superseded** by [properties](012-properties.md#one-file-per-subject-on-disk):
 > the entity-type axis is now an `Enum` property of `entity`, and a record with
