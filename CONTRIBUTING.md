@@ -70,16 +70,18 @@ Open a GitHub issue to report a bug or request a feature:
 
 ## Architecture in one paragraph
 
-datarecord stores dimensioned attribute data with a declared schema: components
-(named members of a type, unique record-wide), connections, attribute values over
-both, and the axes those values vary along. A record is defined by the `Record`
-protocol — what it answers, not how it is stored — and a parquet directory is its
-on-disk form. Two implementations serve that protocol — `DirectoryRecord` over a
-single directory, and `LayeredRecord` over a tree of layers resolved
-last-writer-wins — so a consumer cannot tell which it holds. Queries are built
-with `narwhals` and executed by `duckdb`, staying lazy until collected. Beyond
-those and `pydantic`, core depends on nothing. Keep new features consistent with
-this schema-declared, backend-agnostic, lazily-evaluated design.
+datarecord stores dimensioned attribute data with a declared schema: entities
+(named members of a type, unique record-wide), groups of them — a `connection`
+over `(entity, bus)` being the one every network has — attribute values over
+both, and the axes those values vary along. A record is defined by the
+`RecordLike` protocol — what it answers, not how it is stored — and a parquet
+directory is its on-disk form. The concrete `Record` folds a tree of layers
+resolved last-writer-wins, degenerating to a scan over a single directory
+(`Record.at(uri)`), so a consumer cannot tell how many layers it holds. Queries
+are built with `narwhals` and executed by `duckdb`, staying lazy until
+collected. Beyond those and `pydantic`, core depends on nothing. Keep new
+features consistent with this schema-declared, backend-agnostic,
+lazily-evaluated design.
 
 ## Releasing
 

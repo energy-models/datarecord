@@ -36,7 +36,7 @@ from datarecord.duck import (
     distinct_values,
     fn,
     parquet_names,
-    resolved_dir,
+    struct_field,
     struct_of,
     try_read_parquet,
 )
@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
     from datarecord.schema import Schema
+    from datarecord.store import Store
 
 
 def flags_from_rows(
@@ -125,13 +126,13 @@ class Fold:
 
     @property
     def entity_axis(self) -> DuckDBPyRelation | None:
-        """The resolved entity axis, or `None` where no layer wrote a component."""
+        """The resolved entity axis, or `None` where no layer wrote an entity."""
         return self.axes.get("entity")
 
     def attributes(self) -> list[str]:
         """Every input attribute any layer owns a row for, from the owner map.
 
-        Across component types, matching the file layout: one
+        Across entity types, matching the file layout: one
         `inputs/<attr>.parquet` holds every type's rows. Ordered, so a `Record`
         over this has a stable key order.
 
@@ -153,9 +154,9 @@ class Fold:
     def flags(self, entity_type: str | None = None) -> dict[str, Flags]:
         """Per attribute, which dims its rows use - whole-record, or one type.
 
-        Whole-record when `entity_type` is `None`; scoped to a type's components
+        Whole-record when `entity_type` is `None`; scoped to a type's entities
         when named, by a semi-join to the resolved entity axis. A type whose
-        components disagree yields a dim in both sets - the instruction to use
+        entities disagree yields a dim in both sets - the instruction to use
         both containers, each taking the rows it matches. The union stops at the
         type boundary: across types it would describe neither.
 
@@ -183,7 +184,7 @@ class Fold:
         empty rather than aggregating an unscoped map.
 
         A named type where the schema declares no type axis scopes to the whole
-        axis - every component - since "which dims does type X use" has no
+        axis - every entity - since "which dims does type X use" has no
         narrower meaning without types, and the axis carries no `entity_type`
         column to filter on (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
         """
@@ -198,15 +199,17 @@ class Fold:
             rel = rel.join(
                 of_type.distinct().set_alias("e"), "i.entity = e.entity", how="semi"
             )
+        flag = {
+            c: struct_of(
+                {d: fn.bool_or(struct_field(rel, c, d, lit(False))) for d in dims}
+            ).alias(c)
+            for c in ("varies", "broadcast")
+        }
         return rel.aggregate(
             [
                 col("attribute"),
-                struct_of({d: fn.bool_or(col("varies", d)) for d in dims}).alias(
-                    "varies"
-                ),
-                struct_of({d: fn.bool_or(col("broadcast", d)) for d in dims}).alias(
-                    "broadcast"
-                ),
+                flag["varies"],
+                flag["broadcast"],
                 fn.bool_or(col("breakpoints")).alias("breakpoints"),
             ]
         ).fetchall()
@@ -217,7 +220,7 @@ class Fold:
         revision_id: UUID,
         con: DuckDBPyConnection,
         schema: Schema,
-        base_uri: str | None = None,
+        store: Store,
     ) -> Fold | None:
         """This node's `Fold`, or `None` if it is not materialised.
 
@@ -225,7 +228,7 @@ class Fold:
         per-type frames are written together (`resolve.materialise`), so if the
         map is absent the node has no `resolved/` cache at all.
         """
-        base = resolved_dir(revision_id, base_uri)
+        base = store.resolved_dir(revision_id)
         owner_map = try_read_parquet(f"{base}owner_map/inputs.parquet", con)
         if owner_map is None:
             return None

@@ -13,19 +13,20 @@ Each node adds one layer; a node's data is its layer resolved over its ancestors
 class Revision(BaseModel):
     id: UUID
     parent: UUID | None  # None for a root
+    store: Store  # serialised as its location
 ```
 
-Each record has one layer at `layers/<id>/`; the path derives from the UUID rather than being stored.
+Each revision has one layer at `<location>/layers/<id>/`; the path derives from the UUID and its [store](#the-store) rather than being stored.
 Caches derived from the ancestry rather than from layer data live in a `resolved/` subdirectory of it, so the layer's own top level stays exactly what that layer wrote.
 
 Nodes form a tree: branching is several children sharing a parent, and they share the parent's layer and all further ancestry by pointing at it, not by duplication.
 Resolution order along a root→node path is ancestry order; a node's own layer is last and wins.
 
-The node metadata — `(id, parent)` — is persisted in the `revisions` table, so a revision id resolves to its ancestry, and thus its layer set, through it.
+The node metadata — `(id, parent)` — is persisted [beside the layers](#the-tree-beside-the-layers), one file per revision, so a revision id resolves to its ancestry, and thus its layer set, from the location alone.
 
 Two of [the protocol's](record.md) columns take their meaning from the overlay key.
 
-A [group](schema.md#groups)'s coordinates are part of the **inputs** key, `(*partial dims, attribute)` — `bus` among them for the `connection` group, NULL for a component-level attribute and NULL-safe-compared so that case is unaffected.
+A [group](schema.md#groups)'s coordinates are part of the **inputs** key, `(*partial dims, attribute)` — `bus` among them for the `connection` group, NULL for an entity-level attribute and NULL-safe-compared so that case is unaffected.
 That is what makes a per-connection attribute owned _per connection_: without it, a patch changing one connection's `efficiency` would own — and so have to restate — every connection's.
 It is also why a connection is keyed by its bus rather than by position: a patch layer would otherwise have to know a connection's current index, so an ancestor inserting one earlier would silently redirect that patch to a different bus.
 
@@ -36,8 +37,8 @@ A layer owns a whole curve, the same rule a non-`partial` dim follows ([partial]
 
 A node has no mutable state.
 
-A layer's data is created by one act — [`write_record`](writing.md), whether called directly or by a [commit](working-record.md#committing) — which refuses an existing directory and stages into a sibling path, so a layer is complete when it first becomes visible and never changes afterwards.
-Editing needs no mutable layer: edits accumulate in [the staging area](working-record.md#staging) and become a layer at commit.
+A layer's data is created by one act — [`store.root` or `rev.child`](writing.md), the latter also how a `WorkingRecord`'s [edits](working-record.md#edits) are written — which refuses an existing directory and stages into a sibling path, so a layer is complete when it first becomes visible and never changes afterwards; and its [revision file, written last](writing.md#a-revision-exists-only-by-its-file), is what makes it reachable at all.
+Editing needs no mutable layer: edits accumulate in [the staging area](working-record.md#staging) and become a layer when written as a child.
 
 The one thing written into a layer directory after that act is its [`resolved/` cache](#materialised-node-caches), which is why the invariant is stated over the layer's _data_ rather than over the directory.
 That is not a loosening that costs anything: a cache is derived from immutable layers, so writing one cannot change an answer, and nothing downstream reads it as data.
@@ -60,14 +61,71 @@ It is purely additive, writing files under `resolved/` and changing no answer, o
 
 ## Deletion
 
-A `deleted = true` row on [the entity axis](format.md#the-entity-axis) tombstones a component from every attribute, and from every value of every dim — [existence does not vary along one](schema.md#existence-does-not-vary-along-a-dim), so there is nothing to scope a deletion by.
-A `deleted = true` row in `groups/<group>.parquet` tombstones one row of that group — the row itself and its `inputs/` rows — leaving the component and its other rows intact, so a connection is removed without touching the component it attached.
+A `deleted = true` row on [the entity axis](format.md#the-entity-axis) tombstones an entity from every attribute, and from every value of every dim — [existence does not vary along one](schema.md#existence-does-not-vary-along-a-dim), so there is nothing to scope a deletion by.
+A `deleted = true` row in `groups/<group>.parquet` tombstones one row of that group — the row itself and its `inputs/` rows — leaving the entity and its other rows intact, so a connection is removed without touching the entity it attached.
 
 A tombstone is honoured by the [one fold](read-path.md#one-fold-for-every-axis) that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
 An _attribute's_ orphaned rows stop surfacing the same way, for every membership: an attribute row is keyed by the entity, group tuple and dim coordinates its `dims` name, and [`fold_inputs`](read-path.md#owner-map) anti-joins the map against each membership's `deleted` rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map, not filtered at read.
-Each membership honours only its **own** tombstones, read from the same file it folds from: deletion is never a cascade, so deleting a component drops its own row but leaves its connection tuples until they are deleted in turn.
-A tombstone only affects the branch that carries it; sibling branches keep the component.
+Each membership honours only its **own** tombstones, read from the same file it folds from: deletion is never a cascade, so deleting an entity drops its own row but leaves its connection tuples until they are deleted in turn.
+A tombstone only affects the branch that carries it; sibling branches keep the entity.
 
 The fold treats an absent `deleted` column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.
 Every derived cache lives under `resolved/` for the same reason: every glob the read path issues into a layer is single-level — `inputs/*.parquet`, `dims/*.parquet`, `dims/*/*.parquet` — so nothing under `resolved/` is reachable by one.
 A reader pointed at a layer directory therefore sees exactly what that layer wrote, and materialising a node's caches never changes what it sees.
+
+## The store
+
+What a process holds is two objects' state. A **`Workspace`** holds the DuckDB database and the means to reach files, local or remote, which is all a standalone directory needs. A **`Store`** holds one store location — its manifest, its revision tree, its layers — and works through a workspace, which several stores share so that records from them join.
+
+```python
+ws = Workspace()  # ":memory:" by default
+store = ws.store("/data/a")  # one Store per normalised location
+rev = store.revision(rid)  # look one up
+record = ws.at("out/")  # a standalone directory, read under its own manifest
+layer = store.layer(rid)  # one layer read alone, under the store's manifest
+```
+
+A call reaches the workspace explicitly only where nothing in hand carries one: `ws.store`, `ws.at`, and the `con` a tool converting a framework object is handed. Everything built _from_ something takes it from that: a revision from its store, a `Record` from its `Resolver`, a `WorkingRecord` from its base record.
+
+**The location is required and absolute.** `ws.store("")` raises, and a local path is resolved, so neither a later `chdir` nor a process with another cwd moves it — there is no default location left to fall back to. `layer_dir`, `resolved_dir` and the manifest's location derive from it and nothing else.
+
+**The location is authoritative, the database is disposable.** What lives in a workspace's `database` is never the record: deleting it loses at most uncommitted edits. A file-backed one keeps staged edits across a crash, the `revisions` cache across runs, and gives DuckDB room to spill. A location is not reused: every cache keyed by id assumes what an id names never changes, which a fresh UUID over write-once files guarantees and a location wiped and written again does not.
+
+### The tree beside the layers
+
+```text
+<location>/
+├── manifest.json
+├── revisions/<id>.json        # {"id": ..., "parent": ...}
+└── layers/<id>/
+```
+
+Beside `layers/` rather than inside a layer, so a layer directory stays exactly what the layer wrote and listing the tree is one listing over small files. One file per revision because a file named by a fresh UUID is write-once like a layer, so two processes creating revisions in one location never write the same object; it is written create-only through [files](#files-local-and-remote), so that is enforced rather than assumed.
+
+The workspace's `revisions` table is a cache of those files for every store on it, keyed by `(location, id)`. It cannot go stale, only incomplete, since a revision's parent never changes, so it is only ever added to: `revisions()` lists `revisions/` once and reads only the files the table lacks, and `revision(id)` that misses reads the file and each parent not yet held, raising `KeyError` where the first is absent. Two cursors adding one row at once conflict, and the row is the same whoever wins, so the loser moves on.
+
+### Files, local and remote
+
+Tables go through DuckDB. Everything else — the manifest, the revision files, listing them — goes through the workspace's `Files`, picked by the URI's scheme: a URI without `://` is local, and any scheme but `s3://` raises.
+
+```python
+class Files(Protocol):
+    def read_text(self, uri: str) -> tuple[str, Version] | None: ...  # None on a miss
+    def write_text(
+        self, uri: str, text: str, *, expect: Version | Absent | None
+    ) -> Version: ...
+    def list(self, prefix: str) -> list[str]: ...  # names directly under prefix
+    def exists(self, uri: str) -> bool: ...
+```
+
+`expect` is the precondition: `Absent` writes only if nothing is there, a `Version` only if the object is unchanged since it was read, `None` unconditionally. Locally every write lands under a temporary name and is moved into place, so a reader meets a whole file or none: `Absent` is a hard link, which the OS refuses over an existing file, and a `Version` — the content's SHA-256 — is checked and replaced while holding a lock on a sibling `<name>.lock`, which is what makes the check and the write one step.
+
+Remotely, `Files` is on [boto3](https://boto3.amazonaws.com/), behind the optional extra `datarecord[remote]`. `expect` maps to `put_object`'s conditional headers — `IfNoneMatch="*"` for `Absent`, `IfMatch` for a `Version`, which is the object's ETag — and a refused write (`412`, or `409` for a racing one) raises `PreconditionFailedError`. They guard the revision files, create-only by the server's guarantee, and the [manifest's compare-and-swap](writing.md#the-manifests-compare-and-swap); not the layer's parquet, which DuckDB's `httpfs` writes unconditionally under a fresh UUID. They hold only as far as the server honours them: SeaweedFS checks them atomically from 4.18, AWS S3 since November 2024.
+
+The configuration is the AWS environment and config files, and nothing datarecord-specific. boto3 reads it itself; DuckDB gets `CREATE SECRET (TYPE s3, PROVIDER credential_chain)`, to which a set `AWS_ENDPOINT_URL` adds its `ENDPOINT`, `URL_STYLE 'path'`, `USE_SSL` per its scheme and `CHAIN 'env;config'`, since a self-hosted server has no bucket-subdomain DNS and no instance-metadata service to probe. Both are set up on the first `s3://` URI a workspace is handed, so a purely local one never pays for either.
+
+### Crossing a process boundary
+
+`Revision` serialises its store as its location, `{"id": …, "parent": …, "store": "/data/a"}`, and validates back through `Workspace.process().store(uri).revision(id)`, reading the revision file and each parent the process lacks — so `ancestry()` answers in a fresh process. `Store` pickles the same way.
+
+That is the one default that survives, and nothing reaches it implicitly but deserialisation: `Workspace.process()` is created on first use, on `:memory:`, and code wanting its own records joinable with deserialised ones names it.

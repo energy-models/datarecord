@@ -14,7 +14,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 Dimensioned attribute data with a declared schema.
 
-A record holds **components** (named members of a type), **connections** between components and buses, **attribute values** over both, and the **axes** those values vary along. A schema declares what may exist; the data says what does.
+A record holds **entities** (named members of a type, unique record-wide), **groups** of entities over further dims — a `connection` over `(entity, bus)` is the one every record with connections has — **attribute values** over both, and the **axes** those values vary along. A schema declares what may exist; the data says what does.
 
 Records stack: a layer is a partial record on top of a parent, resolved last-writer-wins, so a scenario variant costs the rows it changes rather than a copy of everything. On disk a record is a plain parquet directory that a tool knowing nothing about this package can read.
 
@@ -33,15 +33,16 @@ Full documentation is at **<https://energy-models.github.io/datarecord/>**:
 ```bash
 pip install datarecord           # core
 pip install datarecord[pypsa]    # with the PyPSA tool
+pip install datarecord[remote]   # with records on S3
 ```
 
 ## A taste
 
 ```python
-from datarecord import DirectoryRecord, connect
+from datarecord import Workspace
 
-con = connect()
-record = DirectoryRecord("s3://bucket/my-record/", con)
+ws = Workspace()
+record = ws.at("s3://bucket/my-record/")
 
 record.entity_types["Generator"].collect()  # wide member rows
 record.attributes["p_max_pu"].collect()  # long value rows, one per value
@@ -50,14 +51,14 @@ record.flags("Generator")  # which axes each attribute uses
 
 Every frame is a `narwhals.LazyFrame` — a plan, not data. Nothing is read until you `.collect()`.
 
-Records stack, and a `WorkingRecord` accumulates edits that become one layer at commit:
+Records stack, and a `WorkingRecord` accumulates edits that become one layer when written as a child:
 
 ```python
-from datarecord import WorkingRecord, NewChild
+from datarecord import WorkingRecord
 
-w = WorkingRecord(revision.record, con)
-w.set("p_nom", 150.0, names=["wind1", "wind2"])
-child = w.commit(NewChild())
+w = WorkingRecord(revision.record)
+w.set("p_nom", 150.0, entity=["wind1", "wind2"])
+child = revision.child(w.edits)
 ```
 
 See [Usage](https://energy-models.github.io/datarecord/usage/) for the rest.

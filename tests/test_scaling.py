@@ -16,7 +16,6 @@ import tracemalloc
 
 import pytest
 
-from datarecord import Revision
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import export_network
 
@@ -33,18 +32,17 @@ def carbon():
     """
     import pypsa
 
-    from tests.fixtures import rename_components
+    from tests.fixtures import example, rename_components
 
-    n = pypsa.examples.carbon_management()
+    n = example(pypsa.examples.carbon_management)
     for ctype in ("Load", "Store", "Link", "Generator"):
         rename_components(n, ctype, f" {ctype}")
     return n
 
 
-def test_to_model_peaks_near_one_component_type(con, base_uri, carbon):
+def test_to_model_peaks_near_one_component_type(store, carbon):
     """Peak memory stays near the largest single type, not the whole network."""
-    revision = Revision.create(con)
-    export_network(carbon, revision, con)
+    revision = export_network(carbon, store)
 
     tracemalloc.start()
     n = PyPSA.build(revision.record)

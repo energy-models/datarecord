@@ -14,7 +14,9 @@ from pathlib import Path
 import narwhals as nw
 import pandas as pd
 
+from datarecord.files import Files, Version
 from datarecord.layered.resolve import write_schema as record_write_schema
+from datarecord.layered.revision import Revision
 from datarecord.schema import (
     AttributeSpec,
     Dimension,
@@ -22,6 +24,7 @@ from datarecord.schema import (
     Schema,
     Trait,
 )
+from datarecord.store import Store
 
 # No `entity_type`: an attribute row is keyed by `name`, unique across every type
 # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
@@ -233,6 +236,24 @@ def write_axis(layer: str, dim: str, rows: list[dict]) -> None:
     pd.DataFrame(rows).to_parquet(target / f"{dim}.parquet", index=False)
 
 
+def example(load):
+    """A PyPSA example network, loaded offline once it is cached.
+
+    PyPSA asks GitHub for a newer release on every netCDF import, without a
+    timeout, so a stalled connection hangs the suite. Network requests are
+    allowed only to download an example not cached yet, which PyPSA refuses
+    with a `ValueError` while they are off.
+    """
+    import pypsa
+
+    with pypsa.option_context("general.allow_network_requests", False):
+        try:
+            return load()
+        except ValueError:
+            pass
+    return load()
+
+
 def rename_components(n, ctype: str, suffix: str) -> None:
     """Suffix one type's member names, in `static` and every dynamic container.
 
@@ -282,25 +303,38 @@ def rename_components(n, ctype: str, suffix: str) -> None:
         frame.rename(columns=renamed, inplace=True)
 
 
-def export_network(n, revision, con) -> None:
-    """Write `n` as `revision`'s layer, through the record layer's own writer.
+def empty_root(store: Store) -> Revision:
+    """A new root revision with no layer, for a test to hand-write one into.
+
+    No public API makes an empty revision; this is the store's private
+    revision-file write.
+    """
+    return store._create(None)
+
+
+def empty_child(parent: Revision) -> Revision:
+    """A new child of `parent` with no layer, like `empty_root`."""
+    return parent.store._create(parent.id)
+
+
+def export_network(n, store: Store) -> Revision:
+    """Write `n` as a new root of `store`, through the record layer's own writer.
 
     Not `n.export_to_parquet`: that emits PyPSA's upstream manifest format,
     which is a different vocabulary from the schema a record declares.
-    Going through `write_record` means a test record is written exactly as
+    Going through `store.root` means a test record is written exactly as
     `blocks` writes one.
 
     Notes
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    from datarecord.layered.write import write_record
     from datarecord.tools.pypsa import PyPSA
 
-    write_record(revision.id, PyPSA.to_datarecord(n), con)
+    return store.root(PyPSA.to_datarecord(n, store.workspace.con))
 
 
-def write_schema(schema: Schema, base_uri: str | None = None) -> None:
+def write_schema(schema: Schema, store: Store) -> None:
     """Declare the record's one schema, beside the layers.
 
     Not per layer: a layer holds only data, so this writes the record-level
@@ -310,18 +344,45 @@ def write_schema(schema: Schema, base_uri: str | None = None) -> None:
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    record_write_schema(schema, base_uri)
+    record_write_schema(schema, store)
 
 
-def write_directory_schema(directory: str, schema: Schema) -> None:
-    """Write `manifest.json` *inside* `directory`, for a standalone record.
+def widened(base: Schema, attribute: str) -> Schema:
+    """`base` declaring one more attribute, shaped like its `p_nom`."""
+    return Schema(
+        **{
+            **dict(base),
+            "attributes": {**base.attributes, attribute: base.attributes["p_nom"]},
+        }
+    )
+
+
+class RivalWrite:
+    """`Files` where a rival replaces `uri` right after this writer reads it.
+
+    Two writers racing on the manifest, made deterministic: the read hands back
+    a version the rival's write has already made stale, once.
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
     """
-    Path(directory).mkdir(parents=True, exist_ok=True)
-    Path(directory, "manifest.json").write_text(schema.model_dump_json())
+
+    def __init__(self, inner: Files, uri: str, text: str) -> None:
+        self._inner = inner
+        self._uri = uri
+        self._text = text
+        self.raced = False
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+    def read_text(self, uri: str) -> tuple[str, Version] | None:
+        found = self._inner.read_text(uri)
+        if uri == self._uri and not self.raced:
+            self.raced = True
+            self._inner.write_text(uri, self._text, expect=None)
+        return found
 
 
 def _default_attributes(

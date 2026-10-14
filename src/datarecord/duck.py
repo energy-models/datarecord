@@ -2,12 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""DuckDB connection setup for the record layer.
+"""Relation helpers for the record layer.
 
-Owns the `revisions` metadata table and the `layer_dir` path convention
-that maps a record UUID to its record location. The connection is passed as a
-parameter throughout, never a module global, so each test can open its own
-`:memory:` connection.
+Each takes the connection it composes on as a parameter; where a connection
+comes from is the `Workspace`'s business, and paths are a `Store`'s.
 
 Nothing here knows about a modelling framework: the entity-type axis is typed
 as the *schema* declares it, whatever a tool's registry holds, so a record whose
@@ -21,17 +19,12 @@ Notes
 - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
 """
 
-import json
 import os
-from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from functools import partial, reduce
 from glob import glob
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError
-from urllib.request import urlopen
-from uuid import UUID
-from weakref import WeakKeyDictionary
 
 import duckdb
 import narwhals as nw
@@ -58,165 +51,6 @@ class _Functions:
 
 
 fn = _Functions()
-
-CREATE_TABLE = """
-CREATE TABLE IF NOT EXISTS revisions (
-  id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  parent   UUID
-)
-"""
-
-# Where layers live; `layer_dir(id)` derives every record path from it (https://energy-models.github.io/datarecord/design/module-layout/).
-DEFAULT_BASE_URI = os.environ.get("DATARECORD_BASE_URI", "")
-
-# The record root each connection was opened against (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record). A connection is
-# already scoped to one record - `connect` registers its `layer_dir` macro from
-# this root - so the schema beside those layers is a property of the connection
-# too, and reading it needs no separate parameter threaded through the fold.
-# Weak, so a closed connection does not pin its entry.
-_BASE_URIS: MutableMapping[DuckDBPyConnection, str] = WeakKeyDictionary()
-
-
-def base_uri_of(con: DuckDBPyConnection) -> str:
-    """The record root `con` was opened against, or the process default.
-
-    A connection not opened through `connect` - one a caller made itself -
-    falls back to `DEFAULT_BASE_URI`, which is what every path helper here
-    already does when passed no explicit root.
-
-    Notes
-    -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
-    """
-    return _BASE_URIS.get(con, DEFAULT_BASE_URI)
-
-
-def schema_uri(base_uri: str | None = None) -> str:
-    """Where a layered record's one schema lives: beside `layers/`, not in it.
-
-    One schema for the whole tree. A layer directory holds only data, which is
-    what keeps it a plain parquet directory a tool knowing nothing about layering
-    can read.
-
-    Notes
-    -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
-    """
-    base = DEFAULT_BASE_URI if base_uri is None else base_uri
-    return f"{base.rstrip('/')}/manifest.json" if base else "manifest.json"
-
-
-def layer_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
-    """Return the record directory for `revision_id`, with a trailing slash.
-
-    The layer location is derived from the UUID, never stored, so
-    changing the layout is a change in this one function and its SQL macro.
-    This is a plain PyPSA parquet directory: only the layer's own
-    contribution lives at the top level, so a non-blocks reader sees a normal
-    record. Derived caches (the owner map, resolved dims) go in the
-    `resolved/` subdirectory, which no single-level glob reaches.
-
-    Notes
-    -----
-    - [the record format](https://energy-models.github.io/datarecord/design/format/)
-    - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
-    """
-    base = DEFAULT_BASE_URI if base_uri is None else base_uri
-    return (
-        f"{base.rstrip('/')}/layers/{revision_id}/"
-        if base
-        else f"layers/{revision_id}/"
-    )
-
-
-def resolved_dir(revision_id: UUID | str, base_uri: str | None = None) -> str:
-    """Return the resolved-cache directory for `revision_id`, with a trailing slash.
-
-    A subdirectory of `layer_dir`, not a sibling tree: one directory per record
-    holds both what the layer wrote and what the fold derived from it. The
-    nesting is safe because every glob into a layer is single-level
-    (`inputs/*.parquet`, `dims/*.parquet`), so `resolved/` is invisible to a
-    reader that knows nothing about it - which is what keeps a layer directory a
-    plain parquet directory a foreign reader can consume.
-
-    Only the layer's *inputs* are write-once, then: `materialise` writes here
-    after the fact, which invalidates nothing because results and caches are
-    derived rather than depended on.
-
-    Notes
-    -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-    """
-    return f"{layer_dir(revision_id, base_uri)}resolved/"
-
-
-def _register_macros(con: DuckDBPyConnection, base_uri: str) -> None:
-    """Register `layer_dir` so SQL composes record paths inline.
-
-    Notes
-    -----
-    - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
-    """
-    base = base_uri.rstrip("/")
-    prefix = f"{base}/" if base else ""
-    con.execute("DROP MACRO IF EXISTS layer_dir")
-    con.execute(f"CREATE MACRO layer_dir(id) AS '{prefix}layers/' || id || '/'")
-
-
-def connect(
-    database: str = ":memory:", base_uri: str | None = None
-) -> DuckDBPyConnection:
-    """Open a connection with the record layer's table and macros.
-
-    Parameters
-    ----------
-    database
-        DuckDB database, `:memory:` by default.
-    base_uri
-        Root of the record tree; `layer_dir` derives every path from it.
-
-    Notes
-    -----
-    - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
-    """
-    con = duckdb.connect(database)
-    base = DEFAULT_BASE_URI if base_uri is None else base_uri
-    # `httpfs` and the S3 secret are only meaningful for remote layers, and
-    # `PROVIDER credential_chain` probes instance-metadata endpoints that hang
-    # for ~2 minutes where none exist. Never pay that for a local record.
-    if "://" in base:
-        try:
-            con.execute("INSTALL httpfs; LOAD httpfs;")
-            # S3 credentials come from the environment, never hard-coded (https://energy-models.github.io/datarecord/design/module-layout/).
-            con.execute(
-                "CREATE SECRET IF NOT EXISTS (TYPE s3, PROVIDER credential_chain)"
-            )
-        except duckdb.Error:
-            pass
-    con.execute(CREATE_TABLE)
-    _register_macros(con, base)
-    # Remembered so `read_schema` finds the manifest beside *this* record's
-    # layers rather than the process default's (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record).
-    _BASE_URIS[con] = base
-    return con
-
-
-_default_con: DuckDBPyConnection | None = None
-
-
-def default_connection() -> DuckDBPyConnection:
-    """The process-level connection, created on first use.
-
-    `Revision` attaches this lazily to any record created/loaded without an
-    explicit `con` (including one deserialized in a new process, e.g. across
-    a Prefect task boundary); tests always pass their own connection instead.
-    """
-    global _default_con
-    if _default_con is None:
-        _default_con = connect()
-    return _default_con
 
 
 def try_read_parquet(
@@ -350,9 +184,29 @@ def as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelatio
     A DuckDB-backed frame is already a plan, so it passes straight through; any
     other backend is collected to arrow and re-registered. The one boundary where
     a native representation is reached, shared by the write and edit paths.
+
+    Raises
+    ------
+    ValueError
+        For a relation on another connection, or another thread's cursor:
+        copying it over would collect it on a connection the caller never
+        asked to read.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
     """
     native = frame.to_native()
     if isinstance(native, DuckDBPyRelation):
+        try:
+            con.sql("FROM native")
+        except duckdb.InvalidInputException as e:
+            msg = (
+                "this relation was built on another connection or thread; build "
+                "the frame on `record.con` in this thread, or hand over a "
+                "non-DuckDB frame to land"
+            )
+            raise ValueError(msg) from e
         return native
     arrow = frame.collect(backend="pyarrow").to_native()  # noqa: F841 - bound by name
     return con.sql("FROM arrow")
@@ -391,8 +245,23 @@ def struct_of(fields: Mapping[str, Expression]) -> Expression:
 
     Never empty, DuckDB having no empty struct.
     """
-    packed = ", ".join(f'"{name}" := {value}' for name, value in fields.items())
+    packed = ", ".join(f"{col(name)} := {value}" for name, value in fields.items())
     return sql(f"struct_pack({packed})")
+
+
+def struct_field(
+    rel: DuckDBPyRelation, column: str, name: str, default: Expression
+) -> Expression:
+    """Struct `column`'s field `name` in `rel`, `default` where NULL or absent.
+
+    Whether the field exists is read off `rel`'s type as the plan is built, so
+    a struct lacking it costs nothing per row - where `struct_extract` would
+    fail to bind.
+    """
+    fields = dict(rel.types[rel.columns.index(column)].children)
+    if name not in fields:
+        return default
+    return coalesce(fn.struct_extract(col(column), lit(name)), default)
 
 
 class DuckTypes:
@@ -498,7 +367,7 @@ def fold_axis(
             rel.project(
                 lit(depth).alias("_depth"),
                 sql("row_number() OVER ()").alias("_row"),
-                col("*"),
+                star(),
             )
         )
     if not layers:
@@ -538,23 +407,3 @@ def fold_axis(
         *(["deleted"] if has_deleted else []),
     ]
     return winners.order("_first").project(star(exclude=scaffold))
-
-
-def read_json(uri: str) -> dict[str, Any] | None:
-    """Read one JSON file, or `None` if it doesn't exist (e.g. an undeclared schema).
-
-    Only a genuine miss (local `FileNotFoundError`, remote 404/403) maps to
-    `None` - any other failure raises rather than silently reading as absent.
-    """
-    try:
-        if "://" in uri:
-            with urlopen(uri) as fh:  # noqa: S310 - record URIs are derived, not user input
-                return json.load(fh)
-        with open(uri) as fh:
-            return json.load(fh)
-    except FileNotFoundError:
-        return None
-    except HTTPError as e:
-        if e.code in (403, 404):  # 403: S3's "missing key" without ListBucket
-            return None
-        raise

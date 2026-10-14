@@ -32,6 +32,7 @@ mypy = "*"
 pandas = "*"
 pyarrow = "*"
 pypsa = "*"
+boto3 = ">=1.35.69"
 [feature.test.tasks]
 test = "pytest"
 test-coverage = "pytest --cov=datarecord --cov-report=xml --cov-report=term-missing"

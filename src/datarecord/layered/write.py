@@ -16,61 +16,73 @@ Notes
 
 from __future__ import annotations
 
+import random
 import shutil
 from pathlib import Path
+from time import sleep
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 
-from datarecord.duck import as_relation, base_uri_of, fn, layer_dir, union_all_by_name
-from datarecord.layered.resolve import cast_declared, read_schema, write_schema
+from datarecord.duck import as_relation, fn, union_all_by_name
+from datarecord.files import Absent, PreconditionFailedError, Version
+from datarecord.layered.resolve import cast_declared
 from datarecord.record import Frames, LayerData, RecordLike, collision_detail
-from datarecord.schema import Schema
+from datarecord.schema import DERIVED, Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
+    from datarecord.store import Store, Workspace
 
-def write_record(
-    revision_id: UUID | None,
-    source: LayerData | RecordLike,
-    con: DuckDBPyConnection,
+
+def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> LayerData:
+    """`source` as the `LayerData` the writer reads, planned on `con`.
+
+    A framework's `RecordLike` is wrapped in a thin adapter reading its `Frames`
+    through the same enumerate-and-read pairs.
+
+    Notes
+    -----
+    - [LayerData](https://energy-models.github.io/datarecord/design/record/#layerdata)
+    """
+    if isinstance(source, LayerData):
+        return source
+    return _RecordLikeAsLayerData(source, con)
+
+
+def write_layer(
+    data: LayerData,
+    base: str,
+    workspace: Workspace,
     *,
-    uri: str | None = None,
+    manifest: str | None = None,
 ) -> None:
-    """Write `source` as `revision_id`'s layer, which must not exist yet.
+    """Write `data` as the layer directory `base`, which must not exist yet.
 
     An existing layer directory is an error rather than an overwrite or a merge,
     so a whole-record write can never half-replace what a record holds. Keys are
     looked up one at a time and each file written before the next is built, so a
     lazily-building source does one read per file rather than one per key up
-    front.
+    front. Locally the layer is staged into a sibling and renamed, so a failed
+    write leaves nothing; remotely it can leave part of a layer, which nothing
+    reaches without the file written after it.
 
     Parameters
     ----------
-    revision_id
-        The record whose layer this is; `layer_dir` derives the path.
-        `None` only together with `uri`, for a standalone record that belongs
-        to no record.
-    uri
-        Write here instead of at the revision's own layer - how a `Directory`
-        commit target produces a record outside the layer tree.
-    source
-        The layer's contents: a `LayerData` - a `StagedSource` for a `NewChild`
-        commit, a `Resolver` for a `Directory` one - or a framework's own
-        `RecordLike`, wrapped in a thin adapter reading its `Frames` through the
-        same enumerate-and-read pairs. Validated against its own schema before
-        anything is written.
-    con
-        Connection to write through.
+    data
+        The layer's contents, validated against its own schema as each frame is
+        built.
+    manifest
+        A standalone record's `manifest.json` text, written into the
+        directory last; a tree layer holds only data.
 
     Raises
     ------
     FileExistsError
-        If the layer directory already exists.
+        If the layer directory already exists locally.
     ValueError
         If a long frame is missing a long-schema column, or the schema declares a key
         dim no frame carries - either would make the fold misresolve the layer.
@@ -79,30 +91,14 @@ def write_record(
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
-    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-    - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
+    - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/writing/#a-revision-exists-only-by-its-file)
     """
-    if uri is None:
-        if revision_id is None:
-            msg = "write_record needs a revision_id or a uri"
-            raise ValueError(msg)
-        base = layer_dir(revision_id)
-    else:
-        base = uri if uri.endswith("/") else uri + "/"
+    con = workspace.con
     local = "://" not in base
     if local and Path(base).exists():
-        msg = f"layer {base} already exists; write_record creates a new layer (https://energy-models.github.io/datarecord/design/writing/)"
+        msg = f"layer {base} already exists; a write creates a new layer (https://energy-models.github.io/datarecord/design/writing/)"
         raise FileExistsError(msg)
-
-    data = (
-        source if isinstance(source, LayerData) else _RecordLikeAsLayerData(source, con)
-    )
     schema = data.schema
-    if uri is None:
-        # One schema for the whole tree (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record). The first layer written
-        # declares it; every later one is checked against it, so a layer
-        # cannot quietly redefine what an attribute means.
-        _reconcile_schema(schema, con)
 
     # Staged then renamed, so a frame that fails validation part-way through
     # leaves no layer rather than half of one (https://energy-models.github.io/datarecord/design/writing/). Validation happens as each
@@ -111,12 +107,6 @@ def write_record(
     if local:
         Path(staging).mkdir(parents=True)
     try:
-        # A layer holds only data: a layered record's one schema lives beside
-        # `layers/`, not inside any of them (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record). A standalone directory *is*
-        # one record, so there the schema belongs in the directory.
-        if local and uri is not None:
-            with open(staging + "manifest.json", "w") as fh:
-                fh.write(schema.model_dump_json())
         kinds = [
             ("dims", data.axes(), data.axis, "dims"),
             ("entities", data.entity_types(), data.entity_type, "dims/entity_type"),
@@ -135,7 +125,7 @@ def write_record(
                     "outputs",
                 )
             )
-        # Each type's names, to check record-wide uniqueness once every component
+        # Each type's names, to check record-wide uniqueness once every entity
         # frame has been seen (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
         tagged: list[DuckDBPyRelation] = []
         for kind, keys, read, subdir in kinds:
@@ -160,6 +150,12 @@ def write_record(
                     drop=("entity_type",) if kind == "entities" else (),
                 )
         _require_unique(tagged, con)
+        # A standalone directory *is* one record, so its schema is in it, and
+        # written last: a directory without one reads as no record.
+        if manifest is not None:
+            workspace.files(staging).write_text(
+                staging + "manifest.json", manifest, expect=Absent()
+            )
     except BaseException:
         if local:
             shutil.rmtree(staging, ignore_errors=True)
@@ -168,54 +164,67 @@ def write_record(
         Path(staging).rename(base.rstrip("/"))
 
 
-def _reconcile_schema(schema: Schema, con: DuckDBPyConnection) -> None:
+def reconcile_schema(schema: Schema, store: Store) -> None:
     """Declare the record's schema, or check this layer agrees with it.
 
     A schema is not layered data, so there is nothing to fold: the first writer
     states it and the rest must be `compatible_with` it. Read and written beside
-    `con`'s own layers, so one record never consults another's manifest.
+    `store`'s own layers, so one record never consults another's manifest.
+
+    A compare-and-swap: the manifest is written only if unchanged since it was
+    read, and a writer that lost re-reads and checks again, so two writers
+    widening at once end with both widenings or an incompatibility reported,
+    never one silently lost. A lost write backs off with jitter and is retried
+    up to `_ATTEMPTS` times.
 
     Raises
     ------
     ValueError
         If this layer's schema would make the record's existing layers
         unreadable.
+    RuntimeError
+        If every attempt lost: the manifest kept changing, or it cannot be read
+        and a 403 was taken for a missing key.
 
     Notes
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
     """
-    base = base_uri_of(con)
-    existing = read_schema(con)
-    if not (existing.dimensions or existing.attributes):
-        write_schema(schema, base)
+    files = store.files
+    for attempt in range(_ATTEMPTS):
+        found = files.read_text(store.manifest_uri)
+        expect: Version | Absent = Absent() if found is None else found[1]
+        existing = Schema() if found is None else Schema.model_validate_json(found[0])
+        if existing.dimensions or existing.attributes:
+            if schema == existing:
+                return
+            problems = schema.compatible_with(existing)
+            if problems:
+                msg = (
+                    f"this layer's schema is incompatible with the record's: "
+                    f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/schema/#versioning)"
+                )
+                raise ValueError(msg)
+        try:
+            files.write_text(
+                store.manifest_uri, schema.model_dump_json(), expect=expect
+            )
+        except PreconditionFailedError:
+            sleep(random.uniform(0, 0.05 * 2**attempt))
+            continue
         return
-    if schema == existing:
-        return
-    problems = schema.compatible_with(existing)
-    if problems:
-        msg = (
-            f"this layer's schema is incompatible with the record's: "
-            f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/schema/#versioning)"
-        )
-        raise ValueError(msg)
-    # Compatible, so it supersedes: a widened schema still reads every layer
-    # written under the narrower one.
-    write_schema(schema, base)
+    msg = (
+        f"{store.manifest_uri} changed under each of {_ATTEMPTS} writes, or cannot "
+        f"be read: a 403 on read counts as missing, so check s3:GetObject "
+        f"(https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)"
+    )
+    raise RuntimeError(msg)
 
 
-DERIVED = ("order_key",)
-"""Columns a resolved frame carries that no layer file may.
-
-The fold's answer *about* a frame rather than data in it, so writing one would
-both put a column in a file the format does not define and read as stored order
-where the fold always re-derives it from file order.
-
-Notes
------
-- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-"""
+_ATTEMPTS = 10
+"""How many times `reconcile_schema` writes the manifest before giving up."""
 
 
 def _write_frame(
@@ -248,7 +257,7 @@ def _write_frame(
 
 
 def _require_unique(tagged: list[DuckDBPyRelation], con: DuckDBPyConnection) -> None:
-    """Reject a record whose component types share a name.
+    """Reject a record whose entity types share a name.
 
     Unlike `_validate_frame`'s checks this reads the rows, uniqueness being a
     property of the data. A tombstone still occupies the name, so `deleted` is
@@ -257,7 +266,7 @@ def _require_unique(tagged: list[DuckDBPyRelation], con: DuckDBPyConnection) -> 
     Parameters
     ----------
     tagged
-        One relation per component type, each `(entity, entity_type)`.
+        One relation per entity type, each `(entity, entity_type)`.
 
     Raises
     ------
@@ -288,8 +297,8 @@ def _require_unique(tagged: list[DuckDBPyRelation], con: DuckDBPyConnection) -> 
     if rows:
         detail = collision_detail(rows)
         msg = (
-            f"component types reuse names: {detail}; a name identifies one "
-            f"component across every type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
+            f"entity types reuse names: {detail}; a name identifies one "
+            f"entity across every type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
         )
         raise ValueError(msg)
 
@@ -299,7 +308,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
 
     Structural only: a long frame carries its own attribute's coordinates, and a
     `dims/` frame carries every dim the schema declares it keyed by. Values
-    are not checked - which component types and attribute names are valid
+    are not checked - which entity types and attribute names are valid
     belongs to whatever vocabulary the schema declares, and the record layer
     knows none.
 
@@ -404,7 +413,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         # The one classification column an axis file carries, every other group
         # being its own file. Admitted only where a group declares the type axis:
         # the label then says which `dims/entity_type/<Type>.parquet` a
-        # component's non-varying attributes are in. Where no group declares it
+        # entity's non-varying attributes are in. Where no group declares it
         # there is no member file and no column - those attributes are
         # `attributes_on("entity")`, columns of this file, already in `known` -
         # and an `entity_type` column is rejected as any undeclared one is
@@ -437,9 +446,9 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
 class _RecordLikeAsLayerData:
     """A `RecordLike` read through `LayerData`'s enumerate-and-read pairs.
 
-    The adapter that lets `write_record` stay one code path over raw
+    The adapter that lets `write_layer` stay one code path over raw
     relations: a framework's `to_datarecord()` hands over narwhals `Frames`,
-    one lookup per key exactly as `write_record` already does, so this wraps
+    one lookup per key exactly as `write_layer` already does, so this wraps
     each mapping rather than eagerly converting it. `con` is needed only to
     land a non-DuckDB frame as a relation (`as_relation`).
 

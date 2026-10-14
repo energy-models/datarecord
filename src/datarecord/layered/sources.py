@@ -20,13 +20,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
-from uuid import UUID, uuid5
+from uuid import UUID
 
-from datarecord.duck import (
-    layer_dir,
-    parquet_names,
-    try_read_parquet,
-)
+from datarecord.duck import parquet_names, try_read_parquet
 from datarecord.layered.fold import Fold
 from datarecord.record import Kind
 
@@ -34,6 +30,7 @@ if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
     from datarecord.schema import Schema
+    from datarecord.store import Store, Workspace
 
 
 @runtime_checkable
@@ -41,7 +38,7 @@ class LayerSource(Protocol):
     """One layer's own rows, however they are stored.
 
     "The layer as it would be written", not "the rows as stored": a source
-    hands over what `write_record` would persist, so however a staging area
+    hands over what `write_layer` would persist, so however a staging area
     reaches one row per key happens behind it and the fold never learns about it.
     `None` means this layer wrote nothing of that kind.
 
@@ -84,7 +81,7 @@ class LayerSource(Protocol):
 
         A layer holds only data - its schema lives beside the tree, not in the
         layer - so this is the reference the constructing reader already held,
-        carried so `write_record` can read it off the source it is handed. Every
+        carried so `write_layer` can read it off the source it is handed. Every
         source in one fold carries the same one.
 
         Notes
@@ -116,7 +113,7 @@ class LayerSource(Protocol):
         """`dims/<dim>.parquet` - one axis's full row, not the key alone.
 
         `entity` is a dim like any other, so the entity axis is `axis("entity")`;
-        what differs is only that the fold takes it as the components map,
+        what differs is only that the fold takes it as the entities map,
         with `order_key` and tombstones, where `resolve_coords` folds the rest.
         """
         ...
@@ -124,7 +121,7 @@ class LayerSource(Protocol):
     def entity_types(self) -> set[str]:
         """Which types this layer has a member file for.
 
-        For `write_record`'s benefit, not the fold's: a read learns which types
+        For `write_layer`'s benefit, not the fold's: a read learns which types
         exist from the resolved entity axis, never by listing a source's files.
         A directory listing, like `axes()` - empty wherever no member file
         exists, which for a schema declaring no entity-type axis is always.
@@ -142,7 +139,7 @@ class LayerSource(Protocol):
     def groups(self) -> set[str]:
         """Which groups this layer has a row for, by file - like `axes()`.
 
-        For `write_record`'s benefit; not scoped to a schema, which a
+        For `write_layer`'s benefit; not scoped to a schema, which a
         `LayerSource` does not carry - a file some other source's declaration
         does not recognise is the reader's concern, not this listing's.
         """
@@ -155,7 +152,7 @@ class LayerSource(Protocol):
     def attributes(self, kind: Kind = "inputs") -> set[str]:
         """Which `<kind>/*.parquet` files this layer has, by name.
 
-        For `write_record`'s benefit: a read learns owned attributes from the
+        For `write_layer`'s benefit: a read learns owned attributes from the
         owner map, never by listing a source's own files.
         """
         ...
@@ -188,14 +185,20 @@ class _FileLayer:
     """The layer layout over a URI, shared by every file-backed source.
 
     Each member is one file, addressed by what keys it. A subclass supplies
-    where the layer root is (`uri`), the connection to read it with, and the
+    where the layer root is (`uri`), the workspace to read it through, and the
     schema its reader held, and inherits every accessor unchanged - which is
     what keeps "a directory read as a layer" from being a second reading of the
     format.
+
+    No cursor is held: each read takes the calling thread's (`_con`), so a
+    source serves every thread.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
     """
 
     schema: Schema
-    con: DuckDBPyConnection | None
     frozen: bool = True
 
     def uri(self, path: str = "") -> str:
@@ -207,15 +210,8 @@ class _FileLayer:
 
     @property
     def _con(self) -> DuckDBPyConnection:
-        """The connection to read through.
-
-        Optional on the field so `uri` alone is usable without one - which the
-        write path does, having nothing to read.
-        """
-        if self.con is None:
-            msg = f"{type(self).__name__} was built without a connection to read with"
-            raise ValueError(msg)
-        return self.con
+        """The calling thread's cursor on the workspace this layer is read through."""
+        raise NotImplementedError
 
     def _read(self, path: str, **kwargs: object) -> DuckDBPyRelation | None:
         return try_read_parquet(self.uri(path), self._con, **kwargs)
@@ -268,8 +264,8 @@ class _FileLayer:
 class ParquetLayer(_FileLayer):
     """A layer as a parquet directory, located from its revision UUID.
 
-    The location is derived, never stored, so changing the layout is a change
-    to `layer_dir` and nothing else.
+    The location is derived from the store, never stored, so changing the
+    layout is a change to `Store.layer_dir` and nothing else.
 
     Notes
     -----
@@ -278,66 +274,66 @@ class ParquetLayer(_FileLayer):
 
     revision_id: UUID
     schema: Schema
-    con: DuckDBPyConnection | None = None
-    base_uri: str | None = None
+    store: Store
     frozen: bool = True
 
     @property
     def layer_id(self) -> UUID:
         return self.revision_id
 
+    @property
+    def _con(self) -> DuckDBPyConnection:
+        return self.store.workspace.con
+
     def uri(self, path: str = "") -> str:
-        return layer_dir(self.revision_id, self.base_uri) + path
+        return self.store.layer_dir(self.revision_id) + path
 
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
-        return Fold.read(self.revision_id, con, schema, self.base_uri)
+        return Fold.read(self.revision_id, con, schema, self.store)
 
 
 @dataclass(frozen=True)
 class DirectorySource(_FileLayer):
     """A plain parquet directory read as one layer.
 
-    What `Record.at(uri)` folds over, and the whole of what reading a plain
+    What `Workspace.at(uri)` and `Store.layer(id)` fold over, and the whole of what reading a plain
     directory takes: the layout is the same as a tree layer's, so every member
     is one of the directory's files and the fold needs no conditional path.
 
-    `layer_id` is derived rather than stored, as `ParquetLayer`'s location is
-    and for the mirrored reason: a directory has no revision to be stamped
-    with, but it has a location, and that is what makes it one layer rather
-    than another. So two readings of one directory agree on which layer they
-    read without being told, and a caller has nothing to allocate or keep.
+    It is no node in a layer tree, so this makes such a record *readable*
+    through the fold, not a revision to branch from.
 
-    It is no node in a layer tree either way - there is nothing for
-    `NewChild()` to branch from, so this makes such a record *readable* through
-    the fold, not committable to a tree.
+    Attributes
+    ----------
+    id
+        The layer's identity, which keys the workspace's shared fold tables:
+        a standalone record's is minted by its write and read from its
+        manifest, so a record written again at one URI is another layer.
 
     Notes
     -----
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
 
     base: str
     schema: Schema
-    con: DuckDBPyConnection | None = None
+    workspace: Workspace
+    id: UUID
     frozen: bool = True
 
     def __post_init__(self) -> None:
-        # A caller's directory URI, with or without the trailing slash every
-        # member path is appended to. Normalised here rather than in `uri` so
-        # `layer_id` sees it too: `/x` and `/x/` are one directory, and hashing
-        # them apart would read one location as two layers.
         if not self.base.endswith("/"):
             object.__setattr__(self, "base", self.base + "/")
 
     @property
     def layer_id(self) -> UUID:
-        return uuid5(_DIRECTORY_NAMESPACE, self.base)
+        return self.id
+
+    @property
+    def _con(self) -> DuckDBPyConnection:
+        return self.workspace.con
 
     def uri(self, path: str = "") -> str:
         return self.base + path
-
-
-# A fixed namespace, so one directory's `layer_id` is the same in every process
-# - a random one would make it per-reader, which is what deriving it avoids.
-_DIRECTORY_NAMESPACE = UUID("6f3d9f4e-1c2b-4a5d-8e7f-0a1b2c3d4e5f")

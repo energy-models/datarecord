@@ -19,23 +19,28 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 
-from datarecord import NewChild, Revision, WorkingRecord
-from datarecord.duck import layer_dir, resolved_dir, union_all_by_name
-from datarecord.layered.resolve import write_schema
-from datarecord.layered.sources import DirectorySource, LayerSource, ParquetLayer
+from datarecord import WorkingRecord
+from datarecord.duck import union_all_by_name
+from datarecord.layered.resolve import _fold_kind, write_schema
+from datarecord.layered.sources import LayerSource, ParquetLayer
 from datarecord.schema import Schema
-from tests.fixtures import export_network, tombstone, write_input
+from tests.fixtures import (
+    empty_child,
+    empty_root,
+    export_network,
+    tombstone,
+    write_input,
+)
 
 
 @pytest.fixture
-def parent(con, base_uri, ac_dc):
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+def parent(store, ac_dc):
+    revision = export_network(ac_dc, store)
     revision.materialise()
     return revision
 
 
-def test_union_all_by_name_folds_every_relation(con):
+def test_union_all_by_name_folds_every_relation(store):
     """Three arms, not two: the fold's union binds `u`/`rel` by name.
 
     Two relations pass whatever the loop body does, since the first pairing is
@@ -47,12 +52,12 @@ def test_union_all_by_name_folds_every_relation(con):
     -----
     - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
     """
-    rels = [con.sql(f"SELECT {i} AS x") for i in (1, 2, 3)]
-    got = union_all_by_name(rels, con).fetchall()
+    rels = [store.workspace.con.sql(f"SELECT {i} AS x") for i in (1, 2, 3)]
+    got = union_all_by_name(rels, store.workspace.con).fetchall()
     assert sorted(v for (v,) in got) == [1, 2, 3]
 
 
-def test_union_all_by_name_fills_a_missing_column_with_null(con):
+def test_union_all_by_name_fills_a_missing_column_with_null(store):
     """By *name*, so an arm lacking a column reads NULL there.
 
     What lets a layer written before `bus`/`breakpoint` existed still resolve,
@@ -63,12 +68,15 @@ def test_union_all_by_name_fills_a_missing_column_with_null(con):
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
-    rels = [con.sql("SELECT 1 AS x, 'a' AS y"), con.sql("SELECT 2 AS x")]
-    got = union_all_by_name(rels, con).fetchall()
+    rels = [
+        store.workspace.con.sql("SELECT 1 AS x, 'a' AS y"),
+        store.workspace.con.sql("SELECT 2 AS x"),
+    ]
+    got = union_all_by_name(rels, store.workspace.con).fetchall()
     assert sorted(got, key=lambda r: r[0]) == [(1, "a"), (2, None)]
 
 
-def keys(revision, con):
+def keys(revision):
     """The inputs map's keys: `(name, attribute)`, no type.
 
     The map is tombstone-pruned in the fold (`fold_inputs` anti-joins each
@@ -88,7 +96,7 @@ def entity_names(revision):
     return set(revision.resolver.entity_axis.df()["entity"])
 
 
-def test_root_map_is_its_own_layer(con, parent):
+def test_root_map_is_its_own_layer(store, parent):
     """Every key of a root's inputs map points at the root itself.
 
     The entity axis has no `layer_uuid` - it folds like an axis, its winning row
@@ -97,29 +105,31 @@ def test_root_map_is_its_own_layer(con, parent):
     om = parent.resolver
     assert set(om.inputs.df()["layer_uuid"]) == {parent.id}
     assert "layer_uuid" not in om.entity_axis.columns
-    assert ("Manchester Wind", "p_max_pu") in keys(parent, con)
+    assert ("Manchester Wind", "p_max_pu") in keys(parent)
 
 
-def test_materialise_writes_the_map_under_resolved(con, parent):
+def test_materialise_writes_the_map_under_resolved(store, parent):
     """`materialise` writes the maps under `resolved/`, not at the layer root.
 
     Notes
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    assert Path(resolved_dir(parent.id), "owner_map", "inputs.parquet").exists()
+    assert Path(store.resolved_dir(parent.id), "owner_map", "inputs.parquet").exists()
     # The entity axis folds like an axis now, materialised under `dims/`, not as
     # an owner map (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
-    assert Path(resolved_dir(parent.id), "dims", "entity.parquet").exists()
-    assert not Path(resolved_dir(parent.id), "owner_map", "entities.parquet").exists()
+    assert Path(store.resolved_dir(parent.id), "dims", "entity.parquet").exists()
+    assert not Path(
+        store.resolved_dir(parent.id), "owner_map", "entities.parquet"
+    ).exists()
     # The cache shares the record's directory but stays out of the layer's own
     # namespace, so a reader that knows nothing about layering still sees a
     # plain parquet directory: every glob into a layer is single-level, so nothing
     # under `resolved/` is reachable by one (https://energy-models.github.io/datarecord/design/layers/#deletion).
-    assert not Path(layer_dir(parent.id), "owner_map").exists()
+    assert not Path(store.layer_dir(parent.id), "owner_map").exists()
     # The globs the fold and `Record.at` actually use must not reach a
     # cached file.
-    layer = Path(layer_dir(parent.id))
+    layer = Path(store.layer_dir(parent.id))
     reachable = {
         p
         for pattern in (
@@ -135,11 +145,11 @@ def test_materialise_writes_the_map_under_resolved(con, parent):
     assert not any("resolved" in p.parts for p in reachable)
 
 
-def test_last_writer_wins_per_key(con, parent):
+def test_last_writer_wins_per_key(store, parent):
     """A child's key overrides the parent's, others stay with the parent."""
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
@@ -154,24 +164,24 @@ def test_last_writer_wins_per_key(con, parent):
     assert owner_of("Norway Wind", "p_max_pu") == parent.id
 
 
-def test_tombstone_removes_all_attributes(con, parent):
+def test_tombstone_removes_all_attributes(store, parent):
     """A tombstone removes every attribute and the component row of the component.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    before = {k for k in keys(parent, con) if k[0] == "Norway Gas"}
+    before = {k for k in keys(parent) if k[0] == "Norway Gas"}
     assert len(before) > 1
     assert "Norway Gas" in entity_names(parent)
 
-    child = parent.child()
-    tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
-    assert not {k for k in keys(child, con) if k[0] == "Norway Gas"}
+    child = empty_child(parent)
+    tombstone(store.layer_dir(child.id), "Generator", ["Norway Gas"])
+    assert not {k for k in keys(child) if k[0] == "Norway Gas"}
     assert "Norway Gas" not in entity_names(child)
 
 
-def test_live_fold_is_cached_per_connection(con, parent):
+def test_live_fold_is_cached_per_connection(store, parent):
     """A node with no materialised cache folds once and caches the table.
 
     Nothing invalidates it: layers are write-once, so a fold's inputs
@@ -182,35 +192,35 @@ def test_live_fold_is_cached_per_connection(con, parent):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     - [open questions](https://energy-models.github.io/datarecord/design/open-questions/)
     """
-    child = parent.child()
+    child = empty_child(parent)
     om = child.resolver
     om.inputs.fetchall()
     # Only `inputs` keeps an owner-map table; the entity axis folds like an axis.
-    assert con.execute(
+    assert store.workspace.con.execute(
         "SELECT 1 FROM duckdb_tables() WHERE table_name = ?",
         [f"owner_map_inputs_{child.id.hex}"],
     ).fetchone()
 
 
-def test_materialising_does_not_change_the_map(con, parent):
+def test_materialising_does_not_change_the_map(store, parent):
     """`materialise` is purely additive: same answer, fewer layers read.
 
     Notes
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
-    live = keys(child, con)
+    live = keys(child)
     child.materialise()
-    assert keys(child, con) == live
+    assert keys(child) == live
 
 
-def test_a_removed_cache_falls_back_to_the_fold(con, parent):
+def test_a_removed_cache_falls_back_to_the_fold(store, parent):
     """A cache is an optimisation, so losing it costs work rather than answers.
 
     The old model had to raise here: a closed node's ancestry was truncated to
@@ -221,21 +231,21 @@ def test_a_removed_cache_falls_back_to_the_fold(con, parent):
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_min_pu",
         [{"entity": "Norway Gas", "value": 0.1}],
     )
     child.materialise()
-    expected = keys(child, con)
+    expected = keys(child)
 
-    shutil.rmtree(Path(resolved_dir(child.id), "owner_map"))
-    fresh = Revision.get(child.id, con)
-    assert keys(fresh, con) == expected
+    shutil.rmtree(Path(store.resolved_dir(child.id), "owner_map"))
+    fresh = store.revision(child.id)
+    assert keys(fresh) == expected
 
 
-def test_a_materialised_node_reads_the_same_as_an_unmaterialised_one(con, parent):
+def test_a_materialised_node_reads_the_same_as_an_unmaterialised_one(store, parent):
     """The invariant the base/source split protects: a value read through a
     materialised ancestor equals the same value re-folded from the own layers.
 
@@ -249,37 +259,37 @@ def test_a_materialised_node_reads_the_same_as_an_unmaterialised_one(con, parent
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
     """
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
 
     def read() -> list[str]:
-        rel = Revision.get(child.id, con).resolver.attribute("p_max_pu")
+        rel = store.revision(child.id).resolver.attribute("p_max_pu")
         return sorted(repr(r) for r in rel.df().itertuples(index=False))
 
     seeded = read()
-    shutil.rmtree(Path(resolved_dir(parent.id)))
+    shutil.rmtree(Path(store.resolved_dir(parent.id)))
     refolded = read()
     assert refolded == seeded, "the seed carries the fold above it"
 
 
-def test_any_node_may_be_a_parent(con, parent):
+def test_any_node_may_be_a_parent(store, parent):
     """A layer is write-once, so no node needs preparing to branch from.
 
     Notes
     -----
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
     """
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
-    grandchild = child.child()
+    grandchild = empty_child(child)
     # The child was never materialised, yet its layer resolves for the
     # grandchild all the same.
     df = grandchild.resolver.inputs.df()
@@ -287,20 +297,20 @@ def test_any_node_may_be_a_parent(con, parent):
     assert set(row["layer_uuid"]) == {child.id}
 
 
-def test_ancestry_is_root_first(con, parent):
+def test_ancestry_is_root_first(store, parent):
     """`ancestry` returns the root->node path in resolution order.
 
     Notes
     -----
     - [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
     """
-    child = parent.child()
+    child = empty_child(parent)
     child.materialise()
-    grandchild = child.child()
+    grandchild = empty_child(child)
     assert grandchild.ancestry() == [parent.id, child.id, grandchild.id]
 
 
-def test_a_record_with_no_manifest_folds(con, base_uri):
+def test_a_record_with_no_manifest_folds(store):
     """A record that declares no schema resolves to an empty map, not a crash.
 
     `Schema()` is "no manifest yet", which is what a record reads before
@@ -313,7 +323,7 @@ def test_a_record_with_no_manifest_folds(con, base_uri):
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    revision = Revision.create(con)
+    revision = empty_root(store)
     assert revision.record.schema.dims == ()
 
     inputs = revision.resolver.inputs
@@ -321,72 +331,46 @@ def test_a_record_with_no_manifest_folds(con, base_uri):
     assert inputs.fetchall() == []
 
 
-def test_a_parquet_layer_locates_a_layers_files(base_uri):
+def test_a_parquet_layer_locates_a_layers_files(store):
     """The fold names files and the source says where they are.
 
-    `layer_dir` is what a `ParquetLayer` derives from, so this pins the seam
-    rather than the layout: a reader asks for `inputs/p_nom.parquet` and never
-    builds the path itself.
+    `Store.layer_dir` is what a `ParquetLayer` derives from, so this pins the
+    seam rather than the layout: a reader asks for `inputs/p_nom.parquet` and
+    never builds the path itself.
 
     Notes
     -----
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
     revision_id = uuid4()
-    source = ParquetLayer(revision_id, Schema())
+    source = ParquetLayer(revision_id, Schema(), store)
     assert isinstance(source, LayerSource), (
         "structural, so no import is needed to be one"
     )
 
-    assert source.uri() == layer_dir(revision_id), "empty is the layer root"
+    assert source.uri() == store.layer_dir(revision_id), "empty is the layer root"
     assert source.uri("inputs/p_nom.parquet") == (
-        layer_dir(revision_id) + "inputs/p_nom.parquet"
+        store.layer_dir(revision_id) + "inputs/p_nom.parquet"
     )
     # A glob is a path like any other: the source neither parses nor validates.
     assert source.uri("inputs/*.parquet").endswith("inputs/*.parquet")
 
 
-def test_a_parquet_layer_takes_the_base_it_was_given(tmp_path):
-    """Two records on two roots locate their layers apart, as `layer_dir` does."""
+def test_a_parquet_layer_takes_the_store_it_was_given(workspace, tmp_path):
+    """Two records on two stores locate their layers apart."""
     revision_id = uuid4()
-    root = str(tmp_path / "elsewhere")
-    assert ParquetLayer(revision_id, Schema(), base_uri=root).uri(
+    elsewhere = workspace.store(str(tmp_path / "elsewhere"))
+    assert ParquetLayer(revision_id, Schema(), elsewhere).uri(
         "dims/entity.parquet"
-    ) == (layer_dir(revision_id, root) + "dims/entity.parquet")
+    ) == (f"{tmp_path.as_posix()}/elsewhere/layers/{revision_id}/dims/entity.parquet")
 
 
-def test_a_directory_source_derives_its_layer_id_from_where_it_is():
-    """A directory has no revision to be stamped with, so its location is its identity.
-
-    Derived rather than allocated, which is what makes it the *same* layer in
-    every process and every reader - the fold keys a source by UUID, and a
-    per-reader one would make two readings of one directory disagree about
-    which layer they are reading. `uuid5` is what pins that across processes; a
-    stable-per-process id would pass an in-process comparison and still be
-    wrong for a materialised map read back later.
-
-    Notes
-    -----
-    - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
-    """
-    a = DirectorySource("/records/one/", Schema())
-    assert a.layer_id == DirectorySource("/records/one/", Schema()).layer_id, (
-        "same place"
-    )
-    assert a.layer_id != DirectorySource("/records/two/", Schema()).layer_id, (
-        "different place"
-    )
-    # The literal value, so the derivation cannot drift silently: a layer id
-    # that changed between versions would orphan every materialised map naming
-    # the old one.
-    assert str(a.layer_id) == "dbc5401e-335a-506d-89db-395e6ea37662"
-    assert isinstance(a, LayerSource), "structural, with `layer_id` a property"
-
-
-def _largest_intermediate(con, rel):
+def _largest_intermediate(store, rel):
     """The most rows any operator produced while DuckDB executed `rel`."""
     profile = json.loads(
-        con.sql("EXPLAIN (ANALYZE, FORMAT JSON) FROM rel").fetchall()[0][1]
+        store.workspace.con.sql("EXPLAIN (ANALYZE, FORMAT JSON) FROM rel").fetchall()[
+            0
+        ][1]
     )
 
     def largest(node):
@@ -398,7 +382,7 @@ def _largest_intermediate(con, rel):
     return largest(profile)
 
 
-def test_a_read_joins_no_more_rows_than_the_layers_hold(con, base_uri):
+def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
     """The owner-map join is keyed on a partial dim, not filtered on it afterwards.
 
     The join matched a partial dim with `raw IS NULL OR raw IS NOT DISTINCT FROM
@@ -423,10 +407,12 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(con, base_uri):
                 "p_max_pu": {"dtype": "Float64", "dims": ["entity", "snapshot"]}
             },
             partial=frozenset({"snapshot"}),
-        )
+        ),
+        store,
     )
     names, snapshots = ["wind", "solar"], 200
-    staged = WorkingRecord(Revision.create(con).record, con)
+    base = empty_root(store)
+    staged = WorkingRecord(base.record)
     staged.add("Generator", pd.DataFrame({"entity": names}))
     staged.set(
         "p_max_pu",
@@ -438,11 +424,55 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(con, base_uri):
             }
         ),
     )
-    revision = staged.commit(NewChild())
+    revision = base.child(staged.edits)
 
     rel = revision.record.attributes["p_max_pu"].to_native()
     stored = len(names) * snapshots
     assert rel.count("*").fetchone() == (stored,), "one row per stored value"
-    assert _largest_intermediate(con, rel) <= stored, (
+    assert _largest_intermediate(store, rel) <= stored, (
         "no operator produces more rows than the layer holds"
     )
+
+
+def test_the_fold_broadcasts_by_hash_join(store):
+    """Expanding a broadcast NULL over its axis is a hash join, not a nested loop.
+
+    The join matched on `dim IS NULL` alone, which DuckDB runs as a nested loop
+    comparing every row with every label - even a row that sets the dim and so
+    matches none. Row counts stay right, so only the plan shows it.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
+    write_schema(
+        Schema(
+            dimensions={
+                "entity": {"dtype": "String"},
+                "entity_type": {"dtype": "String"},
+                "snapshot": {"dtype": "Int64"},
+            },
+            groups={"entity_type": {"over": ["entity"], "into": "entity_type"}},
+            attributes={
+                "p_max_pu": {"dtype": "Float64", "dims": ["entity", "snapshot"]},
+                "weight": {"dtype": "Float64", "dims": ["snapshot"]},
+            },
+            partial=frozenset({"snapshot"}),
+        ),
+        store,
+    )
+    base = empty_root(store)
+    staged = WorkingRecord(base.record)
+    staged.add("Generator", pd.DataFrame({"entity": ["wind"]}))
+    staged.set("weight", {0: 1.0, 1: 1.0})
+    staged.set(
+        "p_max_pu",
+        pd.DataFrame({"entity": ["wind", "wind"], "snapshot": [0, 1], "value": 0.5}),
+    )
+    resolver = base.child(staged.edits).resolver
+
+    plan = _fold_kind(
+        "inputs", resolver.sources, resolver.con, resolver.schema
+    ).explain()
+    assert "HASH_JOIN" in plan, "the fold joins at all"
+    assert "NL_JOIN" not in plan and "NESTED_LOOP" not in plan, plan

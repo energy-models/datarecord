@@ -6,6 +6,8 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Layered
 
-::: datarecord.layered.revision.Revision
+::: datarecord.store.Workspace
 
-::: datarecord.layered.write.write_record
+::: datarecord.store.Store
+
+::: datarecord.layered.revision.Revision

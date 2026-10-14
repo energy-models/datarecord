@@ -17,9 +17,9 @@ from pathlib import Path
 import narwhals as nw
 import pandas as pd
 
-from datarecord import Revision
-from datarecord.duck import layer_dir
 from tests.fixtures import (
+    empty_child,
+    empty_root,
     export_network,
     relation,
     schema,
@@ -31,16 +31,15 @@ from tests.fixtures import (
 )
 
 
-def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
+def test_partial_period_override_resolves_per_period(store, ac_dc):
     """With `period` `partial`, a child may replace one period only."""
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
-    write_schema(schema(partial={"scenario", "period"}))
+    revision = export_network(ac_dc, store)
+    write_schema(schema(partial={"scenario", "period"}), store)
     revision.materialise()
 
-    child = revision.child()
+    child = empty_child(revision)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [
             {
@@ -65,9 +64,7 @@ def test_partial_period_override_resolves_per_period(con, base_uri, ac_dc):
     assert set(overridden["value"]) == {0.42}
 
 
-def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(
-    con, base_uri, ac_dc
-):
+def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store, ac_dc):
     """A dim tombstone removes the attribute rows over that coordinate, not others.
 
     The fold anti-joins every membership's tombstones into the inputs map, dims
@@ -79,12 +76,11 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
-    write_schema(schema(partial={"period"}))
-    write_periods(layer_dir(revision.id), [{"period": 2020}, {"period": 2030}])
+    revision = export_network(ac_dc, store)
+    write_schema(schema(partial={"period"}), store)
+    write_periods(store.layer_dir(revision.id), [{"period": 2020}, {"period": 2030}])
     write_input(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         "p_max_pu",
         [
             {"entity": "Manchester Wind", "period": 2020, "value": 0.2},
@@ -93,8 +89,8 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(
     )
     revision.materialise()
 
-    child = revision.child()
-    write_periods(layer_dir(child.id), [{"period": 2030, "deleted": True}])
+    child = empty_child(revision)
+    write_periods(store.layer_dir(child.id), [{"period": 2030, "deleted": True}])
 
     rel = relation(child, "p_max_pu").df()
     wind = rel[rel["entity"] == "Manchester Wind"]
@@ -105,7 +101,7 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(
     assert set(keyed["period"]) == {2020}, "and the map no longer owns its key"
 
 
-def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_dc):
+def test_tombstone_ignores_period_even_when_period_is_partial(store, ac_dc):
     """Deletion always acts on the whole component, never scoped to a period.
 
     `period` is `partial`, so it keys the *inputs* map - but the components map
@@ -116,13 +112,12 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
-    write_schema(schema(partial={"period"}))
+    revision = export_network(ac_dc, store)
+    write_schema(schema(partial={"period"}), store)
     revision.materialise()
 
-    child = revision.child()
-    tombstone(layer_dir(child.id), "Generator", ["Manchester Wind"])
+    child = empty_child(revision)
+    tombstone(store.layer_dir(child.id), "Generator", ["Manchester Wind"])
 
     axis_rel = child.resolver.entity_axis
     assert axis_rel is not None
@@ -130,7 +125,7 @@ def test_tombstone_ignores_period_even_when_period_is_partial(con, base_uri, ac_
     assert "Manchester Wind" not in set(entity_types["entity"])
 
 
-def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
+def test_the_fold_unions_maps_by_name(store, ac_dc):
     """A child's own map is unioned with the parent's by name, not by position.
 
     One schema serves the whole tree, so the dim *order* is fixed - but
@@ -142,11 +137,10 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
-    write_schema(schema(partial={"scenario", "period"}))
+    revision = export_network(ac_dc, store)
+    write_schema(schema(partial={"scenario", "period"}), store)
     write_input(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         "p_max_pu",
         [
             {
@@ -159,9 +153,9 @@ def test_the_fold_unions_maps_by_name(con, base_uri, ac_dc):
     )
     revision.materialise()
 
-    child = revision.child()
+    child = empty_child(revision)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [
             {
@@ -189,7 +183,7 @@ _NESTED_DIMS = {
 _NESTED_WITHIN = {"snapshot": {"period"}}
 
 
-def test_a_nested_axis_keeps_a_label_per_parent(con, base_uri):
+def test_a_nested_axis_keeps_a_label_per_parent(store):
     """`snapshot within period` keys the axis by the pair, not the timestamp.
 
     Two periods holding the same timestamp are two points: `t1` alone
@@ -200,10 +194,10 @@ def test_a_nested_axis_keeps_a_label_per_parent(con, base_uri):
     -----
     - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
-    revision = Revision.create(con)
-    write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN))
+    revision = empty_root(store)
+    write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN), store)
     write_snapshots(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         [
             {"snapshot": "2020-01-01 00:00", "period": 2020},
             {"snapshot": "2020-01-01 01:00", "period": 2020},
@@ -217,16 +211,16 @@ def test_a_nested_axis_keeps_a_label_per_parent(con, base_uri):
     assert sorted(axis["period"].tolist()) == [2020, 2020, 2030, 2030]
 
 
-def test_a_child_overrides_one_nested_point(con, base_uri):
+def test_a_child_overrides_one_nested_point(store):
     """Last-writer-wins applies to `(period, snapshot)`, not to the timestamp.
 
     A child restating one period's hour leaves the other period's identically
     labelled hour to the parent.
     """
-    revision = Revision.create(con)
-    write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN))
+    revision = empty_root(store)
+    write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN), store)
     write_snapshots(
-        layer_dir(revision.id),
+        store.layer_dir(revision.id),
         [
             {"snapshot": "2020-01-01 00:00", "period": 2020, "weight": 1.0},
             {"snapshot": "2020-01-01 00:00", "period": 2030, "weight": 1.0},
@@ -234,9 +228,9 @@ def test_a_child_overrides_one_nested_point(con, base_uri):
     )
     revision.materialise()
 
-    child = revision.child()
+    child = empty_child(revision)
     write_snapshots(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         [{"snapshot": "2020-01-01 00:00", "period": 2030, "weight": 7.0}],
     )
 
@@ -245,7 +239,7 @@ def test_a_child_overrides_one_nested_point(con, base_uri):
     assert weights == {2020: 1.0, 2030: 7.0}
 
 
-def test_a_dim_names_its_own_file(con, base_uri):
+def test_a_dim_names_its_own_file(store):
     """`dims/<dim>.parquet`, whatever the dim is called.
 
     A dim named `bus` is the case that matters: pluralising by concatenation
@@ -256,9 +250,9 @@ def test_a_dim_names_its_own_file(con, base_uri):
     -----
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
-    revision = Revision.create(con)
-    write_schema(schema(dims={"bus": nw.String()}, partial=set()))
-    target = Path(layer_dir(revision.id), "dims")
+    revision = empty_root(store)
+    write_schema(schema(dims={"bus": nw.String()}, partial=set()), store)
+    target = Path(store.layer_dir(revision.id), "dims")
     target.mkdir(parents=True, exist_ok=True)
     pd.DataFrame([{"bus": "north"}, {"bus": "south"}]).to_parquet(
         target / "bus.parquet", index=False
@@ -268,7 +262,7 @@ def test_a_dim_names_its_own_file(con, base_uri):
     assert sorted(axis["bus"].tolist()) == ["north", "south"]
 
 
-def test_the_entity_column_is_entity(con, base_uri, ac_dc):
+def test_the_entity_column_is_entity(store, ac_dc):
     """`entity` names the component in every frame the protocol hands back.
 
     The one axis the format knows by name, because it is the axis the component
@@ -279,8 +273,7 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     -----
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+    revision = export_network(ac_dc, store)
 
     record = revision.record
     assert "entity" in record.entity_types["Generator"].collect_schema().names()
@@ -291,7 +284,7 @@ def test_the_entity_column_is_entity(con, base_uri, ac_dc):
     assert "entity" in ea.df().columns
 
 
-def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
+def test_the_entity_axis_is_where_identity_lives(store, ac_dc):
     """`dims/entity.parquet` says which entities exist and what type each is.
 
     Derived by the writer from the per-type frames rather than handed over, so
@@ -303,10 +296,11 @@ def test_the_entity_axis_is_where_identity_lives(con, base_uri, ac_dc):
     -----
     - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
     """
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+    revision = export_network(ac_dc, store)
 
-    axis = con.read_parquet(layer_dir(revision.id) + "dims/entity.parquet").df()
+    axis = store.workspace.con.read_parquet(
+        store.layer_dir(revision.id) + "dims/entity.parquet"
+    ).df()
     assert {"entity", "entity_type", "deleted"} <= set(axis.columns)
     assert not axis["entity"].duplicated().any()
     assert "Generator" in set(axis["entity_type"])

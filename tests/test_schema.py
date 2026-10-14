@@ -695,3 +695,100 @@ def test_a_schema_declaring_nothing_stays_legal():
     """
     assert Schema().dims == ()
     assert Schema().attributes == {}
+
+
+# -- names (https://energy-models.github.io/datarecord/design/schema/#names) -----
+
+
+def _declaring(position: str, name: str) -> Schema:
+    """A minimal schema declaring `name` in one position."""
+    dim = Dimension(dtype=nw.String())
+    attr = AttributeSpec(dtype=nw.Float64(), dims={"entity"})
+    if position == "dim":
+        return Schema(dimensions={"entity": dim, name: dim}, partial={name})
+    if position == "group":
+        return Schema(
+            dimensions={"entity": dim, "bus": dim},
+            groups={name: Group(over=["entity", "bus"])},
+        )
+    if position == "coordinate":
+        return Schema(
+            dimensions={"entity": dim, "bus": dim},
+            groups={"connection": Group(over={"entity": "entity", name: "bus"})},
+        )
+    if position == "attribute":
+        return Schema(dimensions={"entity": dim}, attributes={name: attr})
+    return Schema(dimensions={"entity": dim}, results={name: attr})
+
+
+POSITIONS = ["dim", "group", "coordinate", "attribute", "result"]
+
+WRITTEN = {
+    "attribute": "a column datarecord writes",
+    "breakpoint": "a column datarecord writes",
+    "value": "a column datarecord writes",
+    "deleted": "a column datarecord writes",
+    "breakpoints": "a column datarecord writes",
+    "varies": "a column datarecord writes",
+    "broadcast": "a column datarecord writes",
+    "layer_uuid": "a column datarecord writes",
+    "order_key": "a column datarecord writes",
+    "Value": "a column datarecord writes",
+    "_depth": "starts with `_`",
+    "_row": "starts with `_`",
+    "_rank": "starts with `_`",
+    "_first": "starts with `_`",
+    "_broadcast": "starts with `_`",
+    "_pos": "starts with `_`",
+    'say "hi"': 'contains `"`',
+    "a.b": "contains `.`",
+}
+
+
+@pytest.mark.parametrize("position", POSITIONS)
+@pytest.mark.parametrize("name", list(WRITTEN))
+def test_a_name_that_cannot_be_its_own_column_is_refused(name, position):
+    """Every column the format or the fold writes beside a schema's own, `.` and
+    `"`, which `duckdb.ColumnExpression` cannot spell, and case folded as DuckDB
+    folds it. `deleted` as a dim read every label as a tombstone, and `value`
+    gave the long file two columns of one name."""
+    with pytest.raises(ValidationError) as refused:
+        _declaring(position, name)
+    message = str(refused.value)
+    assert repr(name) in message, "the error names the offending name"
+    assert WRITTEN[name] in message, "the error says why the name is refused"
+    assert "Rename" in message, "the error says what to do"
+
+
+@pytest.mark.parametrize("position", ["attribute", "result"])
+def test_an_attribute_may_not_take_the_entity_type_column(position):
+    """`dims/entity.parquet` carries the type as `entity_type`, and a member file
+    drops a column of that name as the type's copy."""
+    with pytest.raises(ValidationError, match="the column an entity's type"):
+        _declaring(position, "entity_type")
+
+
+@pytest.mark.parametrize("position", ["dim", "group"])
+def test_the_entity_type_axis_may_be_called_entity_type(position):
+    """The type axis and its group are spelled `entity_type` in every PyPSA
+    record."""
+    assert "entity_type" in _declaring(position, "entity_type").model_dump_json()
+
+
+@pytest.mark.parametrize("position", POSITIONS)
+def test_names_differing_only_in_case_are_refused(position):
+    """DuckDB resolves `Entity` and `entity` to one column, so declaring both
+    would have one read the other's values."""
+    with pytest.raises(ValidationError) as refused:
+        _declaring(position, "Entity")
+    message = str(refused.value)
+    assert "'Entity'" in message, "the error names the new spelling"
+    assert "'entity'" in message, "and the one it clashes with"
+    assert "differ only in case" in message, "the error says why"
+
+
+@pytest.mark.parametrize("position", POSITIONS)
+@pytest.mark.parametrize("name", ["Order Size", "select", "Horizon", "1st"])
+def test_a_name_duckdb_quotes_is_accepted(name, position):
+    """A space, a keyword, mixed case or a leading digit all quote cleanly."""
+    _declaring(position, name)

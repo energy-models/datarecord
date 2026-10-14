@@ -97,10 +97,10 @@ EMPTY = LazyFrames((), _unreachable)
 
 @dataclass(frozen=True)
 class Flags:
-    """Which axes an attribute's rows actually use, for one component type.
+    """Which axes an attribute's rows actually use, for one entity type.
 
     The two sets are **not** complements: a dim in both means this type's
-    components disagree, which is the instruction to use both containers rather
+    entities disagree, which is the instruction to use both containers rather
     than an ambiguity to resolve. `varies | broadcast` is the test for
     whether an attribute touches a dim at all.
 
@@ -148,9 +148,9 @@ def collision_detail(rows: Iterable[tuple[Any, Any]]) -> str:
 class RecordLike(Protocol):
     """What a record answers, however it is backed, as narwhals frames.
 
-    Read-only: writing is `write_record(revision_id, source, con)`, which takes
-    a `LayerData` rather than this - a framework's own `RecordLike` reaches it
-    through the adapter `write_record` wraps one in.
+    Read-only: writing is `store.root(source)`, `rev.child(source)` or
+    `ws.write(source, uri)`, whose writer reads a `LayerData` rather than this -
+    a framework's own `RecordLike` reaches it through an adapter.
 
     Notes
     -----
@@ -190,7 +190,7 @@ class RecordLike(Protocol):
 
     @property
     def entity_types(self) -> Frames:
-        """Wide member frames, keyed by component type, in member order.
+        """Wide member frames, keyed by entity type, in member order.
 
         Notes
         -----
@@ -207,7 +207,7 @@ class RecordLike(Protocol):
         over `(entity, bus)` is the one every record with connections has, and
         it is one instance rather than a member of its own.
 
-        Not split by component type, which is no coordinate of a group.
+        Not split by entity type, which is no coordinate of a group.
 
         Notes
         -----
@@ -221,7 +221,7 @@ class RecordLike(Protocol):
     def attributes(self) -> Frames:
         """Long input frames, keyed by attribute name - one per file.
 
-        Not by component type: one `inputs/p_max_pu.parquet` holds every type's
+        Not by entity type: one `inputs/p_max_pu.parquet` holds every type's
         rows, keyed by `entity` alone. A row carries no `entity_type` - entities
         are unique across every type - so a reader wanting one type joins `entity_types`
         on `name`.
@@ -266,14 +266,14 @@ class RecordLike(Protocol):
 class LayerData(Protocol):
     """The rows of one thing - a layer, or a fold - enumerated and read.
 
-    `write_record`'s input: it needs `schema` and, per kind, which keys this
+    `write_layer`'s input: it needs `schema` and, per kind, which keys this
     thing holds and each one's rows - the enumerate-and-read pairs below, no
     more. `layered.sources.LayerSource` and `layered.resolve.Resolver` both
     satisfy this structurally, one answering for its own layer and the other
     for everything folded into it; the object decides which, never a mode flag
     or a name prefix. Rows are raw `DuckDBPyRelation`s, not narwhals frames -
     unlike `RecordLike`, which a framework's own producer speaks instead and
-    `write_record` adapts.
+    `write_layer` adapts.
 
     `schema` is not a peer of the other members but what decides which of them
     exist: `entity_types`/`entity_type` are populated exactly where the schema

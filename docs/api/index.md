@@ -16,27 +16,23 @@ Everything below is importable from the top-level package:
 from datarecord import (
     AttributeSpec,
     Dimension,
-    Directory,
     Flags,
     Frames,
     LazyFrames,
-    NewChild,
     Record,
     RecordLike,
     Revision,
     Schema,
+    Store,
     WorkingRecord,
-    connect,
-    layer_dir,
-    write_record,
+    Workspace,
 )
 ```
 
-| page                               | symbols                                                 |
-| ---------------------------------- | ------------------------------------------------------- |
-| [Record](record.md)                | `Record`, `RecordLike`, `Frames`, `LazyFrames`, `Flags` |
-| [Schema](schema.md)                | `Schema`, `Dimension`, `AttributeSpec`                  |
-| [Duck](../design/module-layout.md) | `connect`, `layer_dir`                                  |
-| [Layered](layered.md)              | `Revision`, `write_record`                              |
-| [WorkingRecord](mutable.md)        | `WorkingRecord`, `NewChild`, `Directory`                |
-| [Tools](tools.md)                  | `Tool`, `Requirements`, the PyPSA tool                  |
+| page                        | symbols                                                 |
+| --------------------------- | ------------------------------------------------------- |
+| [Record](record.md)         | `Record`, `RecordLike`, `Frames`, `LazyFrames`, `Flags` |
+| [Schema](schema.md)         | `Schema`, `Dimension`, `AttributeSpec`                  |
+| [Layered](layered.md)       | `Workspace`, `Store`, `Revision`                        |
+| [WorkingRecord](mutable.md) | `WorkingRecord`                                         |
+| [Tools](tools.md)           | `Tool`, `Requirements`, the PyPSA tool                  |

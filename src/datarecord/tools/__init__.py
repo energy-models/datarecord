@@ -4,7 +4,7 @@
 
 """Tool representations of a `Revision`.
 
-A record is tool-agnostic: it resolves to dims, components and attributes. A
+A record is tool-agnostic: it resolves to dims, entities and attributes. A
 *tool* is one concrete modelling framework that can be built from such a
 resolution - PyPSA today, others later. Everything a tool needs to know
 about its own framework lives in its module here; nothing in `datarecord`

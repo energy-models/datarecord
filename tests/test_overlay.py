@@ -14,8 +14,6 @@ import narwhals as nw
 import pandas as pd
 import pytest
 
-from datarecord import Revision
-from datarecord.duck import layer_dir
 from datarecord.layered.resolve import (
     Resolver,
     read_schema,
@@ -24,31 +22,42 @@ from datarecord.layered.resolve import (
 )
 from datarecord.layered.revision import ancestry
 from datarecord.layered.sources import ParquetLayer
-from datarecord.layered.write import write_record
 from datarecord.record import EMPTY
 from datarecord.schema import AttributeSpec
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network, outputs, relation, tombstone, write_input
+from tests.fixtures import (
+    empty_child,
+    export_network,
+    outputs,
+    relation,
+    tombstone,
+    write_input,
+)
+
+
+def _entities(revision) -> set[str]:
+    axis = revision.resolver.entity_axis
+    assert axis is not None, "every revision here has entities"
+    return set(axis.df()["entity"])
 
 
 @pytest.fixture
-def parent(con, base_uri, ac_dc):
-    revision = Revision.create(con)
-    export_network(ac_dc, revision, con)
+def parent(store, ac_dc):
+    revision = export_network(ac_dc, store)
     revision.materialise()
     return revision
 
 
-def test_child_overwrites_component(con, parent):
+def test_child_overwrites_component(store, parent):
     """A child's rows replace all of that component's rows for the attribute.
 
     Notes
     -----
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
@@ -64,11 +73,11 @@ def test_child_overwrites_component(con, parent):
     assert len(df[df["entity"] == "Norway Wind"]) == 10
 
 
-def test_child_overwrite_reaches_model(con, parent):
+def test_child_overwrite_reaches_model(store, parent):
     """The overwrite turns a series component into a static one in the model."""
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
@@ -79,30 +88,29 @@ def test_child_overwrite_reaches_model(con, parent):
     assert "Norway Wind" in n.c["Generator"].dynamic["p_max_pu"].columns
 
 
-def test_tombstone_removes_component(con, parent):
+def test_tombstone_removes_component(store, parent):
     """A tombstone removes the component from every attribute and dimension.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    child = parent.child()
-    tombstone(layer_dir(child.id), "Generator", ["Norway Gas"])
+    child = empty_child(parent)
+    tombstone(store.layer_dir(child.id), "Generator", ["Norway Gas"])
 
-    om = child.resolver.entity_axis.df()
-    assert "Norway Gas" not in set(om["entity"])
-    assert "Norway Gas" in set(parent.resolver.entity_axis.df()["entity"])
+    assert "Norway Gas" not in _entities(child)
+    assert "Norway Gas" in _entities(parent)
 
     n = PyPSA.build(child.record)
     assert "Norway Gas" not in n.c["Generator"].static.index
     assert "Norway Wind" in n.c["Generator"].static.index
 
 
-def test_child_adds_attribute(con, parent):
+def test_child_adds_attribute(store, parent):
     """A child may write an attribute no ancestor had."""
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_min_pu",
         [{"entity": "Norway Gas", "value": 0.1}],
     )
@@ -113,34 +121,34 @@ def test_child_adds_attribute(con, parent):
     assert n.c["Generator"].static.loc["Norway Wind", "p_min_pu"] == 0.0
 
 
-def test_sibling_branch_unaffected(con, parent):
+def test_sibling_branch_unaffected(store, parent):
     """A tombstone only affects the branch that carries it.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    deleting = parent.child()
-    tombstone(layer_dir(deleting.id), "Generator", ["Norway Gas"])
-    sibling = parent.child()
+    deleting = empty_child(parent)
+    tombstone(store.layer_dir(deleting.id), "Generator", ["Norway Gas"])
+    sibling = empty_child(parent)
 
-    assert "Norway Gas" not in set(deleting.resolver.entity_axis.df()["entity"])
-    assert "Norway Gas" in set(sibling.resolver.entity_axis.df()["entity"])
+    assert "Norway Gas" not in _entities(deleting)
+    assert "Norway Gas" in _entities(sibling)
 
 
-def test_grandchild_resolves_through_ancestry(con, parent):
+def test_grandchild_resolves_through_ancestry(store, parent):
     """Resolution walks the whole root->node path, nearest layer winning."""
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
     child.materialise()
 
-    grandchild = child.child()
+    grandchild = empty_child(child)
     write_input(
-        layer_dir(grandchild.id),
+        store.layer_dir(grandchild.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.99}],
     )
@@ -152,7 +160,7 @@ def test_grandchild_resolves_through_ancestry(con, parent):
     assert len(df[df["entity"] == "Norway Wind"]) == 10
 
 
-def test_closed_child_reads_own_resolver(con, parent):
+def test_closed_child_reads_own_resolver(store, parent):
     """Reading a closed non-root record uses its own persisted dims/manifest/map.
 
     Its `ancestry_since_closed` is just itself, so the raw layer (which has
@@ -162,15 +170,15 @@ def test_closed_child_reads_own_resolver(con, parent):
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
     child.materialise()
 
-    reloaded = Revision.get(child.id, con)
+    reloaded = store.revision(child.id)
     n = PyPSA.build(reloaded.record)
     assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
 
@@ -178,18 +186,18 @@ def test_closed_child_reads_own_resolver(con, parent):
     assert df[df["entity"] == "Manchester Wind"]["value"].tolist() == [0.42]
 
 
-def test_outputs_do_not_overlay(con, parent):
+def test_outputs_do_not_overlay(store, parent):
     """Results come from the node's own layer only.
 
     Notes
     -----
     - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
     """
-    child = parent.child()
+    child = empty_child(parent)
     assert outputs(child, "p").df().empty
 
 
-def test_resolved_reads_same_as_unresolved(con, parent):
+def test_resolved_reads_same_as_unresolved(store, parent):
     """A materialised node reads identically to the same node folded from its layers.
 
     The invariant the base/source split protects: a materialised ancestor's
@@ -200,17 +208,17 @@ def test_resolved_reads_same_as_unresolved(con, parent):
     assert they agree on the owner map, the entity axis, every attribute
     relation, and the group frames.
     """
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
     child.materialise()
 
-    grandchild = child.child()
+    grandchild = empty_child(child)
     write_input(
-        layer_dir(grandchild.id),
+        store.layer_dir(grandchild.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.99}],
     )
@@ -223,11 +231,17 @@ def test_resolved_reads_same_as_unresolved(con, parent):
         def materialised(self, con, schema):  # noqa: ARG002
             return None
 
-    schema = read_schema(con)
-    full = ancestry(con, grandchild.id)
-    truncated = Resolver(grandchild.id, sources_to_read(full, con, schema), con, schema)
+    schema = read_schema(store)
+    full = ancestry(store, grandchild.id)
+    workspace = store.workspace
+    truncated = Resolver(
+        grandchild.id, sources_to_read(full, store, schema), workspace, schema
+    )
     unresolved = Resolver(
-        grandchild.id, [_Unmaterialised(uid, schema, con) for uid in full], con, schema
+        grandchild.id,
+        [_Unmaterialised(uid, schema, store) for uid in full],
+        workspace,
+        schema,
     )
 
     def ownership(nc):
@@ -257,7 +271,7 @@ def test_resolved_reads_same_as_unresolved(con, parent):
     ], "grandchild's value wins over the materialised base"
 
 
-def test_a_new_attribute_is_a_schema_amendment(con, parent):
+def test_a_new_attribute_is_a_schema_amendment(store, parent):
     """Adding an attribute amends the record's one schema, not a layer's.
 
     A schema is not layered data: folding it would let a layer redefine what
@@ -269,7 +283,7 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    amended = read_schema()
+    amended = read_schema(store)
     # Declared once, record-wide, then narrowed to the type that carries it -
     # the two halves an amendment now has.
     amended.attributes["p_min_pu"] = AttributeSpec(
@@ -279,15 +293,15 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     amended.traits["Generator"] = was.model_copy(
         update={"attributes": was.attributes | {"p_min_pu"}}
     )
-    write_schema(amended)
+    write_schema(amended, store)
 
     # Adding an attribute is compatible, so the layers written before the
     # amendment stay readable (https://energy-models.github.io/datarecord/design/schema/#versioning).
-    assert amended.compatible_with(read_schema()) == []
+    assert amended.compatible_with(read_schema(store)) == []
 
-    child = parent.child()
+    child = empty_child(parent)
     write_input(
-        layer_dir(child.id),
+        store.layer_dir(child.id),
         "p_min_pu",
         [{"entity": "Norway Gas", "value": 0.1}],
     )
@@ -298,7 +312,7 @@ def test_a_new_attribute_is_a_schema_amendment(con, parent):
     assert "p_min_pu" in child.record.schema.attributes_for("Generator")
 
 
-def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
+def test_a_schema_narrowing_is_refused(store, parent, ac_dc):
     """A layer cannot redefine what an attribute means.
 
     Notes
@@ -306,7 +320,7 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
-    narrowed = read_schema()
+    narrowed = read_schema(store)
     narrowed.attributes["p_max_pu"] = AttributeSpec(
         dtype=nw.Float64(), dims=frozenset()
     )
@@ -324,12 +338,16 @@ def test_a_schema_narrowing_is_refused(con, parent, ac_dc):
         def flags(self, ctype):
             return {}
 
-    child = parent.child()
+    before = read_schema(store)
     with pytest.raises(ValueError, match="no longer varies over"):
-        write_record(child.id, _Narrowed(), con)
+        parent.child(_Narrowed())
+    assert read_schema(store) == before, "the manifest is never narrowed"
+    assert [r.id for r in store.revisions()] == [parent.id], (
+        "the layer was written, but without its revision file nothing reaches it"
+    )
 
 
-def test_member_order_survives_closed_intermediate(con, parent, ac_dc):
+def test_member_order_survives_closed_intermediate(store, parent, ac_dc):
     """Component order still follows the true owning layer through a closed
     intermediate node that changes nothing about membership.
 
@@ -342,9 +360,9 @@ def test_member_order_survives_closed_intermediate(con, parent, ac_dc):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    middle = parent.child()
+    middle = empty_child(parent)
     middle.materialise()
-    grandchild = middle.child()
+    grandchild = empty_child(middle)
 
     n = PyPSA.build(grandchild.record)
     pd.testing.assert_index_equal(

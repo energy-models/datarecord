@@ -18,24 +18,26 @@ if missing:
 n = PyPSA.build(record)  # a pypsa.Network
 n.optimize()
 
-record_back = PyPSA.to_datarecord(n)  # the inverse; a `Record`
-results = PyPSA.results(n)  # Frames, in the long schema
+record_back = PyPSA.to_datarecord(n, ws.con)  # the inverse; a `Record`
+results = PyPSA.results(n, ws.con)  # Frames, in the long schema
 ```
 
-`verify` catches what the record layer cannot — a component type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks its constant-versus-varying split — and returns a falsy `Requirements` when the record is usable. `build` raises `UnsupportedRecordError` rather than producing a partial model.
+`to_datarecord` and `results` plan their frames on the connection they are handed — the workspace's that writes them, or the record's they are `set` on — so they reach the write path without a copy; `build` reads `record.con` itself.
+
+`verify` catches what the record layer cannot — an entity type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks its constant-versus-varying split — and returns a falsy `Requirements` when the record is usable. `build` raises `UnsupportedRecordError` rather than producing a partial model.
 
 ## Solving and writing results back
 
 `results` returns the same `Frames` type `Record.outputs` presents, so a solve's output goes straight back:
 
 ```python
-w = WorkingRecord(record, con)
+w = WorkingRecord(rev.record)
 w.set("p_max_pu", 0.8, entity=["wind1"])
 n = PyPSA.build(w)  # a WorkingRecord is a Record
 n.optimize()
-for attr, frame in PyPSA.results(n).items():
+for attr, frame in PyPSA.results(n, w.con).items():
     w.set(attr, frame, kind="outputs")
-w.commit(NewChild())  # one layer, inputs and results together
+rev.child(w.edits)  # one layer, inputs and results together
 ```
 
-Two checks are skipped for `kind="outputs"`: the attribute need not be schema-declared, and a result's `entity` need not resolve to a declared member — a solve may produce rows for a component type it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).
+Two checks are skipped for `kind="outputs"`: the attribute need not be schema-declared, and a result's `entity` need not resolve to a declared member — a solve may produce rows for an entity type it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).

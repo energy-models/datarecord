@@ -2,11 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Editing a record: staged edits, materialised on commit.
+"""Editing a record: staged edits, written as a layer by whoever writes them.
 
-What `Record` (read-only) and `write_record` (a whole record at once) do not
-cover. Accumulate-then-commit: an edit costs a row in a staging table rather
-than a rewrite, and nothing touches the record until `commit()`.
+What `Record` (read-only) and a whole-record write do not cover: an edit costs
+a row in a staging table rather than a rewrite, and nothing touches the record
+until `edits` is written as a child.
 
 Notes
 -----
@@ -19,7 +19,7 @@ import re
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID, uuid4
 
 import duckdb
@@ -36,9 +36,8 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.layered.fold import Fold
+from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver
-from datarecord.layered.revision import Record, Revision
-from datarecord.layered.write import write_record
 from datarecord.record import (
     EMPTY,
     Frames,
@@ -49,45 +48,6 @@ from datarecord.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
-
-
-# -- commit targets (https://energy-models.github.io/datarecord/design/working-record/#committing) ---------------------------------------------------
-
-
-@dataclass(frozen=True)
-class NewChild:
-    """Write the staged rows as a new child layer of `record`.
-
-    Only the edits are written; the fold resolves the rest from the parent.
-
-    `record` defaults to the node the `WorkingRecord` was built over, which is
-    what a caller branching from a revision means every time. Passing one
-    explicitly is for the rarer case of re-parenting the edits elsewhere; a
-    `WorkingRecord` over a base that is not a layered node (a directory, a
-    framework object) has nothing to default to and must supply it.
-
-    Notes
-    -----
-    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-    """
-
-    record: Revision | None = None
-
-
-@dataclass(frozen=True)
-class Directory:
-    """Write a standalone record at `uri`: staged rows *plus* what the record
-    already reads, there being no parent to resolve against.
-
-    Notes
-    -----
-    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
-    """
-
-    uri: str
-
-
-Target = NewChild | Directory
 
 
 # -- value normalisation (https://energy-models.github.io/datarecord/design/working-record/#set) ----------------------------------------------
@@ -216,8 +176,8 @@ class StagedSource:
 
     "The layer as it would be written": each member reads its staging table,
     which an edit replaces by key rather than appending to (`_replace`), so the
-    table is already one row per key and what `write_record` would persist -
-    the entity axis apart, whose tombstone anti-join reaches another file.
+    table is already one row per key and what a write would persist - the
+    entity axis apart, whose tombstone anti-join reaches another file.
 
     Unfrozen, which is the whole of what distinguishes it: a `set` changes these
     rows under a reader, so the fold must stay a relation past this point rather
@@ -230,7 +190,7 @@ class StagedSource:
     Notes
     -----
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-    - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
     """
 
     record: WorkingRecord
@@ -239,13 +199,18 @@ class StagedSource:
 
     @property
     def schema(self) -> Schema:
-        """This record's schema - the `LayerData` `write_record` reads for one.
+        """This record's schema - the `LayerData` a write reads for one.
 
         A staging area is not a `LayerSource` a fold folds under a schema
-        someone else supplies; it is also what `write_record` writes directly
-        for a `NewChild` commit, where it needs its own.
+        someone else supplies; it is also what `rev.child(w.edits)` writes
+        directly, where it needs its own.
         """
         return self.record.schema
+
+    @property
+    def base(self) -> UUID:
+        """The revision these edits are a delta against: the base's `revision_id`."""
+        return self.record._base.revision_id
 
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """A staging area has no `resolved/` cache: it is never a fold's base."""
@@ -255,8 +220,8 @@ class StagedSource:
         """The dims with staged rows, `entity` among them.
 
         `entity` is an axis file like any other to a reader, so an `add` or a
-        `remove` contributes to it - which is what puts a staged component in
-        the components map.
+        `remove` contributes to it - which is what puts a staged entity in
+        the entities map.
         """
         return set(self.record._staged_dims())
 
@@ -268,7 +233,7 @@ class StagedSource:
         over only the column its `set` named would blank every sibling
         attribute on that label. A `set` on an axis carries the siblings into
         the staged row when it patches it (`_patch_axis`), so the table is
-        already the row `commit` writes.
+        already the row a write of `edits` persists.
 
         `entity` included, staged as an axis like the rest - what differs is
         only the extent `_axis_layer` gives it.
@@ -366,12 +331,12 @@ class WorkingRecord(Record):
     #: This record's one identity, which is the staged layer's: the fold stamps
     #: it as `layer_uuid` and dispatches a winning row back through the source
     #: carrying it. Synthetic, the staged layer having no revision until
-    #: `commit` writes one, and it names the staging tables too - so two
+    #: `edits` is written as one, and it names the staging tables too - so two
     #: `WorkingRecord`s on one connection collide in neither.
     _layer_id: UUID
     #: What the base resolves from, which every use of the base here wants: the
-    #: schema, one dim's axis, one attribute's rows and the revision to branch
-    #: from are all members of one.
+    #: schema, one dim's axis, one attribute's rows and the revision the edits
+    #: are a delta against are all members of one.
     _base: Resolver
     #: Keyed by `(kind, attribute)`, the attribute being None for the entity
     #: kinds. A long kind stages one table per attribute because that is the
@@ -379,17 +344,17 @@ class WorkingRecord(Record):
     #: its own coordinates and no others.
     _staged: dict[tuple[str, str | None], str]
 
-    def __init__(self, base: RecordLike, con: DuckDBPyConnection) -> None:
+    def __init__(self, base: RecordLike) -> None:
         # `object.__setattr__` throughout: the base is a frozen dataclass, and
         # these are set before `super().__init__` because the `StagedSource`
         # below reads them off `self`.
         object.__setattr__(self, "_layer_id", uuid4())
         object.__setattr__(self, "_staged", {})
-        base_cache = _base_resolver(base, con)
+        base_cache = _base_resolver(base)
         object.__setattr__(self, "_base", base_cache)
         # This record *is* the fold one layer deeper, and that layer is the
         # staging area - so the field the base class holds is that fold, whose
-        # last source is the staged layer `commit` writes.
+        # last source is the staged layer, `edits`.
         super().__init__(base_cache.with_source(StagedSource(self, self._layer_id)))
 
     # -- staging tables -----------------------------------------------------
@@ -527,7 +492,7 @@ class WorkingRecord(Record):
         not in `partial_dims` (a non-`partial` value axis like `timestep`) is
         owned whole, so a patch to one value restates the attribute's whole extent
         along it. Membership keys are in `partial_dims`, so never here - a layer
-        patches one component's or connection's value, never restating the rest.
+        patches one entity's or connection's value, never restating the rest.
 
         Notes
         -----
@@ -663,15 +628,15 @@ class WorkingRecord(Record):
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         # `entity=` names labels of *this* axis where `dim` is `entity` - an
-        # untyped record's component columns live here, so `set(attr, v,
+        # untyped record's entity columns live here, so `set(attr, v,
         # entity=[...])` selects the rows to patch, the same names a member-file
         # edit would (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives). For any other axis `entity` is not a
         # coordinate, so naming it is the caller error the message describes.
         if entity is not None and dim != "entity":
             msg = (
-                f"`set({attribute!r}, ..., entity=...)` names components, but "
+                f"`set({attribute!r}, ..., entity=...)` names entities, but "
                 f"{attribute!r} is addressed by {dim!r} alone - it is a column of "
-                f"dims/{dim}.parquet and belongs to no component"
+                f"dims/{dim}.parquet and belongs to no entity"
             )
             raise ValueError(msg)
         if entity is not None and not isinstance(value, Mapping):
@@ -789,7 +754,7 @@ class WorkingRecord(Record):
     def _resolved_names(self, ctype: str) -> list[str]:
         """Every name `ctype` currently resolves to, base plus staged.
 
-        Off the components map rather than the member frame, for the reason
+        Off the entities map rather than the member frame, for the reason
         `_name_types` gives: membership is what the map decided, and resolving
         the type's wide rows to read one column of it is the expensive way to
         ask. `str` because a backend's column yields its own scalar type (a
@@ -869,8 +834,8 @@ class WorkingRecord(Record):
                 f"{n!r} is already a {t}" for n, t in sorted(clashing.iter_rows())
             )
             msg = (
-                f"cannot add {ctype} components whose names are taken: {detail}; "
-                f"names are unique across every component type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
+                f"cannot add {ctype} entities whose names are taken: {detail}; "
+                f"names are unique across every entity type (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
             )
             raise ValueError(msg)
 
@@ -921,7 +886,7 @@ class WorkingRecord(Record):
         """A result's name and dims, against the schema's `results`.
 
         The attribute check only - not membership, which stays relaxed for a
-        result: a solve may produce rows for a component type it derived rather
+        result: a solve may produce rows for an entity type it derived rather
         than read, and rejecting those would refuse a legitimate result.
 
         Notes
@@ -959,7 +924,7 @@ class WorkingRecord(Record):
 
         Inputs only: a result is declared in `results` rather than per type, so
         `_validate_result` checks its name and dims and nothing checks its
-        membership - what a solve computes need not be a component the record
+        membership - what a solve computes need not be an entity the record
         declares.
 
         `name` is reported where known: with the type derived rather than passed, the name is what the caller can act on.
@@ -1006,7 +971,7 @@ class WorkingRecord(Record):
         indexed_by: str | None = None,
         **dims: Any,
     ) -> None:
-        """Stage an attribute value for a group of components.
+        """Stage an attribute value for a group of entities.
 
         A labelled series must say what its index holds: `indexed_by="snapshot"`
         names the axis, and `entity=` implies it where the attribute has exactly
@@ -1023,7 +988,7 @@ class WorkingRecord(Record):
 
         No `entity_type` parameter: the type is looked up from the entity,
         so one call may span types and each is validated against its own
-        type's spec. `entity=None` means every component whose type
+        type's spec. `entity=None` means every entity whose type
         declares `attribute`.
 
         Every other coordinate goes through `**dims`, including a group's -
@@ -1039,7 +1004,7 @@ class WorkingRecord(Record):
         Two checks are skipped for `"outputs"`, both because a result is not a
         value the schema governs: the attribute need not be declared, and a
         result's `name` need not resolve to a declared member. A solve may
-        produce rows for a component type it derived rather than read - PyPSA's
+        produce rows for an entity type it derived rather than read - PyPSA's
         `SubNetwork` is one - and rejecting those would refuse a legitimate
         result. An *input* for an undeclared name stays an error.
 
@@ -1112,7 +1077,7 @@ class WorkingRecord(Record):
         The types come from the record rather than from `types_declaring` where
         the schema declares no entity-type labels: the axis is then a plain
         string and its labels are data, so what types exist is a question only
-        the resolved components can answer.
+        the resolved entities can answer.
 
         Notes
         -----
@@ -1172,7 +1137,7 @@ class WorkingRecord(Record):
 
         The rows are `keys` x `per_dim`'s labels - every named entity at every
         coordinate the value covers - so a per-snapshot series over a year for a
-        thousand components is millions of them. Both factors are small, and only
+        thousand entities is millions of them. Both factors are small, and only
         their product is not, so each becomes a one-column relation and DuckDB
         joins them: the product never exists as Python objects.
 
@@ -1233,7 +1198,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         """
         staging = self.con.table(table)
         carried = {c.lower() for c in rel.columns}
@@ -1336,14 +1301,14 @@ class WorkingRecord(Record):
     def _complete_owned_whole(self, attribute: str, table: str) -> None:
         """Carry the base extent a non-partial axis obliges the staged rows to hold.
 
-        Done as the rows are staged rather than at commit, so the staging table
+        Done as the rows are staged rather than at write, so the staging table
         *is* the layer: touching one snapshot of a series makes
         this layer the owner of that key's whole extent along the dim, and the
-        untouched coordinates have to be carried or the commit would report a
-        loss.
+        untouched coordinates have to be carried or the written layer would
+        report a loss.
 
         Scoped by the keys already staged, not by the attribute: the semi-join
-        below reaches only the keys some edit named, so a component this record
+        below reaches only the keys some edit named, so an entity this record
         never touched stays in the parent.
 
         Idempotent, which is what lets it run per insert instead of once: the
@@ -1357,7 +1322,7 @@ class WorkingRecord(Record):
         Notes
         -----
         - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         """
         whole = self._owned_whole(attribute)
         if not whole or attribute not in self._base.attributes():
@@ -1547,13 +1512,13 @@ class WorkingRecord(Record):
         self._insert(shaped, table, {}, key=self._long_key(attribute))
 
     def add(self, ctype: str, frame: Any) -> None:
-        """Stage new components from a wide frame.
+        """Stage new entities from a wide frame.
 
         Splits it: attributes addressed by `entity` alone stay in `dims/entity_type/`,
         varying ones become `inputs/` rows. Which is which comes from the
         schema, so this needs no framework registry.
 
-        Not a sequence of `set` calls: a component exists by virtue of its
+        Not a sequence of `set` calls: an entity exists by virtue of its
         member row, so staging attribute values for a name no layer declares is
         what `_validate_attribute` rejects. Adding a bus with no attributes makes
         the point - nothing to `set`, yet the bus must exist.
@@ -1580,8 +1545,8 @@ class WorkingRecord(Record):
         # ancestors' files lack, which then reads as NULL for their rows. It
         # says so by naming the group among its `dims`, which is what replaced
         # a field of its own (https://energy-models.github.io/datarecord/design/record/#connections).
-        # Only a group `entity` itself keys: a wide frame adding one component
-        # can describe that component's own row of such a group (`bus`, for
+        # Only a group `entity` itself keys: a wide frame adding one entity
+        # can describe that entity's own row of such a group (`bus`, for
         # `connection`), but not a `corridor`, which relates two entities
         # neither is "the" one being added here - that goes through `add_group`.
         by_group: dict[str, list[str]] = {}
@@ -1595,7 +1560,7 @@ class WorkingRecord(Record):
         member_cols = [c for c in columns if c not in varying and c not in ports]
 
         rel = as_relation(lazy, self.con)
-        # Where a group declares the type axis a component's constant columns are
+        # Where a group declares the type axis an entity's constant columns are
         # a per-type member file; where none does there is no type to classify
         # into, so they are columns of the entity axis itself and there is no
         # member table (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
@@ -1611,8 +1576,8 @@ class WorkingRecord(Record):
                 f"add({ctype!r}, ...)", self._ensure(_ENTITY_AXIS), member_cols
             )
 
-        # One row per component on the entity axis, replacing any this record
-        # already staged for the name: it says the component exists, of what type
+        # One row per entity on the entity axis, replacing any this record
+        # already staged for the name: it says the entity exists, of what type
         # where there are types, and - untyped - carries its constant columns.
         # `add` after `remove` of the same name is thus one row: the tombstone is
         # deleted, not left to be outranked. Where typed, a second row goes to
@@ -1626,7 +1591,7 @@ class WorkingRecord(Record):
                 key=("entity",),
             )
         for attribute in varying:
-            # Always `inputs`: `add` declares components, and a component's
+            # Always `inputs`: `add` declares entities, and an entity's
             # attribute values are inputs whatever a later solve produces.
             self._stage_long(
                 attribute,
@@ -1657,7 +1622,7 @@ class WorkingRecord(Record):
         other type's claim - and the rows behind that claim are in a table
         `ctype`'s own collapse cannot see. Left there, a `remove` under one type
         and an `add` under another would write the name into two member files,
-        which `write_record` rejects as a collision.
+        which `write_layer` rejects as a collision.
 
         Deleted rather than tombstoned, and here rather than filtered on every
         read: the staged rows are what the layer *will* write, so a row no
@@ -1764,7 +1729,7 @@ class WorkingRecord(Record):
         """Stage a tombstone per entity.
 
         Need not enumerate what it deletes: one row per key, and the fold
-        applies it to every attribute. Nor scope it - a component exists or it
+        applies it to every attribute. Nor scope it - an entity exists or it
         does not, so a deletion removes it whole.
 
         One row, on the entity axis, which is where membership lives and the only
@@ -1797,7 +1762,7 @@ class WorkingRecord(Record):
         The one path every group is added through, a record's `connection`
         group included.
 
-        No component type, which is no coordinate of a group
+        No entity type, which is no coordinate of a group
         (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives).
 
         Notes
@@ -1834,7 +1799,7 @@ class WorkingRecord(Record):
         group_key = self.schema.group_key(group)
         self._stage_tombstones(group, group_key, [list(key) for key in keys], group_key)
 
-    # -- commit / rollback (https://energy-models.github.io/datarecord/design/working-record/#committing) -------------------------
+    # -- edits / rollback (https://energy-models.github.io/datarecord/design/working-record/#edits) --------------------------
 
     def rollback(self) -> None:
         """Clear every staged row without writing.
@@ -1852,7 +1817,7 @@ class WorkingRecord(Record):
 
         The rows are already one per coordinate - an edit replaced its key rather
         than appending beside it (`_replace`) - so this is the table scan minus
-        the coordinates a component tombstone reaches. That anti-join stays, being
+        the coordinates an entity tombstone reaches. That anti-join stays, being
         a cross-table fact rather than an ordering one: a `remove` on the entity
         axis has to clear this attribute's rows for the name too.
 
@@ -1861,7 +1826,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         """
         rel = self._rows("inputs", attribute)
         if rel is None:
@@ -1869,8 +1834,8 @@ class WorkingRecord(Record):
         dead = self._tombstoned()
         if dead is None:
             return rel
-        # A deleted component has no attributes, so the tombstone drops a staged
-        # value for its name (https://energy-models.github.io/datarecord/design/working-record/#committing).
+        # A deleted entity has no attributes, so the tombstone drops a staged
+        # value for its name (https://energy-models.github.io/datarecord/design/working-record/#edits).
         #
         # Matched on `name` alone: the tombstone carries a type and a staged
         # input row does not (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
@@ -1878,7 +1843,7 @@ class WorkingRecord(Record):
         return rel.set_alias("l").join(dead.set_alias("d"), on, how="anti")
 
     def _tombstoned(self) -> DuckDBPyRelation | None:
-        """Component keys whose staged entity-axis row is a tombstone.
+        """Entity keys whose staged entity-axis row is a tombstone.
 
         One row per name in the table already (`_replace` on `entity`), so an
         `add` after a `remove` has replaced the tombstone rather than sitting
@@ -1886,7 +1851,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         """
         rel = self._rows(_ENTITY_AXIS)
         if rel is None:
@@ -1904,7 +1869,7 @@ class WorkingRecord(Record):
         Notes
         -----
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         """
         return self._rows(_ENTITY_AXIS)
 
@@ -1924,7 +1889,7 @@ class WorkingRecord(Record):
         -----
         - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         """
         return self._rows(_MEMBERS, ctype)
 
@@ -1937,11 +1902,11 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         """
         return self._rows(group)
 
-    # -- what commit writes (https://energy-models.github.io/datarecord/design/working-record/#committing) -----------------------------------------
+    # -- what edits write (https://energy-models.github.io/datarecord/design/working-record/#edits) ------------------------------------------
 
     def _staged_dims(self) -> tuple[str, ...]:
         """Which axes have staged rows, in declaration order.
@@ -1951,7 +1916,7 @@ class WorkingRecord(Record):
         that exists is not yet an edit.
 
         `entity` is one of them, staged as `_ENTITY_AXIS` like any other dim -
-        so both the fold's `axes()` and what `commit` writes come from here,
+        so both the fold's `axes()` and what `edits` writes come from here,
         rather than one of them special-casing it. `Schema` declares `entity`
         like any dim, so `schema.dims` names it and no arm is needed for it.
 
@@ -1987,7 +1952,7 @@ class WorkingRecord(Record):
 
         `entity` is a table scan either way: membership is one row per name
         already (`_collapsed_entities`), never completed from the base - a layer
-        names the components it touched and the fold resolves the rest.
+        names the entities it touched and the fold resolves the rest.
 
         Notes
         -----
@@ -2029,80 +1994,31 @@ class WorkingRecord(Record):
         }
         return LazyFrames(tuple(staged), lambda group: nw.from_native(staged[group]))
 
-    def _base_revision(self) -> Revision:
-        """The `Revision` this record's base resolves, for `NewChild()`'s default.
+    @property
+    def edits(self) -> StagedSource:
+        """The staged layer alone: the delta against the base, as a `LayerData`.
 
-        Only a base that is a node in the tree has one, which is asked of the
-        `revisions` table rather than of the base's type: a directory's
-        `revision_id` is derived from where it is, so it names no row, and that
-        - not which class the base was - is what makes it unbranchable.
+        What `rev.child(w.edits)` writes, where `rev` is the revision this
+        record was built over - only the edits, the fold resolving the rest from
+        the parent. The record itself is the flattened whole, base plus edits,
+        which is what a standalone `ws.write(w, uri)` wants; `rev.child(w)`
+        would write that whole as a child, reading back right but larger.
 
-        A missing row and a missing table are the same answer here: `connect`
-        creates the table, so a connection without one was made by hand and has
-        no tree in it either.
-        """
-        try:
-            return Revision.get(self._base.revision_id, self.con)
-        except (KeyError, duckdb.Error):
-            msg = (
-                "`NewChild()` needs a revision to branch from, and this "
-                "`WorkingRecord`'s base is no node in a layer tree; pass one as "
-                "`NewChild(revision)`, or commit to a standalone record with "
-                "`Directory(uri)` (https://energy-models.github.io/datarecord/design/working-record/#committing)"
-            )
-            raise ValueError(msg) from None
-
-    @overload
-    def commit(self, target: NewChild) -> Revision: ...
-
-    @overload
-    def commit(self, target: Directory) -> None: ...
-
-    def commit(self, target: Target) -> Revision | None:
-        """Write everything staged and clear it.
-
-        Returns
-        -------
-        The new child for a `NewChild` target, so the caller can read what it
-        just wrote without going back to the record table; `None` for a
-        `Directory`, which belongs to no record. Overloaded on the target, so a
-        caller committing to a child holds a `Revision` rather than an optional
-        one - which target it passed is what decides, and it is always literal
-        at the call site.
-
-        The layer lands in the *child*, never in the node that was branched
-        from - layers are write-once - so it is the returned node that
-        reads back the edits.
+        Writing clears nothing: `rollback()` does, called or not.
 
         Notes
         -----
-        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
-        - [committing](https://energy-models.github.io/datarecord/design/working-record/#committing)
+        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+        - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
-        if isinstance(target, NewChild):
-            parent = (
-                target.record if target.record is not None else self._base_revision()
-            )
-            child = parent.child()
-            # The staged layer's own rows - the fold's last source, a `LayerData`
-            # like any other - so only the edits are written, the fold resolving
-            # the rest from the parent (https://energy-models.github.io/datarecord/design/working-record/#committing).
-            write_record(child.id, self.resolver.sources[-1], self.con)
-            self.rollback()
-            return child
-        # The `Resolver`, not `self`: it is the same `LayerData` a fold answers
-        # for everything folded in, which is exactly base-plus-staged flattened
-        # (https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits).
-        write_record(None, self.resolver, self.con, uri=target.uri)
-        self.rollback()
-        return None
+        return cast("StagedSource", self.resolver.sources[-1])
 
 
-def _base_resolver(base: RecordLike, con: DuckDBPyConnection) -> Resolver:
+def _base_resolver(base: RecordLike) -> Resolver:
     """What `base` resolves from, as a `Resolver` a staged layer can extend.
 
     A `Record` is one already - whether it came from a revision or from
-    `Record.at(uri)`, since a directory read as its one layer is a fold like
+    `Workspace.at(uri)`, since a directory read as its one layer is a fold like
     any other.
 
     Raises
@@ -2113,23 +2029,14 @@ def _base_resolver(base: RecordLike, con: DuckDBPyConnection) -> Resolver:
         `RecordLike` exposes `entity_types` keyed by type, so synthesising one
         would be rebuilding the format from a protocol that deliberately lacks
         it.
-    ValueError
-        For a `Record` on another connection, which would read its rows through
-        one connection and stage them on another.
     """
     if not isinstance(base, Record):
         msg = (
             f"a `WorkingRecord` reads by folding its staged rows over the base's, "
             f"and a {type(base).__name__} has no layer layout to fold - pass a "
-            f"`Record`, which `Revision.record` and `Record.at(uri)` both give"
+            f"`Record`, which `Revision.record` and `Workspace.at(uri)` both give"
         )
         raise TypeError(msg)
-    if base.con is not con:
-        msg = (
-            "a `WorkingRecord` stages its rows on the connection it reads the "
-            "base through, and this base reads through another one"
-        )
-        raise ValueError(msg)
     return base.resolver
 
 
@@ -2222,8 +2129,8 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
     the entity axis where a group declares the type axis.
 
     `entity_type` on the entity axis only where a group declares the axis. Where
-    none does there is no type to classify a component into, so no member files
-    and no column: `attributes_on("entity")` then returns the component's
+    none does there is no type to classify an entity into, so no member files
+    and no column: `attributes_on("entity")` then returns the entity's
     non-varying columns and they live here, on the entity axis itself. Where a
     group does declare it the column is `entity_type`, typed by the declaration,
     and `attributes_on("entity")` is empty - the columns are per-type member
