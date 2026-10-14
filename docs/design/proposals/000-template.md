@@ -19,42 +19,34 @@ SPDX-License-Identifier: CC-BY-4.0
 
 Once implemented, one sentence naming the design and usage pages it landed in, which are authoritative where the two disagree.
 
-## What starts it
+## Abstract
+
+What changes, in two or three sentences.
+
+## Motivation
 
 The problem, in the terms of someone using datarecord today.
 
-## The construct
+## Specification
 
 The design: what the schema, the format and the API become.
+
+## Rationale
+
+Why this design, and what it costs: what breaks, what gets slower, what becomes harder to say.
 
 ## Usage
 
 What a user writes with it, as examples. These move to the usage pages on implementation.
 
-## Rejected alternatives
+## Implementation notes
+
+The steps it is built in, in order, and the checks that hold once it is. On implementation, where the build departs from the text above.
+
+## Rejected Ideas
 
 What else was considered, and why not.
 
-## What it costs
-
-What breaks, what gets slower, what becomes harder to say.
-
-## Landing
-
-The steps it is built in, in order.
-
-## How to know it worked
-
-The checks that hold once it is built.
-
-## What it opens
+## Open Issues
 
 What it leaves unsettled. Whatever is still open on implementation moves to [open questions](../open-questions.md).
-
-## As built
-
-Filled on implementation: where the build departs from the text above.
-
-## Change history
-
-Dated revisions made while the DEP is a draft or accepted. An implemented DEP is not revised; a change is a new DEP that replaces it.
