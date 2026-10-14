@@ -80,6 +80,8 @@ TIMESTEP = "timestep"
 SCENARIO_WEIGHT = "scenario_weight"
 ENTITY, BUS, CONNECTION = "entity", "bus", "connection"
 ENTITY_TYPE = "entity_type"
+#: `entity_type` as a trait's `on` and a `default_by` name it, by its subject.
+BY_TYPE = f"{ENTITY}.{ENTITY_TYPE}"
 #: The registry inputs declared as properties of `entity`, beside `entity_type`:
 #: what describes a component rather than data a model optimises against.
 ENTITY_PROPERTIES = ("carrier", "sign", "type")
@@ -1556,9 +1558,7 @@ def _with_default_by(
             ct: v for ct, v in defaults_of.items() if not _same(v, spec.default)
         }
         if differing:
-            widened[name] = spec.model_copy(
-                update={"default_by": {ENTITY_TYPE: differing}}
-            )
+            widened[name] = spec.model_copy(update={"default_by": {BY_TYPE: differing}})
     return widened
 
 
@@ -1660,7 +1660,12 @@ def _registry_schema() -> RecordSchema:
                 name, _attribute_spec(c.defaults.loc[attr], per_port=attr in per_port)
             )
     traits = {
-        ctype: Trait(attributes=carried, on={ENTITY_TYPE: frozenset({ctype})})
+        ctype: Trait(
+            attributes=frozenset(
+                f"{ENTITY}.{a}" if a in properties else a for a in carried
+            ),
+            on={BY_TYPE: frozenset({ctype})},
+        )
         for ctype, carried in carries.items()
     }
     return RecordSchema(
@@ -1775,7 +1780,7 @@ class _NetworkSource:
                 attributes.setdefault(
                     name, AttributeSpec(dtype=dtype, dims=frozenset({ENTITY}))
                 )
-            trait = traits.get(ctype, Trait(on={ENTITY_TYPE: frozenset({ctype})}))
+            trait = traits.get(ctype, Trait(on={BY_TYPE: frozenset({ctype})}))
             traits[ctype] = trait.model_copy(
                 update={"attributes": trait.attributes | frozenset(columns)}
             )

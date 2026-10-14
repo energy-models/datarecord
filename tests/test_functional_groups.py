@@ -292,7 +292,7 @@ def test_setting_one_property_keeps_its_siblings_value(store):
     )
 
     staged = WorkingRecord(revision.record)
-    staged.set("co2_budget", {"DE": 12.0})
+    staged.set("country.co2_budget", {"DE": 12.0})
 
     frame = staged.properties["country"].collect().to_native()
     assert frame["co2_budget"].to_pylist() == [12.0], "the edited column takes the edit"
@@ -302,7 +302,7 @@ def test_setting_one_property_keeps_its_siblings_value(store):
 
     # And a second `set` on the sibling composes with the first rather than
     # displacing it, which is the same rule one step further.
-    staged.set("population", {"DE": 84.0})
+    staged.set("country.population", {"DE": 84.0})
     frame = staged.properties["country"].collect().to_native()
     assert frame["co2_budget"].to_pylist() == [12.0], "the earlier edit survives"
     assert frame["population"].to_pylist() == [84.0]
@@ -326,7 +326,7 @@ def test_a_child_layer_holds_only_the_axis_labels_it_touched(store):
     # Deliberately not materialised: a patch layer resolves over its parent's
     # raw layer, so no node cache is required for the fold to see both labels.
     staged = WorkingRecord(revision.record)
-    staged.set("co2_budget", {"DE": 12.0})
+    staged.set("country.co2_budget", {"DE": 12.0})
     country = staged.resolver.sources[-1].axis("country")
     assert country is not None
     patch = country.df()
@@ -369,7 +369,7 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(store):
     )
 
     staged = WorkingRecord(revision.record)
-    staged.set("co2_budget", {"DE": 12.0})
+    staged.set("country.co2_budget", {"DE": 12.0})
 
     country = staged.resolver.sources[-1].axis("country")
     assert country is not None
@@ -417,10 +417,10 @@ def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
 
     staged = WorkingRecord(revision.record)
     with pytest.raises(KeyError, match="`add` them first"):
-        staged.set("co2_budget", {"DE": 12.0, "NO": 3.0})
+        staged.set("country.co2_budget", {"DE": 12.0, "NO": 3.0})
 
     staged.add("country", ["NO"])
-    staged.set("co2_budget", {"DE": 12.0, "NO": 3.0})
+    staged.set("country.co2_budget", {"DE": 12.0, "NO": 3.0})
     child = revision.child(staged.edits)
     axis = child.resolver.dims.axes["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}

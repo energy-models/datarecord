@@ -519,7 +519,7 @@ def schema(
         for attr, spec in attrs.items():
             flat.setdefault(attr, spec)
         traits[ctype] = Trait(
-            attributes=frozenset(attrs), on={"entity_type": frozenset({ctype})}
+            attributes=frozenset(attrs), on={"entity.entity_type": frozenset({ctype})}
         )
     # Declared whether or not a caller named them: a test writing `p_max_pu`
     # needs it declared, and one passing `attributes=` is narrowing what a type

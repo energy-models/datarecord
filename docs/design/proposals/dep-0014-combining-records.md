@@ -77,14 +77,25 @@ A PyPSA-Eur workflow exports its network with `PyPSA.to_datarecord(n, ws.con)`, 
 base = PyPSA.to_datarecord(n, ws.con)
 s = base.schema
 schema = Schema(
-    dimensions={"entity": s.dimensions["entity"], "bus": s.dimensions["bus"],
-                "period": s.dimensions["period"], "limit": Dimension(dtype=nw.String())},
-    properties={"entity": {"component": s.properties["entity"]["component"]},
-                "bus": {"country": PropertySpec(dtype=nw.String())}},
-    attributes={"limit_constant": AttributeSpec(dtype=nw.Float64(), dims={"limit", "period"}),
-                "co2_intensity": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
-    traits={"emitting": Trait(attributes={"co2_intensity"},
-                              on={"entity.component": {"Generator", "Link"}})},
+    dimensions={
+        "entity": s.dimensions["entity"],
+        "bus": s.dimensions["bus"],
+        "period": s.dimensions["period"],
+        "limit": Dimension(dtype=nw.String()),
+    },
+    properties={
+        "entity": {"component": s.properties["entity"]["component"]},
+        "bus": {"country": PropertySpec(dtype=nw.String())},
+    },
+    attributes={
+        "limit_constant": AttributeSpec(dtype=nw.Float64(), dims={"limit", "period"}),
+        "co2_intensity": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+    },
+    traits={
+        "emitting": Trait(
+            attributes={"co2_intensity"}, on={"entity.component": {"Generator", "Link"}}
+        )
+    },
     partial={"entity"},
 )
 extension = FrameRecord(

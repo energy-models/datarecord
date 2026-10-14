@@ -586,7 +586,7 @@ def units(store):
             traits={
                 "plant": Trait(
                     attributes=frozenset({"capacity"}),
-                    on={"tech": frozenset({"plant"})},
+                    on={"unit.tech": frozenset({"plant"})},
                 )
             },
             partial=frozenset({"unit"}),
@@ -614,7 +614,7 @@ def test_set_may_change_a_category(units):
     -----
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
-    units.set("tech", "node", unit=["p2"])
+    units.set("unit.tech", "node", unit=["p2"])
 
     axis = _unit_axis(units)
     assert axis.loc["p2", "tech"] == "node", "a category may change"
@@ -624,10 +624,16 @@ def test_set_may_change_a_category(units):
 @pytest.mark.parametrize(
     ("op", "args", "kwargs", "error", "match"),
     [
-        ("set", ("site", "east"), {"unit": "x"}, KeyError, "no 'unit' label \\['x'\\]"),
         (
             "set",
-            ("tech", "mill"),
+            ("unit.site", "east"),
+            {"unit": "x"},
+            KeyError,
+            "no 'unit' label \\['x'\\]",
+        ),
+        (
+            "set",
+            ("unit.tech", "mill"),
             {"unit": "p1"},
             ValueError,
             "'tech' values \\['mill'\\]",
@@ -719,7 +725,7 @@ def test_a_property_keyword_selects_the_labels_there_are_now(units):
 
 
 def test_set_of_a_category_survives_a_commit(staged, root):
-    staged.set("entity_type", "Load", entity="Manchester Wind")
+    staged.set("entity.entity_type", "Load", entity="Manchester Wind")
 
     child = root.child(staged.edits)
     axis = _entity_axis(child.record)
@@ -1084,7 +1090,7 @@ def test_a_group_property_is_a_column_of_the_group_file(store):
     assert "role" in on_disk.columns
 
     staged = WorkingRecord(root.record)
-    staged.set("role", "both", entity="l1", bus="b1")
+    staged.set("connection.role", "both", entity="l1", bus="b1")
     assert _roles(staged) == {("l1", "b0"): "in", ("l1", "b1"): "both"}
 
     child = root.child(staged.edits)
@@ -1095,16 +1101,16 @@ def test_a_group_property_is_a_column_of_the_group_file(store):
 
 def test_a_group_property_with_no_field_reaches_every_tuple(store):
     staged = WorkingRecord(_with_roles(store).record)
-    staged.set("role", "any")
+    staged.set("connection.role", "any")
     assert set(_roles(staged).values()) == {"any"}
 
 
 def test_a_group_property_refuses_what_is_no_field(store):
     staged = WorkingRecord(_with_roles(store).record)
     with pytest.raises(ValueError, match="whose tuples its fields"):
-        staged.set("role", "x", snapshot="2020")
+        staged.set("connection.role", "x", snapshot="2020")
     with pytest.raises(KeyError, match="selects no tuple"):
-        staged.set("role", "x", entity="l1", bus="nowhere")
+        staged.set("connection.role", "x", entity="l1", bus="nowhere")
 
 
 def test_add_and_add_group_refuse_an_attribute(store):
@@ -1444,7 +1450,7 @@ def test_an_undeclared_result_is_rejected(staged):
     - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
-    with pytest.raises(KeyError, match="no result 'p_nom_optt'"):
+    with pytest.raises(KeyError, match="no attribute or result .p_nom_optt."):
         staged.set("p_nom_optt", 1.0, entity=["Manchester Wind"], kind="outputs")
 
 

@@ -421,8 +421,8 @@ class WorkingRecord(Record):
         """
         return tuple(a for (k, a), _ in self._staged.items() if k == kind and a)
 
-    def _column_type(self, column: str) -> nw.dtypes.DType:
-        return _column_type(self.schema, column)
+    def _column_type(self, column: str, subject: str | None = None) -> nw.dtypes.DType:
+        return _column_type(self.schema, column, subject)
 
     def _staged_coordinates(self, attribute: str) -> tuple[str, ...]:
         """The dim columns one attribute's staging table has, in table order.
@@ -573,7 +573,7 @@ class WorkingRecord(Record):
         unknown = sorted(set(coords) - {dim})
         if unknown:
             msg = (
-                f"`set({name!r}, ...)` names {unknown}, but {name!r} is a "
+                f"`set({f'{dim}.{name}'!r}, ...)` names {unknown}, but {name!r} is a "
                 f"property of {dim!r} - a column of dims/{dim}.parquet, keyed "
                 f"by nothing else"
             )
@@ -591,7 +591,7 @@ class WorkingRecord(Record):
             value = dict(zip(keys, values, strict=True))
         elif _is_frame(value) or _is_labels(value):
             msg = (
-                f"`set({name!r}, <sequence>)` has no labels to align to; "
+                f"`set({f'{dim}.{name}'!r}, <sequence>)` has no labels to align to; "
                 f"{name!r} is a property of {dim!r}, so pass a mapping from "
                 f"{dim!r} label to value, or a scalar for every label"
             )
@@ -621,7 +621,7 @@ class WorkingRecord(Record):
             value = dict.fromkeys(self._labels_matching(dim, {}), value)
             if not value:
                 msg = (
-                    f"`set({name!r}, <scalar>)` reaches every label the "
+                    f"`set({f'{dim}.{name}'!r}, <scalar>)` reaches every label the "
                     f"{dim!r} axis has, and it has none; `add` labels first"
                 )
                 raise ValueError(msg)
@@ -630,7 +630,7 @@ class WorkingRecord(Record):
         table = self._ensure(f"{_AXIS_PREFIX}{dim}", None)
         edit = self._values_relation(
             {dim: list(value), name: list(value.values())},
-            {dim: self._column_type(dim), name: self.schema.column_type(name)},
+            {dim: self._column_type(dim), name: self._column_type(name, dim)},
         )
         self._patch_axis(dim, name, table, edit, self._base.dims.axes.get(dim))
 
@@ -851,8 +851,12 @@ class WorkingRecord(Record):
         takes a scalar, its fields as keywords selecting the tuples, none
         selecting every tuple.
 
-        A property keyword - `entity_type="Generator"`, or a list of values -
-        selects the labels of its dim matching it on the record as staged, the
+        A property is named `subject.name` - `set("entity.carrier", ...)` -
+        and a plain name is an attribute or result.
+
+        A keyword naming no coordinate of `attribute` is a property of a dim it
+        reaches - `entity_type="Generator"`, or a list of values - and selects
+        the labels of that dim matching it on the record as staged, the
         keywords combining as an intersection; `set` writes one row per label,
         and stores nothing of the filter, so a label added later is not reached.
 
@@ -868,7 +872,8 @@ class WorkingRecord(Record):
             label the record does not resolve, a property's label no layer
             wrote, or a label whose categories do not carry `attribute`.
         ValueError
-            On a keyword the attribute does not vary over, a sequence with no
+            On a property with `kind="outputs"` or an `nw.Expr` value, a
+            keyword the attribute does not vary over, a sequence with no
             single list keyword to align to, keys whose coordinate is
             ambiguous, a value an `Enum` property does not list, or a property
             keyword whose dim the attribute does not reach through exactly one
@@ -883,14 +888,10 @@ class WorkingRecord(Record):
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         keyed = isinstance(value, Mapping) or _series_index(value) is not None
-        subject = self.schema.subject_of(attribute)
-        if subject in self.schema.groups:
-            self._set_group_property(subject, attribute, value, coords)
+        if isinstance(self.schema.resolve(attribute), tuple):
+            self._set_dotted(attribute, value, kind, coords)
             return
         coords = self._select(attribute, coords)
-        if subject is not None:
-            self._set_property(subject, attribute, value, coords)
-            return
         listed = {c: list(v) for c, v in coords.items() if _is_labels(v)}
 
         if _is_frame(value) and not keyed:
@@ -964,6 +965,30 @@ class WorkingRecord(Record):
             rel, self._ensure(kind, attribute), attribute, set(rel.columns), fixed
         )
 
+    def _set_dotted(
+        self, dotted: str, value: Any, kind: str, coords: Mapping[str, Any]
+    ) -> None:
+        """Stage the property `dotted` names, of a dim or a group.
+
+        Raises
+        ------
+        ValueError
+            On `kind="outputs"` or an `nw.Expr`, a property being neither a
+            result nor derived.
+        """
+        if kind == "outputs" or isinstance(value, nw.Expr):
+            given = "`kind='outputs'`" if kind == "outputs" else "an `nw.Expr`"
+            msg = (
+                f"`set({dotted!r}, ...)` is given {given}, but {dotted!r} is a "
+                f"property, never a result nor derived"
+            )
+            raise ValueError(msg)
+        subject, _, name = dotted.partition(".")
+        if subject in self.schema.groups:
+            self._set_group_property(subject, name, value, coords)
+            return
+        self._set_property(subject, name, value, self._select(dotted, coords))
+
     def _set_property(
         self, dim: str, name: str, value: Any, coords: Mapping[str, Any]
     ) -> None:
@@ -982,7 +1007,7 @@ class WorkingRecord(Record):
         self.schema.require_listed(
             dim,
             {name: list(values.values()) if keyed else [values]},
-            f"`set({name!r}, ...)`",
+            f"`set({f'{dim}.{name}'!r}, ...)`",
         )
         if keyed:
             self._require_existing(dim, list(values))
@@ -1001,7 +1026,7 @@ class WorkingRecord(Record):
             On a keyword naming no field of `group`, a value that is not a
             scalar, or one an `Enum` property does not list.
         """
-        call = f"set({name!r}, ...)"
+        call = f"set({f'{group}.{name}'!r}, ...)"
         key = self.schema.group_key(group)
         unknown = sorted(set(coords) - set(key))
         if unknown:
@@ -1032,7 +1057,7 @@ class WorkingRecord(Record):
             msg = f"`{call}` selects no tuple of {group!r} at {scope}"
             raise KeyError(msg)
         duck_types = DuckTypes(rel)
-        dtype = self.schema.column_type(name) or nw.String()
+        dtype = self._column_type(name, group)
         edit = rel.project(col(group), duck_types.lit(value, dtype).alias(name))
         self._patch_axis(
             group, name, self._ensure(group), edit, self._base.dims.groups.get(group)
@@ -1082,32 +1107,51 @@ class WorkingRecord(Record):
         """`coords` with each property keyword replaced by the labels it selects.
 
         Those of its dim storing one of the keyword's values, as staged, each
-        under the one coordinate of attribute or dim property `name` over the
-        dim.
+        under the one coordinate of attribute or dotted dim property `name`
+        over the dim. A keyword naming a coordinate of `name` is that
+        coordinate, whatever property shares its name; any other names a
+        property of a dim `name` reaches, else of any dim.
 
         Raises
         ------
         ValueError
-            Where `name` reaches the dim through no coordinate or several, the
-            coordinate is also given as a keyword, or a value is not one of an
-            `Enum` property's categories.
+            Where the keyword is a property of several dims `name` reaches,
+            `name` reaches the dim through no coordinate or several, the
+            coordinate is also given as a keyword, a keyword is dotted, or a
+            value is not one of an `Enum` property's categories.
 
         Notes
         -----
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
         call = f"set({name!r}, ...)"
+        subject, dot, _ = name.partition(".")
+        flat = {subject: subject} if dot else _flat_coordinates(self.schema, name)
+        reached = set(flat.values())
         by_dim: dict[str, dict[str, list[Any]]] = {}
         rest: dict[str, Any] = {}
         for c, given in coords.items():
-            dim = self.schema.subject_of(c)
-            if dim is None:
+            if "." in c:
+                msg = (
+                    f"`{call}` selects by {c!r}; a keyword is bare, a "
+                    f"coordinate or a property of a dim {name!r} reaches"
+                )
+                raise ValueError(msg)
+            owners = [
+                d for d in self.schema.dims if c in self.schema.properties.get(d, {})
+            ]
+            if c in flat or not owners:
                 rest[c] = given
-            else:
-                values = list(given) if _is_labels(given) else [given]
-                by_dim.setdefault(dim, {})[c] = values
-        subject = self.schema.subject_of(name)
-        flat = {subject: subject} if subject else _flat_coordinates(self.schema, name)
+                continue
+            within = [d for d in owners if d in reached]
+            if len(within) > 1:
+                msg = (
+                    f"`{call}` selects by {c!r}, a property of each of {within}, "
+                    f"which {name!r} all reaches; set it per dim instead"
+                )
+                raise ValueError(msg)
+            values = list(given) if _is_labels(given) else [given]
+            by_dim.setdefault((within or owners)[0], {})[c] = values
         for dim, wanted in by_dim.items():
             drawing = [c for c, d in flat.items() if d == dim]
             if len(drawing) != 1:
@@ -1248,7 +1292,15 @@ class WorkingRecord(Record):
             if match is None:
                 raise
             source = match.group(1)
-            dtype = self.schema.column_type(source)
+            subject = next(
+                (
+                    k.removeprefix(_AXIS_PREFIX)
+                    for (k, a), n in self._staged.items()
+                    if n == table and a is None
+                ),
+                None,
+            )
+            dtype = self.schema.column_type(source, subject)
             if not isinstance(dtype, nw.Enum):
                 raise
             msg = (
@@ -1564,7 +1616,7 @@ class WorkingRecord(Record):
                 )
                 raise ValueError(msg)
         self.schema.require_listed(dim, data, f"`{call}`")
-        rel = self._values_relation(data, {c: self._column_type(c) for c in data})
+        rel = self._values_relation(data, {c: self._column_type(c, dim) for c in data})
         self._insert(
             rel,
             table,
@@ -1950,19 +2002,22 @@ def _base_resolver(base: RecordLike) -> Resolver:
     return base.resolver
 
 
-def _column_type(schema: Schema, column: str) -> nw.dtypes.DType:
+def _column_type(
+    schema: Schema, column: str, subject: str | None = None
+) -> nw.dtypes.DType:
     """A staged column's declared type, for a typed NULL or literal.
 
-    Every column a staging table has is a declared dim or a structural one,
-    both of which the schema types - so a missing type is a disagreement
-    between the table's shape and the schema, not a column to guess at.
+    Every column a staging table has is a declared dim, a structural one or a
+    property of `subject`, all of which the schema types - so a missing type
+    is a disagreement between the table's shape and the schema, not a column
+    to guess at.
 
     Raises
     ------
     ValueError
         If the schema declares no type for `column`.
     """
-    dtype = schema.column_type(column)
+    dtype = schema.column_type(column, subject)
     if dtype is None:
         msg = (
             f"the schema declares no type for {column!r}, which a staged "

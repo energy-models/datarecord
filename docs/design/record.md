@@ -117,7 +117,7 @@ A consumer wanting one category's rows joins `properties["entity"]`, filtered on
 
 A [property](schema.md#properties) is one value per label of its subject — a dim or a group — and is stored as a column of that subject's file.
 
-**`properties[subject]`** is the subject's key with every property declared for it, as stored: a record-wide view, NULL wherever no layer wrote a value. It is keyed by each subject declaring properties.
+**`properties[subject]`** is the subject's key with every property declared for it, as stored: a record-wide view, NULL wherever no layer wrote a value. It is keyed by each subject declaring properties, and its columns are the properties' plain names — the frame already names the subject.
 
 An `Enum` property of a dim in [`partial`](schema.md#partial-the-granularity-of-an-override) [categorizes](schema.md#categories-an-enum-property-of-a-partial-dim) that dim. One category's labels are `properties[dim]` filtered on it; which properties they carry is `Schema.properties_for`, and a property's [default](schema.md#default_by-a-default-per-category) — `default_by` per category, else `default` — is `Schema.default_for`. A framework's static frame, PyPSA's `n.generators`, is that frame, defaulted, joined with the entity-only rows of its attributes. A per-category read applying the defaults itself is deferred until a caller needs it.
 
@@ -192,7 +192,7 @@ class Flags:
 `flags()` answers for the whole record in one query, keyed by attribute.
 Only attributes with rows are present, so `set(record.flags())` also answers which attributes the record has at all.
 
-**`flags(**categories)`** answers for one category: the keywords are categorizing properties of one dim, each one category or a list ([categories](#properties-and-categories)).
+**`flags(**categories)`** answers for one category: the keywords are categorizing properties of one dim by their plain names, `entity_type="Generator"` rather than the [`subject.name`](schema.md#properties) a schema addresses one by, each one category or a list ([categories](#properties-and-categories)).
 Only rows reaching a matching label count — on the dim's own column, or through a group's single field over it — and only attributes those labels carry are present.
 Keywords categorizing several dims, or a group reaching the dim through two fields, are refused: there is no one label a row would count towards.
 

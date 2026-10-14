@@ -26,7 +26,7 @@ class AttributeSpec(BaseModel):
     default: Any | None = None
     default_by: dict[
         str, dict[str, Any]
-    ] = {}  # categorizing property -> category -> default
+    ] = {}  # categorizing property, as subject.name -> category -> default
     breakpoints: bool = False  # may carry a piecewise-linear curve
     unit: str | None = None  # what the values measure
     description: str | None = None  # what the attribute is, in prose
@@ -54,7 +54,7 @@ class Trait(BaseModel):
     """A bundle of attributes, and which categories and labels carry it."""
 
     attributes: frozenset[str] = frozenset()
-    on: dict[str, frozenset[str]] = {}  # one categorizing property -> its categories
+    on: dict[str, frozenset[str]] = {}  # one categorizing subject.name -> categories
     switch: str | None = None  # attribute deciding it per label; joins `attributes`
     description: str | None = None
 
@@ -162,7 +162,7 @@ properties = {
     "entity": {
         "entity_type": PropertySpec(dtype=Enum(["Bus", "Generator", "Load"])),
         "carrier": PropertySpec(
-            dtype="str", default="", default_by={"entity_type": {"Bus": "AC"}}
+            dtype="str", default="", default_by={"entity.entity_type": {"Bus": "AC"}}
         ),
     },
     "bus": {"x": PropertySpec(dtype="float64", unit="°")},
@@ -174,7 +174,9 @@ properties = {
 
 **An attribute is data**: what a model reads as part of its problem and what a layer would vary. Which a name is, is the author's declaration rather than derived from its shape; a tool reads it from its registry where it can ([PyPSA](tools.md)).
 
-**One name, one spec, across every section.** A name declared as a property and as an attribute or result, or as a property of two subjects, is refused — [`flags`](record.md#flags) would have two answers for it. So is a property sharing a dim's or a group's name, which would collide with that coordinate's column, and a group's property sharing one of its coordinates' names, which name the tuple's fields. This is the [flat-attributes argument](#attributespec) extended to the new section. `Schema.subject_of(name)` and `Schema.property_spec(name)` find a property whatever its subject.
+**A property's name is its subject's.** One name is one spec for attributes and results, each one file with one `value` dtype ([flat attributes](#attributespec)). A property is a column of its subject's file, so its name is unique there only: `x` on `bus` beside an attribute `x`, `carrier` on `entity`, on `bus` and as a dim. Refused at load are a property named like a column of its subject's key — the dim, a [`within`](#within-an-axis-inside-an-axis) parent, a group's struct column or its [`into`](#into-a-group-that-classifies) — and a group's property named like one of its coordinates, the keywords a tuple is addressed by. Two spellings differing only in case stay refused record-wide ([names](#names)).
+
+**A property is addressed as `subject.name`** — `entity.entity_type`, `bus.x`, `connection.role` — wherever a caller names one: [`set`](working-record.md#set), a [trait](#traits)'s `on` and bundle, a [`default_by`](#default_by-a-default-per-category) key, `default_for`. A plain name is an attribute or result, never a property, however few subjects declare it, so its meaning does not change when another subject declares it later. `Schema.resolve(name)` returns the `AttributeSpec`, or the subject and the `PropertySpec`, and refuses an unknown plain name naming the dotted forms of the properties so called. A column keeps its plain name: the frames of `properties[subject]`, the categories [`flags`](record.md#flags) and `attributes_for` take, and a [selector keyword](working-record.md#set) are each read against one subject already.
 
 **Why the split.** Without it, where a value is stored follows how many coordinates address it rather than what it is: `p_nom`, data a model optimises against, and `carrier`, a label describing a generator, would both be columns of the entity axis, and widening `p_nom` to `dims: [entity, scenario]` — a [compatible](#versioning) change — would move it to `inputs/p_nom.parquet`, away from the rows earlier layers wrote.
 
@@ -186,7 +188,7 @@ The two conditions are what a category needs: an `Enum`, so a category a trait o
 
 **Category**, because **label** already names an axis value — what `add(dim, labels)` takes. What a label carries is asked by its categories, the label's value of each categorizing property:
 
-- `attributes_for(dim, **categories)` — the attributes reaching `dim` such a label carries, narrowed by [traits](#traits);
+- `attributes_for(dim, **categories)` — the attributes reaching `dim` such a label carries, narrowed by [traits](#traits), each category keyed by its property's plain name;
 - `properties_for(subject, **categories)` — the same for its properties, narrowed by the same traits; every tuple of a group carries all of its group's;
 - `default_for(name, **categories)` — the default of an attribute, result or property for such a label.
 
@@ -194,12 +196,12 @@ The two conditions are what a category needs: an `Enum`, so a category a trait o
 
 ### `default_by` — a default per category
 
-`default` stays the fallback; `default_by` maps a categorizing property to per-category overrides, on attributes and properties alike:
+`default` stays the fallback; `default_by` maps a categorizing property, as `subject.name`, to per-category overrides, on attributes and properties alike:
 
 ```python
 "p_min_pu": AttributeSpec(
     dtype="float64", dims={"entity", "snapshot"}, default=0,
-    default_by={"entity_type": {"StorageUnit": -1}},
+    default_by={"entity.entity_type": {"StorageUnit": -1}},
 )
 ```
 
@@ -219,11 +221,11 @@ A trait is a named bundle of attributes, and which categories carry them:
 traits = {
     "investable": Trait(
         attributes={"capital_cost", "build_year", "lifetime", "capacity"},
-        on={"entity_type": {"Generator", "Line", "Link", "Store"}},
+        on={"entity.entity_type": {"Generator", "Line", "Link", "Store"}},
     ),
     "dispatchable": Trait(
         attributes={"p_min_pu", "p_max_pu", "p_set"},
-        on={"entity_type": {"Generator", "Link"}},
+        on={"entity.entity_type": {"Generator", "Link"}},
     ),
 }
 ```
@@ -234,9 +236,9 @@ Writing `entity` in an attribute's `dims` is what says it is per entity; declini
 That direction is why an attribute belonging to no type has somewhere to live at all.
 Under the previous shape a type _subscribed_ and an attribute reached nothing until one did, which is what forced `attributes` to be nested under types and left snapshot weightings homeless.
 
-**Whichever property each trait keys on.** An attribute no trait claims is carried by every label; a claimed one by every label some claiming trait matches. A trait `on` `entity_type: [Generator]` and one `on` `carrier: [wind]`, both claiming `p_max_pu`, give it to every generator and every wind entity.
+**Whichever property each trait keys on.** An attribute no trait claims is carried by every label; a claimed one by every label some claiming trait matches. A trait `on` `entity.entity_type: [Generator]` and one `on` `entity.carrier: [wind]`, both claiming `p_max_pu`, give it to every generator and every wind entity.
 
-`Schema.attributes_for(dim, **categories)` and `Schema.properties_for(subject, **categories)` ([categories](#categories-an-enum-property-of-a-partial-dim)) are what [`flags`](record.md#flags), a consumer's per-category frame and the [validation of `set`](working-record.md#validation) read, so everything downstream asks one question and gets a resolved answer. A trait may bundle properties of the dim its `on` categorizes beside attributes, and both are narrowed alike.
+`Schema.attributes_for(dim, **categories)` and `Schema.properties_for(subject, **categories)` ([categories](#categories-an-enum-property-of-a-partial-dim)) are what [`flags`](record.md#flags), a consumer's per-category frame and the [validation of `set`](working-record.md#validation) read, so everything downstream asks one question and gets a resolved answer. A trait may bundle properties of the dim its `on` categorizes beside attributes, each as `subject.name`, and both are narrowed alike.
 An attribute addressed by an axis alone is carried by no category however few traits mention it: a snapshot weighting belongs to the record.
 
 A trait rather than a bare list of attribute names, for two reasons.
@@ -260,7 +262,7 @@ A trait narrows two ways: `on` says which categories carry it, `switch` names an
 traits = {
     "committable": Trait(
         attributes={"start_up_cost", "min_up_time", "ramp_limit_start_up"},
-        on={"entity_type": {"Generator", "Link"}},
+        on={"entity.entity_type": {"Generator", "Link"}},
         switch="committable",
     ),
 }

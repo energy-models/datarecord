@@ -85,7 +85,7 @@ w.set("p_max_pu", 0.8, entity_type="Generator", carrier="wind")  # selected now
 w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
 w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped
 w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
-w.set("carrier", "solar", entity="g2")  # a property
+w.set("entity.carrier", "solar", entity="g2")  # a property, by its subject
 w.set("p", solved, kind="outputs")  # a result
 ```
 
@@ -100,12 +100,12 @@ A group's fields are packed into the group's [struct column](schema.md#groups), 
 A group value is [a whole tuple or NULL](record.md#the-broadcast-rule), so every field must be given or none: omitting `bus` alone is refused, since `{entity: dc, bus: NULL}` names no tuple, and naming no field stages the NULL struct, every tuple.
 A field is named by its own name: a contract `(from, to)` over `entity` is addressed as `from="plant", to="mill"`, and `entity=` beside it is refused, since it would have to guess which party it names.
 
-**A categorizing property as a keyword selects labels when `set` is called.** `entity_type="Generator", carrier="wind"` resolves to the labels matching every keyword on the record as staged, and `set` writes one row per label; nothing of the filter is stored.
+**A property as a keyword selects labels when `set` is called.** A keyword is bare: it names a coordinate of the attribute, else a property of a dim the attribute reaches — coordinate first, so `bus="north"` on a connection attribute is the field even where `entity` has a property `bus`. A dotted keyword is refused. `entity_type="Generator", carrier="wind"` resolves to the labels matching every keyword on the record as staged, and `set` writes one row per label; nothing of the filter is stored.
 A label added later is not reached — a plain NULL and [`default_by`](schema.md#default_by-a-default-per-category) are the two ways a value reaches labels not yet added.
 The property's dim must be one the attribute reaches through exactly one coordinate, and the keyword is refused beside that coordinate's own.
 
-**`set` writes a property too**, a category included, when `attribute` names one: a patch of one column of the axis rows of its subject, the other columns kept. Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has. A group's property takes a scalar, its fields as keywords selecting the tuples. A property is never a result and never derived, so `kind="outputs"` and an `nw.Expr` are refused for one.
-Changing a category is such a patch: `set("entity_type", "Load", entity="g1")`. What `g1` holds for attributes a Load does not carry stays stored but falls outside every per-category read.
+**`set` writes a property too**, a category included, when `attribute` names one as [`subject.name`](schema.md#properties) — a plain name is an attribute or result, never a property: a patch of one column of the axis rows of its subject, the other columns kept. Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has. A group's property takes a scalar, its fields as keywords selecting the tuples. A property is never a result and never derived, so `kind="outputs"` and an `nw.Expr` are refused for one.
+Changing a category is such a patch: `set("entity.entity_type", "Load", entity="g1")`. What `g1` holds for attributes a Load does not carry stays stored but falls outside every per-category read.
 
 `kind` names the destination in the format's own terms — [the shape of an edit](#the-shape-of-an-edit) is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
 `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool [hands results back](#results-through-kindoutputs) to a record before it is written.
@@ -299,7 +299,7 @@ Carried rows go in only where no edit already holds the coordinate, so a later `
 [The writer](writing.md) validates structurally, so writing `edits` inherits that.
 What editing adds is edit-level, caught when the edit is **staged**, not at write — a caller should learn about a typo'd attribute at the line that typed it, not fifty edits later:
 
-- an undeclared attribute, result, property or keyword, or a keyword the attribute does not vary over;
+- an undeclared attribute, result, property or keyword, or a keyword the attribute does not vary over; a plain name only properties are called is refused naming their dotted forms, `set("carrier", …)` suggesting `entity.carrier`;
 - a label of a `partial` dim the record does not resolve, `add` them first;
 - a label whose categories do not carry the attribute ([traits](schema.md#traits)), judged by its current categories; a label with no category passes;
 - a value an `Enum` property does not list, in `add` or `set`;

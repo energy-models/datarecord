@@ -13,6 +13,19 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- **A property's name is its subject's**, addressed as `subject.name`:
+  `set("entity.carrier", ...)`, a trait's `on` and bundled properties, and
+  `default_by` keys (`{"entity.entity_type": {...}}`). A plain name is an
+  attribute or result; one only properties are called is refused naming
+  their dotted forms. One name, one spec now holds across attributes and
+  results only, so a property may share its name with an attribute, a dim
+  or another subject's property; one named like its subject's key (the dim,
+  a `within` parent, a group's struct column or `into`) is refused.
+  `Schema.resolve(name)` replaces `subject_of` and `property_spec`, and
+  `Schema.column_type` takes the property's subject. Selector keywords,
+  `add(dim, labels, **properties)`, `flags` and `properties[subject]` keep
+  plain names, a keyword naming a coordinate before a property. Every
+  manifest declaring a trait or `default_by` on a property is rewritten.
 - **Properties**, metadata apart from data: a new `properties` section of
   the schema (`PropertySpec`) declares per dim or group the values describing
   one label, stored as columns of `dims/<dim>.parquet` or

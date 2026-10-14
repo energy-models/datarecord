@@ -554,8 +554,12 @@ def _deleted_relation(
     return rel.filter(col("deleted")).project(*(col(c) for c in fixed)).distinct()
 
 
-def cast_declared(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
+def cast_declared(
+    schema: Schema, rel: DuckDBPyRelation, subject: str | None = None
+) -> DuckDBPyRelation:
     """`rel`, with its columns of a declared type cast, others as-is.
+
+    `subject` names the dim or group whose file `rel` is, typing its properties.
 
     Notes
     -----
@@ -563,7 +567,9 @@ def cast_declared(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
     """
     duck_types = DuckTypes(rel)
     cols = [
-        col(c).cast(duck_types(t)).alias(c) if (t := schema.column_type(c)) else col(c)
+        col(c).cast(duck_types(t)).alias(c)
+        if (t := schema.column_type(c, subject))
+        else col(c)
         for c in rel.columns
     ]
     return rel.project(*cols)

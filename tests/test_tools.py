@@ -844,9 +844,8 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
 
     from datarecord.mutable import WorkingRecord
 
-    sign = _registry_schema().property_spec("sign")
-    assert sign is not None
-    assert sign.default_by["entity_type"]["Load"] == -1.0, (
+    sign = _registry_schema().properties["entity"]["sign"]
+    assert sign.default_by["entity.entity_type"]["Load"] == -1.0, (
         "PyPSA declares a load's sign through `default_by`"
     )
 

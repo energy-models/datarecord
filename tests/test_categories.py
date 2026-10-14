@@ -52,15 +52,15 @@ def categorized():
         traits={
             "generator": Trait(
                 attributes=frozenset({"p_max_pu"}),
-                on={"entity_type": frozenset({"Generator"})},
+                on={"entity.entity_type": frozenset({"Generator"})},
             ),
             "wind": Trait(
                 attributes=frozenset({"p_max_pu"}),
-                on={"carrier": frozenset({"wind"})},
+                on={"entity.carrier": frozenset({"wind"})},
             ),
             "link": Trait(
                 attributes=frozenset({"efficiency"}),
-                on={"entity_type": frozenset({"Link"})},
+                on={"entity.entity_type": frozenset({"Link"})},
             ),
         },
         partial=frozenset({"entity", "bus", "connection"}),
@@ -174,13 +174,13 @@ def buses(store):
                     dtype=nw.Float64(),
                     dims={"bus"},
                     default=0.0,
-                    default_by={"bus_type": {"AC": 50.0}},
+                    default_by={"bus.bus_type": {"AC": 50.0}},
                 ),
             },
             traits={
                 "alternating": Trait(
                     attributes=frozenset({"frequency"}),
-                    on={"bus_type": frozenset({"AC"})},
+                    on={"bus.bus_type": frozenset({"AC"})},
                 )
             },
             partial=frozenset({"bus"}),

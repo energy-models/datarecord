@@ -161,7 +161,12 @@ def write_layer(
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
-                _write_frame(rel, f"{staging}{subdir}/{key}.parquet", schema)
+                _write_frame(
+                    rel,
+                    f"{staging}{subdir}/{key}.parquet",
+                    schema,
+                    key if kind in ("dims", "groups") else None,
+                )
         if data.groups() or data.axes():
             layer = DirectorySource(staging, schema, workspace, uuid4())
             _require_living_tuples(parents, layer, workspace.con, schema)
@@ -245,7 +250,9 @@ _ATTEMPTS = 10
 """How many times `reconcile_schema` writes the manifest before giving up."""
 
 
-def _write_frame(rel: DuckDBPyRelation, uri: str, schema: Schema) -> None:
+def _write_frame(
+    rel: DuckDBPyRelation, uri: str, schema: Schema, subject: str | None
+) -> None:
     """Persist one relation as parquet, unmaterialised.
 
     Columns are cast to their declared types on the way out, so a reader can
@@ -264,7 +271,7 @@ def _write_frame(rel: DuckDBPyRelation, uri: str, schema: Schema) -> None:
     unwritable = [c for c in DERIVED if c in rel.columns]
     if unwritable:
         rel = rel.project(star(exclude=unwritable))
-    cast_declared(schema, rel).to_parquet(uri)
+    cast_declared(schema, rel, subject).to_parquet(uri)
 
 
 def _require_living_tuples(
