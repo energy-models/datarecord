@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | -------------------------------- |
 | Title    | buses and carriers are dims      |
 | Author   | Jonas Hoersch, Bryn Pickering    |
-| Status   | Draft 2026-10-14                 |
+| Status   | Implemented 2026-10-15           |
 | Requires | [DEP 12](dep-0012-properties.md) |
 | Created  | 2026-10-14                       |
 | Version  | Unreleased                       |

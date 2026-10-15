@@ -82,7 +82,7 @@ There is **no category column**: `entity` is unique across every category ([belo
 ## `entity` is unique across types
 
 A label identifies one member of its dim across the whole record — an `entity` one entity, whatever its categories.
-A `Bus` and a `Generator` both called `north` are a collision, not two entities.
+A `Generator` and a `Load` both called `north` are a collision, not two entities; a bus `north` beside them is a label of another dim, and no collision.
 
 That is what removes `component` from every attribute key.
 An `inputs/` row addresses `(entity, …, attribute)`, a group in place of `entity` where the attribute is over one, and the category it belongs to is recoverable but not part of the address.

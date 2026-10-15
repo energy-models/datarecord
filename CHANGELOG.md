@@ -13,41 +13,47 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
-- **The PyPSA tool keeps buses and carriers as dims**: `Bus` and `Carrier` are
-  no entity types, a bus being a label of `bus` and a carrier of a new
-  `carrier` dim. `bus.carrier`, `type`, `x`, `y`, `unit` and `location`, and
-  `carrier.color` and `nice_name` are properties; `v_nom`, `v_mag_pu_*`,
-  `co2_emissions`, `max_growth`, `max_relative_growth` and custom bus or
-  carrier columns attributes over their dim; `marginal_price`, `v_mag_pu`
-  and `v_ang` results over `bus`, which `build` sets back. `Bus.p`, `q`,
-  `control`, `generator` and `sub_network` are not written, nor the
-  `Line.v_nom` and `ShuntImpedance.v_nom` PyPSA copies from the bus.
-  `entity.carrier` and `bus.carrier` are `into` `carrier`: `to_datarecord`
-  adds every carrier named but not listed and stores `""` as NULL. `bus`
-  joins `partial`. A bus and a load may share a name; a custom column
-  clashes only with an attribute over another dim. `entity_type` is
-  `entity.component`. `verify` reports an entity attached to no bus. Every
-  PyPSA record is re-exported.
-- **A property may be `into` a dim** (`PropertySpec.into`): its values are
-  that dim's labels and its dtype the dim's, declared on any subject. `set`
-  and `add` refuse a value naming no label of the dim, NULL naming none; the
-  writer refuses a layer storing one it removed, and `remove(dim, labels)` is
-  refused while such a property still names one. It never categorizes. A
-  group over one coordinate `into` a dim is now refused at load: declare the
-  property `into` the dim instead.
-- **A property's name is its subject's**, addressed as `subject.name`:
-  `set("entity.carrier", ...)`, a trait's `on` and bundled properties, and
-  `default_by` keys (`{"entity.component": {...}}`). A plain name is an
-  attribute or result; one only properties are called is refused naming
-  their dotted forms. One name, one spec now holds across attributes and
-  results only, so a property may share its name with an attribute, a dim
-  or another subject's property; one named like its subject's key (the dim,
-  a `within` parent, a group's struct column or `into`) is refused.
-  `Schema.resolve(name)` replaces `subject_of` and `property_spec`, and
-  `Schema.column_type` takes the property's subject. Selector keywords,
-  `add(dim, labels, **properties)`, `flags` and `properties[subject]` keep
-  plain names, a keyword naming a coordinate before a property. Every
-  manifest declaring a trait or `default_by` on a property is rewritten.
+- **Buses and carriers are dims** in the PyPSA tool, carried by two core
+  changes:
+  - **A property's name is its subject's**, addressed as `subject.name`:
+    `set("bus.x", ...)`, a trait's `on` and bundled properties, and
+    `default_by` keys (`{"entity.component": {...}}`). One name, one spec
+    now holds across attributes and results only, so a property may share
+    its name with an attribute, a dim or another subject's property; one
+    named like its subject's key (the dim, a `within` parent, a group's
+    struct column or `into`), or a group's property named like one of its
+    coordinates, is refused. A plain name is an attribute or result, one
+    only properties are called refused naming their dotted forms.
+    `Schema.resolve(name)` replaces `subject_of` and `property_spec`, and
+    `Schema.column_type` takes the property's subject.
+    `add(dim, labels, **properties)`, `flags` and `properties[subject]` keep
+    plain names. A bare selector keyword of `set` names a coordinate of the
+    attribute first, else any property of a dim the attribute reaches,
+    categorizing or not; one several reached dims declare is refused. Every manifest
+    declaring a trait or `default_by` on a property is rewritten.
+  - **A property may be `into` a dim** (`PropertySpec.into`): its values
+    are that dim's labels and its dtype the dim's, declared on any subject.
+    `set` and `add` refuse a value naming no label of the dim, NULL naming
+    none; the writer refuses a layer storing one it removed, and
+    `remove(dim, labels)` is refused while such a property still names one.
+    It never categorizes. A group over one coordinate `into` a dim is now
+    refused at load: declare the property `into` the dim instead.
+  - **The PyPSA tool**: `Bus` and `Carrier` are no entity types, a bus
+    being a label of `bus` and a carrier of a new `carrier` dim.
+    `bus.carrier`, `type`, `x`, `y`, `unit` and `location`, and
+    `carrier.color` and `nice_name` are properties; `v_nom`, `v_mag_pu_*`,
+    `co2_emissions`, `max_growth`, `max_relative_growth` and custom bus or
+    carrier columns attributes over their dim; `marginal_price`,
+    `v_mag_pu` and `v_ang` results over `bus`, which `build` sets back.
+    `Bus.p`, `q`, `control`, `generator` and `sub_network` are not written,
+    nor the `Line.v_nom` and `ShuntImpedance.v_nom` PyPSA copies from the
+    bus, so a solved network exports. `entity.carrier` and `bus.carrier`
+    are `into` `carrier`: `to_datarecord` adds every carrier named but not
+    listed and stores `""` as NULL. `entity_type` is `entity.component`,
+    and `bus` joins `partial`. A bus and a load may share a name; a custom
+    column clashes only with an attribute over another dim. `verify`
+    reports an entity attached to no bus. Every PyPSA record is
+    re-exported.
 - **Properties**, metadata apart from data: a new `properties` section of
   the schema (`PropertySpec`) declares per dim or group the values describing
   one label, stored as columns of `dims/<dim>.parquet` or
@@ -65,7 +71,7 @@ All notable changes to datarecord are documented here. The format follows
   categories (`flags(component="Generator")`). `WorkingRecord` edits any
   dim: `add(dim, labels, **properties)`, `remove(dim, labels)` (cascading to
   group tuples), and `set(name, value, **coords)` writing attributes and
-  properties alike, a categorizing property keyword selecting labels at call
+  properties alike, a property keyword selecting labels at call
   time; `set` loses `indexed_by`. The PyPSA tool declares `component`,
   `carrier`, `sign` and `type` as properties of `entity` and `role` of
   `connection`, with `partial={"entity", "scenario", "connection"}`. Every

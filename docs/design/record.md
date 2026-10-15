@@ -146,7 +146,7 @@ A NULL dim means "all values of that dim", not that the attribute lacks the axis
 
 **Every declared dim broadcasts**, `entity` included, and **the dims a group draws on** too: a connection's `bus` is a field of the `connection` column, not the dim `bus`, so a per-bus `marginal_price` with `bus = NULL` holds one value for every bus.
 
-**On a categorized dim, "every" is narrowed by the schema.** A NULL reaches only the labels whose categories carry the attribute, judged at read time: `set("p_max_pu", 0.9)` is one row with `entity = NULL`, reaching every generator — one added in a later layer included — and never a bus. A label with a NULL category carries only what no trait narrows.
+**On a categorized dim, "every" is narrowed by the schema.** A NULL reaches only the labels whose categories carry the attribute, judged at read time: `set("p_max_pu", 0.9)` is one row with `entity = NULL`, reaching every generator — one added in a later layer included — and never a load. A label with a NULL category carries only what no trait narrows.
 
 **A [group](schema.md#groups)'s column broadcasts too**, its axis the resolved group: a NULL `connection` means every connection, expanded against `groups/connection.parquet` as a NULL `timestep` is against `dims/timestep.parquet`.
 A group value is therefore a whole tuple or NULL. A struct with some fields NULL, `{entity: dc, bus: NULL}`, names a tuple no group row matches, so it is refused wherever a row comes in rather than stored.

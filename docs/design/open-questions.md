@@ -40,6 +40,20 @@ SPDX-License-Identifier: CC-BY-4.0
 
 - **What a NULL group struct reaches when two of its fields are categorized.** A NULL `connection` reaches the tuples whose `entity` field names a label [carrying the attribute](read-path.md#owner-map). A group with two fields over categorized dims — a `contract` between two entities — has no single label to ask, and its NULL reaches every tuple; requiring both, or either, would each be a reading the schema does not state.
 
+- **Whether a property [`into`](schema.md#properties) a `partial` dim may categorize it.** `entity.carrier` names labels of `carrier`, and a trait keyed on it would make a vocabulary that is data: a category a layer adds and removes rather than an `Enum` the schema declares.
+
+- **Whether a default must name a live label.** `bus.carrier` defaults to `AC` in PyPSA's schema, and a default is [never stored](schema.md#default_by-a-default-per-category), so nothing checks that `AC` is a label of `carrier`.
+
+- **Whether a property `into` a nested dim should be checked.** Its values name labels of a dim keyed by its parents too, which one column does not carry, so `remove` and [the writer](layers.md#deletion) skip the live-label check for one, as they do for a [group field](working-record.md#add-remove) over a nested dim; `set` and `add` check the label alone, under any parent.
+
+- **Whether `bus` earns its place in the fold key.** PyPSA's `partial` gains `bus` so a layer patches one bus's `v_nom`, and every `partial` coordinate is paid for by every read ([keep it small](schema.md#partial-the-granularity-of-an-override)). Measuring it on a pypsa-eur-sized record would settle it.
+
+- **Whether a custom bus column can be a property.** It is an attribute over `bus` today, so custom `Bus.country` beside custom `Generator.country` is [one attribute over two dims](tools.md) and refused. Placing it as `bus.country` would dissolve the one remaining custom-column clash, but needs a rule telling a custom property from a custom attribute.
+
+- **Whether selector keywords need a qualified form.** A bare [selector](working-record.md#set) naming a property of two dims one attribute reaches is refused, with no way to say which is meant short of setting per dim.
+
+- **What PyPSA#1474 lands as.** Upstream making buses and carriers indices may turn an unlisted carrier into an error, or stop `""` meaning none; the tool adds the one and stores the other as NULL today ([tools](tools.md)).
+
 ## Settled
 
 - **Whether [`flags`](record.md#flags) needs a record-level counterpart** — it is one. `flags()` answers per record, every attribute included, and `flags(**categories)` per category, restricted to what those categories carry ([properties](proposals/dep-0012-properties.md#entity-is-an-ordinary-dim)). An attribute over an axis alone or a group outside `partial` is reachable through the first.
