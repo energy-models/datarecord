@@ -20,7 +20,8 @@ All notable changes to datarecord are documented here. The format follows
   `co2_emissions`, `max_growth`, `max_relative_growth` and custom bus or
   carrier columns attributes over their dim; `marginal_price`, `v_mag_pu`
   and `v_ang` results over `bus`, which `build` sets back. `Bus.p`, `q`,
-  `control`, `generator` and `sub_network` are not written.
+  `control`, `generator` and `sub_network` are not written, nor the
+  `Line.v_nom` and `ShuntImpedance.v_nom` PyPSA copies from the bus.
   `entity.carrier` and `bus.carrier` are `into` `carrier`: `to_datarecord`
   adds every carrier named but not listed and stores `""` as NULL. `bus`
   joins `partial`. A bus and a load may share a name; a custom column

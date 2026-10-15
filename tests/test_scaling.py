@@ -28,9 +28,7 @@ def carbon():
 
     The network names its `Load`s, `Store`s, `Link`s and `Generator`s after the
     `Bus` they sit on, so two of them may share a name, which a record cannot
-    represent: names are unique across entity types. Its lines' `v_nom`, a
-    value PyPSA derives from their buses, is dropped: a custom line column is
-    an attribute over `entity`, and `v_nom` is one over `bus`.
+    represent: names are unique across entity types.
     """
     import pypsa
 
@@ -39,7 +37,6 @@ def carbon():
     n = example(pypsa.examples.carbon_management)
     for ctype in ("Load", "Store", "Link", "Generator"):
         rename_components(n, ctype, f" {ctype}")
-    n.c.Line.static = n.c.Line.static.drop(columns=["v_nom"])
     return n
 
 

@@ -77,6 +77,7 @@ Every per-port input, `delay` and `cyclic_delay` included, is long rows of `inpu
 | `Bus.v_nom`, `Bus.v_mag_pu_min`, `Bus.v_mag_pu_max`, `Bus.v_mag_pu_set` | attributes over `bus` (and the varying dims)         |
 | `Bus.marginal_price`, `Bus.v_mag_pu`, `Bus.v_ang`                       | results over `bus` and the varying dims              |
 | `Bus.p`, `Bus.q`, `Bus.control`, `Bus.generator`, `Bus.sub_network`     | not written: derived from the connections            |
+| `Line.v_nom`, `ShuntImpedance.v_nom`                                    | not written: derived from the bus                    |
 | a custom Bus or Carrier column                                          | attribute over its dim, as a custom entity column is |
 | `Carrier.color`, `Carrier.nice_name`                                    | properties of `carrier`                              |
 | `Carrier.co2_emissions`, `max_growth`, `max_relative_growth`            | attributes over `carrier`                            |
@@ -87,6 +88,7 @@ So `x` is a line's reactance and `bus.x` a bus's coordinate, each addressed by i
 `to_datarecord` writes both axes in PyPSA's order, adds every carrier a component or bus names but `n.carriers` does not list, and stores PyPSA's `""` carrier as NULL, naming none; `build` rebuilds `n.buses` and `n.carriers` from the axis, the properties with their defaults and the attribute rows, a series by its [flags](record.md#flags), and the bus results from `outputs`.
 
 **A custom column clashes only with an attribute.** A static column PyPSA's registry lacks is an attribute over its type's dim, carried by that type alone where the dim is `entity`. One name being one spec among attributes and results, custom `Bus.country` beside custom `Generator.country` would be `country` with two `dims`, and `Carrier.efficiency` meets the per-port `efficiency`: `to_datarecord` reports either via `Requirements.columns`. A name a property has does not clash, so a custom `Generator.location` is an attribute beside `bus.location`.
+`Line.v_nom` and `ShuntImpedance.v_nom`, which PyPSA's `calculate_dependent_values` copies from the bus, are no custom column: they are not written, and `build` gets them back as PyPSA recomputes them.
 
 **A multi-period network nests `snapshot` [`within`](schema.md#within-an-axis-inside-an-axis) `period`.** PyPSA's `(period, timestep)` snapshots are the `snapshot` axis keyed by `(period, snapshot)`, so one timestep in two periods is two points.
 Every input and result over `snapshot` is then over `period` too, its rows carrying the period that places their snapshot; a NULL `period` reaches the snapshot in every period.

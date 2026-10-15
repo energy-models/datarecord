@@ -601,6 +601,33 @@ def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
     assert sorted(built.c["SubNetwork"].static.index) == ["0", "1", "2", "3"]
 
 
+def test_a_derived_v_nom_stays_on_the_bus(store, ac_dc):
+    """`calculate_dependent_values` copies the bus's `v_nom` onto lines and shunts.
+
+    The record keeps `v_nom` over `bus` alone, and `build` gets the copies
+    back once PyPSA recomputes them.
+    """
+    n = ac_dc.copy()
+    n.add("ShuntImpedance", "shunt", bus="London", b=0.1)
+    n.calculate_dependent_values()
+
+    record = export_network(n, store).record
+    assert record.schema.attributes["v_nom"].dims == {"bus"}
+
+    built = PyPSA.build(record)
+    built.calculate_dependent_values()
+    assert_networks_equal(built, n)
+
+
+def test_a_solved_network_exports(store, solved):
+    """`optimize` leaves the derived `Line.v_nom` behind, which `build` recomputes."""
+    built = PyPSA.build(export_network(solved, store).record)
+    built.calculate_dependent_values()
+    pd.testing.assert_series_equal(
+        built.c.Line.static.v_nom, solved.c.Line.static.v_nom
+    )
+
+
 def test_a_stochastic_network_is_not_a_false_collision():
     """A `(scenario, name)` index is one name per component, not one per scenario.
 

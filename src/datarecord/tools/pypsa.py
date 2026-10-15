@@ -639,8 +639,18 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
     return frozenset(clashing)
 
 
+def _custom_names(c: pypsa.Components) -> list[str]:
+    """`c`'s static columns PyPSA's registry has no entry for, but `_DERIVED`."""
+    derived = _DERIVED.get(c.name, frozenset())
+    return [
+        name
+        for name in c.static.columns
+        if name not in c.defaults.index and name not in derived
+    ]
+
+
 def _custom_columns(n: pypsa.Network) -> dict[str, dict[str, nw.dtypes.DType]]:
-    """Exported type -> its static columns PyPSA's registry has no entry for, typed.
+    """Exported type -> its custom static columns (`_custom_names`), typed.
 
     A network may carry its own (`ac_dc_meshed`'s `Bus.country`). Each is an
     attribute the network's schema declares over the type's dim (`_dim_of`),
@@ -650,11 +660,7 @@ def _custom_columns(n: pypsa.Network) -> dict[str, dict[str, nw.dtypes.DType]]:
     for c in n.components:
         if not _exported(c):
             continue
-        columns = {
-            name: _column_dtype(c.static[name])
-            for name in c.static.columns
-            if name not in c.defaults.index
-        }
+        columns = {name: _column_dtype(c.static[name]) for name in _custom_names(c)}
         if columns:
             found[c.name] = columns
     return found
@@ -948,15 +954,20 @@ def _output_attributes(c: pypsa.Components) -> frozenset[str]:
     return frozenset(defaults.index[is_output])
 
 
-_DERIVED_RESULTS: dict[str, frozenset[str]] = {
-    "Bus": frozenset({"p", "q", "control", "generator", "sub_network"})
+_DERIVED: dict[str, frozenset[str]] = {
+    "Bus": frozenset({"p", "q", "control", "generator", "sub_network"}),
+    "Line": frozenset({"v_nom"}),
+    "ShuntImpedance": frozenset({"v_nom"}),
 }
-"""Results not written, by type: each is derivable from the ones that are.
+"""Columns not written, by type: PyPSA derives each from what is written.
 
 `Bus.p` and `Bus.q` are the signed sum of the `p`/`q` results on the
 connections at that bus, and as a bus-level `p` they would collide with the
 connection-level one; `control`, `generator` and `sub_network` follow from
-the connections and the topology.
+the connections and the topology. `Line.v_nom` and `ShuntImpedance.v_nom`
+are no registry column: `calculate_dependent_values` copies them from the
+bus, and as a custom column over `entity` they would clash with the `v_nom`
+over `bus`.
 """
 
 _INTERNAL_RESULTS: dict[str, str] = {"p": "p_internal"}
@@ -974,7 +985,7 @@ def _result_attributes(c: pypsa.Components, inputs: Container[str]) -> dict[str,
     A per-port output (`p0`, `p1`, `p2`, a one-port type's `p`) lands in its
     stem, one row per connection, exactly as a per-port input does; any other
     keeps PyPSA's name, but for `_INTERNAL_RESULTS`. Dropped: `name`, which is
-    the member list rather than a value, `_DERIVED_RESULTS`, and any result
+    the member list rather than a value, `_DERIVED`, and any result
     named in `inputs`, the record's input declarations: one attribute holds
     one spec record-wide, and PyPSA registers some names (`SubNetwork.carrier`,
     `Line.x` beside `Bus.x`) as an output on one type and an input on another.
@@ -986,7 +997,7 @@ def _result_attributes(c: pypsa.Components, inputs: Container[str]) -> dict[str,
     - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
     """
     per_port = _port_stems(c)
-    derived = _DERIVED_RESULTS.get(c.name, frozenset())
+    derived = _DERIVED.get(c.name, frozenset())
     results = {}
     for attr in _output_attributes(c):
         if attr == "name" or attr in derived:
@@ -2412,9 +2423,8 @@ class _NetworkSource:
         defaults = c.defaults
         skipped = {"name", *_output_attributes(c), *_PROPERTIES[_dim_of(c.name)]}
         per_port = self._port_stems(c)
-        custom = [x for x in c.static.columns if x not in defaults.index]
         stems: list[str] = []
-        for attr in [*defaults.index, *custom]:
+        for attr in [*defaults.index, *_custom_names(c)]:
             if attr in skipped:
                 continue
             if attr in defaults.index and not (
