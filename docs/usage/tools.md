@@ -69,4 +69,4 @@ for attr, frame in PyPSA.results(n, w.con).items():
 rev.child(w.edits)  # one layer, inputs and results together
 ```
 
-Two checks are skipped for `kind="outputs"`: the attribute need not be schema-declared, and a result's labels need not resolve — a solve may produce rows for labels it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).
+A result is checked against the schema's `results`, its name and its dims, but its labels need not resolve — a solve may produce rows for labels it derived rather than read ([design](../design/working-record.md#results-through-kindoutputs)).
