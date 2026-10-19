@@ -24,7 +24,6 @@ import warnings
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache, cached_property
-from itertools import combinations
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -73,7 +72,8 @@ if TYPE_CHECKING:
 # A declared axis with no rows is fine - that is just a deterministic or
 # single-period network.
 SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
-#: PyPSA's name for a multi-period snapshot's inner level, the record's `snapshot`.
+#: PyPSA's name for a multi-period snapshot's inner level, and the property of
+#: `snapshot` holding it where the labels are positions (`_snapshot_frame`).
 TIMESTEP = "timestep"
 # Not PyPSA's own `weight` - that name is a Generator attribute (its clustering
 # weight), and a record has one attribute per name record-wide - so the scenario
@@ -194,6 +194,7 @@ class NetworkShape:
     """
 
     dims: Frames
+    properties: Frames
 
     def _axis(self, dim: str) -> pd.DataFrame:
         """`dim`'s axis as a DataFrame, empty if the record declares none.
@@ -213,7 +214,33 @@ class NetworkShape:
 
     @cached_property
     def snapshots(self) -> pd.DataFrame:
-        return self._axis(SNAPSHOT)
+        """The `snapshot` axis in axis order, with its properties where it has any.
+
+        Notes
+        -----
+        - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+        """
+        axis = self._axis(SNAPSHOT)
+        frame = self.properties.get(SNAPSHOT)
+        if frame is None:
+            return axis
+        return axis.merge(frame.to_native().df(), on=SNAPSHOT, how="left")
+
+    @property
+    def snapshot_levels(self) -> pd.DataFrame:
+        """`snapshots` as PyPSA's index levels: `(period, timestep)` where a snapshot has a period.
+
+        The timestep is `snapshot.timestep` where the record declares it, else
+        the label (`_snapshot_frame`).
+
+        Notes
+        -----
+        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        """
+        if PERIOD not in self.snapshots:
+            return self.snapshots[[SNAPSHOT]]
+        timestep = self.snapshots.get(TIMESTEP, self.snapshots[SNAPSHOT])
+        return pd.DataFrame({PERIOD: self.snapshots[PERIOD], TIMESTEP: timestep})
 
     @cached_property
     def periods(self) -> pd.DataFrame:
@@ -269,17 +296,47 @@ def _connection(record: RecordLike) -> DuckDBPyConnection:
     return con
 
 
-def _axis_frame(index: pd.Index) -> pd.DataFrame:
-    """A network axis's labels as rows of the record's axis key.
+def _snapshot_frame(snapshots: pd.Index) -> pd.DataFrame:
+    """`n.snapshots` as the `snapshot` axis with its properties, in PyPSA's order.
 
-    A multi-period network's snapshots are PyPSA's `(period, timestep)`, which
-    the record keys as `snapshot` within `period`.
+    A single-period network's snapshots are the labels. A multi-period one's
+    `(period, timestep)` give each snapshot its `period`, and its timestep is
+    the label where none repeats across periods; else the label is the
+    snapshot's position and the timestep its `timestep`.
 
     Notes
     -----
-    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    return index.to_frame(index=False).rename(columns={TIMESTEP: SNAPSHOT})
+    if not isinstance(snapshots, pd.MultiIndex):
+        return snapshots.to_frame(index=False)
+    period = snapshots.get_level_values(PERIOD)
+    timestep = snapshots.get_level_values(TIMESTEP)
+    if timestep.is_unique:
+        return pd.DataFrame({SNAPSHOT: timestep, PERIOD: period})
+    return pd.DataFrame(
+        {SNAPSHOT: np.arange(len(snapshots)), PERIOD: period, TIMESTEP: timestep}
+    )
+
+
+def _snapshot_properties(snapshots: pd.DataFrame) -> dict[str, PropertySpec]:
+    """The properties of a multi-period network's `snapshot`, by `_snapshot_frame`'s columns.
+
+    Notes
+    -----
+    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    """
+    properties = {
+        PERIOD: PropertySpec(
+            into=PERIOD, description="The investment period a snapshot falls in."
+        )
+    }
+    if TIMESTEP in snapshots:
+        properties[TIMESTEP] = PropertySpec(
+            dtype=nw.Datetime(),
+            description="PyPSA's timestep of a snapshot labelled by its position.",
+        )
+    return properties
 
 
 # -- long -> wide -----------------------------------------------------------
@@ -298,8 +355,14 @@ class Index:
     rel: DuckDBPyRelation
 
     @classmethod
-    def of(cls, index: pd.Index, con: DuckDBPyConnection) -> Index:
-        df = _axis_frame(index)  # noqa: F841 - queried by name below
+    def of(
+        cls,
+        index: pd.Index,
+        con: DuckDBPyConnection,
+        keys: pd.DataFrame | None = None,
+    ) -> Index:
+        """`index` keyed by its own levels, or by `keys`, one row per entry in its order."""
+        df = index.to_frame(index=False) if keys is None else keys  # noqa: F841 - queried by name below
         return cls(index, con.sql("SELECT *, row_number() OVER () AS _pos FROM df"))
 
     def expand(self, rel: DuckDBPyRelation, column: str) -> DuckDBPyRelation:
@@ -464,7 +527,6 @@ def _left_join_values(
 def _series_frame(
     rows: DuckDBPyRelation,
     shape: NetworkShape,
-    periods: Index,
     scenarios: Index,
     snapshots: Index,
     static_index: pd.Index,
@@ -488,11 +550,9 @@ def _series_frame(
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    if shape.multiperiod:
-        rows = periods.expand(rows, PERIOD)
     if shape.stochastic:
         rows = scenarios.expand(rows, SCENARIO)
-    group_by = [PERIOD, SNAPSHOT] if shape.multiperiod else [SNAPSHOT]
+    group_by = [SNAPSHOT]
     keys = shape.index_names
     columns = Index.of(static_index.set_names(keys), con).rel.set_alias("k")
     rows = rows.set_alias("r")
@@ -845,13 +905,16 @@ def _new_network(record: RecordLike, shape: NetworkShape) -> pypsa.Network:
     if crs is not None:
         n.to_crs(crs)
 
-    _apply_snapshots_import(n, shape.snapshots)
+    _apply_snapshots_import(n, shape.snapshot_levels)
     if shape.multiperiod:
         n.periods = shape.periods[PERIOD]
         n.investment_period_weightings = _weightings(
             record, PERIOD, n.investment_period_weightings
         )
-    n.snapshot_weightings = _weightings(record, SNAPSHOT, n.snapshot_weightings)
+    labels = pd.Index(shape.snapshots[SNAPSHOT], name=SNAPSHOT)
+    n.snapshot_weightings = _weightings(
+        record, SNAPSHOT, n.snapshot_weightings.set_axis(labels)
+    ).set_axis(n.snapshots)
     if shape.stochastic:
         index = pd.Index(shape.scenarios[SCENARIO].astype(str), name=SCENARIO)
         equal = pd.DataFrame({"weight": 1 / len(index)}, index=index)
@@ -864,48 +927,28 @@ def _new_network(record: RecordLike, shape: NetworkShape) -> pypsa.Network:
 
 
 def _weightings(record: RecordLike, dim: str, table: pd.DataFrame) -> pd.DataFrame:
-    """`table`, PyPSA's weightings of `dim`, with each one `record` stores in place.
+    """`table`, PyPSA's weightings of `dim` by label, with each one `record` stores in place.
 
-    Keyed by `dim`'s axis key, `(period, snapshot)` for a multi-period
-    network's snapshots (`_reaching`); a label no row reaches keeps `table`'s
-    value.
-    """
-    restored = table.copy()
-    labels = _axis_frame(table.index)
-    for attribute, weighting in _WEIGHTINGS.items():
-        frame = record.attributes.get(attribute)
-        if weighting.dim != dim or frame is None:
-            continue
-        rows = frame.select(*labels.columns, "value").collect().to_pandas()
-        values = _reaching(rows, labels).set_axis(table.index)
-        restored[weighting.column] = values.fillna(table[weighting.column])
-    return restored
-
-
-def _reaching(rows: pd.DataFrame, labels: pd.DataFrame) -> pd.Series:
-    """The `value` of the row of `rows` reaching each of `labels`, keyed by its columns.
-
-    A NULL key column reaches every label, so a NULL-period row reaches its
-    timestep in every period. Where several rows reach one label, the one
-    naming more of the key wins; NaN where none does.
+    A label's own row wins over a NULL-label row, which reaches every label;
+    a label reached by neither keeps `table`'s value.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
-    key = list(labels.columns)
-    named = rows[key].notna()
-    values = pd.Series(np.nan, index=labels.index)
-    for size in range(len(key), -1, -1):
-        for given in map(list, combinations(key, size)):
-            exact = named[given].all(axis=1) & (named.sum(axis=1) == size)
-            on = [*given, "_all"]
-            picked = rows.loc[exact, [*given, "value"]].assign(_all=0)
-            matched = labels.assign(_all=0).merge(
-                picked.drop_duplicates(on), on=on, how="left"
-            )
-            values = values.fillna(matched["value"].set_axis(labels.index))
-    return values
+    restored = table.copy()
+    for attribute, weighting in _WEIGHTINGS.items():
+        frame = record.attributes.get(attribute)
+        if weighting.dim != dim or frame is None:
+            continue
+        rows = frame.select(dim, "value").collect().to_pandas()
+        unset = rows[dim].isna()
+        values = rows[~unset].set_index(dim)["value"].reindex(table.index)
+        broadcast = rows.loc[unset, "value"]
+        if len(broadcast):
+            values = values.fillna(broadcast.iloc[0])
+        restored[weighting.column] = values.fillna(table[weighting.column])
+    return restored
 
 
 def _add_component_type(
@@ -923,8 +966,7 @@ def _add_component_type(
         static_df[column] = _from_wkt(static_df[column], n.crs)
     n._import_components_from_df(static_df, ctype)
 
-    periods = Index.of(n.investment_periods, con)
-    snapshots = Index.of(n.snapshots, con)
+    snapshots = Index.of(n.snapshots, con, shape.snapshots[[SNAPSHOT]])
     static_index = n.c[ctype].static.index
     for attr, (long, flags) in attributes.items():
         # ... and `dynamic` the per-snapshot ones.
@@ -932,9 +974,7 @@ def _add_component_type(
             continue
         ts_rows = long.filter("snapshot IS NOT NULL")
         # Partial columns keep non-series components static (https://energy-models.github.io/datarecord/design/tools/).
-        wide = _series_frame(
-            ts_rows, shape, periods, scenarios, snapshots, static_index, con
-        )
+        wide = _series_frame(ts_rows, shape, scenarios, snapshots, static_index, con)
         n._import_series_from_df(wide, ctype, attr)
 
 
@@ -1418,7 +1458,7 @@ class PyPSATool(Tool):
 
         con = _connection(record)
         schema = record.schema
-        shape = NetworkShape(record.dims)
+        shape = NetworkShape(record.dims, record.properties)
         n = _new_network(record, shape)
 
         flagged = record.flags()
@@ -1518,16 +1558,13 @@ class PyPSATool(Tool):
             for attr, spec in schema.results.items()
             if dim in spec.dims and attr in record.outputs
         ]
-        periods, scenarios, snapshots = (
-            Index.of(index, con)
-            for index in (n.investment_periods, n.scenarios, n.snapshots)
-        )
+        scenarios = Index.of(n.scenarios, con)
+        snapshots = Index.of(n.snapshots, con, shape.snapshots[[SNAPSHOT]])
         for attr in results:
             rows = _keyed_as_entity(to_relation(record.outputs[attr]), dim)
             wide = _series_frame(
                 rows.filter(col(SNAPSHOT).isnotnull()),
                 shape,
-                periods,
                 scenarios,
                 snapshots,
                 n.c[ctype].static.index,
@@ -1933,30 +1970,24 @@ class _NetworkSource:
         own attributes and `n.meta` for read-back, its custom static columns
         (`_custom_columns`), each declared over its type's dim and, an entity
         type's, added to the trait of the type carrying it, and, where the
-        network has investment periods,
-        `snapshot` being `within` `period` and everything over `snapshot` over
-        `period` too.
+        network has investment periods, the properties of `snapshot`
+        (`_snapshot_properties`).
 
         Notes
         -----
         - [the schema](https://energy-models.github.io/datarecord/design/schema/)
         - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
-        - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
         """
         base = _registry_schema()
         dimensions = dict(base.dimensions)
-        attributes = dict(base.attributes)
-        results = dict(base.results)
-        if len(self.n.investment_periods):
-            dimensions[SNAPSHOT] = dimensions[SNAPSHOT].model_copy(
-                update={"within": frozenset({PERIOD})}
-            )
-            for specs in (attributes, results):
-                specs.update(
-                    (name, spec.model_copy(update={"dims": spec.dims | {PERIOD}}))
-                    for name, spec in specs.items()
-                    if SNAPSHOT in spec.dims
+        properties = dict(base.properties)
+        if PERIOD in self._snapshots:
+            properties[SNAPSHOT] = _snapshot_properties(self._snapshots)
+            if TIMESTEP in self._snapshots:
+                dimensions[SNAPSHOT] = dimensions[SNAPSHOT].model_copy(
+                    update={"dtype": nw.Int64()}
                 )
+        attributes = dict(base.attributes)
         traits = dict(base.traits)
         for ctype, columns in _custom_columns(self.n).items():
             dim = _dim_of(ctype)
@@ -1974,8 +2005,8 @@ class _NetworkSource:
             **{
                 **dict(base),
                 "dimensions": dimensions,
+                "properties": properties,
                 "attributes": attributes,
-                "results": results,
                 "traits": traits,
                 "meta": {
                     "format": "pypsa-parquet",
@@ -1985,6 +2016,16 @@ class _NetworkSource:
                 },
             }
         )
+
+    @cached_property
+    def _snapshots(self) -> pd.DataFrame:
+        """`n.snapshots` as the `snapshot` axis with its properties (`_snapshot_frame`)."""
+        return _snapshot_frame(self.n.snapshots)
+
+    @cached_property
+    def _snapshot_labels(self) -> pd.Index:
+        """The labels of `_snapshots`, in PyPSA's order."""
+        return pd.Index(self._snapshots[SNAPSHOT], name=SNAPSHOT)
 
     @property
     def dims(self) -> LazyFrames:
@@ -1998,7 +2039,7 @@ class _NetworkSource:
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
         axes = {
-            SNAPSHOT: lambda: _axis_frame(self.n.snapshots),
+            SNAPSHOT: lambda: self._snapshots[[SNAPSHOT]],
             PERIOD: lambda: self.n.investment_periods.to_frame(index=False),
             SCENARIO: lambda: self.n.scenario_weightings.index.to_frame(index=False),
             BUS: lambda: self._buses[[BUS, "deleted"]],
@@ -2197,8 +2238,6 @@ class _NetworkSource:
         """
         wide = c.dynamic[attr]
         stochastic = isinstance(wide.columns, pd.MultiIndex)
-        multi_snapshot = isinstance(c.snapshots, pd.MultiIndex)
-        idcols = ["period", "snapshot"] if multi_snapshot else ["snapshot"]
         # One flat value column per melted column: `scenario\x1fentity` where a
         # scenario level exists, split back out after the UNPIVOT. `reset_index`
         # returns a fresh frame, so relabelling its columns never mutates the
@@ -2211,8 +2250,11 @@ class _NetworkSource:
         if not valcols:
             return None
         positional = [f"v{i}" for i in range(len(valcols))]
-        w = wide.set_axis(positional, axis=1).reset_index()
-        w.columns = [*idcols, *positional]
+        w = (
+            wide.set_axis(positional, axis=1)
+            .set_axis(self._snapshot_labels)
+            .reset_index()
+        )
         # `from_df` captures the frame into the relation's own plan, so a later
         # call reusing the frame variable cannot rebind this one (unlike a named
         # registered view).
@@ -2221,11 +2263,10 @@ class _NetworkSource:
             f"{p} AS {lit(str(name))}"
             for p, name in zip(positional, valcols, strict=True)
         )
-        idsel = ", ".join(idcols)
         # Two steps rather than one nested query: the local-relation replacement
         # scan does not compose through a subquery, so melt first, then project.
         melted = con.sql(  # noqa: F841 - bound by name for the query below
-            f"SELECT {idsel}, colname, value FROM wide_rel "
+            "SELECT snapshot, colname, value FROM wide_rel "
             f"UNPIVOT INCLUDE NULLS (value FOR colname IN ({inlist}))"
         )
         if stochastic:
@@ -2233,10 +2274,9 @@ class _NetworkSource:
             scenario = "split_part(colname, chr(31), 1)"
         else:
             entity, scenario = "colname", "CAST(NULL AS VARCHAR)"
-        period = "period" if multi_snapshot else "CAST(NULL AS BIGINT)"
         return con.sql(
             f"SELECT {entity} AS entity, snapshot, {scenario} AS scenario, "
-            f"{period} AS period, value FROM melted"
+            "CAST(NULL AS BIGINT) AS period, value FROM melted"
         )
 
     def _scalar_rel(
@@ -2295,29 +2335,19 @@ class _NetworkSource:
         return names
 
     def _weighting_table(self, dim: str) -> pd.DataFrame:
-        """PyPSA's weighting frame of `dim`, empty where the network lacks the axis."""
+        """PyPSA's weighting frame of `dim` by label, empty where the network lacks the axis."""
         if dim == SNAPSHOT:
-            return self.n.snapshot_weightings
+            return self.n.snapshot_weightings.set_axis(self._snapshot_labels)
         if dim == PERIOD:
             return self.n.investment_period_weightings
         return self.n.scenario_weightings
 
     def _weighting_frame(self, attribute: str) -> nw.LazyFrame:
-        """One axis weighting as long rows over its axis.
-
-        Keyed by the axis key, `(period, snapshot)` for a multi-period network's
-        snapshots.
-
-        Notes
-        -----
-        - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
-        """
+        """One axis weighting as long rows over its axis."""
         weighting = _WEIGHTINGS[attribute]
         table = self._weighting_table(weighting.dim)
         weights = (  # noqa: F841 - bound by name for the query below
-            _axis_frame(table.index)
-            .assign(value=table[weighting.column].to_numpy())
-            .reindex(columns=[*self.schema.coordinates_of(attribute), "value"])
+            table[weighting.column].rename("value").reset_index()
         )
         rel = self.con.sql(
             f"SELECT * EXCLUDE (value), {lit(attribute)} AS attribute, "
@@ -2370,20 +2400,22 @@ class _NetworkSource:
 
     @property
     def properties(self) -> LazyFrames:
-        """The keys and property columns of the entities, buses, carriers and connections."""
+        """The keys and property columns of the entities, buses, carriers, connections and multi-period snapshots."""
         frames = {
             ENTITY: lambda: nw.from_native(self._entity_frame()).lazy(),
             BUS: lambda: nw.from_native(self._buses).lazy(),
             CARRIER: lambda: nw.from_native(self._carriers).lazy(),
             CONNECTION: self._connection_frame,
+            SNAPSHOT: lambda: nw.from_native(self._snapshots).lazy(),
         }
         labels = {BUS: self._buses, CARRIER: self._carriers}
         labelled = [d for d, frame in labels.items() if len(frame)]
-        subjects = (ENTITY, *labelled, CONNECTION)
+        timed = [SNAPSHOT] if PERIOD in self._snapshots else []
+        subjects = (ENTITY, *labelled, CONNECTION, *timed)
 
         def frame(subject: str) -> nw.LazyFrame:
             lazy = frames[subject]()
-            declared = {subject, *_registry_schema().properties[subject]}
+            declared = {subject, *self.schema.properties[subject]}
             return lazy.select(c for c in lazy.collect_schema() if c in declared)
 
         return LazyFrames(subjects, frame)

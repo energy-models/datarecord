@@ -184,10 +184,12 @@ All notable changes to datarecord are documented here. The format follows
   `scenario_weight`, and `build` sets them back rather than leaving PyPSA's
   defaults.
 - The PyPSA tool round-trips a multi-period network, which `to_datarecord`
-  failed to write: its schema declares `snapshot` `within` `period` where the
-  network has investment periods, keying the snapshot axis by
-  `(period, snapshot)`, and declares every input and result over `snapshot`
-  over `period` too. A single-period network's schema is unchanged. `build`
+  failed to write: its `snapshot` is one flat axis beside `period`, each
+  snapshot carrying `snapshot.period`, a property `into` `period`, so
+  `period=2030` selects a period's snapshots. A snapshot is labelled by its
+  timestep where no timestep repeats across periods, else by its position,
+  the timestep then `snapshot.timestep`. Every input and result keeps the
+  dims it has in a single-period network, whose schema is unchanged. `build`
   restores the snapshots, investment periods, time series and both
   weightings.
 - The PyPSA tool round-trips a network's shapes, which `to_datarecord`

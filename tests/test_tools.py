@@ -1260,11 +1260,23 @@ def test_snapshot_weightings_survive_a_round_trip(store, ac_dc):
     )
 
 
-@pytest.fixture(scope="module")
-def multiperiod(ac_dc):
-    """`ac_dc` over two investment periods, with weightings of its own on both axes."""
+@pytest.fixture(scope="module", params=["repeated", "distinct"])
+def multiperiod(request, ac_dc):
+    """`ac_dc` over two investment periods, with weightings of its own on both axes.
+
+    `repeated` runs every timestep in both periods, as `set_investment_periods`
+    does; `distinct` splits the timesteps between them.
+    """
     n = ac_dc.copy()
-    n.set_investment_periods([2030, 2040])
+    if request.param == "repeated":
+        n.set_investment_periods([2030, 2040])
+    else:
+        periods = np.repeat([2030, 2040], len(n.snapshots) // 2)
+        n.set_snapshots(
+            pd.MultiIndex.from_arrays(
+                [periods, n.snapshots], names=["period", "timestep"]
+            )
+        )
     n.investment_period_weightings = pd.DataFrame(
         {"objective": [1.0, 0.6], "years": [10.0, 5.0]}, index=n.investment_periods
     )
@@ -1273,12 +1285,46 @@ def multiperiod(ac_dc):
 
 
 @pytest.fixture(scope="module")
-def multiperiod_built(tmp_path_factory, multiperiod):
-    """`multiperiod` exported and built back once for the module."""
+def multiperiod_revision(tmp_path_factory, multiperiod):
+    """`multiperiod` exported once for the module."""
     workspace = Workspace()
-    store = workspace.store(str(tmp_path_factory.mktemp("multiperiod")))
-    yield PyPSA.build(export_network(multiperiod, store).record)
+    yield export_network(
+        multiperiod, workspace.store(str(tmp_path_factory.mktemp("multiperiod")))
+    )
     workspace.close()
+
+
+@pytest.fixture(scope="module")
+def multiperiod_built(multiperiod_revision):
+    """The network `multiperiod_revision` builds."""
+    return PyPSA.build(multiperiod_revision.record)
+
+
+def test_a_multi_period_snapshot_is_one_flat_axis(multiperiod, multiperiod_revision):
+    """A repeated timestep makes the labels positions; a distinct one is the label.
+
+    Notes
+    -----
+    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    """
+    schema = multiperiod_revision.record.schema
+    timesteps = multiperiod.snapshots.get_level_values("timestep")
+    repeated = not timesteps.is_unique
+    labels = multiperiod_revision.record.dims["snapshot"].collect()["snapshot"]
+    expected = list(range(len(timesteps))) if repeated else list(timesteps)
+    assert labels.to_list() == expected
+    assert schema.dimensions["snapshot"].dtype == (
+        nw.Int64() if repeated else nw.Datetime()
+    )
+    assert set(schema.properties["snapshot"]) == (
+        {"period", "timestep"} if repeated else {"period"}
+    ), "a timestep property only where the label is a position"
+    assert schema.properties["snapshot"]["period"].into == "period"
+    assert schema.attributes["p_max_pu"].dims == {
+        "entity",
+        "snapshot",
+        "scenario",
+    }, "dims as in a single-period network"
 
 
 @pytest.mark.parametrize(
@@ -1293,12 +1339,6 @@ def multiperiod_built(tmp_path_factory, multiperiod):
 def test_a_multi_period_axis_survives_a_round_trip(
     multiperiod, multiperiod_built, axis
 ):
-    """`snapshot` is `within` `period`, so a timestep keeps a row per period.
-
-    Notes
-    -----
-    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
-    """
     pd.testing.assert_frame_equal(
         axis(multiperiod_built), axis(multiperiod), check_index_type=False
     )
@@ -1308,24 +1348,32 @@ def test_a_multi_period_network_survives_a_round_trip(multiperiod, multiperiod_b
     assert_networks_equal(multiperiod_built, multiperiod)
 
 
-def test_a_snapshot_weighting_reaches_the_labels_its_key_names():
-    """A NULL `period` reaches its timestep in every period, a NULL key every snapshot."""
-    index = pd.MultiIndex.from_product(
-        [[2030, 2040], pd.to_datetime(["2030-01-01 00:00", "2030-01-01 01:00"])],
-        names=["period", "timestep"],
-    )
-    rows = pd.DataFrame(
-        {
-            "period": [None, None, 2040],
-            "snapshot": pd.to_datetime([None, "2030-01-01 00:00", "2030-01-01 00:00"]),
-            "value": [1.0, 2.0, 3.0],
-        }
-    )
-    record = SimpleNamespace(
-        attributes={"snapshot_weighting_objective": nw.from_native(rows).lazy()}
-    )
-    table = pd.DataFrame({"objective": 0.0}, index=index)
-    weights = _weightings(record, "snapshot", table)  # type: ignore[arg-type]
-    assert weights["objective"].tolist() == [2.0, 1.0, 3.0, 1.0], (
-        "the row naming more of `(period, snapshot)` wins"
+@pytest.mark.parametrize("by", ["period", "snapshot"])
+def test_a_set_on_some_snapshots_keeps_the_rest_of_the_series(
+    multiperiod, multiperiod_revision, by
+):
+    """`period=2040` selects that period's snapshots, a property of `snapshot`.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    from datarecord.mutable import WorkingRecord
+
+    record = multiperiod_revision.record
+    first = record.dims["snapshot"].collect().item(0, "snapshot")
+    periods = multiperiod.snapshots.get_level_values("period")
+    selector, changed = {
+        "period": ({"period": 2040}, periods == 2040),
+        "snapshot": ({"snapshot": first}, np.arange(len(periods)) == 0),
+    }[by]
+    staged = WorkingRecord(record)
+    staged.set("p_max_pu", 0.5, entity="Manchester Wind", **selector)
+
+    built = PyPSA.build(multiperiod_revision.child(staged.edits).record)
+    series = multiperiod.c["Generator"].dynamic["p_max_pu"]["Manchester Wind"]
+    pd.testing.assert_series_equal(
+        built.c["Generator"].dynamic["p_max_pu"]["Manchester Wind"],
+        series.where(~changed, 0.5),
+        check_index_type=False,
     )
