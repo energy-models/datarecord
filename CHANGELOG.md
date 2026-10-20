@@ -175,6 +175,11 @@ All notable changes to datarecord are documented here. The format follows
   compare-and-swap, so two writers widening one schema never silently lose
   a widening.
 
+### Removed
+
+- **`set` no longer takes an expression** (breaking): compute the new
+  values from `attributes[name]` and `set` the frame.
+
 ### Fixed
 
 - The PyPSA tool round-trips a network's snapshot and investment period

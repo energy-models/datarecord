@@ -501,7 +501,7 @@ class WorkingRecord(Record):
 
         return LazyFrames(names, frame)
 
-    # -- edits (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one, https://energy-models.github.io/datarecord/design/working-record/#add-remove) ----------------------------------------
+    # -- edits (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/working-record/#add-remove) ----------------------------------------
 
     def _key_coordinate(self, attribute: str, value: Any, given: Container[str]) -> str:
         """Which coordinate a mapping's keys or a labelled series' index holds.
@@ -832,7 +832,7 @@ class WorkingRecord(Record):
         a list of labels the value is staged at each of. A coordinate no keyword
         names is NULL, which by the broadcast rule is every label of it.
 
-        `value` takes six forms:
+        `value` takes five forms:
 
         - a scalar, staged at every combination of the listed labels;
         - a sequence, aligned positionally to the one list keyword;
@@ -840,9 +840,7 @@ class WorkingRecord(Record):
           the series' `index.name` where that names a coordinate, else of the
           one coordinate no keyword names;
         - a long frame supplying its own keys, which keywords may complete with
-          single labels;
-        - a narwhals expression, a *function of the current value*: it reads the
-          rows the keywords select before it stages, so two such calls compose.
+          single labels.
 
         An attribute's values are long rows, whatever its `dims`. A property -
         a category included - patches one column of existing axis rows: a
@@ -873,19 +871,18 @@ class WorkingRecord(Record):
             wrote, a value of a property `into` a dim naming no label of it, or
             a label whose categories do not carry `attribute`.
         ValueError
-            On a property with `kind="outputs"` or an `nw.Expr` value, a
-            keyword the attribute does not vary over, a sequence with no
-            single list keyword to align to, keys whose coordinate is
-            ambiguous, a value an `Enum` property does not list, or a property
-            keyword whose dim the attribute does not reach through exactly one
-            coordinate, or that is given beside that coordinate's own keyword.
+            On a property with `kind="outputs"`, a keyword the attribute does
+            not vary over, a sequence with no single list keyword to align to,
+            keys whose coordinate is ambiguous, a value an `Enum` property does
+            not list, or a property keyword whose dim the attribute does not
+            reach through exactly one coordinate, or that is given beside that
+            coordinate's own keyword.
 
         Notes
         -----
         - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
-        - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         keyed = isinstance(value, Mapping) or _series_index(value) is not None
@@ -919,10 +916,6 @@ class WorkingRecord(Record):
             self._validate_input(attribute, coords)
         else:
             self._validate_result(attribute, coords)
-
-        if isinstance(value, nw.Expr):
-            self._stage_derived(attribute, value, kind, coords)
-            return
 
         if keyed:
             key = self._key_coordinate(attribute, value, coords)
@@ -974,14 +967,12 @@ class WorkingRecord(Record):
         Raises
         ------
         ValueError
-            On `kind="outputs"` or an `nw.Expr`, a property being neither a
-            result nor derived.
+            On `kind="outputs"`, a property never being a result.
         """
-        if kind == "outputs" or isinstance(value, nw.Expr):
-            given = "`kind='outputs'`" if kind == "outputs" else "an `nw.Expr`"
+        if kind == "outputs":
             msg = (
-                f"`set({dotted!r}, ...)` is given {given}, but {dotted!r} is a "
-                f"property, never a result nor derived"
+                f"`set({dotted!r}, ...)` is given `kind='outputs'`, but "
+                f"{dotted!r} is a property, never a result"
             )
             raise ValueError(msg)
         subject, _, name = dotted.partition(".")
@@ -1242,22 +1233,6 @@ class WorkingRecord(Record):
             labels = lazy.select(field.alias("n")).unique().collect()["n"].to_list()
             self._require_labels(attribute, dim, labels)
 
-    def _coordinate(self, attribute: str, name: str) -> nw.Expr:
-        """Coordinate `name` of `attribute`'s rows, inside its group's struct if there.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        """
-        if name in self.schema.long_columns_for(attribute):
-            return nw.col(name)
-        group = next(
-            g
-            for g in self.schema.groups_of(attribute)
-            if name in self.schema.group_key(g)
-        )
-        return nw.col(group).struct.field(name)
-
     def _insert(
         self,
         rel: DuckDBPyRelation,
@@ -1499,93 +1474,6 @@ class WorkingRecord(Record):
         rel = as_relation(lazy, self.con)
         self._insert_long(
             rel, table, attribute, set(lazy.collect_schema().names()), dims
-        )
-
-    def _stage_derived(
-        self,
-        attribute: str,
-        expr: nw.Expr,
-        kind: str,
-        coords: Mapping[str, Any],
-    ) -> None:
-        """Stage a value derived from the current one - the `Expr` form.
-
-        Reads before it stages, so what it derives from is the resolved value
-        *including earlier pending edits*, and two such calls compose. What is
-        staged is the result, never the expression, so a committed layer holds
-        ordinary rows and nothing stores that a value was derived.
-
-        On a layered base the read is a fold, so this is the one edit whose cost
-        scales with the ancestry rather than with the rows written.
-
-        Unscoped, this derives from every row of the attribute.
-
-        Notes
-        -----
-        - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
-        """
-        source = self.outputs if kind == "outputs" else self.attributes
-        frame = source[attribute] if attribute in source else None
-        if frame is not None:
-            for c, given in coords.items():
-                field = self._coordinate(attribute, c)
-                frame = frame.filter(
-                    field.is_in(list(given)) if _is_labels(given) else field == given
-                )
-
-        # A scoped target that resolves to no row is a failed change, not a
-        # no-op: the caller asked for these rows to take a new value and there
-        # is nothing to derive one from. Unscoped, the instruction is "whatever
-        # resolves", so an empty result is an answer.
-        if coords:
-            # `head(1)`: `is_empty` is a `DataFrame` method, so the question
-            # costs a collect either way - this one collects a single row.
-            if frame is None or frame.head(1).collect().is_empty():
-                scope = ", ".join(f"{c}={v!r}" for c, v in coords.items())
-                msg = (
-                    f"no {attribute!r} rows resolve for {scope}, so there is "
-                    f"no current value to derive from; `set` a value directly to "
-                    f"create one (https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)"
-                )
-                raise KeyError(msg)
-        if frame is None:
-            return
-        self._stage_resolved(frame.with_columns(expr.alias("value")), attribute, kind)
-
-    def _stage_resolved(
-        self, frame: nw.LazyFrame, attribute: str, kind: str = "inputs"
-    ) -> None:
-        """Stage an already-long frame carrying every key column.
-
-        `value` needs no cast: the table is this attribute's own, so its column
-        already has the attribute's type (`_empty_long`).
-        """
-        table = self._ensure(kind, attribute)
-        # A coordinate the frame leaves out is one it broadcasts over, so it is
-        # filled with a typed NULL rather than left to `INSERT ... BY NAME`:
-        # projecting the table's full column list keeps the insert positional
-        # and the types the table's own (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
-        present = set(frame.collect_schema().names())
-        rel = as_relation(frame, self.con)
-        duck_types = DuckTypes(rel)
-
-        def column(c: str) -> Expression:
-            if c in present:
-                return col(c)
-            if c == "attribute":
-                return lit(attribute).alias(c)
-            dtype = nw.Float64() if c == "breakpoint" else self._column_type(c)
-            return duck_types.null(dtype).alias(c)
-
-        # Keyed the same whether input or result: a repeat coordinate is the
-        # caller restating one, and replacing it is the answer folding it gave.
-        # No `_complete_owned_whole`: the derived frame resolved the current
-        # value, so it already carries the extent an edit would have to.
-        self._insert_snapshot(
-            rel.project(*(column(c) for c in self.schema.long_columns_for(attribute))),
-            table,
-            {},
-            key=self._long_key(attribute),
         )
 
     def add(self, dim: str, labels: Sequence[Any], **columns: Any) -> None:

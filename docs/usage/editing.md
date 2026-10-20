@@ -26,7 +26,6 @@ w.set("p_max_pu", 0.9)  # every label carrying it, now and later
 w.set("p_max_pu", 0.8, component="Generator", carrier="wind")  # the ones there are now
 w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
 w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped to one scenario
-w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
 w.set("entity.carrier", "solar", entity="g2")  # a property, by its subject
 w.set("bus.x", 10.2, bus="north")  # not `x`, an attribute of its own
 w.set("p", solved_frame, kind="outputs")  # a result
@@ -39,8 +38,6 @@ w.set("p", solved_frame, kind="outputs")  # a result
 A mapping's keys or a series' index are labels of the one coordinate no keyword names, unless the series' index is named after a coordinate; where neither says, the call is refused rather than guessed.
 
 `set` writes **properties** too, a category included, each named by its subject: `set("entity.component", "Load", entity="g1")` patches one column of `g1`'s axis row. A plain name is an attribute or result; `set("carrier", ...)` with only properties so called is refused, suggesting `bus.carrier` and `entity.carrier`.
-
-An `nw.Expr` value is a **function of the current value**: it reads the resolved value including earlier pending edits, so two such calls compose, and what gets staged is the result rather than the expression ([design](../design/working-record.md#an-nwexpr-value-derived-from-the-current-one)). A named target that resolves to no row raises — the caller asked for those rows to take a new value and there is nothing to compute one from.
 
 ## `add` / `remove` / `add_group` / `remove_group`
 
