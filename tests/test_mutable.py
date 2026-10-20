@@ -63,13 +63,13 @@ def written_directory(root, tmp_path_factory):
 def _small(store, **declared):
     """A root of two generators with a `p_nom`, under `schema(**declared)`.
 
-    `Norway` is both a `Bus` entity and a `bus` label, as in `ac_dc`.
+    `Norway` is both an entity and a `bus` label, as a load and its bus are in `ac_dc`.
     """
     write_schema(schema(**declared), store)
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
-    staged.add("entity", ["Manchester Wind", "Norway Wind"], entity_type=GEN)
-    staged.add("entity", ["Norway"], entity_type="Bus")
+    staged.add("entity", ["Manchester Wind", "Norway Wind"], component=GEN)
+    staged.add("entity", ["Norway"], component="Bus")
     staged.add("bus", ["Norway"])
     staged.set("p_nom", [80.0, 100.0], entity=["Manchester Wind", "Norway Wind"])
     return revision.child(staged.edits)
@@ -290,7 +290,7 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
     -----
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
-    staged.add("entity", ["NewSolar"], entity_type=GEN)
+    staged.add("entity", ["NewSolar"], component=GEN)
     staged.set("p_nom", 7.0, entity=["NewSolar"])
 
     child = root.child(staged.edits)
@@ -553,11 +553,11 @@ def _entity_values(record, attribute):
 
 
 def test_add_then_commit_makes_a_label_exist(staged, root):
-    staged.add("entity", ["NewSolar"], entity_type=GEN)
+    staged.add("entity", ["NewSolar"], component=GEN)
     assert "NewSolar" in _entity_axis(staged).index, "it reads back before commit"
 
     child = root.child(staged.edits)
-    assert _entity_axis(child.record).loc["NewSolar", "entity_type"] == GEN
+    assert _entity_axis(child.record).loc["NewSolar", "component"] == GEN
 
 
 @pytest.fixture
@@ -586,7 +586,7 @@ def units(store):
             traits={
                 "plant": Trait(
                     attributes=frozenset({"capacity"}),
-                    on={"tech": frozenset({"plant"})},
+                    on={"unit.tech": frozenset({"plant"})},
                 )
             },
             partial=frozenset({"unit"}),
@@ -614,7 +614,7 @@ def test_set_may_change_a_category(units):
     -----
     - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
-    units.set("tech", "node", unit=["p2"])
+    units.set("unit.tech", "node", unit=["p2"])
 
     axis = _unit_axis(units)
     assert axis.loc["p2", "tech"] == "node", "a category may change"
@@ -624,10 +624,16 @@ def test_set_may_change_a_category(units):
 @pytest.mark.parametrize(
     ("op", "args", "kwargs", "error", "match"),
     [
-        ("set", ("site", "east"), {"unit": "x"}, KeyError, "no 'unit' label \\['x'\\]"),
         (
             "set",
-            ("tech", "mill"),
+            ("unit.site", "east"),
+            {"unit": "x"},
+            KeyError,
+            "no 'unit' label \\['x'\\]",
+        ),
+        (
+            "set",
+            ("unit.tech", "mill"),
             {"unit": "p1"},
             ValueError,
             "'tech' values \\['mill'\\]",
@@ -719,11 +725,11 @@ def test_a_property_keyword_selects_the_labels_there_are_now(units):
 
 
 def test_set_of_a_category_survives_a_commit(staged, root):
-    staged.set("entity_type", "Load", entity="Manchester Wind")
+    staged.set("entity.component", "Load", entity="Manchester Wind")
 
     child = root.child(staged.edits)
     axis = _entity_axis(child.record)
-    assert axis.loc["Manchester Wind", "entity_type"] == "Load"
+    assert axis.loc["Manchester Wind", "component"] == "Load"
     assert (
         _entity_values(child.record, "p_nom")["Manchester Wind"]
         == _entity_values(root.record, "p_nom")["Manchester Wind"]
@@ -741,15 +747,15 @@ def test_re_adding_a_label_replaces_its_row(staged, root):
     - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
     """
     staged.remove("entity", ["Manchester Wind"])
-    staged.add("entity", ["Manchester Wind"], entity_type="Bus")
+    staged.add("entity", ["Manchester Wind"], component="Load")
 
     rows = staged.edits.axis("entity").df()
     rows = rows[rows["entity"] == "Manchester Wind"]
     assert len(rows) == 1, "one label, one row"
-    assert list(rows["entity_type"]) == ["Bus"], "the later op wins"
+    assert list(rows["component"]) == ["Load"], "the later op wins"
 
     child = root.child(staged.edits)
-    assert _entity_axis(child.record).loc["Manchester Wind", "entity_type"] == "Bus"
+    assert _entity_axis(child.record).loc["Manchester Wind", "component"] == "Load"
 
 
 def test_add_rejects_a_column_the_schema_does_not_declare(staged):
@@ -776,12 +782,12 @@ def test_add_fills_a_declared_column_another_add_omitted(staged):
     -----
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
     """
-    staged.add("entity", ["NewSolar"], entity_type=GEN)
+    staged.add("entity", ["NewSolar"], component=GEN)
     staged.add("entity", ["NewWind"])
 
     rows = staged.edits.axis("entity").df().set_index("entity")
-    assert pd.isna(rows.loc["NewWind", "entity_type"]), "not carried, so NULL"
-    assert rows.loc["NewSolar", "entity_type"] == GEN, "unaffected by the later add"
+    assert pd.isna(rows.loc["NewWind", "component"]), "not carried, so NULL"
+    assert rows.loc["NewSolar", "component"] == GEN, "unaffected by the later add"
 
 
 def test_remove_tombstones_without_enumerating_attributes(staged, root):
@@ -965,10 +971,10 @@ def test_remove_then_add_starts_without_the_parents_connections(staged, root):
     """
     assert _efficiency(staged), "the base carries a value to lose"
     staged.remove("entity", ["Manchester Wind"])
-    staged.add("entity", ["Manchester Wind"], entity_type=GEN)
+    staged.add("entity", ["Manchester Wind"], component=GEN)
 
     child = root.child(staged.edits)
-    assert _entity_axis(child.record).loc["Manchester Wind", "entity_type"] == GEN
+    assert _entity_axis(child.record).loc["Manchester Wind", "component"] == GEN
     assert _efficiency(child.record) == {}, "its connections are re-added by hand"
 
 
@@ -1084,7 +1090,7 @@ def test_a_group_property_is_a_column_of_the_group_file(store):
     assert "role" in on_disk.columns
 
     staged = WorkingRecord(root.record)
-    staged.set("role", "both", entity="l1", bus="b1")
+    staged.set("connection.role", "both", entity="l1", bus="b1")
     assert _roles(staged) == {("l1", "b0"): "in", ("l1", "b1"): "both"}
 
     child = root.child(staged.edits)
@@ -1095,16 +1101,16 @@ def test_a_group_property_is_a_column_of_the_group_file(store):
 
 def test_a_group_property_with_no_field_reaches_every_tuple(store):
     staged = WorkingRecord(_with_roles(store).record)
-    staged.set("role", "any")
+    staged.set("connection.role", "any")
     assert set(_roles(staged).values()) == {"any"}
 
 
 def test_a_group_property_refuses_what_is_no_field(store):
     staged = WorkingRecord(_with_roles(store).record)
     with pytest.raises(ValueError, match="whose tuples its fields"):
-        staged.set("role", "x", snapshot="2020")
+        staged.set("connection.role", "x", snapshot="2020")
     with pytest.raises(KeyError, match="selects no tuple"):
-        staged.set("role", "x", entity="l1", bus="nowhere")
+        staged.set("connection.role", "x", entity="l1", bus="nowhere")
 
 
 def test_add_and_add_group_refuse_an_attribute(store):
@@ -1351,7 +1357,7 @@ def test_a_standalone_write_of_the_record_is_flattened(staged, root, tmp_path):
     members = _entity_axis(record)
     assert _entity_values(record, "p_nom")["Manchester Wind"] == 150.0
     # Flattened: every component is present, not left to a parent to supply.
-    assert (members["entity_type"] == GEN).sum() == 6
+    assert (members["component"] == GEN).sum() == 6
     assert not root.store.workspace.con.sql(
         "FROM duckdb_tables() WHERE table_name LIKE '_pinned_%'"
     ).fetchall(), "the write drops the owner map it held for its fold"
@@ -1383,7 +1389,7 @@ def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(staged):
     """`entity=None` and no scope means "whatever resolves", so empty is an answer."""
     absent = next(
         a
-        for a in sorted(staged.schema.attributes_for("entity", entity_type=GEN))
+        for a in sorted(staged.schema.attributes_for("entity", component=GEN))
         if a not in staged.attributes
     )
     staged.set(absent, nw.col("value") * 2)
@@ -1444,7 +1450,7 @@ def test_an_undeclared_result_is_rejected(staged):
     - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
-    with pytest.raises(KeyError, match="no result 'p_nom_optt'"):
+    with pytest.raises(KeyError, match="no attribute or result .p_nom_optt."):
         staged.set("p_nom_optt", 1.0, entity=["Manchester Wind"], kind="outputs")
 
 
@@ -1494,7 +1500,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root):
     """One frame spanning types is one call, keyed by name alone.
 
     `Tool.results` hands over one frame per attribute carrying every type's rows; with names unique there is no type to stamp, so the frame needs no
-    `entity_type` and nothing can be silently relabelled.
+    `component` and nothing can be silently relabelled.
 
     Notes
     -----
@@ -1522,7 +1528,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root):
     assert set(_unpacked(got)["entity"]) == {"Manchester Wind", "0"}, (
         "results survive the commit into the layer's own `outputs/`"
     )
-    assert "entity_type" not in got.collect_schema().names()
+    assert "component" not in got.collect_schema().names()
     assert not _layer_rows(child, "p_nom").empty, "the inputs went where inputs go"
 
 

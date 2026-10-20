@@ -19,6 +19,8 @@ SPDX-License-Identifier: CC-BY-4.0
 
 Once implemented, one sentence naming the design and usage pages it landed in, which are authoritative where the two disagree.
 
+Keep it under about 2,000 words. State each rule once, in the section it belongs to, and cut what restates it, narrates how the design was found, or tours internals the reader can look up.
+
 ## Abstract
 
 What changes, in two or three sentences.
@@ -29,24 +31,24 @@ The problem, in the terms of someone using datarecord today.
 
 ## Specification
 
-The design: what the schema, the format and the API become.
+The design: what the schema, the format and the API become, as short statements or a table.
 
 ## Rationale
 
-Why this design, and what it costs: what breaks, what gets slower, what becomes harder to say.
+Why this design, only where the rule does not already say it, a short paragraph each; and what it costs: what breaks, what gets slower, what becomes harder to say.
 
 ## Usage
 
-What a user writes with it, as examples. These move to the usage pages on implementation.
+What a user writes with it, as short examples of what changes. These move to the usage pages on implementation.
 
 ## Implementation notes
 
-The steps it is built in, in order, and the checks that hold once it is. On implementation, where the build departs from the text above.
+The steps it is built in, in order, one line each, and the checks that hold once it is. On implementation, where the build departs from the text above.
 
 ## Rejected Ideas
 
-What else was considered, and why not.
+What else was considered, and why not, in a line or two each.
 
 ## Open Issues
 
-What it leaves unsettled. Whatever is still open on implementation moves to [open questions](../open-questions.md).
+What it leaves unsettled, a line each. Whatever is still open on implementation moves to [open questions](../open-questions.md).

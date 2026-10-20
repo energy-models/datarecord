@@ -30,7 +30,7 @@ from tests.fixtures import (
     empty_root,
     schema,
     widened,
-    write_entity_type,
+    write_component,
     write_input,
     write_scenarios,
     write_schema,
@@ -44,7 +44,7 @@ def tree(store):
     write_schema(schema(), store)
     root = empty_root(store)
     layer = store.layer_dir(root.id)
-    write_entity_type(layer, "Generator", [{"entity": "wind"}])
+    write_component(layer, "Generator", [{"entity": "wind"}])
     write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
     return root, empty_child(root)
 
@@ -287,7 +287,7 @@ def _folded_then_widened(store, partial=frozenset(), *, materialised=False):
     write_schema(schema(dims=_NARROW, partial=set(partial)), store)
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
-    write_entity_type(layer, "Generator", [{"entity": "wind"}])
+    write_component(layer, "Generator", [{"entity": "wind"}])
     write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
     before = revision.resolver.inputs
     assert "scenario" not in str(before.types[before.columns.index("varies")])
@@ -385,7 +385,7 @@ def test_an_enum_dim_resolves_from_fold_tables_after_a_widening(store):
     write_schema(schema(dims=dims), store)
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
-    write_entity_type(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
+    write_component(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
     write_scenarios(
         layer,
         [{"scenario": "low"}, {"scenario": "high"}],

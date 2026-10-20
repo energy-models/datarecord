@@ -21,7 +21,7 @@ class WorkingRecord:
         value: Any,  # scalar | sequence | mapping | series | frame | nw.Expr
         *,
         kind: Literal["inputs", "outputs"] = "inputs",
-        **coords: Any,  # coordinates, a group's fields, categorizing properties
+        **coords: Any,  # coordinates, a group's fields, properties of a dim reached
     ) -> None: ...
 
     def add(self, dim: str, labels: Sequence[Any], **columns: Any) -> None: ...
@@ -81,11 +81,12 @@ w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per label, keyed
 w.set("p_max_pu", frame, entity=["wind1"])  # long frame
 w.set("p_max_pu", series.rename_axis("snapshot"), entity=["wind1"])  # a series
 w.set("p_max_pu", 0.9)  # every label carrying it, now and later
-w.set("p_max_pu", 0.8, entity_type="Generator", carrier="wind")  # selected now
+w.set("p_max_pu", 0.8, component="Generator", carrier="wind")  # selected now
 w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
 w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped
 w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
-w.set("carrier", "solar", entity="g2")  # a property
+w.set("entity.carrier", "solar", entity="g2")  # a property, by its subject
+w.set("bus.x", 10.2, bus="north")  # not `x`, an attribute of its own
 w.set("p", solved, kind="outputs")  # a result
 ```
 
@@ -94,18 +95,18 @@ None has a parameter of its own, because which coordinates exist is declared rat
 A keyword holds one label, fixing that coordinate, or a list of labels the value is staged at each of.
 
 A coordinate no keyword names is NULL, which by [the broadcast rule](record.md#the-broadcast-rule) is every label of it — narrowed, on a categorized dim, to the labels whose categories carry the attribute.
-So `set("p_max_pu", 0.9)` is one row reaching every generator, one added in a later layer included, and never a bus.
+So `set("p_max_pu", 0.9)` is one row reaching every generator, one added in a later layer included, and never a load.
 
 A group's fields are packed into the group's [struct column](schema.md#groups), so `entity="dc", bus="north"` stages `connection = {entity: dc, bus: north}`.
 A group value is [a whole tuple or NULL](record.md#the-broadcast-rule), so every field must be given or none: omitting `bus` alone is refused, since `{entity: dc, bus: NULL}` names no tuple, and naming no field stages the NULL struct, every tuple.
 A field is named by its own name: a contract `(from, to)` over `entity` is addressed as `from="plant", to="mill"`, and `entity=` beside it is refused, since it would have to guess which party it names.
 
-**A categorizing property as a keyword selects labels when `set` is called.** `entity_type="Generator", carrier="wind"` resolves to the labels matching every keyword on the record as staged, and `set` writes one row per label; nothing of the filter is stored.
+**A property as a keyword selects labels when `set` is called.** A keyword is bare: it names a coordinate of the attribute, else any property of a dim the attribute reaches, categorizing or not — coordinate first, so `bus="north"` on a connection attribute is the field even where `entity` has a property `bus`, and `carrier="gas"` on an attribute over the `carrier` dim is that dim, while on `p_max_pu` it is `entity.carrier`. A dotted keyword is refused, and so is a name several dims the attribute reaches declare a property of. `component="Generator", carrier="wind"` resolves to the labels matching every keyword on the record as staged, and `set` writes one row per label; nothing of the filter is stored.
 A label added later is not reached — a plain NULL and [`default_by`](schema.md#default_by-a-default-per-category) are the two ways a value reaches labels not yet added.
 The property's dim must be one the attribute reaches through exactly one coordinate, and the keyword is refused beside that coordinate's own.
 
-**`set` writes a property too**, a category included, when `attribute` names one: a patch of one column of the axis rows of its subject, the other columns kept. Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has. A group's property takes a scalar, its fields as keywords selecting the tuples. A property is never a result and never derived, so `kind="outputs"` and an `nw.Expr` are refused for one.
-Changing a category is such a patch: `set("entity_type", "Load", entity="g1")`. What `g1` holds for attributes a Load does not carry stays stored but falls outside every per-category read.
+**`set` writes a property too**, a category included, when `attribute` names one as [`subject.name`](schema.md#properties) — a plain name is an attribute or result, never a property: a patch of one column of the axis rows of its subject, the other columns kept. Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has. A group's property takes a scalar, its fields as keywords selecting the tuples. A property is never a result and never derived, so `kind="outputs"` and an `nw.Expr` are refused for one.
+Changing a category is such a patch: `set("entity.component", "Load", entity="g1")`. What `g1` holds for attributes a Load does not carry stays stored but falls outside every per-category read.
 
 `kind` names the destination in the format's own terms — [the shape of an edit](#the-shape-of-an-edit) is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
 `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool [hands results back](#results-through-kindoutputs) to a record before it is written.
@@ -196,12 +197,15 @@ Editing an input after attaching results leaves results describing a record that
 ## `add` / `remove`
 
 ```python
+w.add("carrier", ["wind", "H2"])
 w.add("bus", ["north", "south"])
-w.add("entity", ["g1", "g2"], entity_type="Generator", carrier="wind")
+w.add("bus", ["north H2"], carrier="H2", x=10.1)  # bare: the dim's own
+w.add("entity", ["g1", "g2"], component="Generator", carrier="wind")
 w.remove("entity", ["old_coal"])
+w.remove("carrier", ["gas"])  # refused while a property `into` carrier names it
 ```
 
-`add(dim, labels, **columns)` stages whole axis rows: `columns` are the other columns of `dims/<dim>.parquet` — the dim's properties and a nested dim's parent keys — each a scalar for every label or a sequence aligned to `labels`.
+`add(dim, labels, **columns)` stages whole axis rows: `columns` are the other columns of `dims/<dim>.parquet` — the dim's properties, bare since the subject is `dim`, and a nested dim's parent keys — each a scalar for every label or a sequence aligned to `labels`.
 A column no keyword names is NULL on these rows, since `add` restates a label's row whole.
 An `Enum` property's value must be one of its categories.
 An attribute keyword is refused with a pointer to `set`: an attribute's values are long rows whatever its `dims`, never a column of the axis.
@@ -217,6 +221,7 @@ Adding a component with its connections and varying values is `add`, then [`add_
 It need not enumerate what it deletes: [the fold](layers.md#deletion) drops every value keyed by the label where `dim` is `partial`, a group attribute's by the label inside its struct ([the owner map](read-path.md#owner-map)).
 It also tombstones every tuple, of any group, with a field over `dim` naming one of `labels`, read from the record as it resolves with pending edits, so the [writer](layers.md#deletion) never meets a dangling tuple. Only for a dim keyed by its label alone: a nested dim's label names no point without its parents, which a tuple does not carry.
 An `add` of the same label revives the label alone: its tuples are re-added through [`add_group`](#add_group-remove_group).
+`remove` is **refused while a [property `into`](schema.md#properties) `dim` names one of the labels**, read from the record as staged: a tuple goes with its label, but a property's row is its subject's and outlives it, so the caller `set`s it to another label or None first. A nested dim is not checked, as above.
 
 ## `add_group` / `remove_group`
 
@@ -299,10 +304,11 @@ Carried rows go in only where no edit already holds the coordinate, so a later `
 [The writer](writing.md) validates structurally, so writing `edits` inherits that.
 What editing adds is edit-level, caught when the edit is **staged**, not at write — a caller should learn about a typo'd attribute at the line that typed it, not fifty edits later:
 
-- an undeclared attribute, result, property or keyword, or a keyword the attribute does not vary over;
+- an undeclared attribute, result, property or keyword, or a keyword the attribute does not vary over; a plain name only properties are called is refused naming their dotted forms, `set("carrier", …)` suggesting `bus.carrier` and `entity.carrier`;
 - a label of a `partial` dim the record does not resolve, `add` them first;
 - a label whose categories do not carry the attribute ([traits](schema.md#traits)), judged by its current categories; a label with no category passes;
 - a value an `Enum` property does not list, in `add` or `set`;
+- a value of a [property `into` a dim](schema.md#properties) naming no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
 - an `add` missing a nested dim's parent key, or naming an attribute.
 
 The label read these need is the one a property keyword already performs, so checking categories costs nothing beyond it. Two coordinates over one categorized dim — a contract's `from` and `to` — name no one label whose categories decide, so neither is checked against them.

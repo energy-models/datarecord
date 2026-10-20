@@ -52,7 +52,7 @@ A row leaving a key column NULL is not addressed by it, and its NULL-safe anti-j
 ## One fold for every axis
 
 A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer patches per key — a group's key being its one struct column, as a dim's is the column named for it.
-They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), its other columns carried on the winning row (`entity_type` on the entity axis, `role` and `into` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
+They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), its other columns carried on the winning row (`component` on the entity axis, `role` and `into` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
 
 The resolved relation is returned **in first-introduced member order** — root first, then file order within a layer — and a node's caches persist it _in that order_, so a reader recovers member order from the resolved file's own row number.
 There is no persisted `order_key` column: member order is the file's row order.

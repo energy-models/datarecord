@@ -46,7 +46,7 @@ record = ws.at("s3://bucket/my-record/")
 
 record.properties["entity"].collect()  # each entity's stored properties
 record.attributes["p_max_pu"].collect()  # long value rows, one per value
-record.flags(entity_type="Generator")  # which axes each attribute uses
+record.flags(component="Generator")  # which axes each attribute uses
 ```
 
 Every frame is a `narwhals.LazyFrame` — a plan, not data. Nothing is read until you `.collect()`.
