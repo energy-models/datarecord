@@ -28,8 +28,6 @@ SPDX-License-Identifier: CC-BY-4.0
 
 - **Detecting intermediate results that no longer fit their inputs.** A [results layer](tools.md#writing-results) replaces the SubNetworks of its base, but a child editing the topology keeps its parent's until the next solve; telling them stale needs provenance of which inputs each came from.
 
-- **Clearing a result a re-solve no longer produces.** A results layer writes only the results the solve fills, so one it leaves empty — `mu_*` duals under `assign_all_duals=False` — keeps the parent's value by inheritance rather than reading as absent.
-
 - **Filtering a record before `build`.** Selecting one period or chosen outputs is a separate feature, not designed.
 
 - **Whether a `WorkingRecord` over an open record stages against a snapshot.** Writing into an open record invalidates its owner-map cache.

@@ -41,7 +41,7 @@ from duckdb import (
 )
 from duckdb import StarExpression as star
 
-from datarecord.duck import DuckTypes, ex_all, fn, struct_of
+from datarecord.duck import DuckTypes, ex_all, fn, null_safe, struct_of
 from datarecord.layered.categories import matching, with_defaults
 from datarecord.record import EMPTY, Flags, Frames, LazyFrames, RecordLike
 from datarecord.schema import (
@@ -1584,7 +1584,8 @@ class PyPSATool(Tool):
         read off the network, so listing unpivots no input.
 
         With `results_only` the record is a thin layer over `base`: the
-        outputs, at their default too, and the SubNetworks they name as
+        outputs, at their default too, `base`'s output rows it does not write
+        again restated at their default, and the SubNetworks they name as
         entities, `base`'s SubNetworks this solve did not number again
         tombstoned.
 
@@ -2711,7 +2712,8 @@ class _ResultsSource(_NetworkSource):
     Its result attributes and the SubNetworks they name, entities of their
     own: `base`'s SubNetworks this solve does not write again are tombstoned,
     so a re-solve numbering them differently leaves none behind. A result's
-    rows at their default are written too, standing over `base`'s.
+    rows at their default are written too, and `base`'s result rows it does
+    not write again, each standing over `base`'s value.
 
     Notes
     -----
@@ -2769,11 +2771,43 @@ class _ResultsSource(_NetworkSource):
 
     @property
     def attributes(self) -> LazyFrames:
-        """Every result with rows."""
-        results = self._result_rels
+        """Every result with rows, `base`'s included."""
+        results = self._restated
         return LazyFrames(
             tuple(results), lambda attr: nw.from_native(results[attr]).lazy()
         )
+
+    @cached_property
+    def _restated(self) -> dict[str, DuckDBPyRelation]:
+        """This solve's results, then each row of `base`'s it leaves out, at its default.
+
+        A row the solve does not write would otherwise keep `base`'s value by
+        inheritance, though the network holds the default there. Rows of a
+        tombstoned SubNetwork are left out with it.
+        """
+        written = self._result_rels
+        outputs = _registry_schema().attributes.keys() - _input_names()
+        dead = self._sub_networks.loc[
+            self._sub_networks["deleted"].astype(bool), ENTITY
+        ].tolist()
+        duck = DuckTypes(self.con)
+        restated = dict(written)
+        for attr in sorted(outputs & set(self.base.attributes)):
+            spec = self.schema.attributes[attr]
+            columns = self.schema.long_columns_for(attr)
+            keys = [c for c in columns if c != "value"]
+            stale = to_relation(self.base.attributes[attr]).set_alias("b")
+            if attr in written:
+                stale = stale.join(
+                    written[attr].set_alias("w"), null_safe("b", "w", keys), how="anti"
+                )
+            if dead and ENTITY in keys:
+                stale = stale.filter(~col(ENTITY).isin(*map(lit, dead)))
+            rows = stale.project(
+                *map(col, keys), duck.lit(spec.default, spec.dtype).alias("value")
+            )
+            restated[attr] = rows if attr not in written else written[attr].union(rows)
+        return restated
 
 
 def _required_attributes(ctype: str) -> frozenset[str]:

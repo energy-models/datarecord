@@ -874,6 +874,42 @@ def test_a_re_solve_leaves_no_stale_sub_network(exported, solved):
     )
 
 
+@pytest.mark.parametrize(
+    ("ctype", "attr"), [("Line", "mu_upper"), ("Bus", "marginal_price")]
+)
+def test_a_result_a_re_solve_leaves_out_reads_as_its_default(
+    exported, solved, ctype, attr
+):
+    """A results layer restates `base`'s results it does not write at their default.
+
+    Notes
+    -----
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    """
+    n = PyPSA.build(_results_over(exported, solved).record)
+    n.c[ctype].dynamic[attr] = pd.DataFrame(
+        1.0, index=n.snapshots, columns=n.c[ctype].static.index
+    )
+    base = _results_over(exported, n)
+    n = PyPSA.build(base.record)
+    n.c[ctype].dynamic[attr] = n.c[ctype].dynamic[attr].iloc[:, :0]
+    resolved = _results_over(base, n)
+
+    def read(revision, name):
+        return revision.record.attributes[name].collect().to_pandas()
+
+    stale = read(base, attr)
+    keys = [c for c in stale.columns if c not in ("breakpoint", "value")]
+    values = stale[keys].merge(read(resolved, attr), on=keys)["value"]
+    assert (stale["value"] == 1.0).all()
+    assert len(values) == len(stale)
+    default = resolved.record.schema.attributes[attr].default
+    assert (values.isna() if default is None else values == default).all(), (
+        "the stale value is gone"
+    )
+    pd.testing.assert_frame_equal(read(resolved, "p_nom"), read(base, "p_nom"))
+
+
 @pytest.mark.parametrize("results_only", [True, False])
 def test_results_only_takes_base_exactly_with_it(single_revision, solved, results_only):
     """A results layer is written over the record it was built from, a full export over nothing.
