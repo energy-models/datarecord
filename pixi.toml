@@ -25,6 +25,9 @@ duckdb = ">=1.5.4,<2"
 narwhals = ">=2,<3,!=2.21.0"
 pydantic = ">=2.12"
 
+[pypi-dependencies]
+mathspec = { git = "https://github.com/energy-models/mathspec.git", rev = "70aebbff6c7f49ad789b89201d45d5164d90599e" }
+
 [feature.test.dependencies]
 pytest = "*"
 pytest-cov = "*"
