@@ -216,8 +216,7 @@ class Workspace:
                 f"through that"
             )
             raise ValueError(msg)
-        bare = schema.model_copy(update={"id": None})
-        return _record(DirectorySource(base, bare, self, schema.id), workspace=self)
+        return _record(DirectorySource(base, schema, self, schema.id), workspace=self)
 
     def write(self, source: LayerData | RecordLike, uri: str) -> Record:
         """Write `source` as a standalone record at `uri`, and read it back.
@@ -503,7 +502,7 @@ def _manifest(schema: Schema, id: UUID) -> str:
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    return json.dumps({"id": str(id), **json.loads(schema.model_dump_json())})
+    return schema.model_copy(update={"id": id}).model_dump_json()
 
 
 def _process_store(uri: str) -> Store:

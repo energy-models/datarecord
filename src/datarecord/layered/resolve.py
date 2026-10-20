@@ -1083,7 +1083,8 @@ def write_schema(schema: Schema, store: Store) -> None:
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
-    store.files.write_text(store.manifest_uri, schema.model_dump_json(), expect=None)
+    tree = schema.model_copy(update={"id": None})
+    store.files.write_text(store.manifest_uri, tree.model_dump_json(), expect=None)
 
 
 # -- public API -------------------------------------------------------------

@@ -170,7 +170,7 @@ All notable changes to datarecord are documented here. The format follows
   every model it nests refuse a key they do not declare with pydantic's
   `ValidationError`, so a misspelt or removed field is no longer ignored.
 - **A standalone record's id is `Schema.id`**, an optional field its
-  `manifest.json` carries as before; a record's `schema.id` is `None`, and a
+  `manifest.json` carries as before and the record's `schema.id` answers; a
   tree's manifest still carries none.
 
 ### Added

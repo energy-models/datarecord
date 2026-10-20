@@ -216,6 +216,7 @@ def reconcile_schema(schema: Schema, store: Store) -> None:
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
     """
+    schema = schema.model_copy(update={"id": None})
     files = store.files
     for attempt in range(_ATTEMPTS):
         found = files.read_text(store.manifest_uri)

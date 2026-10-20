@@ -1316,7 +1316,7 @@ def test_a_standalone_write_of_the_record_is_flattened(staged, root, tmp_path):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     out = str(tmp_path / "flat")
     record = root.store.workspace.write(staged, out)
-    assert record.schema == staged.schema
+    assert record.schema == staged.schema.model_copy(update={"id": record.schema.id})
     members = _entity_axis(record)
     assert _entity_values(record, "p_nom")["Manchester Wind"] == 150.0
     # Flattened: every component is present, not left to a parent to supply.
