@@ -10,10 +10,9 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | ----------------------------------------------------------------------------------- |
 | Title    | combining a record with an extension                                                |
 | Author   | Jonas Hörsch, Bryn Pickering                                                        |
-| Status   | Draft 2026-10-14                                                                    |
+| Status   | Rejected 2026-10-20                                                                 |
 | Requires | [DEP 12](dep-0012-properties.md), [DEP 13](dep-0013-buses-and-carriers-are-dims.md) |
 | Created  | 2026-10-14                                                                          |
-| Version  | Unreleased                                                                          |
 
 ## Abstract
 
