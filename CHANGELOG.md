@@ -194,6 +194,19 @@ All notable changes to datarecord are documented here. The format follows
   group cascade, the writer's live-label check and the label and trait check
   of `set` now cover every dim. `Schema.axis_key` is gone. `PyPSA.results`
   no longer carries an always-NULL `period` column.
+- **Traits are gone** (breaking): `Trait`, `Schema.traits`,
+  `Schema.attributes_for` and `Schema.properties_for` are removed. An
+  attribute reaches every label its `dims` address and a property every
+  label of its subject, whatever their categories: a NULL on a categorized
+  dim reaches every label, `flags(**categories)` holds every attribute with
+  a row reaching a matching label, and `set` no longer refuses a label whose
+  category lacked the attribute. Scope a value with a category keyword,
+  `set("p_max_pu", 0.9, ctype="Generator")`. The PyPSA tool keeps the
+  per-type vocabulary itself: `build` leaves out a value its type does not
+  take, reported in the new `Requirements.ignored` without failing
+  `verify`, and `to_datarecord` records a network's custom entity columns
+  per type in the schema's `meta`. Every record declaring traits is
+  re-exported.
 
 ### Fixed
 

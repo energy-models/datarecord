@@ -760,50 +760,26 @@ class WorkingRecord(Record):
         for c, given in coords.items():
             if c in coordinates:
                 labels = list(given) if _is_labels(given) else [given]
-                self._require_labels(attribute, coordinates[c], labels)
+                self._require_labels(coordinates[c], labels)
 
-    def _require_labels(self, attribute: str, dim: str, labels: Sequence[Any]) -> None:
-        """Reject labels of a `partial` dim the record does not resolve, or whose categories lack `attribute`.
+    def _require_labels(self, dim: str, labels: Sequence[Any]) -> None:
+        """Reject labels of a `partial` dim the record does not resolve.
 
         Only a `partial` dim with an axis some layer wrote: its label is what
         the fold keys a row by, so a value for one no layer declares would
-        resolve to nothing - caught here rather than dropped at read time. Its
-        categories are checked only where one coordinate of `attribute` alone
-        is over `dim`; a label of no category passes.
+        resolve to nothing - caught here rather than dropped at read time.
 
         Raises
         ------
         KeyError
-            Naming the unknown labels, or the labels whose categories do not carry
-            `attribute`.
+            Naming the unknown labels.
 
         Notes
         -----
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
-        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         """
-        if dim not in (self.schema.partial or ()):
-            return
-        axis = self.resolver.axis(dim)
-        if axis is None:
-            return
-        drawing = [
-            c for c, d in _flat_coordinates(self.schema, attribute).items() if d == dim
-        ]
-        keys = (
-            [k for k in self.schema.categorizing(dim) if k in axis.columns]
-            if len(drawing) == 1
-            else []
-        )
-        found = self._require_existing(dim, labels, keys)
-        refused = sorted(
-            f"{n!r} is {' and '.join(f'{k} {v!r}' for k, v in c.items())}"
-            for n, c in found.items()
-            if c and attribute not in self.schema.attributes_for(dim, **c)
-        )
-        if refused:
-            msg = f"{attribute!r} is not carried where {', '.join(refused)}"
-            raise KeyError(msg)
+        if dim in (self.schema.partial or ()) and self.resolver.axis(dim) is not None:
+            self._require_existing(dim, labels)
 
     def set(
         self,
@@ -857,8 +833,7 @@ class WorkingRecord(Record):
         KeyError
             On an undeclared attribute, result or keyword, a `partial` dim's
             label the record does not resolve, a property's label no layer
-            wrote, a value of a property `into` a dim naming no label of it, or
-            a label whose categories do not carry `attribute`.
+            wrote, or a value of a property `into` a dim naming no label of it.
         ValueError
             On a property with `kind="outputs"`, a keyword the attribute does
             not vary over, a sequence with no single list keyword to align to,
@@ -911,7 +886,6 @@ class WorkingRecord(Record):
             keys, values = normalise_value(value)
             if kind == "inputs":
                 self._require_labels(
-                    attribute,
                     _flat_coordinates(self.schema, attribute)[key],
                     cast("list[Any]", keys),
                 )
@@ -1049,15 +1023,9 @@ class WorkingRecord(Record):
         self,
         dim: str,
         labels: Sequence[Any],
-        keys: Sequence[str] = (),
         why: str = "a value for a label no layer declares would resolve to nothing",
-    ) -> dict[str, dict[str, str]]:
+    ) -> None:
         """Reject labels of `dim` the record as staged does not resolve, saying `why`.
-
-        Returns
-        -------
-        dict of str to dict of str to str
-            Per label, its value of each of `keys` that is not NULL.
 
         Raises
         ------
@@ -1066,25 +1034,23 @@ class WorkingRecord(Record):
         """
         wanted = list(dict.fromkeys(str(n) for n in labels if n is not None))
         axis = self.resolver.axis(dim)
-        rows = (
-            []
+        found = (
+            set()
             if axis is None
-            else nw.from_native(axis)
-            .lazy()
-            .filter(nw.col(dim).cast(nw.String()).is_in(wanted))
-            .select(dim, *keys)
-            .collect()
-            .iter_rows()
+            else {
+                str(row[0])
+                for row in nw.from_native(axis)
+                .lazy()
+                .filter(nw.col(dim).cast(nw.String()).is_in(wanted))
+                .select(dim)
+                .collect()
+                .iter_rows()
+            }
         )
-        found = {
-            str(row[0]): {k: str(v) for k, v in zip(keys, row[1:]) if v is not None}
-            for row in rows
-        }
         unknown = [n for n in wanted if n not in found]
         if unknown:
             msg = f"no {dim!r} label {unknown}; `add` them first - {why}"
             raise KeyError(msg)
-        return found
 
     def _require_live(self, subject: str, data: Mapping[str, Sequence[Any]]) -> None:
         """Reject a value of a property of `subject` `into` a dim naming no label of it, as staged.
@@ -1220,7 +1186,7 @@ class WorkingRecord(Record):
             if field is None:
                 continue
             labels = lazy.select(field.alias("n")).unique().collect()["n"].to_list()
-            self._require_labels(attribute, dim, labels)
+            self._require_labels(dim, labels)
 
     def _insert(
         self,

@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | ---------------------------------------------------------------------------------------------------- |
 | Title    | remove traits                                                                                        |
 | Author   | Jonas Hoersch                                                                                        |
-| Status   | Draft (2026-10-20)                                                                                   |
+| Status   | Implemented (2026-10-20)                                                                             |
 | Created  | 2026-10-20                                                                                           |
 | Version  | Unreleased                                                                                           |
 | Replaces | [DEP 1](dep-0001-dims-groups-traits.md) (its traits), [DEP 3](dep-0003-trait-switches.md) (switches) |

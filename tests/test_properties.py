@@ -14,20 +14,13 @@ import pytest
 
 from datarecord.layered.resolve import write_schema
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import (
-    AttributeSpec,
-    Dimension,
-    Group,
-    PropertySpec,
-    Schema,
-    Trait,
-)
+from datarecord.schema import AttributeSpec, Dimension, Group, PropertySpec, Schema
 from tests.fixtures import empty_root
 
 
 @pytest.fixture
 def schema():
-    """`control` and `p_max_pu` are a generator's only; `sign` defaults by type.
+    """`sign` defaults by type.
 
     `x` is an attribute and a property of `bus`, `bus` a dim and a property of
     `entity`.
@@ -60,19 +53,13 @@ def schema():
             "x": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
         },
         groups={"connection": Group(over={"entity": "entity", "bus": "bus"})},
-        traits={
-            "generator": Trait(
-                attributes=frozenset({"p_max_pu", "entity.control"}),
-                on={"entity.ctype": frozenset({"Generator"})},
-            ),
-        },
         partial=frozenset({"entity", "connection"}),
     )
 
 
 @pytest.fixture
 def revision(store, schema):
-    """A generator and a load, each connected to one bus, `p_max_pu` and `p_set` set."""
+    """A generator and a load, each connected to one bus; the generator's `p_max_pu` and the load's `p_set` set."""
     write_schema(schema, store)
     root = empty_root(store)
     staged = WorkingRecord(root.record)
@@ -92,7 +79,7 @@ def revision(store, schema):
             backend="pandas",
         ),
     )
-    staged.set("p_max_pu", 0.9)
+    staged.set("p_max_pu", 0.9, ctype="Generator")
     staged.set("p_set", 1.0, entity="l1")
     staged.set("efficiency", 0.5, entity="l1", bus="b0")
     return root.child(staged.edits)
@@ -128,10 +115,10 @@ def test_flags_refuse_a_plain_property(record):
         record.flags(carrier="wind")
 
 
-def test_flags_per_category_hold_what_the_category_carries(record):
+def test_flags_per_category_hold_the_rows_reaching_its_labels(record):
     assert set(record.flags()) == {"p_max_pu", "p_set", "efficiency"}
     assert set(record.flags(ctype="Load")) == {"p_set", "efficiency"}, (
-        "p_max_pu is a Generator's only; efficiency reaches l1 through connection"
+        "p_max_pu was set on generators; efficiency reaches l1 through connection"
     )
     assert set(record.flags(ctype="Generator")) == {"p_max_pu"}, (
         "p_set has no row on a generator"
@@ -176,8 +163,8 @@ def test_set_of_a_category_re_categorizes_labels_and_flags(revision, committed):
     types = {e: r["ctype"] for e, r in _rows(record.properties["entity"]).items()}
     assert types == {"g1": "Load", "l1": "Load"}, "g1 is a load now"
     assert set(record.flags(ctype="Generator")) == set(), "no generator is left"
-    assert set(record.flags(ctype="Load")) == {"p_set", "efficiency"}, (
-        "the broadcast p_max_pu reaches no load, g1 included"
+    assert set(record.flags(ctype="Load")) == {"p_max_pu", "p_set", "efficiency"}, (
+        "g1 keeps the p_max_pu row set on it as a generator"
     )
 
 

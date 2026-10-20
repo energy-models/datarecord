@@ -264,14 +264,8 @@ def test_a_new_attribute_is_a_schema_amendment(store, network):
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
     amended = read_schema(store)
-    # Declared once, record-wide, then narrowed to the type that carries it -
-    # the two halves an amendment now has.
     amended.attributes["p_min_pu"] = AttributeSpec(
         dtype=nw.Float64(), dims={"entity", "snapshot"}, default=0.25
-    )
-    was = amended.traits["Generator"]
-    amended.traits["Generator"] = was.model_copy(
-        update={"attributes": was.attributes | {"p_min_pu"}}
     )
     write_schema(amended, store)
 
@@ -289,7 +283,7 @@ def test_a_new_attribute_is_a_schema_amendment(store, network):
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
     # And the amendment is visible from the record, not just from the layer
     # that happens to carry a row for it.
-    assert "p_min_pu" in child.record.schema.attributes_for("entity", ctype="Generator")
+    assert "p_min_pu" in child.record.schema.attributes
 
 
 def test_a_schema_narrowing_is_refused(store, parent):

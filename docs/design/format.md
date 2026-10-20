@@ -33,9 +33,9 @@ It is **an axis file like any other**, with nothing about it particular to `enti
 
 - **Membership.** An entity exists because it has a row here.
 - **Its tombstone.** Deleting an entity is a `deleted` row here, and the fold reads its tombstones from the file it folds membership from: membership from one source and deletions from another would resolve a deletion the fold never saw.
-- **Its properties**, one column each — `ctype`, `carrier`, `sign` in PyPSA's schema — NULL on a row whose [categories](schema.md#categories-an-enum-property-of-a-partial-dim) do not carry it.
+- **Its properties**, one column each — `ctype`, `carrier`, `sign` in PyPSA's schema — NULL where no layer wrote one.
 
-**One layout, categories or none.** A record whose entities have categories and one whose entities have none differ by a column: there is no per-category member file. Per-type files existed because every type had a different column set; the schema now says which properties each category carries (`properties_for`), so a category's frame is a filter on its property and a projection to those columns — recoverable from one file, where per-category files would state each entity's category twice, once in a column and once in a filename. Parquet stores an all-NULL column chunk for almost nothing and DuckDB reads only what it projects. Only a per-category `dtype` would need per-category files, and [a subject's property has one spec](schema.md#properties).
+**One layout, categories or none.** A record whose entities have categories and one whose entities have none differ by a column: there is no per-category member file. Per-type files existed because every type had a different column set; every label now carries every property of its dim, so a category's frame is a filter on its property — recoverable from one file, where per-category files would state each entity's category twice, once in a column and once in a filename. Parquet stores an all-NULL column chunk for almost nothing and DuckDB reads only what it projects. Only a per-category `dtype` would need per-category files, and [a subject's property has one spec](schema.md#properties).
 
 ## Where a value lives
 

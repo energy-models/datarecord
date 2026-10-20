@@ -2,111 +2,34 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Which labels of a categorized dim carry what, and the properties they read.
+"""Selecting labels of a categorized dim, and the defaults its properties read.
 
-Every answer is the schema's (`Schema.attributes_for`, `properties_for`,
-`default_for`), asked once per category combination a relation holds.
+Every default is the schema's (`Schema.default_for`), asked once per category
+combination a relation holds.
 
 Notes
 -----
-- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-- [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
+- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
+- [default_by](https://energy-models.github.io/datarecord/design/schema/#default_by-a-default-per-category)
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from functools import reduce
-from itertools import product
 from typing import Any
 
-import duckdb
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb import StarExpression as star
 
-from datarecord.duck import DuckTypes, ex_all, fn, null_safe
+from datarecord.duck import DuckTypes, ex_all, null_safe
 from datarecord.schema import Schema
 
 Categories = Mapping[str, "str | Sequence[str]"]
 """Per categorizing property, the one category or the categories to select."""
-
-
-def narrowed(schema: Schema, dim: str, attributes: Sequence[str]) -> list[str]:
-    """Those of `attributes` that not every label of `dim` carries."""
-    everywhere = schema.attributes_for(dim)
-    return [a for a in attributes if a not in everywhere]
-
-
-def label_carriers(
-    schema: Schema,
-    axis: DuckDBPyRelation,
-    dim: str,
-    attributes: Sequence[str],
-    con: DuckDBPyConnection,
-) -> DuckDBPyRelation:
-    """`(dim, attribute)` for each label of `axis` carrying one of `attributes`.
-
-    Judged by the category combinations `axis` holds when called.
-    """
-
-    def carried(cats: dict[str, str]) -> list[Expression]:
-        carrying = schema.attributes_for(dim, **cats)
-        names = [a for a in attributes if a in carrying]
-        return [lit(names).cast("VARCHAR[]").alias("attribute")]
-
-    return _per_combination(schema, dim, axis, carried, con).project(
-        col("r", dim), fn.unnest(col("t", "attribute")).alias("attribute")
-    )
-
-
-def carriers(
-    schema: Schema,
-    axes: Mapping[str, DuckDBPyRelation],
-    groups: Mapping[str, DuckDBPyRelation],
-    coordinate: str,
-    attributes: Sequence[str],
-    con: DuckDBPyConnection,
-) -> tuple[list[str], DuckDBPyRelation | None]:
-    """Of `attributes` over `coordinate`, the narrowed ones and who carries them.
-
-    A group's tuple carries what the label its field over a categorized dim
-    names carries; a group with several such fields narrows nothing.
-
-    Returns
-    -------
-    list of str
-        The narrowed attributes.
-    DuckDBPyRelation or None
-        `(coordinate, attribute)` per carrying label or tuple, `None` where
-        nothing is narrowed.
-    """
-    if coordinate in axes:
-        names = narrowed(schema, coordinate, attributes)
-        if not names:
-            return [], None
-        return names, label_carriers(schema, axes[coordinate], coordinate, names, con)
-    fields = [
-        (f, d, names)
-        for f, d in schema.groups[coordinate].over.items()
-        if d in axes and (names := narrowed(schema, d, attributes))
-    ]
-    if len(fields) != 1:
-        return [], None
-    [(field, dim, names)] = fields
-    labels = label_carriers(schema, axes[dim], dim, names, con).set_alias("c")
-    rel = (
-        groups[coordinate]
-        .set_alias("g")
-        .join(
-            labels,
-            fn.struct_extract(col("g", coordinate), lit(field)) == col("c", dim),
-        )
-        .project(col("g", coordinate), col("c", "attribute"))
-    )
-    return names, rel
 
 
 def categorized_dim(schema: Schema, categories: Categories) -> str:
@@ -161,15 +84,6 @@ def matching(
     )
 
 
-def attributes_among(
-    schema: Schema, dim: str, chosen: Mapping[str, Sequence[str]]
-) -> set[str]:
-    """The attributes a label of any combination of `chosen` carries."""
-    return _carried_by_any(
-        schema.attributes_for, dim, list(chosen), product(*chosen.values())
-    )
-
-
 def with_defaults(
     schema: Schema,
     subject: str,
@@ -177,48 +91,24 @@ def with_defaults(
     names: Sequence[str],
     con: DuckDBPyConnection,
 ) -> DuckDBPyRelation:
-    """`rel` projected to `subject` and `names`, an unset name read as its default.
-
-    A label not carrying a name reads NULL for it, a stored value included.
-    """
+    """`rel` projected to `subject` and `names`, an unset name read as its default."""
     if not names:
         return rel.project(col(subject))
     duck = DuckTypes(con)
 
     def columns(cats: dict[str, str]) -> list[Expression]:
-        carried = schema.properties_for(subject, **cats)
         return [
-            *(lit(n in carried).alias(f"_carries_{n}") for n in names),
-            *(
-                duck.lit(
-                    schema.default_for(f"{subject}.{n}", **cats),
-                    schema.properties[subject][n].dtype,
-                ).alias(f"_default_{n}")
-                for n in names
-            ),
+            duck.lit(
+                schema.default_for(f"{subject}.{n}", **cats),
+                schema.properties[subject][n].dtype,
+            ).alias(f"_default_{n}")
+            for n in names
         ]
 
     return _per_combination(schema, subject, rel, columns, con).project(
         col("r", subject),
-        *(
-            duckdb.CaseExpression(
-                col("t", f"_carries_{n}"),
-                coalesce(col("r", n), col("t", f"_default_{n}")),
-            ).alias(n)
-            for n in names
-        ),
+        *(coalesce(col("r", n), col("t", f"_default_{n}")).alias(n) for n in names),
     )
-
-
-def carried_properties(schema: Schema, dim: str, rel: DuckDBPyRelation) -> list[str]:
-    """The properties of `dim` a label of `rel` carries, in declaration order.
-
-    Judged by the category combinations `rel` holds when called.
-    """
-    carried = _carried_by_any(
-        schema.properties_for, dim, *_combinations(schema, dim, rel)
-    )
-    return [n for n in schema.properties.get(dim, {}) if n in carried]
 
 
 def with_properties(
@@ -246,18 +136,8 @@ def _combinations(
 
 
 def _categories_of(keys: Sequence[str], combo: Sequence[Any]) -> dict[str, str]:
-    """`combo` by key, a NULL category left out, so it matches no trait or `default_by` keyed on it."""
+    """`combo` by key, a NULL category left out, so it matches no `default_by` keyed on it."""
     return {k: c for k, c in zip(keys, combo, strict=True) if c is not None}
-
-
-def _carried_by_any(
-    carried: Callable[..., Mapping[str, Any]],
-    subject: str,
-    keys: Sequence[str],
-    combos: Iterable[Sequence[Any]],
-) -> set[str]:
-    """The union of `carried(subject, **categories)` over `combos`."""
-    return {n for c in combos for n in carried(subject, **_categories_of(keys, c))}
 
 
 def _per_combination(
@@ -270,7 +150,7 @@ def _per_combination(
     """`rel` as `r`, joined on its categories to `t`, `columns` of them.
 
     `t` is built eagerly, one row per category combination `rel` holds when
-    called, so the trait and default rules stay the schema's.
+    called, so the default rules stay the schema's.
     """
     keys, combos = _combinations(schema, subject, rel)
     types = dict(zip(rel.columns, rel.types, strict=True))

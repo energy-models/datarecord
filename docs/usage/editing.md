@@ -22,7 +22,8 @@ w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per label, positiona
 w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per label, keyed
 w.set("p_max_pu", frame, entity=["wind1"])  # a long frame
 w.set("p_max_pu", series.rename_axis("snapshot"), entity="wind1")  # a series
-w.set("p_max_pu", 0.9)  # every label carrying it, now and later
+w.set("p_max_pu", 0.9)  # every entity, loads included, now and later
+w.set("p_max_pu", 0.9, ctype="Generator")  # every generator there is now
 w.set("p_max_pu", 0.8, ctype="Generator", carrier="wind")  # the ones there are now
 w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
 w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped to one scenario
@@ -31,7 +32,7 @@ w.set("bus.x", 10.2, bus="north")  # not `x`, an attribute of its own
 w.set("p", solved_frame, kind="outputs")  # a result
 ```
 
-**Every coordinate is a keyword**, a group's fields included — `bus="north"` with `entity="dc"` addresses one connection, `from=`/`to=` one corridor. A coordinate no keyword names is NULL, which means "every label of it": on a categorized dim, every label whose categories carry the attribute, including ones added later. A group's fields must all be given or none, since a group value is a whole tuple ([design](../design/working-record.md#set)).
+**Every coordinate is a keyword**, a group's fields included — `bus="north"` with `entity="dc"` addresses one connection, `from=`/`to=` one corridor. A coordinate no keyword names is NULL, which means "every label of it": every entity, loads included, and ones added later. A group's fields must all be given or none, since a group value is a whole tuple ([design](../design/working-record.md#set)).
 
 **A property as a keyword selects labels at call time**: a keyword is bare, a coordinate of the attribute first, else any property of a dim it reaches, so `ctype="Generator", carrier="wind"` stages one row per label matching both on the record as staged. A label added later is not reached; a plain NULL is how a value reaches those. A name several reached dims declare a property of is refused: set it per dim.
 

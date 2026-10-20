@@ -87,7 +87,7 @@ So `x` is a line's reactance and `bus.x` a bus's coordinate, each addressed by i
 `entity.carrier` and `bus.carrier` are [`into`](schema.md#properties) `carrier`, `bus.carrier` defaulting to `AC`.
 `to_datarecord` writes both axes in PyPSA's order, adds every carrier a component or bus names but `n.carriers` does not list, and stores PyPSA's `""` carrier as NULL, naming none; `build` rebuilds `n.buses` and `n.carriers` from the axis, the properties with their defaults and the attribute rows, a series by its [flags](record.md#flags), and the bus results from `outputs`.
 
-**A custom column clashes only with an attribute.** A static column PyPSA's registry lacks is an attribute over its type's dim, carried by that type alone where the dim is `entity`. One name being one spec among attributes and results, custom `Bus.country` beside custom `Generator.country` would be `country` with two `dims`, and `Carrier.efficiency` meets the per-port `efficiency`: `to_datarecord` reports either via `Requirements.columns`. A name a property has does not clash, so a custom `Generator.location` is an attribute beside `bus.location`.
+**A custom column clashes only with an attribute.** A static column PyPSA's registry lacks is an attribute over its type's dim, built onto that type alone where the dim is `entity` ([below](#a-value-its-type-does-not-take)). One name being one spec among attributes and results, custom `Bus.country` beside custom `Generator.country` would be `country` with two `dims`, and `Carrier.efficiency` meets the per-port `efficiency`: `to_datarecord` reports either via `Requirements.columns`. A name a property has does not clash, so a custom `Generator.location` is an attribute beside `bus.location`.
 `Line.v_nom` and `ShuntImpedance.v_nom`, which PyPSA's `calculate_dependent_values` copies from the bus, are no custom column: they are not written, and `build` gets them back as PyPSA recomputes them.
 
 **A multi-period network's snapshots are one flat axis.** PyPSA's `(period, timestep)` snapshots are the `snapshot` axis, each with its period as `snapshot.period`, a property [`into`](schema.md#properties) `period`; `period` is an axis of its own beside it.
@@ -103,6 +103,14 @@ The tool's own `Schema` reconciles vocabularies: per entity type, which record a
 Since [the schema](schema.md) makes a record's attribute names _declared_ rather than conventional, this maps one declared vocabulary to another.
 
 Frames are built and handed over one entity type at a time, so peak memory is one type's frames rather than the whole model.
+
+## A value its type does not take
+
+A record carries every attribute on every label it addresses ([the schema](schema.md#an-attribute-reaches-every-label-it-addresses)), so `set("p_max_pu", 0.9)` stores a value a load reaches. Which attributes and `entity` properties a type takes is PyPSA's registry, and the tool keeps it: `build` hands a type only the names it takes, so the load's value is left out, never assigned.
+
+A type takes its registry inputs and the custom columns its network was exported with, which `to_datarecord` records per type in the schema's `meta`; a name no type claims — an attribute a record adds — reaches every type. So a custom `Generator.e_nom` is built onto generators, though the registry gives `e_nom` to stores.
+
+`verify` reports each `(type, attribute)` a stored value is left out for as `Requirements.ignored`; an `entity` property left out goes unreported, since its column exists on every member whatever its type. The report is like a type it does not know — but a report, not a failure: `ignored` leaves the result falsy, and `build` does not raise for it. A value scoped to the types taking it is written per label, `set("p_max_pu", 0.9, ctype="Generator")`.
 
 ## Results on connections
 

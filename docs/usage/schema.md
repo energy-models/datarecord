@@ -10,7 +10,7 @@ One schema per record, written down as `manifest.json` ([design](../design/schem
 
 ```python
 import narwhals as nw
-from datarecord import Schema, Dimension, AttributeSpec, PropertySpec, Group, Trait
+from datarecord import Schema, Dimension, AttributeSpec, PropertySpec, Group
 
 schema = Schema(
     version=1,
@@ -63,12 +63,6 @@ schema = Schema(
             dtype=nw.Float64(), dims={"connection", "timestep"}, default=1.0
         ),
     },
-    traits={
-        "dispatchable": Trait(
-            attributes={"p_max_pu", "p_min_pu"},
-            on={"entity.ctype": {"Generator", "StorageUnit"}},
-        )
-    },
     partial={"entity", "bus", "scenario", "connection"},
 )
 ```
@@ -83,12 +77,19 @@ schema = Schema(
   w.set("bus.country", "FR", bus="north")  # refused: no `country` label FR
   ```
 
-- **An `Enum` property of a `partial` dim categorizes it**: its values are the dim's categories, which traits and `default_by` key on by its dotted name. `ctype` above is one; a dim may have several, and no name is special. `Schema.categorizing("entity")` lists them ([design](../design/schema.md#categories-an-enum-property-of-a-partial-dim)).
+- **An `Enum` property of a `partial` dim categorizes it**: its values are the dim's categories, which `default_by` keys on by its dotted name and a `set` or `flags` keyword selects by. `ctype` above is one; a dim may have several, and no name is special. `Schema.categorizing("entity")` lists them ([design](../design/schema.md#categories-an-enum-property-of-a-partial-dim)).
 - **`default_by`** overrides `default` per category, on properties and attributes alike: the first key listing the label's category wins. `Schema.default_for("p_min_pu", ctype="StorageUnit")` answers `-1.0` ([design](../design/schema.md#default_by-a-default-per-category)).
-- **`attributes` is data**, and flat — one name, one spec, record-wide, across attributes and results; a property may share an attribute's name, `Schema.resolve` telling `x` from `bus.x`. **A `Trait` narrows** attributes (and properties) to the labels whose category its `on` names. One no trait claims is carried by every label its `dims` can address, so `p_nom` above reaches every entity while `p_max_pu` reaches only generators and storage units. `Schema.attributes_for("entity", ctype="Generator")` and `Schema.properties_for(...)` resolve what a category carries ([design](../design/schema.md#traits)).
+- **`attributes` is data**, and flat — one name, one spec, record-wide, across attributes and results; a property may share an attribute's name, `Schema.resolve` telling `x` from `bus.x`. **An attribute reaches every label its `dims` address**, whatever its category, so `p_nom` and `p_max_pu` above reach every entity. A value for some kinds of label is scoped by the write, one row per label; which kinds a framework reads a name for is the tool's business ([design](../design/schema.md#an-attribute-reaches-every-label-it-addresses)):
+
+  ```python
+  w.set("p_max_pu", 0.9, ctype="Generator")  # one row per generator
+  w.set("p_max_pu", 0.9, ctype=["Generator", "StorageUnit"])
+  w.set("p_max_pu", 0.9)  # every entity; PyPSA reads no load's
+  ```
+
 - **`AttributeSpec.dims`** is the only addressing mechanism, naming dims and groups alike — `efficiency` is a connection attribute because its `dims` name the group, carried as one struct column ([design](../design/schema.md#addressing-dims-x)). It is what makes a scenario-varying `p_nom` a violation rather than data. Every attribute lands in `inputs/`, whatever its `dims`, so widening one is a compatible change that moves no file.
 - **`Group`** declares which tuples over several dims exist, mapping coordinate name → dim; a list is sugar where the two coincide. `connection` over `(entity, bus)` is the one every network has. Adding **`into`** declares the group _functional_ into that dim — each `over` tuple carrying exactly one of its labels — which is a constraint checkable on write; it needs two coordinates or more, one being a property `into` the dim ([design](../design/schema.md#into-a-group-that-classifies)).
-- **`partial`** is the layering granularity — which dims and groups a layer may patch value by value, and the fold key. `entity` in it lets a layer patch one entity, and is required for its categories to key traits and defaults. `bus` and `scenario` are patchable, `carrier` restated whole, a few rows; `timestep` is not patchable, so a patch to one hour restates that entity's whole series rather than leaving a curve resolved across two layers with a hole in it ([design](../design/schema.md#partial-the-granularity-of-an-override)). A group is the same: with `connection` in it a layer patches one connection's `efficiency`, without it the layer restates every connection's.
+- **`partial`** is the layering granularity — which dims and groups a layer may patch value by value, and the fold key. `entity` in it lets a layer patch one entity, and is required for its categories to key defaults. `bus` and `scenario` are patchable, `carrier` restated whole, a few rows; `timestep` is not patchable, so a patch to one hour restates that entity's whole series rather than leaving a curve resolved across two layers with a hole in it ([design](../design/schema.md#partial-the-granularity-of-an-override)). A group is the same: with `connection` in it a layer patches one connection's `efficiency`, without it the layer restates every connection's.
 - **`unit`** and **`description`** are stored and never interpreted — no conversion, no dimensional analysis. `None` is undeclared, `""` genuinely dimensionless ([design](../design/schema.md#unit-and-description)).
 
 ## Compatibility

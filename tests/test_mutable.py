@@ -24,7 +24,6 @@ from datarecord.schema import (
     Group,
     PropertySpec,
     Schema,
-    Trait,
 )
 from tests.fixtures import empty_root, export_network, schema, unpacked
 
@@ -539,10 +538,7 @@ def test_add_then_commit_makes_a_label_exist(staged, root):
 
 @pytest.fixture
 def units(store):
-    """An empty record over `unit` and `hour`, `unit` carrying a category and a site.
-
-    Only a `plant` carries `capacity`, through a trait on `tech`.
-    """
+    """An empty record over `unit` and `hour`, `unit` carrying a category and a site."""
     write_schema(
         Schema(
             dimensions={
@@ -558,13 +554,6 @@ def units(store):
             attributes={
                 "output": AttributeSpec(dtype=nw.Float64(), dims={"unit", "hour"}),
                 "demand": AttributeSpec(dtype=nw.Float64(), dims={"hour"}),
-                "capacity": AttributeSpec(dtype=nw.Float64(), dims={"unit"}),
-            },
-            traits={
-                "plant": Trait(
-                    attributes=frozenset({"capacity"}),
-                    on={"unit.tech": frozenset({"plant"})},
-                )
             },
             partial=frozenset({"unit"}),
         ),
@@ -624,13 +613,6 @@ def test_set_may_change_a_category(units):
         ),
         (
             "set",
-            ("capacity", pd.Series({"p1": 1.0, "n1": 1.0}).rename_axis("unit")),
-            {},
-            KeyError,
-            "'n1' is tech 'node'",
-        ),
-        (
-            "set",
             ("output", 1.0),
             {"tech": "mill", "hour": [0]},
             ValueError,
@@ -655,7 +637,6 @@ def test_set_may_change_a_category(units):
         "unknown-label",
         "unknown-category",
         "add-unknown-category",
-        "label-of-wrong-kind",
         "keyword-unknown-category",
         "keyword-and-label",
         "keyword-reaching-no-coordinate",
@@ -664,14 +645,11 @@ def test_set_may_change_a_category(units):
 def test_an_edit_refuses_an_unknown_label_category_or_keyword(
     units, op, args, kwargs, error, match
 ):
-    """A category is checked against its `Enum`, a label against its kind's traits.
-
-    The error names the label that caused it, not a kind the caller never said.
+    """A category is checked against its `Enum`, a label against the axis.
 
     Notes
     -----
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
-    - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
     """
     with pytest.raises(error, match=match):
         getattr(units, op)(*args, **kwargs)

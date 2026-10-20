@@ -44,7 +44,6 @@ from datarecord.duck import (
     try_read_parquet,
 )
 from datarecord.layered.categories import (
-    attributes_among,
     categorized_dim,
     matching,
     selected,
@@ -163,9 +162,8 @@ class Fold:
         ----------
         categories
             Categorizing properties of one dim, each one category or several:
-            only rows reaching a matching label count, and only attributes
-            those labels carry (`Schema.attributes_for`) are present. None
-            given, every row counts.
+            only rows reaching a matching label count. None given, every row
+            counts.
 
         Raises
         ------
@@ -175,7 +173,7 @@ class Fold:
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
+        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
         """
         dims = self.schema.broadcast_dims
         if not categories:
@@ -186,13 +184,11 @@ class Fold:
             )
         dim = categorized_dim(self.schema, categories)
         chosen = selected(self.schema, dim, categories)
-        carried = attributes_among(self.schema, dim, chosen)
         axis = self.axes.get(dim)
-        if axis is None or not carried:
+        if axis is None:
             return {}
         rows = self._owned_reaching(dim, matching(axis, chosen).project(col(dim)))
-        flags = flags_from_rows(self.schema, dims, self._flag_rows(rows, dims))
-        return {a: f for a, f in flags.items() if a in carried}
+        return flags_from_rows(self.schema, dims, self._flag_rows(rows, dims))
 
     def _owned_reaching(self, dim: str, labels: DuckDBPyRelation) -> DuckDBPyRelation:
         """The owner-map rows naming one of `labels`, on `dim` or a group's field over it.

@@ -25,7 +25,6 @@ from datarecord.schema import (
     Group,
     PropertySpec,
     Schema,
-    Trait,
 )
 from datarecord.store import Store
 
@@ -487,20 +486,14 @@ def schema(
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
     # Callers declare per type, which is how a modelling framework thinks; the
-    # schema stores one spec per attribute, record-wide, and a trait per type
-    # narrows it back. Flattening here keeps the tests readable and is exactly
-    # what a tool does on the way in.
+    # schema stores one spec per attribute, record-wide. Flattening here keeps
+    # the tests readable and is exactly what a tool does on the way in.
     flat: dict[str, AttributeSpec] = {}
-    traits: dict[str, Trait] = {}
-    for ctype, attrs in (attributes or {}).items():
+    for attrs in (attributes or {}).values():
         for attr, spec in attrs.items():
             flat.setdefault(attr, spec)
-        traits[ctype] = Trait(
-            attributes=frozenset(attrs), on={"entity.ctype": frozenset({ctype})}
-        )
     # Declared whether or not a caller named them: a test writing `p_max_pu`
-    # needs it declared, and one passing `attributes=` is narrowing what a type
-    # *carries* rather than shortening the record's vocabulary.
+    # needs it declared.
     for attr, spec in _default_attributes(dims, groups).items():
         flat.setdefault(attr, spec)
     # A group's coordinates are dims like any other, so they are declared here
@@ -517,7 +510,6 @@ def schema(
         dimensions={d: Dimension(dtype=t) for d, t in declared.items()},
         properties={"entity": {"ctype": PropertySpec(dtype=nw.Enum(TYPES))}},
         attributes=flat,
-        traits=traits,
         # The default names `connection`, which a caller's own `groups` may drop.
         partial=frozenset(
             p for p in {"entity", *partial} if p in declared or p in groups

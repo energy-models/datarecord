@@ -25,7 +25,6 @@ from datarecord.schema import (
     Group,
     PropertySpec,
     Schema,
-    Trait,
     flag_type,
 )
 from tests.fixtures import schema as pypsa_schema
@@ -45,7 +44,6 @@ def _schema(**overrides) -> Schema:
             "entity": {"ctype": PropertySpec(dtype=nw.Enum(["Generator", "Link"]))}
         },
         "groups": {"connection": Group(over={"entity": "entity", "bus": "bus"})},
-        # Declared once, record-wide; a trait narrows one to some types.
         "attributes": {
             "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
             "p_max_pu": AttributeSpec(
@@ -59,16 +57,6 @@ def _schema(**overrides) -> Schema:
             # dims, rather than by a field of its own.
             "efficiency": AttributeSpec(
                 dtype=nw.Float64(), dims={"connection", "scenario", "timestep"}
-            ),
-        },
-        "traits": {
-            "dispatchable": Trait(
-                attributes={"p_nom", "p_max_pu", "marginal_cost", "carrier"},
-                on={"entity.ctype": frozenset({"Generator"})},
-            ),
-            "converting": Trait(
-                attributes={"efficiency"},
-                on={"entity.ctype": frozenset({"Link"})},
             ),
         },
         "partial": frozenset({"entity", "scenario"}),
@@ -114,222 +102,30 @@ def test_partial_dims_is_the_union_over_attributes():
     )
 
 
-# -- entity types and traits (https://energy-models.github.io/datarecord/design/schema/#traits) ------------------------------------
+# -- addressing (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives) ------------------------------------
 
 
-def test_an_untraited_attribute_is_carried_by_every_type():
-    """A trait narrows; declaring `entity` in `dims` is what grants.
-
-    `sign` is bundled by no trait, so every type addressed by `entity` carries
-    it - the same thing `dims={"scenario"}` means along the scenario axis.
-    Where `p_max_pu`, which `dispatchable` bundles, reaches Generator alone.
-    """
-    s = _schema(
-        attributes={
-            **_schema().attributes,
-            "sign": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
-        }
-    )
-    assert "p_max_pu" not in s.attributes_for("entity", ctype="Link"), (
-        "narrowed to Generator"
-    )
-    assert "sign" in s.attributes_for("entity", ctype="Link"), (
-        "untraited, so carried by all"
-    )
-    assert "sign" in s.attributes_for("entity", ctype="Generator")
-
-
-def test_an_attribute_addressing_no_entity_reaches_no_type():
-    """A record-level attribute belongs to the record, however few traits name it.
-
-    Default-open is scoped by addressing rather than by trait membership: with
-    no `entity` among its coordinates there is no component for it to reach,
-    so `names=None` targets nothing rather than every component in the record.
-    """
+@pytest.mark.parametrize(
+    ("attribute", "addresses"),
+    [("p_nom", True), ("efficiency", True), ("weighting", False)],
+    ids=["over-entity", "over-a-group-drawing-on-it", "over-another-dim"],
+)
+def test_an_attribute_addresses_entity_through_its_dims_or_a_group(
+    attribute, addresses
+):
+    """`efficiency` is over `connection`, whose coordinates include `entity`."""
     s = _schema(
         attributes={
             **_schema().attributes,
             "weighting": AttributeSpec(dtype=nw.Float64(), dims={"timestep"}),
         }
     )
-    assert not s.addresses("weighting", "entity")
-    assert "weighting" not in s.attributes_for("entity", ctype="Generator")
-
-
-def test_a_group_addressed_attribute_reaches_the_types_it_coordinates():
-    """`efficiency` is over `connection`, whose coordinates include `entity`."""
-    s = _schema()
-    assert s.addresses("efficiency", "entity")
-    assert "efficiency" in s.attributes_for("entity", ctype="Link")
+    assert s.addresses(attribute, "entity") is addresses
 
 
 def _with_entity_property(name: str, spec: PropertySpec) -> dict:
     """`_schema`'s properties with `name` added to `entity`'s."""
     return {"entity": {**_schema().properties["entity"], name: spec}}
-
-
-@pytest.mark.parametrize(
-    ("build", "match"),
-    [
-        pytest.param(
-            lambda: Schema(
-                dimensions={
-                    "entity": Dimension(dtype=nw.String()),
-                    "bus": Dimension(dtype=nw.String()),
-                    "country": Dimension(dtype=nw.String()),
-                },
-                attributes={
-                    "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})
-                },
-                traits={"t": Trait(attributes={"p_nom"}, on={"country": {"DE"}})},
-                partial=frozenset(),
-            ),
-            "which is no property",
-            id="a-dim",
-        ),
-        pytest.param(
-            lambda: _schema(
-                properties=_with_entity_property(
-                    "kind", PropertySpec(dtype=nw.String())
-                ),
-                traits={"t": Trait(attributes={"p_nom"}, on={"entity.kind": {"wind"}})},
-            ),
-            "is no `Enum` property",
-            id="a-string-property",
-        ),
-        pytest.param(
-            lambda: _schema(
-                properties={
-                    **_schema().properties,
-                    "period": {"era": PropertySpec(dtype=nw.Enum(["old", "new"]))},
-                },
-                traits={"t": Trait(attributes={"p_nom"}, on={"period.era": {"old"}})},
-            ),
-            "`partial` does not list",
-            id="a-property-of-a-non-partial-dim",
-        ),
-        pytest.param(
-            lambda: _schema(
-                properties={
-                    **_schema().properties,
-                    "connection": {"role": PropertySpec(dtype=nw.Enum(["in", "out"]))},
-                },
-                partial=frozenset({"entity", "scenario", "connection"}),
-                traits={
-                    "t": Trait(attributes={"p_nom"}, on={"connection.role": {"in"}})
-                },
-            ),
-            "a group is never categorized",
-            id="a-group-property",
-        ),
-        pytest.param(
-            lambda: _schema(
-                traits={
-                    "t": Trait(attributes={"p_nom"}, on={"entity.ctype": {"Store"}})
-                }
-            ),
-            "not categories of 'entity.ctype'",
-            id="an-unknown-category",
-        ),
-        pytest.param(
-            lambda: _two_subjects(
-                traits={
-                    "both": Trait(
-                        attributes={"efficiency"},
-                        on={"entity.ctype": {"Link"}, "bus.bus_type": {"DC"}},
-                    )
-                }
-            ),
-            "a trait is `on` one",
-            id="two-properties",
-        ),
-        pytest.param(
-            lambda: Schema(
-                dimensions={"entity": Dimension(dtype=nw.String())},
-                attributes={
-                    "committable": AttributeSpec(
-                        dtype=nw.Boolean(), dims={"entity"}, default=False
-                    ),
-                },
-                traits={"committable": Trait(switch="committable")},
-                partial=frozenset({"entity"}),
-            ),
-            "`on` no category",
-            id="a-switch-with-no-on",
-        ),
-        pytest.param(
-            lambda: _schema(
-                traits={
-                    "g": Trait(
-                        attributes={"entity.ctype"},
-                        on={"entity.ctype": {"Generator"}},
-                    )
-                }
-            ),
-            "circular",
-            id="bundling-its-own-categorizing-property",
-        ),
-    ],
-)
-def test_a_trait_is_on_categories_of_one_categorizing_property(build, match):
-    """A trait keys on the `Enum` property of a `partial` dim that classifies a label."""
-    with pytest.raises(ValidationError, match=match):
-        build()
-
-
-def test_a_trait_switch_is_folded_into_attributes():
-    """`switch` need not be named twice in `attributes`."""
-    t = Trait(attributes={"start_up_cost"}, switch="committable")
-    assert t.attributes == {"start_up_cost", "committable"}
-
-
-def test_a_trait_switch_narrows_neither_attributes_for_nor_the_switch_itself():
-    """`switch` is a validation and query mechanism, not a change to `attributes_for`.
-
-    The schema-level answer stays type-scoped: `committable` the attribute is
-    carried by every type `committable` the trait is `on`, whatever any
-    component's switch value - and it is not narrowed by its own trait.
-    """
-    s = _schema(
-        attributes={
-            **_schema().attributes,
-            "start_up_cost": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
-            "committable": AttributeSpec(
-                dtype=nw.Boolean(), dims={"entity"}, default=False
-            ),
-        },
-        traits={
-            **_schema().traits,
-            "committable": Trait(
-                attributes={"start_up_cost"},
-                on={"entity.ctype": frozenset({"Generator"})},
-                switch="committable",
-            ),
-        },
-    )
-    assert "start_up_cost" in s.attributes_for("entity", ctype="Generator")
-    assert "committable" in s.attributes_for("entity", ctype="Generator")
-    assert "start_up_cost" not in s.attributes_for("entity", ctype="Link")
-
-
-def test_a_trait_switch_must_be_addressed_by_its_categorized_dim_alone():
-    """A switch narrower or wider than `entity` alone has no per-component reading."""
-    with pytest.raises(ValidationError, match="addressed by that dim alone"):
-        _schema(
-            attributes={
-                **_schema().attributes,
-                "committable": AttributeSpec(
-                    dtype=nw.Boolean(), dims={"entity", "scenario"}, default=False
-                ),
-            },
-            traits={
-                **_schema().traits,
-                "committable": Trait(
-                    on={"entity.ctype": frozenset({"Generator"})},
-                    switch="committable",
-                ),
-            },
-        )
 
 
 def test_a_functional_group_may_not_key_an_attribute_with_what_it_maps_from():
@@ -381,38 +177,8 @@ def test_a_group_may_have_properties():
         s.properties["connection"]["role"],
     )
     assert s.column_type("role", "connection") == nw.Enum(["in", "out"])
-    assert s.properties_for("connection") == {
-        "role": s.properties["connection"]["role"]
-    }
     assert s.categorizing("connection") == (), (
         "a group is never categorized, even by an `Enum` property of a `partial` group"
-    )
-
-
-def test_properties_are_narrowed_by_the_traits_attributes_are():
-    """A trait `on` a category may bundle properties of its dim beside attributes."""
-    s = _schema(
-        properties={
-            "entity": {
-                "ctype": PropertySpec(dtype=nw.Enum(["Generator", "Link"])),
-                "sign": PropertySpec(dtype=nw.Float64()),
-            }
-        },
-        traits={
-            "generating": Trait(
-                attributes={"entity.sign", "p_nom"},
-                on={"entity.ctype": frozenset({"Generator"})},
-            )
-        },
-    )
-    assert set(s.properties_for("entity", ctype="Generator")) == {
-        "ctype",
-        "sign",
-    }
-    assert set(s.properties_for("entity", ctype="Link")) == {"ctype"}
-    assert "p_nom" not in s.attributes_for("entity", ctype="Link")
-    assert "sign" not in s.attributes_for("entity", ctype="Generator"), (
-        "attributes_for answers attributes only"
     )
 
 
@@ -505,19 +271,6 @@ def test_an_enum_property_categorizes_only_a_partial_dim():
             "undeclared dims or groups",
             id="on-an-undeclared-dim",
         ),
-        pytest.param(
-            lambda: _schema(
-                properties={
-                    **_schema().properties,
-                    "bus": {"x": PropertySpec(dtype=nw.Float64())},
-                },
-                traits={
-                    "t": Trait(attributes={"bus.x"}, on={"entity.ctype": {"Link"}})
-                },
-            ),
-            "bundles undeclared attributes",
-            id="bundled-by-another-subjects-trait",
-        ),
     ],
 )
 def test_a_property_is_one_column_of_a_declared_subject(build, match):
@@ -585,7 +338,7 @@ def test_resolve_refuses_an_unknown_name_suggesting_dotted_properties(name, matc
 
 
 def test_a_record_may_declare_no_category_at_all():
-    """Categories are optional: with none nothing narrows an attribute of a dim.
+    """Categories are optional: with none, no keyword selects labels of a dim.
 
     A tool needing them requires the property in the schema it builds, which
     is where that requirement belongs.
@@ -602,10 +355,8 @@ def test_a_record_may_declare_no_category_at_all():
         partial=frozenset(),
     )
     assert s.categorizing("entity") == (), "no vocabulary declared"
-    assert sorted(s.attributes_for("entity")) == ["p_nom"], "nothing narrows"
-    assert sorted(s.attributes_for("timestep")) == ["weighting"]
     with pytest.raises(ValueError, match="do not categorize 'entity'"):
-        s.attributes_for("entity", ctype="Generator")
+        s.require_categorizing("entity", ["ctype"])
 
 
 # -- defaults by label -------------------------------------------------------
@@ -717,6 +468,62 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
             "circular",
             id="a-categorizing-property-by-a-category",
         ),
+        pytest.param(
+            lambda: _with_x(
+                AttributeSpec(
+                    dtype=nw.Float64(),
+                    dims={"entity"},
+                    default_by={"entity.kind": {"wind": 1.0}},
+                ),
+                base=lambda **kw: _schema(
+                    properties=_with_entity_property(
+                        "kind", PropertySpec(dtype=nw.String())
+                    ),
+                    **kw,
+                ),
+            ),
+            "is no `Enum` property",
+            id="a-string-property",
+        ),
+        pytest.param(
+            lambda: _with_x(
+                AttributeSpec(
+                    dtype=nw.Float64(),
+                    dims={"period"},
+                    default_by={"period.era": {"old": 1.0}},
+                ),
+                base=lambda **kw: _schema(
+                    properties={
+                        **_schema().properties,
+                        "period": {"era": PropertySpec(dtype=nw.Enum(["old", "new"]))},
+                    },
+                    **kw,
+                ),
+            ),
+            "`partial` does not list",
+            id="a-property-of-a-non-partial-dim",
+        ),
+        pytest.param(
+            lambda: _with_x(
+                AttributeSpec(
+                    dtype=nw.Float64(),
+                    dims={"connection"},
+                    default_by={"connection.role": {"in": 1.0}},
+                ),
+                base=lambda **kw: _schema(
+                    properties={
+                        **_schema().properties,
+                        "connection": {
+                            "role": PropertySpec(dtype=nw.Enum(["in", "out"]))
+                        },
+                    },
+                    partial=frozenset({"entity", "scenario", "connection"}),
+                    **kw,
+                ),
+            ),
+            "a group is never categorized",
+            id="a-group-property",
+        ),
     ],
 )
 def test_default_by_is_validated_against_the_categories(build, match):
@@ -736,12 +543,6 @@ def _two_subjects(**overrides) -> Schema:
             "v_nom": AttributeSpec(dtype=nw.Float64(), dims={"bus"}),
             "frequency": AttributeSpec(dtype=nw.Float64(), dims={"bus"}),
         },
-        "traits": {
-            **_schema().traits,
-            "alternating": Trait(
-                attributes={"frequency"}, on={"bus.bus_type": frozenset({"AC"})}
-            ),
-        },
         "partial": frozenset({"entity", "bus", "scenario"}),
     }
     kwargs.update(overrides)
@@ -749,7 +550,7 @@ def _two_subjects(**overrides) -> Schema:
 
 
 def test_a_category_on_bus_works_like_one_on_entity():
-    """A trait `on` and a `default_by` keyed by `bus_type` narrow bus attributes alone."""
+    """A `default_by` keyed by `bus_type` defaults bus attributes alone."""
     s = _two_subjects(
         attributes={
             **_two_subjects().attributes,
@@ -765,49 +566,7 @@ def test_a_category_on_bus_works_like_one_on_entity():
     assert s.default_for("frequency", bus_type="DC") == 0.0
     assert s.categorizing("bus") == ("bus_type",)
     assert s.categorizing("entity") == ("ctype",)
-    assert sorted(s.attributes_for("bus", bus_type="AC")) == [
-        "efficiency",
-        "frequency",
-        "v_nom",
-    ], "`efficiency` reaches buses through `connection`, untraited on `bus_type`"
-    assert sorted(s.attributes_for("bus", bus_type="DC")) == ["efficiency", "v_nom"], (
-        "AC alone has frequency"
-    )
-    assert "frequency" not in s.attributes_for("entity", ctype="Generator"), (
-        "a bus attribute reaches no entity"
-    )
-    assert "p_nom" in s.attributes_for("entity", ctype="Generator")
-    assert s.attributes_for("bus", bus_type="Generator") == {}, "not a bus_type"
-
-
-def test_categorizing_properties_of_one_dim_combine_as_a_union():
-    """Traits on `ctype` and on `carrier_kind` claiming one attribute give it to both."""
-    s = _schema(
-        properties={
-            "entity": {
-                **_schema().properties["entity"],
-                "carrier_kind": PropertySpec(dtype=nw.Enum(["wind", "solar"])),
-            }
-        },
-        traits={
-            "generating": Trait(
-                attributes={"p_max_pu"},
-                on={"entity.ctype": frozenset({"Generator"})},
-            ),
-            "windy": Trait(
-                attributes={"p_max_pu"}, on={"entity.carrier_kind": frozenset({"wind"})}
-            ),
-        },
-    )
-    assert "p_max_pu" in s.attributes_for("entity", ctype="Generator")
-    assert "p_max_pu" in s.attributes_for(
-        "entity", ctype="Link", carrier_kind="wind"
-    ), "a wind link matches the `carrier_kind` trait"
-    assert "p_max_pu" not in s.attributes_for(
-        "entity", ctype="Link", carrier_kind="solar"
-    ), "neither trait matches a solar link"
-    assert "p_max_pu" not in s.attributes_for("entity"), "no category matches no trait"
-    assert "p_nom" in s.attributes_for("entity"), "untraited, so carried by every label"
+    assert not s.addresses("frequency", "entity"), "a bus attribute reaches no entity"
 
 
 def test_default_by_takes_the_first_key_listing_a_category():
@@ -933,9 +692,6 @@ def test_a_compatible_change(new):
     assert new.compatible_with(_schema()) == []
 
 
-_LABELLED = _with_entity_property("label", PropertySpec(dtype=nw.String()))
-
-
 @pytest.mark.parametrize(
     ("old", "new", "reason"),
     [
@@ -958,21 +714,6 @@ _LABELLED = _with_entity_property("label", PropertySpec(dtype=nw.String()))
             _schema(),
             "no longer `partial`",
             id="removing-from-partial",
-        ),
-        pytest.param(
-            _schema(properties=_LABELLED),
-            _schema(
-                properties=_LABELLED,
-                traits={
-                    **_schema().traits,
-                    "linking": Trait(
-                        attributes={"entity.label"},
-                        on={"entity.ctype": {"Link"}},
-                    ),
-                },
-            ),
-            "category 'Generator' of 'ctype' on 'entity' no longer carries ['label']",
-            id="a-category-losing-a-property",
         ),
     ],
 )
@@ -1037,9 +778,8 @@ def test_round_trips_through_json():
         ("attributes", "p_nom"),
         ("properties", "entity", "ctype"),
         ("groups", "connection"),
-        ("traits", "Generator"),
     ],
-    ids=["top-level", "dim", "attribute", "property", "group", "trait"],
+    ids=["top-level", "dim", "attribute", "property", "group"],
 )
 def test_manifest_with_unknown_key_fails_to_load(path: tuple[str, ...]):
     s = pypsa_schema(

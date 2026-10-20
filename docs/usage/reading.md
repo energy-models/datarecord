@@ -38,7 +38,7 @@ record.properties["snapshot"]  # snapshot | period | timestep
 
 `properties[subject]` is a dim's or a group's key with every property declared for it, **as stored**: a NULL is a value no layer wrote.
 
-One category's labels are `properties[dim]` filtered on a categorizing property — an `Enum` property of a `partial` dim. Which properties they carry is `Schema.properties_for(dim, **categories)`, and an unset one's default, `default_by` per category included, is `Schema.default_for("entity.sign", **categories)` — a property named by its subject, the categories by their plain names, as the frame's columns are ([design](../design/record.md#properties-and-categories)).
+One category's labels are `properties[dim]` filtered on a categorizing property — an `Enum` property of a `partial` dim. They carry every property of the dim, and an unset one's default, `default_by` per category included, is `Schema.default_for("entity.sign", **categories)` — a property named by its subject, the categories by their plain names, as the frame's columns are ([design](../design/record.md#properties-and-categories)).
 
 ## Wide and long
 

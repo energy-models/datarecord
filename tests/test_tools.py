@@ -214,6 +214,28 @@ def test_a_carrier_is_a_live_label(single_revision):
         w.remove("carrier", ["gas"])
 
 
+def test_a_value_its_type_does_not_take_is_reported_and_left_out(single_revision):
+    """A broadcast reaches every entity; the build keeps it to the types taking it.
+
+    Notes
+    -----
+    - [a value its type does not take](https://energy-models.github.io/datarecord/design/tools/#a-value-its-type-does-not-take)
+    """
+    from datarecord.mutable import WorkingRecord
+
+    w = WorkingRecord(single_revision.record)
+    w.set("p_max_pu", 0.9)
+
+    report = PyPSA.verify(w)
+    assert not report, "a value its type does not take fails no build"
+    assert {("Load", "p_max_pu"), ("Line", "p_max_pu")} <= report.ignored
+    assert ("Link", "p_max_pu") not in report.ignored, "a link takes p_max_pu"
+    n = PyPSA.build(w)
+    assert (n.c.Link.static["p_max_pu"] == 0.9).all()
+    assert "p_max_pu" not in n.c.Load.static
+    assert "p_max_pu" not in n.c.Load.dynamic
+
+
 def test_verify_reports_an_entity_attached_to_no_bus(single_revision):
     """Removing a bus removes its connections; what was attached to it is unbuildable.
 
@@ -342,18 +364,11 @@ def _with_schema(revision, **kwargs) -> None:
         for name, spec in was.attributes.items()
         if (pruned := spec.model_copy(update={"dims": spec.dims & addressable})).dims
     }
-    traits = {
-        ctype: trait.model_copy(
-            update={"attributes": trait.attributes & attributes.keys()}
-        )
-        for ctype, trait in was.traits.items()
-    }
     now = now.model_copy(
         update={
             "attributes": attributes,
             "groups": was.groups,
             "properties": was.properties,
-            "traits": traits,
             "meta": was.meta,
         }
     )
@@ -524,18 +539,24 @@ def test_to_datarecord_rejects_a_custom_column_declared_over_another_dim(
 
 
 @pytest.mark.parametrize(
-    ("ctype", "column", "dim"),
-    [("Bus", "country", "bus"), ("Generator", "location", "entity")],
-    ids=["bus", "beside-a-bus-property"],
+    ("ctype", "column", "value", "dim"),
+    [
+        ("Bus", "country", "site", "bus"),
+        ("Generator", "location", "site", "entity"),
+        ("Generator", "e_nom", 5.0, "entity"),
+    ],
+    ids=["bus", "beside-a-bus-property", "named-like-another-types-input"],
 )
-def test_a_custom_column_round_trips_on_its_own_type(store, ctype, column, dim):
+def test_a_custom_column_round_trips_on_its_own_type(store, ctype, column, value, dim):
     """A column PyPSA's registry lacks is an attribute over its type's dim.
 
-    A generator's own `location` is no clash with `bus.location`, a property.
+    A generator's own `location` is no clash with `bus.location`, a property,
+    and its own `e_nom` is built onto it though the registry gives `e_nom` to
+    a store alone.
     """
     n = _north()
     n.c.Bus.static["location"] = "DE1"
-    n.c[ctype].static[column] = "site"
+    n.c[ctype].static[column] = value
 
     record = export_network(n, store).record
     assert record.schema.attributes[column].dims == {dim}

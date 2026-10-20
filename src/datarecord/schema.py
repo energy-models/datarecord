@@ -458,54 +458,6 @@ class Group(_Declared):
         return tuple(self.over)
 
 
-class Trait(_Declared):
-    """A named bundle of attributes, and which categories and labels carry it.
-
-    The narrowing direction: an attribute the schema declares is carried by
-    every label, and a trait is how that is cut down to the labels of some
-    categories, and further to some of those labels. A trait bundling
-    `p_max_pu` `on={"entity.ctype": {"Generator"}}` says those attributes reach
-    generators and no other entity - unless another trait claiming them
-    matches it too.
-
-    Attributes
-    ----------
-    attributes
-        The attributes this trait bundles, and properties of the dim its `on`
-        key categorizes, each as `subject.name`. Each must be declared. Includes `switch` once parsed,
-        whatever the author wrote.
-    on
-        Mapping one categorizing property (`Schema.categorizing`), as
-        `subject.name`, -> the
-        categories of it this trait applies to. At most one key. Empty means
-        this narrowing does not apply, reaching every label.
-    switch
-        The attribute deciding, per label of the dim the `on` key
-        categorizes, whether this trait applies - addressed by that dim
-        exactly, so it needs an `on` key. `None` means this narrowing does not
-        apply, reaching every label.
-    description
-        What the trait is, in prose. Never interpreted.
-
-    Notes
-    -----
-    - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
-    - [switch](https://energy-models.github.io/datarecord/design/schema/#switch-a-trait-an-entity-opts-into)
-    """
-
-    attributes: frozenset[str] = frozenset()
-    on: dict[str, frozenset[str]] = Field(default_factory=dict)
-    switch: str | None = None
-    description: str | None = None
-
-    @model_validator(mode="after")
-    def _fold_switch_into_attributes(self) -> Trait:
-        """Add `switch` to `attributes`, so a caller need not name it twice."""
-        if self.switch is not None and self.switch not in self.attributes:
-            self.attributes = self.attributes | {self.switch}
-        return self
-
-
 class Schema(_Declared):
     """One record's schema.
 
@@ -531,10 +483,6 @@ class Schema(_Declared):
         `partial`.
     groups
         Group name -> which tuples over several dims exist.
-    traits
-        Trait -> the attributes it bundles and the categories carrying them.
-        A vocabulary a consumer dispatches on, declared rather than derived,
-        and the only thing that narrows an attribute to some labels.
     partial
         Which dims a layer may patch value by value. `None` for a record
         with no layers, since nothing overrides anything. A dim outside it is
@@ -561,14 +509,13 @@ class Schema(_Declared):
     Separate because the two are governed differently, not because they are
     stored differently: a result is written to `outputs/<attr>.parquet` rather
     than `inputs/`, never overlays a parent's, and may name an entity the
-    record does not declare. Keeping it out of `attributes` is what stops it
-    reaching `attributes_for`, and so `add`'s wide-frame split and the input
-    validation, neither of which a result should meet.
+    record does not declare. Keeping it out of `attributes` is what keeps it
+    from `add`'s wide-frame split and the input validation, neither of which a
+    result should meet.
     """
 
     properties: dict[str, dict[str, PropertySpec]] = Field(default_factory=dict)
     groups: dict[str, Group] = Field(default_factory=dict)
-    traits: dict[str, Trait] = Field(default_factory=dict)
     partial: frozenset[str] | None = None
     meta: dict[str, Any] = Field(default_factory=dict)
 
@@ -580,7 +527,6 @@ class Schema(_Declared):
         -----
         - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         - [names](https://energy-models.github.io/datarecord/design/schema/#names)
         """
         self._check_names()
@@ -668,9 +614,6 @@ class Schema(_Declared):
                     )
                     raise ValueError(msg)
 
-        for trait, trait_spec in self.traits.items():
-            self._check_trait(trait, trait_spec)
-
         if self.partial is not None:
             unknown = sorted(self.partial - declared - set(self.groups))
             if unknown:
@@ -679,7 +622,7 @@ class Schema(_Declared):
         return self
 
     def _categorized_by(self, name: str, what: str) -> tuple[str, str]:
-        """The dim and property dotted `name` categorizes, for a trait's `on` or a `default_by` key `what` names."""
+        """The dim and property dotted `name` categorizes, for a `default_by` key `what` names."""
         subject, _, prop = name.partition(".")
         if prop not in self.properties.get(subject, {}):
             reason = "is no property, named `subject.name`"
@@ -697,72 +640,6 @@ class Schema(_Declared):
             return subject, prop
         msg = f"{what} is keyed by {name!r}, which {reason}"
         raise ValueError(msg)
-
-    def _check_trait(self, trait: str, spec: Trait) -> None:
-        """Refuse a trait `on` anything but one categorizing property, bundling one, or switched off its dim.
-
-        Only a categorizing property may scope a trait: any other would make
-        which attributes a label carries depend on data no schema pins, where
-        every caller of `attributes_for` answers from the schema alone. One key
-        at most, since the trait then narrows over exactly one dim, the one its
-        switch must be addressed by, and the one whose properties it may
-        bundle beside attributes.
-        """
-        if len(spec.on) > 1:
-            msg = (
-                f"trait {trait!r} is `on` {sorted(spec.on)}; a trait is `on` one "
-                f"categorizing property, narrowing over that property's dim "
-                f"alone - split it into one trait per property"
-            )
-            raise ValueError(msg)
-        subject = None
-        for name, categories in spec.on.items():
-            subject, prop = self._categorized_by(name, f"trait {trait!r}")
-            unknown = sorted(categories - set(self._categories(subject, prop)))
-            if unknown:
-                msg = (
-                    f"trait {trait!r} is `on` {unknown}, which are not "
-                    f"categories of {name!r}"
-                )
-                raise ValueError(msg)
-        scope = subject or ""
-        own = self._dotted(scope, self.properties.get(scope, {}))
-        unknown = sorted(spec.attributes - {*self.attributes, *own})
-        if unknown:
-            msg = (
-                f"trait {trait!r} bundles undeclared attributes {unknown}; a "
-                f"trait bundles declared attributes, and properties of the dim "
-                f"its `on` key categorizes as `subject.name`"
-            )
-            raise ValueError(msg)
-        categorizing = sorted(
-            spec.attributes & self._dotted(scope, self.categorizing(scope))
-        )
-        if categorizing:
-            msg = (
-                f"trait {trait!r} bundles {categorizing}, which categorize "
-                f"{subject!r}; a category scoped by a category is circular - a "
-                f"categorizing property is carried by every label"
-            )
-            raise ValueError(msg)
-        if spec.switch is None:
-            return
-        if subject is None:
-            msg = (
-                f"trait {trait!r} is switched on {spec.switch!r} but `on` no "
-                f"category; a switch decides a trait per label of the dim its "
-                f"`on` key categorizes"
-            )
-            raise ValueError(msg)
-        switch_spec = self.attributes.get(spec.switch)
-        if switch_spec is not None and switch_spec.dims != {subject}:
-            msg = (
-                f"trait {trait!r} is switched on {spec.switch!r}, which is "
-                f"addressed by {sorted(switch_spec.dims)}; a switch decides a "
-                f"trait per label of {subject!r}, the dim its `on` key "
-                f"categorizes, so it is addressed by that dim alone"
-            )
-            raise ValueError(msg)
 
     def _check_properties(self) -> None:
         """Refuse a property on an undeclared subject, a malformed `into` or `default_by`."""
@@ -951,11 +828,6 @@ class Schema(_Declared):
             return {subject} | ({group.into} if group.into else set())
         return {subject}
 
-    @staticmethod
-    def _dotted(subject: str, names: Iterable[str]) -> set[str]:
-        """`names` of `subject`'s properties, each as `subject.name`."""
-        return {f"{subject}.{n}" for n in names}
-
     # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
 
     @property
@@ -1111,11 +983,11 @@ class Schema(_Declared):
         return (*self.coordinates_of(attribute), *LONG_TAIL)
 
     def categorizing(self, dim: str) -> tuple[str, ...]:
-        """The `Enum` properties of `dim` `into` no dim, if `partial` lists it: what a trait or `default_by` keys on.
+        """The `Enum` properties of `dim` `into` no dim, if `partial` lists it: what `default_by` keys on.
 
         Notes
         -----
-        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
+        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
         """
         if dim not in self.dimensions or dim not in (self.partial or set()):
             return ()
@@ -1140,7 +1012,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
+        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
         """
         allowed = self.categorizing(subject)
         unknown = sorted(set(keys) - set(allowed))
@@ -1218,66 +1090,6 @@ class Schema(_Declared):
         return (spec is not None and dim in spec.dims) or any(
             dim in self.groups[g].over.values() for g in self.groups_of(attribute)
         )
-
-    def attributes_for(self, dim: str, **categories: str) -> dict[str, AttributeSpec]:
-        """The attributes addressing `dim` a label of it with `categories` carries, by name.
-
-        A category left out matches no trait keyed on it; one its property does
-        not list carries nothing.
-
-        Raises
-        ------
-        ValueError
-            If a keyword does not categorize `dim`.
-
-        Notes
-        -----
-        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
-        """
-        pool = [a for a in self.attributes if self.addresses(a, dim)]
-        return {a: self.attributes[a] for a in self._carried(dim, pool, categories)}
-
-    def properties_for(
-        self, subject: str, **categories: str
-    ) -> dict[str, PropertySpec]:
-        """`attributes_for`, for the properties of dim or group `subject`.
-
-        A group is never categorized, so its tuples carry all of its.
-
-        Notes
-        -----
-        - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
-        """
-        specs = self.properties.get(subject, {})
-        carried = self._carried(
-            subject, sorted(self._dotted(subject, specs)), categories
-        )
-        return {p: specs[p] for p in sorted(specs) if f"{subject}.{p}" in carried}
-
-    def _carried(
-        self, subject: str, pool: list[str], categories: dict[str, str]
-    ) -> list[str]:
-        """Those of `pool` a label of `subject` with `categories` carries, sorted.
-
-        The one narrowing rule `attributes_for` and `properties_for` share, so
-        a trait bundling an attribute and a property scopes both alike; `pool`
-        names each as a trait does, a property as `subject.name`.
-        """
-        self.require_categorizing(subject, categories)
-        keys = self.categorizing(subject)
-        if any(c not in self._categories(subject, k) for k, c in categories.items()):
-            return []
-        narrowed: set[str] = set()
-        names: set[str] = set()
-        for trait in self.traits.values():
-            for key, on in trait.on.items():
-                dim, _, prop = key.partition(".")
-                if dim != subject or prop not in keys or not on:
-                    continue
-                narrowed |= trait.attributes
-                if categories.get(prop) in on:
-                    names |= trait.attributes
-        return sorted(n for n in pool if n in names or n not in narrowed)
 
     def resolve(self, name: str) -> AttributeSpec | tuple[str, PropertySpec]:
         """What `name` addresses: an attribute or result, or a property as `subject.name`.
@@ -1583,8 +1395,6 @@ class Schema(_Declared):
                         f"-> {now_prop.dtype}"
                     )
 
-        problems.extend(self._dropped_by_category(other))
-
         if other.partial is not None and self.partial is not None:
             lost = other.partial - self.partial
             if lost:
@@ -1593,35 +1403,4 @@ class Schema(_Declared):
                     f"value along such an axis is now a partial override of an axis "
                     f"owned whole"
                 )
-        return problems
-
-    def _dropped_by_category(self, other: Schema) -> list[str]:
-        """Each category of `other` whose labels no longer carry an attribute or property under `self`.
-
-        Incompatible for the reason a narrowed `dims` is: the rows are still
-        in the file, now unreadable for those labels. Each category is checked
-        alone, every other categorizing property unset: traits combine as a
-        union, so a combination losing an attribute has a category losing it
-        alone. A property `self` no longer categorizes is skipped, its removal
-        or retyping being reported on its own.
-        """
-        problems = []
-        for dim in other.dimensions:
-            mine = self.categorizing(dim)
-            for key in other.categorizing(dim):
-                if key not in mine:
-                    continue
-                for category in other._categories(dim, key):
-                    at = {key: category}
-                    was = {*other.attributes_for(dim, **at)}
-                    was |= {*other.properties_for(dim, **at)}
-                    now = {*self.attributes_for(dim, **at)}
-                    now |= {*self.properties_for(dim, **at)}
-                    dropped = sorted(was - now)
-                    if dropped:
-                        problems.append(
-                            f"category {category!r} of {key!r} on {dim!r} no "
-                            f"longer carries {dropped}; rows written for its "
-                            f"labels have no valid reading"
-                        )
         return problems

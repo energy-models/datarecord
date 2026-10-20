@@ -80,7 +80,7 @@ w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per label
 w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per label, keyed
 w.set("p_max_pu", frame, entity=["wind1"])  # long frame
 w.set("p_max_pu", series.rename_axis("snapshot"), entity=["wind1"])  # a series
-w.set("p_max_pu", 0.9)  # every label carrying it, now and later
+w.set("p_max_pu", 0.9)  # every entity, loads included, now and later
 w.set("p_max_pu", 0.8, ctype="Generator", carrier="wind")  # selected now
 w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
 w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped
@@ -93,8 +93,8 @@ w.set("p", solved, kind="outputs")  # a result
 None has a parameter of its own, because which coordinates exist is declared rather than fixed.
 A keyword holds one label, fixing that coordinate, or a list of labels the value is staged at each of.
 
-A coordinate no keyword names is NULL, which by [the broadcast rule](record.md#the-broadcast-rule) is every label of it — narrowed, on a categorized dim, to the labels whose categories carry the attribute.
-So `set("p_max_pu", 0.9)` is one row reaching every generator, one added in a later layer included, and never a load.
+A coordinate no keyword names is NULL, which by [the broadcast rule](record.md#the-broadcast-rule) is every label of it, whatever its categories.
+So `set("p_max_pu", 0.9)` is one row reaching every entity, one added in a later layer included, loads too; `set("p_max_pu", 0.9, ctype="Generator")` is one row per generator there is now.
 
 A group's fields are packed into the group's [struct column](schema.md#groups), so `entity="dc", bus="north"` stages `connection = {entity: dc, bus: north}`.
 A group value is [a whole tuple or NULL](record.md#the-broadcast-rule), so every field must be given or none: omitting `bus` alone is refused, since `{entity: dc, bus: NULL}` names no tuple, and naming no field stages the NULL struct, every tuple.
@@ -105,7 +105,7 @@ A label added later is not reached — a plain NULL and [`default_by`](schema.md
 The property's dim must be one the attribute reaches through exactly one coordinate, and the keyword is refused beside that coordinate's own.
 
 **`set` writes a property too**, a category included, when `attribute` names one as [`subject.name`](schema.md#properties) — a plain name is an attribute or result, never a property: a patch of one column of the axis rows of its subject, the other columns kept. Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has. A group's property takes a scalar, its fields as keywords selecting the tuples. A property is never a result, so `kind="outputs"` is refused for one.
-Changing a category is such a patch: `set("entity.ctype", "Load", entity="g1")`. What `g1` holds for attributes a Load does not carry stays stored but falls outside every per-category read.
+Changing a category is such a patch: `set("entity.ctype", "Load", entity="g1")`. Every value `g1` holds stays stored and read: a label carries every attribute it addresses, so the per-category reads of `ctype="Load"` now include them.
 
 `kind` names the destination in the format's own terms — [the shape of an edit](#the-shape-of-an-edit) is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
 `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool [hands results back](#results-through-kindoutputs) to a record before it is written.
@@ -277,12 +277,11 @@ What editing adds is edit-level, caught when the edit is **staged**, not at writ
 
 - an undeclared attribute, result, property or keyword, or a keyword the attribute does not vary over; a plain name only properties are called is refused naming their dotted forms, `set("carrier", …)` suggesting `bus.carrier` and `entity.carrier`;
 - a label of a `partial` dim the record does not resolve, `add` them first;
-- a label whose categories do not carry the attribute ([traits](schema.md#traits)), judged by its current categories; a label with no category passes;
 - a value an `Enum` property does not list, in `add` or `set`;
 - a value of a [property `into` a dim](schema.md#properties) naming no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
 - an `add` naming an attribute.
 
-The label read these need is the one a property keyword already performs, so checking categories costs nothing beyond it. Two coordinates over one categorized dim — a contract's `from` and `to` — name no one label whose categories decide, so neither is checked against them.
+A label's categories are not checked against the attribute: every label carries [every attribute it addresses](schema.md#an-attribute-reaches-every-label-it-addresses), so a misplaced value is stored, and a tool not taking it leaves it out.
 
 ## Staging
 

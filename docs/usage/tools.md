@@ -24,7 +24,7 @@ results = PyPSA.results(n, ws.con)  # Frames, in the long schema
 
 `to_datarecord` and `results` plan their frames on the connection they are handed — the workspace's that writes them, or the record's they are `set` on — so they reach the write path without a copy; `build` reads `record.con` itself.
 
-`verify` catches what the record layer cannot — an entity type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks its constant-versus-varying split — and returns a falsy `Requirements` when the record is usable. `build` raises `UnsupportedRecordError` rather than producing a partial model.
+`verify` catches what the record layer cannot — an entity type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks its constant-versus-varying split — and returns a falsy `Requirements` when the record is usable. A stored attribute a type does not take, `p_max_pu` on a load, is left out of the build and listed in its `ignored`, without making it truthy. `build` raises `UnsupportedRecordError` rather than producing a partial model.
 
 ## Buses and carriers
 
