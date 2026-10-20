@@ -1,0 +1,2586 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-77/api/mutable/">
+      
+      
+        <link rel="prev" href="../layered/">
+      
+      
+        <link rel="next" href="../tools/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>WorkingRecord - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../static/extras.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#workingrecord" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              WorkingRecord
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../design/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../usage/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../design/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../record/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../layered/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layered
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WorkingRecord
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WorkingRecord
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;WorkingRecord
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label=" WorkingRecord">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;edits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;set
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;add
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;remove
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.add_group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;add_group
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.remove_group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;remove_group
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;rollback
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-class"></code>&nbsp;WorkingRecord
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label=" WorkingRecord">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.outputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;outputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;edits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;set
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;add
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;remove
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.add_group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;add_group
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.remove_group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;remove_group
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#datarecord.mutable.WorkingRecord.rollback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;rollback
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<h1 id="workingrecord">WorkingRecord<a class="headerlink" href="#workingrecord" title="Permanent link">&para;</a></h1>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="datarecord.mutable.WorkingRecord" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">WorkingRecord</span>
+
+
+<a href="#datarecord.mutable.WorkingRecord" class="headerlink" title="Permanent link">&para;</a></h2>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">WorkingRecord</span><span class="p">(</span><span class="n">base</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.record.RecordLike)" href="../record/#datarecord.record.RecordLike">RecordLike</a></span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            Record
+
+
+  
+      dataclass
+   (datarecord.layered.record.Record)" href="../record/#datarecord.layered.record.Record">Record</a></code></p>
+
+
+
+        <p>A <code>Record</code> whose last source is a staging area, plus the edit surface.</p>
+<p>A <code>Record</code> in the type as well as in the fold: what it reads is the data
+<em>with its pending edits applied</em>, and it reads it by being one layer deeper
+than its base rather than by overlaying anything of its own. Every read
+member is inherited unchanged - <code>outputs</code> alone is overridden, results not
+overlaying - so an edit reads back through the same code path a committed
+layer would.</p>
+<p>Staged rows live in connection-scoped DuckDB tables, the <em>only</em> place a
+staged row exists: the reads fold them rather than holding a copy, so what
+is staged is asked of the reads themselves.</p>
+<p>The <code>Resolver</code> is fixed at construction and the source list never changes;
+a <code>set</code> changes what the last source's tables hold, not which sources there
+are. That is what lets the inherited members stay correct - they cache a key
+set only where the fold is stable, which a staged source makes it not.</p>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/">WorkingRecord</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/#staging">staging</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits">reading with pending edits</a></li>
+</ul>
+</details>
+
+
+
+
+
+
+
+                  <details class="mkdocstrings-source">
+                    <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-314">314</a></span>
+<span class="normal"><a href="#__codelineno-0-315">315</a></span>
+<span class="normal"><a href="#__codelineno-0-316">316</a></span>
+<span class="normal"><a href="#__codelineno-0-317">317</a></span>
+<span class="normal"><a href="#__codelineno-0-318">318</a></span>
+<span class="normal"><a href="#__codelineno-0-319">319</a></span>
+<span class="normal"><a href="#__codelineno-0-320">320</a></span>
+<span class="normal"><a href="#__codelineno-0-321">321</a></span>
+<span class="normal"><a href="#__codelineno-0-322">322</a></span>
+<span class="normal"><a href="#__codelineno-0-323">323</a></span>
+<span class="normal"><a href="#__codelineno-0-324">324</a></span>
+<span class="normal"><a href="#__codelineno-0-325">325</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a>    <span class="c1"># `object.__setattr__` throughout: the base is a frozen dataclass, and</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a>    <span class="c1"># these are set before `super().__init__` because the `StagedSource`</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a>    <span class="c1"># below reads them off `self`.</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a>    <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_layer_id"</span><span class="p">,</span> <span class="n">uuid4</span><span class="p">())</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a>    <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_staged"</span><span class="p">,</span> <span class="p">{})</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a>    <span class="n">base_cache</span> <span class="o">=</span> <span class="n">_base_resolver</span><span class="p">(</span><span class="n">base</span><span class="p">)</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a>    <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"_base"</span><span class="p">,</span> <span class="n">base_cache</span><span class="p">)</span>
+<a id="__codelineno-0-322" name="__codelineno-0-322"></a>    <span class="c1"># This record *is* the fold one layer deeper, and that layer is the</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a>    <span class="c1"># staging area - so the field the base class holds is that fold, whose</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a>    <span class="c1"># last source is the staged layer, `edits`.</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">base_cache</span><span class="o">.</span><span class="n">with_source</span><span class="p">(</span><span class="n">StagedSource</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_layer_id</span><span class="p">)))</span>
+</code></pre></div></td></tr></table></div>
+                  </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="datarecord.mutable.WorkingRecord.outputs" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">outputs</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#datarecord.mutable.WorkingRecord.outputs" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">outputs</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Frames
+
+
+  
+      module-attribute
+   (datarecord.record.Frames)" href="../record/#datarecord.record.Frames">Frames</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Staged results, keyed by attribute - what a tool handed back.</p>
+<p>Results reach a record through <code>set(..., kind="outputs")</code>, so a tool can
+solve against this record's pending inputs and attach what it computed
+without committing first. The base's results are <em>not</em> included: they
+were computed from inputs these edits may have changed, and results do
+not overlay, so what is staged is the whole answer.</p>
+<p>Keeping them coherent with the inputs is the caller's business - editing
+an input after attaching results leaves results describing a record that
+no longer exists, and nothing here silently discards them.</p>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li><a href="https://energy-models.github.io/datarecord/design/read-path/#outputs">outputs</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/#set">set</a></li>
+</ul>
+</details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="datarecord.mutable.WorkingRecord.edits" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">edits</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#datarecord.mutable.WorkingRecord.edits" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">edits</span><span class="p">:</span> <span class="n"><span title="datarecord.mutable.StagedSource">StagedSource</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The staged layer alone: the delta against the base, as a <code>LayerData</code>.</p>
+<p>What <code>rev.child(w.edits)</code> writes, where <code>rev</code> is the revision this
+record was built over - only the edits, the fold resolving the rest from
+the parent. The record itself is the flattened whole, base plus edits,
+which is what a standalone <code>ws.write(w, uri)</code> wants; <code>rev.child(w)</code>
+would write that whole as a child, reading back right but larger.</p>
+<p>Writing clears nothing: <code>rollback()</code> does, called or not.</p>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/#edits">edits</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits">reading with pending edits</a></li>
+</ul>
+</details>
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="datarecord.mutable.WorkingRecord.set" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">set</span>
+
+
+<a href="#datarecord.mutable.WorkingRecord.set" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">set</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">attribute</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">value</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">kind</span><span class="p">:</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s2">"inputs"</span><span class="p">,</span> <span class="s2">"outputs"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"inputs"</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="o">**</span><span class="n">coords</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Stage values of one attribute.</p>
+<p>Every coordinate is a keyword - <code>entity=</code>, <code>snapshot=</code>, a group's field
+such as <code>bus=</code> or a corridor's <code>from=</code> - since which exist is declared
+rather than fixed. A keyword holds one label, fixing that coordinate, or
+a list of labels the value is staged at each of. A coordinate no keyword
+names is NULL, which by the broadcast rule is every label of it.</p>
+<p><code>value</code> takes six forms:</p>
+<ul>
+<li>a scalar, staged at every combination of the listed labels;</li>
+<li>a sequence, aligned positionally to the one list keyword;</li>
+<li>a mapping or a one-dimensional labelled series, keyed by labels of
+  the series' <code>index.name</code> where that names a coordinate, else of the
+  one coordinate no keyword names;</li>
+<li>a long frame supplying its own keys, which keywords may complete with
+  single labels;</li>
+<li>a narwhals expression, a <em>function of the current value</em>: it reads the
+  rows the keywords select before it stages, so two such calls compose.</li>
+</ul>
+<p>An attribute's values are long rows, whatever its <code>dims</code>. A property -
+a category included - patches one column of existing axis rows: a
+mapping or series from label to value, a <code>dim=</code> keyword naming the
+labels, or a scalar for every label the axis has. A group's property
+takes a scalar, its fields as keywords selecting the tuples, none
+selecting every tuple.</p>
+<p>A property is named <code>subject.name</code> - <code>set("entity.carrier", ...)</code> -
+and a plain name is an attribute or result.</p>
+<p>A keyword naming no coordinate of <code>attribute</code> is a property of a dim it
+reaches - <code>component="Generator"</code>, or a list of values - and selects
+the labels of that dim matching it on the record as staged, the
+keywords combining as an intersection; <code>set</code> writes one row per label,
+and stores nothing of the filter, so a label added later is not reached.</p>
+<p><code>kind="outputs"</code> stages into <code>outputs/</code> instead of <code>inputs/</code>, which is
+how a tool hands results back. Results use the same long schema; they do
+not overlay, and their labels are not checked, a solve producing rows
+for labels it derived rather than read.</p>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="KeyError">KeyError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>On an undeclared attribute, result or keyword, a <code>partial</code> dim's
+label the record does not resolve, a property's label no layer
+wrote, a value of a property <code>into</code> a dim naming no label of it, or
+a label whose categories do not carry <code>attribute</code>.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>On a property with <code>kind="outputs"</code> or an <code>nw.Expr</code> value, a
+keyword the attribute does not vary over, a sequence with no
+single list keyword to align to, keys whose coordinate is
+ambiguous, a value an <code>Enum</code> property does not list, or a property
+keyword whose dim the attribute does not reach through exactly one
+coordinate, or that is given beside that coordinate's own keyword.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li><a href="https://energy-models.github.io/datarecord/design/read-path/#outputs">outputs</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit">the shape of an edit</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/#set">set</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one">a derived value</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/#validation">validation</a></li>
+</ul>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-819">819</a></span>
+<span class="normal"><a href="#__codelineno-0-820">820</a></span>
+<span class="normal"><a href="#__codelineno-0-821">821</a></span>
+<span class="normal"><a href="#__codelineno-0-822">822</a></span>
+<span class="normal"><a href="#__codelineno-0-823">823</a></span>
+<span class="normal"><a href="#__codelineno-0-824">824</a></span>
+<span class="normal"><a href="#__codelineno-0-825">825</a></span>
+<span class="normal"><a href="#__codelineno-0-826">826</a></span>
+<span class="normal"><a href="#__codelineno-0-827">827</a></span>
+<span class="normal"><a href="#__codelineno-0-828">828</a></span>
+<span class="normal"><a href="#__codelineno-0-829">829</a></span>
+<span class="normal"><a href="#__codelineno-0-830">830</a></span>
+<span class="normal"><a href="#__codelineno-0-831">831</a></span>
+<span class="normal"><a href="#__codelineno-0-832">832</a></span>
+<span class="normal"><a href="#__codelineno-0-833">833</a></span>
+<span class="normal"><a href="#__codelineno-0-834">834</a></span>
+<span class="normal"><a href="#__codelineno-0-835">835</a></span>
+<span class="normal"><a href="#__codelineno-0-836">836</a></span>
+<span class="normal"><a href="#__codelineno-0-837">837</a></span>
+<span class="normal"><a href="#__codelineno-0-838">838</a></span>
+<span class="normal"><a href="#__codelineno-0-839">839</a></span>
+<span class="normal"><a href="#__codelineno-0-840">840</a></span>
+<span class="normal"><a href="#__codelineno-0-841">841</a></span>
+<span class="normal"><a href="#__codelineno-0-842">842</a></span>
+<span class="normal"><a href="#__codelineno-0-843">843</a></span>
+<span class="normal"><a href="#__codelineno-0-844">844</a></span>
+<span class="normal"><a href="#__codelineno-0-845">845</a></span>
+<span class="normal"><a href="#__codelineno-0-846">846</a></span>
+<span class="normal"><a href="#__codelineno-0-847">847</a></span>
+<span class="normal"><a href="#__codelineno-0-848">848</a></span>
+<span class="normal"><a href="#__codelineno-0-849">849</a></span>
+<span class="normal"><a href="#__codelineno-0-850">850</a></span>
+<span class="normal"><a href="#__codelineno-0-851">851</a></span>
+<span class="normal"><a href="#__codelineno-0-852">852</a></span>
+<span class="normal"><a href="#__codelineno-0-853">853</a></span>
+<span class="normal"><a href="#__codelineno-0-854">854</a></span>
+<span class="normal"><a href="#__codelineno-0-855">855</a></span>
+<span class="normal"><a href="#__codelineno-0-856">856</a></span>
+<span class="normal"><a href="#__codelineno-0-857">857</a></span>
+<span class="normal"><a href="#__codelineno-0-858">858</a></span>
+<span class="normal"><a href="#__codelineno-0-859">859</a></span>
+<span class="normal"><a href="#__codelineno-0-860">860</a></span>
+<span class="normal"><a href="#__codelineno-0-861">861</a></span>
+<span class="normal"><a href="#__codelineno-0-862">862</a></span>
+<span class="normal"><a href="#__codelineno-0-863">863</a></span>
+<span class="normal"><a href="#__codelineno-0-864">864</a></span>
+<span class="normal"><a href="#__codelineno-0-865">865</a></span>
+<span class="normal"><a href="#__codelineno-0-866">866</a></span>
+<span class="normal"><a href="#__codelineno-0-867">867</a></span>
+<span class="normal"><a href="#__codelineno-0-868">868</a></span>
+<span class="normal"><a href="#__codelineno-0-869">869</a></span>
+<span class="normal"><a href="#__codelineno-0-870">870</a></span>
+<span class="normal"><a href="#__codelineno-0-871">871</a></span>
+<span class="normal"><a href="#__codelineno-0-872">872</a></span>
+<span class="normal"><a href="#__codelineno-0-873">873</a></span>
+<span class="normal"><a href="#__codelineno-0-874">874</a></span>
+<span class="normal"><a href="#__codelineno-0-875">875</a></span>
+<span class="normal"><a href="#__codelineno-0-876">876</a></span>
+<span class="normal"><a href="#__codelineno-0-877">877</a></span>
+<span class="normal"><a href="#__codelineno-0-878">878</a></span>
+<span class="normal"><a href="#__codelineno-0-879">879</a></span>
+<span class="normal"><a href="#__codelineno-0-880">880</a></span>
+<span class="normal"><a href="#__codelineno-0-881">881</a></span>
+<span class="normal"><a href="#__codelineno-0-882">882</a></span>
+<span class="normal"><a href="#__codelineno-0-883">883</a></span>
+<span class="normal"><a href="#__codelineno-0-884">884</a></span>
+<span class="normal"><a href="#__codelineno-0-885">885</a></span>
+<span class="normal"><a href="#__codelineno-0-886">886</a></span>
+<span class="normal"><a href="#__codelineno-0-887">887</a></span>
+<span class="normal"><a href="#__codelineno-0-888">888</a></span>
+<span class="normal"><a href="#__codelineno-0-889">889</a></span>
+<span class="normal"><a href="#__codelineno-0-890">890</a></span>
+<span class="normal"><a href="#__codelineno-0-891">891</a></span>
+<span class="normal"><a href="#__codelineno-0-892">892</a></span>
+<span class="normal"><a href="#__codelineno-0-893">893</a></span>
+<span class="normal"><a href="#__codelineno-0-894">894</a></span>
+<span class="normal"><a href="#__codelineno-0-895">895</a></span>
+<span class="normal"><a href="#__codelineno-0-896">896</a></span>
+<span class="normal"><a href="#__codelineno-0-897">897</a></span>
+<span class="normal"><a href="#__codelineno-0-898">898</a></span>
+<span class="normal"><a href="#__codelineno-0-899">899</a></span>
+<span class="normal"><a href="#__codelineno-0-900">900</a></span>
+<span class="normal"><a href="#__codelineno-0-901">901</a></span>
+<span class="normal"><a href="#__codelineno-0-902">902</a></span>
+<span class="normal"><a href="#__codelineno-0-903">903</a></span>
+<span class="normal"><a href="#__codelineno-0-904">904</a></span>
+<span class="normal"><a href="#__codelineno-0-905">905</a></span>
+<span class="normal"><a href="#__codelineno-0-906">906</a></span>
+<span class="normal"><a href="#__codelineno-0-907">907</a></span>
+<span class="normal"><a href="#__codelineno-0-908">908</a></span>
+<span class="normal"><a href="#__codelineno-0-909">909</a></span>
+<span class="normal"><a href="#__codelineno-0-910">910</a></span>
+<span class="normal"><a href="#__codelineno-0-911">911</a></span>
+<span class="normal"><a href="#__codelineno-0-912">912</a></span>
+<span class="normal"><a href="#__codelineno-0-913">913</a></span>
+<span class="normal"><a href="#__codelineno-0-914">914</a></span>
+<span class="normal"><a href="#__codelineno-0-915">915</a></span>
+<span class="normal"><a href="#__codelineno-0-916">916</a></span>
+<span class="normal"><a href="#__codelineno-0-917">917</a></span>
+<span class="normal"><a href="#__codelineno-0-918">918</a></span>
+<span class="normal"><a href="#__codelineno-0-919">919</a></span>
+<span class="normal"><a href="#__codelineno-0-920">920</a></span>
+<span class="normal"><a href="#__codelineno-0-921">921</a></span>
+<span class="normal"><a href="#__codelineno-0-922">922</a></span>
+<span class="normal"><a href="#__codelineno-0-923">923</a></span>
+<span class="normal"><a href="#__codelineno-0-924">924</a></span>
+<span class="normal"><a href="#__codelineno-0-925">925</a></span>
+<span class="normal"><a href="#__codelineno-0-926">926</a></span>
+<span class="normal"><a href="#__codelineno-0-927">927</a></span>
+<span class="normal"><a href="#__codelineno-0-928">928</a></span>
+<span class="normal"><a href="#__codelineno-0-929">929</a></span>
+<span class="normal"><a href="#__codelineno-0-930">930</a></span>
+<span class="normal"><a href="#__codelineno-0-931">931</a></span>
+<span class="normal"><a href="#__codelineno-0-932">932</a></span>
+<span class="normal"><a href="#__codelineno-0-933">933</a></span>
+<span class="normal"><a href="#__codelineno-0-934">934</a></span>
+<span class="normal"><a href="#__codelineno-0-935">935</a></span>
+<span class="normal"><a href="#__codelineno-0-936">936</a></span>
+<span class="normal"><a href="#__codelineno-0-937">937</a></span>
+<span class="normal"><a href="#__codelineno-0-938">938</a></span>
+<span class="normal"><a href="#__codelineno-0-939">939</a></span>
+<span class="normal"><a href="#__codelineno-0-940">940</a></span>
+<span class="normal"><a href="#__codelineno-0-941">941</a></span>
+<span class="normal"><a href="#__codelineno-0-942">942</a></span>
+<span class="normal"><a href="#__codelineno-0-943">943</a></span>
+<span class="normal"><a href="#__codelineno-0-944">944</a></span>
+<span class="normal"><a href="#__codelineno-0-945">945</a></span>
+<span class="normal"><a href="#__codelineno-0-946">946</a></span>
+<span class="normal"><a href="#__codelineno-0-947">947</a></span>
+<span class="normal"><a href="#__codelineno-0-948">948</a></span>
+<span class="normal"><a href="#__codelineno-0-949">949</a></span>
+<span class="normal"><a href="#__codelineno-0-950">950</a></span>
+<span class="normal"><a href="#__codelineno-0-951">951</a></span>
+<span class="normal"><a href="#__codelineno-0-952">952</a></span>
+<span class="normal"><a href="#__codelineno-0-953">953</a></span>
+<span class="normal"><a href="#__codelineno-0-954">954</a></span>
+<span class="normal"><a href="#__codelineno-0-955">955</a></span>
+<span class="normal"><a href="#__codelineno-0-956">956</a></span>
+<span class="normal"><a href="#__codelineno-0-957">957</a></span>
+<span class="normal"><a href="#__codelineno-0-958">958</a></span>
+<span class="normal"><a href="#__codelineno-0-959">959</a></span>
+<span class="normal"><a href="#__codelineno-0-960">960</a></span>
+<span class="normal"><a href="#__codelineno-0-961">961</a></span>
+<span class="normal"><a href="#__codelineno-0-962">962</a></span>
+<span class="normal"><a href="#__codelineno-0-963">963</a></span>
+<span class="normal"><a href="#__codelineno-0-964">964</a></span>
+<span class="normal"><a href="#__codelineno-0-965">965</a></span>
+<span class="normal"><a href="#__codelineno-0-966">966</a></span>
+<span class="normal"><a href="#__codelineno-0-967">967</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-819" name="__codelineno-0-819"></a><span class="k">def</span><span class="w"> </span><span class="nf">set</span><span class="p">(</span>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-821" name="__codelineno-0-821"></a>    <span class="n">attribute</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-822" name="__codelineno-0-822"></a>    <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-0-823" name="__codelineno-0-823"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-824" name="__codelineno-0-824"></a>    <span class="n">kind</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"inputs"</span><span class="p">,</span> <span class="s2">"outputs"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"inputs"</span><span class="p">,</span>
+<a id="__codelineno-0-825" name="__codelineno-0-825"></a>    <span class="o">**</span><span class="n">coords</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-0-826" name="__codelineno-0-826"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-827" name="__codelineno-0-827"></a><span class="w">    </span><span class="sd">"""Stage values of one attribute.</span>
+<a id="__codelineno-0-828" name="__codelineno-0-828"></a>
+<a id="__codelineno-0-829" name="__codelineno-0-829"></a><span class="sd">    Every coordinate is a keyword - `entity=`, `snapshot=`, a group's field</span>
+<a id="__codelineno-0-830" name="__codelineno-0-830"></a><span class="sd">    such as `bus=` or a corridor's `from=` - since which exist is declared</span>
+<a id="__codelineno-0-831" name="__codelineno-0-831"></a><span class="sd">    rather than fixed. A keyword holds one label, fixing that coordinate, or</span>
+<a id="__codelineno-0-832" name="__codelineno-0-832"></a><span class="sd">    a list of labels the value is staged at each of. A coordinate no keyword</span>
+<a id="__codelineno-0-833" name="__codelineno-0-833"></a><span class="sd">    names is NULL, which by the broadcast rule is every label of it.</span>
+<a id="__codelineno-0-834" name="__codelineno-0-834"></a>
+<a id="__codelineno-0-835" name="__codelineno-0-835"></a><span class="sd">    `value` takes six forms:</span>
+<a id="__codelineno-0-836" name="__codelineno-0-836"></a>
+<a id="__codelineno-0-837" name="__codelineno-0-837"></a><span class="sd">    - a scalar, staged at every combination of the listed labels;</span>
+<a id="__codelineno-0-838" name="__codelineno-0-838"></a><span class="sd">    - a sequence, aligned positionally to the one list keyword;</span>
+<a id="__codelineno-0-839" name="__codelineno-0-839"></a><span class="sd">    - a mapping or a one-dimensional labelled series, keyed by labels of</span>
+<a id="__codelineno-0-840" name="__codelineno-0-840"></a><span class="sd">      the series' `index.name` where that names a coordinate, else of the</span>
+<a id="__codelineno-0-841" name="__codelineno-0-841"></a><span class="sd">      one coordinate no keyword names;</span>
+<a id="__codelineno-0-842" name="__codelineno-0-842"></a><span class="sd">    - a long frame supplying its own keys, which keywords may complete with</span>
+<a id="__codelineno-0-843" name="__codelineno-0-843"></a><span class="sd">      single labels;</span>
+<a id="__codelineno-0-844" name="__codelineno-0-844"></a><span class="sd">    - a narwhals expression, a *function of the current value*: it reads the</span>
+<a id="__codelineno-0-845" name="__codelineno-0-845"></a><span class="sd">      rows the keywords select before it stages, so two such calls compose.</span>
+<a id="__codelineno-0-846" name="__codelineno-0-846"></a>
+<a id="__codelineno-0-847" name="__codelineno-0-847"></a><span class="sd">    An attribute's values are long rows, whatever its `dims`. A property -</span>
+<a id="__codelineno-0-848" name="__codelineno-0-848"></a><span class="sd">    a category included - patches one column of existing axis rows: a</span>
+<a id="__codelineno-0-849" name="__codelineno-0-849"></a><span class="sd">    mapping or series from label to value, a `dim=` keyword naming the</span>
+<a id="__codelineno-0-850" name="__codelineno-0-850"></a><span class="sd">    labels, or a scalar for every label the axis has. A group's property</span>
+<a id="__codelineno-0-851" name="__codelineno-0-851"></a><span class="sd">    takes a scalar, its fields as keywords selecting the tuples, none</span>
+<a id="__codelineno-0-852" name="__codelineno-0-852"></a><span class="sd">    selecting every tuple.</span>
+<a id="__codelineno-0-853" name="__codelineno-0-853"></a>
+<a id="__codelineno-0-854" name="__codelineno-0-854"></a><span class="sd">    A property is named `subject.name` - `set("entity.carrier", ...)` -</span>
+<a id="__codelineno-0-855" name="__codelineno-0-855"></a><span class="sd">    and a plain name is an attribute or result.</span>
+<a id="__codelineno-0-856" name="__codelineno-0-856"></a>
+<a id="__codelineno-0-857" name="__codelineno-0-857"></a><span class="sd">    A keyword naming no coordinate of `attribute` is a property of a dim it</span>
+<a id="__codelineno-0-858" name="__codelineno-0-858"></a><span class="sd">    reaches - `component="Generator"`, or a list of values - and selects</span>
+<a id="__codelineno-0-859" name="__codelineno-0-859"></a><span class="sd">    the labels of that dim matching it on the record as staged, the</span>
+<a id="__codelineno-0-860" name="__codelineno-0-860"></a><span class="sd">    keywords combining as an intersection; `set` writes one row per label,</span>
+<a id="__codelineno-0-861" name="__codelineno-0-861"></a><span class="sd">    and stores nothing of the filter, so a label added later is not reached.</span>
+<a id="__codelineno-0-862" name="__codelineno-0-862"></a>
+<a id="__codelineno-0-863" name="__codelineno-0-863"></a><span class="sd">    `kind="outputs"` stages into `outputs/` instead of `inputs/`, which is</span>
+<a id="__codelineno-0-864" name="__codelineno-0-864"></a><span class="sd">    how a tool hands results back. Results use the same long schema; they do</span>
+<a id="__codelineno-0-865" name="__codelineno-0-865"></a><span class="sd">    not overlay, and their labels are not checked, a solve producing rows</span>
+<a id="__codelineno-0-866" name="__codelineno-0-866"></a><span class="sd">    for labels it derived rather than read.</span>
+<a id="__codelineno-0-867" name="__codelineno-0-867"></a>
+<a id="__codelineno-0-868" name="__codelineno-0-868"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-869" name="__codelineno-0-869"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-870" name="__codelineno-0-870"></a><span class="sd">    KeyError</span>
+<a id="__codelineno-0-871" name="__codelineno-0-871"></a><span class="sd">        On an undeclared attribute, result or keyword, a `partial` dim's</span>
+<a id="__codelineno-0-872" name="__codelineno-0-872"></a><span class="sd">        label the record does not resolve, a property's label no layer</span>
+<a id="__codelineno-0-873" name="__codelineno-0-873"></a><span class="sd">        wrote, a value of a property `into` a dim naming no label of it, or</span>
+<a id="__codelineno-0-874" name="__codelineno-0-874"></a><span class="sd">        a label whose categories do not carry `attribute`.</span>
+<a id="__codelineno-0-875" name="__codelineno-0-875"></a><span class="sd">    ValueError</span>
+<a id="__codelineno-0-876" name="__codelineno-0-876"></a><span class="sd">        On a property with `kind="outputs"` or an `nw.Expr` value, a</span>
+<a id="__codelineno-0-877" name="__codelineno-0-877"></a><span class="sd">        keyword the attribute does not vary over, a sequence with no</span>
+<a id="__codelineno-0-878" name="__codelineno-0-878"></a><span class="sd">        single list keyword to align to, keys whose coordinate is</span>
+<a id="__codelineno-0-879" name="__codelineno-0-879"></a><span class="sd">        ambiguous, a value an `Enum` property does not list, or a property</span>
+<a id="__codelineno-0-880" name="__codelineno-0-880"></a><span class="sd">        keyword whose dim the attribute does not reach through exactly one</span>
+<a id="__codelineno-0-881" name="__codelineno-0-881"></a><span class="sd">        coordinate, or that is given beside that coordinate's own keyword.</span>
+<a id="__codelineno-0-882" name="__codelineno-0-882"></a>
+<a id="__codelineno-0-883" name="__codelineno-0-883"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-884" name="__codelineno-0-884"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-885" name="__codelineno-0-885"></a><span class="sd">    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)</span>
+<a id="__codelineno-0-886" name="__codelineno-0-886"></a><span class="sd">    - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)</span>
+<a id="__codelineno-0-887" name="__codelineno-0-887"></a><span class="sd">    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)</span>
+<a id="__codelineno-0-888" name="__codelineno-0-888"></a><span class="sd">    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)</span>
+<a id="__codelineno-0-889" name="__codelineno-0-889"></a><span class="sd">    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)</span>
+<a id="__codelineno-0-890" name="__codelineno-0-890"></a><span class="sd">    """</span>
+<a id="__codelineno-0-891" name="__codelineno-0-891"></a>    <span class="n">keyed</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">)</span> <span class="ow">or</span> <span class="n">_series_index</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-0-892" name="__codelineno-0-892"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="n">attribute</span><span class="p">),</span> <span class="nb">tuple</span><span class="p">):</span>
+<a id="__codelineno-0-893" name="__codelineno-0-893"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_set_dotted</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">kind</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-894" name="__codelineno-0-894"></a>        <span class="k">return</span>
+<a id="__codelineno-0-895" name="__codelineno-0-895"></a>    <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_select</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-896" name="__codelineno-0-896"></a>    <span class="n">listed</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">coords</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">v</span><span class="p">)}</span>
+<a id="__codelineno-0-897" name="__codelineno-0-897"></a>
+<a id="__codelineno-0-898" name="__codelineno-0-898"></a>    <span class="k">if</span> <span class="n">_is_frame</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">keyed</span><span class="p">:</span>
+<a id="__codelineno-0-899" name="__codelineno-0-899"></a>        <span class="k">if</span> <span class="n">listed</span><span class="p">:</span>
+<a id="__codelineno-0-900" name="__codelineno-0-900"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-901" name="__codelineno-0-901"></a>                <span class="sa">f</span><span class="s2">"`set(</span><span class="si">{</span><span class="n">attribute</span><span class="si">!r}</span><span class="s2">, &lt;frame&gt;)` supplies its own keys, so "</span>
+<a id="__codelineno-0-902" name="__codelineno-0-902"></a>                <span class="sa">f</span><span class="s2">"keywords </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">listed</span><span class="p">)</span><span class="si">}</span><span class="s2"> may give one label each, not a list"</span>
+<a id="__codelineno-0-903" name="__codelineno-0-903"></a>            <span class="p">)</span>
+<a id="__codelineno-0-904" name="__codelineno-0-904"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-905" name="__codelineno-0-905"></a>        <span class="n">lazy</span> <span class="o">=</span> <span class="n">_incoming</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="p">)</span>
+<a id="__codelineno-0-906" name="__codelineno-0-906"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">check_group_columns</span><span class="p">(</span>
+<a id="__codelineno-0-907" name="__codelineno-0-907"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups_of</span><span class="p">(</span><span class="n">attribute</span><span class="p">),</span>
+<a id="__codelineno-0-908" name="__codelineno-0-908"></a>            <span class="n">lazy</span><span class="p">,</span>
+<a id="__codelineno-0-909" name="__codelineno-0-909"></a>            <span class="n">carrier</span><span class="o">=</span><span class="sa">f</span><span class="s2">"`set(</span><span class="si">{</span><span class="n">attribute</span><span class="si">!r}</span><span class="s2">, &lt;frame&gt;)`"</span><span class="p">,</span>
+<a id="__codelineno-0-910" name="__codelineno-0-910"></a>        <span class="p">)</span>
+<a id="__codelineno-0-911" name="__codelineno-0-911"></a>        <span class="k">if</span> <span class="n">kind</span> <span class="o">==</span> <span class="s2">"inputs"</span><span class="p">:</span>
+<a id="__codelineno-0-912" name="__codelineno-0-912"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_validate_frame</span><span class="p">(</span><span class="n">lazy</span><span class="p">,</span> <span class="n">attribute</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-913" name="__codelineno-0-913"></a>        <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-914" name="__codelineno-0-914"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_validate_result</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-915" name="__codelineno-0-915"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_stage_long</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">lazy</span><span class="p">,</span> <span class="n">kind</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-916" name="__codelineno-0-916"></a>        <span class="k">return</span>
+<a id="__codelineno-0-917" name="__codelineno-0-917"></a>
+<a id="__codelineno-0-918" name="__codelineno-0-918"></a>    <span class="k">if</span> <span class="n">kind</span> <span class="o">==</span> <span class="s2">"inputs"</span><span class="p">:</span>
+<a id="__codelineno-0-919" name="__codelineno-0-919"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_validate_input</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-920" name="__codelineno-0-920"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-921" name="__codelineno-0-921"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_validate_result</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-922" name="__codelineno-0-922"></a>
+<a id="__codelineno-0-923" name="__codelineno-0-923"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">nw</span><span class="o">.</span><span class="n">Expr</span><span class="p">):</span>
+<a id="__codelineno-0-924" name="__codelineno-0-924"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_stage_derived</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">kind</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-925" name="__codelineno-0-925"></a>        <span class="k">return</span>
+<a id="__codelineno-0-926" name="__codelineno-0-926"></a>
+<a id="__codelineno-0-927" name="__codelineno-0-927"></a>    <span class="k">if</span> <span class="n">keyed</span><span class="p">:</span>
+<a id="__codelineno-0-928" name="__codelineno-0-928"></a>        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_key_coordinate</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-929" name="__codelineno-0-929"></a>        <span class="n">keys</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">normalise_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-930" name="__codelineno-0-930"></a>        <span class="k">if</span> <span class="n">kind</span> <span class="o">==</span> <span class="s2">"inputs"</span><span class="p">:</span>
+<a id="__codelineno-0-931" name="__codelineno-0-931"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_require_labels</span><span class="p">(</span>
+<a id="__codelineno-0-932" name="__codelineno-0-932"></a>                <span class="n">attribute</span><span class="p">,</span>
+<a id="__codelineno-0-933" name="__codelineno-0-933"></a>                <span class="n">_flat_coordinates</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="p">,</span> <span class="n">attribute</span><span class="p">)[</span><span class="n">key</span><span class="p">],</span>
+<a id="__codelineno-0-934" name="__codelineno-0-934"></a>                <span class="n">cast</span><span class="p">(</span><span class="s2">"list[Any]"</span><span class="p">,</span> <span class="n">keys</span><span class="p">),</span>
+<a id="__codelineno-0-935" name="__codelineno-0-935"></a>            <span class="p">)</span>
+<a id="__codelineno-0-936" name="__codelineno-0-936"></a>        <span class="n">column</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">cast</span><span class="p">(</span><span class="s2">"list[Any]"</span><span class="p">,</span> <span class="n">keys</span><span class="p">)}</span>
+<a id="__codelineno-0-937" name="__codelineno-0-937"></a>    <span class="k">elif</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+<a id="__codelineno-0-938" name="__codelineno-0-938"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">listed</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+<a id="__codelineno-0-939" name="__codelineno-0-939"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-940" name="__codelineno-0-940"></a>                <span class="sa">f</span><span class="s2">"`set(</span><span class="si">{</span><span class="n">attribute</span><span class="si">!r}</span><span class="s2">, &lt;sequence&gt;)` aligns to exactly one list "</span>
+<a id="__codelineno-0-941" name="__codelineno-0-941"></a>                <span class="sa">f</span><span class="s2">"keyword, and was given </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">listed</span><span class="p">)</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">'none'</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-942" name="__codelineno-0-942"></a>            <span class="p">)</span>
+<a id="__codelineno-0-943" name="__codelineno-0-943"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-944" name="__codelineno-0-944"></a>        <span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="n">labels</span><span class="p">),)</span> <span class="o">=</span> <span class="n">listed</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<a id="__codelineno-0-945" name="__codelineno-0-945"></a>        <span class="k">del</span> <span class="n">listed</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+<a id="__codelineno-0-946" name="__codelineno-0-946"></a>        <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">normalise_value</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">labels</span><span class="p">)</span>
+<a id="__codelineno-0-947" name="__codelineno-0-947"></a>        <span class="n">column</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">labels</span><span class="p">}</span>
+<a id="__codelineno-0-948" name="__codelineno-0-948"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-949" name="__codelineno-0-949"></a>        <span class="n">values</span> <span class="o">=</span> <span class="p">[</span><span class="n">value</span><span class="p">]</span>
+<a id="__codelineno-0-950" name="__codelineno-0-950"></a>        <span class="n">column</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-951" name="__codelineno-0-951"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span>
+<a id="__codelineno-0-952" name="__codelineno-0-952"></a>        <span class="p">{</span><span class="o">**</span><span class="n">column</span><span class="p">,</span> <span class="s2">"value"</span><span class="p">:</span> <span class="n">values</span><span class="p">},</span>
+<a id="__codelineno-0-953" name="__codelineno-0-953"></a>        <span class="p">{</span>
+<a id="__codelineno-0-954" name="__codelineno-0-954"></a>            <span class="o">**</span><span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_coordinate_type</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">column</span><span class="p">},</span>
+<a id="__codelineno-0-955" name="__codelineno-0-955"></a>            <span class="s2">"value"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-956" name="__codelineno-0-956"></a>        <span class="p">},</span>
+<a id="__codelineno-0-957" name="__codelineno-0-957"></a>    <span class="p">)</span>
+<a id="__codelineno-0-958" name="__codelineno-0-958"></a>    <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">labels</span> <span class="ow">in</span> <span class="n">listed</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-959" name="__codelineno-0-959"></a>        <span class="n">rel</span> <span class="o">=</span> <span class="n">rel</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span>
+<a id="__codelineno-0-960" name="__codelineno-0-960"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span>
+<a id="__codelineno-0-961" name="__codelineno-0-961"></a>                <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="n">labels</span><span class="p">},</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_coordinate_type</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">c</span><span class="p">)}</span>
+<a id="__codelineno-0-962" name="__codelineno-0-962"></a>            <span class="p">)</span>
+<a id="__codelineno-0-963" name="__codelineno-0-963"></a>        <span class="p">)</span>
+<a id="__codelineno-0-964" name="__codelineno-0-964"></a>    <span class="n">fixed</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">coords</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">v</span><span class="p">)}</span>
+<a id="__codelineno-0-965" name="__codelineno-0-965"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert_long</span><span class="p">(</span>
+<a id="__codelineno-0-966" name="__codelineno-0-966"></a>        <span class="n">rel</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">kind</span><span class="p">,</span> <span class="n">attribute</span><span class="p">),</span> <span class="n">attribute</span><span class="p">,</span> <span class="nb">set</span><span class="p">(</span><span class="n">rel</span><span class="o">.</span><span class="n">columns</span><span class="p">),</span> <span class="n">fixed</span>
+<a id="__codelineno-0-967" name="__codelineno-0-967"></a>    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="datarecord.mutable.WorkingRecord.add" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">add</span>
+
+
+<a href="#datarecord.mutable.WorkingRecord.add" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">add</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">dim</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n"><span title="collections.abc.Sequence">Sequence</span></span><span class="p">[</span><span class="n"><span title="typing.Any">Any</span></span><span class="p">],</span> <span class="o">**</span><span class="n">columns</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Stage labels of <code>dim</code>, each as one whole row of its axis file.</p>
+<p><code>columns</code> are that file's other columns - <code>dim</code>'s properties and a
+nested dim's parent keys - each a scalar for every label or a sequence
+aligned to <code>labels</code>. A column
+no keyword names is NULL on these rows: <code>add</code> restates a label's row
+whole, replacing any this record staged for it, a <code>remove</code>'s tombstone
+included.</p>
+<p>Not a sequence of <code>set</code> calls: a label exists by virtue of its axis row,
+so adding one with no columns at all is an edit. An attribute's value,
+whatever its <code>dims</code>, goes through <code>set</code>, a group's row through
+<code>add_group</code>.</p>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="KeyError">KeyError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the schema declares no <code>dim</code>, or on a value of a property <code>into</code>
+a dim naming no label of it.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>On an attribute, a column the axis file has no place for, a nested
+dim's missing parent key, a sequence of the wrong length, or a
+value an <code>Enum</code> property does not list.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/#add-remove">add / remove</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/format/#where-a-value-lives">where a value lives</a></li>
+</ul>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1591">1591</a></span>
+<span class="normal"><a href="#__codelineno-0-1592">1592</a></span>
+<span class="normal"><a href="#__codelineno-0-1593">1593</a></span>
+<span class="normal"><a href="#__codelineno-0-1594">1594</a></span>
+<span class="normal"><a href="#__codelineno-0-1595">1595</a></span>
+<span class="normal"><a href="#__codelineno-0-1596">1596</a></span>
+<span class="normal"><a href="#__codelineno-0-1597">1597</a></span>
+<span class="normal"><a href="#__codelineno-0-1598">1598</a></span>
+<span class="normal"><a href="#__codelineno-0-1599">1599</a></span>
+<span class="normal"><a href="#__codelineno-0-1600">1600</a></span>
+<span class="normal"><a href="#__codelineno-0-1601">1601</a></span>
+<span class="normal"><a href="#__codelineno-0-1602">1602</a></span>
+<span class="normal"><a href="#__codelineno-0-1603">1603</a></span>
+<span class="normal"><a href="#__codelineno-0-1604">1604</a></span>
+<span class="normal"><a href="#__codelineno-0-1605">1605</a></span>
+<span class="normal"><a href="#__codelineno-0-1606">1606</a></span>
+<span class="normal"><a href="#__codelineno-0-1607">1607</a></span>
+<span class="normal"><a href="#__codelineno-0-1608">1608</a></span>
+<span class="normal"><a href="#__codelineno-0-1609">1609</a></span>
+<span class="normal"><a href="#__codelineno-0-1610">1610</a></span>
+<span class="normal"><a href="#__codelineno-0-1611">1611</a></span>
+<span class="normal"><a href="#__codelineno-0-1612">1612</a></span>
+<span class="normal"><a href="#__codelineno-0-1613">1613</a></span>
+<span class="normal"><a href="#__codelineno-0-1614">1614</a></span>
+<span class="normal"><a href="#__codelineno-0-1615">1615</a></span>
+<span class="normal"><a href="#__codelineno-0-1616">1616</a></span>
+<span class="normal"><a href="#__codelineno-0-1617">1617</a></span>
+<span class="normal"><a href="#__codelineno-0-1618">1618</a></span>
+<span class="normal"><a href="#__codelineno-0-1619">1619</a></span>
+<span class="normal"><a href="#__codelineno-0-1620">1620</a></span>
+<span class="normal"><a href="#__codelineno-0-1621">1621</a></span>
+<span class="normal"><a href="#__codelineno-0-1622">1622</a></span>
+<span class="normal"><a href="#__codelineno-0-1623">1623</a></span>
+<span class="normal"><a href="#__codelineno-0-1624">1624</a></span>
+<span class="normal"><a href="#__codelineno-0-1625">1625</a></span>
+<span class="normal"><a href="#__codelineno-0-1626">1626</a></span>
+<span class="normal"><a href="#__codelineno-0-1627">1627</a></span>
+<span class="normal"><a href="#__codelineno-0-1628">1628</a></span>
+<span class="normal"><a href="#__codelineno-0-1629">1629</a></span>
+<span class="normal"><a href="#__codelineno-0-1630">1630</a></span>
+<span class="normal"><a href="#__codelineno-0-1631">1631</a></span>
+<span class="normal"><a href="#__codelineno-0-1632">1632</a></span>
+<span class="normal"><a href="#__codelineno-0-1633">1633</a></span>
+<span class="normal"><a href="#__codelineno-0-1634">1634</a></span>
+<span class="normal"><a href="#__codelineno-0-1635">1635</a></span>
+<span class="normal"><a href="#__codelineno-0-1636">1636</a></span>
+<span class="normal"><a href="#__codelineno-0-1637">1637</a></span>
+<span class="normal"><a href="#__codelineno-0-1638">1638</a></span>
+<span class="normal"><a href="#__codelineno-0-1639">1639</a></span>
+<span class="normal"><a href="#__codelineno-0-1640">1640</a></span>
+<span class="normal"><a href="#__codelineno-0-1641">1641</a></span>
+<span class="normal"><a href="#__codelineno-0-1642">1642</a></span>
+<span class="normal"><a href="#__codelineno-0-1643">1643</a></span>
+<span class="normal"><a href="#__codelineno-0-1644">1644</a></span>
+<span class="normal"><a href="#__codelineno-0-1645">1645</a></span>
+<span class="normal"><a href="#__codelineno-0-1646">1646</a></span>
+<span class="normal"><a href="#__codelineno-0-1647">1647</a></span>
+<span class="normal"><a href="#__codelineno-0-1648">1648</a></span>
+<span class="normal"><a href="#__codelineno-0-1649">1649</a></span>
+<span class="normal"><a href="#__codelineno-0-1650">1650</a></span>
+<span class="normal"><a href="#__codelineno-0-1651">1651</a></span>
+<span class="normal"><a href="#__codelineno-0-1652">1652</a></span>
+<span class="normal"><a href="#__codelineno-0-1653">1653</a></span>
+<span class="normal"><a href="#__codelineno-0-1654">1654</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1591" name="__codelineno-0-1591"></a><span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="o">**</span><span class="n">columns</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1592" name="__codelineno-0-1592"></a><span class="w">    </span><span class="sd">"""Stage labels of `dim`, each as one whole row of its axis file.</span>
+<a id="__codelineno-0-1593" name="__codelineno-0-1593"></a>
+<a id="__codelineno-0-1594" name="__codelineno-0-1594"></a><span class="sd">    `columns` are that file's other columns - `dim`'s properties and a</span>
+<a id="__codelineno-0-1595" name="__codelineno-0-1595"></a><span class="sd">    nested dim's parent keys - each a scalar for every label or a sequence</span>
+<a id="__codelineno-0-1596" name="__codelineno-0-1596"></a><span class="sd">    aligned to `labels`. A column</span>
+<a id="__codelineno-0-1597" name="__codelineno-0-1597"></a><span class="sd">    no keyword names is NULL on these rows: `add` restates a label's row</span>
+<a id="__codelineno-0-1598" name="__codelineno-0-1598"></a><span class="sd">    whole, replacing any this record staged for it, a `remove`'s tombstone</span>
+<a id="__codelineno-0-1599" name="__codelineno-0-1599"></a><span class="sd">    included.</span>
+<a id="__codelineno-0-1600" name="__codelineno-0-1600"></a>
+<a id="__codelineno-0-1601" name="__codelineno-0-1601"></a><span class="sd">    Not a sequence of `set` calls: a label exists by virtue of its axis row,</span>
+<a id="__codelineno-0-1602" name="__codelineno-0-1602"></a><span class="sd">    so adding one with no columns at all is an edit. An attribute's value,</span>
+<a id="__codelineno-0-1603" name="__codelineno-0-1603"></a><span class="sd">    whatever its `dims`, goes through `set`, a group's row through</span>
+<a id="__codelineno-0-1604" name="__codelineno-0-1604"></a><span class="sd">    `add_group`.</span>
+<a id="__codelineno-0-1605" name="__codelineno-0-1605"></a>
+<a id="__codelineno-0-1606" name="__codelineno-0-1606"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-1607" name="__codelineno-0-1607"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-1608" name="__codelineno-0-1608"></a><span class="sd">    KeyError</span>
+<a id="__codelineno-0-1609" name="__codelineno-0-1609"></a><span class="sd">        If the schema declares no `dim`, or on a value of a property `into`</span>
+<a id="__codelineno-0-1610" name="__codelineno-0-1610"></a><span class="sd">        a dim naming no label of it.</span>
+<a id="__codelineno-0-1611" name="__codelineno-0-1611"></a><span class="sd">    ValueError</span>
+<a id="__codelineno-0-1612" name="__codelineno-0-1612"></a><span class="sd">        On an attribute, a column the axis file has no place for, a nested</span>
+<a id="__codelineno-0-1613" name="__codelineno-0-1613"></a><span class="sd">        dim's missing parent key, a sequence of the wrong length, or a</span>
+<a id="__codelineno-0-1614" name="__codelineno-0-1614"></a><span class="sd">        value an `Enum` property does not list.</span>
+<a id="__codelineno-0-1615" name="__codelineno-0-1615"></a>
+<a id="__codelineno-0-1616" name="__codelineno-0-1616"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-1617" name="__codelineno-0-1617"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-1618" name="__codelineno-0-1618"></a><span class="sd">    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)</span>
+<a id="__codelineno-0-1619" name="__codelineno-0-1619"></a><span class="sd">    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)</span>
+<a id="__codelineno-0-1620" name="__codelineno-0-1620"></a><span class="sd">    """</span>
+<a id="__codelineno-0-1621" name="__codelineno-0-1621"></a>    <span class="k">if</span> <span class="n">dim</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">dimensions</span><span class="p">:</span>
+<a id="__codelineno-0-1622" name="__codelineno-0-1622"></a>        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"the schema declares no dim </span><span class="si">{</span><span class="n">dim</span><span class="si">!r}</span><span class="s2">"</span>
+<a id="__codelineno-0-1623" name="__codelineno-0-1623"></a>        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-1624" name="__codelineno-0-1624"></a>    <span class="n">call</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"add(</span><span class="si">{</span><span class="n">dim</span><span class="si">!r}</span><span class="s2">, ...)"</span>
+<a id="__codelineno-0-1625" name="__codelineno-0-1625"></a>    <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">_AXIS_PREFIX</span><span class="si">}{</span><span class="n">dim</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-1626" name="__codelineno-0-1626"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_reject_undeclared</span><span class="p">(</span><span class="n">call</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="p">[</span><span class="o">*</span><span class="n">columns</span><span class="p">])</span>
+<a id="__codelineno-0-1627" name="__codelineno-0-1627"></a>    <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-0-1628" name="__codelineno-0-1628"></a>        <span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">axis_key</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span> <span class="k">if</span> <span class="n">c</span> <span class="o">!=</span> <span class="n">dim</span> <span class="ow">and</span> <span class="n">c</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">columns</span>
+<a id="__codelineno-0-1629" name="__codelineno-0-1629"></a>    <span class="p">]</span>
+<a id="__codelineno-0-1630" name="__codelineno-0-1630"></a>    <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
+<a id="__codelineno-0-1631" name="__codelineno-0-1631"></a>        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-1632" name="__codelineno-0-1632"></a>            <span class="sa">f</span><span class="s2">"`</span><span class="si">{</span><span class="n">call</span><span class="si">}</span><span class="s2">` gives no </span><span class="si">{</span><span class="n">missing</span><span class="si">}</span><span class="s2">; </span><span class="si">{</span><span class="n">dim</span><span class="si">!r}</span><span class="s2"> is `within` them, so a "</span>
+<a id="__codelineno-0-1633" name="__codelineno-0-1633"></a>            <span class="sa">f</span><span class="s2">"label names a point only with its parents' keys "</span>
+<a id="__codelineno-0-1634" name="__codelineno-0-1634"></a>            <span class="sa">f</span><span class="s2">"(https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)"</span>
+<a id="__codelineno-0-1635" name="__codelineno-0-1635"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1636" name="__codelineno-0-1636"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-1637" name="__codelineno-0-1637"></a>    <span class="n">names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>
+<a id="__codelineno-0-1638" name="__codelineno-0-1638"></a>    <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span><span class="n">dim</span><span class="p">:</span> <span class="n">names</span><span class="p">}</span>
+<a id="__codelineno-0-1639" name="__codelineno-0-1639"></a>    <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">given</span> <span class="ow">in</span> <span class="n">columns</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-1640" name="__codelineno-0-1640"></a>        <span class="n">data</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">given</span><span class="p">)</span> <span class="k">if</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">given</span><span class="p">)</span> <span class="k">else</span> <span class="p">[</span><span class="n">given</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)</span>
+<a id="__codelineno-0-1641" name="__codelineno-0-1641"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="n">c</span><span class="p">])</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">):</span>
+<a id="__codelineno-0-1642" name="__codelineno-0-1642"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-1643" name="__codelineno-0-1643"></a>                <span class="sa">f</span><span class="s2">"`</span><span class="si">{</span><span class="n">call</span><span class="si">}</span><span class="s2">` has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="n">c</span><span class="p">])</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">c</span><span class="si">!r}</span><span class="s2"> values for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)</span><span class="si">}</span><span class="s2"> labels"</span>
+<a id="__codelineno-0-1644" name="__codelineno-0-1644"></a>            <span class="p">)</span>
+<a id="__codelineno-0-1645" name="__codelineno-0-1645"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-1646" name="__codelineno-0-1646"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">require_listed</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"`</span><span class="si">{</span><span class="n">call</span><span class="si">}</span><span class="s2">`"</span><span class="p">)</span>
+<a id="__codelineno-0-1647" name="__codelineno-0-1647"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_require_live</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+<a id="__codelineno-0-1648" name="__codelineno-0-1648"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_column_type</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">data</span><span class="p">})</span>
+<a id="__codelineno-0-1649" name="__codelineno-0-1649"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
+<a id="__codelineno-0-1650" name="__codelineno-0-1650"></a>        <span class="n">rel</span><span class="p">,</span>
+<a id="__codelineno-0-1651" name="__codelineno-0-1651"></a>        <span class="n">table</span><span class="p">,</span>
+<a id="__codelineno-0-1652" name="__codelineno-0-1652"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">False</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
+<a id="__codelineno-0-1653" name="__codelineno-0-1653"></a>        <span class="n">key</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">axis_key</span><span class="p">(</span><span class="n">dim</span><span class="p">),</span>
+<a id="__codelineno-0-1654" name="__codelineno-0-1654"></a>    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="datarecord.mutable.WorkingRecord.remove" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">remove</span>
+
+
+<a href="#datarecord.mutable.WorkingRecord.remove" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">remove</span><span class="p">(</span><span class="n">dim</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n"><span title="collections.abc.Sequence">Sequence</span></span><span class="p">[</span><span class="n"><span title="typing.Any">Any</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Stage a tombstone per label of <code>dim</code>.</p>
+<p>Need not enumerate what it deletes: one axis row per label, and the fold
+drops every value keyed by the label where <code>dim</code> is <code>partial</code>. A nested
+dim's label is a tuple in <code>Schema.axis_key</code> order. No labels stage
+nothing.</p>
+<p>And one tombstone per tuple, of any group, with a field over <code>dim</code>
+naming one of <code>labels</code>, read from the record as it currently resolves:
+a group attribute's value goes with its tuple. Only for a dim keyed by
+its label alone, a nested dim's label naming no point without its
+parents, which a tuple does not carry.</p>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>While a property <code>into</code> <code>dim</code> stores one of <code>labels</code>, the record
+as staged read.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/#add-remove">add / remove</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/layers/#deletion">deletion</a></li>
+</ul>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1656">1656</a></span>
+<span class="normal"><a href="#__codelineno-0-1657">1657</a></span>
+<span class="normal"><a href="#__codelineno-0-1658">1658</a></span>
+<span class="normal"><a href="#__codelineno-0-1659">1659</a></span>
+<span class="normal"><a href="#__codelineno-0-1660">1660</a></span>
+<span class="normal"><a href="#__codelineno-0-1661">1661</a></span>
+<span class="normal"><a href="#__codelineno-0-1662">1662</a></span>
+<span class="normal"><a href="#__codelineno-0-1663">1663</a></span>
+<span class="normal"><a href="#__codelineno-0-1664">1664</a></span>
+<span class="normal"><a href="#__codelineno-0-1665">1665</a></span>
+<span class="normal"><a href="#__codelineno-0-1666">1666</a></span>
+<span class="normal"><a href="#__codelineno-0-1667">1667</a></span>
+<span class="normal"><a href="#__codelineno-0-1668">1668</a></span>
+<span class="normal"><a href="#__codelineno-0-1669">1669</a></span>
+<span class="normal"><a href="#__codelineno-0-1670">1670</a></span>
+<span class="normal"><a href="#__codelineno-0-1671">1671</a></span>
+<span class="normal"><a href="#__codelineno-0-1672">1672</a></span>
+<span class="normal"><a href="#__codelineno-0-1673">1673</a></span>
+<span class="normal"><a href="#__codelineno-0-1674">1674</a></span>
+<span class="normal"><a href="#__codelineno-0-1675">1675</a></span>
+<span class="normal"><a href="#__codelineno-0-1676">1676</a></span>
+<span class="normal"><a href="#__codelineno-0-1677">1677</a></span>
+<span class="normal"><a href="#__codelineno-0-1678">1678</a></span>
+<span class="normal"><a href="#__codelineno-0-1679">1679</a></span>
+<span class="normal"><a href="#__codelineno-0-1680">1680</a></span>
+<span class="normal"><a href="#__codelineno-0-1681">1681</a></span>
+<span class="normal"><a href="#__codelineno-0-1682">1682</a></span>
+<span class="normal"><a href="#__codelineno-0-1683">1683</a></span>
+<span class="normal"><a href="#__codelineno-0-1684">1684</a></span>
+<span class="normal"><a href="#__codelineno-0-1685">1685</a></span>
+<span class="normal"><a href="#__codelineno-0-1686">1686</a></span>
+<span class="normal"><a href="#__codelineno-0-1687">1687</a></span>
+<span class="normal"><a href="#__codelineno-0-1688">1688</a></span>
+<span class="normal"><a href="#__codelineno-0-1689">1689</a></span>
+<span class="normal"><a href="#__codelineno-0-1690">1690</a></span>
+<span class="normal"><a href="#__codelineno-0-1691">1691</a></span>
+<span class="normal"><a href="#__codelineno-0-1692">1692</a></span>
+<span class="normal"><a href="#__codelineno-0-1693">1693</a></span>
+<span class="normal"><a href="#__codelineno-0-1694">1694</a></span>
+<span class="normal"><a href="#__codelineno-0-1695">1695</a></span>
+<span class="normal"><a href="#__codelineno-0-1696">1696</a></span>
+<span class="normal"><a href="#__codelineno-0-1697">1697</a></span>
+<span class="normal"><a href="#__codelineno-0-1698">1698</a></span>
+<span class="normal"><a href="#__codelineno-0-1699">1699</a></span>
+<span class="normal"><a href="#__codelineno-0-1700">1700</a></span>
+<span class="normal"><a href="#__codelineno-0-1701">1701</a></span>
+<span class="normal"><a href="#__codelineno-0-1702">1702</a></span>
+<span class="normal"><a href="#__codelineno-0-1703">1703</a></span>
+<span class="normal"><a href="#__codelineno-0-1704">1704</a></span>
+<span class="normal"><a href="#__codelineno-0-1705">1705</a></span>
+<span class="normal"><a href="#__codelineno-0-1706">1706</a></span>
+<span class="normal"><a href="#__codelineno-0-1707">1707</a></span>
+<span class="normal"><a href="#__codelineno-0-1708">1708</a></span>
+<span class="normal"><a href="#__codelineno-0-1709">1709</a></span>
+<span class="normal"><a href="#__codelineno-0-1710">1710</a></span>
+<span class="normal"><a href="#__codelineno-0-1711">1711</a></span>
+<span class="normal"><a href="#__codelineno-0-1712">1712</a></span>
+<span class="normal"><a href="#__codelineno-0-1713">1713</a></span>
+<span class="normal"><a href="#__codelineno-0-1714">1714</a></span>
+<span class="normal"><a href="#__codelineno-0-1715">1715</a></span>
+<span class="normal"><a href="#__codelineno-0-1716">1716</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1656" name="__codelineno-0-1656"></a><span class="k">def</span><span class="w"> </span><span class="nf">remove</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1657" name="__codelineno-0-1657"></a><span class="w">    </span><span class="sd">"""Stage a tombstone per label of `dim`.</span>
+<a id="__codelineno-0-1658" name="__codelineno-0-1658"></a>
+<a id="__codelineno-0-1659" name="__codelineno-0-1659"></a><span class="sd">    Need not enumerate what it deletes: one axis row per label, and the fold</span>
+<a id="__codelineno-0-1660" name="__codelineno-0-1660"></a><span class="sd">    drops every value keyed by the label where `dim` is `partial`. A nested</span>
+<a id="__codelineno-0-1661" name="__codelineno-0-1661"></a><span class="sd">    dim's label is a tuple in `Schema.axis_key` order. No labels stage</span>
+<a id="__codelineno-0-1662" name="__codelineno-0-1662"></a><span class="sd">    nothing.</span>
+<a id="__codelineno-0-1663" name="__codelineno-0-1663"></a>
+<a id="__codelineno-0-1664" name="__codelineno-0-1664"></a><span class="sd">    And one tombstone per tuple, of any group, with a field over `dim`</span>
+<a id="__codelineno-0-1665" name="__codelineno-0-1665"></a><span class="sd">    naming one of `labels`, read from the record as it currently resolves:</span>
+<a id="__codelineno-0-1666" name="__codelineno-0-1666"></a><span class="sd">    a group attribute's value goes with its tuple. Only for a dim keyed by</span>
+<a id="__codelineno-0-1667" name="__codelineno-0-1667"></a><span class="sd">    its label alone, a nested dim's label naming no point without its</span>
+<a id="__codelineno-0-1668" name="__codelineno-0-1668"></a><span class="sd">    parents, which a tuple does not carry.</span>
+<a id="__codelineno-0-1669" name="__codelineno-0-1669"></a>
+<a id="__codelineno-0-1670" name="__codelineno-0-1670"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-1671" name="__codelineno-0-1671"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-1672" name="__codelineno-0-1672"></a><span class="sd">    ValueError</span>
+<a id="__codelineno-0-1673" name="__codelineno-0-1673"></a><span class="sd">        While a property `into` `dim` stores one of `labels`, the record</span>
+<a id="__codelineno-0-1674" name="__codelineno-0-1674"></a><span class="sd">        as staged read.</span>
+<a id="__codelineno-0-1675" name="__codelineno-0-1675"></a>
+<a id="__codelineno-0-1676" name="__codelineno-0-1676"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-1677" name="__codelineno-0-1677"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-1678" name="__codelineno-0-1678"></a><span class="sd">    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)</span>
+<a id="__codelineno-0-1679" name="__codelineno-0-1679"></a><span class="sd">    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)</span>
+<a id="__codelineno-0-1680" name="__codelineno-0-1680"></a><span class="sd">    """</span>
+<a id="__codelineno-0-1681" name="__codelineno-0-1681"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">labels</span><span class="p">:</span>
+<a id="__codelineno-0-1682" name="__codelineno-0-1682"></a>        <span class="k">return</span>
+<a id="__codelineno-0-1683" name="__codelineno-0-1683"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">axis_key</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+<a id="__codelineno-0-1684" name="__codelineno-0-1684"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+<a id="__codelineno-0-1685" name="__codelineno-0-1685"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_require_unnamed</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">labels</span><span class="p">)</span>
+<a id="__codelineno-0-1686" name="__codelineno-0-1686"></a>    <span class="n">rows</span> <span class="o">=</span> <span class="p">[</span><span class="n">label</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="p">(</span><span class="n">label</span><span class="p">,)</span> <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">labels</span><span class="p">]</span>
+<a id="__codelineno-0-1687" name="__codelineno-0-1687"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span>
+<a id="__codelineno-0-1688" name="__codelineno-0-1688"></a>        <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="p">[</span><span class="n">row</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">key</span><span class="p">)},</span>
+<a id="__codelineno-0-1689" name="__codelineno-0-1689"></a>        <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_column_type</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">key</span><span class="p">},</span>
+<a id="__codelineno-0-1690" name="__codelineno-0-1690"></a>    <span class="p">)</span>
+<a id="__codelineno-0-1691" name="__codelineno-0-1691"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
+<a id="__codelineno-0-1692" name="__codelineno-0-1692"></a>        <span class="n">rel</span><span class="p">,</span>
+<a id="__codelineno-0-1693" name="__codelineno-0-1693"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">_AXIS_PREFIX</span><span class="si">}{</span><span class="n">dim</span><span class="si">}</span><span class="s2">"</span><span class="p">),</span>
+<a id="__codelineno-0-1694" name="__codelineno-0-1694"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">True</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
+<a id="__codelineno-0-1695" name="__codelineno-0-1695"></a>        <span class="n">key</span><span class="o">=</span><span class="n">key</span><span class="p">,</span>
+<a id="__codelineno-0-1696" name="__codelineno-0-1696"></a>    <span class="p">)</span>
+<a id="__codelineno-0-1697" name="__codelineno-0-1697"></a>    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">key</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+<a id="__codelineno-0-1698" name="__codelineno-0-1698"></a>        <span class="k">return</span>
+<a id="__codelineno-0-1699" name="__codelineno-0-1699"></a>    <span class="n">groups</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">resolver</span><span class="o">.</span><span class="n">dims</span><span class="o">.</span><span class="n">groups</span>
+<a id="__codelineno-0-1700" name="__codelineno-0-1700"></a>    <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">group_columns</span><span class="p">:</span>
+<a id="__codelineno-0-1701" name="__codelineno-0-1701"></a>        <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="n">g</span><span class="p">]</span><span class="o">.</span><span class="n">over</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">d</span> <span class="o">==</span> <span class="n">dim</span><span class="p">]</span>
+<a id="__codelineno-0-1702" name="__codelineno-0-1702"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">fields</span> <span class="ow">or</span> <span class="n">g</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">groups</span><span class="p">:</span>
+<a id="__codelineno-0-1703" name="__codelineno-0-1703"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-1704" name="__codelineno-0-1704"></a>        <span class="n">naming</span> <span class="o">=</span> <span class="n">reduce</span><span class="p">(</span>
+<a id="__codelineno-0-1705" name="__codelineno-0-1705"></a>            <span class="n">operator</span><span class="o">.</span><span class="n">or_</span><span class="p">,</span>
+<a id="__codelineno-0-1706" name="__codelineno-0-1706"></a>            <span class="p">(</span>
+<a id="__codelineno-0-1707" name="__codelineno-0-1707"></a>                <span class="n">fn</span><span class="o">.</span><span class="n">struct_extract</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="n">g</span><span class="p">),</span> <span class="n">lit</span><span class="p">(</span><span class="n">f</span><span class="p">))</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="n">lit</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">))</span>
+<a id="__codelineno-0-1708" name="__codelineno-0-1708"></a>                <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fields</span>
+<a id="__codelineno-0-1709" name="__codelineno-0-1709"></a>            <span class="p">),</span>
+<a id="__codelineno-0-1710" name="__codelineno-0-1710"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1711" name="__codelineno-0-1711"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_insert_snapshot</span><span class="p">(</span>
+<a id="__codelineno-0-1712" name="__codelineno-0-1712"></a>            <span class="n">groups</span><span class="p">[</span><span class="n">g</span><span class="p">]</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">naming</span><span class="p">)</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="n">g</span><span class="p">)),</span>
+<a id="__codelineno-0-1713" name="__codelineno-0-1713"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">g</span><span class="p">),</span>
+<a id="__codelineno-0-1714" name="__codelineno-0-1714"></a>            <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">True</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
+<a id="__codelineno-0-1715" name="__codelineno-0-1715"></a>            <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">g</span><span class="p">,),</span>
+<a id="__codelineno-0-1716" name="__codelineno-0-1716"></a>        <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="datarecord.mutable.WorkingRecord.add_group" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">add_group</span>
+
+
+<a href="#datarecord.mutable.WorkingRecord.add_group" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">add_group</span><span class="p">(</span><span class="n">group</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n">frame</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Stage rows of one declared group from a frame keyed by its struct column.</p>
+<p>The frame carries the group as one struct column named for it, its
+<code>into</code> label and the group's properties as plain columns - the shape of
+<code>groups/&lt;group&gt;.parquet</code>. The one path every group is added
+through, a record's <code>connection</code> group included.</p>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>On a missing group or <code>into</code> column, an attribute column, and as
+<code>Schema.check_group_columns</code> does.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li><a href="https://energy-models.github.io/datarecord/design/schema/#groups">groups</a></li>
+</ul>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1817">1817</a></span>
+<span class="normal"><a href="#__codelineno-0-1818">1818</a></span>
+<span class="normal"><a href="#__codelineno-0-1819">1819</a></span>
+<span class="normal"><a href="#__codelineno-0-1820">1820</a></span>
+<span class="normal"><a href="#__codelineno-0-1821">1821</a></span>
+<span class="normal"><a href="#__codelineno-0-1822">1822</a></span>
+<span class="normal"><a href="#__codelineno-0-1823">1823</a></span>
+<span class="normal"><a href="#__codelineno-0-1824">1824</a></span>
+<span class="normal"><a href="#__codelineno-0-1825">1825</a></span>
+<span class="normal"><a href="#__codelineno-0-1826">1826</a></span>
+<span class="normal"><a href="#__codelineno-0-1827">1827</a></span>
+<span class="normal"><a href="#__codelineno-0-1828">1828</a></span>
+<span class="normal"><a href="#__codelineno-0-1829">1829</a></span>
+<span class="normal"><a href="#__codelineno-0-1830">1830</a></span>
+<span class="normal"><a href="#__codelineno-0-1831">1831</a></span>
+<span class="normal"><a href="#__codelineno-0-1832">1832</a></span>
+<span class="normal"><a href="#__codelineno-0-1833">1833</a></span>
+<span class="normal"><a href="#__codelineno-0-1834">1834</a></span>
+<span class="normal"><a href="#__codelineno-0-1835">1835</a></span>
+<span class="normal"><a href="#__codelineno-0-1836">1836</a></span>
+<span class="normal"><a href="#__codelineno-0-1837">1837</a></span>
+<span class="normal"><a href="#__codelineno-0-1838">1838</a></span>
+<span class="normal"><a href="#__codelineno-0-1839">1839</a></span>
+<span class="normal"><a href="#__codelineno-0-1840">1840</a></span>
+<span class="normal"><a href="#__codelineno-0-1841">1841</a></span>
+<span class="normal"><a href="#__codelineno-0-1842">1842</a></span>
+<span class="normal"><a href="#__codelineno-0-1843">1843</a></span>
+<span class="normal"><a href="#__codelineno-0-1844">1844</a></span>
+<span class="normal"><a href="#__codelineno-0-1845">1845</a></span>
+<span class="normal"><a href="#__codelineno-0-1846">1846</a></span>
+<span class="normal"><a href="#__codelineno-0-1847">1847</a></span>
+<span class="normal"><a href="#__codelineno-0-1848">1848</a></span>
+<span class="normal"><a href="#__codelineno-0-1849">1849</a></span>
+<span class="normal"><a href="#__codelineno-0-1850">1850</a></span>
+<span class="normal"><a href="#__codelineno-0-1851">1851</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1817" name="__codelineno-0-1817"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">group</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">frame</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1818" name="__codelineno-0-1818"></a><span class="w">    </span><span class="sd">"""Stage rows of one declared group from a frame keyed by its struct column.</span>
+<a id="__codelineno-0-1819" name="__codelineno-0-1819"></a>
+<a id="__codelineno-0-1820" name="__codelineno-0-1820"></a><span class="sd">    The frame carries the group as one struct column named for it, its</span>
+<a id="__codelineno-0-1821" name="__codelineno-0-1821"></a><span class="sd">    `into` label and the group's properties as plain columns - the shape of</span>
+<a id="__codelineno-0-1822" name="__codelineno-0-1822"></a><span class="sd">    `groups/&lt;group&gt;.parquet`. The one path every group is added</span>
+<a id="__codelineno-0-1823" name="__codelineno-0-1823"></a><span class="sd">    through, a record's `connection` group included.</span>
+<a id="__codelineno-0-1824" name="__codelineno-0-1824"></a>
+<a id="__codelineno-0-1825" name="__codelineno-0-1825"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-1826" name="__codelineno-0-1826"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-1827" name="__codelineno-0-1827"></a><span class="sd">    ValueError</span>
+<a id="__codelineno-0-1828" name="__codelineno-0-1828"></a><span class="sd">        On a missing group or `into` column, an attribute column, and as</span>
+<a id="__codelineno-0-1829" name="__codelineno-0-1829"></a><span class="sd">        `Schema.check_group_columns` does.</span>
+<a id="__codelineno-0-1830" name="__codelineno-0-1830"></a>
+<a id="__codelineno-0-1831" name="__codelineno-0-1831"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-1832" name="__codelineno-0-1832"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-1833" name="__codelineno-0-1833"></a><span class="sd">    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)</span>
+<a id="__codelineno-0-1834" name="__codelineno-0-1834"></a><span class="sd">    """</span>
+<a id="__codelineno-0-1835" name="__codelineno-0-1835"></a>    <span class="n">call</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"`add_group(</span><span class="si">{</span><span class="n">group</span><span class="si">!r}</span><span class="s2">, ...)`"</span>
+<a id="__codelineno-0-1836" name="__codelineno-0-1836"></a>    <span class="n">lazy</span> <span class="o">=</span> <span class="n">_incoming</span><span class="p">(</span><span class="n">frame</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="p">)</span>
+<a id="__codelineno-0-1837" name="__codelineno-0-1837"></a>    <span class="n">columns</span> <span class="o">=</span> <span class="n">lazy</span><span class="o">.</span><span class="n">collect_schema</span><span class="p">()</span>
+<a id="__codelineno-0-1838" name="__codelineno-0-1838"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">check_group_columns</span><span class="p">([</span><span class="n">group</span><span class="p">],</span> <span class="n">lazy</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="n">call</span><span class="p">)</span>
+<a id="__codelineno-0-1839" name="__codelineno-0-1839"></a>    <span class="n">into</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="n">group</span><span class="p">]</span><span class="o">.</span><span class="n">into</span>
+<a id="__codelineno-0-1840" name="__codelineno-0-1840"></a>    <span class="k">for</span> <span class="n">required</span> <span class="ow">in</span> <span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="o">*</span><span class="p">([</span><span class="n">into</span><span class="p">]</span> <span class="k">if</span> <span class="n">into</span> <span class="k">else</span> <span class="p">[])):</span>
+<a id="__codelineno-0-1841" name="__codelineno-0-1841"></a>        <span class="k">if</span> <span class="n">required</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">:</span>
+<a id="__codelineno-0-1842" name="__codelineno-0-1842"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">call</span><span class="si">}</span><span class="s2"> needs a </span><span class="si">{</span><span class="n">required</span><span class="si">!r}</span><span class="s2"> column"</span>
+<a id="__codelineno-0-1843" name="__codelineno-0-1843"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-1844" name="__codelineno-0-1844"></a>    <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
+<a id="__codelineno-0-1845" name="__codelineno-0-1845"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_reject_undeclared</span><span class="p">(</span><span class="n">call</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">columns</span><span class="p">))</span>
+<a id="__codelineno-0-1846" name="__codelineno-0-1846"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
+<a id="__codelineno-0-1847" name="__codelineno-0-1847"></a>        <span class="n">as_relation</span><span class="p">(</span><span class="n">lazy</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="p">),</span>
+<a id="__codelineno-0-1848" name="__codelineno-0-1848"></a>        <span class="n">table</span><span class="p">,</span>
+<a id="__codelineno-0-1849" name="__codelineno-0-1849"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">False</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
+<a id="__codelineno-0-1850" name="__codelineno-0-1850"></a>        <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">group</span><span class="p">,),</span>
+<a id="__codelineno-0-1851" name="__codelineno-0-1851"></a>    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="datarecord.mutable.WorkingRecord.remove_group" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">remove_group</span>
+
+
+<a href="#datarecord.mutable.WorkingRecord.remove_group" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">remove_group</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">group</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n"><span title="collections.abc.Sequence">Sequence</span></span><span class="p">[</span><span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span> <span class="o">...</span><span class="p">]]</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Stage a tombstone per tuple, each in <code>Schema.group_key</code> order.</p>
+<p>Each tuple is packed into the group's struct column. An <code>into</code> label is
+no part of a key: the tuple is removed, whatever label it carried.</p>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li><a href="https://energy-models.github.io/datarecord/design/schema/#groups">groups</a></li>
+</ul>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1853">1853</a></span>
+<span class="normal"><a href="#__codelineno-0-1854">1854</a></span>
+<span class="normal"><a href="#__codelineno-0-1855">1855</a></span>
+<span class="normal"><a href="#__codelineno-0-1856">1856</a></span>
+<span class="normal"><a href="#__codelineno-0-1857">1857</a></span>
+<span class="normal"><a href="#__codelineno-0-1858">1858</a></span>
+<span class="normal"><a href="#__codelineno-0-1859">1859</a></span>
+<span class="normal"><a href="#__codelineno-0-1860">1860</a></span>
+<span class="normal"><a href="#__codelineno-0-1861">1861</a></span>
+<span class="normal"><a href="#__codelineno-0-1862">1862</a></span>
+<span class="normal"><a href="#__codelineno-0-1863">1863</a></span>
+<span class="normal"><a href="#__codelineno-0-1864">1864</a></span>
+<span class="normal"><a href="#__codelineno-0-1865">1865</a></span>
+<span class="normal"><a href="#__codelineno-0-1866">1866</a></span>
+<span class="normal"><a href="#__codelineno-0-1867">1867</a></span>
+<span class="normal"><a href="#__codelineno-0-1868">1868</a></span>
+<span class="normal"><a href="#__codelineno-0-1869">1869</a></span>
+<span class="normal"><a href="#__codelineno-0-1870">1870</a></span>
+<span class="normal"><a href="#__codelineno-0-1871">1871</a></span>
+<span class="normal"><a href="#__codelineno-0-1872">1872</a></span>
+<span class="normal"><a href="#__codelineno-0-1873">1873</a></span>
+<span class="normal"><a href="#__codelineno-0-1874">1874</a></span>
+<span class="normal"><a href="#__codelineno-0-1875">1875</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1853" name="__codelineno-0-1853"></a><span class="k">def</span><span class="w"> </span><span class="nf">remove_group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">group</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="o">...</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1854" name="__codelineno-0-1854"></a><span class="w">    </span><span class="sd">"""Stage a tombstone per tuple, each in `Schema.group_key` order.</span>
+<a id="__codelineno-0-1855" name="__codelineno-0-1855"></a>
+<a id="__codelineno-0-1856" name="__codelineno-0-1856"></a><span class="sd">    Each tuple is packed into the group's struct column. An `into` label is</span>
+<a id="__codelineno-0-1857" name="__codelineno-0-1857"></a><span class="sd">    no part of a key: the tuple is removed, whatever label it carried.</span>
+<a id="__codelineno-0-1858" name="__codelineno-0-1858"></a>
+<a id="__codelineno-0-1859" name="__codelineno-0-1859"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-1860" name="__codelineno-0-1860"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-1861" name="__codelineno-0-1861"></a><span class="sd">    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)</span>
+<a id="__codelineno-0-1862" name="__codelineno-0-1862"></a><span class="sd">    """</span>
+<a id="__codelineno-0-1863" name="__codelineno-0-1863"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">group_key</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
+<a id="__codelineno-0-1864" name="__codelineno-0-1864"></a>    <span class="n">over</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="n">group</span><span class="p">]</span><span class="o">.</span><span class="n">over</span>
+<a id="__codelineno-0-1865" name="__codelineno-0-1865"></a>    <span class="n">types</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">dimensions</span><span class="p">[</span><span class="n">d</span><span class="p">]</span><span class="o">.</span><span class="n">dtype</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">over</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+<a id="__codelineno-0-1866" name="__codelineno-0-1866"></a>    <span class="n">flat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span>
+<a id="__codelineno-0-1867" name="__codelineno-0-1867"></a>        <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="p">[</span><span class="n">k</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">key</span><span class="p">)},</span> <span class="n">types</span>
+<a id="__codelineno-0-1868" name="__codelineno-0-1868"></a>    <span class="p">)</span>
+<a id="__codelineno-0-1869" name="__codelineno-0-1869"></a>    <span class="n">packed</span> <span class="o">=</span> <span class="n">_packed</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="p">{},</span> <span class="n">DuckTypes</span><span class="p">(</span><span class="n">flat</span><span class="p">))</span>
+<a id="__codelineno-0-1870" name="__codelineno-0-1870"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
+<a id="__codelineno-0-1871" name="__codelineno-0-1871"></a>        <span class="n">flat</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="n">packed</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">group</span><span class="p">)),</span>
+<a id="__codelineno-0-1872" name="__codelineno-0-1872"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">group</span><span class="p">),</span>
+<a id="__codelineno-0-1873" name="__codelineno-0-1873"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">True</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
+<a id="__codelineno-0-1874" name="__codelineno-0-1874"></a>        <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">group</span><span class="p">,),</span>
+<a id="__codelineno-0-1875" name="__codelineno-0-1875"></a>    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="datarecord.mutable.WorkingRecord.rollback" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">rollback</span>
+
+
+<a href="#datarecord.mutable.WorkingRecord.rollback" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">rollback</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Clear every staged row without writing.</p>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <ul>
+<li><a href="https://energy-models.github.io/datarecord/design/working-record/">WorkingRecord</a></li>
+</ul>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1879">1879</a></span>
+<span class="normal"><a href="#__codelineno-0-1880">1880</a></span>
+<span class="normal"><a href="#__codelineno-0-1881">1881</a></span>
+<span class="normal"><a href="#__codelineno-0-1882">1882</a></span>
+<span class="normal"><a href="#__codelineno-0-1883">1883</a></span>
+<span class="normal"><a href="#__codelineno-0-1884">1884</a></span>
+<span class="normal"><a href="#__codelineno-0-1885">1885</a></span>
+<span class="normal"><a href="#__codelineno-0-1886">1886</a></span>
+<span class="normal"><a href="#__codelineno-0-1887">1887</a></span>
+<span class="normal"><a href="#__codelineno-0-1888">1888</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1879" name="__codelineno-0-1879"></a><span class="k">def</span><span class="w"> </span><span class="nf">rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1880" name="__codelineno-0-1880"></a><span class="w">    </span><span class="sd">"""Clear every staged row without writing.</span>
+<a id="__codelineno-0-1881" name="__codelineno-0-1881"></a>
+<a id="__codelineno-0-1882" name="__codelineno-0-1882"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-1883" name="__codelineno-0-1883"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-1884" name="__codelineno-0-1884"></a><span class="sd">    - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)</span>
+<a id="__codelineno-0-1885" name="__codelineno-0-1885"></a><span class="sd">    """</span>
+<a id="__codelineno-0-1886" name="__codelineno-0-1886"></a>    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_staged</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+<a id="__codelineno-0-1887" name="__codelineno-0-1887"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">"DROP TABLE IF EXISTS </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-1888" name="__codelineno-0-1888"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_staged</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../layered/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Layered">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Layered
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../tools/" class="md-footer__link md-footer__link--next" aria-label="Next: Tools">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Tools
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
