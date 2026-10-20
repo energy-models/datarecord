@@ -970,7 +970,7 @@ def _add_component_type(
         # ... and `dynamic` the per-snapshot ones.
         if SNAPSHOT not in flags.varies:
             continue
-        ts_rows = long.filter("snapshot IS NOT NULL")
+        ts_rows = long.filter("snapshot IS NOT NULL AND value IS NOT NULL")
         # Partial columns keep non-series components static (https://energy-models.github.io/datarecord/design/tools/).
         wide = _series_frame(ts_rows, shape, scenarios, snapshots, static_index, con)
         n._import_series_from_df(wide, ctype, attr)
@@ -1585,7 +1585,7 @@ class PyPSATool(Tool):
 
         With `results_only` the record is a thin layer over `base`: the
         outputs, at their default too, `base`'s output rows it does not write
-        again restated at their default, and the SubNetworks they name as
+        again restated as NULL, and the SubNetworks they name as
         entities, `base`'s SubNetworks this solve did not number again
         tombstoned.
 
@@ -2713,7 +2713,7 @@ class _ResultsSource(_NetworkSource):
     own: `base`'s SubNetworks this solve does not write again are tombstoned,
     so a re-solve numbering them differently leaves none behind. A result's
     rows at their default are written too, and `base`'s result rows it does
-    not write again, each standing over `base`'s value.
+    not write again as NULL, each standing over `base`'s value.
 
     Notes
     -----
@@ -2779,10 +2779,10 @@ class _ResultsSource(_NetworkSource):
 
     @cached_property
     def _restated(self) -> dict[str, DuckDBPyRelation]:
-        """This solve's results, then each row of `base`'s it leaves out, at its default.
+        """This solve's results, then each row of `base`'s it leaves out, as NULL.
 
         A row the solve does not write would otherwise keep `base`'s value by
-        inheritance, though the network holds the default there. Rows of a
+        inheritance, though the network holds none there. Rows of a
         tombstoned SubNetwork are left out with it.
         """
         written = self._result_rels
@@ -2803,9 +2803,7 @@ class _ResultsSource(_NetworkSource):
                 )
             if dead and ENTITY in keys:
                 stale = stale.filter(~col(ENTITY).isin(*map(lit, dead)))
-            rows = stale.project(
-                *map(col, keys), duck.lit(spec.default, spec.dtype).alias("value")
-            )
+            rows = stale.project(*map(col, keys), duck.null(spec.dtype).alias("value"))
             restated[attr] = rows if attr not in written else written[attr].union(rows)
         return restated
 

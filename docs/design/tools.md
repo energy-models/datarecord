@@ -146,7 +146,7 @@ solved = inputs.child(
 ```
 
 Nothing is staged through a `WorkingRecord`. The layer holds the result attributes, a value at its default included so a re-solve stands over its parent's, and the **intermediate results** they need: a solve derives structure as well as values.
-A result row `base` holds that the solve does not write again — `mu_*` duals under `assign_all_duals=False` — is restated at its default, which is what the network holds there, so no stale value is inherited. The layer format has no tombstone for a value, only for a label or a tuple, so restating is how it is replaced. `base`'s inputs are never written.
+A result row `base` holds that the solve does not write again — `mu_*` duals under `assign_all_duals=False` — is restated as NULL, so no stale value is inherited. NULL reads as no value, where a `marginal_price` at its default `0.0` would read as a price; `build` leaves PyPSA its own default there. The layer format has no tombstone for a value, only for a label or a tuple, so restating is how it is replaced. `base`'s inputs are never written.
 A PyPSA SubNetwork is an `entity` with `ctype="SubNetwork"` and a line's `sub_network` an attribute naming one, declared like any other name.
 The model does not say what `base` held, so the tool reads `base`'s SubNetwork entities and tombstones those it does not write again: a re-solve that numbers SubNetworks differently leaves no stale label behind.
 A results layer meets full validation, so it carries the labels its results name.

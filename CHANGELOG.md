@@ -213,8 +213,10 @@ All notable changes to datarecord are documented here. The format follows
   through layers like any attribute. The PyPSA tool declares its outputs as
   attributes, `build` copies them, and
   `to_datarecord(n, con, results_only=True, base=record)` writes a solve as a
-  thin layer replacing `base`'s SubNetworks and restating at their default
-  the results of `base` it does not write again. Every record is re-exported.
+  thin layer replacing `base`'s SubNetworks and restating as NULL the
+  results of `base` it does not write again; a NULL series value, input or
+  result, leaves the component at its static value on export. Every record
+  is re-exported.
 
 ### Fixed
 

@@ -877,10 +877,10 @@ def test_a_re_solve_leaves_no_stale_sub_network(exported, solved):
 @pytest.mark.parametrize(
     ("ctype", "attr"), [("Line", "mu_upper"), ("Bus", "marginal_price")]
 )
-def test_a_result_a_re_solve_leaves_out_reads_as_its_default(
-    exported, solved, ctype, attr
-):
-    """A results layer restates `base`'s results it does not write at their default.
+def test_a_result_a_re_solve_leaves_out_reads_as_null(exported, solved, ctype, attr):
+    """A results layer restates `base`'s results it does not write as NULL.
+
+    Built back, the network holds PyPSA's own default there.
 
     Notes
     -----
@@ -903,9 +903,10 @@ def test_a_result_a_re_solve_leaves_out_reads_as_its_default(
     values = stale[keys].merge(read(resolved, attr), on=keys)["value"]
     assert (stale["value"] == 1.0).all()
     assert len(values) == len(stale)
-    default = resolved.record.schema.attributes[attr].default
-    assert (values.isna() if default is None else values == default).all(), (
-        "the stale value is gone"
+    assert values.isna().all(), "the stale value is gone"
+    c = PyPSA.build(resolved.record).c[ctype]
+    assert (c.dynamic[attr] == c.defaults.at[attr, "default"]).all().all(), (
+        "PyPSA fills its own default"
     )
     pd.testing.assert_frame_equal(read(resolved, "p_nom"), read(base, "p_nom"))
 
