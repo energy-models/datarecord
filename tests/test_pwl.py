@@ -47,11 +47,11 @@ def _root_with_curve(store, *, scalar: float | None = None) -> Revision:
     write_schema(schema(), store)
     write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     rows = (
-        [{"component": PROCESS, "entity": "steel_dri", "value": scalar}]
+        [{"ctype": PROCESS, "entity": "steel_dri", "value": scalar}]
         if scalar is not None
         else [
             {
-                "component": PROCESS,
+                "ctype": PROCESS,
                 "entity": "steel_dri",
                 "breakpoint": x,
                 "value": v,
@@ -79,7 +79,7 @@ def test_a_child_curve_replaces_the_parents_value_whole(store, scalar):
         "marginal_cost",
         [
             {
-                "component": PROCESS,
+                "ctype": PROCESS,
                 "entity": "steel_dri",
                 "breakpoint": x,
                 "value": v,
@@ -105,7 +105,7 @@ def test_breakpoints_distinguishes_curve_from_scalar(store):
     write_input(
         store.layer_dir(revision.id),
         "p_nom",
-        [{"component": PROCESS, "entity": "steel_dri", "value": 100.0}],
+        [{"ctype": PROCESS, "entity": "steel_dri", "value": 100.0}],
     )
 
     curve = _flags(revision, "marginal_cost")
@@ -149,7 +149,7 @@ def test_curve_on_a_connection(store):
         "efficiency",
         [
             {
-                "component": PROCESS,
+                "ctype": PROCESS,
                 "entity": "steel_dri",
                 "bus": bus,
                 "breakpoint": x,
@@ -171,7 +171,7 @@ def test_curve_on_a_connection(store):
         "efficiency",
         [
             {
-                "component": PROCESS,
+                "ctype": PROCESS,
                 "entity": "steel_dri",
                 "bus": "h2_north",
                 "breakpoint": x,
@@ -207,7 +207,7 @@ def test_curve_varying_by_snapshot(store):
         "marginal_cost",
         [
             {
-                "component": PROCESS,
+                "ctype": PROCESS,
                 "entity": "steel_dri",
                 "snapshot": snap,
                 "breakpoint": x,

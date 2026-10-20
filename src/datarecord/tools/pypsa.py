@@ -80,14 +80,14 @@ TIMESTEP = "timestep"
 # weighting is renamed on the way in and back to `weight` on build.
 SCENARIO_WEIGHT = "scenario_weight"
 ENTITY, BUS, CARRIER, CONNECTION = "entity", "bus", "carrier", "connection"
-COMPONENT = "component"
-#: `component` as a trait's `on` and a `default_by` name it, by its subject.
-BY_COMPONENT = f"{ENTITY}.{COMPONENT}"
+CTYPE = "ctype"
+#: `ctype` as a trait's `on` and a `default_by` name it, by its subject.
+BY_CTYPE = f"{ENTITY}.{CTYPE}"
 #: The PyPSA types whose members are labels of a dim of their own, not entities.
 _AXIS_TYPES = {"Bus": BUS, "Carrier": CARRIER}
 #: The registry inputs declared as properties, by subject: what describes a
 #: label rather than data a model optimises against. `entity` also has
-#: `component`, and a `carrier` property is `into` the `carrier` dim.
+#: `ctype`, and a `carrier` property is `into` the `carrier` dim.
 _PROPERTIES = {
     ENTITY: ("carrier", "sign", "type"),
     BUS: ("carrier", "type", "x", "y", "unit", "location"),
@@ -1342,7 +1342,7 @@ class PyPSATool(Tool):
         supplied only where every member has a connection there, so an entity
         attached to no bus reports its type's `bus` (`_TypeMembers.port_attributes`).
 
-        Row ownership and curves are read per type, from `flags(component=...)`.
+        Row ownership and curves are read per type, from `flags(ctype=...)`.
 
         The key checks come first and return early: the owner-map fold keys
         its relations by those dims, so reading the map at all could raise a
@@ -1388,8 +1388,8 @@ class PyPSATool(Tool):
             if ctype not in known:
                 categories.add(ctype)
                 continue
-            specs = declared.attributes_for(ENTITY, **{COMPONENT: ctype})
-            resolved = record.flags(**{COMPONENT: ctype})
+            specs = declared.attributes_for(ENTITY, **{CTYPE: ctype})
+            resolved = record.flags(**{CTYPE: ctype})
             # A curve, not a scalar (https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows). PyPSA takes a scalar for every
             # attribute this build assigns, so the record is storing something
             # correct that this translation cannot express - reported here
@@ -1411,7 +1411,7 @@ class PyPSATool(Tool):
                     # with no row anywhere (the broadcast rule).
                     if (
                         src in specs
-                        and declared.default_for(src, **{COMPONENT: ctype}) is not None
+                        and declared.default_for(src, **{CTYPE: ctype}) is not None
                     ):
                         continue
                     attributes.add((ctype, src))
@@ -1482,7 +1482,7 @@ class PyPSATool(Tool):
             # Frames are built and released per type, so peak memory is one
             # type's wide frames rather than the whole network (https://energy-models.github.io/datarecord/design/tools/).
             attributes = {}
-            carried = schema.attributes_for(ENTITY, **{COMPONENT: ctype})
+            carried = schema.attributes_for(ENTITY, **{CTYPE: ctype})
             for attr, flags in flagged.items():
                 if attr not in carried:
                     continue
@@ -1577,7 +1577,7 @@ class PyPSATool(Tool):
         Keyed by attribute, matching `outputs/<attr>.parquet`: every component
         type's rows for one attribute are concatenated into one frame, exactly as
         `attributes` presents `inputs/`. The union needs no
-        `component` to tell the arms apart. Which attributes count as
+        `ctype` to tell the arms apart. Which attributes count as
         results comes from PyPSA's registry, so an upgrade that adds one is
         picked up, by the same rule the schema declares `results` by: a per-port
         result (`p0`, `p1`, a Generator's `p`) is one `p` row per connection,
@@ -1726,7 +1726,7 @@ def _port_spec(
 def _with_default_by(
     attributes: dict[str, AttributeSpec], by_type: dict[str, dict[str, Any]]
 ) -> dict[str, AttributeSpec]:
-    """`attributes`, each given `default_by` over `component` where a type's default differs.
+    """`attributes`, each given `default_by` over `ctype` where a type's default differs.
 
     Parameters
     ----------
@@ -1745,7 +1745,7 @@ def _with_default_by(
         }
         if differing:
             widened[name] = spec.model_copy(
-                update={"default_by": {BY_COMPONENT: differing}}
+                update={"default_by": {BY_CTYPE: differing}}
             )
     return widened
 
@@ -1797,7 +1797,7 @@ def _registry_schema() -> RecordSchema:
     `Bus` and `Carrier` are no entity types (`_AXIS_TYPES`): their members are
     the labels of `bus` and `carrier`, and their inputs and results are over
     that dim. The properties of each subject are `_PROPERTIES`, `entity`'s
-    beside `component`, an `Enum` over the entity types so a type outside it is
+    beside `ctype`, an `Enum` over the entity types so a type outside it is
     refused on write; `role` is a property of `connection`. Every other input,
     each axis weighting (`_WEIGHTINGS`) over its axis included, is an
     attribute.
@@ -1854,7 +1854,7 @@ def _registry_schema() -> RecordSchema:
     attributes = _with_default_by(attributes, by_type)
     properties = {
         ENTITY: {
-            COMPONENT: PropertySpec(
+            CTYPE: PropertySpec(
                 dtype=nw.Enum(ctypes), description="What kind of entity an entity is."
             ),
             **{
@@ -1887,7 +1887,7 @@ def _registry_schema() -> RecordSchema:
             attributes=frozenset(
                 f"{ENTITY}.{a}" if a in _PROPERTIES[ENTITY] else a for a in carried
             ),
-            on={BY_COMPONENT: frozenset({ctype})},
+            on={BY_CTYPE: frozenset({ctype})},
         )
         for ctype, carried in carries.items()
     }
@@ -1996,7 +1996,7 @@ class _NetworkSource:
                 )
             if dim != ENTITY:
                 continue
-            trait = traits.get(ctype, Trait(on={BY_COMPONENT: frozenset({ctype})}))
+            trait = traits.get(ctype, Trait(on={BY_CTYPE: frozenset({ctype})}))
             traits[ctype] = trait.model_copy(
                 update={"attributes": trait.attributes | frozenset(columns)}
             )
@@ -2098,7 +2098,7 @@ class _NetworkSource:
     def _entity_frame(self) -> pd.DataFrame:
         """Every exported type's members and their properties.
 
-        One row per entity, typed by the `component` column; a property
+        One row per entity, typed by the `ctype` column; a property
         one type lacks is NULL on that type's rows.
 
         Notes
@@ -2107,14 +2107,14 @@ class _NetworkSource:
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
         frames = [
-            self._static_frame(c.name).assign(**{COMPONENT: c.name})
+            self._static_frame(c.name).assign(**{CTYPE: c.name})
             for c in self.n.components
             if _as_entities(c)
         ]
         if not frames:
-            return pd.DataFrame(columns=[ENTITY, COMPONENT, "deleted"])
+            return pd.DataFrame(columns=[ENTITY, CTYPE, "deleted"])
         merged = _none_for_empty(pd.concat(frames, ignore_index=True))
-        lead = [ENTITY, COMPONENT, "deleted"]
+        lead = [ENTITY, CTYPE, "deleted"]
         return merged[[*lead, *(c for c in merged.columns if c not in lead)]]
 
     @property
@@ -3001,20 +3001,20 @@ def _port_columns(
 
 
 def _components(record: RecordLike) -> list[str]:
-    """The `component` labels `record`'s entity axis has members of, sorted."""
+    """The `ctype` labels `record`'s entity axis has members of, sorted."""
     frame = record.properties.get(ENTITY)
-    if frame is None or COMPONENT not in frame.collect_schema().names():
+    if frame is None or CTYPE not in frame.collect_schema().names():
         return []
-    labels = to_relation(frame).project(col(COMPONENT)).distinct().fetchall()
+    labels = to_relation(frame).project(col(CTYPE)).distinct().fetchall()
     return sorted(str(label) for (label,) in labels if label is not None)
 
 
 def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
     """`ctype`'s members in axis order, with the properties it carries, defaults applied.
 
-    The static frame PyPSA's `n.<type>` starts from, `component` left out;
+    The static frame PyPSA's `n.<type>` starts from, `ctype` left out;
     `build` joins the entity-only attribute rows to it. `None` where the
-    record has no `component` property on its entity axis.
+    record has no `ctype` property on its entity axis.
 
     Notes
     -----
@@ -3022,12 +3022,12 @@ def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
     - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
     """
     schema = record.schema
-    if COMPONENT not in schema.categorizing(ENTITY):
+    if CTYPE not in schema.categorizing(ENTITY):
         return None
-    rel = matching(to_relation(record.properties[ENTITY]), {COMPONENT: (ctype,)})
+    rel = matching(to_relation(record.properties[ENTITY]), {CTYPE: (ctype,)})
     names = carried_properties(schema, ENTITY, rel)
     defaulted = with_defaults(schema, ENTITY, rel, names, _connection(record))
-    return _empty_for_none(defaulted.project(star(exclude=[COMPONENT])))
+    return _empty_for_none(defaulted.project(star(exclude=[CTYPE])))
 
 
 # The tool is a module-level singleton, imported rather than looked up by

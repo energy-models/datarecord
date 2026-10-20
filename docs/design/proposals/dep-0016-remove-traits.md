@@ -54,7 +54,7 @@ The "queryable vocabulary" a trait promised (everything `investable`) has no cal
 - **Categories.** An `Enum` property of a `partial` dim still categorizes it. `Schema.categorizing`, `require_categorizing` and `require_listed` stay.
 - **`default_by`** keys on a categorizing property, as before. `default_for(name, **categories)` is unchanged. It never depended on traits.
 - **`partial`** is unchanged. It was a condition for a category, not a trait input.
-- **Category selection.** `flags(component="Generator")` and a property keyword in `set` select labels by category, as before.
+- **Category selection.** `flags(ctype="Generator")` and a property keyword in `set` select labels by category, as before.
 - **`with_defaults`** applies `default_for` per category combination. Every name is carried, so its `_carries_` columns go.
 
 ### The manifest
@@ -71,7 +71,7 @@ per-type vocabulary in the tool that needs it
 
 - `_registry_schema` declares no traits. It keeps `carries`, the per-type input names, as a cached `_carried(ctype)`.
 - `_NetworkSource.schema` adds a type's custom columns to that map, not to a trait.
-- `_verify` and `build` ask `_carried(ctype)` where they asked `attributes_for(ENTITY, component=ctype)`.
+- `_verify` and `build` ask `_carried(ctype)` where they asked `attributes_for(ENTITY, ctype=ctype)`.
 - The static frame keeps the entity properties `_carried(ctype)` names, where it asked `carried_properties`.
 
 ## Rationale
@@ -94,21 +94,21 @@ Schema(
     traits={
         "dispatchable": Trait(
             attributes={"p_max_pu"},
-            on={"entity.component": {"Generator", "StorageUnit"}},
+            on={"entity.ctype": {"Generator", "StorageUnit"}},
         )
     },
 )
 w.set("p_max_pu", 0.9)  # every generator and storage unit, never a load
-schema.attributes_for("entity", component="Load")  # no p_max_pu
+schema.attributes_for("entity", ctype="Load")  # no p_max_pu
 ```
 
 After:
 
 ```python
 Schema(...)  # no traits
-w.set("p_max_pu", 0.9, component=["Generator", "StorageUnit"])  # one row per label
+w.set("p_max_pu", 0.9, ctype=["Generator", "StorageUnit"])  # one row per label
 w.set("p_max_pu", 0.9)  # every entity; a load's value is never read by PyPSA
-schema.default_for("p_min_pu", component="StorageUnit")  # -1, as before
+schema.default_for("p_min_pu", ctype="StorageUnit")  # -1, as before
 ```
 
 ## Implementation notes
@@ -119,7 +119,7 @@ schema.default_for("p_min_pu", component="StorageUnit")  # -1, as before
 4. `layered/resolve.py`: the carriers join in the broadcast goes.
 5. `layered/fold.py`: `flags(**categories)` filters by matching labels only.
 6. `mutable.py`: the category check in `set` validation goes.
-7. `tools/pypsa.py`: as [above](#the-pypsa-tool); `BY_COMPONENT` stays for `default_by`.
+7. `tools/pypsa.py`: as [above](#the-pypsa-tool); `BY_CTYPE` stays for `default_by`.
 8. Tests: trait tests in `test_schema.py`, `test_categories.py`, `test_mutable.py`, `test_overlay.py`, `test_properties.py`, `test_functional_groups.py` are deleted; `fixtures.py` declares no traits.
 9. Pages: [schema](../schema.md) loses "Traits" and "`switch`"; categories, properties and `default_by` drop trait mentions. [record](../record.md), [read path](../read-path.md), [working record](../working-record.md), [open questions](../open-questions.md), usage [schema](../../usage/schema.md), `CHANGELOG.md`.
 10. On implementation, DEP 1 and DEP 3 take `Superseded-By` this DEP.

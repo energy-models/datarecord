@@ -33,7 +33,7 @@ PyPSA's buses and carriers are dims, not entity types: a bus is a label of `bus`
 ```python
 record.dims["carrier"]  # carrier
 record.properties["bus"]  # bus | carrier | type | x | y | unit | location
-record.properties["entity"]  # entity | component | carrier | sign | type
+record.properties["entity"]  # entity | ctype | carrier | sign | type
 record.attributes["v_nom"]  # bus | attribute | breakpoint | value
 record.outputs["marginal_price"]  # bus | snapshot | scenario | ...
 ```
@@ -45,10 +45,10 @@ w.add("carrier", ["H2"], color="#f0f")
 w.add("bus", ["north H2"], carrier="H2", x=10.1, y=52.0)  # bare: the dim's own
 w.set("v_nom", 380.0, bus="north")
 w.set("bus.x", 10.2, bus="north")  # `x` alone is a Line's reactance
-w.set("entity.component", "Load", entity="g1")
+w.set("entity.ctype", "Load", entity="g1")
 w.set("entity.carrier", "coal", entity="g1")  # refused: no label `coal`
 w.set("carrier", "AC")  # refused, naming `bus.carrier` and `entity.carrier`
-w.set("p_max_pu", 0.8, component="Generator")  # selector: `entity.component`
+w.set("p_max_pu", 0.8, ctype="Generator")  # selector: `entity.ctype`
 w.remove("bus", ["south"])  # and every connection at it
 w.remove("carrier", ["gas"])  # refused while a carrier names it
 ```

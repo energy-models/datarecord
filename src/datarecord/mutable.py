@@ -842,7 +842,7 @@ class WorkingRecord(Record):
         and a plain name is an attribute or result.
 
         A keyword naming no coordinate of `attribute` is a property of a dim it
-        reaches - `component="Generator"`, or a list of values - and selects
+        reaches - `ctype="Generator"`, or a list of values - and selects
         the labels of that dim matching it on the record as staged, the
         keywords combining as an intersection; `set` writes one row per label,
         and stores nothing of the filter, so a label added later is not reached.

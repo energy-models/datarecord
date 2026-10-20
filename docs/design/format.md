@@ -33,7 +33,7 @@ It is **an axis file like any other**, with nothing about it particular to `enti
 
 - **Membership.** An entity exists because it has a row here.
 - **Its tombstone.** Deleting an entity is a `deleted` row here, and the fold reads its tombstones from the file it folds membership from: membership from one source and deletions from another would resolve a deletion the fold never saw.
-- **Its properties**, one column each — `component`, `carrier`, `sign` in PyPSA's schema — NULL on a row whose [categories](schema.md#categories-an-enum-property-of-a-partial-dim) do not carry it.
+- **Its properties**, one column each — `ctype`, `carrier`, `sign` in PyPSA's schema — NULL on a row whose [categories](schema.md#categories-an-enum-property-of-a-partial-dim) do not carry it.
 
 **One layout, categories or none.** A record whose entities have categories and one whose entities have none differ by a column: there is no per-category member file. Per-type files existed because every type had a different column set; the schema now says which properties each category carries (`properties_for`), so a category's frame is a filter on its property and a projection to those columns — recoverable from one file, where per-category files would state each entity's category twice, once in a column and once in a filename. Parquet stores an all-NULL column chunk for almost nothing and DuckDB reads only what it projects. Only a per-category `dtype` would need per-category files, and [a subject's property has one spec](schema.md#properties).
 
@@ -56,7 +56,7 @@ A [group](schema.md#groups)'s rows are in `groups/<group>.parquet`, keyed by tha
 **The file is keyed by one struct column named for the group**, `connection STRUCT(entity, bus) | role | deleted`, `role` being a property of `connection`, exactly as `dims/<dim>.parquet` is keyed by the column named for the dim: the column an attribute row carries the group as is the one the group's own file is keyed by, so no read or write converts between two shapes.
 A record with no such file has no rows of that group.
 
-**One file per group, never split by category.** A group's rows are keyed by its coordinates and `component` is not one of them: splitting put `connection` rows for a `Link` and a `Line` in different files despite identical keys, forcing a union on every read and privileging `entity` among the coordinates. A `corridor` between two buses has no type to split on at all, and a `contract` between two entities has two — one per coordinate, neither of them the row's — so the split never generalised beyond the case it was written for.
+**One file per group, never split by category.** A group's rows are keyed by its coordinates and `ctype` is not one of them: splitting put `connection` rows for a `Link` and a `Line` in different files despite identical keys, forcing a union on every read and privileging `entity` among the coordinates. A `corridor` between two buses has no type to split on at all, and a `contract` between two entities has two — one per coordinate, neither of them the row's — so the split never generalised beyond the case it was written for.
 
 A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a plain column of the group's file beside the key, so `groups/bus_country.parquet` is `bus_country STRUCT(bus, scenario) | country`. A classification of one coordinate is a [property `into`](schema.md#properties) the dim instead, `bus.country` a column of `dims/bus.parquet` like any property. Either way `into` decides nothing about storage, so nothing in the layout branches on it.
 
@@ -84,11 +84,11 @@ There is **no category column**: `entity` is unique across every category ([belo
 A label identifies one member of its dim across the whole record — an `entity` one entity, whatever its categories.
 A `Generator` and a `Load` both called `north` are a collision, not two entities; a bus `north` beside them is a label of another dim, and no collision.
 
-That is what removes `component` from every attribute key.
+That is what removes `ctype` from every attribute key.
 An `inputs/` row addresses `(entity, …, attribute)`, a group in place of `entity` where the attribute is over one, and the category it belongs to is recoverable but not part of the address.
 The alternative — carrying the category in the key — makes it an _entity's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
 
-**The axis carries the categories.** `component` is a column of `dims/entity.parquet`, carried on its resolved row, never of the attribute rows — so `entity -> component` is one read of one file, and a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the resolved entity axis on `entity`.
+**The axis carries the categories.** `ctype` is a column of `dims/entity.parquet`, carried on its resolved row, never of the attribute rows — so `entity -> ctype` is one read of one file, and a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the resolved entity axis on `entity`.
 That join is against a relation the read path already builds.
 
 Two things follow, and they are the reason to want this.

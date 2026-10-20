@@ -464,7 +464,7 @@ class Trait(_Declared):
     The narrowing direction: an attribute the schema declares is carried by
     every label, and a trait is how that is cut down to the labels of some
     categories, and further to some of those labels. A trait bundling
-    `p_max_pu` `on={"entity.component": {"Generator"}}` says those attributes reach
+    `p_max_pu` `on={"entity.ctype": {"Generator"}}` says those attributes reach
     generators and no other entity - unless another trait claiming them
     matches it too.
 

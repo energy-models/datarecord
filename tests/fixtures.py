@@ -42,9 +42,9 @@ TYPES = (
     "Transformer",
     "Widget",
 )
-"""The `component` labels `schema()` declares - every one a test writes."""
+"""The `ctype` labels `schema()` declares - every one a test writes."""
 
-# No `component`: an attribute row is keyed by `name`, unique across every type
+# No `ctype`: an attribute row is keyed by `name`, unique across every type
 # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
 LONG_COLUMNS = [
     "entity",
@@ -192,17 +192,17 @@ def tombstone_connection(layer: str, pairs: list[tuple[str, str]]) -> None:
 def write_component(layer: str, ctype: str, rows: list[dict]) -> None:
     """Append rows of category `ctype` to `dims/entity.parquet`.
 
-    The label is the `component` property column; tombstones ride along as
+    The label is the `ctype` property column; tombstones ride along as
     `deleted`. Appended rather than replaced: several labels land in one entity
     axis, and a layer may write them one call at a time.
     """
     df = pd.DataFrame(rows)
-    df["component"] = ctype
+    df["ctype"] = ctype
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["entity", "component", "deleted"]
+    lead = ["entity", "ctype", "deleted"]
     entities = df[lead + [c for c in df.columns if c not in lead]]
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
@@ -471,7 +471,7 @@ def schema(
     """A schema shaped like the PyPSA records most tests build on.
 
     Defaults match `PyPSA.to_datarecord`: the `entity` axis carrying the
-    `component` property (categories `TYPES`), a `connection` group over
+    `ctype` property (categories `TYPES`), a `connection` group over
     `(entity, bus)`, and three declared dims. Override `partial` to pin a
     different layering granularity, `dims` to declare another axis, `groups` to
     declare a different sparse relation.
@@ -496,7 +496,7 @@ def schema(
         for attr, spec in attrs.items():
             flat.setdefault(attr, spec)
         traits[ctype] = Trait(
-            attributes=frozenset(attrs), on={"entity.component": frozenset({ctype})}
+            attributes=frozenset(attrs), on={"entity.ctype": frozenset({ctype})}
         )
     # Declared whether or not a caller named them: a test writing `p_max_pu`
     # needs it declared, and one passing `attributes=` is narrowing what a type
@@ -515,7 +515,7 @@ def schema(
     return Schema(
         groups={g: Group(over=over) for g, over in groups.items()},
         dimensions={d: Dimension(dtype=t) for d, t in declared.items()},
-        properties={"entity": {"component": PropertySpec(dtype=nw.Enum(TYPES))}},
+        properties={"entity": {"ctype": PropertySpec(dtype=nw.Enum(TYPES))}},
         attributes=flat,
         traits=traits,
         # The default names `connection`, which a caller's own `groups` may drop.

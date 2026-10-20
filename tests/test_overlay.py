@@ -289,9 +289,7 @@ def test_a_new_attribute_is_a_schema_amendment(store, network):
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
     # And the amendment is visible from the record, not just from the layer
     # that happens to carry a row for it.
-    assert "p_min_pu" in child.record.schema.attributes_for(
-        "entity", component="Generator"
-    )
+    assert "p_min_pu" in child.record.schema.attributes_for("entity", ctype="Generator")
 
 
 def test_a_schema_narrowing_is_refused(store, parent):

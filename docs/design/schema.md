@@ -160,10 +160,10 @@ What describes one label of a dim — its type, its carrier, a coordinate on a m
 ```python
 properties = {
     "entity": {
-        "component": PropertySpec(dtype=Enum(["Generator", "Line", "Load"])),
+        "ctype": PropertySpec(dtype=Enum(["Generator", "Line", "Load"])),
         "carrier": PropertySpec(into="carrier"),
         "sign": PropertySpec(
-            dtype="float64", default=1, default_by={"entity.component": {"Load": -1}}
+            dtype="float64", default=1, default_by={"entity.ctype": {"Load": -1}}
         ),
     },
     "bus": {
@@ -176,13 +176,13 @@ properties = {
 }
 ```
 
-**A property is one value per label of its subject**, a dim or a group, and so has no `dims`: it never varies along another axis. It is a column of the subject's own file — `dims/<dim>.parquet`, or `groups/<group>.parquet` for a group ([where a value lives](format.md#where-a-value-lives)) — so `component` is a column of `dims/entity.parquet` because every property of `entity` is, and the schema attaches no meaning to the name.
+**A property is one value per label of its subject**, a dim or a group, and so has no `dims`: it never varies along another axis. It is a column of the subject's own file — `dims/<dim>.parquet`, or `groups/<group>.parquet` for a group ([where a value lives](format.md#where-a-value-lives)) — so `ctype` is a column of `dims/entity.parquet` because every property of `entity` is, and the schema attaches no meaning to the name.
 
 **An attribute is data**: what a model reads as part of its problem and what a layer would vary. Which a name is, is the author's declaration rather than derived from its shape; a tool reads it from its registry where it can ([PyPSA](tools.md)).
 
 **A property's name is its subject's.** One name is one spec for attributes and results, each one file with one `value` dtype ([flat attributes](#attributespec)). A property is a column of its subject's file, so its name is unique there only: `x` on `bus` beside an attribute `x` — a line's reactance — and `carrier` on `entity`, on `bus` and as a dim. Refused at load are a property named like a column of its subject's key — the dim, a group's struct column or its [`into`](#into-a-group-that-classifies) — and a group's property named like one of its coordinates, the keywords a tuple is addressed by. Two spellings differing only in case stay refused record-wide ([names](#names)).
 
-**A property is addressed as `subject.name`** — `entity.component`, `bus.x`, `connection.role` — wherever a caller names one: [`set`](working-record.md#set), a [trait](#traits)'s `on` and bundle, a [`default_by`](#default_by-a-default-per-category) key, `default_for`. A plain name is an attribute or result, never a property, however few subjects declare it, so its meaning does not change when another subject declares it later. `Schema.resolve(name)` returns the `AttributeSpec`, or the subject and the `PropertySpec`, and refuses an unknown plain name naming the dotted forms of the properties so called. A column keeps its plain name: the frames of `properties[subject]` and the categories [`flags`](record.md#flags) and `attributes_for` take are each read against one subject already, and a [selector keyword](working-record.md#set) is bare — a coordinate of the attribute first, else any property of a dim the attribute reaches.
+**A property is addressed as `subject.name`** — `entity.ctype`, `bus.x`, `connection.role` — wherever a caller names one: [`set`](working-record.md#set), a [trait](#traits)'s `on` and bundle, a [`default_by`](#default_by-a-default-per-category) key, `default_for`. A plain name is an attribute or result, never a property, however few subjects declare it, so its meaning does not change when another subject declares it later. `Schema.resolve(name)` returns the `AttributeSpec`, or the subject and the `PropertySpec`, and refuses an unknown plain name naming the dotted forms of the properties so called. A column keeps its plain name: the frames of `properties[subject]` and the categories [`flags`](record.md#flags) and `attributes_for` take are each read against one subject already, and a [selector keyword](working-record.md#set) is bare — a coordinate of the attribute first, else any property of a dim the attribute reaches.
 
 **A property may be `into` a dim**: its values are that dim's labels and its `dtype` is the dim's, so `entity.carrier` and `bus.carrier` above name labels of `carrier`, `bus.country` one of `country`, and any subject may declare one. A stored value that is not NULL must name a live label, checked where a group's field is: [`set` and `add`](working-record.md#validation) refuse one the record as staged lacks, the [writer](layers.md#deletion) a layer storing one it removed, and [`remove`](working-record.md#add-remove) a label one still names. NULL names none. Refused at load are `into` an undeclared dim and a `dtype` other than the dim's. It does not [categorize](#categories-an-enum-property-of-a-partial-dim): a category is a declared `Enum`, a label is data a layer adds and removes. One coordinate classified [`into`](#into-a-group-that-classifies) a dim is such a property, never a group.
 
@@ -198,7 +198,7 @@ Membership could not vary along a classification either, if it varied along anyt
 
 ### Categories — an `Enum` property of a `partial` dim
 
-**Any `Enum`-typed property of a dim listed in [`partial`](#partial-the-granularity-of-an-override) categorizes it**: its values are that dim's **categories** along it, which a [trait's `on`](#traits) and a [`default_by`](#default_by-a-default-per-category) key on. `Schema.categorizing(dim)` lists them in declaration order. There is no flag declaring the role and no limit of one per dim — an `Enum` `technology` would categorize `entity` beside `component`. Keying on any other property — a `str` one, one [`into`](#properties) a dim, one of a dim outside `partial`, or one of a group — is refused, naming the property and why.
+**Any `Enum`-typed property of a dim listed in [`partial`](#partial-the-granularity-of-an-override) categorizes it**: its values are that dim's **categories** along it, which a [trait's `on`](#traits) and a [`default_by`](#default_by-a-default-per-category) key on. `Schema.categorizing(dim)` lists them in declaration order. There is no flag declaring the role and no limit of one per dim — an `Enum` `technology` would categorize `entity` beside `ctype`. Keying on any other property — a `str` one, one [`into`](#properties) a dim, one of a dim outside `partial`, or one of a group — is refused, naming the property and why.
 
 The two conditions are what a category needs: an `Enum`, so a category a trait or a default names is checked against a declared vocabulary; and the dim in `partial`, because only there is a dim owned and checked per label. A schema whose entities have no kinds declares no `Enum` property of `entity`, and nothing else about it differs.
 
@@ -217,7 +217,7 @@ The two conditions are what a category needs: an `Enum`, so a category a trait o
 ```python
 "p_min_pu": AttributeSpec(
     dtype="float64", dims={"entity", "snapshot"}, default=0,
-    default_by={"entity.component": {"StorageUnit": -1}},
+    default_by={"entity.ctype": {"StorageUnit": -1}},
 )
 ```
 
@@ -237,11 +237,11 @@ A trait is a named bundle of attributes, and which categories carry them:
 traits = {
     "investable": Trait(
         attributes={"capital_cost", "build_year", "lifetime", "capacity"},
-        on={"entity.component": {"Generator", "Line", "Link", "Store"}},
+        on={"entity.ctype": {"Generator", "Line", "Link", "Store"}},
     ),
     "dispatchable": Trait(
         attributes={"p_min_pu", "p_max_pu", "p_set"},
-        on={"entity.component": {"Generator", "Link"}},
+        on={"entity.ctype": {"Generator", "Link"}},
     ),
 }
 ```
@@ -252,7 +252,7 @@ Writing `entity` in an attribute's `dims` is what says it is per entity; declini
 That direction is why an attribute belonging to no type has somewhere to live at all.
 Under the previous shape a type _subscribed_ and an attribute reached nothing until one did, which is what forced `attributes` to be nested under types and left snapshot weightings homeless.
 
-**Whichever property each trait keys on.** An attribute no trait claims is carried by every label; a claimed one by every label some claiming trait matches. A trait `on` `entity.component: [Generator]` and one `on` `entity.technology: [wind]`, both claiming `p_max_pu`, give it to every generator and every wind entity.
+**Whichever property each trait keys on.** An attribute no trait claims is carried by every label; a claimed one by every label some claiming trait matches. A trait `on` `entity.ctype: [Generator]` and one `on` `entity.technology: [wind]`, both claiming `p_max_pu`, give it to every generator and every wind entity.
 
 `Schema.attributes_for(dim, **categories)` and `Schema.properties_for(subject, **categories)` ([categories](#categories-an-enum-property-of-a-partial-dim)) are what [`flags`](record.md#flags), a consumer's per-category frame and the [validation of `set`](working-record.md#validation) read, so everything downstream asks one question and gets a resolved answer. A trait may bundle properties of the dim its `on` categorizes beside attributes, each as `subject.name`, and both are narrowed alike.
 An attribute addressed by an axis alone is carried by no category however few traits mention it: a snapshot weighting belongs to the record.
@@ -278,7 +278,7 @@ A trait narrows two ways: `on` says which categories carry it, `switch` names an
 traits = {
     "committable": Trait(
         attributes={"start_up_cost", "min_up_time", "ramp_limit_start_up"},
-        on={"entity.component": {"Generator", "Link"}},
+        on={"entity.ctype": {"Generator", "Link"}},
         switch="committable",
     ),
 }
@@ -475,7 +475,7 @@ A declared dim, group, group coordinate, attribute, result or property name beco
 
 Entity names and labels are data, never identifiers, so none of this constrains them.
 
-No dim or property name is reserved — not `entity`, not `component`: a schema declares them like any other, so neither can be taken by surprise. What one name may not be twice over is [a section's rule](#properties), not this list's.
+No dim or property name is reserved — not `entity`, not `ctype`: a schema declares them like any other, so neither can be taken by surprise. What one name may not be twice over is [a section's rule](#properties), not this list's.
 
 ## One schema per record
 

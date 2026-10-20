@@ -22,7 +22,7 @@ from datarecord import Workspace
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
-    COMPONENT,
+    CTYPE,
     PyPSA,
     _colliding_names,
     _registry_schema,
@@ -121,8 +121,8 @@ def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
     - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
     """
     record = single_revision.record
-    component = record.schema.properties["entity"]["component"].dtype
-    assert not {"Bus", "Carrier"} & set(component.categories)
+    ctype = record.schema.properties["entity"]["ctype"].dtype
+    assert not {"Bus", "Carrier"} & set(ctype.categories)
     assert record.properties["bus"].collect_schema().names() == [
         "bus",
         "carrier",
@@ -279,8 +279,8 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
     # Declared alongside PyPSA's own types, since the `Enum` pins the
     # vocabulary.
     declared = read_schema(store)
-    assert declared.categorizing("entity") == (COMPONENT,)
-    prop = declared.properties["entity"][COMPONENT]
+    assert declared.categorizing("entity") == (CTYPE,)
+    prop = declared.properties["entity"][CTYPE]
     assert isinstance(prop.dtype, nw.Enum), "PyPSA declares its types as an enum"
     write_schema(
         declared.model_copy(
@@ -289,7 +289,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
                     **declared.properties,
                     "entity": {
                         **declared.properties["entity"],
-                        COMPONENT: prop.model_copy(
+                        CTYPE: prop.model_copy(
                             update={
                                 "dtype": nw.Enum([*prop.dtype.categories, "Widget"])
                             }
@@ -590,7 +590,7 @@ def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
 
     record = export_network(n, store).record
     entities = record.properties["entity"]
-    sub_networks = entities.filter(nw.col("component") == "SubNetwork")
+    sub_networks = entities.filter(nw.col("ctype") == "SubNetwork")
     names = sub_networks.collect().to_pandas()["entity"]
     assert sorted(names) == [f"{i} SubNetwork" for i in range(4)]
     results = PyPSA.results(n, store.workspace.con)
@@ -704,9 +704,9 @@ def test_results_extracts_long_form_outputs(single_revision, solved):
     assert isinstance(results["p"], nw.LazyFrame)
     p = results["p"].collect()
     # The long schema's columns (https://energy-models.github.io/datarecord/design/record/), so the write path can persist it as-is -
-    # and no `component`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+    # and no `ctype`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
     assert {"connection", "snapshot", "scenario", "value"} <= set(p.columns)
-    assert "component" not in p.columns
+    assert "ctype" not in p.columns
     assert "period" not in p.columns, "a series over `snapshot` reaches its period"
     assert set(p["attribute"].to_list()) == {"p"}
     # Series output: one row per (name, snapshot), for the Generator rows -
@@ -1045,7 +1045,7 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
     from datarecord.mutable import WorkingRecord
 
     sign = _registry_schema().properties["entity"]["sign"]
-    assert sign.default_by["entity.component"]["Load"] == -1.0, (
+    assert sign.default_by["entity.ctype"]["Load"] == -1.0, (
         "PyPSA declares a load's sign through `default_by`"
     )
 
@@ -1055,8 +1055,8 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
     root = export_network(n, store)
 
     staged = WorkingRecord(root.record)
-    staged.add("entity", ["l1"], component="Load")
-    staged.add("entity", ["su1"], component="StorageUnit")
+    staged.add("entity", ["l1"], ctype="Load")
+    staged.add("entity", ["su1"], ctype="StorageUnit")
     staged.add_group(
         "connection",
         pd.DataFrame(

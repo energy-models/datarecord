@@ -68,8 +68,8 @@ def _small(store, **declared):
     write_schema(schema(**declared), store)
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
-    staged.add("entity", ["Manchester Wind", "Norway Wind"], component=GEN)
-    staged.add("entity", ["Norway"], component="Bus")
+    staged.add("entity", ["Manchester Wind", "Norway Wind"], ctype=GEN)
+    staged.add("entity", ["Norway"], ctype="Bus")
     staged.add("bus", ["Norway"])
     staged.set("p_nom", [80.0, 100.0], entity=["Manchester Wind", "Norway Wind"])
     return revision.child(staged.edits)
@@ -290,7 +290,7 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
     -----
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
-    staged.add("entity", ["NewSolar"], component=GEN)
+    staged.add("entity", ["NewSolar"], ctype=GEN)
     staged.set("p_nom", 7.0, entity=["NewSolar"])
 
     child = root.child(staged.edits)
@@ -530,11 +530,11 @@ def _entity_values(record, attribute):
 
 
 def test_add_then_commit_makes_a_label_exist(staged, root):
-    staged.add("entity", ["NewSolar"], component=GEN)
+    staged.add("entity", ["NewSolar"], ctype=GEN)
     assert "NewSolar" in _entity_axis(staged).index, "it reads back before commit"
 
     child = root.child(staged.edits)
-    assert _entity_axis(child.record).loc["NewSolar", "component"] == GEN
+    assert _entity_axis(child.record).loc["NewSolar", "ctype"] == GEN
 
 
 @pytest.fixture
@@ -702,11 +702,11 @@ def test_a_property_keyword_selects_the_labels_there_are_now(units):
 
 
 def test_set_of_a_category_survives_a_commit(staged, root):
-    staged.set("entity.component", "Load", entity="Manchester Wind")
+    staged.set("entity.ctype", "Load", entity="Manchester Wind")
 
     child = root.child(staged.edits)
     axis = _entity_axis(child.record)
-    assert axis.loc["Manchester Wind", "component"] == "Load"
+    assert axis.loc["Manchester Wind", "ctype"] == "Load"
     assert (
         _entity_values(child.record, "p_nom")["Manchester Wind"]
         == _entity_values(root.record, "p_nom")["Manchester Wind"]
@@ -724,15 +724,15 @@ def test_re_adding_a_label_replaces_its_row(staged, root):
     - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
     """
     staged.remove("entity", ["Manchester Wind"])
-    staged.add("entity", ["Manchester Wind"], component="Load")
+    staged.add("entity", ["Manchester Wind"], ctype="Load")
 
     rows = staged.edits.axis("entity").df()
     rows = rows[rows["entity"] == "Manchester Wind"]
     assert len(rows) == 1, "one label, one row"
-    assert list(rows["component"]) == ["Load"], "the later op wins"
+    assert list(rows["ctype"]) == ["Load"], "the later op wins"
 
     child = root.child(staged.edits)
-    assert _entity_axis(child.record).loc["Manchester Wind", "component"] == "Load"
+    assert _entity_axis(child.record).loc["Manchester Wind", "ctype"] == "Load"
 
 
 def test_add_rejects_a_column_the_schema_does_not_declare(staged):
@@ -759,12 +759,12 @@ def test_add_fills_a_declared_column_another_add_omitted(staged):
     -----
     - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
     """
-    staged.add("entity", ["NewSolar"], component=GEN)
+    staged.add("entity", ["NewSolar"], ctype=GEN)
     staged.add("entity", ["NewWind"])
 
     rows = staged.edits.axis("entity").df().set_index("entity")
-    assert pd.isna(rows.loc["NewWind", "component"]), "not carried, so NULL"
-    assert rows.loc["NewSolar", "component"] == GEN, "unaffected by the later add"
+    assert pd.isna(rows.loc["NewWind", "ctype"]), "not carried, so NULL"
+    assert rows.loc["NewSolar", "ctype"] == GEN, "unaffected by the later add"
 
 
 def test_remove_tombstones_without_enumerating_attributes(staged, root):
@@ -934,10 +934,10 @@ def test_remove_then_add_starts_without_the_parents_connections(staged, root):
     """
     assert _efficiency(staged), "the base carries a value to lose"
     staged.remove("entity", ["Manchester Wind"])
-    staged.add("entity", ["Manchester Wind"], component=GEN)
+    staged.add("entity", ["Manchester Wind"], ctype=GEN)
 
     child = root.child(staged.edits)
-    assert _entity_axis(child.record).loc["Manchester Wind", "component"] == GEN
+    assert _entity_axis(child.record).loc["Manchester Wind", "ctype"] == GEN
     assert _efficiency(child.record) == {}, "its connections are re-added by hand"
 
 
@@ -1320,7 +1320,7 @@ def test_a_standalone_write_of_the_record_is_flattened(staged, root, tmp_path):
     members = _entity_axis(record)
     assert _entity_values(record, "p_nom")["Manchester Wind"] == 150.0
     # Flattened: every component is present, not left to a parent to supply.
-    assert (members["component"] == GEN).sum() == 6
+    assert (members["ctype"] == GEN).sum() == 6
     assert not root.store.workspace.con.sql(
         "FROM duckdb_tables() WHERE table_name LIKE '_pinned_%'"
     ).fetchall(), "the write drops the owner map it held for its fold"
@@ -1430,7 +1430,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root):
     """One frame spanning types is one call, keyed by name alone.
 
     `Tool.results` hands over one frame per attribute carrying every type's rows; with names unique there is no type to stamp, so the frame needs no
-    `component` and nothing can be silently relabelled.
+    `ctype` and nothing can be silently relabelled.
 
     Notes
     -----
@@ -1458,7 +1458,7 @@ def test_a_multi_type_results_frame_stages_by_name_alone(staged, root):
     assert set(_unpacked(got)["entity"]) == {"Manchester Wind", "0"}, (
         "results survive the commit into the layer's own `outputs/`"
     )
-    assert "component" not in got.collect_schema().names()
+    assert "ctype" not in got.collect_schema().names()
     assert not _layer_rows(child, "p_nom").empty, "the inputs went where inputs go"
 
 
