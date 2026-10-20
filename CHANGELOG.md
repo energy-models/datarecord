@@ -169,6 +169,9 @@ All notable changes to datarecord are documented here. The format follows
 - **A manifest with an unknown key fails to load** (breaking): `Schema` and
   every model it nests refuse a key they do not declare with pydantic's
   `ValidationError`, so a misspelt or removed field is no longer ignored.
+- **A standalone record's id is `Schema.id`**, an optional field its
+  `manifest.json` carries as before; a record's `schema.id` is `None`, and a
+  tree's manifest still carries none.
 
 ### Added
 

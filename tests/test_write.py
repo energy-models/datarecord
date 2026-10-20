@@ -9,6 +9,7 @@ Notes
 - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
 """
 
+import json
 import shutil
 from pathlib import Path
 
@@ -251,6 +252,27 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
         )
     finally:
         elsewhere.close()
+
+
+def test_only_a_standalone_manifest_carries_an_id(store, tmp_path):
+    """The id is the schema's field in the file, and the record's own once read.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    """
+    source = _Source(_SCHEMA, attributes={"p_nom": _long()})
+    out = tmp_path / "standalone"
+    record = store.workspace.write(source, str(out))
+
+    written = Schema.model_validate_json((out / "manifest.json").read_text())
+    assert written.id == record.resolver.revision_id
+    assert record.schema.id is None, "the id is the record's, not its schema's"
+
+    store.root(_Source(written, attributes={"p_nom": _long()}))
+    tree = store.files.read_text(store.manifest_uri)
+    assert tree is not None
+    assert "id" not in json.loads(tree[0]), "a tree's manifest carries no id"
 
 
 def test_a_directory_without_a_manifest_is_no_standalone_record(store, tmp_path):

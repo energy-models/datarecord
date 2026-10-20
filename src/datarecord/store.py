@@ -208,17 +208,16 @@ class Workspace:
                 f"its store's `layer(id)`"
             )
             raise FileNotFoundError(msg)
-        manifest = json.loads(found[0])
-        id = manifest.pop("id", None)
-        if id is None:
+        schema = Schema.model_validate_json(found[0])
+        if schema.id is None:
             msg = (
                 f"{base}manifest.json carries no record id; a standalone "
                 f"record's id is minted by `Workspace.write`, so write it again "
                 f"through that"
             )
             raise ValueError(msg)
-        schema = Schema.model_validate(manifest)
-        return _record(DirectorySource(base, schema, self, UUID(id)), workspace=self)
+        bare = schema.model_copy(update={"id": None})
+        return _record(DirectorySource(base, bare, self, schema.id), workspace=self)
 
     def write(self, source: LayerData | RecordLike, uri: str) -> Record:
         """Write `source` as a standalone record at `uri`, and read it back.
@@ -496,10 +495,9 @@ def _absolute(uri: str) -> str:
 
 
 def _manifest(schema: Schema, id: UUID) -> str:
-    """A standalone record's `manifest.json`: `schema`, with its `id` beside it.
+    """A standalone record's `manifest.json`: `schema`, carrying `id`.
 
-    The reader pops `id` before validating the rest as the schema. A tree's
-    manifest carries no id, its revisions naming its layers.
+    A tree's manifest carries no id, its revisions naming its layers.
 
     Notes
     -----

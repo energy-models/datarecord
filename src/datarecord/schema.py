@@ -23,6 +23,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Mapping
 from typing import Any
+from uuid import UUID
 
 import narwhals as nw
 from pydantic import (
@@ -510,6 +511,10 @@ class Schema(_Declared):
 
     Attributes
     ----------
+    id
+        A standalone record's id, which its `manifest.json` carries beside the
+        declarations; `None` on every schema a record answers with, and never
+        dumped, so only `Workspace.write` puts one in a file.
     version
         Bumped by any change to the declarations. A reader meeting a
         version it was not written for should refuse rather than guess.
@@ -546,6 +551,7 @@ class Schema(_Declared):
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
 
+    id: UUID | None = Field(default=None, exclude=True)
     version: int = 1
     dimensions: dict[str, Dimension] = Field(default_factory=dict)
     attributes: dict[str, AttributeSpec] = Field(default_factory=dict)
