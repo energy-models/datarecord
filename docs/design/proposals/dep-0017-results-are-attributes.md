@@ -17,7 +17,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## Abstract
 
-A result becomes an ordinary attribute. A layer has one `attributes/` directory, and `inputs/` and `outputs/` go. `Schema.results`, `RecordLike.outputs`, `Kind` and every `kind="outputs"` go with them. Only a tool knows which attributes it computes.
+A result becomes an ordinary attribute. A layer has one `attributes/` directory, and `inputs/` and `outputs/` go. `Schema.results`, `RecordLike.outputs`, `Kind` and every `kind="outputs"` go with them. Only a tool knows which attributes it computes. `Tool.results` gives way to `to_datarecord(model, con, results_only=True)`.
 
 ## Motivation
 
@@ -53,6 +53,7 @@ The distinction belongs to a framework. PyPSA marks an attribute "Output" in its
 | `staged_outputs_<attr>_<id>`                        | the staged attribute table                                       |
 | the write path's shape exemption for a result       | gone; a result's file carries its declared coordinates           |
 | `outputs/` written only when non-empty              | gone; `attributes/` holds whatever the source has                |
+| `Tool.results(model, con)`                          | `to_datarecord(model, con, results_only=True)`                   |
 
 ### Loading an old layer
 
@@ -63,14 +64,31 @@ layer <id> has an `inputs/` directory; a layer holds every attribute in
 `attributes/`, results included. Re-export the record.
 ```
 
+### The tool interface
+
+`Tool.results` goes. `to_datarecord` takes `results_only`:
+
+```python
+def to_datarecord(
+    self, model: Any, con: DuckDBPyConnection, *, results_only: bool = False
+) -> RecordLike: ...
+```
+
+With `results_only=True` it presents only what the solve produced. That is the result attributes and the [intermediate results](#intermediate-results) they need. It is a thin layer, written as a child of the record the model was built from: `rev.child(layer)`. Nothing is staged through a `WorkingRecord`. Where inputs were edited first, their edits are committed as a child, and the thin layer goes on top of that child.
+
+### Intermediate results
+
+A solve derives structure as well as values: PyPSA's SubNetworks, a cycle matrix. Each is an ordinary dim, entity or attribute the tool writes. A SubNetwork is an `entity` with `ctype="SubNetwork"`, and a line's `sub_network` an attribute naming one. A cycle matrix is an attribute over a `cycle` dim and the lines. The tool's schema declares them like any other name.
+
+On every `results_only` write the tool replaces them. The thin layer tombstones the base's intermediate entities and labels, then adds the new ones. A re-solve that numbers SubNetworks differently leaves no stale label behind.
+
 ### The PyPSA tool
 
 - **It knows its outputs.** `_output_attributes(c)` still reads PyPSA's registry status "Output". `_result_attributes` still maps each to its record name.
 - **The schema declares them as attributes.** `_registry_schema` adds them to `attributes`. A name that is an input on another type stays dropped, as today.
-- **`build` skips outputs.** It reads no attribute that some type registers as an output. `_add_axis_type` no longer restores `marginal_price`.
+- **`build` incorporates every attribute the record holds.** A solved bus's `marginal_price` is copied into the network, as any attribute is.
+- **"Output" is read only on import.** It decides what `results_only` presents. It never drops data from `build` or a full export.
 - **`to_datarecord` writes outputs as attributes.** A solved network round-trips its results through `attributes/`.
-- **`results` returns attributes.** Its frames go to `set(name, frame)` with no `kind`.
-- **The tool declares its labels.** A SubNetwork is an `entity` with `ctype="SubNetwork"`. The tool adds those labels before it sets the results that name them.
 
 ## Rationale
 
@@ -78,32 +96,37 @@ layer <id> has an `inputs/` directory; a layer holds every attribute in
 
 **Results inherit.** A child that changes nothing a solve reads keeps its parent's solution. A child that changes inputs holds results computed from its parent. That is the same staleness a staged result has today after an input edit.
 
-**The tool owns "output".** PyPSA's registry already says which attributes a solve fills. `build` asks the tool, not the record. This matches [the module layout](../module-layout.md), which keeps framework knowledge out of core.
+**The tool owns "output".** PyPSA's registry already says which attributes a solve fills. Only the tool's import reads that. This matches [the module layout](../module-layout.md), which keeps framework knowledge out of core.
+
+**One import, two scopes.** A full export and a results layer differ only in what they present. One `to_datarecord` keeps the rule for each result in one place.
 
 **No label exemption.** Every row of a record names a declared label. A reader joining a result to `dims["entity"]` never meets an orphan.
 
-**Costs.** Every record is re-exported, [breaking changes being free](https://github.com/energy-models/datarecord/blob/main/AGENTS.md). A child of a solved node shows results its inputs no longer support. `build` of a solved record yields an unsolved network. A results write meets the full `set` validation, so a tool must add labels first.
+**Costs.** Every record is re-exported, [breaking changes being free](https://github.com/energy-models/datarecord/blob/main/AGENTS.md). A child of a solved node shows results its inputs no longer support. A results layer meets full validation, so it carries the labels its results name.
 
 ## Usage
 
 Before:
 
 ```python
+n = PyPSA.build(w)
+n.optimize()
 for attr, frame in PyPSA.results(n, w.con).items():
     w.set(attr, frame, kind="outputs")
-rev.child(w.edits)
-record.outputs["marginal_price"]
+solved = rev.child(w.edits)  # inputs and results in one layer
+solved.record.outputs["marginal_price"]  # a child of solved has none
 schema.results["p"]
 ```
 
 After:
 
 ```python
-w.add("entity", sub_networks)  # SubNetwork labels, ctype="SubNetwork"
-for attr, frame in PyPSA.results(n, w.con).items():
-    w.set(attr, frame)
-rev.child(w.edits)
-record.attributes["marginal_price"]  # a child of rev reads it too
+inputs = rev.child(w.edits)
+n = PyPSA.build(inputs.record)
+n.optimize()
+solved = inputs.child(PyPSA.to_datarecord(n, ws.con, results_only=True))
+solved.record.attributes["marginal_price"]  # a child of solved reads it too
+PyPSA.build(solved.record)  # marginal_price is in the network
 schema.attributes["p"]
 ```
 
@@ -117,21 +140,22 @@ schema.attributes["p"]
 6. `layered/record.py`: `outputs` goes.
 7. `layered/write.py`: writes `attributes/`; the `outputs` arm and the result exemptions go.
 8. `mutable.py`: `kind` on `set`, `_validate_result`, `outputs` and the staged outputs tables go.
-9. `tools/base.py`: `results` documents `set(name, frame)`.
-10. `tools/pypsa.py`: as [above](#the-pypsa-tool).
+9. `tools/base.py`: `results` goes; `to_datarecord` takes `results_only`.
+10. `tools/pypsa.py`: as [above](#the-pypsa-tool); `results` folds into `to_datarecord`; intermediates are replaced as [above](#intermediate-results).
 11. Tests: `kind="outputs"` and `outputs` tests in `test_mutable.py`, `test_records.py`, `test_tools.py`, `test_overlay.py`, `test_write.py`, `test_properties.py`, `test_owner_map.py` are rewritten or deleted; `fixtures.py` declares results as attributes.
 12. Pages: [format](../format.md), [read path](../read-path.md), [schema](../schema.md), [working record](../working-record.md), [writing](../writing.md), [tools](../tools.md), [record](../record.md), [layers](../layers.md), [open questions](../open-questions.md), the usage pages, `CHANGELOG.md`.
 
-Checks: no `outputs`, `Kind` or `results` field in `src/`; an old layer is refused naming `attributes/`; a solved PyPSA network round-trips; a child reads its parent's results.
+Checks: no `outputs`, `Kind` or `results` field in `src/`; an old layer is refused naming `attributes/`; a solved PyPSA network round-trips with its results; a child reads its parent's results; a re-solve leaves no stale SubNetwork.
 
 ## Rejected Ideas
 
 - **A `result: bool` flag on `AttributeSpec`**: the split again under another name, and still a framework's vocabulary.
 - **Keeping `outputs/` beside `attributes/`**: two directories for one shape, and every reader still branching.
+- **`build` skipping outputs**: it would drop data the record holds, and a solved record would build unsolved.
+- **A `PyPSA.attach(n, w)` staging results**: a thin layer from `to_datarecord` writes them without a `WorkingRecord`.
 
 ## Open Issues
 
-- **How the PyPSA tool hands back SubNetwork labels.** `results` returns attribute frames only. Recommend a `PyPSA.attach(n, w)` that adds the labels and sets every result.
-- **Stale SubNetwork labels.** A re-solve may number SubNetworks differently, leaving old labels inherited. Recommend the tool deletes the previous SubNetwork entities before adding new ones.
 - **Stale results after an input edit.** They now inherit, so the open question on staged results widens. Recommend leaving coherence to the caller, as today.
-- **Whether `Tool.results` stays apart from `to_datarecord`.** Recommend keeping it: a results-only layer patches a record without restating its inputs.
+- **Detecting intermediates that no longer fit their inputs.** It needs provenance of which inputs each came from. Deferred.
+- **Filtering a record before `build`.** Selecting one period or chosen outputs is a separate future feature, not designed here.
