@@ -166,6 +166,9 @@ All notable changes to datarecord are documented here. The format follows
   is dropped at read, a removed `bus` label's per-bus values included. A
   materialised node caches the dead labels in `resolved/dead/`; one
   materialised before reads as having none.
+- **A manifest with an unknown key fails to load** (breaking): `Schema` and
+  every model it nests refuse a key they do not declare with pydantic's
+  `ValidationError`, so a misspelt or removed field is no longer ignored.
 
 ### Added
 

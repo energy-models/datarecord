@@ -187,7 +187,13 @@ def flag_type(dims: tuple[str, ...]) -> nw.dtypes.DType:
     return nw.Struct({d: nw.Boolean() for d in dims})
 
 
-class Dimension(BaseModel):
+class _Declared(BaseModel):
+    """A model `manifest.json` is parsed into, refusing a key it does not declare."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+
+class Dimension(_Declared):
     """One axis attribute data may vary over: its shape, not its data.
 
     Not which dims an *attribute* varies over (`AttributeSpec.dims`), nor the
@@ -216,8 +222,6 @@ class Dimension(BaseModel):
     - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     dtype: nw.dtypes.DType
     within: frozenset[str] = frozenset()
     unit: str | None = None
@@ -233,14 +237,12 @@ class Dimension(BaseModel):
         return _dump_dtype(value)
 
 
-class _ValueSpec(BaseModel):
+class _ValueSpec(_Declared):
     """What `AttributeSpec` and `PropertySpec` share: a typed value and its defaults.
 
     The `default`/`default_by` encoding lives here once, so a property and an
     attribute round-trip `manifest.json` identically.
     """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     dtype: nw.dtypes.DType
     default: Any | None = None
@@ -402,7 +404,7 @@ class PropertySpec(_ValueSpec):
         return self
 
 
-class Group(BaseModel):
+class Group(_Declared):
     """Which tuples over several dims exist: a sparse subset of a dim product.
 
     Not a dim. A dim declares an axis of labels and NULL in its column means
@@ -460,7 +462,7 @@ class Group(BaseModel):
         return tuple(self.over)
 
 
-class Trait(BaseModel):
+class Trait(_Declared):
     """A named bundle of attributes, and which categories and labels carry it.
 
     The narrowing direction: an attribute the schema declares is carried by
@@ -508,7 +510,7 @@ class Trait(BaseModel):
         return self
 
 
-class Schema(BaseModel):
+class Schema(_Declared):
     """One record's schema.
 
     Attributes

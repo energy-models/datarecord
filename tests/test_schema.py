@@ -9,6 +9,8 @@ Notes
 - [the schema](https://energy-models.github.io/datarecord/design/schema/)
 """
 
+import json
+from functools import reduce
 from typing import Any
 
 import duckdb
@@ -26,6 +28,7 @@ from datarecord.schema import (
     Trait,
     flag_type,
 )
+from tests.fixtures import schema as pypsa_schema
 
 
 def _schema(**overrides) -> Schema:
@@ -1110,6 +1113,28 @@ def test_round_trips_through_json():
     s = _schema()
     back = Schema.model_validate_json(s.model_dump_json())
     assert back == s
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        (),
+        ("dimensions", "snapshot"),
+        ("attributes", "p_nom"),
+        ("properties", "entity", "component"),
+        ("groups", "connection"),
+        ("traits", "Generator"),
+    ],
+    ids=["top-level", "dim", "attribute", "property", "group", "trait"],
+)
+def test_manifest_with_unknown_key_fails_to_load(path: tuple[str, ...]):
+    s = pypsa_schema(
+        attributes={"Generator": {"p_nom": AttributeSpec(dtype=nw.Float64())}}
+    )
+    manifest = json.loads(s.model_dump_json())
+    reduce(dict.__getitem__, path, manifest)["misspelt"] = 1
+    with pytest.raises(ValidationError, match="misspelt"):
+        Schema.model_validate_json(json.dumps(manifest))
 
 
 def test_column_types_cover_structural_dims_and_flags():

@@ -1760,7 +1760,7 @@ def _property(name: str, spec: AttributeSpec) -> PropertySpec:
     -----
     - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
     """
-    fields = spec.model_dump(exclude={"dims"})
+    fields = spec.model_dump(exclude={"dims", "breakpoints"})
     if name == CARRIER:
         fields |= {"into": CARRIER, "default": fields["default"] or None}
     return PropertySpec(**fields)
