@@ -907,6 +907,66 @@ def test_a_staged_pair_neither_more_specific_fails_the_read(store):
         staged.attributes["p_nom"].df()
 
 
+@pytest.mark.parametrize(
+    ("rows", "coordinate"),
+    [
+        ([{"value": 1.0}, {"value": 2.0}], "every coordinate"),
+        ([{"entity": "a", "value": 1.0}, {"entity": "a", "value": 2.0}], "entity=a"),
+        (
+            [
+                {"value": 3.0},
+                {"entity": "a", "scenario": "x", "value": 1.0},
+                {"entity": "a", "scenario": "x", "value": 2.0},
+            ],
+            "entity=a, scenario=x",
+        ),
+        (
+            [
+                {"entity": "a", "breakpoint": 0.5, "value": 1.0},
+                {"entity": "a", "breakpoint": 0.5, "value": 2.0},
+            ],
+            "entity=a, breakpoint=0.5",
+        ),
+    ],
+    ids=["broadcast", "one-label", "beside-a-default", "one-breakpoint"],
+)
+def test_a_layer_with_two_rows_naming_the_same_dims_is_refused(store, rows, coordinate):
+    """Two rows naming the same labels are equally specific, so no rule picks one.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    with pytest.raises(
+        ValueError, match=rf"p_nom\.parquet holds 2 rows at {coordinate} "
+    ):
+        _rows_layer(store, rows, "write_layer")
+
+
+def test_a_curve_is_no_pair_of_rows(store):
+    """The rows of one curve differ in `breakpoint`, so each is its own row."""
+    rows: list[dict] = [{"entity": "a", "breakpoint": b, "value": b} for b in (0, 1)]
+    df = _rows_layer(store, rows, "write_layer").record.attributes["p_nom"].df()
+    assert sorted(df["breakpoint"]) == [0, 0, 1, 1], "each point in each scenario"
+
+
+def test_a_stored_pair_naming_the_same_dims_fails_the_read(store, tmp_path):
+    """A layer not written by `write_layer` is held to the rule when it is read.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    rows: list[dict] = [{"value": 2.0}, {"entity": "a", "value": 1.0}]
+    revision = _rows_layer(store, rows, "write_layer")
+    (file,) = tmp_path.rglob("attributes/p_nom.parquet")
+    twin = duckdb.read_parquet(str(file)).filter("entity = 'a'")
+    duckdb.read_parquet(str(file)).union(twin).to_parquet(str(file) + ".twin")
+    Path(str(file) + ".twin").replace(file)
+    with pytest.raises(duckdb.Error, match="'p_nom' covering entity=a, .*same dims"):
+        revision.record.attributes["p_nom"].df()
+
+
 _TYPED = Schema(
     dimensions={
         "entity": Dimension(dtype="str"),

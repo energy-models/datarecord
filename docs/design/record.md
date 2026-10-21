@@ -148,7 +148,7 @@ A group value is therefore a whole tuple or NULL. A struct with some fields NULL
 
 **Within one layer, the more specific row wins.** Two rows of one layer may cover one coordinate: a `p_nom` row with `entity = NULL` beside one naming `a`.
 A row naming a label of a dim is more specific than one leaving that dim NULL, so where one row names every dim the other names and more, it wins at every coordinate both cover.
-Two rows covering one coordinate where each names a dim the other leaves NULL have no more specific one: the write refuses the layer, and a read of a layer written another way fails, each naming the attribute and the coordinate.
+Two rows covering one coordinate where each names a dim the other leaves NULL, or where both name the same dims at one breakpoint, have no more specific one: the write refuses the layer, and a read of a layer written another way fails, each naming the attribute and the coordinate.
 Rows of two layers never meet at a coordinate, since [the owner map](read-path.md#owner-map) gives each key one layer.
 A coordinate no row covers — including an attribute with no rows at all — takes that attribute's default from [the schema](schema.md#attributespec): its `default_by` entry for the label's category where one lists it, else `default`.
 

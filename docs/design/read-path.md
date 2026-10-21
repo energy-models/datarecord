@@ -121,7 +121,7 @@ A flag field missing from a map folded before the dim was declared counts as `br
 
 A layer may hold a row naming a label beside one leaving its dim NULL, and both join the key the label names, which the map records as a key written both ways.
 Where an attribute has such a key, the read keeps at each coordinate the row naming every `partial` dim another row there names, [the more specific](record.md#the-broadcast-rule), by a window over the attribute's coordinates.
-A coordinate with no such row fails the read, naming the attribute and the coordinate.
+A coordinate with no such row, or with two at one breakpoint, fails the read, naming the attribute and the coordinate.
 `breakpoint` is no coordinate, so a curve is kept or dropped whole.
 An attribute with no such key, the common case, skips the window.
 

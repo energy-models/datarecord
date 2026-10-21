@@ -640,7 +640,8 @@ def _most_specific(
     leaving that dim NULL, and both join the key that label names. The column
     `_named` holds the `_named_mask` of the `partial` dims, so the row kept is
     the one whose mask is the union of all masks at its coordinate. Where no
-    row has that mask, two rows each name a dim the other leaves NULL.
+    row has that mask, two rows each name a dim the other leaves NULL; where
+    two rows at one breakpoint have that mask, they name the same dims.
     `write_layer` refuses such a layer, so it was written another way, and the
     read fails at that coordinate. `breakpoint` is no coordinate, so a curve
     is kept or dropped whole.
@@ -649,14 +650,16 @@ def _most_specific(
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
-    over = f"OVER (PARTITION BY {', '.join(str(col(c)) for c in coordinates)})"
+    by = ", ".join(str(col(c)) for c in coordinates)
+    over = f"OVER (PARTITION BY {by})"
     # A window stays SQL text: DuckDB's expression API has no window construct.
     ranked = rel.project(
         star(),
         sql(f"bit_or(_named) {over}").alias("_all"),
         sql(f"max(bit_count(_named)) {over}").alias("_most"),
+        sql(f"count(*) OVER (PARTITION BY {by}, breakpoint, _named)").alias("_twins"),
     )
-    at = fn.concat_ws(
+    coordinate = fn.concat_ws(
         lit(", "),
         *(
             fn.concat(
@@ -665,18 +668,28 @@ def _most_specific(
             for c in coordinates
         ),
     )
-    msg = fn.concat(
-        lit(f"one layer holds two rows of {attribute!r} covering "),
-        at,
-        lit(
-            ", where each names a dim the other leaves NULL, so neither is the "
-            "more specific there (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
-        ),
-    )
+
+    def refuse(why: str) -> Expression:
+        return fn.error(
+            fn.concat(
+                lit(f"one layer holds two rows of {attribute!r} covering "),
+                coordinate,
+                lit(
+                    f", where {why}, so neither is the more specific there "
+                    "(https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
+                ),
+            )
+        )
+
+    incomparable = refuse("each names a dim the other leaves NULL")
+    twins = refuse("both name the same dims")
     keep = sql(
-        f"CASE WHEN bit_count(_all) = _most THEN _named = _all ELSE error({msg}) END"
+        f"CASE WHEN bit_count(_all) <> _most THEN {incomparable} "
+        f"WHEN _twins > 1 AND _named = _all THEN {twins} ELSE _named = _all END"
     )
-    return ranked.filter(keep).project(star(exclude=("_named", "_all", "_most")))
+    return ranked.filter(keep).project(
+        star(exclude=("_named", "_all", "_most", "_twins"))
+    )
 
 
 def fold_inputs(

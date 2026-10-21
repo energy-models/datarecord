@@ -117,8 +117,9 @@ def write_layer(
         a label dead after it.
         If a column's type does not fit its dtype, naming the attribute,
         property or dim that declares the column, and the dtype.
-        If two rows of one attribute cover one coordinate and each names a dim
-        the other leaves NULL, naming the attribute and the coordinate.
+        If two rows of one attribute cover one coordinate and both name the
+        same dims, or each names a dim the other leaves NULL, naming the
+        attribute and the coordinate.
 
     Notes
     -----
@@ -154,7 +155,7 @@ def write_layer(
                 _validate_frame(rel, kind, key, schema)
                 uri = _write_frame(rel, staging, kind, key, schema)
                 if kind == "attributes":
-                    _refuse_incomparable(workspace.con.read_parquet(uri), key, schema)
+                    _refuse_unordered(workspace.con.read_parquet(uri), key, schema)
         if data.groups() or data.axes():
             layer = DirectorySource(staging, schema, workspace, uuid4())
             _require_living_references(parents, layer, workspace.con, schema)
@@ -275,19 +276,21 @@ def _write_frame(
     return uri
 
 
-def _refuse_incomparable(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
+def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
     """Refuse two rows of `attribute` covering one coordinate where neither is more specific.
 
     Two rows cover one coordinate where they agree on every dim both name. A
     row is more specific than another where it names every dim the other
     names, and more. Of two rows of one layer covering a coordinate, a read
-    keeps the more specific one, so where each names a dim the other leaves
-    NULL, it has none to keep.
+    keeps the more specific one, so where both name the same dims, or each
+    names a dim the other leaves NULL, it has none to keep. `breakpoint` is
+    part of a row, so the rows of one curve are no such pair.
 
+    Rows naming the same dims are found by one group-by over the coordinates.
     Only the distinct NULL patterns are paired, and they are few. Each pair is
     joined on the distinct coordinates its rows name, so one series is not
     multiplied against another. `rel` is the file as written, so the source
-    is built only once, and only its dims are read.
+    is built only once, and only its dims and `breakpoint` are read.
 
     Raises
     ------
@@ -299,6 +302,26 @@ def _refuse_incomparable(rel: DuckDBPyRelation, attribute: str, schema: Schema) 
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
     dims = schema.coordinates_of(attribute)
+    key = ", ".join(str(col(c)) for c in (*dims, "breakpoint"))
+    twin = (
+        rel.aggregate(f"{key}, count(*) AS _rows", key)
+        .filter(col("_rows") > lit(1))
+        .limit(1)
+        .fetchone()
+    )
+    if twin is not None:
+        *values, rows = twin
+        at = ", ".join(
+            f"{c}={v}"
+            for c, v in zip((*dims, "breakpoint"), values, strict=True)
+            if v is not None
+        )
+        msg = (
+            f"attributes/{attribute}.parquet holds {rows} rows at "
+            f"{at or 'every coordinate'} naming the same dims, so neither is the "
+            f"more specific there. Keep one of them (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
+        )
+        raise ValueError(msg)
     if len(dims) < 2:
         return
     patterns = [

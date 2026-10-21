@@ -249,6 +249,10 @@ All notable changes to datarecord are documented here. The format follows
   of two rows covering one coordinate where each names a dim the other leaves
   NULL is refused, and a read of such a layer written another way fails, each
   naming the attribute and the coordinate.
+- A layer holding two rows of one attribute naming the same labels at one
+  breakpoint is refused at write rather than read as either value, and a read
+  of such a layer written another way fails where it picks the more specific
+  row, each naming the attribute and the coordinate.
 - The writer holds a column to its declared dtype as `set` does: an
   attribute's `value` is stored as its dtype, an integer column under a
   `float` attribute as `DOUBLE` rather than `BIGINT`, and a column of a type
