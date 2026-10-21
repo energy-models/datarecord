@@ -18,11 +18,12 @@ Notes
 from __future__ import annotations
 
 import dataclasses
+import operator
 import os
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from functools import cached_property
+from functools import cached_property, reduce
 from hashlib import sha256
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
@@ -32,6 +33,7 @@ from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
+from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
@@ -594,6 +596,85 @@ def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
             star(exclude=(col(d),)), col(d).alias(_owned(d)), fn.unnest(stored).alias(d)
         )
     return om
+
+
+def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID], bool]]:
+    """Return, per attribute in `om`, its owning layers and whether a key is owned both ways.
+
+    A key is owned both ways where its `varies` and `broadcast` flags are both
+    set for one `partial` dim. A flag field missing from a map folded before
+    the dim was declared is unset.
+    """
+    both = [
+        struct_field(om, "varies", d, lit(False))  # noqa: FBT003
+        & struct_field(om, "broadcast", d, lit(False))  # noqa: FBT003
+        for d in schema.partial_dims
+        if d in schema.broadcast_dims
+    ]
+    contested = reduce(operator.or_, both, lit(False))  # noqa: FBT003
+    rows = om.aggregate(
+        f"attribute, list(DISTINCT {LAYER_COLUMN}), bool_or({contested})", "attribute"
+    ).fetchall()
+    return {a: (layers, bool(c)) for a, layers, c in rows}
+
+
+def _named_mask(alias: str, dims: Sequence[str]) -> Expression:
+    """Return a bit per one of `dims`, set where the row under `alias` names a label there."""
+    return reduce(
+        operator.add,
+        (
+            col(alias, d).isnotnull().cast(sqltypes.INTEGER) * lit(1 << i)
+            for i, d in enumerate(dims)
+        ),
+        lit(0),
+    )
+
+
+def _most_specific(
+    rel: DuckDBPyRelation, coordinates: Sequence[str], attribute: str
+) -> DuckDBPyRelation:
+    """Keep the row of `rel` at each coordinate naming every dim another row there names.
+
+    One layer may hold a row naming a `partial` label beside one leaving that
+    dim NULL, and both join the key the label names. `_named` is the
+    `_named_mask` of the `partial` dims, so the row kept is the one whose mask
+    is the union of the masks at its coordinate. Where no row has it, two rows
+    each name a dim the other leaves NULL, which `write_layer` refuses, so the
+    layer was written another way, and the read fails on that coordinate.
+    `breakpoint` is no coordinate, so a curve is kept or dropped whole.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    over = f"OVER (PARTITION BY {', '.join(str(col(c)) for c in coordinates)})"
+    # A window stays SQL text: DuckDB's expression API has no window construct.
+    ranked = rel.project(
+        star(),
+        sql(f"bit_or(_named) {over}").alias("_all"),
+        sql(f"max(bit_count(_named)) {over}").alias("_most"),
+    )
+    at = fn.concat_ws(
+        lit(", "),
+        *(
+            fn.concat(
+                lit(f"{c}="), coalesce(col(c).cast(sqltypes.VARCHAR), lit("NULL"))
+            )
+            for c in coordinates
+        ),
+    )
+    msg = fn.concat(
+        lit(f"one layer holds two rows of {attribute!r} covering "),
+        at,
+        lit(
+            ", where each names a dim the other leaves NULL, so neither is the "
+            "more specific there (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
+        ),
+    )
+    keep = sql(
+        f"CASE WHEN bit_count(_all) = _most THEN _named = _all ELSE error({msg}) END"
+    )
+    return ranked.filter(keep).project(star(exclude=("_named", "_all", "_most")))
 
 
 def fold_inputs(
@@ -1274,18 +1355,20 @@ class Resolver:
         # (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
         coordinates = set(keys.schema.coordinates_of(attribute))
         broadcast_over = tuple(d for d in partial_dims if d in coordinates)
+        owners, contested = self._owners(attribute)
         layers = [
             with_columns(keys.schema, rel, *columns).project(
                 lit(layer_uuid).alias(LAYER_COLUMN), star()
             )
-            for layer_uuid in self._layers_owning(attribute)
+            for layer_uuid in owners
             if (rel := self.source_for(layer_uuid).attribute(attribute)) is not None
         ]
         if not layers:
             return _empty_relation(keys.schema, con, *columns)
 
         unkeyed = [c for c in columns if c not in partial_dims]
-        return _living(
+        named = [_named_mask("l", broadcast_over).alias("_named")] if contested else []
+        resolved = (
             union_all_by_name(layers, con)
             .set_alias("l")
             .join(
@@ -1298,27 +1381,35 @@ class Resolver:
                     if dim in broadcast_over
                     else col("l", dim)
                     for dim in columns
-                )
-            ),
-            keys,
-            unkeyed,
+                ),
+                *named,
+            )
         )
+        if contested:
+            resolved = _most_specific(
+                resolved, keys.schema.coordinates_of(attribute), attribute
+            )
+        return _living(resolved, keys, unkeyed)
 
-    def _layers_owning(self, attribute: str) -> list[UUID]:
-        """The layers owning any key of `attribute`, whose rows `_relation` reads.
+    def _owners(self, attribute: str) -> tuple[list[UUID], bool]:
+        """Return the layers owning a key of `attribute`, and whether one key is owned both ways.
+
+        A key is owned both ways where its layer holds one row naming a
+        `partial` label there and another leaving that dim NULL, which is when
+        `_relation` has to pick the more specific of them.
 
         Where every source is frozen, one scan of the map answers every
         attribute and is kept; otherwise the map may change under the reader,
         so each call asks for its own attribute.
         """
         if self.frozen:
-            return self._cached_layers_owning.get(attribute, [])
+            return self._cached_owners.get(attribute, ([], False))
         om = self.inputs.filter(col("attribute") == lit(attribute))
-        return [u for (u,) in om[LAYER_COLUMN].distinct().fetchall()]
+        return _owners(om, self.dims.schema).get(attribute, ([], False))
 
     @cached_property
-    def _cached_layers_owning(self) -> dict[str, list[UUID]]:
-        """`_layers_owning` for every attribute, where every source is frozen.
+    def _cached_owners(self) -> dict[str, tuple[list[UUID], bool]]:
+        """Return `_owners` for every attribute, where every source is frozen.
 
         Plain data any thread computes the same, so it is kept on the resolver
         rather than as a shared table beside the owner map it is read from.
@@ -1327,10 +1418,7 @@ class Resolver:
         -----
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
         """
-        rows = self.inputs.aggregate(
-            "attribute, list(DISTINCT layer_uuid)", "attribute"
-        ).fetchall()
-        return dict(rows)
+        return _owners(self.inputs, self.dims.schema)
 
     def group_frame(self, group: str) -> DuckDBPyRelation | None:
         """One group's resolved rows, folded like an axis, in member order.
@@ -1392,5 +1480,5 @@ class PinnedResolver(Resolver):
         if "fold" in self.__dict__:
             self.con.execute(f"DROP TABLE IF EXISTS {self._table}")
 
-    def _layers_owning(self, attribute: str) -> list[UUID]:
-        return self._cached_layers_owning.get(attribute, [])
+    def _owners(self, attribute: str) -> tuple[list[UUID], bool]:
+        return self._cached_owners.get(attribute, ([], False))

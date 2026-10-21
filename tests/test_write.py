@@ -13,6 +13,7 @@ import json
 import shutil
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 import pytest
 
@@ -603,6 +604,222 @@ def test_an_attribute_column_in_a_dims_frame_is_refused(store):
     with pytest.raises(ValueError, match="they are attributes, whose values are long"):
         store.root(source)
     _nothing_reachable(store)
+
+
+_ENTITIES, _SCENARIOS, _T = ["a", "b"], ["x", "y"], pd.Timestamp("2030-01-01")
+_AB, _BB = {"entity": "a", "bus": "b0"}, {"entity": "b", "bus": "b0"}
+
+
+def _rows_staged(store, rows: list[dict], attribute: str):
+    """Return a written base, and a staging area over it holding `rows` of `attribute`.
+
+    A coordinate a row leaves out is NULL there; a `connection` is set by its fields.
+    """
+    write_schema(_SCHEMA, store)
+    base = empty_root(store)
+    staged = WorkingRecord(base.record)
+    staged.add("ctype", ["Generator"])
+    staged.add("entity", _ENTITIES, ctype="Generator")
+    staged.add("bus", ["b0"])
+    staged.add("scenario", _SCENARIOS)
+    staged.add("snapshot", [_T])
+    staged.add_group("connection", pd.DataFrame({"connection": [_AB, _BB]}))
+    base = base.child(staged.edits)
+    staged = WorkingRecord(base.record)
+    for row in rows:
+        coords = {c: v for c, v in row.items() if c not in ("value", "connection")}
+        staged.set(attribute, row["value"], **coords, **row.get("connection", {}))
+    return base, staged
+
+
+def _rows_layer(store, rows: list[dict], via: str, attribute: str = "p_nom"):
+    """Return a revision whose top layer holds `rows` of `attribute`, written `via` `set` or a source.
+
+    A coordinate a row leaves out is NULL there.
+    """
+    if via == "set":
+        base, staged = _rows_staged(store, rows, attribute)
+        return base.child(staged.edits)
+    nulls = dict.fromkeys(("entity", "connection", "scenario", "snapshot"))
+    frame = pd.concat(
+        [_long(**{**nulls, "attribute": attribute, **row}) for row in rows],
+        ignore_index=True,
+    )
+    return store.root(
+        _Source(
+            _SCHEMA,
+            attributes={attribute: frame},
+            connections={"connection": pd.DataFrame({"connection": [_AB, _BB]})},
+            dims={
+                "entity": pd.DataFrame({"entity": _ENTITIES}),
+                "bus": pd.DataFrame({"bus": ["b0"]}),
+                "scenario": pd.DataFrame({"scenario": _SCENARIOS}),
+                "snapshot": pd.DataFrame({"snapshot": [_T]}),
+            },
+            properties={
+                "entity": pd.DataFrame(
+                    {"entity": _ENTITIES, "ctype": ["Generator"] * 2}
+                )
+            },
+        )
+    )
+
+
+def _read(revision, attribute: str = "p_nom") -> list:
+    """Return `attribute` as sorted `((first coordinate, scenario), value)` pairs."""
+    df = revision.record.attributes[attribute].df()
+    first = df["connection" if attribute == "efficiency" else "entity"]
+    keys = zip(
+        (v["entity"] if isinstance(v, dict) else v for v in first),
+        df["scenario"],
+        strict=True,
+    )
+    return sorted(zip(keys, df["value"], strict=True))
+
+
+@pytest.mark.parametrize("via", ["set", "write_layer"])
+@pytest.mark.parametrize(
+    ("attribute", "rows", "read"),
+    [
+        (
+            "p_nom",
+            [{"entity": "a", "value": 1.0}, {"value": 2.0}],
+            {("a", "x"): 1.0, ("a", "y"): 1.0, ("b", "x"): 2.0, ("b", "y"): 2.0},
+        ),
+        (
+            "p_nom",
+            [{"value": 2.0}, {"entity": "a", "value": 1.0}],
+            {("a", "x"): 1.0, ("a", "y"): 1.0, ("b", "x"): 2.0, ("b", "y"): 2.0},
+        ),
+        (
+            "p_nom",
+            [
+                {"scenario": "x", "value": 2.0},
+                {"entity": "a", "scenario": "x", "value": 1.0},
+            ],
+            {("a", "x"): 1.0, ("b", "x"): 2.0},
+        ),
+        (
+            "p_nom",
+            [
+                {"value": 3.0},
+                {"entity": "a", "value": 2.0},
+                {"entity": "a", "scenario": "x", "value": 1.0},
+            ],
+            {("a", "x"): 1.0, ("a", "y"): 2.0, ("b", "x"): 3.0, ("b", "y"): 3.0},
+        ),
+        (
+            "p_nom",
+            [
+                {"entity": "a", "scenario": "x", "value": 1.0},
+                {"scenario": "y", "snapshot": _T, "value": 2.0},
+            ],
+            {("a", "x"): 1.0, ("a", "y"): 2.0, ("b", "y"): 2.0},
+        ),
+        (
+            "efficiency",
+            [{"value": 0.5}, {"connection": _AB, "value": 0.9}],
+            {("a", "x"): 0.9, ("a", "y"): 0.9, ("b", "x"): 0.5, ("b", "y"): 0.5},
+        ),
+    ],
+    ids=[
+        "specific-then-broadcast",
+        "broadcast-then-specific",
+        "two-dims-over-one",
+        "three-levels",
+        "neither-but-disjoint",
+        "connection",
+    ],
+)
+def test_a_layer_reads_its_more_specific_row(store, via, attribute, rows, read):
+    """Within one layer, a row naming a label beats one broadcasting over its dim.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    got = _read(_rows_layer(store, rows, via, attribute), attribute)
+    assert got == sorted(read.items()), (
+        "one value per coordinate, the most specific row's"
+    )
+
+
+@pytest.mark.parametrize("via", ["set", "write_layer"])
+@pytest.mark.parametrize(
+    ("override", "read"),
+    [
+        (
+            {"entity": "a", "scenario": "x"},
+            {("a", "x"): 5.0, ("a", "y"): 1.0, ("b", "x"): 2.0, ("b", "y"): 2.0},
+        ),
+        (
+            {"scenario": "x"},
+            {("a", "x"): 5.0, ("a", "y"): 1.0, ("b", "x"): 5.0, ("b", "y"): 2.0},
+        ),
+    ],
+    ids=["one-key", "a-broadcast-key"],
+)
+def test_a_later_layer_overrides_a_layer_holding_both_rows(store, via, override, read):
+    """The lower layer still picks its more specific row where it keeps the key.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    rows: list[dict] = [{"value": 2.0}, {"entity": "a", "value": 1.0}]
+    lower = _rows_layer(store, rows, via)
+    staged = WorkingRecord(lower.record)
+    staged.set("p_nom", 5.0, **override)
+    assert _read(lower.child(staged.edits)) == sorted(read.items())
+
+
+@pytest.mark.parametrize("via", ["set", "write_layer"])
+@pytest.mark.parametrize(
+    ("rows", "coordinate"),
+    [
+        (
+            [{"entity": "a", "value": 1.0}, {"scenario": "x", "value": 2.0}],
+            "entity=a, scenario=x",
+        ),
+        (
+            [{"entity": "a", "value": 1.0}, {"snapshot": _T, "value": 2.0}],
+            "entity=a, snapshot=2030-01-01 00:00:00",
+        ),
+        (
+            [
+                {"value": 3.0},
+                {"entity": "b", "value": 1.0},
+                {"scenario": "y", "value": 2.0},
+            ],
+            "entity=b, scenario=y",
+        ),
+    ],
+    ids=["entity-scenario", "entity-snapshot", "beside-a-default"],
+)
+def test_a_layer_with_two_rows_neither_more_specific_is_refused(
+    store, via, rows, coordinate
+):
+    """Each row names a dim the other leaves NULL, so no rule picks one where both meet.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    with pytest.raises(ValueError, match=rf"p_nom\.parquet.*{coordinate}"):
+        _rows_layer(store, rows, via)
+
+
+def test_a_staged_pair_neither_more_specific_fails_the_read(store):
+    """A layer not written by `write_layer` is held to the rule when it is read.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    rows = [{"entity": "a", "value": 1.0}, {"scenario": "x", "value": 2.0}]
+    _, staged = _rows_staged(store, rows, "p_nom")
+    with pytest.raises(duckdb.Error, match="'p_nom' covering entity=a, .*scenario=x"):
+        staged.attributes["p_nom"].df()
 
 
 _TYPED = Schema(

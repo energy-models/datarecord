@@ -19,6 +19,7 @@ from __future__ import annotations
 import copy
 import random
 import shutil
+from itertools import combinations
 from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
@@ -30,7 +31,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import as_relation, fn, null_safe
+from datarecord.duck import as_relation, ex_all, fn, null_safe
 from datarecord.files import Absent, PreconditionFailedError, Version
 from datarecord.layered.resolve import PinnedResolver, cast_declared, resolve_coords
 from datarecord.layered.sources import DirectorySource
@@ -116,6 +117,8 @@ def write_layer(
         a label dead after it.
         If a column is of a type its dtype does not take, naming the attribute,
         property or dim declaring it and its dtype.
+        If two rows of one attribute cover one coordinate and each names a dim
+        the other leaves NULL, naming the attribute and the coordinate.
 
     Notes
     -----
@@ -149,7 +152,9 @@ def write_layer(
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
-                _write_frame(rel, staging, kind, key, schema)
+                uri = _write_frame(rel, staging, kind, key, schema)
+                if kind == "attributes":
+                    _refuse_incomparable(workspace.con.read_parquet(uri), key, schema)
         if data.groups() or data.axes():
             layer = DirectorySource(staging, schema, workspace, uuid4())
             _require_living_references(parents, layer, workspace.con, schema)
@@ -236,8 +241,8 @@ _ATTEMPTS = 10
 
 def _write_frame(
     rel: DuckDBPyRelation, staging: str, kind: str, key: str, schema: Schema
-) -> None:
-    """Persist one relation as `{kind}/{key}.parquet` under `staging`, unmaterialised.
+) -> str:
+    """Write `rel` as `{kind}/{key}.parquet` under `staging`, unmaterialised; return its URI.
 
     Columns are cast to their declared types on the way out, so a reader can
     trust them. A column of a type its declared type does not `take` is
@@ -267,6 +272,74 @@ def _write_frame(
     attribute = key if kind == "attributes" else None
     rel = schema.require_takes(rel, file, subject, attribute)
     cast_declared(schema, rel, subject, attribute).to_parquet(uri)
+    return uri
+
+
+def _refuse_incomparable(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
+    """Refuse two rows of `attribute` covering one coordinate where neither is more specific.
+
+    A read keeps, of two rows of one layer covering a coordinate, the one naming
+    every dim the other names and more; two rows where each names a dim the
+    other leaves NULL leave it nothing to keep. Two rows cover one coordinate
+    where they agree on every dim both name. Only distinct NULL patterns are
+    paired, which are few, and a pair is joined on its rows' distinct named
+    coordinates, so one series is not multiplied against another. `rel` is the
+    file as written, reading only its dims, since the source builds once.
+
+    Raises
+    ------
+    ValueError
+        Naming the attribute and one coordinate both rows cover.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    dims = schema.coordinates_of(attribute)
+    if len(dims) < 2:
+        return
+    patterns = [
+        tuple(d for d, named in zip(dims, row, strict=True) if named)
+        for row in rel.project(*(col(d).isnotnull() for d in dims))
+        .distinct()
+        .fetchall()
+    ]
+    for a, b in combinations(patterns, 2):
+        if set(a) <= set(b) or set(b) <= set(a):
+            continue
+        rows_a, rows_b = _named_rows(rel, dims, a, "a"), _named_rows(rel, dims, b, "b")
+        both = [d for d in a if d in b]
+        joined = (
+            rows_a.join(rows_b, ex_all(col("a", d) == col("b", d) for d in both))
+            if both
+            else rows_a.cross(rows_b)
+        )
+        union = [d for d in dims if d in a or d in b]
+        row = (
+            joined.project(*(col("a" if d in a else "b", d) for d in union))
+            .limit(1)
+            .fetchone()
+        )
+        if row is None:
+            continue
+        coordinate = ", ".join(f"{d}={v}" for d, v in zip(union, row, strict=True))
+        msg = (
+            f"attributes/{attribute}.parquet holds a row naming {list(a)} and one "
+            f"naming {list(b)} that both cover {coordinate}; neither names every "
+            f"dim the other does, so neither is the more specific there. Name the "
+            f"labels of one of them row by row, leaving that coordinate out (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
+        )
+        raise ValueError(msg)
+
+
+def _named_rows(
+    rel: DuckDBPyRelation, dims: Sequence[str], named: Sequence[str], alias: str
+) -> DuckDBPyRelation:
+    """Return the distinct `named` coordinates of the rows naming exactly `named` of `dims`."""
+    exact = ex_all(col(d).isnotnull() if d in named else col(d).isnull() for d in dims)
+    return (
+        rel.filter(exact).project(*(col(d) for d in named)).distinct().set_alias(alias)
+    )
 
 
 def _require_living_references(

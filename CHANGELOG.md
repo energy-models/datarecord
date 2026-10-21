@@ -233,6 +233,13 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- A layer holding a default and its exception, such as
+  `set("p_nom", 0.9, entity=["a"])` and then `set("p_nom", 0.95)`, reads one
+  value at each coordinate: within one layer, the more specific row wins, a row naming a
+  label of a dim being more specific than one leaving that dim NULL. A write
+  of two rows covering one coordinate where each names a dim the other leaves
+  NULL is refused, and a read of such a layer written another way fails, each
+  naming the attribute and the coordinate.
 - The writer holds a column to its declared dtype as `set` does: an
   attribute's `value` is stored as its dtype, an integer column under a
   `float` attribute as `DOUBLE` rather than `BIGINT`, and a column of a type

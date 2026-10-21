@@ -146,10 +146,15 @@ A NULL dim means "all values of that dim", not that the attribute lacks the axis
 **A [group](schema.md#groups)'s column broadcasts too**, its axis the resolved group: a NULL `connection` means every connection, expanded against `groups/connection.parquet` as a NULL `timestep` is against `dims/timestep.parquet`.
 A group value is therefore a whole tuple or NULL. A struct with some fields NULL, `{entity: dc, bus: NULL}`, names a tuple no group row matches, so it is refused wherever a row comes in rather than stored.
 
-Rows never overlap, so at most one covers any coordinate.
+**Within one layer, the more specific row wins.** Two rows of one layer may cover one coordinate: a `p_nom` row with `entity = NULL` beside one naming `a`.
+A row naming a label of a dim is more specific than one leaving that dim NULL, so where one row names every dim the other names and more, it wins at every coordinate both cover.
+Two rows covering one coordinate where each names a dim the other leaves NULL have no more specific one: the write refuses the layer, and a read of a layer written another way fails, each naming the attribute and the coordinate.
+Rows of two layers never meet at a coordinate, since [the owner map](read-path.md#owner-map) gives each key one layer.
 A coordinate no row covers — including an attribute with no rows at all — takes that attribute's default from [the schema](schema.md#attributespec): its `default_by` entry for the label's category where one lists it, else `default`.
 
 Broadcast form is preserved: a value held once is answered once, so a consumer can reconstruct the constant-versus-varying split from the shape it gets back.
+So the read applies the rule along the [`partial`](schema.md#partial-the-granularity-of-an-override) dims only.
+Along any other dim it answers a row leaving the dim NULL beside a more specific one, and the consumer applies the rule.
 
 ## Axis order
 
