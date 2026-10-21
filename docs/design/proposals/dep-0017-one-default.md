@@ -6,13 +6,13 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 17: one default per property
 
-| DEP      | 17                                                                                         |
-| -------- | ------------------------------------------------------------------------------------------ |
-| Title    | one default per property                                                                   |
-| Author   | Bryn Pickering                                                                             |
-| Status   | Draft                                                                                      |
-| Requires | [DEP 12](dep-0012-properties.md), [DEP 16](dep-0016-categories-are-enum-dimensions.md)     |
-| Created  | 2026-10-21                                                                                 |
+| DEP      | 17                                                                                     |
+| -------- | -------------------------------------------------------------------------------------- |
+| Title    | one default per property                                                               |
+| Author   | Bryn Pickering                                                                         |
+| Status   | Draft                                                                                  |
+| Requires | [DEP 12](dep-0012-properties.md), [DEP 16](dep-0016-categories-are-enum-dimensions.md) |
+| Created  | 2026-10-21                                                                             |
 
 ## Abstract
 
