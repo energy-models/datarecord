@@ -93,6 +93,10 @@ A keyword holds one label, fixing that coordinate, or a list of labels the value
 A coordinate no keyword names is NULL, which by [the broadcast rule](record.md#the-broadcast-rule) is every label of it, whatever its categories.
 So `set("p_max_pu", 0.9)` is one row reaching every entity, one added in a later layer included, loads too; `set("p_max_pu", 0.9, ctype="Generator")` is one row per generator there is now.
 
+**A later `set` replaces what it covers.** It drops each row of the attribute that an earlier call staged and one of its own rows covers: at every coordinate, the new row names the same label or is NULL, labels selected by a property keyword or a group's fields included.
+So `set("p_nom", 0.9, entity=["a"])` and then `set("p_nom", 0.95)` stage one row, and `a` reads 0.95.
+The other order keeps both, and `a` reads 0.9, since within one layer [the more specific row wins](record.md#the-broadcast-rule): a default set first keeps the exceptions set after it.
+
 A group's fields are packed into the group's [struct column](schema.md#groups), so `entity="dc", bus="north"` stages `connection = {entity: dc, bus: north}`.
 A group value is [a whole tuple or NULL](record.md#the-broadcast-rule), so every field must be given or none: omitting `bus` alone is refused, since `{entity: dc, bus: NULL}` names no tuple, and naming no field stages the NULL struct, every tuple.
 A field is named by its own name: a contract `(from, to)` over `entity` is addressed as `from="plant", to="mill"`, and `entity=` beside it is refused, since it would have to guess which party it names.
@@ -206,7 +210,8 @@ Restating on edit is what an axis outside `partial` costs, and it is [the cheape
 A base's results are [attributes](schema.md#a-result-is-an-attribute), carried like any other: a child written from `edits` inherits them from its parent, and a whole-record write holds them resolved. A solve's own results are not staged here but written as a thin layer by the tool ([writing results](tools.md#writing-results)).
 
 An edit **replaces the rows it names** rather than appending beside them: it deletes the rows at the coordinate it writes and inserts the new ones, so a staging table holds one row per coordinate and no fold is needed to read it.
-The key it replaces on is the coordinate — the same one a read would have collapsed — so the delete removes exactly what a last-writer-wins fold would have discarded.
+The key it replaces on is the coordinate — the same one a read would have collapsed — so the delete removes at least what a last-writer-wins fold would have discarded.
+An attribute's `set` also deletes every earlier row it [covers](#set).
 An axis or group property is the exception in mechanism, not in effect: a row's columns are independently editable, so a property `set` patches its one column in place (`UPDATE`) rather than replacing the row, which is what keeps a sibling property a different `set` wrote.
 
 Per **coordinate**, not per ownership key: the ownership key excludes the dims an attribute is [not owned per](schema.md#partial-the-granularity-of-an-override), so replacing on it would drop a whole staged series to one row — two edits at different snapshots are two coordinates, not two writes to the same place.

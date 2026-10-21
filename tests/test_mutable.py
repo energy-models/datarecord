@@ -1030,9 +1030,7 @@ def test_set_takes_an_all_none_column_as_a_broadcast(staged):
     staged.set("p_nom", pd.DataFrame({"entity": [None], "value": [2.0]}))
 
     rows = staged.edits.attribute("p_nom").project("entity, value").fetchall()
-    assert set(rows) == {("Manchester Wind", 1.0), (None, 2.0)}, (
-        "the broadcast lands beside the staged label"
-    )
+    assert rows == [(None, 2.0)], "the broadcast replaces the staged label it covers"
 
 
 @pytest.mark.parametrize(

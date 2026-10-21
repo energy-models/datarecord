@@ -679,7 +679,9 @@ class WorkingRecord(Record):
         such as `bus=` or a corridor's `from=` - since which exist is declared
         rather than fixed. A keyword holds one label, fixing that coordinate, or
         a list of labels the value is staged at each of. A coordinate no keyword
-        names is NULL, which by the broadcast rule is every label of it.
+        names is NULL, which by the broadcast rule is every label of it. The
+        call replaces every row of `attribute` staged earlier that its own
+        rows cover.
 
         `value` takes five forms:
 
@@ -1098,6 +1100,7 @@ class WorkingRecord(Record):
         table: str,
         supplied: Mapping[str, Expression],
         key: Sequence[str] | None = None,
+        broadcast: Container[str] = (),
     ) -> None:
         """Project `rel` into `table`'s column order and insert it.
 
@@ -1110,8 +1113,7 @@ class WorkingRecord(Record):
 
         `key` given, the rows `rel` names by it are deleted first, so the table
         holds one row per key and *is* the file it becomes - no fold on the way
-        out. The match is `null_safe` so a broadcast coordinate's NULL replaces
-        the same NULL rather than sitting beside it (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
+        out (`_delete_covered`).
         `rel` must not read `table`, or the delete changes what the insert then
         reads: a caller deriving from the staged rows snapshots them first
         (`_insert_snapshot`), and the one path that patches columns in place
@@ -1138,9 +1140,7 @@ class WorkingRecord(Record):
             )
         )
         if key is not None:
-            # `null_safe`, not `IN`/`=`: those never match a broadcast row's NULL.
-            on = null_safe(table, "p", key)
-            self.con.execute(f"DELETE FROM {table} USING projected p WHERE {on}")
+            self._delete_covered(projected, table, key, broadcast)
         try:
             projected.insert_into(table)
         except duckdb.ConversionException as exc:
@@ -1211,14 +1211,56 @@ class WorkingRecord(Record):
             lit(None).cast(sqltypes.DOUBLE).alias("breakpoint"),
             col("value"),
         )
-        self._insert(shaped, table, {}, key=self._long_key(attribute))
+        self._insert(
+            shaped,
+            table,
+            {},
+            key=self._long_key(attribute),
+            broadcast=self._staged_coordinates(attribute),
+        )
         self._complete_owned_whole(attribute, table)
+
+    def _delete_covered(
+        self,
+        rel: DuckDBPyRelation,
+        table: str,
+        key: Sequence[str],
+        broadcast: Container[str],
+    ) -> None:
+        """Delete every row of `table` that a row of `rel` covers.
+
+        A row covers another where each `key` column is equal, NULL-safe so a
+        broadcast NULL replaces the same NULL rather than sitting beside it, or
+        is a `broadcast` column the covering row leaves NULL, every label by the
+        broadcast rule. `rel` is split by which `broadcast` columns it leaves
+        NULL, and each part deletes on an equi-join over the columns it names: a
+        match on "NULL or equal" cannot hash and would compare every pair.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        """
+        open_ = [c for c in key if c in broadcast]
+        flags = ", ".join(f"{col(c)} IS NULL" for c in open_)
+        patterns = (
+            self.con.sql(f"SELECT DISTINCT {flags} FROM rel").fetchall()
+            if open_
+            else [()]
+        )
+        for pattern in patterns:
+            nulls = {c for c, null in zip(open_, pattern, strict=True) if null}
+            part = " AND ".join(
+                f"({col('p', c)} IS NULL) = {c in nulls}" for c in open_
+            )
+            on = null_safe(table, "p", [c for c in key if c not in nulls])
+            where = f"{part} AND {on}" if part else str(on)
+            self.con.execute(f"DELETE FROM {table} USING rel p WHERE {where}")
 
     def _long_key(self, attribute: str) -> tuple[str, ...]:
         """The coordinate columns one long table is keyed on - what an edit replaces.
 
         The fold partitions on these too (`_collapsed_attribute` before this change),
-        so replacing them per edit removes exactly what it would have discarded.
+        so replacing them per edit removes at least what it would have discarded.
 
         Notes
         -----

@@ -233,8 +233,14 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- A later `set` replaces the rows an earlier one staged that it covers,
+  that is, at each of their coordinates it names the same label or leaves
+  NULL, labels selected by a property keyword or a group's fields included:
+  `set("p_nom", 0.9, entity=["a"])` and then `set("p_nom", 0.95)` read
+  0.95 at `a` rather than 0.9. The other order keeps both rows, and `a`
+  reads 0.9.
 - A layer holding a default and its exception, such as
-  `set("p_nom", 0.9, entity=["a"])` and then `set("p_nom", 0.95)`, reads one
+  `set("p_nom", 0.95)` and then `set("p_nom", 0.9, entity=["a"])`, reads one
   value at each coordinate: within one layer, the more specific row wins, a row naming a
   label of a dim being more specific than one leaving that dim NULL. A write
   of two rows covering one coordinate where each names a dim the other leaves

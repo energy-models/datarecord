@@ -683,11 +683,6 @@ def _read(revision, attribute: str = "p_nom") -> list:
     [
         (
             "p_nom",
-            [{"entity": "a", "value": 1.0}, {"value": 2.0}],
-            {("a", "x"): 1.0, ("a", "y"): 1.0, ("b", "x"): 2.0, ("b", "y"): 2.0},
-        ),
-        (
-            "p_nom",
             [{"value": 2.0}, {"entity": "a", "value": 1.0}],
             {("a", "x"): 1.0, ("a", "y"): 1.0, ("b", "x"): 2.0, ("b", "y"): 2.0},
         ),
@@ -723,8 +718,7 @@ def _read(revision, attribute: str = "p_nom") -> list:
         ),
     ],
     ids=[
-        "specific-then-broadcast",
-        "broadcast-then-specific",
+        "broadcast-and-specific",
         "two-dims-over-one",
         "three-levels",
         "neither-but-disjoint",
@@ -742,6 +736,70 @@ def test_a_layer_reads_its_more_specific_row(store, via, attribute, rows, read):
     assert got == sorted(read.items()), (
         "one value per coordinate, the most specific row's"
     )
+
+
+_ALL_TWO = {("a", "x"): 2.0, ("a", "y"): 2.0, ("b", "x"): 2.0, ("b", "y"): 2.0}
+
+
+@pytest.mark.parametrize(
+    ("attribute", "rows", "read"),
+    [
+        ("p_nom", [{"entity": "a", "value": 1.0}, {"value": 2.0}], _ALL_TWO),
+        (
+            "p_nom",
+            [{"entity": "a", "value": 1.0}, {"entity": "a", "value": 2.0}],
+            {("a", "x"): 2.0, ("a", "y"): 2.0},
+        ),
+        (
+            "p_nom",
+            [
+                {"entity": "a", "scenario": "x", "value": 1.0},
+                {"entity": "a", "value": 2.0},
+            ],
+            {("a", "x"): 2.0, ("a", "y"): 2.0},
+        ),
+        (
+            "p_nom",
+            [
+                {"entity": "a", "scenario": "x", "value": 1.0},
+                {"ctype": "Generator", "value": 2.0},
+            ],
+            _ALL_TWO,
+        ),
+        ("efficiency", [{"connection": _AB, "value": 1.0}, {"value": 2.0}], _ALL_TWO),
+        (
+            "p_nom",
+            [
+                {"entity": "a", "scenario": "x", "value": 1.0},
+                {"scenario": "y", "value": 2.0},
+            ],
+            {("a", "x"): 1.0, ("a", "y"): 2.0, ("b", "y"): 2.0},
+        ),
+        (
+            "efficiency",
+            [{"connection": _AB, "value": 1.0}, {"connection": _BB, "value": 2.0}],
+            {("a", "x"): 1.0, ("a", "y"): 1.0, ("b", "x"): 2.0, ("b", "y"): 2.0},
+        ),
+    ],
+    ids=[
+        "broadcast-after-specific",
+        "same-coordinates",
+        "broadcast-over-one-dim",
+        "category-keyword",
+        "group",
+        "not-covering",
+        "other-tuple",
+    ],
+)
+def test_a_later_set_replaces_what_it_covers(store, attribute, rows, read):
+    """A `set` drops the earlier staged rows its own rows cover, and keeps the rest.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    got = _read(_rows_layer(store, rows, "set", attribute), attribute)
+    assert got == sorted(read.items()), "the later set wins where it covers"
 
 
 @pytest.mark.parametrize("via", ["set", "write_layer"])
