@@ -2166,8 +2166,10 @@ SPDX-License-Identifier: CC-BY-4.0
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">over</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">plant</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">period</span><span class="p p-Indicator">]</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">zone</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> into</span><span class="p">:</span><span class="w"> </span><span class="nv">zone</span><span class="w"> </span><span class="p p-Indicator">}</span>
 </code></pre></div>
-<p>The multi-dim is then declared once, where its only content is. Against it: <code>over</code> becomes a name no property may take, a multi-dim with no property still needs an entry under <code>properties</code>, and <code>dimensions</code> stops listing every dim, so a reader of <code>dimensions</code> alone (mathspec's included) misses it.
-- <strong>Whether a functional mapping over two coordinates justifies a dim.</strong> <code>plant_period</code> exists only to carry <code>zone</code>; its labels must be written before the property can be.</p>
+<p>The multi-dim is then declared once, where its only content is. Against it: <code>over</code> becomes a name no property may take, a multi-dim with no property still needs an entry under <code>properties</code>, and <code>dimensions</code> stops listing every dim, so a reader of <code>dimensions</code> alone (mathspec's included) misses it.</p>
+<ul>
+<li><strong>Whether a functional mapping over two coordinates justifies a dim.</strong> <code>plant_period</code> exists only to carry <code>zone</code>; its labels must be written before the property can be.</li>
+</ul>
 
 
 
