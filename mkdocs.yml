@@ -63,6 +63,7 @@ nav:
           - "DEP 13: Buses and carriers are dims": design/proposals/dep-0013-buses-and-carriers-are-dims.md
           - "DEP 14: Combining a record with an extension": design/proposals/dep-0014-combining-records.md
           - "DEP 15: Multi-dims replace groups": design/proposals/dep-0015-multi-dims.md
+          - "DEP 16: Categories are enum dimensions": design/proposals/dep-0016-categories-are-enum-dimensions.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:
