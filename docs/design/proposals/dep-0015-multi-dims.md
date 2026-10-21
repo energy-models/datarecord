@@ -6,14 +6,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 15: multi-dims replace groups
 
-| DEP      | 15                                                                                                                                                |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Title    | multi-dims replace groups                                                                                                                         |
-| Author   | Bryn Pickering                                                                                                                                    |
-| Status   | Draft                                                                                                                                             |
-| Requires | [DEP 10](dep-0010-a-group-is-a-struct-column.md), [DEP 12](dep-0012-properties.md), [DEP 13](dep-0013-buses-and-carriers-are-dims.md)             |
-| Created  | 2026-10-21                                                                                                                                        |
-| Replaces | the groups of [DEP 2](dep-0002-groups.md) and [DEP 10](dep-0010-a-group-is-a-struct-column.md)                                                    |
+| DEP      | 15                                                                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Title    | multi-dims replace groups                                                                                                             |
+| Author   | Bryn Pickering                                                                                                                        |
+| Status   | Draft                                                                                                                                 |
+| Requires | [DEP 10](dep-0010-a-group-is-a-struct-column.md), [DEP 12](dep-0012-properties.md), [DEP 13](dep-0013-buses-and-carriers-are-dims.md) |
+| Created  | 2026-10-21                                                                                                                            |
+| Replaces | the groups of [DEP 2](dep-0002-groups.md) and [DEP 10](dep-0010-a-group-is-a-struct-column.md)                                        |
 
 ## Abstract
 
@@ -23,13 +23,13 @@ A group becomes a **multi-dim**: a dim declared under `dimensions` with `over`, 
 
 **A group is a dim in all but name.** [DEP 10's amendment](dep-0010-a-group-is-a-struct-column.md#amendment-a-group-is-a-dim) found it so in every way the fold sees: it is one struct column, it broadcasts, it is listed in `partial` or owned whole, it has a table of properties. What still sets it apart is spelling, and the spelling costs:
 
-| a dim                                  | a group                                         |
-| -------------------------------------- | ----------------------------------------------- |
-| declared under `dimensions`            | under `groups`                                  |
-| `dims/bus.parquet`                     | `groups/connection.parquet`                     |
-| `add`, `remove`                        | `add_group`, `remove_group`                     |
-| `Schema.dimensions`                    | `Schema.groups`, `group_columns`, `group_key`, `groups_of` |
-| [`dims: [X]`](../schema.md#addressing-dims-x) resolves a dim first | …and a group if no dim is so named |
+| a dim                                                              | a group                                                    |
+| ------------------------------------------------------------------ | ---------------------------------------------------------- |
+| declared under `dimensions`                                        | under `groups`                                             |
+| `dims/bus.parquet`                                                 | `groups/connection.parquet`                                |
+| `add`, `remove`                                                    | `add_group`, `remove_group`                                |
+| `Schema.dimensions`                                                | `Schema.groups`, `group_columns`, `group_key`, `groups_of` |
+| [`dims: [X]`](../schema.md#addressing-dims-x) resolves a dim first | …and a group if no dim is so named                         |
 
 Every reader of a schema asks twice, and every rule that holds for both is stated twice.
 
@@ -182,4 +182,5 @@ Checks that hold once built:
   ```
 
   The multi-dim is then declared once, where its only content is. Against it: `over` becomes a name no property may take, a multi-dim with no property still needs an entry under `properties`, and `dimensions` stops listing every dim, so a reader of `dimensions` alone (mathspec's included) misses it.
+
 - **Whether a functional mapping over two coordinates justifies a dim.** `plant_period` exists only to carry `zone`; its labels must be written before the property can be.
