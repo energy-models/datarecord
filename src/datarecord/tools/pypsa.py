@@ -1236,10 +1236,10 @@ def _drop_default_rows(rows: pd.DataFrame, default: Any) -> pd.DataFrame:
 
 
 def _scalar_rows(c: pypsa.Components, attr: str, exclude: pd.Index) -> pd.DataFrame:
-    """Build null-snapshot long rows from the static scalars of `attr`.
+    """Build long rows from the static scalars of `attr`, less their NULL `snapshot`.
 
     Ported from `pypsa.components.array.Components._scalar_rows`, with its
-    columns in long order (`entity, snapshot, scenario, value`) and
+    columns in long order (`entity, scenario, value`) and
     built in one constructor rather than by `reset_index` and column inserts:
     it runs once per attribute and type, where pandas' per-call overhead
     dominated an export.
@@ -1254,7 +1254,6 @@ def _scalar_rows(c: pypsa.Components, attr: str, exclude: pd.Index) -> pd.DataFr
     return pd.DataFrame(
         {
             "entity": index.get_level_values("name") if stochastic else index,
-            "snapshot": np.nan,
             "scenario": index.get_level_values(SCENARIO) if stochastic else np.nan,
             "value": static.array,
         }
@@ -2305,6 +2304,9 @@ class _NetworkSource:
     ) -> DuckDBPyRelation | None:
         """Null-snapshot long rows from `attr`'s static scalars (`_scalar_rows`).
 
+        The `snapshot` is an untyped NULL, so a union with the melted rows
+        takes their type rather than widening them.
+
         `None` where no scalar rows remain - every entity excluded, an empty
         static frame, or (with `drop_defaults`) every scalar at its default - a
         relation the caller would only union away. The default drop happens here
@@ -2320,7 +2322,7 @@ class _NetworkSource:
             static = _drop_default_rows(static, c.defaults.at[attr, "default"])
         if static.empty:
             return None
-        return con.sql("SELECT * FROM static")
+        return con.sql("SELECT entity, NULL AS snapshot, scenario, value FROM static")
 
     @property
     def attributes(self) -> LazyRelations:

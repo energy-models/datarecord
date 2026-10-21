@@ -69,6 +69,38 @@ def enum_labels(dtype: DuckDBPyType) -> tuple[str, ...] | None:
     return tuple(cast("list[str]", dict(dtype.children)["values"]))
 
 
+_INTEGERS = {"tinyint", "smallint", "integer", "utinyint", "usmallint", "uinteger"}
+
+_WIDENS = {
+    "bigint": _INTEGERS,
+    "double": {*_INTEGERS, "bigint", "float", "decimal"},
+    "timestamp": {"timestamp_s", "timestamp_ms", "timestamp_ns"},
+    "varchar": {"enum"},
+    "enum": {"varchar"},
+}
+"""Per declared type id, the type ids a caller's column is cast from to it."""
+
+
+def takes(declared: DuckDBPyType, given: DuckDBPyType) -> bool:
+    """Return whether a column of `given` type is cast to `declared`.
+
+    The same type, a NULL, a widening `_WIDENS` lists - an `ENUM` both ways
+    with text, its labels checked by the cast - or a struct whose fields each
+    are. A widening keeps the kind of value, not every digit: an integer past
+    2^53 rounds as `DOUBLE`, a nanosecond timestamp truncates to microseconds.
+    """
+    if given.id == "null" or given == declared:
+        return True
+    if declared.id == "struct":
+        fields = dict(given.children) if given.id == "struct" else {}
+        return all(
+            name in fields
+            and takes(cast("DuckDBPyType", t), cast("DuckDBPyType", fields[name]))
+            for name, t in declared.children
+        )
+    return given.id == declared.id or given.id in _WIDENS.get(declared.id, ())
+
+
 class _Functions:
     """`fn.bool_or(x)` for `FunctionExpression("bool_or", x)`.
 

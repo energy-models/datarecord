@@ -1018,13 +1018,31 @@ def test_set_takes_a_frame_duckdb_scans(staged, build):
     )
 
 
+def test_set_takes_an_all_none_column_as_a_broadcast(staged):
+    """A column of None alone is a broadcast, whatever type the frame gave it.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    staged.set("p_nom", 1.0, entity=["Manchester Wind"])
+    staged.set("p_nom", pd.DataFrame({"entity": [None], "value": [2.0]}))
+
+    rows = staged.edits.attribute("p_nom").project("entity, value").fetchall()
+    assert set(rows) == {("Manchester Wind", 1.0), (None, 2.0)}, (
+        "the broadcast lands beside the staged label"
+    )
+
+
 @pytest.mark.parametrize(
     ("attribute", "frame", "match"),
     [
         pytest.param(
             "p_nom",
             pd.DataFrame({"entity": ["Manchester Wind"], "value": ["high"]}),
-            "'value' is VARCHAR, not DOUBLE",
+            "column 'value' is VARCHAR, which 'p_nom' does not take, its dtype "
+            "being float",
             id="mistyped",
         ),
         pytest.param(
@@ -1290,6 +1308,14 @@ def test_add_and_add_group_refuse_an_attribute(store):
         [{"connection": {"entity": "l1", "bus": "b0"}, "efficiency": 0.9}]
     )
     with pytest.raises(ValueError, match="stage them with `set"):
+        staged.add_group("connection", frame)
+
+
+def test_add_group_refuses_a_case_variant_of_a_property(store):
+    """DuckDB matches a column by name whatever its case, so only the declared spelling is taken."""
+    staged = WorkingRecord(_with_roles(store).record)
+    frame = pd.DataFrame([{"connection": {"entity": "l1", "bus": "b0"}, "Role": 1}])
+    with pytest.raises(ValueError, match=r"columns \['Role'\] the schema does not"):
         staged.add_group("connection", frame)
 
 

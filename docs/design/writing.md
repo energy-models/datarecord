@@ -21,7 +21,7 @@ Keys are looked up one at a time and each file written before the next is built,
 Locally, frames are staged into a sibling directory and renamed on success, so a frame the fold could not resolve leaves no layer rather than half of one.
 
 Every column the schema declares a type for is cast to it on the way out, so a record's files carry the schema's types and a reader can trust them.
-Without that a source may hand over an all-NULL column its dataframe library typed as float, and every reader would re-cast defensively instead.
+The column is held to its dtype as [`set`](working-record.md#set) holds a frame's: a wider type of its kind is cast, a column of only NULLs passes whatever type its dataframe library guessed, and any other is refused naming the attribute, property or dim and its dtype.
 
 Validation is structural: a long frame carries [its attribute's own coordinates](format.md#the-long-schema), and an entity frame carries every dim it is keyed by.
 Which entity types are valid belongs to [the schema's vocabulary](schema.md), which the record layer does not interpret.

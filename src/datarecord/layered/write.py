@@ -114,6 +114,8 @@ def write_layer(
         dim no frame carries - either would make the fold misresolve the layer.
         If a group tuple or a property `{"one_of": <dim>}` alive after the layer names
         a label dead after it.
+        If a column is of a type its dtype does not take, naming the attribute,
+        property or dim declaring it and its dtype.
 
     Notes
     -----
@@ -147,12 +149,7 @@ def write_layer(
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
-                _write_frame(
-                    rel,
-                    f"{staging}{kind}/{key}.parquet",
-                    schema,
-                    key if kind in ("dims", "groups") else None,
-                )
+                _write_frame(rel, staging, kind, key, schema)
         if data.groups() or data.axes():
             layer = DirectorySource(staging, schema, workspace, uuid4())
             _require_living_references(parents, layer, workspace.con, schema)
@@ -238,27 +235,38 @@ _ATTEMPTS = 10
 
 
 def _write_frame(
-    rel: DuckDBPyRelation, uri: str, schema: Schema, subject: str | None
+    rel: DuckDBPyRelation, staging: str, kind: str, key: str, schema: Schema
 ) -> None:
-    """Persist one relation as parquet, unmaterialised.
+    """Persist one relation as `{kind}/{key}.parquet` under `staging`, unmaterialised.
 
     Columns are cast to their declared types on the way out, so a reader can
-    trust them rather than re-casting an all-NULL column pandas typed as float.
+    trust them. A column of a type its declared type does not `take` is
+    refused first, from the relation's types rather than its rows.
 
     `DERIVED` is dropped here rather than in the callers, so a column a source
     happens to carry cannot reach a file by a path that forgot to strip it.
+
+    Raises
+    ------
+    ValueError
+        As `Schema.require_takes` does.
 
     Notes
     -----
     - [relations](https://energy-models.github.io/datarecord/design/record/#relations)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     """
+    file = f"{kind}/{key}.parquet"
+    uri = f"{staging}{file}"
     if "://" not in uri:
         Path(uri).parent.mkdir(parents=True, exist_ok=True)
     unwritable = [c for c in DERIVED if c in rel.columns]
     if unwritable:
         rel = rel.project(star(exclude=unwritable))
-    cast_declared(schema, rel, subject).to_parquet(uri)
+    subject = key if kind in ("dims", "groups") else None
+    attribute = key if kind == "attributes" else None
+    rel = schema.require_takes(rel, file, subject, attribute)
+    cast_declared(schema, rel, subject, attribute).to_parquet(uri)
 
 
 def _require_living_references(

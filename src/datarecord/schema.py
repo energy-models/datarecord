@@ -42,7 +42,7 @@ from pydantic import (
     model_validator,
 )
 
-from datarecord.duck import DUCK_TYPES, enum_type, fn
+from datarecord.duck import DUCK_TYPES, enum_type, fn, takes
 
 
 def _parse_dtype(value: Any, plain: tuple[str, ...], one_of: str | None) -> Any:
@@ -1242,18 +1242,108 @@ class Schema(_Declared):
         - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        own = self.properties.get(subject or "", {})
-        if column in own:
-            return self.duck_type(own[column].dtype)
+        found = self.declared(column, subject)
+        return None if found is None else found[1]
+
+    def _structural_type(self, column: str) -> DuckDBPyType | None:
+        """Return the type the format fixes for `column`: a group struct or a flag struct."""
         if column in STRUCTURAL_TYPES:
             return STRUCTURAL_TYPES[column]
-        if column in self.dimensions:
-            return self.duck_type(self.dimensions[column].dtype)
         if column in self.groups:
             return self.group_type(column)
         if column in ("varies", "broadcast"):
             return flag_type(self.broadcast_dims) if self.broadcast_dims else None
         return None
+
+    def declared(
+        self, column: str, subject: str | None = None, attribute: str | None = None
+    ) -> tuple[str, DuckDBPyType, str] | None:
+        """Return what declares `column`, its DuckDB type, and its dtype as an error shows it.
+
+        None where the schema declares no type for `column`.
+
+        Parameters
+        ----------
+        subject
+            The dim or group whose file the column is in, typing its
+            properties, named `subject.name`.
+        attribute
+            The attribute whose long rows the column is in, typing `value`,
+            named for the attribute.
+
+        Notes
+        -----
+        - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+        """
+        own = self.properties.get(subject or "", {})
+        dtype: DimensionDtype | ParameterDtype | OneOf | OneOfDim
+        if attribute is not None and column == "value":
+            name, dtype = attribute, self.attributes[attribute].dtype
+        elif column in own:
+            name, dtype = f"{subject}.{column}", own[column].dtype
+        elif column in self.dimensions and column not in STRUCTURAL_TYPES:
+            name, dtype = column, self.dimensions[column].dtype
+        else:
+            duck = self._structural_type(column)
+            return None if duck is None else (column, duck, str(duck))
+        duck = self.duck_type(dtype)
+        shown = (
+            dtype.model_dump_json()
+            if isinstance(dtype, _Declared)
+            else f"{dtype} ({duck})"
+        )
+        return name, duck, shown
+
+    def require_takes(
+        self,
+        rel: DuckDBPyRelation,
+        what: str,
+        subject: str | None = None,
+        attribute: str | None = None,
+    ) -> DuckDBPyRelation:
+        """Return `rel`, refusing a column of a type its declared type does not `take`.
+
+        Reads `rel`'s types, and the rows only of a column so refused: one
+        holding no value but NULL passes, cast to its declared type, since a
+        dataframe library types an empty or all-None column by guesswork.
+        `subject` and `attribute` are as `declared` takes them.
+
+        Raises
+        ------
+        ValueError
+            Naming `what`, each such column, its type, what declares it and
+            its dtype.
+
+        Notes
+        -----
+        - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        """
+        wrong = []
+        nulls: dict[str, DuckDBPyType] = {}
+        for c, given in zip(rel.columns, rel.types, strict=True):
+            found = self.declared(c, subject, attribute)
+            if found is None or takes(found[1], given):
+                continue
+            if rel.filter(col(c).isnotnull()).limit(1).fetchone() is None:
+                nulls[c] = found[1]
+                continue
+            name, _, shown = found
+            wrong.append(
+                f"column {c!r} is {given}, which {name!r} does not take, its "
+                f"dtype being {shown}"
+            )
+        if wrong:
+            msg = f"{what}: {'; '.join(wrong)}"
+            raise ValueError(msg)
+        if not nulls:
+            return rel
+        return rel.project(
+            *(
+                col(c).cast(nulls[c]).alias(c) if c in nulls else col(c)
+                for c in rel.columns
+            )
+        )
 
     def value_type(self, attribute: str) -> DuckDBPyType | None:
         """The `value` column's DuckDB type for one attribute.

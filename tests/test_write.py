@@ -605,6 +605,117 @@ def test_an_attribute_column_in_a_dims_frame_is_refused(store):
     _nothing_reachable(store)
 
 
+_TYPED = Schema(
+    dimensions={
+        "entity": Dimension(dtype="str"),
+        "snapshot": Dimension(dtype="datetime"),
+    },
+    properties={
+        "entity": {"x": PropertySpec(dtype="float"), "tag": PropertySpec(dtype="str")}
+    },
+    attributes={
+        "p_nom": AttributeSpec(dtype="float", dims=frozenset({"entity"})),
+        "units": AttributeSpec(dtype="int", dims=frozenset({"entity"})),
+    },
+    partial=frozenset({"entity"}),
+)
+
+
+def _typed(file: str, column: str, values: list) -> _Source:
+    """A `_TYPED` source writing `values` as `column` of `file`, one label each."""
+    kind, key = file.removesuffix(".parquet").split("/")
+    labels = [f"e{i}" for i in range(len(values))]
+    if kind == "attributes":
+        frame = pd.DataFrame(
+            {"entity": labels, "attribute": key, "breakpoint": None, column: values}
+        )
+        return _Source(_TYPED, attributes={key: frame})
+    if key == "entity":
+        frame = pd.DataFrame({"entity": labels, column: values})
+        return _Source(
+            _TYPED, dims={"entity": frame[["entity"]]}, properties={"entity": frame}
+        )
+    return _Source(_TYPED, dims={key: pd.DataFrame({column: values})})
+
+
+@pytest.mark.parametrize(
+    ("file", "column", "values", "stored"),
+    [
+        ("attributes/p_nom.parquet", "value", [1, 2], "DOUBLE"),
+        ("attributes/units.parquet", "value", pd.array([1], dtype="int32"), "BIGINT"),
+        ("dims/entity.parquet", "x", [1, 2], "DOUBLE"),
+        ("dims/entity.parquet", "tag", [None], "VARCHAR"),
+        (
+            "dims/snapshot.parquet",
+            "snapshot",
+            pd.to_datetime(["2030-01-01"]),
+            "TIMESTAMP",
+        ),
+    ],
+    ids=["attribute", "attribute-int", "property", "property-null", "axis"],
+)
+def test_a_write_stores_the_declared_type_widening_a_column(
+    store, file, column, values, stored
+):
+    """A column of a narrower type of its kind is cast to the declared one.
+
+    Notes
+    -----
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+    """
+    revision = store.root(_typed(file, column, values))
+    path = Path(store.layer_dir(revision.id), file)
+    on_disk = store.workspace.con.read_parquet(str(path)).project(column)
+    assert str(on_disk.types[0]) == stored, f"{column!r} of {file} as declared"
+
+
+@pytest.mark.parametrize(
+    ("file", "column", "values", "match"),
+    [
+        (
+            "attributes/p_nom.parquet",
+            "value",
+            ["high"],
+            "'p_nom' does not take, its dtype being float \\(DOUBLE\\)",
+        ),
+        (
+            "attributes/units.parquet",
+            "value",
+            [1.5],
+            "'units' does not take, its dtype being int \\(BIGINT\\)",
+        ),
+        (
+            "dims/entity.parquet",
+            "x",
+            ["high"],
+            "'entity.x' does not take, its dtype being float \\(DOUBLE\\)",
+        ),
+        (
+            "dims/snapshot.parquet",
+            "snapshot",
+            ["2030-01-01"],
+            "'snapshot' does not take, its dtype being datetime \\(TIMESTAMP\\)",
+        ),
+    ],
+    ids=["attribute", "attribute-int", "property", "axis"],
+)
+def test_a_write_refuses_a_column_its_dtype_does_not_take(
+    store, file, column, values, match
+):
+    """A column of another kind is refused, naming what declares it and its dtype.
+
+    A string is not parsed into a `datetime` label, nor a float truncated to
+    an `int`.
+
+    Notes
+    -----
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+    """
+    with pytest.raises(ValueError, match=f"{file}: column '{column}' is .*{match}"):
+        store.root(_typed(file, column, values))
+    _nothing_reachable(store)
+
+
 def _plant(p_nom: frozenset[str], *, categorized: bool = False) -> Schema:
     """Entities and scenarios, `p_nom` over `p_nom`, `ctype` if `categorized`."""
     return Schema(

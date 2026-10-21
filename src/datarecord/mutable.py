@@ -40,51 +40,20 @@ from datarecord.duck import (
     is_frame,
     null_safe,
     struct_of,
+    takes,
     union_all_by_name,
 )
 from datarecord.layered.categories import matching
 from datarecord.layered.fold import Fold
 from datarecord.layered.resolve import Resolver
 from datarecord.record import LazyRelations, Record, RecordLike, Relations
-from datarecord.schema import LONG_TAIL, OneOf, Schema
+from datarecord.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
 
 
 # -- value normalisation (https://energy-models.github.io/datarecord/design/working-record/#set) ----------------------------------------------
-
-
-_INTEGERS = {"tinyint", "smallint", "integer", "utinyint", "usmallint", "uinteger"}
-
-_WIDENS = {
-    "bigint": _INTEGERS,
-    "double": {*_INTEGERS, "bigint", "float", "decimal"},
-    "timestamp": {"timestamp_s", "timestamp_ms", "timestamp_ns"},
-    "varchar": {"enum"},
-    "enum": {"varchar"},
-}
-"""Per declared type id, the type ids a caller's column is cast from to it."""
-
-
-def _takes(declared: DuckDBPyType, given: DuckDBPyType) -> bool:
-    """Whether a column of `given` type is cast to `declared`.
-
-    The same type, a NULL, a widening `_WIDENS` lists - an `ENUM` both ways
-    with text, its labels checked by the cast - or a struct whose fields each
-    are. A widening keeps the kind of value, not every digit: an integer past
-    2^53 rounds as `DOUBLE`, a nanosecond timestamp truncates to microseconds.
-    """
-    if given.id == "null" or given == declared:
-        return True
-    if declared.id == "struct":
-        fields = dict(given.children) if given.id == "struct" else {}
-        return all(
-            name in fields
-            and _takes(cast("DuckDBPyType", t), cast("DuckDBPyType", fields[name]))
-            for name, t in declared.children
-        )
-    return given.id == declared.id or given.id in _WIDENS.get(declared.id, ())
 
 
 def _series_index(value: Any) -> Sequence[Any] | None:
@@ -780,7 +749,7 @@ class WorkingRecord(Record):
             )
             self._validate_frame(rel, attribute, coords)
             table = self._ensure(_ATTRIBUTES, attribute)
-            self._check_types(rel, table, call)
+            rel = self.schema.require_takes(rel, call, attribute=attribute)
             self._insert_long(rel, table, attribute, set(rel.columns), coords)
             return
 
@@ -1094,33 +1063,8 @@ class WorkingRecord(Record):
             labels = [n for (n,) in rel.project(field).distinct().fetchall()]
             self._require_labels(dim, labels)
 
-    def _check_types(self, rel: DuckDBPyRelation, table: str, call: str) -> None:
-        """Refuse a column of `rel` whose type `table`'s declared one does not take (`_takes`).
-
-        Raises
-        ------
-        ValueError
-            Naming `call`, the column, its type and the declared one.
-
-        Notes
-        -----
-        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
-        """
-        staging = self.con.table(table)
-        declared = {
-            c.lower(): t for c, t in zip(staging.columns, staging.types, strict=True)
-        }
-        wrong = [
-            f"{c!r} is {t}, not {declared[c.lower()]}"
-            for c, t in zip(rel.columns, rel.types, strict=True)
-            if c.lower() in declared and not _takes(declared[c.lower()], t)
-        ]
-        if wrong:
-            msg = f"{call}: {'; '.join(wrong)}, as its dtype declares"
-            raise ValueError(msg)
-
     def _require_typed(self, dim: str, labels: Sequence[Any], call: str) -> None:
-        """Refuse a label of `dim` of a type its dtype does not take (`_takes`).
+        """Refuse a label of `dim` of a type its dtype does not take (`takes`).
 
         A label's type is the one DuckDB binds it as, so a string never reaches
         a `datetime` dim's cast, which would parse it. One label per Python
@@ -1135,16 +1079,12 @@ class WorkingRecord(Record):
         -----
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
-        declared = self._column_type(dim)
+        _, declared, shown = cast(
+            "tuple[str, DuckDBPyType, str]", self.schema.declared(dim)
+        )
         for label in {type(n): n for n in labels if n is not None}.values():
             given = self._values_relation({dim: [label]}, {dim: None}).types[0]
-            if not _takes(declared, given):
-                dtype = self.schema.dimensions[dim].dtype
-                shown = (
-                    dtype.model_dump_json()
-                    if isinstance(dtype, OneOf)
-                    else f"{dtype} ({declared})"
-                )
+            if not takes(declared, given):
                 msg = (
                     f"{call}: label {label!r} is {given}, which {dim!r} does "
                     f"not take, its dtype being {shown}"
@@ -1181,12 +1121,12 @@ class WorkingRecord(Record):
         - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         """
         staging = self.con.table(table)
-        carried = {c.lower() for c in rel.columns}
+        carried = set(rel.columns)
 
         def column(name: str, dtype: str) -> Expression:
             if name in supplied:
                 return supplied[name].alias(name)
-            if name.lower() in carried:
+            if name in carried:
                 return col(name)
             return lit(None).cast(dtype).alias(name)
 
@@ -1560,8 +1500,7 @@ class WorkingRecord(Record):
         - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
         """
         known = list(self.con.table(table).columns)
-        allowed = {c.lower() for c in known}
-        extra = sorted(c for c in columns if c.lower() not in allowed)
+        extra = sorted(c for c in columns if c not in known)
         if not extra:
             return
         attributes = [c for c in extra if c in self.schema.attributes]
@@ -1604,7 +1543,7 @@ class WorkingRecord(Record):
             raise ValueError(msg)
         table = self._ensure(group)
         self._reject_undeclared(call, table, rel.columns)
-        self._check_types(rel, table, call)
+        rel = self.schema.require_takes(rel, call, subject=group)
         self._insert(
             rel,
             table,

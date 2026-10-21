@@ -499,18 +499,23 @@ def _deleted_relation(
 
 
 def cast_declared(
-    schema: Schema, rel: DuckDBPyRelation, subject: str | None = None
+    schema: Schema,
+    rel: DuckDBPyRelation,
+    subject: str | None = None,
+    attribute: str | None = None,
 ) -> DuckDBPyRelation:
     """`rel`, with its columns of a declared type cast, others as-is.
 
-    `subject` names the dim or group whose file `rel` is, typing its properties.
+    `subject` and `attribute` are as `Schema.declared` takes them.
 
     Notes
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     cols = [
-        col(c).cast(t).alias(c) if (t := schema.column_type(c, subject)) else col(c)
+        col(c).cast(found[1]).alias(c)
+        if (found := schema.declared(c, subject, attribute))
+        else col(c)
         for c in rel.columns
     ]
     return rel.project(*cols)
