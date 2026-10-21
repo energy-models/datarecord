@@ -6,13 +6,13 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 18: a manifest is a mathspec
 
-| DEP      | 18 |
-| -------- | -- |
-| Title    | a manifest is a mathspec |
-| Author   | Bryn Pickering |
-| Status   | Draft |
+| DEP      | 18                                                                                                                                                                                                             |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Title    | a manifest is a mathspec                                                                                                                                                                                       |
+| Author   | Bryn Pickering                                                                                                                                                                                                 |
+| Status   | Draft                                                                                                                                                                                                          |
 | Requires | [DEP 12](dep-0012-properties.md), [DEP 13](dep-0013-buses-and-carriers-are-dims.md), [DEP 15](dep-0015-multi-dims.md), [DEP 16](dep-0016-categories-are-enum-dimensions.md), [DEP 17](dep-0017-one-default.md) |
-| Created  | 2026-10-21 |
+| Created  | 2026-10-21                                                                                                                                                                                                     |
 
 ## Abstract
 
@@ -22,15 +22,15 @@ A datarecord manifest and a [mathspec](https://github.com/energy-models/mathspec
 
 **A framework declares its data twice.** A mathspec says which dimensions exist, which parameters a model reads over which dims with what dtype and fill, which variables it solves for, and how labels relate. A datarecord manifest says the same under other names:
 
-| datarecord after DEP 17                         | mathspec today                                       |
-| ----------------------------------------------- | ---------------------------------------------------- |
-| `dimensions[d].dtype`                           | `dimensions[d].dtype`                                |
-| `attributes[a].dims`, `.dtype`                  | `parameters[a].dims`, `.dtype`                       |
-| `attributes[a].default`                         | `parameters[a].missing`, when a value                |
-| `results[r]`                                    | `variables[r]`; constraint duals                     |
-| `properties.bus.carrier: {into: carrier}`       | `relations.bus_carrier: {key: bus, values: carrier}` |
-| `dimensions.connection: {over: [entity, bus]}`  | `relations.connection: {key: [entity, bus]}`         |
-| `attributes[a].breakpoints`                     | the `over` dim of a `piecewise` block                |
+| datarecord after DEP 17                        | mathspec today                                       |
+| ---------------------------------------------- | ---------------------------------------------------- |
+| `dimensions[d].dtype`                          | `dimensions[d].dtype`                                |
+| `attributes[a].dims`, `.dtype`                 | `parameters[a].dims`, `.dtype`                       |
+| `attributes[a].default`                        | `parameters[a].missing`, when a value                |
+| `results[r]`                                   | `variables[r]`; constraint duals                     |
+| `properties.bus.carrier: {into: carrier}`      | `relations.bus_carrier: {key: bus, values: carrier}` |
+| `dimensions.connection: {over: [entity, bus]}` | `relations.connection: {key: [entity, bus]}`         |
+| `attributes[a].breakpoints`                    | the `over` dim of a `piecewise` block                |
 
 Two declarations of one fact drift. A parameter added to the spec and not the manifest cannot be written; one renamed in the manifest and not the spec is written and never read. The PyPSA tool builds its schema by hand from PyPSA's registry, and nothing checks it against the spec that consumes the record.
 
@@ -102,16 +102,16 @@ meta: {}
 
 **Every key has one meaning, and both tools know every key.** mathspec stays strict: a key neither tool declares is refused. A key only one tool acts on is still validated for shape by both, so a typo in `partial` fails in mathspec and a typo in `constraints` fails in datarecord.
 
-| key                                                     | datarecord reads it as                                                                  | mathspec reads it as                       |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `dimensions`                                            | the axes, the multi-dims and the `enum` dimensions                                      | the index sets                             |
-| `properties`                                            | [properties](../schema.md#properties), stored on the subject's table                    | values per label, addressed `subject.name` |
-| `parameters`                                            | the inputs, in `inputs/`                                                                | the data a model reads                     |
-| `variables`                                             | the results, in `outputs/`                                                              | the decision variables                     |
-| `constraints`, `expressions` with `result: true`        | results too                                                                             | as today                                   |
-| `objective`, `conditions`, `macros`, `piecewise`, `sos`, `assumptions` | nothing; stored with the manifest                                       | as today                                   |
-| `partial`, `meta`, `within`, `traits`                   | as today                                                                                | nothing                                    |
-| `unit`, `description`                                   | stored, not interpreted                                                                 | stored, not interpreted                    |
+| key                                                                    | datarecord reads it as                                               | mathspec reads it as                       |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------ |
+| `dimensions`                                                           | the axes, the multi-dims and the `enum` dimensions                   | the index sets                             |
+| `properties`                                                           | [properties](../schema.md#properties), stored on the subject's table | values per label, addressed `subject.name` |
+| `parameters`                                                           | the inputs, in `inputs/`                                             | the data a model reads                     |
+| `variables`                                                            | the results, in `outputs/`                                           | the decision variables                     |
+| `constraints`, `expressions` with `result: true`                       | results too                                                          | as today                                   |
+| `objective`, `conditions`, `macros`, `piecewise`, `sos`, `assumptions` | nothing; stored with the manifest                                    | as today                                   |
+| `partial`, `meta`, `within`, `traits`                                  | as today                                                             | nothing                                    |
+| `unit`, `description`                                                  | stored, not interpreted                                              | stored, not interpreted                    |
 
 `traits` keeps [DEP 17](dep-0017-one-default.md#a-traits-on-takes-by)'s form until [DEP 19](dep-0019-conditions-replace-traits.md) replaces it. `attributes` and `results` go as manifest keys; `Schema.attributes` and `Schema.results` stay as the read API, derived from the table above.
 
@@ -149,15 +149,15 @@ Datarecord stores a property as a column of its subject's table, `dims/<subject>
 
 A mathspec relation is a property of its key, or of a multi-dim naming its key:
 
-| mathspec today                                    | becomes                                                   |
-| ------------------------------------------------- | --------------------------------------------------------- |
-| `Link_carrier: {key: link, values: carrier}`      | `properties.link.carrier: {into: carrier}`                |
+| mathspec today                                      | becomes                                                   |
+| --------------------------------------------------- | --------------------------------------------------------- |
+| `Link_carrier: {key: link, values: carrier}`        | `properties.link.carrier: {into: carrier}`                |
 | `ends: {key: line, values: {bus0: bus, bus1: bus}}` | `properties.line.bus0: {into: bus}`, `.bus1: {into: bus}` |
-| `zone_of: {key: [plant, period], values: zone}`   | multi-dim `plant_period`, property `zone: {into: zone}`   |
-| `connection: {key: [entity, bus]}` (bare)         | multi-dim `connection: {over: [entity, bus]}`             |
-| `missing: refused \| absent` on a relation        | `missing` on the property                                 |
-| `sum(x, over=link, by=Link_carrier[carrier])`     | `sum(x, over=link, by=link.carrier)`                      |
-| `ends[bus0] != ends[bus1]` in a `where`           | `line.bus0 != line.bus1`                                  |
+| `zone_of: {key: [plant, period], values: zone}`     | multi-dim `plant_period`, property `zone: {into: zone}`   |
+| `connection: {key: [entity, bus]}` (bare)           | multi-dim `connection: {over: [entity, bus]}`             |
+| `missing: refused \| absent` on a relation          | `missing` on the property                                 |
+| `sum(x, over=link, by=Link_carrier[carrier])`       | `sum(x, over=link, by=link.carrier)`                      |
+| `ends[bus0] != ends[bus1]` in a `where`             | `line.bus0 != line.bus1`                                  |
 
 A property that is not `into` a dim, such as `bus.x`, is a value per label of its subject. In math it reads as a parameter over `[bus]`, addressed `bus.x`. Whether a value is a property or a parameter stays [the author's declaration](../schema.md#properties): it decides where datarecord stores it, not what the math can do with it.
 
@@ -212,15 +212,15 @@ Each of these is an issue to raise on mathspec, unless it names a pull request. 
 
 **PyPSA's components are labels of one `entity` dim, categorized by `entity.component`**, as datarecord's PyPSA tool has them since [DEP 13](dep-0013-buses-and-carriers-are-dims.md). mathspec's PyPSA spec moves to that shape; the tool does not move to mathspec's.
 
-| mathspec's PyPSA spec today                    | becomes                                                                  |
-| ---------------------------------------------- | ------------------------------------------------------------------------ |
-| dims `generator`, `link`, `line`, `store`, …   | one dim `entity`; `component: {enum: [...]}`; `entity.component`         |
-| `Generator_p_nom`, `Link_p_nom`                | `p_nom: {dims: [entity]}`                                                |
-| `Link_bus0`, `Link_output_bus`, `Line_bus0`, … | the multi-dim `connection` over `(entity, bus)`, with `connection.role`  |
-| `link_output` and its two relations            | `connection`, `role: output`                                             |
-| `Link_efficiency` over `link_output`           | `efficiency: {dims: [connection]}`                                       |
+| mathspec's PyPSA spec today                    | becomes                                                                             |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------- |
+| dims `generator`, `link`, `line`, `store`, …   | one dim `entity`; `component: {enum: [...]}`; `entity.component`                    |
+| `Generator_p_nom`, `Link_p_nom`                | `p_nom: {dims: [entity]}`                                                           |
+| `Link_bus0`, `Link_output_bus`, `Line_bus0`, … | the multi-dim `connection` over `(entity, bus)`, with `connection.role`             |
+| `link_output` and its two relations            | `connection`, `role: output`                                                        |
+| `Link_efficiency` over `link_output`           | `efficiency: {dims: [connection]}`                                                  |
 | a per-type sum, `sum(Link_p, over=link, …)`    | `sum(p, over=entity, …)` in a constraint with `where: "entity.component == 'Link'"` |
-| a name one type has, `Store_e_nom`             | `e_nom: {dims: [entity]}`, carried by stores only through a trait        |
+| a name one type has, `Store_e_nom`             | `e_nom: {dims: [entity]}`, carried by stores only through a trait                   |
 
 - **A name shared by types is one parameter.** Its fill may differ per type through a per-category `missing`; which types may carry it is a trait, and a `where` after [DEP 19](dep-0019-conditions-replace-traits.md).
 - **A per-type constraint is filtered, not indexed.** Each constraint over a type's dim becomes one over `entity` with a `where` on `entity.component`. The math is the same; the index set is wider and filtered.
