@@ -6,14 +6,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 19: conditions replace traits
 
-| DEP      | 19                                                                                      |
-| -------- | --------------------------------------------------------------------------------------- |
-| Title    | conditions replace traits                                                               |
-| Author   | Bryn Pickering                                                                          |
-| Status   | Draft                                                                                   |
-| Requires | [DEP 17](dep-0017-one-default.md), [DEP 18](dep-0018-a-manifest-is-a-mathspec.md)       |
-| Created  | 2026-10-21                                                                              |
-| Replaces | [DEP 3](dep-0003-trait-switches.md)                                                     |
+| DEP      | 19                                                                                |
+| -------- | --------------------------------------------------------------------------------- |
+| Title    | conditions replace traits                                                         |
+| Author   | Bryn Pickering                                                                    |
+| Status   | Draft                                                                             |
+| Requires | [DEP 17](dep-0017-one-default.md), [DEP 18](dep-0018-a-manifest-is-a-mathspec.md) |
+| Created  | 2026-10-21                                                                        |
+| Replaces | [DEP 3](dep-0003-trait-switches.md)                                               |
 
 ## Abstract
 
