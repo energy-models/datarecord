@@ -1,0 +1,1466 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-91/changelog/">
+      
+      
+        <link rel="prev" href="../contributing/">
+      
+      
+        <link rel="next" href="../api/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Changelog - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../static/extras.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#changelog" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Changelog
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../design/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../usage/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../design/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#unreleased" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [Unreleased]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[Unreleased]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#removed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../api/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#unreleased" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        [Unreleased]
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="[Unreleased]">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#removed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fixed
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<h1 id="changelog">Changelog<a class="headerlink" href="#changelog" title="Permanent link">&para;</a></h1>
+<p>All notable changes to datarecord are documented here. The format follows
+<a href="https://keepachangelog.com/en/1.1.0/">Keep a Changelog</a>.</p>
+<h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
+<h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Buses and carriers are dims</strong> in the PyPSA tool, carried by two core
+  changes:</li>
+<li><strong>A property's name is its subject's</strong>, addressed as <code>subject.name</code>:
+    <code>set("bus.x", ...)</code>, a trait's <code>on</code> and bundled properties, and
+    <code>default_by</code> keys (<code>{"entity.ctype": {...}}</code>). One name, one spec
+    now holds across attributes and results only, so a property may share
+    its name with an attribute, a dim or another subject's property; one
+    named like its subject's key (the dim, a group's struct column or
+    <code>into</code>), or a group's property named like one of its
+    coordinates, is refused. A plain name is an attribute or result, one
+    only properties are called refused naming their dotted forms.
+    <code>Schema.resolve(name)</code> replaces <code>subject_of</code> and <code>property_spec</code>, and
+    <code>Schema.column_type</code> takes the property's subject.
+    <code>add(dim, labels, **properties)</code>, <code>flags</code> and <code>properties[subject]</code> keep
+    plain names. A bare selector keyword of <code>set</code> names a coordinate of the
+    attribute first, else any property of a dim the attribute reaches,
+    categorizing or not; one several reached dims declare is refused. Every manifest
+    declaring a trait or <code>default_by</code> on a property is rewritten.</li>
+<li><strong>A property may be <code>into</code> a dim</strong> (<code>PropertySpec.into</code>): its values
+    are that dim's labels and its dtype the dim's, declared on any subject.
+    <code>set</code> and <code>add</code> refuse a value naming no label of the dim, NULL naming
+    none; the writer refuses a layer storing one it removed, and
+    <code>remove(dim, labels)</code> is refused while such a property still names one.
+    It never categorizes. A group over one coordinate <code>into</code> a dim is now
+    refused at load: declare the property <code>into</code> the dim instead.</li>
+<li><strong>The PyPSA tool</strong>: <code>Bus</code> and <code>Carrier</code> are no entity types, a bus
+    being a label of <code>bus</code> and a carrier of a new <code>carrier</code> dim.
+    <code>bus.carrier</code>, <code>type</code>, <code>x</code>, <code>y</code>, <code>unit</code> and <code>location</code>, and
+    <code>carrier.color</code> and <code>nice_name</code> are properties; <code>v_nom</code>, <code>v_mag_pu_*</code>,
+    <code>co2_emissions</code>, <code>max_growth</code>, <code>max_relative_growth</code> and custom bus or
+    carrier columns attributes over their dim; <code>marginal_price</code>,
+    <code>v_mag_pu</code> and <code>v_ang</code> results over <code>bus</code>, which <code>build</code> sets back.
+    <code>Bus.p</code>, <code>q</code>, <code>control</code>, <code>generator</code> and <code>sub_network</code> are not written,
+    nor the <code>Line.v_nom</code> and <code>ShuntImpedance.v_nom</code> PyPSA copies from the
+    bus, so a solved network exports. <code>entity.carrier</code> and <code>bus.carrier</code>
+    are <code>into</code> <code>carrier</code>: <code>to_datarecord</code> adds every carrier named but not
+    listed and stores <code>""</code> as NULL. <code>entity_type</code> is <code>entity.ctype</code>,
+    and <code>bus</code> joins <code>partial</code>. A bus and a load may share a name; a custom
+    column clashes only with an attribute over another dim. <code>verify</code>
+    reports an entity attached to no bus. Every PyPSA record is
+    re-exported.</li>
+<li><strong>Properties</strong>, metadata apart from data: a new <code>properties</code> section of
+  the schema (<code>PropertySpec</code>) declares per dim or group the values describing
+  one label, stored as columns of <code>dims/&lt;dim&gt;.parquet</code> or
+  <code>groups/&lt;group&gt;.parquet</code>. An <code>Enum</code> property of a <code>partial</code> dim
+  categorizes it; traits key on categories, and <code>default_by</code> gives a default
+  per category (<code>Schema.categorizing</code>, <code>attributes_for(dim, **categories)</code>,
+  <code>properties_for</code>, <code>default_for</code>). This replaces the <code>entity_type</code> dim, its
+  group over <code>entity</code> and the <code>dims/entity_type/&lt;Type&gt;.parquet</code> member files.
+  <code>entity</code> is an ordinary dim: it broadcasts, and must be in <code>partial</code> to be
+  patched per label or categorized; a NULL on a categorized dim reaches only
+  the labels whose categories carry the attribute. Every attribute,
+  whatever its <code>dims</code>, is stored in <code>inputs/</code>. On reading, <code>dims[dim]</code> holds
+  key columns only, <code>properties[subject]</code> the stored property values, and
+  <code>attributes</code> every attribute; <code>entity_types</code> is gone and <code>flags</code> takes
+  categories (<code>flags(ctype="Generator")</code>). <code>WorkingRecord</code> edits any
+  dim: <code>add(dim, labels, **properties)</code>, <code>remove(dim, labels)</code> (cascading to
+  group tuples), and <code>set(name, value, **coords)</code> writing attributes and
+  properties alike, a property keyword selecting labels at call
+  time; <code>set</code> loses <code>indexed_by</code>. The PyPSA tool declares <code>ctype</code>,
+  <code>carrier</code>, <code>sign</code> and <code>type</code> as properties of <code>entity</code> and <code>role</code> of
+  <code>connection</code>, with <code>partial={"entity", "scenario", "connection"}</code>. Every
+  manifest and record is rewritten.</li>
+<li>An attribute over a group carries it as one struct column named for the
+  group, a field per key coordinate (<code>connection STRUCT(entity, bus)</code>), in
+  place of the coordinates flat. This is an on-disk
+  format change: <code>inputs/</code> and <code>outputs/</code> files over a group are rewritten.
+  The dims a group draws on now broadcast, so a per-bus value with
+  <code>bus = NULL</code> holds for every bus, and patching one bus at a time needs
+  <code>bus</code> in <code>partial</code>. <code>WorkingRecord.set</code> still takes <code>bus=</code>; a long frame
+  carries the struct, its coordinates flat being rejected. Naming a group
+  beside a dim its key is named for (<code>dims={"connection", "bus"}</code>) is
+  rejected.</li>
+<li>A group is a broadcast coordinate like a dim, its axis the resolved group:
+  a NULL struct means every tuple of the group, and a struct with some
+  fields NULL is refused by <code>set</code>, <code>add_group</code> and the writer. The owner
+  map's key is <code>entity</code> plus the <code>partial</code> dims and groups; <code>partial</code> may now
+  name a group, and a group outside it is owned whole, so a layer patching
+  one connection's value restates every connection's. The PyPSA tool
+  declares <code>partial={"scenario", "connection"}</code>, keeping per-connection
+  ownership. <code>Schema.membership_keys</code> is gone, and <code>Schema.group_columns</code> is
+  every group but the entity-type group. Materialised owner maps are
+  rebuilt.</li>
+<li>A group file is keyed by one struct column named for the group, as an
+  axis file is by its dim: <code>groups/connection.parquet</code> is
+  <code>connection STRUCT(entity, bus) | role | deleted</code>, an <code>into</code> label a plain
+  column beside it. This is an on-disk format change. <code>Record.groups[...]</code>
+  hands back that shape; <code>add_group</code> takes the struct column and rejects the
+  coordinates flat; <code>remove_group</code> still takes a tuple per key. The PyPSA
+  tool no longer declares <code>bus</code> as an attribute: a port's bus is the
+  connection tuple. <code>Schema.group_coordinates</code> and <code>Group.coordinates</code> are
+  gone.</li>
+<li><code>WorkingRecord.set(..., entity=...)</code> fills only a coordinate named
+  <code>entity</code>. An attribute over a group with no such field, a contract
+  <code>(from, to)</code>, takes every party as a keyword and refuses <code>entity=</code>; it
+  used to stage one duplicate row per entity of the type. <code>add</code> refuses a
+  frame carrying a group's columns without its full key, which used to
+  stage a half-keyed row. Likewise <code>set</code> on a group attribute without one
+  of its key coordinates (<code>set("efficiency", 0.9, entity=["dc"])</code>, no
+  <code>bus=</code>) is refused; it used to store a value no read reached.</li>
+<li>A group may not share a dim's name, the entity-type group excepted: a
+  group is carried as a column named for it. Rename a functional group for
+  the relation, <code>bus_country</code> into <code>country</code>.</li>
+<li>A <code>Workspace</code> holds the DuckDB connection and a <code>Store</code> one location;
+  <code>connect</code>, <code>layer_dir</code>, <code>DATARECORD_BASE_URI</code>, <code>Record.at</code> and the process
+  default connection are gone. A store's revisions live beside its layers as
+  <code>revisions/&lt;id&gt;.json</code>, so a <code>Revision</code> serialises as its location and reads
+  its ancestry back in a new process. <code>ws.con</code> is the calling thread's cursor,
+  and a relation from another connection or thread is rejected at the write
+  and edit boundary.</li>
+<li>Writing is <code>store.root(source)</code>, <code>rev.child(source)</code> and
+  <code>ws.write(source, uri)</code>; <code>write_record</code>, <code>Revision.create</code> and the
+  source-less <code>Revision.child()</code> are gone. A <code>WorkingRecord</code> no longer
+  commits: <code>rev.child(w.edits)</code> writes its edits as a child,
+  <code>ws.write(w, uri)</code> the flattened record, and <code>NewChild</code>, <code>Directory</code> and
+  <code>commit</code> are gone. A tree write writes its revision file last, so a failed write leaves
+  no revision and never widens the manifest.</li>
+<li><code>Tool.to_datarecord(model, con)</code> and <code>Tool.results(model, con)</code> take the
+  connection their frames are planned on, so <code>PyPSA.results(n, w.con)</code> sets
+  straight onto <code>w</code> rather than failing on a relation from DuckDB's default
+  connection; <code>on_connection</code> is gone.</li>
+<li>A schema declaring a dim, group, group coordinate, attribute or result
+  whose name holds <code>"</code> or <code>.</code>, starts with <code>_</code>, or is a column datarecord
+  writes itself (<code>value</code>, <code>deleted</code>, <code>layer_uuid</code>, ... ignoring case, and
+  <code>entity_type</code> for an attribute), or that differs from another declared
+  name only in case, is refused at load, naming each offender.
+  Such a name used to collide silently: a dim named <code>deleted</code> read every
+  label as a tombstone. A manifest declaring one no longer loads; rename it.
+  Based on #26 by @FBumann.</li>
+<li>The PyPSA tool stores per-port results on connections, like per-port
+  inputs: <code>p0</code>, <code>p1</code>, <code>p2</code>, ... and a one-port type's <code>p</code> are one result <code>p</code>
+  over the <code>connection</code> group, a row per <code>(entity, bus)</code> keeping each port's
+  sign, and likewise <code>q</code>. <code>Bus.p</code> and <code>Bus.q</code>, the sum of those rows at a
+  bus, are no longer written, and <code>Link.p</code>/<code>Process.p</code> are <code>p_internal</code>. A
+  three-port Link's <code>p2</code> is now a declared result.</li>
+<li>
+<p>The PyPSA tool stores a Process's <code>rate0</code>, <code>rate1</code>, <code>rate2</code>, ... as one
+  input <code>rate</code> over the <code>connection</code> group, like <code>efficiency</code>, and <code>build</code>
+  puts each row back in its port's column, static or per snapshot. <code>rate</code>
+  declares no default, its ports defaulting to <code>-1</code> and <code>1</code>.</p>
+</li>
+<li>
+<p>Removing an entity removes the group tuples naming it: <code>WorkingRecord.remove</code>
+  tombstones every tuple with a field over <code>entity</code> naming it, in the same
+  layer, and a value over a group goes with its tuple rather than with the
+  entity. An <code>add</code> of the name revives the entity alone. A layer adding a
+  tuple that names a dead label, or removing a label a tuple still names, is
+  refused at write. A value over a dim or group outside <code>partial</code> naming a removed label
+  is dropped at read, a removed <code>bus</code> label's per-bus values included. A
+  materialised node caches the dead labels in <code>resolved/dead/</code>; one
+  materialised before reads as having none.</p>
+</li>
+<li><strong>A manifest with an unknown key fails to load</strong> (breaking): <code>Schema</code> and
+  every model it nests refuse a key they do not declare with pydantic's
+  <code>ValidationError</code>, so a misspelt or removed field is no longer ignored.</li>
+<li><strong>A standalone record's id is <code>Schema.id</code></strong>, an optional field its
+  <code>manifest.json</code> carries as before and the record's <code>schema.id</code> answers; a
+  tree's manifest still carries none.</li>
+<li><code>LayerData</code> no longer declares <code>frozen</code>, and its <code>axes()</code>, <code>groups()</code> and
+  <code>attributes()</code> return <code>set[str]</code>. A <code>Record</code> is not a <code>LayerData</code>: written
+  whole, it reaches the writer through the adapter for a <code>RecordLike</code>.</li>
+<li>A <code>WorkingRecord</code> folds its staged layer onto the base's folded axes,
+  groups and dead labels, which the workspace keeps as tables, so folding
+  them with staged edits opens no file of the base.</li>
+<li>A label or group tuple that one layer removes and a later layer adds again
+  now takes its place where it is added again, in a working record, a
+  written record and over a materialised node alike.</li>
+<li>The modules move into the subpackages <code>datarecord.schema</code>,
+  <code>datarecord.resolve</code> and <code>datarecord.store</code> (breaking for an import from a
+  module path). <code>datarecord.record</code> is now <code>datarecord.protocols</code>,
+  <code>datarecord.files</code> is <code>datarecord.store.files</code>,
+  <code>datarecord.layered.categories</code> is <code>datarecord.schema.categories</code>, the other
+  modules of <code>datarecord.layered</code> are split between <code>datarecord.resolve</code> and
+  <code>datarecord.store</code>, and the dtype helpers move from <code>datarecord.duck</code> to
+  <code>datarecord.schema.dtypes</code>. Every public name is still imported from
+  <code>datarecord</code>.</li>
+<li><code>Schema.input_key</code> is now <code>Schema.owner_map_key</code> and <code>Schema.input_columns</code>
+  is <code>Schema.owner_map_columns</code> (breaking), and a tool reports the requirement
+  <code>"owner_map_key"</code> in <code>Requirements.unsupported_keys</code> where it reported
+  <code>"input_key"</code>.</li>
+<li><code>Schema.long_columns_for</code> raises a <code>KeyError</code> naming an attribute the
+  schema does not declare, where it returned the columns of every declared
+  dim (breaking).</li>
+<li><code>PyPSA.build</code> raises a <code>TypeError</code> for a <code>RecordLike</code> that is not a
+  <code>Record</code>, where it took any record with a DuckDB connection (breaking).</li>
+</ul>
+<h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
+<ul>
+<li>A store or standalone directory on <code>s3://</code>, through boto3 behind the
+  <code>datarecord[remote]</code> extra and configured by the AWS environment alone.
+  Revision files are written create-only and the manifest by
+  compare-and-swap, so two writers widening one schema never silently lose
+  a widening.</li>
+</ul>
+<h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>set</code> no longer takes an expression</strong> (breaking): an <code>nw.Expr</code> value
+  is refused with a <code>TypeError</code>. Compute the new values from
+  <code>attributes[name]</code> and <code>set</code> the frame.</li>
+<li><strong>A dim is flat</strong> (breaking): <code>Dimension.within</code> is gone, every axis is
+  keyed by its label alone, and a manifest declaring <code>within</code> fails to load
+  naming the replacement, a property <code>into</code> the parent dim
+  (<code>snapshot.period</code> into <code>period</code>), with labels unique across the dim.
+  Every earlier manifest carries <code>within</code>, if only as <code>[]</code>, so none loads:
+  drop the key, or re-export the record.
+  <code>add</code> takes no parent keys, and <code>set</code> on a property, <code>remove</code>'s refusal and
+  group cascade, the writer's live-label check and the label and trait check
+  of <code>set</code> now cover every dim. <code>Schema.axis_key</code> is gone. <code>PyPSA.results</code>
+  no longer carries an always-NULL <code>period</code> column.</li>
+<li><strong>Traits are gone</strong> (breaking): <code>Trait</code>, <code>Schema.traits</code>,
+  <code>Schema.attributes_for</code> and <code>Schema.properties_for</code> are removed, and a
+  manifest declaring <code>traits</code> fails to load naming the replacement. An
+  attribute reaches every label its <code>dims</code> address and a property every
+  label of its subject, whatever their categories: a NULL on a categorized
+  dim reaches every label, <code>flags(**categories)</code> holds every attribute with
+  a row reaching a matching label, and <code>set</code> no longer refuses a label whose
+  category lacked the attribute. Scope a value with a category keyword,
+  <code>set("p_max_pu", 0.9, ctype="Generator")</code>. The PyPSA tool keeps the
+  per-type vocabulary itself: <code>build</code> leaves out a value its type does not
+  take, reported in the new <code>Requirements.ignored</code> without failing
+  <code>verify</code>, and <code>to_datarecord</code> records a network's custom entity columns
+  per type in the schema's <code>meta</code>. Every record declaring traits is
+  re-exported.</li>
+<li><strong>Results are attributes</strong> (breaking): a layer holds every attribute in
+  one <code>attributes/</code> directory, and one with <code>inputs/</code> or <code>outputs/</code> is
+  refused; <code>Schema.results</code> (refused at load), <code>Record.outputs</code>, <code>Kind</code>,
+  <code>set(..., kind=...)</code> and <code>Tool.results</code> are gone, and a result inherits
+  through layers like any attribute. The PyPSA tool declares its outputs as
+  attributes, <code>build</code> copies them, and
+  <code>to_datarecord(n, con, results_only=True, base=record)</code> writes a solve as a
+  thin layer replacing <code>base</code>'s SubNetworks and restating as NULL the
+  results of <code>base</code> it does not write again; a NULL series value, input or
+  result, leaves the component at its static value on export. Every record
+  is re-exported.</li>
+<li><strong>narwhals is gone</strong> (breaking): <code>record.dims</code>, <code>properties</code>, <code>groups</code> and
+  <code>attributes</code> hand over bare <code>DuckDBPyRelation</code>s, and <code>Frames</code> and
+  <code>LazyFrames</code> are <code>Relations</code> and <code>LazyRelations</code>. <code>set</code>, <code>add_group</code> and the
+  writer take a relation or a
+  pandas, polars or arrow frame, read by DuckDB's own scanner, and refuse
+  timestamps with a time zone, casting a column only to a wider type of its
+  kind and refusing any other. A dtype is mathspec's (<code>float</code>, <code>int</code>, <code>bool</code>, <code>str</code>, <code>datetime</code>);
+  a <code>str</code> dim may list its labels, <code>one_of: [...]</code> beside its <code>dtype</code> as in
+  mathspec: its column is an <code>ENUM</code> of them, <code>add</code> refuses an unlisted label,
+  and its axis holds only the labels added. A property declares exactly one
+  of <code>dtype</code> and <code>one_of: &lt;dim&gt;</code>, and one that declares <code>one_of</code> takes its
+  labels from that dim, which replaces <code>into</code> on properties and groups. A
+  manifest with an old dtype name, a <code>{"one_of": ...}</code> dtype, <code>enum</code>,
+  <code>refers</code> or <code>into</code> fails to load naming the replacement, as does a list
+  under a property's <code>one_of</code> or a dim name under a dim's. The PyPSA tool
+  declares the dims <code>ctype</code> and <code>role</code>, which list their labels, writing
+  every label they list, and a <code>timestep</code> dim. Every record is re-exported.</li>
+<li><code>Resolver</code> and <code>Revision.resolver</code> are removed (breaking). <code>Record</code> is
+  constructed from <code>revision_id</code>, <code>sources</code>, <code>workspace</code> and <code>schema</code>
+  instead of from a <code>Resolver</code>, and is read through its mappings alone:
+  <code>rev.resolver.sources</code> is <code>rev.record.sources</code>, <code>axis(dim)</code> is
+  <code>dims[dim]</code> or <code>properties[dim]</code>, <code>group(name)</code> and <code>group_frame(name)</code>
+  are <code>groups[name]</code>, and <code>attribute(name)</code> is <code>attributes[name]</code>, which
+  raises <code>KeyError</code> where <code>attribute</code> returned an empty relation.
+  <code>with_source</code>, <code>inputs</code> and the enumerators <code>axes()</code>, <code>groups()</code> and
+  <code>attributes()</code> are gone.</li>
+</ul>
+<h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>set</code> refuses a frame column the schema does not declare for the
+  attribute, naming the column and the columns it takes, where it dropped
+  the column before.</li>
+<li>A later <code>set</code> replaces the rows an earlier one staged that it covers,
+  that is, at each of their coordinates it names the same label or leaves
+  NULL, labels selected by a property keyword or a group's fields included:
+  <code>set("p_nom", 0.9, entity=["a"])</code> and then <code>set("p_nom", 0.95)</code> read
+  0.95 at <code>a</code> rather than 0.9. The other order keeps both rows, and <code>a</code>
+  reads 0.9.</li>
+<li>A layer holding a default and its exception, such as
+  <code>set("p_nom", 0.95)</code> and then <code>set("p_nom", 0.9, entity=["a"])</code>, reads one
+  value at each coordinate: within one layer, the more specific row wins, a row naming a
+  label of a dim being more specific than one leaving that dim NULL. A write
+  of two rows covering one coordinate where each names a dim the other leaves
+  NULL is refused, and a read of such a layer written another way fails, each
+  naming the attribute and the coordinate.</li>
+<li>A layer holding two rows of one attribute naming the same labels at one
+  breakpoint is refused at write rather than read as either value, and a read
+  of such a layer written another way fails where it picks the more specific
+  row, each naming the attribute and the coordinate.</li>
+<li>The writer holds a column to its declared dtype as <code>set</code> does: an
+  attribute's <code>value</code> is stored as its dtype, an integer column under a
+  <code>float</code> attribute as <code>DOUBLE</code> rather than <code>BIGINT</code>, and a column of a type
+  that does not fit its dtype - a string for a <code>datetime</code> dim or a <code>float</code>
+  property - is refused naming the attribute, property or dim and its dtype,
+  rather than parsed or cast. A column holding only NULLs passes as its
+  declared type's NULL, in <code>set</code> and <code>add_group</code> too, whatever type its
+  dataframe library gave it, and <code>set</code> and <code>add_group</code> refuse a column
+  spelling a declared one in another case rather than storing it unchecked
+  or dropping it. The PyPSA
+  tool's static rows no longer widen an integer <code>snapshot</code> to <code>DOUBLE</code>.</li>
+<li>A label of a type that does not fit its dim's dtype - a series index, mapping
+  keys or a keyword of <code>set</code>, a group property's field keyword, the labels of
+  <code>add</code> and <code>remove</code>, or a value of a property that takes its labels from a dim - is refused with
+  the dim and its dtype named, by the rule a frame's column is held to, rather
+  than failing deep in DuckDB or being parsed: <code>snapshot="2030-01-01"</code> on a
+  <code>datetime</code> dim was read as a timestamp, and is now refused.</li>
+<li>The PyPSA tool round-trips a network's snapshot and investment period
+  weightings: <code>to_datarecord</code> writes them as <code>snapshot_weighting_objective</code>,
+  <code>_stores</code> and <code>_generators</code> over <code>snapshot</code> and
+  <code>period_weighting_objective</code> and <code>_years</code> over <code>period</code>, beside
+  <code>scenario_weight</code>, and <code>build</code> sets them back rather than leaving PyPSA's
+  defaults.</li>
+<li>The PyPSA tool round-trips a multi-period network, which <code>to_datarecord</code>
+  failed to write: its <code>snapshot</code> is one flat axis beside <code>period</code>, each
+  snapshot carrying <code>snapshot.period</code>, a property <code>into</code> <code>period</code>, so
+  <code>period=2030</code> selects a period's snapshots. A snapshot is labelled by its
+  timestep where no timestep repeats across periods, else by its position,
+  the timestep then <code>snapshot.timestep</code>. Every input and result keeps the
+  dims it has in a single-period network, whose schema is unchanged. <code>build</code>
+  restores the snapshots, investment periods, time series and both
+  weightings.</li>
+<li>The PyPSA tool round-trips a network's shapes, which <code>to_datarecord</code>
+  failed to write: a geometry is stored as WKT in <code>inputs/geometry.parquet</code>
+  and the network's CRS as <code>crs</code> in the schema's <code>meta</code>, and <code>build</code> restores
+  <code>n.shapes</code> as a GeoDataFrame in that CRS. <code>srid</code> is no longer written among
+  the network attributes.</li>
+<li>Removing an entity drops the values of every group row naming it, not only
+  where it is the group's first entity coordinate: a <code>contract</code> over
+  <code>(from, to)</code> loses its values when either party is removed, and
+  <code>flags(ctype)</code> counts such a row towards the type of each party.</li>
+<li>Writing a layer whose <code>manifest.json</code> write keeps losing, as it does with a
+  credential that can write the manifest but not read it, gives up after ten
+  attempts with an error naming <code>s3:GetObject</code>, rather than looping forever.</li>
+<li><code>materialise()</code> writes <code>owner_map/inputs.parquet</code> last, each file through
+  a temporary name, so a node never reads as materialised from half its
+  cache.</li>
+<li>A fold cached before the manifest widened now reads under the wider schema.</li>
+<li>Reading an attribute over a <code>partial</code> dim no longer slows with the square
+  of that dim's length.</li>
+<li>Folding the owner map no longer compares every row with every label of a
+  <code>partial</code> dim's axis; the first read of a record with long series is linear
+  again.</li>
+<li>A record whose layers are all written scans its owner map once for the
+  layers owning each attribute, rather than once per attribute read.</li>
+<li>A pickled <code>Revision</code> unpickles through <code>Workspace.process()</code> and reads its
+  ancestry back, rather than reading empty, and pickles after <code>.record</code> is
+  read rather than failing on its DuckDB connection.</li>
+<li>A standalone record's <code>manifest.json</code> carries an <code>id</code> that <code>ws.write</code>
+  mints, and which keys its folds in the workspace in place of its URI. A
+  record deleted and written again at one URI, or one relative path read
+  from another working directory, no longer reads the folds of the record
+  before it. <code>ws.at</code> resolves a local path as <code>ws.store</code> does, and refuses a
+  manifest without an id: write such a record again.</li>
+<li><code>ws.write</code> to an existing empty directory raises its <code>FileExistsError</code> up
+  front, saying a standalone record is written to a URI that does not exist
+  yet, rather than passing the check and failing inside the write.</li>
+<li><code>PyPSA.to_datarecord</code> melts a time series whose component name holds a
+  <code>"</code>, or is <code>snapshot</code> or <code>period</code>, rather than failing to parse or
+  duplicating an id column: a name is no longer pasted into the <code>UNPIVOT</code>
+  as an SQL identifier.</li>
+<li><code>PyPSA.build</code> keeps the time series of a component named <code>snapshot</code>, or
+  <code>period</code> in a multi-period network, rather than dropping it from
+  <code>dynamic</code>: the <code>PIVOT</code> is on each component's position, so no name
+  becomes an SQL identifier there either.</li>
+<li><code>PyPSA.to_datarecord</code> accepts components whose names differ only by case,
+  such as <code>Gen</code> and <code>gen</code>, rather than reporting them as one name: neither
+  the melt nor the pivot folds case any more.</li>
+<li><code>PyPSA.results</code> and a network's <code>outputs</code> key exactly the results the
+  PyPSA schema declares, so setting each one with <code>kind="outputs"</code> no longer
+  raises <code>KeyError</code>: <code>Bus.control</code> and <code>SubNetwork.carrier</code>, which PyPSA
+  also registers as inputs, are no longer emitted as results.</li>
+<li><code>PyPSA.build</code> turns a per-connection input back into PyPSA's port columns:
+  <code>efficiency</code> on a Link's bus2 connection is <code>efficiency2</code> again, static or
+  per snapshot, rather than every port's value landing in <code>efficiency</code> and
+  <code>efficiency2</code> reading as its default.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../contributing/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Contributing">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Contributing
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../api/" class="md-footer__link md-footer__link--next" aria-label="Next: Index">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Index
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
