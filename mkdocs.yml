@@ -68,7 +68,7 @@ nav:
           - "DEP 18: Drop narwhals": design/proposals/dep-0018-drop-narwhals.md
           - "DEP 19: One Record and a package layout": design/proposals/dep-0019-one-record-and-a-package-layout.md
           - "DEP 20: A layer restates an axis whole": design/proposals/dep-0020-a-layer-restates-an-axis-whole.md
-          - "DEP 21: A broadcast reaches labels added later": design/proposals/dep-0021-a-broadcast-reaches-labels-added-later.md
+          - "DEP 21: The owner map holds keys as written": design/proposals/dep-0021-the-owner-map-holds-keys-as-written.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:

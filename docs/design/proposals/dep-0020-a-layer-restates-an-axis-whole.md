@@ -21,7 +21,7 @@ A layer that changes an axis or a group writes its file whole, in order, and the
 
 ## Motivation
 
-`fold_axis` in `duck.py` folds an axis per label from every layer that touched it. A label takes its deepest row and is dropped where that row is a `deleted = true` tombstone. Its place is that of its first row deeper than its deepest tombstone. No single file says which labels a node's axis has or in which order.
+`_fold_axis` in `resolve/coords.py` folds an axis per label from every layer that touched it. A label takes its deepest row and is dropped where that row is a `deleted = true` tombstone. Its place is that of its first row deeper than its deepest tombstone. No single file says which labels a node's axis has or in which order.
 
 That order is load-bearing, since `_ordered_connections` in `tools/pypsa.py` numbers a component's ports by connection order. [DEP 19](dep-0019-one-record-and-a-package-layout.md) had to reshape the order rule so that a cache holding a removed label only as a dead label agrees with a full fold. Every new seed or cache has to be checked against that rule again.
 
@@ -49,7 +49,7 @@ In every case probed on a prototype, the rule gives today's answers. A keyed lab
 
 An axis's order is its deepest file's row order. A label added again after its removal is a row of a later restatement and sits where that file puts it, which subsumes the rule DEP 19 landed.
 
-`WorkingRecord` composes a restatement from its base's resolved axis or group: base order, each staged row in its label's place, removed labels dropped, new labels appended in staging order. `write_layer` refuses a restatement whose order on its parent's labels differs from the parent's, naming the first label out of place.
+`WorkingRecord` stages an axis or group as a whole table, as any layer holds it. The first edit of the axis copies the base's resolved axis into the table with a position column in base order, since a DuckDB table keeps no row order. `add` appends a new label at the next position and puts a label of the base back at its base position, `remove` deletes the label's row, and a property edit updates the row. `StagedSource` hands the table over in position order, so a read composes nothing. `write_layer` refuses a restatement whose order on its parent's labels differs from the parent's, naming the first label out of place.
 
 ### Refusals
 
@@ -61,11 +61,11 @@ restating its axis without it (.../design/layers/#deletion). Re-export the
 record, or flatten it with `ws.write` under the previous release.
 ```
 
-The fold and `write_layer` refuse a key that occurs twice in a `dims/` or `groups/` file, at one `GROUP BY` per file. A column that is neither the file's key nor a declared property of its subject is refused at read, as `_refuse_extra` in `store/write.py` refuses it at write today. A restatement composed from a base therefore never carries an undeclared column. `deleted` stays a reserved name and a column of the staging tables, where a staged `remove` is still a row.
+The fold and `write_layer` refuse a key that occurs twice in a `dims/` or `groups/` file, at one `GROUP BY` per file. A column that is neither the file's key nor a declared property of its subject is refused at read, as `_refuse_extra` in `store/write.py` refuses it at write today. A restatement composed from a base therefore never carries an undeclared column. `deleted` stays a reserved name, and no staging table carries it.
 
-### The reference check, not yet ruled on
+### The reference check
 
-The one point of this DEP not yet ruled on is a stricter reference check. Under it, `_require_living_references` checks each subject a layer restates or whose rows name a label the layer removes, whole and in its final state, against the final dead labels. A reference an ancestor left dangling then fails the next write touching its subject. The promise of [deletion](../layers.md#deletion) that a reference an ancestor left dangling "fails no later write" goes, with its counterpart in that function's docstring. If the check is struck, it covers the rows a restatement adds or changes and the rows naming a label the layer removes, as today, at one more anti-join against the parent per restated subject. No other rule here depends on the choice.
+`_require_living_references` checks each subject a layer restates or whose rows name a label the layer removes, whole and in its final state, against the final dead labels. A reference an ancestor left dangling therefore fails the next write touching its subject, and that write can drop or repair the row, since it restates the subject whole. The promise of [deletion](../layers.md#deletion) that a reference an ancestor left dangling "fails no later write" goes, with its counterpart in that function's docstring.
 
 ### SubNetworks are a dim
 
@@ -90,9 +90,9 @@ Every timing and size in this DEP is a single DuckDB run at PyPSA-Eur scale, 60,
 
 Storage grows with the axis rather than the edit. A one-entity property edit writes 0.30 MB where a one-row patch writes 0.8 kB today. Adding a connection writes 0.43 MB, and removing an entity restates both for 0.73 MB. A `connection.role` edit restates every tuple. A chain of 20 edit layers over 40,000 entities and 80,000 connections holds 5.57 MB against 10 kB today. The cost multiplies in scenario trees with many small leaves and on a remote store.
 
-A prototype without the order and duplicate checks wrote that chain in 4.3 s against 5.7 s and read `p_nom` cold at its leaf in 1.07 s against 2.17 s. The entity fold drops from 80-95 ms, whatever the patch count, to a 50 ms read of the deepest file. Each restatement adds a diff to every fold, 6 ms for the entities and 18 ms for the connections. The dead set reads every restatement above the base, 23 ms over 20 of the entities, where today it reads tombstone rows. A duplicate check costs 5-11 ms per file. A `WorkingRecord` with a staged axis or group edit composes the whole restatement per read, about 15 ms for the entities and 41 ms for the connections, estimated from their write times.
+A prototype without the order and duplicate checks wrote that chain in 4.3 s against 5.7 s and read `p_nom` cold at its leaf in 1.07 s against 2.17 s. The entity fold drops from 80-95 ms, whatever the patch count, to a 50 ms read of the deepest file. Each restatement adds a diff to every fold, 6 ms for the entities and 18 ms for the connections. The dead set reads every restatement above the base, 23 ms over 20 of the entities, where today it reads tombstone rows. A duplicate check costs 5-11 ms per file. A `WorkingRecord` copies the base's resolved axis or group into its staging table at the first edit of it, about 15 ms for the entities and 41 ms for the connections, estimated from their write times, and a later read takes the table as it stands.
 
-A tree the PyPSA tool did not write is refused where a `dims/` or `groups/` file carries a `deleted` column, as every axis or group edit of `WorkingRecord` writes. It is flattened with `ws.write` under the release before this one, losing its history. A full PyPSA export written as a child is refused where its parent's entity order interleaves types, as after a `WorkingRecord` adds a generator, since an export orders entities by type. It is written as a root instead. A foreign directory meets the same refusals, so not every standard parquet directory reads as a layer any more. A hand-written restatement that omits a property column blanks it for every label, where a patch blanked it only for the labels it held. `src` grows, by an estimated 100-130 lines deleted and 135-235 added.
+A tree the PyPSA tool did not write is refused where a `dims/` or `groups/` file carries a `deleted` column, as every axis or group edit of `WorkingRecord` writes. It is flattened with `ws.write` under the release before this one, losing its history. A full PyPSA export written as a child is refused where its parent's entity order interleaves types, as after a `WorkingRecord` adds a generator, since an export orders entities by type. It is written as a root instead. A foreign directory meets the same refusals, so not every standard parquet directory reads as a layer any more. A hand-written restatement that omits a property column blanks it for every label, where a patch blanked it only for the labels it held. A patch layer written before this DEP without a `deleted` column reads silently as a restatement removing every label it omits. Such a layer was written by hand, as `write_axis` does, or from a `LayerData` whose axis lacked the column. No format version detects it, since the project is pre-alpha and supports no earlier format. `src` grows, by an estimated 100-130 lines deleted and 135-235 added.
 
 ## Usage
 
@@ -132,9 +132,9 @@ solved.record.attributes["slack_bus"]  # over sub_network
 
 Paths are under `src/datarecord/`.
 
-1. `duck.fold_axis` reads the deepest relation and refuses a duplicate key, and `duck.dead_keys` computes the dead set, dropping an empty one so that `_living` adds no join. `resolve_coords` and `resolve_groups` in `resolve/coords.py` take the deepest file, and `_resolve_dead` adds the base's resolved axis. In `resolve/owner_map.py`, the removed labels replace `_deleted_relation` in `fold_attributes`, `_fold_map` and `_table`. `_FileLayer.axis` and `group` in `resolve/sources.py` refuse a `deleted` column, then an undeclared one.
+1. In `resolve/coords.py`, `_fold_axis` reads the deepest relation and refuses a duplicate key, and `_dead_keys` computes the dead set, dropping an empty one so that `_living` adds no join. `resolve_coords` and `resolve_groups` there take the deepest file, and `_resolve_dead` adds the base's resolved axis. In `resolve/owner_map.py`, the removed labels replace `_deleted_relation` in `fold_attributes`, `_fold_map` and `_table`. `_FileLayer.axis` and `group` in `resolve/sources.py` refuse a `deleted` column, then an undeclared one.
 2. In `store/write.py`, `_validate_frame` drops `deleted` from an axis or group file's columns. A duplicate check and the order check run on each written `dims/` and `groups/` file beside `_refuse_unordered`. `_require_living_references` derives the killed labels from the parent's axes, and `_living` goes.
-3. In `mutable.py`, `_axis_layer` loses its `partial` branch and, with `_collapsed_group`, composes the restatement `StagedSource` hands over.
+3. In `mutable.py`, the staging table of an axis or group takes the base's rows and a position column at its first edit, `add`, `remove` and property edits change its rows, `_axis_layer` and `_collapsed_group` lose their `partial` branches, and `StagedSource` hands the table over in position order.
 4. In `tools/pypsa.py`, `_connection_rows`, `_NetworkSource.dims`, `_carriers`, `_entity_frame` and `_tagged` stop writing `deleted`. `_AXIS_TYPES` and `_PROPERTIES` gain `sub_network`, whose `carrier` `_registry` declares explicitly, since it takes no property from an output. `_ResultsSource` writes the `sub_network` axis, `_restated` filters stale rows on `sub_network` instead of `entity`, and the suffix helpers go.
 5. In `tests/fixtures.py`, `write_component`, `tombstone`, `write_connections`, `tombstone_connection`, `write_axis`, `write_scenarios` and `write_periods` restate from the layer's parent, and `write_connections` stops writing the undeclared `role` and `scenario`. By a prototype's failures adjusted for this design, at least 18 tests change. Ten write a patch child through those fixtures, and two assert patch-shaped files. `test_sub_networks_are_suffixed_off_the_lines` and `test_a_re_solve_leaves_no_stale_sub_network` read `sub_network`, and four tests write or assert a `deleted` column. New tests pin the refusals, the order check, and one order across a materialised parent.
 6. `CHANGELOG.md` under `[Unreleased]`: a layer restates a changed axis or group whole, a `deleted` column is refused, and SubNetworks are labels of `sub_network`.
@@ -145,11 +145,13 @@ Checks: a label removed and re-added reads in one order materialised or not, sta
 
 ## Rejected Ideas
 
-The 7-line fold fix, now in `fold_axis` as the rule DEP 19 landed, fixes the order bug without a format change but keeps the per-label fold. With it stay the tombstones, `partial`'s second meaning and an order derived from history.
+The 7-line fold fix, now in `_fold_axis` as the rule DEP 19 landed, fixes the order bug without a format change but keeps the per-label fold. With it stay the tombstones, `partial`'s second meaning and an order derived from history.
 
 A format version in `manifest.json` would also catch an old patch layer without a `deleted` column, at the cost of a second version beside `schema.version`.
 
-Restating the entity axis in each results layer writes 0.30 MB per solve in 20 ms, plus 10 ms to check its order. That is small beside one `marginal_price` result over 4,000 buses and 8,760 snapshots, 301 MB with random values, an upper bound. It is rejected because every solve would rewrite an input axis it never changed and, under the stricter reference check, fail on a reference an ancestor left dangling there.
+Restating the entity axis in each results layer writes 0.30 MB per solve in 20 ms, plus 10 ms to check its order. That is small beside one `marginal_price` result over 4,000 buses and 8,760 snapshots, 301 MB with random values, an upper bound. It is rejected because every solve would rewrite an input axis it never changed and, under the reference check, fail on a reference an ancestor left dangling there.
+
+Checking only the rows a restatement adds or changes and the rows naming a label the layer removes keeps the promise that an ancestor's dangling reference fails no later write. It costs one more anti-join against the parent per restated subject, and leaves the dangling row in every later restatement of its subject.
 
 Sorting an out-of-order restatement into its parent's order, instead of refusing it, would bring the per-label fold back at write time.
 
@@ -163,10 +165,6 @@ Recording in `resolved/` which layer holds each axis and group, instead of copyi
 
 ## Open Issues
 
-A patch layer written before this DEP without a `deleted` column still reads silently as a restatement removing every label it omits. Such a layer was written by hand, as `write_axis` does, or from a `LayerData` whose axis lacked the column.
-
 The order check allows a new label before one of its parent's. In a group, a new tuple placed before an existing one of the same entity renumbers that entity's later ports. `WorkingRecord` appends, so only a layer written another way can do this.
-
-The stricter reference check is not yet ruled on.
 
 [DEP 14](dep-0014-combining-records.md)'s open issue, extending a tree without restating its base, gets no easier.
