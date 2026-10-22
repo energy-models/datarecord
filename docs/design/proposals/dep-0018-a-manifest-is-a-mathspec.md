@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Title    | a manifest is a mathspec                                                                                                                                                                                       |
 | Author   | Bryn Pickering                                                                                                                                                                                                 |
-| Status   | Draft                                                                                                                                                                                                          |
+| Status   | Rejected 2026-10-22                                                                                                                                                                                                          |
 | Requires | [DEP 12](dep-0012-properties.md), [DEP 13](dep-0013-buses-and-carriers-are-dims.md), [DEP 15](dep-0015-multi-dims.md), [DEP 16](dep-0016-categories-are-enum-dimensions.md), [DEP 17](dep-0017-one-default.md) |
 | Created  | 2026-10-21                                                                                                                                                                                                     |
 
