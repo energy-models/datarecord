@@ -19,11 +19,141 @@ from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
+from duckdb import SQLExpression as sql
+from duckdb import StarExpression as star
 
-from datarecord.duck import dead_keys, fold_axis
+from datarecord.duck import fn, struct_of, union_all_by_name
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.sources import LayerSource
 from datarecord.schema.schema import Schema
+
+
+def _fold_axis(
+    axes: Sequence[DuckDBPyRelation | None],
+    key: str,
+    con: DuckDBPyConnection,
+) -> DuckDBPyRelation | None:
+    """Fold one keyed relation over each layer's, keyed by `key`, in member order.
+
+    The one fold for every axis - a dim's coordinates, a group.
+    `axes` is root first, one entry per layer - `None` where that layer has no
+    rows. Last-writer-wins per `key`, the dim for a dim or the group's struct
+    column for a group.
+
+    A `deleted = true` row is a tombstone: it removes its key unless a still-
+    deeper layer restates it, and never survives into the output, which carries
+    no `deleted` column. The output is returned **in member order**, each key
+    where it was introduced - root first, then within a layer file order - so a
+    reader recovers member order from the resolved file's own row order without
+    a persisted `order_key`. A key removed and added again is introduced where
+    it is added again: only its rows deeper than its deepest tombstone count.
+
+    `_row` is tagged **per layer, before any union**: `UNION ALL` defines no
+    order, so a bare `row_number() OVER ()` over the unioned relation would
+    silently scramble which row introduces its key.
+
+    Notes
+    -----
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
+    - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    layers = []
+    for depth, rel in enumerate(axes):
+        if rel is None:
+            continue
+        layers.append(
+            rel.project(
+                lit(depth).alias("_depth"),
+                sql("row_number() OVER ()").alias("_row"),
+                star(),
+            )
+        )
+    if not layers:
+        return None
+
+    union = union_all_by_name(layers, con)
+    has_deleted = "deleted" in union.columns
+    partition = str(col(key))
+    # A row from a layer whose file lacks the column reads `deleted` as NULL
+    # once unioned by name; NULL is not a tombstone, so coalesce to false
+    # rather than letting `~NULL` drop a live row.
+    dead = coalesce(col("deleted"), lit(False)) if has_deleted else lit(False)  # noqa: FBT003
+    # `OVER (PARTITION BY ...)` stays text below: DuckDB's expression API has no
+    # window construct, so only what the window wraps is built as an expression.
+    cut = union.project(
+        star(),
+        sql(f"max(_depth) FILTER (WHERE {dead}) OVER (PARTITION BY {partition})").alias(
+            "_cut"
+        ),
+    )
+    ranked = cut.project(
+        star(),
+        sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _depth DESC)").alias(
+            "_rank"
+        ),
+        # The introducing (depth, row) pair, as one orderable struct -
+        # `min()` over two separate window aggregates would answer "smallest
+        # _depth" and "smallest _row" independently, not the pair belonging
+        # to the earliest actual row.
+        sql(
+            f"{fn.min(struct_of({'d': col('_depth'), 'r': col('_row')}))} "
+            "FILTER (WHERE _cut IS NULL OR _depth > _cut) "
+            f"OVER (PARTITION BY {partition})"
+        ).alias("_first"),
+    )
+    winners = ranked.filter(col("_rank") == lit(1))
+    # The deepest statement of a key wins; a tombstone there removes it.
+    if has_deleted:
+        winners = winners.filter(~dead)
+    scaffold = [
+        "_depth",
+        "_rank",
+        "_row",
+        "_cut",
+        "_first",
+        *(["deleted"] if has_deleted else []),
+    ]
+    return winners.order("_first").project(star(exclude=scaffold))
+
+
+def _dead_keys(
+    axes: Sequence[DuckDBPyRelation | None],
+    key: str,
+    con: DuckDBPyConnection,
+) -> DuckDBPyRelation | None:
+    """The keys `_fold_axis` drops: those whose deepest row is a tombstone.
+
+    A hash aggregate rather than `_fold_axis`'s window, there being no row to
+    carry and no order to keep. `None` where no layer carries a `deleted`
+    column, so nothing is dead.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    present = [(depth, rel) for depth, rel in enumerate(axes) if rel is not None]
+    if not any("deleted" in rel.columns for _, rel in present):
+        return None
+    layers = [
+        rel.project(
+            col(key),
+            lit(depth).alias("_depth"),
+            (
+                coalesce(col("deleted"), lit(False))  # noqa: FBT003
+                if "deleted" in rel.columns
+                else lit(False)  # noqa: FBT003
+            ).alias("_dead"),
+        )
+        for depth, rel in present
+    ]
+    deepest = union_all_by_name(layers, con).aggregate(
+        [
+            col(key),
+            fn.arg_max(col("_dead"), col("_depth")).alias("_dead"),
+        ]
+    )
+    return deepest.filter(col("_dead")).project(col(key))
 
 
 def _base_and_above(
@@ -78,7 +208,7 @@ def resolve_coords(
     """
     # One listing per source rather than one probe per declared dim per source
     # (D x A misses, most declared dims absent from most layers): `present` says
-    # which dims that source actually has, so `fold_axis` below is only ever
+    # which dims that source actually has, so `_fold_axis` below is only ever
     # asked for a dim at least one source holds, and only passed the sources
     # that hold it.
     base, above = split or _base_and_above(sources, con, schema)
@@ -92,7 +222,7 @@ def resolve_coords(
         holding = [s for s, names in zip(above, present) if dim in names]
         if seed is None and not holding:
             continue
-        rel = fold_axis([seed, *(s.axis(dim) for s in holding)], dim, con)
+        rel = _fold_axis([seed, *(s.axis(dim) for s in holding)], dim, con)
         if rel is not None:
             axes[dim] = rel
     return Coords(
@@ -153,7 +283,7 @@ def _resolve_dead(
         seed = None if base is None else base.dead.get(name)
         if seed is not None:
             seed = seed.project(col(name), lit(True).alias("deleted"))  # noqa: FBT003
-        rel = dead_keys([seed, *rows], name, con)
+        rel = _dead_keys([seed, *rows], name, con)
         if rel is not None:
             dead[name] = rel
     return dead
@@ -167,7 +297,7 @@ def resolve_groups(
 ) -> dict[str, DuckDBPyRelation]:
     """Fold every declared group to its resolved relation, keyed by its struct column.
 
-    A group folds through `fold_axis` like any axis, keyed by the one column
+    A group folds through `_fold_axis` like any axis, keyed by the one column
     named for it: last-writer-wins per tuple, its properties on the winning
     row, its own tombstones honoured, member
     order the file's row order.
@@ -186,7 +316,7 @@ def resolve_groups(
         rows = [seed, *(source.group(group) for source in above)]
         if all(rel is None for rel in rows):
             continue
-        rel = fold_axis(rows, group, con)
+        rel = _fold_axis(rows, group, con)
         if rel is not None:
             groups[group] = rel
     return groups

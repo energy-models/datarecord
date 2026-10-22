@@ -576,7 +576,7 @@ class WorkingRecord(Record):
         - **INSERT** a label not yet staged, taking its siblings from the base row
           where the base has one and the edited column from `edit`. Its siblings
           have to travel with it: the fold is whole-row last-writer-wins per label
-          (`fold_axis`), so a staged patch carrying only its own column would win
+          (`_fold_axis`), so a staged patch carrying only its own column would win
           the label and blank the rest - the resolved row is the layer's, not one
           the read rebuilds column by column. A label the base also lacks is new,
           and the edit is the whole of its row.
