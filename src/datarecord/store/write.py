@@ -584,7 +584,7 @@ class _RecordLikeAsLayerData:
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order.
 
-        The row is numbered on `dims[dim]` alone, as `fold_axis` numbers a
+        The row is numbered on `dims[dim]` alone, as `_fold_axis` numbers a
         layer's, and the `ORDER BY` on it is the outermost clause, since a
         join defines no order.
         """

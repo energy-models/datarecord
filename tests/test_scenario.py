@@ -171,7 +171,7 @@ def test_child_adds_new_scenario(store, parent, stochastic):
 def test_scenario_order_survives_a_chain_of_closed_layers(store, parent, stochastic):
     """Axis row order stays root-first, then each layer's own append order.
 
-    `fold_axis` tags each layer's row order (`_row`) before the cross-layer
+    `_fold_axis` tags each layer's row order (`_row`) before the cross-layer
     `UNION ALL` in `union_all_by_name`, not after: a bare `row_number()` on
     the unioned relation would have no defined order to draw from and could
     silently permute which scenario counts as "first introduced". A single
