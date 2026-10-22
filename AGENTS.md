@@ -177,7 +177,7 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
     """
 ```
 
-## Running the tests
+## Running the tests and other long runs
 
 The suite takes ~3 minutes, which is long enough that reading it as it scrolls wastes
 the wait. Redirect it to a file and grep the file instead:
@@ -187,8 +187,11 @@ $ pixi run test > "$TMPDIR/pytest.log" 2>&1; echo "exit=$?"
 $ grep -n "FAILED\|Error\|assert" "$TMPDIR/pytest.log"
 ```
 
-Run it in the background and do the next piece of work while it goes; come back
-to the log rather than watching it.
+The same holds for every long run: the suite, the docs build, a benchmark, a fuzz
+run. Start it in the background with its output in a log, and do the next piece of
+work while it goes or simply wait for it to finish. Do not watch it: no polling, no
+repeated `tail` of the log, no `sleep` loop. Read the log once, after the run has
+exited.
 
 ## Licensing
 
