@@ -78,7 +78,7 @@ argument for it, the design it lands, and usage examples.
   copy it to `docs/design/proposals/dep-NNNN-slug.md`, where `NNNN` is the next
   free four-digit number, and append it to the end of the `Enhancement proposals`
   nav in `mkdocs.yml`. A number is never reused or reassigned.
-- Its header carries `Status` — `Draft`, `Accepted`, `Implemented` or
+- Its header carries `Status` — `Draft`, `Accepted`, `On hold`, `Implemented` or
   `Superseded`, with the date — and `Version`, the release it ships in:
   `Unreleased` until the release that sets it.
 - Implementing it moves the design into the
