@@ -66,6 +66,7 @@ nav:
           - "DEP 16: Categories are enum dimensions": design/proposals/dep-0016-categories-are-enum-dimensions.md
           - "DEP 17: One default per property": design/proposals/dep-0017-one-default.md
           - "DEP 18: A manifest is a mathspec": design/proposals/dep-0018-a-manifest-is-a-mathspec.md
+          - "DEP 20: A schema is built from a mathspec": design/proposals/dep-0020-a-schema-is-built-from-a-mathspec.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:
