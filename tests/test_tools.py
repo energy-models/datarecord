@@ -77,9 +77,11 @@ def _results_over(revision, n):
 
 
 def _sub_networks(revision) -> list[str]:
-    entities = revision.record.properties["entity"]
-    sub_networks = entities.filter("ctype = 'SubNetwork'")
-    return sorted(sub_networks.df()["entity"])
+    return _sub_networks_of(revision.record.dims["sub_network"])
+
+
+def _sub_networks_of(axis) -> list[str]:
+    return sorted(axis.df()["sub_network"])
 
 
 def _prices(revision) -> pd.DataFrame:
@@ -350,7 +352,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
         ),
         revision.store,
     )
-    write_component(store.layer_dir(revision.id), "Widget", [{"entity": "w1"}])
+    write_component(revision, "Widget", [{"entity": "w1"}])
 
     missing = PyPSA.verify(revision.record)
     assert missing.categories == {"Widget"}
@@ -437,7 +439,7 @@ def test_verify_reports_a_missing_required_attribute(exported, ac_dc):
     revision, store = exported, exported.store
     # A Generator member with no connection row supplying its bus
     # (https://energy-models.github.io/datarecord/design/record/#connections).
-    write_component(store.layer_dir(revision.id), "Generator", [{"entity": "g1"}])
+    write_component(revision, "Generator", [{"entity": "g1"}])
     # One file across every type, so the Generators' rows are dropped from it
     # rather than a per-type file being unlinked.
     path = Path(store.layer_dir(revision.id), "groups", "connection.parquet")
@@ -446,7 +448,7 @@ def test_verify_reports_a_missing_required_attribute(exported, ac_dc):
     entities = rows["connection"].map(lambda c: c["entity"])
     rows[~entities.isin(generators)].to_parquet(path, index=False)
 
-    write_component(store.layer_dir(revision.id), "Line", [{"entity": "l1"}])
+    write_component(revision, "Line", [{"entity": "l1"}])
 
     missing = PyPSA.verify(revision.record)
     assert ("Generator", "bus") in missing.attributes
@@ -628,11 +630,12 @@ def test_shapes_round_trip_in_their_crs(store):
     assert_geodataframe_equal(built.c.Shape.static, n.c.Shape.static)
 
 
-def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
-    """PyPSA numbers SubNetworks `0`, `1`, ... as it numbers Lines.
+def test_sub_networks_are_labels_of_their_own_dim(store, ac_dc):
+    """PyPSA numbers SubNetworks `0`, `1`, ... as it numbers Lines, which a dim of their own keeps apart.
 
-    The record keys them `0 SubNetwork`, ..., the `sub_network` results
-    pointing at them likewise, and `build` takes the suffix off again.
+    Notes
+    -----
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
     """
     n = ac_dc.copy()
     n.determine_network_topology()
@@ -641,9 +644,11 @@ def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
     revision = export_network(n, store)
     record = revision.record
     names = _sub_networks(revision)
-    assert names == [f"{i} SubNetwork" for i in range(4)]
+    assert names == [str(i) for i in range(4)]
     pointed = set(record.attributes["sub_network"].df()["value"])
-    assert pointed <= set(names), "a `sub_network` value names a SubNetwork entity"
+    assert pointed <= set(names), "a `sub_network` value names a `sub_network` label"
+    carriers = record.properties["sub_network"].df()["carrier"]
+    assert set(carriers) <= set(record.dims["carrier"].df()["carrier"])
 
     built = PyPSA.build(record)
     assert sorted(built.c["SubNetwork"].static.index) == ["0", "1", "2", "3"]
@@ -871,16 +876,42 @@ def test_a_re_solve_leaves_no_stale_sub_network(exported, solved):
     """
     revision = _results_over(exported, solved)
     *kept, dropped = sorted(solved.c["SubNetwork"].static.index)
-    assert _sub_networks(revision) == [f"{i} SubNetwork" for i in (*kept, dropped)]
+    assert _sub_networks(revision) == sorted([*kept, dropped])
+    entities = revision.record.dims["entity"].df()
+    assert entities.equals(exported.record.dims["entity"].df()), (
+        "a results layer leaves the entity axis alone"
+    )
 
     n = PyPSA.build(revision.record)
     n.remove("SubNetwork", dropped)
     resolved = _results_over(revision, n)
-    assert _sub_networks(resolved) == [f"{i} SubNetwork" for i in kept]
+    assert _sub_networks(resolved) == sorted(kept)
     slack = resolved.record.attributes["slack_bus"].df()
-    assert f"{dropped} SubNetwork" not in set(slack["entity"]), (
-        "its results went with it"
+    assert dropped not in set(slack["sub_network"]), "its results went with it"
+
+
+@pytest.mark.parametrize(
+    ("over_solved", "listed"), [(False, None), (True, [])], ids=["unsolved", "solved"]
+)
+def test_results_without_sub_networks_list_none(exported, solved, over_solved, listed):
+    """A solve without SubNetworks restates a `sub_network` axis `base` has empty, and writes none where it has none.
+
+    Notes
+    -----
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    """
+    base = _results_over(exported, solved) if over_solved else exported
+    n = PyPSA.build(base.record)
+    n.remove("SubNetwork", n.c["SubNetwork"].static.index)
+    n.c["Bus"].dynamic["marginal_price"] = pd.DataFrame(
+        1.0, index=n.snapshots, columns=n.c["Bus"].static.index
     )
+    record = _results_over(base, n).record
+    axis = record.dims.get("sub_network")
+    assert (None if axis is None else _sub_networks_of(axis)) == listed
+    assert "marginal_price" in record.attributes, "the results are written"
+    slack = record.attributes.get("slack_bus")
+    assert slack is None or slack.df().empty, "no stale SubNetwork keeps a result"
 
 
 @pytest.mark.parametrize(
@@ -1204,11 +1235,9 @@ def test_delays_are_rows_keyed_by_their_connections(workspace, store):
     assert not {"delay", "delay0", "delay2", "cyclic_delay1"} & members, (
         "no positional names on the members"
     )
-    assert set(record.groups["connection"].columns) == {
-        "connection",
-        "role",
-        "deleted",
-    }, "a connection row carries its key, its property and its tombstone"
+    assert set(record.groups["connection"].columns) == {"connection", "role"}, (
+        "a connection row carries its key and its property"
+    )
     rows = unpacked(record.attributes["delay"])
     delay = rows.set_index(["entity", "bus"])["value"].dropna().to_dict()
     assert delay == {

@@ -48,6 +48,7 @@ Two properties follow from accumulate-then-write, and both are the point:
 
 - An edit costs a row in a staging table, not a rewrite.
   A hundred edits to one attribute are a hundred rows, collapsed once when written.
+  The first edit of an axis or group copies the base's resolved one into its table.
 - Nothing touches the record until [`edits`](#edits) is written as a child.
   A caller that fails halfway leaves no layer; one that changes its mind calls `rollback()`.
 
@@ -55,14 +56,14 @@ Two properties follow from accumulate-then-write, and both are the point:
 
 Each edit maps onto exactly one part of the format:
 
-| edit                     | writes                                                 | key it targets                      |
-| ------------------------ | ------------------------------------------------------ | ----------------------------------- |
-| set an attribute         | `attributes/<attr>.parquet` rows                       | the attribute's coordinates         |
-| set a property           | one column of existing `dims/<dim>.parquet` rows       | the dim's axis key                  |
-| set a group's property   | one column of existing `groups/<group>.parquet` rows   | the group's struct                  |
-| add labels               | whole `dims/<dim>.parquet` rows                        | the dim's axis key                  |
-| remove labels            | `deleted = true` axis rows, and the tuples naming them | the dim's axis key, the group's key |
-| add_group / remove_group | `groups/<group>.parquet` rows and tombstones           | the group's own key coordinates     |
+| edit                     | writes                                                                     | key it targets                      |
+| ------------------------ | -------------------------------------------------------------------------- | ----------------------------------- |
+| set an attribute         | `attributes/<attr>.parquet` rows                                           | the attribute's coordinates         |
+| set a property           | the whole `dims/<dim>.parquet`, one column of a row changed                | the dim's axis key                  |
+| set a group's property   | the whole `groups/<group>.parquet`, one column of a row changed            | the group's struct                  |
+| add labels               | the whole `dims/<dim>.parquet`, the labels' rows added                     | the dim's axis key                  |
+| remove labels            | the whole `dims/<dim>.parquet` without them, each group without its tuples | the dim's axis key, the group's key |
+| add_group / remove_group | the whole `groups/<group>.parquet`, tuples added or left out               | the group's own key coordinates     |
 
 Nothing names `entity` or a category: `add` and `remove` take any dim, and which coordinates an attribute's row carries is its [`dims`](schema.md#attributespec).
 Nor is there a `connect`/`disconnect` pair beside `add_group` — `connection` is one group among however many the schema declares, and a call naming it would be the record layer holding one framework's vocabulary.
@@ -147,6 +148,7 @@ w.remove("carrier", ["gas"])  # refused while entity.carrier holds it
 
 `add(dim, labels, **columns)` stages whole axis rows: `columns` are the other columns of `dims/<dim>.parquet` — the dim's properties, bare since the subject is `dim` — each a scalar for every label or a sequence aligned to `labels`.
 A column no keyword names is NULL on these rows, since `add` restates a label's row whole.
+A new label is appended after the axis's last, and a label of the base that was removed goes back to its base position.
 A label of a [dim that lists its labels](schema.md#dtypes) must be one it lists: the dim's own in `add(dim, ...)`, and the value of a property that takes its labels from the dim. The axis of such a dim holds only the labels added, so a property holding a listed label not on the axis is refused as any unknown label is, and `remove` takes a label of such a dim as any dim's.
 An attribute keyword is refused with a pointer to `set`: an attribute's values are long rows whatever its `dims`, never a column of the axis.
 A column the schema does not declare is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column. A tool that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
@@ -157,10 +159,10 @@ Uniqueness is structural: one axis row per label, so an `add` of a label the rec
 
 Adding a component with its connections and varying values is `add`, then [`add_group`](#add_group-remove_group), then a `set` per attribute.
 
-`remove(dim, labels)` stages one tombstone per label, and no dim scope: a label [exists or it does not](schema.md#existence-does-not-vary-along-a-dim).
+`remove(dim, labels)` deletes each label's row from the staged axis, with no dim scope: a label [exists or it does not](schema.md#existence-does-not-vary-along-a-dim).
 It need not enumerate what it deletes: [the fold](layers.md#deletion) drops every value keyed by the label where `dim` is `partial`, a group attribute's by the label inside its struct ([the owner map](read-path.md#owner-map)).
-It also tombstones every tuple, of any group, with a field over `dim` naming one of `labels`, read from the record as it resolves with pending edits, so the [writer](layers.md#deletion) never meets a dangling tuple.
-An `add` of the same label revives the label alone: its tuples are re-added through [`add_group`](#add_group-remove_group).
+It also deletes every tuple, of any group, with a field over `dim` naming one of `labels`, read from the record as it resolves with pending edits, so the [writer](layers.md#deletion) never meets a dangling tuple.
+An `add` of the same label brings back the label alone: its tuples are re-added through [`add_group`](#add_group-remove_group).
 `remove` is **refused while a [property that takes its labels from](schema.md#properties) `dim` stores one of the labels**, read from the record as staged: a tuple goes with its label, but a property's row is its subject's and outlives it, so the caller `set`s it to another label or None first.
 
 ## `add_group` / `remove_group`
@@ -174,6 +176,7 @@ The one staging path every declared [group](schema.md#groups) writes through.
 
 `frame` is shaped like the group's file: one struct column named for the group (`connection STRUCT(entity, bus)`, `corridor STRUCT("from", "to")`) and the group's properties, such as PyPSA's `role`; its columns are checked as [`set`](#set) checks a frame's.
 A field as a column of its own is rejected with the struct to pass instead, as [`set`](#set) rejects it.
+A tuple naming a label that its field's axis, as staged, does not hold is refused ([validation](#validation)).
 `keys` is a tuple per row in the group's [key](schema.md#groups) order, packed into the struct for the caller.
 
 A group's attributes are not columns of its file but long rows, set through [`set`](#set) with the group's fields as keywords.
@@ -190,22 +193,17 @@ ws.write(w, "out/")  # base plus edits, flattened
 w.rollback()
 ```
 
-- **`w.edits`** — the staged layer alone, the [`LayerData`](record.md#layerdata) it already is. Written as a child of the revision `w` was built over, it is **only the edits** — that is what a patch layer is, and the fold resolves the rest from the parent. The layer lands in the **child**, never in the node branched from, so it is `child`'s return value that reads the edits back.
+- **`w.edits`** — the staged layer alone, the [`LayerData`](record.md#layerdata) it already is. Written as a child of the revision `w` was built over, it is **only the edits** — the attribute rows it set, and each axis and group it changed restated whole — and the fold resolves the rest from the parent. The layer lands in the **child**, never in the node branched from, so it is `child`'s return value that reads the edits back.
 - **`w`** itself — what is staged _plus what the record already reads_, the whole resolved record. Written as a standalone directory, there being no parent to resolve against.
 
 The writer cannot tell which it was handed, which is the point: "enumerate what I hold, hand each over" is one contract whether "what I hold" is a single layer or a whole fold.
 
 Each part of a write now has one owner. Which rows to write is the caller's choice of `w.edits` or `w`. Which parent is named by the caller, who built `w` from it. Clearing the staging area is `rollback()`, called or not: a `WorkingRecord` still holding its edits after a write reads exactly what it did before.
 
-One mistake is caught. `other.child(w.edits)`, with `w` built over a different revision, would write a delta computed against the wrong parent — an axis edit carries its base's sibling columns — and read back wrong, so `child` compares the edits' base revision with its own id and raises on a mismatch. Edits over a directory have no revision as their base and so are a child of none. One mistake is not caught: `rev.child(w)` writes the whole resolved record as a child layer rather than the delta. It reads back correctly, just larger, and a resolved record being a valid layer source too, `edits` is the name that has to carry it.
+One mistake is caught. `other.child(w.edits)`, with `w` built over a different revision, would write a delta computed against the wrong parent — an axis edit restates its base's whole axis — and read back wrong, so `child` compares the edits' base revision with its own id and raises on a mismatch. Edits over a directory have no revision as their base and so are a child of none. One mistake is not caught: `rev.child(w)` writes the whole resolved record as a child layer rather than the delta. It reads back correctly, just larger, and a resolved record being a valid layer source too, `edits` is the name that has to carry it.
 
-An edited axis follows [`partial`](schema.md#partial-the-granularity-of-an-override), exactly as an attribute's rows do.
-A `partial` axis is patched label by label: the layer holds the labels the edit touched, and the fold resolves the rest from the parent, last-writer-wins per [axis key](record.md#axis-order).
-An axis **outside** `partial` is owned whole once touched, so the layer restates every label with its properties — one rule for what non-partial means, rather than an axis-shaped exception to it.
-The fold would resolve the narrower form correctly, since it keys per label and an omitted one keeps its parent's row; what ownership buys is that a layer's axis file says what the axis _is_ there, rather than being readable only against its parent.
-A standalone write of `w` writes the resolved axis whole either way, and an axis nothing touched is written by neither.
-
-Restating on edit is what an axis outside `partial` costs, and it is [the cheaper side of that trade](schema.md#partial-the-granularity-of-an-override) — which is the reason not to reach for `partial` when an axis merely gains a property.
+An edited axis or group is restated whole, whatever [`partial`](schema.md#partial-the-granularity-of-an-override) says: the layer holds every label the axis has with the edits applied, with its properties, in [axis order](record.md#axis-order), so a layer's axis file says what the axis _is_ there rather than being readable only against its parent ([deletion](layers.md#deletion)).
+A standalone write of `w` writes the resolved axis whole as well, and an axis nothing touched is written by neither.
 
 A base's results are [attributes](schema.md#a-result-is-an-attribute), carried like any other: a child written from `edits` inherits them from its parent, and a whole-record write holds them resolved. A solve's own results are not staged here but written as a thin layer by the tool ([writing results](tools.md#writing-results)).
 
@@ -219,12 +217,12 @@ The same distinction governs [the read overlay](#reading-with-pending-edits) and
 
 Three interactions need stating, because each is where replacing by coordinate alone is not the whole story:
 
-- **`remove` after `set`** on the same label: the tombstone wins, since a deleted label has no values.
-  A tombstone reaches another file's rows, so it stays an anti-join at read and write rather than a replace — the attribute rows are keyed by coordinate, the tombstone by label.
-  A layer's tombstones apply only to its parents in [the fold](read-path.md#owner-map), so the staged collapse drops its own rows itself: a row naming a removed label, and a row whose group column names a tuple staged deleted, by `remove_group` or by `remove`'s cascade.
-- **`add` after `remove`** of the same label: the label exists again.
-  The axis replaces on its key, so the `add` row displaces the tombstone by construction.
-  So do the parent's values for it, which only the displaced tombstone reached; its tuples stay removed.
+- **`remove` after `set`** on the same label: the removal wins, since a removed label has no values.
+  A removal reaches another file's rows, so it stays an anti-join at read and write rather than a replace — the attribute rows are keyed by coordinate, the axis by label.
+  A layer's removals apply only to its parents in [the fold](read-path.md#owner-map), so the staged collapse drops its own rows itself: a row naming a label the staged axis removed, and a row whose group column names a tuple the staged group removed, by `remove_group` or by `remove`'s cascade.
+  Since `set` refuses a label the staged axis does not hold ([validation](#validation)), a removal after the `set` is the only way a staged row comes to name one.
+- **`add` after `remove`** of the same label: the label exists again, at its base position.
+  The staged axis then holds it as the base does, so the parent's values for it come back; its tuples stay removed.
 - **`set` on a label this record also added**: correct as-is, the attribute living in `attributes/` and a property patching the staged row.
 
 The [non-`partial` rule](schema.md#partial-the-granularity-of-an-override) is the subtle one.
@@ -242,11 +240,15 @@ Carried rows go in only where no edit already holds the coordinate, so a later `
 What editing adds is edit-level, caught when the edit is **staged**, not at write — a caller should learn about a typo'd attribute at the line that typed it, not fifty edits later:
 
 - an undeclared attribute, property or keyword, or a keyword the attribute does not vary over; a plain name only properties are called is refused naming their dotted forms, `set("carrier", …)` suggesting `bus.carrier` and `entity.carrier`;
-- a label of a `partial` dim the record does not resolve, `add` them first;
+- a label that its dim's axis, as staged, does not hold, for every dim, `partial` or not, `add` them first;
+- a tuple that its group, as staged, does not hold, in `set`, `add_group` them first;
+- a tuple naming a label that its field's axis, as staged, does not hold, in `add_group` or `set`, naming the group, the field and up to three such labels — in `set` before the tuple itself is checked, so a `set` at a connection naming an unknown bus names the bus;
 - a label a [dim that lists its labels](schema.md#dtypes) does not list, in `add` or `set`;
 - a frame column of a type that does not fit its dtype, timestamps with a time zone among them, and by the same rule a label given to `set`, `add` or `remove`, or a value of a property that takes its labels from a dim — a string is not parsed into a `datetime` dim's label;
 - a value of a [property that takes its labels from a dim](schema.md#properties) that is no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
 - an `add` naming an attribute.
+
+Each of the label and tuple checks is one DuckDB query that anti-joins the staged rows against the axis or group as staged, for every column it checks at once.
 
 A label's categories are not checked against the attribute: every label carries [every attribute it addresses](schema.md#an-attribute-reaches-every-label-it-addresses), so a misplaced value is stored, and a tool not taking it leaves it out.
 
@@ -256,17 +258,17 @@ Staged rows live in DuckDB tables on the record's own connection:
 
 ```sql
 CREATE TABLE staged_attributes_<attr>_<id> (<that attribute's long columns>);
-CREATE TABLE staged_axis_<dim>_<id>      (<the axis key>, <the dim's properties>, deleted BOOLEAN);
-CREATE TABLE staged_<group>_<id>         (<group struct>, <the group's properties>, deleted BOOLEAN);
+CREATE TABLE staged_axis_<dim>_<id>      (<the axis key>, <the dim's properties>, <position>);
+CREATE TABLE staged_<group>_<id>         (<group struct>, <the group's properties>, <position>);
 ```
 
-**Every table is shaped like the file it becomes**, which is the rule the rest of this section is consequences of. So there is no table whose columns are a union over things the format keeps apart, and a column the schema does not declare has nowhere to go — [`add`](#add-remove) rejects one rather than widening a table to fit it, there being no declared dtype to give it.
+**Every table is shaped like the file it becomes**, which is the rule the rest of this section is consequences of; an axis or group table adds only a position column, since a DuckDB table keeps no row order. So there is no table whose columns are a union over things the format keeps apart, and a column the schema does not declare has nowhere to go — [`add`](#add-remove) rejects one rather than widening a table to fit it, there being no declared dtype to give it.
 
 **One table per staged attribute**, because that is the file it becomes: its columns are [the attribute's own coordinates](format.md#the-long-schema) and `value` has the attribute's declared type.
 A shared table would have to widen `value` to text and carry every declared dim, which costs twice: the value needs casting back on the way out, and a NULL in a dim column becomes ambiguous between "this attribute has no such axis" and [the broadcast rule](record.md#the-broadcast-rule)'s "every value of it".
 Per attribute both questions are answered by the table's shape, so neither is asked.
 
-**One table per staged axis and per declared [group](schema.md#groups)**, mirroring [the maps the fold builds](read-path.md#owner-map): its key, its properties and a tombstone column, so `add` writes one row per label and `remove` one tombstone. Both replace on the key, so re-adding or removing a label displaces its earlier row rather than stacking beside it, while a property `set` patches one column in place.
+**One table per staged axis and per staged [group](schema.md#groups)**, holding it whole as a layer restates it: its key, its properties and a position column. The first edit copies the base's resolved axis or group into it in base order. `add` appends a new label at the next position and puts a label of the base back at its base position, `remove` deletes the label's row, and a property `set` patches one column in place. No staging table carries `deleted`, and the writer and the reads take the table in position order.
 `entity` is staged as any other dim, `staged_axis_entity_<id>`, and reaches [the fold](read-path.md) as `axis("entity")` with no special case.
 
 These tables are the **only** place a staged row exists: [the reads](#reading-with-pending-edits) read them rather than holding a copy.
@@ -276,7 +278,7 @@ DuckDB rather than in-memory objects, for three reasons that all matter: the rea
 Tables in the workspace's database, like the folded caches, so on `:memory:` they vanish with the workspace and never appear on disk.
 A record whose edits must survive a process boundary should be written as a child.
 
-An edit **replaces** what it names rather than appending, so a table holds one row per key and reading it is a scan — no ordering column, and edit order is just which edit ran last.
+An edit **replaces** what it names rather than appending, so a table holds one row per key and reading it is a scan — no ordering column on an attribute's table, and edit order is just which edit ran last.
 
 ## Reading with pending edits
 
@@ -296,5 +298,5 @@ So the fold is materialised up to the last layer that cannot change under the re
 `flags` follows for free, computed in the fold's own ownership `GROUP BY` as it is for any layer: a staged row setting a dim adds it to `varies`, one leaving it NULL adds it to `broadcast`, and a staged curve sets `breakpoints`.
 It says nothing about a property, which is a column of its subject's axis or group file and read from `properties` or `members`, staged edits included.
 
-An axis overlays per column rather than per row: a staged label's edited columns win, and a label the edit did not name keeps the base's whole row.
-So two `set` calls for two properties of one label compose instead of the later one blanking the earlier's column.
+A staged axis or group is read as its table stands, in position order: the table already holds the base's rows with the edits applied, so a read composes nothing.
+Two `set` calls for two properties of one label compose, each patching its own column of the row.

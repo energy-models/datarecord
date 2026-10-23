@@ -55,28 +55,37 @@ Where a materialised map exists, a read stops there: the map is already folded o
 That truncation is what keeps a deep chain cheap.
 The same rule decides where resolved dims come from — a node's own `resolved/dims/` where materialised, its raw `dims/` otherwise — answered by the cache's presence rather than by any recorded state.
 The two are distinct paths within one directory, so a record read as an ancestor and the same record read as itself never alias.
+`resolved/dims/` and `resolved/groups/` hold copies of the deepest layer file for each axis and group at or below the node, so a read of an axis stops there too.
 
-Beside the resolved dims and groups, `resolved/dead/<coord>.parquet` holds the [dead labels](read-path.md#a-label-outside-the-key) of each coordinate outside `partial` and each dim a group draws on, written only where there are any.
-A read above the node seeds its dead labels from these, the resolved relations themselves holding no tombstones.
+Beside the resolved dims and groups, `resolved/dead/<coord>.parquet` holds the [dead labels](read-path.md#a-label-outside-the-key) of each coordinate outside the owner-map key, and of each dim a group's field ranges over or a property takes its labels from, written only where there are any.
+A read above the node seeds its dead labels from these, since the copied files hold only the labels that live.
+`resolved/dead/` and `owner_map.parquet` are folds rather than copies, since no layer file holds either.
 
 Materialising is a policy: every N layers, at a branch point, on demand.
 It is purely additive, writing files under `resolved/` and changing no answer, only how many layers a read touches to reach it.
 
 ## Deletion
 
-A `deleted = true` row in `dims/<dim>.parquet` — [the entity axis](format.md#the-entity-axis) like any other — tombstones a label from every attribute, and from every value of every other dim — [existence does not vary along one](schema.md#existence-does-not-vary-along-a-dim), so there is nothing to scope a deletion by.
-A `deleted = true` row in `groups/<group>.parquet` tombstones one row of that group — the row itself, and its `attributes/` rows where the group is `partial` — leaving the labels it names and their other rows intact, so a connection is removed without touching the entity it attached.
+A layer that changes an axis writes `dims/<dim>.parquet` whole — [the entity axis](format.md#the-entity-axis) like any other — with every label the axis has at its node, their properties, in order.
+A label is removed at a layer whose file omits it while the previous restatement of the axis holds it.
+The previous restatement is the deepest file for the axis below that layer, or else a materialised base's resolved axis or the frozen prefix's [shared table](read-path.md#a-cursor-per-thread), and a first restatement removes nothing.
+A removed label leaves every attribute, and every value of every other dim — [existence does not vary along one](schema.md#existence-does-not-vary-along-a-dim), so there is nothing to scope a removal by.
+A layer removes a tuple of a group the same way, restating `groups/<group>.parquet` without it; the tuple's values go with it, and the labels it names and their other rows stay, so a connection is removed without touching the entity it attached.
 
-A tombstone is honoured by the [one fold](read-path.md#one-fold-for-every-axis) that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
-An _attribute's_ orphaned rows stop surfacing the same way, for every key column: an attribute row is keyed by the partial dims and groups its `dims` name, and [`fold_attributes`](read-path.md#owner-map) anti-joins the map against each one's `deleted` rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map.
+A patch layer written by hand, holding a few labels, is not detected, and reads as a restatement removing every label it omits.
+
+An _attribute's_ orphaned rows stop surfacing for every key column: an attribute row is keyed by the partial dims and groups its `dims` name, and [`fold_attributes`](read-path.md#owner-map) drops the parent's map rows naming a label or tuple the layer removes as it folds — so a key whose entity, connection tuple or dim coordinate was removed is absent from the resolved map.
 A label of a dim or group outside `partial` is in no key, so its rows are [dropped at read](read-path.md#a-label-outside-the-key) against that coordinate's dead labels instead.
-Each axis and group honours only its **own** tombstones, read from the same file it folds from, and nothing is inferred from a dead label a row refers to.
-So removing a label is written as a cascade, the same for every dim: [`remove(dim, labels)`](working-record.md#add-remove) tombstones the labels and every live group tuple with a field over `dim` naming one, in one layer, and the tuples' values go with them.
-A layer adding a tuple, or storing a [property that takes its labels from](schema.md#properties) a dim, that names a dead label, or removing a label either still names, is refused by the writer, which folds the parent's axes and groups to tell; a property holding a label is cleared before the label goes, [`remove`](working-record.md#add-remove) refusing it until then. A reference an ancestor left dangling fails no later write, the check being of what the layer does.
+An axis or group loses a label or tuple only where its **own** file omits it, and nothing is inferred from a dead label a row refers to.
+So removing a label is written as a cascade, the same for every dim: [`remove(dim, labels)`](working-record.md#add-remove) restates the axis without the labels and every group with a field over `dim` without the tuples naming one, in one layer, and the tuples' values go with them.
+A layer adding a tuple, or storing a [property that takes its labels from](schema.md#properties) a dim, that names a dead label, or removing a label either still names, is refused by the writer; a property holding a label is cleared before the label goes, [`remove`](working-record.md#add-remove) refusing it until then.
+The writer checks each subject whose rows name a label the layer removes, and the properties of each subject the layer restates, whole and in its final state, against the dead labels at the layer's node, the labels the layer removes being its parent's axis minus its restatement; a restated group's tuples it holds to the layer's final axes, below, which no dead label is in.
+A reference an ancestor left dangling therefore fails the next write touching its subject, and that write can drop or repair the row, since it restates the subject whole.
+A layer's attribute rows name only labels of its final axes and tuples of its final groups, and its group tuples only labels of its final axes, which the writer checks too, so a value or a tuple never names a label the layer removes or no layer added.
 Re-adding the label does not revive its tuples. Re-adding a tuple outside `partial` revives its values, which are owned per attribute rather than per tuple.
-A tombstone only affects the branch that carries it; sibling branches keep the label.
+A removal only affects the branch whose layer restates the axis without the label; sibling branches keep the label.
 
-The fold treats an absent `deleted` column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.
+A layer may be a parquet directory this package did not write, as long as each `dims/` and `groups/` file restates its axis or group whole, holds each key once, and carries no column but its key and its subject's declared properties.
 Every derived cache lives under `resolved/` for the same reason: every glob the read path issues into a layer is single-level — `attributes/*.parquet`, `dims/*.parquet`, `groups/*.parquet` — so nothing under `resolved/` is reachable by one.
 A reader pointed at a layer directory therefore sees exactly what that layer wrote, and materialising a node's caches never changes what it sees.
 

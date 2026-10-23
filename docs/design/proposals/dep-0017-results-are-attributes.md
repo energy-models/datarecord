@@ -6,14 +6,15 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 17: results are attributes
 
-| DEP      | 17                                  |
-| -------- | ----------------------------------- |
-| Title    | results are attributes              |
-| Author   | Jonas Hoersch                       |
-| Status   | Implemented (2026-10-20)            |
-| Requires | [DEP 16](dep-0016-remove-traits.md) |
-| Created  | 2026-10-20                          |
-| Version  | Unreleased                          |
+| DEP           | 17                                                                                                       |
+| ------------- | -------------------------------------------------------------------------------------------------------- |
+| Title         | results are attributes                                                                                   |
+| Author        | Jonas Hoersch                                                                                            |
+| Status        | Implemented (2026-10-20)                                                                                 |
+| Requires      | [DEP 16](dep-0016-remove-traits.md)                                                                      |
+| Created       | 2026-10-20                                                                                               |
+| Version       | Unreleased                                                                                               |
+| Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its SubNetwork as an `entity`, and its tombstones) |
 
 ## Abstract
 

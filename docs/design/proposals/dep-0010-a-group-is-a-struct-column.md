@@ -6,13 +6,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 10: a group is one struct column
 
-| DEP     | 10                                                                          |
-| ------- | --------------------------------------------------------------------------- |
-| Title   | a group is one struct column                                                |
-| Author  | Jonas Hörsch                                                                |
-| Status  | Implemented 2026-10-12, [amendment](#amendment-a-group-is-a-dim) 2026-10-13 |
-| Created | 2026-10-12                                                                  |
-| Version | Unreleased                                                                  |
+| DEP           | 10                                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------------------ |
+| Title         | a group is one struct column                                                                           |
+| Author        | Jonas Hörsch                                                                                           |
+| Status        | Implemented 2026-10-12, [amendment](#amendment-a-group-is-a-dim) 2026-10-13                            |
+| Created       | 2026-10-12                                                                                             |
+| Version       | Unreleased                                                                                             |
+| Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its group tombstones anti-joining the owner map) |
 
 Landed in the [steps below](#landing) on [the schema](../schema.md#groups), [the record](../record.md#the-broadcast-rule), [the format](../format.md#the-long-schema), [the read path](../read-path.md#owner-map), [the working record](../working-record.md#set) and [consuming a record](../tools.md#results-on-connections); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 [What the implementation found](#what-the-implementation-found) records where it departs from or adds to the argument below.

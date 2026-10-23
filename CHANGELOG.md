@@ -195,6 +195,38 @@ All notable changes to datarecord are documented here. The format follows
   dim (breaking).
 - `PyPSA.build` raises a `TypeError` for a `RecordLike` that is not a
   `Record`, where it took any record with a DuckDB connection (breaking).
+- A layer that changes an axis or a group restates it whole, in order, and a
+  node's axis or group is the deepest file for it (breaking). A label is
+  removed where a restatement omits it after the previous one held it, and
+  its order is the file's row order, so the per-label fold, tombstones and
+  `partial` as how many labels an axis layer carries are gone. A
+  `WorkingRecord` stages an edited axis or group whole, copied from the base
+  at its first edit. A materialised node's `resolved/dims/` and
+  `resolved/groups/` hold copies of the deepest file.
+- A key held twice in a `dims/` or `groups/` file, and a column that is
+  neither its key nor a declared property of its subject, are refused at
+  read too, and `write_layer` refuses a restatement that orders its parent's
+  labels otherwise than the parent.
+- A reference to a dead label in a group tuple or a property is checked in
+  every subject a layer restates, whole, so one an ancestor left dangling
+  fails the next layer restating its subject (breaking).
+- PyPSA SubNetworks are labels of the dim `sub_network`, unsuffixed, with
+  `sub_network.carrier` taking its labels from `carrier` and `slack_bus` over
+  `sub_network`; `ctype` no longer lists `SubNetwork` (breaking). A results
+  layer restates the `sub_network` axis and leaves the entity axis alone.
+  A solve without SubNetworks restates the axis empty where the record has
+  one, so no stale SubNetwork stays listed, and writes none where it has
+  none.
+- `WorkingRecord.set` refuses an attribute value at a label that its dim's
+  axis, as staged, does not hold, for every dim, where it refused one only
+  for a `partial` dim, and at a tuple that its group, as staged, does not
+  hold (breaking); a tuple naming an unknown label is refused for the label.
+  `add_group` refuses a tuple naming a label that its
+  field's axis, as staged, does not hold (breaking). `write_layer` refuses
+  an attribute row naming a label or a tuple that the layer's final axis or
+  group does not hold, and a group tuple naming a label that the layer's
+  final axis does not hold, so a layer written by hand or by a tool meets
+  the same rules. Each check is one DuckDB anti-join query.
 
 ### Added
 

@@ -53,7 +53,7 @@ class LayerData(Protocol):
 
 Each pair is an enumerator — the keys of that kind — and a read for one key.
 
-An `axis` is the rows of its file: the labels, their tombstones and the dim's properties. A `group` is its tuples and the group's properties.
+An `axis` is the rows of its file: every label the axis has at the layer's node, in order, with the dim's properties. A `group` is every tuple the group has there, in order, with the group's properties.
 
 A [`LayerSource`](read-path.md#owner-map) answers `axis`/`group`/`attribute` for its own layer's rows.
 A staged layer's own rows (`w.edits`) are such a source, so a [`WorkingRecord`](working-record.md#edits) hands its edits to the writer as they are.
@@ -125,8 +125,8 @@ A connection is one row of the **`connection` [group](schema.md#groups)** — `G
 A connection is identified by **the bus it attaches to**, never by position.
 An attribute is a connection attribute because its `dims` name the group, so a per-connection value is otherwise an ordinary long row: `efficiency` may vary by timestep and scenario like any other attribute, and decodes by the same rules with no special case.
 
-**A connection attribute is keyed by the connection, not the entity.** Its row carries no top-level `entity`; the entity's tombstone reaches it by the entity inside the struct, in [the fold](read-path.md#owner-map) where the group is `partial` and at read where it is not.
-Removing an entity also [tombstones its connections](working-record.md#add-remove), so their values go with them.
+**A connection attribute is keyed by the connection, not the entity.** Its row carries no top-level `entity`; an entity's removal reaches it through the connection, in [the fold](read-path.md#owner-map) where the group is `partial` and at read where it is not.
+Removing an entity also [removes its connections](working-record.md#add-remove), so their values go with them.
 
 A record declaring no such group has no connections, and one declaring it with no rows answers `groups["connection"]` empty.
 Nothing about the mechanism is particular to buses — `corridor` over `(from, to)` is the same machinery, which is why `bus` is a field name here rather than a word the read path knows.
@@ -157,9 +157,9 @@ Along any other dim it answers a row leaving the dim NULL beside a more specific
 
 An axis's order is the row order of its frame in `dims`.
 
-Labels and a group's rows are in the order they were introduced across layers ([the owner map](read-path.md#owner-map)).
-A label or tuple that a layer removes and a later layer adds again is introduced where it is added again.
-Order is never a stored column: a file's row order is the input, and the fold derives that order from it.
+Labels and a group's rows are in the row order of the deepest layer file for the axis or group ([one fold for every axis](read-path.md#one-fold-for-every-axis)).
+A label or tuple that a layer removes and a later layer adds again sits where that later layer's file puts it.
+Order is never a stored column: a file's row order is the order, and the writer refuses a file that reorders its parent's labels.
 
 ## Relations
 

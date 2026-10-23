@@ -42,7 +42,7 @@ class LayerSource(Protocol):
     `None` means this layer wrote nothing of that kind.
 
     Rows only. Everything the fold does to them - padding to the long schema,
-    expanding broadcasts against an axis, the ownership aggregate, `order_key` -
+    expanding broadcasts against an axis, the ownership aggregate -
     stays in the fold, which is the point: an implementation computing any of it
     would be a second copy of the fold.
 
@@ -111,7 +111,8 @@ class LayerSource(Protocol):
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """`dims/<dim>.parquet` - one axis's full row, not the key alone.
 
-        Its properties ride along as columns, its tombstones as `deleted`.
+        Its properties ride along as columns. A file restates the axis whole,
+        in order.
         """
         ...
 
@@ -125,7 +126,7 @@ class LayerSource(Protocol):
         ...
 
     def group(self, name: str) -> DuckDBPyRelation | None:
-        """`groups/<name>.parquet` - one group's rows, tombstones included."""
+        """`groups/<name>.parquet` - one group's tuples, whole and in order."""
         ...
 
     def attributes(self) -> set[str]:
@@ -202,7 +203,7 @@ class _FileLayer:
         }
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        return self._read(f"dims/{dim}.parquet", union_by_name=True)
+        return self._restatement("dims", dim)
 
     def groups(self) -> set[str]:
         return {
@@ -211,7 +212,17 @@ class _FileLayer:
         }
 
     def group(self, name: str) -> DuckDBPyRelation | None:
-        return self._read(f"groups/{name}.parquet", union_by_name=True)
+        return self._restatement("groups", name)
+
+    def _restatement(self, kind: str, subject: str) -> DuckDBPyRelation | None:
+        """Return `{kind}/{subject}.parquet`, refusing a column it has no place for."""
+        file = f"{kind}/{subject}.parquet"
+        rel = self._read(file, union_by_name=True)
+        if rel is not None:
+            refuse_foreign_columns(
+                set(rel.columns), {subject}, self.schema, subject, file
+            )
+        return rel
 
     def attributes(self) -> set[str]:
         return {
@@ -228,6 +239,43 @@ class _FileLayer:
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """No cache by default: only a `ParquetLayer` has a revision to key one by."""
         return None
+
+
+def refuse_foreign_columns(
+    columns: set[str], structural: set[str], schema: Schema, subject: str, file: str
+) -> None:
+    """Refuse a column of an axis or group file beyond `structural` and `subject`'s properties.
+
+    `structural` is the key, and at write an explicit order key, which the
+    write drops.
+
+    Raises
+    ------
+    ValueError
+        Naming the file and the columns.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    """
+    known = structural | set(schema.properties.get(subject, {}))
+    extra = sorted(columns - known)
+    if not extra:
+        return
+    attributes = [c for c in extra if c in schema.attributes]
+    named = "they" if attributes == extra else str(attributes)
+    hint = (
+        f"; {named} are attributes, whose values are long rows of "
+        f"attributes/<attr>.parquet whatever their `dims`"
+        if attributes
+        else ""
+    )
+    msg = (
+        f"{file} carries columns {extra} the schema does not declare as "
+        f"properties of {subject!r}; the file holds only its key and those "
+        f"properties, {sorted(known)}{hint} (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+    )
+    raise ValueError(msg)
 
 
 @dataclass(frozen=True)

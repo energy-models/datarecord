@@ -26,6 +26,15 @@ The column is held to its dtype as [`set`](working-record.md#set) holds a frame'
 Validation is structural: a long frame carries [its attribute's own coordinates](format.md#the-long-schema), and an entity frame carries every dim it is keyed by.
 Which entity types are valid belongs to [the schema's vocabulary](schema.md), which the record layer does not interpret.
 
+A `dims/` or `groups/` file is the whole axis or group at the new node, in order ([deletion](layers.md#deletion)).
+The writer refuses one holding a key twice or carrying a column that is neither its key nor a declared property of its subject.
+It refuses one whose order on its parent's labels differs from the parent's too, naming the first label out of place, since a consumer numbers ports by [that order](record.md#axis-order).
+An attribute row naming a label that the layer's final axis of its dim does not hold is refused for every dim, naming the dim and up to three such labels.
+An attribute row at a tuple that the layer's final group does not hold is refused the same way, naming the group.
+A group tuple naming a label that the layer's final axis of its field's dim does not hold is refused, naming the group, the field and up to three such labels.
+The final axis or group is the layer's own file, else its parent's resolved one, and each file is checked by one DuckDB query that anti-joins its rows against the final axis or group of every column it names.
+So a layer written by hand or by a tool holds values only at labels some axis holds and at tuples some group holds, as [`set`](working-record.md#validation) holds a staged one.
+
 An **attribute the schema does not declare is rejected**, unlike an entity type, a [result](schema.md#a-result-is-an-attribute) like any other: its [`dims`](schema.md#attributespec) are what say which columns its file carries, so an undeclared one has no shape to write it in and would leave a file no reader could derive the columns of.
 
 A frame carrying a column its attribute is **not** addressed by is rejected too, rather than narrowed on the way out.
