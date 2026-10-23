@@ -6,12 +6,12 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Record
 
-::: datarecord.layered.resolve.Record
+::: datarecord.resolve.record.Record
 
-::: datarecord.record.RecordLike
+::: datarecord.protocols.RecordLike
 
-::: datarecord.record.Relations
+::: datarecord.protocols.Relations
 
-::: datarecord.record.LazyRelations
+::: datarecord.protocols.LazyRelations
 
-::: datarecord.record.Flags
+::: datarecord.protocols.Flags

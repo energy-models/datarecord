@@ -15,16 +15,17 @@ import pytest
 from duckdb import DuckDBPyRelation
 
 from datarecord.mutable import WorkingRecord
-from datarecord.record import Flags, RecordLike, Relations
-from datarecord.schema import AttributeSpec, Schema
+from datarecord.protocols import Flags, RecordLike, Relations
+from datarecord.schema.schema import Schema
+from datarecord.schema.specs import AttributeSpec
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
     empty_root,
     schema,
+    write_attribute,
     write_component,
     write_group,
-    write_input,
     write_schema,
 )
 
@@ -45,7 +46,7 @@ def written(store):
     write_group(
         layer, "connection", [{"connection": {"entity": "wind", "bus": "north"}}]
     )
-    write_input(
+    write_attribute(
         layer,
         "p_max_pu",
         [
@@ -53,7 +54,9 @@ def written(store):
             for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
         ],
     )
-    write_input(layer, "efficiency", [{"entity": "wind", "bus": "north", "value": 0.9}])
+    write_attribute(
+        layer, "efficiency", [{"entity": "wind", "bus": "north", "value": 0.9}]
+    )
     return revision
 
 
@@ -249,7 +252,7 @@ def test_flags_report_both_sets_where_components_disagree(store):
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
     write_component(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
-    write_input(
+    write_attribute(
         layer,
         "p_max_pu",
         [
@@ -298,8 +301,8 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
         store,
     )
     write_component(layer, "Generator", [{"entity": "wind"}])
-    write_input(layer, "p_nom", [{"entity": "wind", "value": 100.0}])
-    write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
+    write_attribute(layer, "p_nom", [{"entity": "wind", "value": 100.0}])
+    write_attribute(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
 
     record = revision.record
     flags = record.flags()
@@ -412,7 +415,7 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
         store = workspace.store(str(tmp_path / name))
         write_schema(schema(dims=dims, partial=set(dims)), store)
         revision = empty_root(store)
-        write_input(
+        write_attribute(
             store.layer_dir(revision.id), "p_nom", [{"entity": "g", "value": 1.0}]
         )
         stores[name] = (store, revision)

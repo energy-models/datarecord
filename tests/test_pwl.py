@@ -11,16 +11,16 @@ Notes
 
 import pytest
 
-from datarecord.layered.revision import Revision
-from datarecord.record import Flags
+from datarecord.protocols import Flags
+from datarecord.store.store import Revision
 from tests.fixtures import (
     empty_child,
     empty_root,
     relation,
     schema,
+    write_attribute,
     write_component,
     write_connections,
-    write_input,
     write_schema,
 )
 
@@ -59,13 +59,13 @@ def _root_with_curve(store, *, scalar: float | None = None) -> Revision:
             for x, v in ((0.0, 20.0), (50.0, 35.0), (80.0, 60.0))
         ]
     )
-    write_input(layer, "marginal_cost", rows)
+    write_attribute(layer, "marginal_cost", rows)
     return revision
 
 
 @pytest.mark.parametrize("scalar", [None, 20.0], ids=["over-a-curve", "over-a-scalar"])
 def test_a_child_curve_replaces_the_parents_value_whole(store, scalar):
-    """`breakpoint` is not in `input_key`: one layer owns every breakpoint of a key.
+    """`breakpoint` is not in `owner_map_key`: one layer owns every breakpoint of a key.
 
     So a child's curve replaces a parent's curve entirely - never a mix of the
     two - and may turn a scalar into a curve, it being one key either way.
@@ -74,7 +74,7 @@ def test_a_child_curve_replaces_the_parents_value_whole(store, scalar):
     root.materialise()
 
     child = empty_child(root)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "marginal_cost",
         [
@@ -102,7 +102,7 @@ def test_breakpoints_distinguishes_curve_from_scalar(store):
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
     revision = _root_with_curve(store)
-    write_input(
+    write_attribute(
         store.layer_dir(revision.id),
         "p_nom",
         [{"ctype": PROCESS, "entity": "steel_dri", "value": 100.0}],
@@ -144,7 +144,7 @@ def test_curve_on_a_connection(store):
             {"entity": "steel_dri", "bus": "dri", "role": "output"},
         ],
     )
-    write_input(
+    write_attribute(
         layer,
         "efficiency",
         [
@@ -166,7 +166,7 @@ def test_curve_on_a_connection(store):
 
     # Each connection owns its own curve, so a patch to one leaves the other.
     child = empty_child(revision)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "efficiency",
         [
@@ -202,7 +202,7 @@ def test_curve_varying_by_snapshot(store):
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
     write_component(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_input(
+    write_attribute(
         layer,
         "marginal_cost",
         [

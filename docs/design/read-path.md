@@ -28,7 +28,7 @@ breakpoints BOOLEAN
 It maps each key to the owning `layer_uuid`, with deletions already applied.
 It carries no `value`, no varying dim's value, and no `breakpoint`, so it stays small regardless of the series data or the size of a curve.
 
-The **inputs key is schema-derived**, not spelled: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`.
+The **owner-map key is schema-derived**, not spelled: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`.
 `partial_dims` is exactly the broadcast coordinates — dims and groups alike — a layer may patch per value (`partial`); no dim is in it by name, `entity` included.
 A coordinate an attribute's own file does not carry reads as NULL, which is what keeps the key one fixed tuple across attributes whose columns differ.
 A group is one column, so which columns name a connection is legible from the map itself, with no schema to say which belong together.
@@ -36,12 +36,12 @@ A group is one column, so which columns name a connection is legible from the ma
 **A group outside `partial` is not in the key**, as a dim outside it is not: a layer touching one connection's value owns the attribute's whole extent along the group.
 An attribute over such a group and no other `partial` coordinate has the key `(attribute)` alone, the grain of a record-level weighting.
 
-No category is on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the resolved entity axis is what says which categories an entity has.
+No category is in the owner map: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the resolved entity axis is what says which categories an entity has.
 That axis is what every category-scoped question goes through — [per-category `flags`](record.md#flags) join it, as does a consumer wanting one type's frame — and it carries each [categorizing property](schema.md#categories-labels-a-dim-lists) as a column, functionally determined by the label rather than keyed alongside it, so a re-categorized label is one row with a new value.
 
 The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
-Every key column's tombstones reach this map in the fold: `fold_inputs` anti-joins the parent against the deleted rows of each partial dim and group — read from the same file that axis or group folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
+Every key column's tombstones reach this map in the fold: `fold_attributes` anti-joins the parent against the deleted rows of each partial dim and group — read from the same file that axis or group folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
 A group's tombstones are one NULL-safe anti-join on its struct column, the group file's own key — the same shape as a dim's.
 A layer's tombstones apply to its parents' keys, not to its own rows.
 A dim's anti-join matches its top-level column only. A label inside a struct is reached through its tuple: [removing a label](layers.md#deletion) tombstones the live tuples naming it in the same layer, and each group honours its _own_ tombstones.
@@ -82,7 +82,7 @@ That also means the dim namespace lives entirely inside `varies`/`broadcast`, so
 
 ## Resolving a relation
 
-A resolved relation joins the owning layers' files to the `inputs` map, keeping only owned rows:
+A resolved relation joins the owning layers' files to the owner map, keeping only owned rows:
 
 ```sql
 SELECT u.timestep,
@@ -99,7 +99,7 @@ JOIN ( -- the map keyed as its owning layer stored each key
            CASE WHEN COALESCE(varies.scenario, false)   THEN [scenario] END,
            CASE WHEN COALESCE(broadcast.scenario, true) THEN [NULL] END
          )) AS scenario
-  FROM inputs
+  FROM owner_map
 ) o
   ON o.attribute  = u.attribute
  AND o.layer_uuid = u.layer_uuid

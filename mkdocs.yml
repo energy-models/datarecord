@@ -73,7 +73,7 @@ nav:
       - api/index.md
       - Record: api/record.md
       - Schema: api/schema.md
-      - Layered: api/layered.md
+      - Store: api/store.md
       - WorkingRecord: api/mutable.md
       - Tools: api/tools.md
 

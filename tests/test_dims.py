@@ -21,8 +21,8 @@ from tests.fixtures import (
     empty_root,
     relation,
     schema,
+    write_attribute,
     write_component,
-    write_input,
     write_periods,
     write_schema,
 )
@@ -31,7 +31,7 @@ from tests.fixtures import (
 def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store):
     """A dim tombstone removes the attribute rows over that coordinate, not others.
 
-    The fold anti-joins every membership's tombstones into the inputs map, dims
+    The fold anti-joins every membership's tombstones into the owner map, dims
     included: deleting `period=2030` drops a `p_max_pu` row keyed on 2030 while
     the row over 2020 survives. Not a cascade - the attribute honours the dim's
     own tombstone because that coordinate is part of its key.
@@ -46,7 +46,7 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store):
         store.layer_dir(revision.id), "Generator", [{"entity": "Manchester Wind"}]
     )
     write_periods(store.layer_dir(revision.id), [{"period": 2020}, {"period": 2030}])
-    write_input(
+    write_attribute(
         store.layer_dir(revision.id),
         "p_max_pu",
         [
@@ -87,7 +87,7 @@ def test_the_fold_unions_maps_by_name(store):
     write_component(
         store.layer_dir(revision.id), "Generator", [{"entity": "Manchester Wind"}]
     )
-    write_input(
+    write_attribute(
         store.layer_dir(revision.id),
         "p_max_pu",
         [
@@ -102,7 +102,7 @@ def test_the_fold_unions_maps_by_name(store):
     revision.materialise()
 
     child = empty_child(revision)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [

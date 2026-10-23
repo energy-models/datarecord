@@ -22,15 +22,10 @@ import pytest
 from duckdb import sqltypes
 from pydantic import ValidationError
 
-from datarecord.layered.revision import Revision
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import (
-    AttributeSpec,
-    Dimension,
-    Group,
-    PropertySpec,
-    Schema,
-)
+from datarecord.schema.schema import Schema
+from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
+from datarecord.store.store import Revision
 from tests.fixtures import (
     empty_child,
     empty_root,

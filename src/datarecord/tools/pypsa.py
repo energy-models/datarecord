@@ -42,15 +42,16 @@ from duckdb import (
 from duckdb import StarExpression as star
 
 from datarecord.duck import empty_relation, ex_all, fn, null_safe, struct_of
-from datarecord.layered.categories import matching, with_defaults
-from datarecord.record import EMPTY, Flags, LazyRelations, RecordLike, Relations
-from datarecord.schema import (
+from datarecord.protocols import EMPTY, Flags, LazyRelations, RecordLike, Relations
+from datarecord.resolve.record import Record
+from datarecord.schema.categories import matching, with_defaults
+from datarecord.schema.schema import Schema as RecordSchema
+from datarecord.schema.specs import (
     AttributeSpec,
     Dimension,
     Group,
     PropertySpec,
 )
-from datarecord.schema import Schema as RecordSchema
 from datarecord.tools.base import (
     Requirements,
     Schema,
@@ -272,20 +273,19 @@ def _connection(record: RecordLike) -> DuckDBPyConnection:
     Raises
     ------
     TypeError
-        If `record` exposes no connection, i.e. is not DuckDB-backed.
+        If `record` is not a `Record`.
 
     Notes
     -----
     - [relations](https://energy-models.github.io/datarecord/design/record/#relations)
     """
-    con = getattr(record, "con", None)
-    if not isinstance(con, DuckDBPyConnection):
+    if not isinstance(record, Record):
         msg = (
-            f"{type(record).__name__} exposes no DuckDB connection; "
-            "the PyPSA tool builds with DuckDB SQL"
+            f"the PyPSA tool builds from a Record, not a {type(record).__name__}: "
+            "it runs DuckDB SQL on the record's connection"
         )
         raise TypeError(msg)
-    return con
+    return record.con
 
 
 def _snapshot_frame(snapshots: pd.Index) -> pd.DataFrame:
@@ -1438,7 +1438,7 @@ class PyPSATool(Tool):
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
         defs = record.schema
-        return {("input_key", SNAPSHOT)} if SNAPSHOT in defs.partial_dims else set()
+        return {("owner_map_key", SNAPSHOT)} if SNAPSHOT in defs.partial_dims else set()
 
     def build(self, record: RecordLike) -> pypsa.Network:
         """The resolved network: its carriers and buses, then one component type at a time.

@@ -18,14 +18,8 @@ from duckdb import sqltypes
 from duckdb.sqltypes import DuckDBPyType
 from pydantic import ValidationError
 
-from datarecord.schema import (
-    AttributeSpec,
-    Dimension,
-    Group,
-    PropertySpec,
-    Schema,
-    flag_type,
-)
+from datarecord.schema.schema import Schema, flag_type
+from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
 from tests.fixtures import schema as pypsa_schema
 
 
@@ -150,6 +144,12 @@ def test_the_section_decides_where_a_value_lives():
     )
     assert s.categorizing("entity") == ("ctype",)
     assert "ctype" not in s.partial_dims
+
+
+def test_long_columns_for_refuses_an_undeclared_attribute():
+    """An undeclared attribute has no `dims`, so no column set to derive."""
+    with pytest.raises(KeyError, match="declares no attribute 'nope'"):
+        _schema().long_columns_for("nope")
 
 
 def test_a_group_may_have_properties():

@@ -19,19 +19,19 @@ import duckdb
 import pytest
 
 from datarecord import Revision, Workspace
-from datarecord.files import Absent, PreconditionFailedError
-from datarecord.layered import write
-from datarecord.layered.resolve import read_schema
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import Dimension
+from datarecord.schema.specs import Dimension
+from datarecord.store import manifest
+from datarecord.store.files import Absent, PreconditionFailedError
+from datarecord.store.manifest import read_schema
 from tests.fixtures import (
     RivalWrite,
     empty_child,
     empty_root,
     schema,
     widened,
+    write_attribute,
     write_component,
-    write_input,
     write_scenarios,
     write_schema,
 )
@@ -45,7 +45,7 @@ def tree(store):
     root = empty_root(store)
     layer = store.layer_dir(root.id)
     write_component(layer, "Generator", [{"entity": "wind"}])
-    write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
+    write_attribute(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
     return root, empty_child(root)
 
 
@@ -186,11 +186,11 @@ def test_a_writer_that_always_loses_gives_up(workspace, store, monkeypatch):
     """
     files = _AlwaysLoses(workspace._local, store.manifest_uri)
     monkeypatch.setattr(workspace, "_local", files)
-    monkeypatch.setattr(write, "sleep", lambda _: None)
+    monkeypatch.setattr(manifest, "sleep", lambda _: None)
 
     with pytest.raises(RuntimeError, match=r"changed under each.*s3:GetObject"):
         store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
-    assert files.writes == write._ATTEMPTS, "one write per attempt, then the error"
+    assert files.writes == manifest._ATTEMPTS, "one write per attempt, then the error"
     assert store.revisions() == [], (
         "the layer that never declared its schema is unreachable"
     )
@@ -287,7 +287,7 @@ def _folded_then_widened(store, partial=frozenset(), *, materialised=False):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_component(layer, "Generator", [{"entity": "wind"}])
-    write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
+    write_attribute(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
     before = revision.record._fold.owner_map
     assert "scenario" not in str(before.types[before.columns.index("varies")])
     if materialised:
@@ -388,7 +388,7 @@ def test_a_dim_listing_labels_resolves_from_fold_tables_after_a_widening(store):
         layer,
         [{"scenario": "low"}, {"scenario": "high"}],
     )
-    write_input(
+    write_attribute(
         layer,
         "p_max_pu",
         [
@@ -417,18 +417,18 @@ def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkey
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    from datarecord.layered import resolve
+    from datarecord.store import cache
 
     root, _ = tree
 
     def fail(*args, **kwargs):
         raise RuntimeError("the owner map write fails")
 
-    monkeypatch.setattr(resolve, "_fold_map", fail)
+    monkeypatch.setattr(cache, "_fold_map", fail)
     with pytest.raises(RuntimeError):
         root.materialise()
     assert Path(store.resolved_dir(root.id), "dims", "entity.parquet").exists()
-    assert not resolve.materialised(root.id, store), "the rest is no cache yet"
+    assert not cache.materialised(root.id, store), "the rest is no cache yet"
     assert not list(Path(store.resolved_dir(root.id)).rglob("*.tmp")), (
         "no temporary file is left behind"
     )

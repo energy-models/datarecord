@@ -2,15 +2,17 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The `Workspace` holding the connection, and the `Store` holding a location.
+"""The `Workspace` holding the connection, the `Store` holding a location, and its `Revision`s.
 
 A workspace is the DuckDB database and the means to reach files, which is all a
 standalone directory needs. A store is one location - its manifest, its
 revision tree, its layers - and works through a workspace several stores share.
+A revision is one node of that tree, and holds no state beyond its place in it.
 
 Notes
 -----
 - [the store](https://energy-models.github.io/datarecord/design/layers/#the-store)
+- [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
 - [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
 """
 
@@ -21,22 +23,29 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Annotated, Any
 from urllib.parse import urlparse
 from uuid import UUID, uuid4, uuid5
 
 import duckdb
 from duckdb import DuckDBPyConnection
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    PlainSerializer,
+    PrivateAttr,
+    model_validator,
+)
 
-from datarecord.files import Absent, Files, LocalFiles, RemoteFiles
-from datarecord.layered.resolve import Record, read_schema
-from datarecord.layered.sources import DirectorySource
-from datarecord.layered.write import layer_data, reconcile_schema, write_layer
-from datarecord.record import LayerData, RecordLike
-from datarecord.schema import Schema
-
-if TYPE_CHECKING:
-    from datarecord.layered.revision import Revision
+from datarecord.mutable import StagedSource
+from datarecord.protocols import LayerData, RecordLike
+from datarecord.resolve.record import Record
+from datarecord.resolve.sources import DirectorySource
+from datarecord.schema.schema import Schema
+from datarecord.store.cache import materialise, sources_to_read
+from datarecord.store.files import Absent, Files, LocalFiles, RemoteFiles
+from datarecord.store.manifest import read_schema, reconcile_schema
+from datarecord.store.write import layer_data, write_layer
 
 _REVISIONS = """
 CREATE TABLE IF NOT EXISTS revisions (
@@ -358,8 +367,6 @@ class Store:
 
     def _create(self, parent: UUID | None, id: UUID | None = None) -> Revision:
         """A revision's file, written create-only, and its cached row."""
-        from datarecord.layered.revision import Revision
-
         id = id or uuid4()
         body = json.dumps({"id": str(id), "parent": parent and str(parent)})
         self.files.write_text(self._revision_uri(id), body, expect=Absent())
@@ -418,8 +425,6 @@ class Store:
         -----
         - [the tree beside the layers](https://energy-models.github.io/datarecord/design/layers/#the-tree-beside-the-layers)
         """
-        from datarecord.layered.revision import Revision
-
         row = self._held(id)
         if row is None:
             read = []
@@ -445,8 +450,6 @@ class Store:
         -----
         - [the tree beside the layers](https://energy-models.github.io/datarecord/design/layers/#the-tree-beside-the-layers)
         """
-        from datarecord.layered.revision import Revision
-
         held = {
             row[0]
             for row in self.workspace.con.execute(
@@ -481,6 +484,156 @@ class Store:
         schema = read_schema(self)
         source = DirectorySource(self.layer_dir(id), schema, self.workspace, layer_id)
         return Record(layer_id, [source], self.workspace, schema)
+
+
+_ANCESTRY = """
+WITH RECURSIVE ancestors(id, parent, depth) AS (
+  SELECT id, parent, 0 FROM revisions WHERE location = $location AND id = $id
+  UNION ALL
+  SELECT d.id, d.parent, ancestors.depth + 1
+  FROM revisions d
+  JOIN ancestors ON d.id = ancestors.parent
+  WHERE d.location = $location
+)
+SELECT id FROM ancestors ORDER BY depth DESC
+"""
+
+
+def ancestry(store: Store, revision_id: UUID) -> list[UUID]:
+    """Revision ids along the root->node path, root first - resolution order.
+
+    The whole path. Truncating it at the nearest materialised node is the
+    reader's business (`cache.sources_to_read`), since whether a node's
+    caches exist is a fact about the filesystem rather than about the tree.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    """
+    rows = store.workspace.con.execute(
+        _ANCESTRY, {"location": store.uri, "id": revision_id}
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+class Revision(BaseModel):
+    """A node in the tree of layers.
+
+    Each revision adds one parquet layer on top of its parent's; the record it
+    resolves to is that layer over its ancestors'. The layer location derives
+    from `id` via its store's `layer_dir`, it is not stored.
+
+    Serialises its store as the location, and validates or unpickles back
+    through `Workspace.process()`, reading the revision file and every parent
+    the process does not yet hold - so `ancestry()` answers in a fresh process.
+    Nothing cached travels.
+
+    Notes
+    -----
+    - [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/layers/#crossing-a-process-boundary)
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    id: UUID
+    parent: UUID | None = None
+    store: Annotated[Store, PlainSerializer(lambda s: s.uri, return_type=str)]
+
+    _record: Record | None = PrivateAttr(default=None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _attach(cls, data: Any) -> Any:
+        """A location from the serialised form, attached to the process workspace."""
+        if isinstance(data, dict) and isinstance(data.get("store"), str):
+            store = Workspace.process().store(data["store"])
+            store.revision(UUID(str(data["id"])))
+            data = {**data, "store": store}
+        return data
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return self.store.revision, (self.id,)
+
+    @property
+    def record(self) -> Record:
+        """This revision's resolved view, as a `Record` built once from its ancestry.
+
+        The ancestry is truncated at the deepest materialised ancestor, so a
+        deep tree resolves from few entries. Cached rather than rebuilt per
+        call: layers are write-once, so the only thing that can change
+        the truncation point is `materialise`, which clears this itself. The
+        `Record` holds no cursor, so the cache serves every thread.
+
+        Notes
+        -----
+        - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+        """
+        if self._record is None:
+            full = ancestry(self.store, self.id)
+            schema = read_schema(self.store)
+            sources = sources_to_read(full, self.store, schema)
+            self._record = Record(self.id, sources, self.store.workspace, schema)
+        return self._record
+
+    # -- tree ---------------------------------------------------------------
+
+    def child(self, source: LayerData | RecordLike) -> Revision:
+        """A new child of this revision, with `source` as its layer.
+
+        Any node may be a parent: a layer is write-once, so a base cannot shift
+        under its descendants. A `WorkingRecord`'s `edits` are a delta against
+        the revision it was built over, so they are written only under that
+        one; the `WorkingRecord` itself writes its whole resolved record.
+
+        Raises
+        ------
+        ValueError
+            If `source` is staged edits built over another revision, whose delta
+            would read back wrong here.
+
+        Notes
+        -----
+        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+        - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+        """
+        if isinstance(source, StagedSource) and source.base != self.id:
+            msg = (
+                f"these edits were staged over revision {source.base}, so they "
+                f"are a delta against it and not against {self.id}; write them "
+                f"as a child of the revision the `WorkingRecord` was built over"
+            )
+            raise ValueError(msg)
+        return self.store._write(source, self.id)
+
+    def materialise(self) -> None:
+        """Write this node's caches - owner maps and resolved dims.
+
+        A policy rather than a lifecycle step, and purely additive: it changes
+        no answer, only how many layers a descendant's read touches. Once these
+        exist, a read stops here instead of walking further up.
+
+        Notes
+        -----
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+        """
+        materialise(self.id, self.record.sources, self.store)
+        self._record = None
+
+    # -- read ---------------------------------------------------------------
+
+    def ancestry(self) -> list[UUID]:
+        """Revision ids along the root->self path, root first.
+
+        Notes
+        -----
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+        """
+        return ancestry(self.store, self.id)
 
 
 def _absolute(uri: str) -> str:

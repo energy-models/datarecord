@@ -12,10 +12,10 @@ Notes
 
 import pytest
 
-from datarecord.layered.resolve import write_schema
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import AttributeSpec, Dimension, PropertySpec, Schema
-from tests.fixtures import empty_root
+from datarecord.schema.schema import Schema
+from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
+from tests.fixtures import empty_root, write_schema
 
 
 @pytest.fixture

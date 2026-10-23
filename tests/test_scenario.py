@@ -23,7 +23,7 @@ from tests.fixtures import (
     export_network,
     relation,
     rename_components,
-    write_input,
+    write_attribute,
     write_scenarios,
 )
 from tests.test_roundtrip import assert_networks_equal
@@ -98,7 +98,7 @@ def test_partial_scenario_override(store, parent, stochastic):
     """A child may replace one scenario and leave the others to the parent."""
     scenario = stochastic.scenarios[0]
     child = empty_child(parent)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [
@@ -140,7 +140,7 @@ def test_child_adds_new_scenario(store, parent, stochastic):
         store.layer_dir(child.id),
         [{"scenario": s} for s in ("high", "low", "med", "extra")],
     )
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "scenario_weight",
         [
@@ -148,7 +148,7 @@ def test_child_adds_new_scenario(store, parent, stochastic):
             for s, w in (("high", 0.27), ("low", 0.36), ("med", 0.27), ("extra", 0.1))
         ],
     )
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [
@@ -226,7 +226,7 @@ def test_scenario_axis_survives_closed_grandchild(store, parent, stochastic):
     middle = empty_child(parent)
     middle.materialise()
     grandchild = empty_child(middle)
-    write_input(
+    write_attribute(
         store.layer_dir(grandchild.id),
         "p_max_pu",
         [{"entity": "solar Gen", "value": 0.88}],

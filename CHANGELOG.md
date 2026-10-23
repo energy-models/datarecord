@@ -134,10 +134,6 @@ All notable changes to datarecord are documented here. The format follows
   connection their frames are planned on, so `PyPSA.results(n, w.con)` sets
   straight onto `w` rather than failing on a relation from DuckDB's default
   connection; `on_connection` is gone.
-- `Resolver.group_frame` and `Resolver.entity_type` return an empty relation,
-  rather than `None`, where every row written is tombstoned: telling the two
-  apart ran the whole fold a second time on every read. `None` still means no
-  layer wrote a row.
 - A schema declaring a dim, group, group coordinate, attribute or result
   whose name holds `"` or `.`, starts with `_`, or is a column datarecord
   writes itself (`value`, `deleted`, `layer_uuid`, ... ignoring case, and
@@ -181,6 +177,24 @@ All notable changes to datarecord are documented here. The format follows
 - A label or group tuple that one layer removes and a later layer adds again
   now takes its place where it is added again, in a working record, a
   written record and over a materialised node alike.
+- The modules move into the subpackages `datarecord.schema`,
+  `datarecord.resolve` and `datarecord.store` (breaking for an import from a
+  module path). `datarecord.record` is now `datarecord.protocols`,
+  `datarecord.files` is `datarecord.store.files`,
+  `datarecord.layered.categories` is `datarecord.schema.categories`, the other
+  modules of `datarecord.layered` are split between `datarecord.resolve` and
+  `datarecord.store`, and the dtype helpers move from `datarecord.duck` to
+  `datarecord.schema.dtypes`. Every public name is still imported from
+  `datarecord`.
+- `Schema.input_key` is now `Schema.owner_map_key` and `Schema.input_columns`
+  is `Schema.owner_map_columns` (breaking), and a tool reports the requirement
+  `"owner_map_key"` in `Requirements.unsupported_keys` where it reported
+  `"input_key"`.
+- `Schema.long_columns_for` raises a `KeyError` naming an attribute the
+  schema does not declare, where it returned the columns of every declared
+  dim (breaking).
+- `PyPSA.build` raises a `TypeError` for a `RecordLike` that is not a
+  `Record`, where it took any record with a DuckDB connection (breaking).
 
 ### Added
 
@@ -227,9 +241,9 @@ All notable changes to datarecord are documented here. The format follows
   result, leaves the component at its static value on export. Every record
   is re-exported.
 - **narwhals is gone** (breaking): `record.dims`, `properties`, `groups` and
-  `attributes` hand over bare `DuckDBPyRelation`s, `Frames` and `LazyFrames`
-  are `Relations` and `LazyRelations`, and `Record` moves to
-  `datarecord.record`. `set`, `add_group` and the writer take a relation or a
+  `attributes` hand over bare `DuckDBPyRelation`s, and `Frames` and
+  `LazyFrames` are `Relations` and `LazyRelations`. `set`, `add_group` and the
+  writer take a relation or a
   pandas, polars or arrow frame, read by DuckDB's own scanner, and refuse
   timestamps with a time zone, casting a column only to a wider type of its
   kind and refusing any other. A dtype is mathspec's (`float`, `int`, `bool`, `str`, `datetime`);

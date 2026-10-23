@@ -18,17 +18,13 @@ import pyarrow as pa
 import pytest
 
 from datarecord import Workspace
-from datarecord.layered.resolve import Record, read_schema, write_schema
-from datarecord.layered.sources import ParquetLayer
 from datarecord.mutable import WorkingRecord, normalise_value
-from datarecord.schema import (
-    AttributeSpec,
-    Dimension,
-    Group,
-    PropertySpec,
-    Schema,
-)
-from tests.fixtures import empty_root, export_network, schema, unpacked
+from datarecord.resolve.record import Record
+from datarecord.resolve.sources import ParquetLayer
+from datarecord.schema.schema import Schema
+from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
+from datarecord.store.manifest import read_schema
+from tests.fixtures import empty_root, export_network, schema, unpacked, write_schema
 
 GEN = "Generator"
 
@@ -414,7 +410,7 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
 def test_a_pointwise_edit_keeps_the_rest_of_the_series(staged):
     """An edit naming a coordinate displaces that one only.
 
-    Keying the overlay on the input key alone would drop the whole series here,
+    Keying the overlay on the owner-map key alone would drop the whole series here,
     since it excludes the dims an attribute is not owned per.
 
     Notes
@@ -1208,7 +1204,7 @@ def test_a_layer_touching_no_tuple_resolves_no_ancestry_to_check(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    import datarecord.layered.write as write
+    import datarecord.store.write as write
 
     def unwanted(*_):
         pytest.fail("resolved the ancestry for a layer with nothing to check")

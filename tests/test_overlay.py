@@ -13,16 +13,13 @@ Notes
 import pandas as pd
 import pytest
 
-from datarecord.layered.resolve import (
-    Record,
-    read_schema,
-    sources_to_read,
-    write_schema,
-)
-from datarecord.layered.revision import ancestry
-from datarecord.layered.sources import ParquetLayer
-from datarecord.record import EMPTY
-from datarecord.schema import AttributeSpec
+from datarecord.protocols import EMPTY
+from datarecord.resolve.record import Record
+from datarecord.resolve.sources import ParquetLayer
+from datarecord.schema.specs import AttributeSpec
+from datarecord.store.cache import sources_to_read
+from datarecord.store.manifest import read_schema
+from datarecord.store.store import ancestry
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
@@ -30,9 +27,10 @@ from tests.fixtures import (
     export_network,
     relation,
     schema,
+    write_attribute,
     write_component,
     write_group,
-    write_input,
+    write_schema,
 )
 
 
@@ -51,7 +49,7 @@ def parent(store):
     write_group(
         layer, "connection", [{"connection": {"entity": "Norway Wind", "bus": "NO"}}]
     )
-    write_input(
+    write_attribute(
         layer,
         "p_max_pu",
         [
@@ -60,7 +58,7 @@ def parent(store):
             for d in (1, 2, 3)
         ],
     )
-    write_input(
+    write_attribute(
         layer, "efficiency", [{"entity": "Norway Wind", "bus": "NO", "value": 0.9}]
     )
     revision.materialise()
@@ -82,7 +80,7 @@ def test_child_overwrites_component(store, parent):
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
     child = empty_child(parent)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -102,7 +100,7 @@ def test_child_overwrites_component(store, parent):
 def test_child_overwrite_reaches_model(store, network):
     """The overwrite turns a series component into a static one in the model."""
     child = empty_child(network)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -117,7 +115,7 @@ def test_child_overwrite_reaches_model(store, network):
 def test_child_adds_attribute(store, network):
     """A child may write an attribute no ancestor had."""
     child = empty_child(network)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_min_pu",
         [{"entity": "Norway Gas", "value": 0.1}],
@@ -140,7 +138,7 @@ def test_closed_child_reads_own_cache(store, network):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     child = empty_child(network)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -167,7 +165,7 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     relation, and the group frames.
     """
     child = empty_child(parent)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -175,7 +173,7 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     child.materialise()
 
     grandchild = empty_child(child)
-    write_input(
+    write_attribute(
         store.layer_dir(grandchild.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.99}],
@@ -253,7 +251,7 @@ def test_a_new_attribute_is_a_schema_amendment(store, network):
     assert amended.compatible_with(read_schema(store)) == []
 
     child = empty_child(network)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_min_pu",
         [{"entity": "Norway Gas", "value": 0.1}],

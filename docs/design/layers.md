@@ -26,7 +26,7 @@ The node metadata — `(id, parent)` — is persisted [beside the layers](#the-t
 
 Two of [the protocol's](record.md) columns take their meaning from the overlay key.
 
-A [group](schema.md#groups) [`partial`](schema.md#partial-the-granularity-of-an-override) names is part of the **inputs** key, `(*partial dims, attribute)` — the `connection` column, NULL for an entity-level attribute and NULL-safe-compared so that case is unaffected.
+A [group](schema.md#groups) [`partial`](schema.md#partial-the-granularity-of-an-override) names is part of the **owner-map** key, `(*partial dims, attribute)` — the `connection` column, NULL for an entity-level attribute and NULL-safe-compared so that case is unaffected.
 That is what makes a per-connection attribute owned _per connection_: without it, a patch changing one connection's `efficiency` owns — and so restates — every connection's, which is what a group outside `partial` costs.
 It is also why a connection is keyed by its bus rather than by position: a patch layer would otherwise have to know a connection's current index, so an ancestor inserting one earlier would silently redirect that patch to a different bus.
 
@@ -68,7 +68,7 @@ A `deleted = true` row in `dims/<dim>.parquet` — [the entity axis](format.md#t
 A `deleted = true` row in `groups/<group>.parquet` tombstones one row of that group — the row itself, and its `attributes/` rows where the group is `partial` — leaving the labels it names and their other rows intact, so a connection is removed without touching the entity it attached.
 
 A tombstone is honoured by the [one fold](read-path.md#one-fold-for-every-axis) that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
-An _attribute's_ orphaned rows stop surfacing the same way, for every key column: an attribute row is keyed by the partial dims and groups its `dims` name, and [`fold_inputs`](read-path.md#owner-map) anti-joins the map against each one's `deleted` rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map.
+An _attribute's_ orphaned rows stop surfacing the same way, for every key column: an attribute row is keyed by the partial dims and groups its `dims` name, and [`fold_attributes`](read-path.md#owner-map) anti-joins the map against each one's `deleted` rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map.
 A label of a dim or group outside `partial` is in no key, so its rows are [dropped at read](read-path.md#a-label-outside-the-key) against that coordinate's dead labels instead.
 Each axis and group honours only its **own** tombstones, read from the same file it folds from, and nothing is inferred from a dead label a row refers to.
 So removing a label is written as a cascade, the same for every dim: [`remove(dim, labels)`](working-record.md#add-remove) tombstones the labels and every live group tuple with a field over `dim` naming one, in one layer, and the tuples' values go with them.

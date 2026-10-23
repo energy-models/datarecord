@@ -26,7 +26,7 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all, null_safe
-from datarecord.schema import Schema
+from datarecord.schema.schema import Schema
 
 Categories = Mapping[str, "str | Sequence[str]"]
 """Per categorizing property, the one category or the categories to select."""

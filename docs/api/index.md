@@ -33,6 +33,6 @@ from datarecord import (
 | --------------------------- | ------------------------------------------------------------- |
 | [Record](record.md)         | `Record`, `RecordLike`, `Relations`, `LazyRelations`, `Flags` |
 | [Schema](schema.md)         | `Schema`, `Dimension`, `AttributeSpec`                        |
-| [Layered](layered.md)       | `Workspace`, `Store`, `Revision`                              |
+| [Store](store.md)           | `Workspace`, `Store`, `Revision`                              |
 | [WorkingRecord](mutable.md) | `WorkingRecord`                                               |
 | [Tools](tools.md)           | `Tool`, `Requirements`, the PyPSA tool                        |
