@@ -14,9 +14,9 @@ SPDX-License-Identifier: CC-BY-4.0
 | Created | 2026-08-27                                             |
 | Version | v0.1.0a1                                               |
 
-Landed in [the schema](../schema.md#groups) and [the record format](../format.md#where-a-value-lives); this page is kept as the argument for the change rather than as the current description.
+Landed in [the schema](../model/groups.md) and [the record format](../storage/format.md#where-a-value-lives); this page is kept as the argument for the change rather than as the current description.
 
-Supersedes the split between [groups](../schema.md#groups) and [`on`](dep-0001-dims-groups-traits.md#mappings) that [dims, mappings, groups and traits](dep-0001-dims-groups-traits.md) landed.
+Supersedes the split between [groups](../model/groups.md) and [`on`](dep-0001-dims-groups-traits.md#mappings) that [dims, mappings, groups and traits](dep-0001-dims-groups-traits.md) landed.
 Those two are one mechanism with one field's difference, and the field is worth having where the two models are not.
 
 ## What starts it
@@ -82,10 +82,10 @@ A schema whose purpose is to make the shape of data checkable should not inherit
 
 Not a name the group invents.
 
-That is what keeps the axis file, and the axis file is the whole of what a functional group has over a bare tuple set: `dims/country.parquet` gives `country` its [order](../record.md#axis-order) and somewhere for a per-country CO2 budget to live.
+That is what keeps the axis file, and the axis file is the whole of what a functional group has over a bare tuple set: `dims/country.parquet` gives `country` its [order](../model/dims.md#axis-order) and somewhere for a per-country CO2 budget to live.
 A group whose `into` named nothing would be a tuple set with a labelled column — expressible, and it loses the axis, which is [the argument the superseded page makes](dep-0001-dims-groups-traits.md#mappings) and which survives this refactor unchanged.
 
-**A group may share its name with a dim**, and the [existing prohibition](../schema.md#groups) on the two colliding is dropped rather than narrowed.
+**A group may share its name with a dim**, and the [existing prohibition](../model/groups.md) on the two colliding is dropped rather than narrowed.
 
 For a group with `into` the sharing is the natural spelling: the dim is the axis of labels, the group is the relation between it and `over`, and they are reached by different syntax — [`dims: [country]`](#addressing-dims-x) finds the dim, [`by=country`](#aggregation) finds the group. Keeping the prohibition would cost a name (`country_map`) invented only to satisfy it.
 
@@ -116,7 +116,7 @@ co2_budget: # `country` is a dim   -> the dim
   dims: [country] #   country
 ```
 
-A group with no dim of its name has no other spelling — `connection` is not addressable as anything else — so expanding it is the only way to declare an attribute over it, and the expansion is what keeps [the fold's key](../schema.md#partial-the-granularity-of-an-override) one fixed tuple.
+A group with no dim of its name has no other spelling — `connection` is not addressable as anything else — so expanding it is the only way to declare an attribute over it, and the expansion is what keeps [the fold's key](../layers/tree.md#partial-the-granularity-of-an-override) one fixed tuple.
 
 A group sharing a dim's name is shadowed here, which for a functional group is what should happen: a value that is genuinely per-country is `dims: [country]`, the dim, which is what [the axis file](#into-must-name-a-declared-dim) exists for, and expanding instead would give `dims: [bus]` written so the reader has to look up the group's `over` to see it.
 
@@ -143,7 +143,7 @@ attributes:
     dims: [contract] # seller | buyer
 ```
 
-The declaration is [already possible](../schema.md#groups) and this proposal does not introduce it — `over`'s dict form is what lets two coordinates draw on one dim, and [addressing](#addressing-dims-x) expands `contract` to `seller | buyer` as it always did.
+The declaration is [already possible](../model/groups.md) and this proposal does not introduce it — `over`'s dict form is what lets two coordinates draw on one dim, and [addressing](#addressing-dims-x) expands `contract` to `seller | buyer` as it always did.
 What changes is that the shape stops being second-class:
 
 - **It has a file of its own.** `groups/contract.parquet`, keyed `(seller, buyer)`. The [`<Type>` split](#where-the-rows-live) had no type to split on here — a contract is not a component and has no `entity_type` — so it never described this case at all, which is what shows the split was wrong rather than merely awkward.
@@ -154,7 +154,7 @@ Nothing about `entity` is privileged in any of this. `corridor` between two buse
 
 ## Where the rows live
 
-`groups/<name>.parquet`, one file per group, always — one rule for [the format page](../format.md#where-a-value-lives) to state, with no case left for the declaration to imply.
+`groups/<name>.parquet`, one file per group, always — one rule for [the format page](../storage/format.md#where-a-value-lives) to state, with no case left for the declaration to imply.
 
 ```text
 groups/country.parquet      bus | country
@@ -247,7 +247,7 @@ The [collision check](#into-must-name-a-declared-dim) in the same validator goes
 
 ## What does not change
 
-- **A coordinate never broadcasts.** A NULL `bus` on a connection attribute is [the group's rows](../record.md#the-broadcast-rule), not the bus axis — there is no axis to expand against.
+- **A coordinate never broadcasts.** A NULL `bus` on a connection attribute is [the group's rows](../model/attributes.md#the-broadcast-rule), not the bus axis — there is no axis to expand against.
 - **A group in `dims` expands to its coordinates** where it is not itself a dim ([addressing](#addressing-dims-x)), so the fold's key stays one fixed tuple.
 - **The record does not resolve across levels.** An attribute over `country` comes back keyed by country; projecting to buses is the consumer's join.
 - **`within` is untouched** and stays distinct: it scopes a label per parent, where `into` partitions one axis by another.

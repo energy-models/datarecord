@@ -6,20 +6,18 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # datarecord
 
-Dimensioned attribute data with a declared schema.
+A record holds labeled data with a declared schema. Its labels sit on axes called dims. Groups list which tuples of labels exist, properties describe single labels, and attributes hold values at coordinates. The schema declares what may exist, and the data says what does.
 
-A record holds **entities** (named members of a type), **groups** of them — connections between entities and buses being the one every network has — **attribute values** over both, and the **axes** those values vary along. A schema declares what may exist; the data says what does.
+A record can be one parquet directory or a tree of layers, and a reader reads both through one interface. A layer adds a partial record on top of its parent, so a scenario variant stores only the rows it changes. Any parquet reader can open a record's directory.
 
-Records stack: a layer is a partial record on top of a parent, resolved last-writer-wins, so a scenario variant costs the rows it changes rather than a copy of everything. On disk a record is a plain parquet directory that a tool knowing nothing about this package can read.
-
-`datarecord` depends only on `duckdb`, `pydantic` and `mathspec`. It names no modelling framework — a framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
+`datarecord` depends on `duckdb`, `pydantic` and `mathspec`, and names no modelling framework. A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
 
 ```bash
 pip install datarecord           # core
 pip install datarecord[pypsa]    # with the PyPSA tool
 ```
 
-The package does not yet declare `mathspec`, which is not on PyPI: install it alongside from [GitHub](https://github.com/energy-models/mathspec), at the commit `pixi.toml` pins.
+The package does not yet declare `mathspec`, which is not on PyPI. Install it alongside from [GitHub](https://github.com/energy-models/mathspec), at the commit `pixi.toml` pins ([installation](installation.md)).
 
 ```python
 from datarecord import Workspace
@@ -43,8 +41,8 @@ record.flags(ctype="Generator")  # which axes each attribute uses
 
 - :material-drawing: **[Design](design/index.md)**
 
-  What a record is and why it is that way — the authoritative design. The
-  docstrings cite these pages rather than restating the argument.
+  What a record is and why it is that way. The design is authoritative, and
+  the docstrings cite it.
 
 - :material-api: **[API Reference](api/index.md)**
 

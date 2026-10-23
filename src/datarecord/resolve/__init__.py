@@ -2,12 +2,16 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The fold of a record's layers, and the `Record` read through it.
+"""Read a record: `Record` folds the layers of a revision or a directory into relations.
+
+A `Record` answers dims, groups, properties and attributes as lazy DuckDB
+relations, however many layers it holds.
 
 Notes
 -----
-- [the DuckDB read path](https://energy-models.github.io/datarecord/design/read-path/)
-- [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
+- [resolution](https://energy-models.github.io/datarecord/design/layers/resolution/)
+- [reading a record](https://energy-models.github.io/datarecord/design/use/reading/)
+- [the package](https://energy-models.github.io/datarecord/design/package/)
 """
 
 from datarecord.resolve.record import Record

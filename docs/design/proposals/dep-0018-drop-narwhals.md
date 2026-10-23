@@ -172,7 +172,7 @@ w.set("p_nom", polars_frame)  # or pandas, arrow, a relation
 7. `tools/base.py` (small): `to_relation` goes; `to_datarecord` returns relations on `con`.
 8. `tools/pypsa.py` (large): frames scanned on `con`; `_DTYPES` and `_column_dtype` return mathspec strings; `ctype` and `role` become dims; `into` becomes `one_of`; `snapshot.timestep` names a `timestep` dim.
 9. Tests (large): fixtures declare string dtypes; narwhals expressions become relation calls; `tests/test_functional_groups.py` moves from `into` to `one_of`, its group single-valuedness tests deleted; an old manifest and `into` are refused.
-10. Pages: [schema](../schema.md) (its `into` sections), [format](../format.md), [record](../record.md), [read path](../read-path.md), [working record](../working-record.md), [writing](../writing.md), [tools](../tools.md), [module layout](../module-layout.md), the usage pages, `CHANGELOG.md`.
+10. Pages: [schema](../model/schema.md) (its `into` sections), [format](../storage/format.md), [record](../use/reading.md), [read path](../layers/resolution.md), [working record](../use/editing.md), [writing](../use/writing.md), [tools](../tools/index.md), [module layout](../package.md), the usage pages, `CHANGELOG.md`.
 
 Checks: no `narwhals` in `src/`, `pyproject.toml` or `pixi.toml`; a manifest with `"Float64"` is refused naming `float`; one with `into` is refused naming `one_of`; every `record.*[...]` value is a `DuckDBPyRelation`; `set` takes a polars, pandas and arrow frame; a PyPSA network round-trips.
 

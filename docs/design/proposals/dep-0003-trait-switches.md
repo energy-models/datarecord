@@ -82,7 +82,7 @@ The two never interact. `committable` `on` `{Generator, Link}` reaches no `Store
 
 ### The switch is an ordinary attribute
 
-Not a new kind of declaration. It has a `dtype`, a `default`, a `unit` if it wants one, it is written and read like anything else addressed by `entity`, and it lives where [an attribute over `entity` alone](../format.md#where-a-value-lives) already lives.
+Not a new kind of declaration. It has a `dtype`, a `default`, a `unit` if it wants one, it is written and read like anything else addressed by `entity`, and it lives where [an attribute over `entity` alone](../storage/format.md#where-a-value-lives) already lives.
 
 That it also names a trait changes nothing about it, which is what keeps the mechanism cheap: no new file, no new column kind, no new resolution rule, and a record whose consumer does not care about traits sees a boolean it can read.
 
@@ -105,7 +105,7 @@ A `bool` switch is that generalisation with the label fixed at `true`, so admitt
 
 `Schema.attributes_for(ctype)` answers from the schema alone, and it must keep doing so.
 
-A switched trait's attributes are **carried by the type** — `attributes_for("Generator")` includes `start_up_cost` — because the question it answers is which attributes a generator _may_ have, which is what [`flags`](../record.md#flags) and the [`add` routing](../working-record.md#add-remove) need. A schema-level answer cannot depend on a row, and it does not have to: the switch narrows which components carry a _value_, not which the type admits.
+A switched trait's attributes are **carried by the type** — `attributes_for("Generator")` includes `start_up_cost` — because the question it answers is which attributes a generator _may_ have, which is what [`flags`](../use/reading.md#flags) and the [`add` routing](../use/editing.md#add-remove) need. A schema-level answer cannot depend on a row, and it does not have to: the switch narrows which components carry a _value_, not which the type admits.
 
 A trait gated only by a switch is therefore invisible to `attributes_for`, which is the right answer for the same reason: its attributes reach every type, and which components hold a value is a question about data.
 A schema with no entity-type axis already has `attributes_for` returning everything addressed by `entity` whatever it is asked, and a switch does not change that.
@@ -148,4 +148,4 @@ Folding it into `attributes` before that check runs means the declared-attribute
 
 **Whether `attributes_for` needs a per-entity counterpart.** The schema-level answer stays type-scoped, and a caller wanting "what does _this_ generator carry" has to read the switch column itself. That is the same shape as the [open question](../open-questions.md) about a record-level `flags`, and probably wants the same answer.
 
-**Whether a switch may be addressed by more than `entity`.** `dims: [entity, scenario]` would be a component committable in one scenario and not another, which is coherent and is the [existence-does-not-vary](../schema.md#existence-does-not-vary-along-a-dim) argument in a milder form — the component exists either way, only its vocabulary moves. Rejected here for the same reason that page gives, that what a tombstone or a coarser row means is unsettled, and worth revisiting only with a case.
+**Whether a switch may be addressed by more than `entity`.** `dims: [entity, scenario]` would be a component committable in one scenario and not another, which is coherent and is the [existence-does-not-vary](../model/dims.md) argument in a milder form — the component exists either way, only its vocabulary moves. Rejected here for the same reason that page gives, that what a tombstone or a coarser row means is unsettled, and worth revisiting only with a case.

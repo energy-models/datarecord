@@ -94,7 +94,7 @@ def test_roundtrip_matches_pypsa_reader(tmp_path, built, ac_dc):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
     import pypsa
 

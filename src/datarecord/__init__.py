@@ -2,6 +2,17 @@
 #
 # SPDX-License-Identifier: MIT
 
+"""Labeled data with a declared schema, stored as parquet, read as DuckDB relations.
+
+A record holds dims, groups, properties and attributes. It is one directory or
+a tree of layers, and `RecordLike` is the interface a reader codes against.
+
+Notes
+-----
+- [overview](https://energy-models.github.io/datarecord/design/)
+- [the package](https://energy-models.github.io/datarecord/design/package/)
+"""
+
 import importlib.metadata
 import warnings
 

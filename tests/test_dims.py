@@ -9,7 +9,7 @@ is written into a layer and the fold is asked whether it keyed by it.
 
 Notes
 -----
-- [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+- [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
 """
 
 from pathlib import Path
@@ -39,7 +39,7 @@ def test_removing_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     revision = empty_root(store)
     write_schema(schema(partial={"period"}), store)
@@ -79,7 +79,7 @@ def test_the_fold_unions_maps_by_name(store):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
     revision = empty_root(store)
     write_schema(schema(partial={"scenario", "period"}), store)
@@ -127,7 +127,7 @@ def test_a_dim_names_its_own_file(store):
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
     revision = empty_root(store)
     write_schema(schema(dims={"bus": "str"}, partial=set()), store)

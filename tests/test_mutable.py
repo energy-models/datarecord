@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)
+- [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
 """
 
 import re
@@ -103,7 +103,7 @@ def _unpacked(frame, group="connection"):
     return pd.concat([fields, native], axis=1)
 
 
-# -- the protocol (https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit) ----------------------------------------------------
+# -- the protocol (https://energy-models.github.io/datarecord/design/use/editing/#the-shape-of-an-edit) ----------------------------------------------------
 
 
 def test_a_working_record_overrides_no_read_member():
@@ -134,7 +134,7 @@ def test_a_working_record_overrides_no_read_member():
     )
 
 
-# -- value forms (https://energy-models.github.io/datarecord/design/working-record/#set) -----------------------------------------------------
+# -- value forms (https://energy-models.github.io/datarecord/design/use/editing/#set) -----------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -188,7 +188,7 @@ def test_the_series_index_name_says_what_it_holds(staged):
     assert "p_max_pu" in staged.attributes
 
 
-# -- set (https://energy-models.github.io/datarecord/design/working-record/#set) -------------------------------------------------------------
+# -- set (https://energy-models.github.io/datarecord/design/use/editing/#set) -------------------------------------------------------------
 
 
 def test_a_staged_edit_is_visible_through_the_record(staged):
@@ -196,8 +196,8 @@ def test_a_staged_edit_is_visible_through_the_record(staged):
 
     Notes
     -----
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
 
@@ -222,7 +222,7 @@ def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, root):
 
     Notes
     -----
-    - [relations](https://energy-models.github.io/datarecord/design/record/#relations)
+    - [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
     """
     staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
     first = staged.attributes["p_max_pu"]
@@ -270,8 +270,8 @@ def test_set_rejects_an_unknown_name(staged, value, kwargs):
 
     Notes
     -----
-    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
-    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
+    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
     """
     with pytest.raises(KeyError, match="Nope"):
         staged.set("p_max_pu", value, **kwargs)
@@ -348,7 +348,7 @@ _ENTITY = "does not fit 'entity' of dtype str"
         pytest.param(
             lambda s: s.add("entity", ["zz"], carrier=5),
             "does not fit 'carrier' of dtype str",
-            id="add-a-property-taking-labels-from-a-dim",
+            id="add-a-property-referring-to-a-dim",
         ),
         pytest.param(
             lambda s: s.add("ctype", [5]),
@@ -367,7 +367,7 @@ def test_a_label_of_a_type_that_does_not_fit_its_dim_is_refused(staged, edit, ma
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
     """
     with pytest.raises(ValueError, match=re.escape(match)):
         edit(staged)
@@ -395,7 +395,7 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
     """
     staged.add("entity", ["NewSolar"], ctype=GEN)
     staged.set("p_nom", 7.0, entity=["NewSolar"])
@@ -404,7 +404,7 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
     assert _entity_values(child.record, "p_nom")["NewSolar"] == 7.0
 
 
-# -- the overlay does not overlap (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule, https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits) -----------------------------
+# -- the overlay does not overlap (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule, https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits) -----------------------------
 
 
 def test_a_pointwise_edit_keeps_the_rest_of_the_series(staged):
@@ -415,9 +415,9 @@ def test_a_pointwise_edit_keeps_the_rest_of_the_series(staged):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
     """
     base = staged.attributes["p_max_pu"].df()
     mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
@@ -472,8 +472,8 @@ def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
 
     Notes
     -----
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     before = staged.flags()["marginal_cost"]
     assert "snapshot" not in before.varies
@@ -514,8 +514,8 @@ def test_a_staged_edit_is_read_back_and_then_re_read(staged, root):
 
     Notes
     -----
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     """
 
     def p_nom(name):
@@ -558,8 +558,8 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
 
     Notes
     -----
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
     """
     root = _small(store)
     first = WorkingRecord(root.record)
@@ -638,7 +638,7 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     )
 
 
-# -- value dtypes (https://energy-models.github.io/datarecord/design/record/#flags, https://energy-models.github.io/datarecord/design/schema/#attributespec) -----------------------------------------------
+# -- value dtypes (https://energy-models.github.io/datarecord/design/use/reading/#flags, https://energy-models.github.io/datarecord/design/model/attributes/#attributespec) -----------------------------------------------
 
 
 def test_a_non_float_attribute_stages_and_commits(store):
@@ -654,7 +654,7 @@ def test_a_non_float_attribute_stages_and_commits(store):
 
     Notes
     -----
-    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
     """
     root = _small(store)
     amended = read_schema(store)
@@ -676,7 +676,7 @@ def test_a_non_float_attribute_stages_and_commits(store):
     assert got[got["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
 
 
-# -- ownership granularity (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override, https://energy-models.github.io/datarecord/design/working-record/#edits) -------------------------------------
+# -- ownership granularity (https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override, https://energy-models.github.io/datarecord/design/use/editing/#edits) -------------------------------------
 
 
 def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
@@ -691,8 +691,8 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
     base = staged.attributes["p_max_pu"].df()
     mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
@@ -718,7 +718,7 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
     )
 
 
-# -- add and remove (https://energy-models.github.io/datarecord/design/working-record/#add-remove) --------------------------------------------------
+# -- add and remove (https://energy-models.github.io/datarecord/design/use/editing/#add-remove) --------------------------------------------------
 
 
 def _entity_axis(record):
@@ -787,7 +787,7 @@ def test_set_may_change_a_category(units):
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     units.set("unit.tech", "node", unit=["p2"])
 
@@ -832,7 +832,7 @@ def test_set_may_change_a_category(units):
             ("tech", ["mill"]),
             {},
             ValueError,
-            "'tech' labels \\['mill'\\].*lists \\['plant', 'node'\\]",
+            "'tech' labels \\['mill'\\].*`one_of` is \\['plant', 'node'\\]",
         ),
         (
             "set",
@@ -862,11 +862,11 @@ def test_set_may_change_a_category(units):
 def test_an_edit_refuses_an_unknown_label_category_or_keyword(
     units, op, args, kwargs, error, match
 ):
-    """A category is checked against the labels its dim lists, a label against the axis.
+    """A category is checked against the `one_of` labels of its dim, a label against the axis.
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
     """
     with pytest.raises(error, match=match):
         getattr(units, op)(*args, **kwargs)
@@ -877,8 +877,8 @@ def test_a_dim_listing_labels_holds_the_labels_added_and_removes_like_any_dim(un
 
     Notes
     -----
-    - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
-    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
     """
     with pytest.raises(ValueError, match="names them"):
         units.remove("tech", ["node"])
@@ -907,7 +907,7 @@ def test_a_property_keyword_selects_the_labels_there_are_now(units):
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     units.set("output", 1.0, tech="plant", hour=[0])
     assert _output_units(units) == {"p1": 1.0, "p2": 1.0}, "one row per plant"
@@ -941,7 +941,7 @@ def test_re_adding_a_label_replaces_its_row(staged, root):
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
     staged.remove("entity", ["Manchester Wind"])
     staged.add("entity", ["Manchester Wind"], ctype="Load")
@@ -960,7 +960,7 @@ def test_add_fills_a_declared_column_another_add_omitted(staged):
 
     Notes
     -----
-    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
     """
     staged.add("entity", ["NewSolar"], ctype=GEN)
     staged.add("entity", ["NewWind"])
@@ -989,8 +989,8 @@ def test_a_staged_axis_is_the_whole_axis_in_order(staged, root, edits, appended)
 
     Notes
     -----
-    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
-    - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
+    - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
     """
     labels = [*root.record.dims["entity"].df()["entity"], *appended]
     for op, label in edits:
@@ -1022,7 +1022,7 @@ def test_removing_a_label_drops_its_staged_attributes(staged, root):
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
     staged.set("p_nom", 99.0, entity=["Norway Gas"])
     staged.remove("entity", ["Norway Gas"])
@@ -1031,7 +1031,7 @@ def test_removing_a_label_drops_its_staged_attributes(staged, root):
     assert "Norway Gas" not in _entity_values(child.record, "p_nom")
 
 
-# -- connect and disconnect (https://energy-models.github.io/datarecord/design/working-record/#add-remove, https://energy-models.github.io/datarecord/design/record/#connections) --------------------------------------
+# -- connect and disconnect (https://energy-models.github.io/datarecord/design/use/editing/#add-remove, https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group) --------------------------------------
 
 
 def test_remove_group_stages_the_group_without_the_tuple(staged, root):
@@ -1039,7 +1039,7 @@ def test_remove_group_stages_the_group_without_the_tuple(staged, root):
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
     """
     staged.remove_group("connection", [("Norwich Converter", "Norwich")])
     before = unpacked(staged.groups["connection"])
@@ -1052,7 +1052,7 @@ def test_remove_group_stages_the_group_without_the_tuple(staged, root):
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     # The component's other port survives: deletion is per connection, not per
-    # component (https://energy-models.github.io/datarecord/design/record/#connections).
+    # component (https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group).
     assert "Norwich DC" in left
 
 
@@ -1067,8 +1067,8 @@ def test_a_bus_keyword_addresses_one_connection(staged, root):
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
     """
     staged.set("efficiency", 0.5, entity=["Manchester Wind"], bus="Manchester")
 
@@ -1088,8 +1088,8 @@ def test_no_group_field_given_broadcasts_over_every_tuple(staged):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
     """
     staged.set("efficiency", 0.7)
 
@@ -1105,7 +1105,7 @@ def test_a_frame_carries_a_group_as_its_struct(staged):
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     for value in (0.5, 0.25):
         staged.set(
@@ -1131,7 +1131,7 @@ def test_set_takes_a_frame_duckdb_scans(staged, build):
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     staged.set("p_nom", build({"entity": ["Manchester Wind"], "value": [42]}))
     assert _entity_values(staged, "p_nom")["Manchester Wind"] == 42.0, (
@@ -1144,8 +1144,8 @@ def test_set_takes_an_all_none_column_as_a_broadcast(staged):
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     staged.set("p_nom", 1.0, entity=["Manchester Wind"])
     staged.set("p_nom", pd.DataFrame({"entity": [None], "value": [2.0]}))
@@ -1206,7 +1206,7 @@ def test_set_refuses_a_frame_column_that_does_not_fit_its_dtype(
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     with pytest.raises(ValueError, match=match):
         staged.set(attribute, frame)
@@ -1230,7 +1230,7 @@ def test_a_frame_carrying_a_group_but_as_its_struct_is_rejected(staged, select):
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
     """
     with pytest.raises(ValueError, match="'connection'"):
         staged.set("efficiency", staged.con.sql(f"SELECT {select}"))
@@ -1243,7 +1243,7 @@ def test_a_layer_touching_no_tuple_resolves_no_ancestry_to_check(
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     import datarecord.store.write as write
 
@@ -1265,8 +1265,8 @@ def test_remove_then_add_starts_without_the_parents_connections(staged, root):
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     assert _efficiency(staged), "the base carries a value to lose"
     staged.remove("entity", ["Manchester Wind"])
@@ -1318,7 +1318,7 @@ def test_add_group_refuses_what_is_no_frame_duckdb_rescans(staged, frame):
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     with pytest.raises(TypeError, match="is no frame"):
         staged.add_group("connection", frame)
@@ -1334,7 +1334,7 @@ def test_every_declared_group_reads_its_staged_rows(store):
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
     """
     revision = _small(
         store,
@@ -1409,7 +1409,7 @@ def test_a_group_property_is_a_column_of_the_group_file(store):
 
     Notes
     -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
     root = _with_roles(store)
     on_disk = pd.read_parquet(f"{store.layer_dir(root.id)}groups/connection.parquet")
@@ -1461,7 +1461,7 @@ def test_add_group_refuses_a_case_variant_of_a_property(store):
         staged.add_group("connection", frame)
 
 
-# -- rollback (https://energy-models.github.io/datarecord/design/working-record/#edits) --------------------------------------------------------
+# -- rollback (https://energy-models.github.io/datarecord/design/use/editing/#edits) --------------------------------------------------------
 
 
 def test_rollback_discards_everything_staged(staged, root):
@@ -1479,7 +1479,7 @@ def test_a_key_set_read_before_rollback_raises_after_it(store):
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
     staged = WorkingRecord(_small(store).record)
     staged.set("p_max_pu", 0.5, entity=["Norway Wind"])
@@ -1497,7 +1497,7 @@ def test_writing_the_edits_clears_nothing(staged, root):
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     first = root.child(staged.edits)
@@ -1513,7 +1513,7 @@ def test_writing_the_edits_clears_nothing(staged, root):
     assert _layer_rows(emptied, "p_nom").empty
 
 
-# -- commit targets (https://energy-models.github.io/datarecord/design/working-record/#edits) --------------------------------------------------
+# -- commit targets (https://energy-models.github.io/datarecord/design/use/editing/#edits) --------------------------------------------------
 
 
 def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root):
@@ -1527,8 +1527,8 @@ def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root):
 
     Notes
     -----
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
     assert "snapshot" not in (staged.schema.partial or frozenset())
     assert "snapshot" not in staged.schema.owned_per("p_max_pu"), (
@@ -1560,7 +1560,7 @@ def test_edits_are_written_only_under_their_base(store):
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
     root = _small(store)
     other = empty_root(store)
@@ -1579,8 +1579,8 @@ def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root):
 
     Notes
     -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
-    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
     before = _entity_values(root.record, "p_nom")["Manchester Wind"]
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
@@ -1605,8 +1605,8 @@ def test_an_edit_over_a_directory_base_reads_back(root):
 
     Notes
     -----
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     staged = WorkingRecord(root.store.layer(root.id))
 
@@ -1636,7 +1636,7 @@ def test_edits_over_a_directory_are_no_revisions_delta(store, written_directory)
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
     revision = empty_root(store)
     over_a_directory = WorkingRecord(store.workspace.at(written_directory))
@@ -1676,7 +1676,7 @@ def test_edits_read_under_the_base_records_schema(store, workspace, tmp_path):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
     out = str(tmp_path / "standalone")
     workspace.write(WorkingRecord(_small(store).record), out)
@@ -1696,7 +1696,7 @@ def test_a_standalone_write_of_the_record_is_flattened(staged, root, tmp_path):
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     out = str(tmp_path / "flat")
@@ -1720,7 +1720,7 @@ def test_a_string_valued_attribute_keeps_its_declared_type(staged):
 
     Notes
     -----
-    - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
+    - [the shape of an edit](https://energy-models.github.io/datarecord/design/use/editing/#the-shape-of-an-edit)
     """
     staged.set("sub_network", "0", entity=["Manchester Wind"])
     rows = staged.attributes["sub_network"].df()
@@ -1739,7 +1739,7 @@ def test_one_call_spans_component_types(staged):
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     staged.set("p_nom", {"Manchester Wind": 150.0, "DC link": 80.0})
     got = _entity_values(staged, "p_nom")

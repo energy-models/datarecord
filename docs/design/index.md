@@ -4,68 +4,68 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# Design
+# Overview
 
 Status: Draft · Owner: Jonas Hörsch · Date: 2026-08-05
 
-The authoritative design for datarecord. [Usage](../usage/index.md) is how to
-use the package; these pages are what it is and why it is that way. The
-docstrings in the source cite them by link rather than restating the argument —
-a comment that re-argues the design is a defect.
+A record holds labeled data with a declared schema. Its labels sit on axes called dims. Groups list which tuples of labels exist, properties describe single labels, and attributes hold values at coordinates. The schema declares what may exist, and the data says what does. A record can be one parquet directory or a tree of layers, and a reader reads both through one interface. The package depends on DuckDB, pydantic and mathspec, and names no modelling framework.
 
-## What a data record is
+These pages are the authoritative design. [Usage](../usage/index.md) shows how to use the package. Docstrings in the source cite these pages by link.
 
-Dimensioned attribute data with a declared schema.
+## The parts of a record
 
-A record holds **entities** (named labels, classified by their categories), **groups** of them — the `connection` group over `(entity, bus)` being the one every network has — **attribute values** over both, and the **axes** those values vary along.
-A schema declares what may exist; the data says what does.
+A [dim](model/dims.md) is an axis: a set of unique labels, such as the buses of a network or its snapshots. A dim with `one_of` fixes which labels it may hold.
 
-A record exposes six things:
+A [group](model/groups.md) declares which tuples of labels over several dims exist, such as which entity attaches to which bus.
+
+A [property](model/properties.md) holds one value per label of a dim or a group and describes that label, such as the carrier of a generator. A property can refer back to another dimension using `one_of`.
+
+An [attribute](model/attributes.md) holds values at coordinates over the dims and groups it names, such as a generator's available output per snapshot, or the resulting dispatch of the solution.
+
+The [schema](model/schema.md) declares the dims, groups, properties and attributes with their dtypes. The data says which labels, tuples and values exist.
+
+A `RecordLike` object exposes each of them, and returns dims, groups, properties and attributes as DuckDB relations. The [reading](use/reading.md) page defines the protocol in full.
 
 ```text
-record.schema                   what may exist: the axes, properties, attributes
+record.schema                   what may exist: the axes, groups, properties, attributes
 record.dims                     the axes themselves, keyed by dim
-record.properties               what describes each label, keyed by dim or group
 record.groups                   which tuples exist, keyed by group
+record.properties               what describes each label, keyed by dim or group
 record.attributes               the values, results included, keyed by attribute name
 record.flags(**cats)            which axes an attribute actually uses
 ```
 
-That is the [`Record` protocol](record.md), and [The Record protocol](record.md) gives it precisely.
+## The running example
 
-An entity's `entity` identifies it **across every category**: names are unique record-wide, not per type ([entity is unique across types](format.md#entity-is-unique-across-types)).
-That is why the values are keyed by attribute and not by type — an attribute row names an entity and nothing more, and an entity's type is a [property](schema.md#properties) the record knows about it rather than part of its address.
+The pages illustrate the design with one example schema, shaped like PyPSA's ([the PyPSA tool](tools/pypsa.md)). Its dims are `entity`, `bus`, `carrier`, `snapshot` and `ctype`.
+The properties `entity.ctype` and `entity.carrier` refer back to their dimension. `ctype` is a dim with `one_of`, whose labels are component classes such as `Generator`, `Link` and `Load`, so an attribute over `entity` can have a default per `ctype`. The group `connection` lists the `(entity, bus)` tuples that exist, and attributes such as `p_nom` and `p_max_pu` hold values over `entity` and `snapshot`. The schema declares each of these names like any other.
 
-`Record` is the one class that answers all of this, and it is the interface over a fold across layers, handing back DuckDB relations:
+## Core interface
 
-- **A tree of layers**, each adding a partial record on top of its parent, resolved last-writer-wins. No single directory is the record; the answer is the fold across them. `Revision.record` gives one.
-- **One parquet directory**, via `Workspace.at(uri)` — folded over the single layer it is, which [degenerates to a scan of it](read-path.md#one-record-over-one-fold). Not a second implementation.
-- **[`WorkingRecord`](working-record.md)** — a `Record` whose last layer is a staging area, so pending edits read back before anything is written.
+`Record` is the one class that implements the protocol. It reads a fold across layers:
 
-`RecordLike` is the protocol all of these satisfy, and so does **a framework's own object** — a PyPSA `Network` presenting itself as a record, without depending on this package at all.
+- A tree of layers, each adding a partial record on top of its parent, resolved last-writer-wins. `Revision.record` gives one ([a tree of layers](layers/tree.md)).
+- One parquet directory, through `Workspace.at(uri)`. It folds as a tree with one layer, which [degenerates to a scan of it](layers/resolution.md#one-record-over-one-fold).
+- A [`WorkingRecord`](use/editing.md), whose last layer stages edits, so pending edits read back before anything is written.
 
-A consumer cannot tell which it holds, so a framework reads a hundred-layer overlay through the same call it would use for a single directory.
+A framework's own object may satisfy `RecordLike` too, such as a PyPSA `Network` that presents itself as a record and depends on nothing in this package. A consumer cannot tell which kind it holds, so a framework reads a hundred-layer tree through the same calls as a single directory.
 
-Neither the concept nor this package names a modelling framework.
-A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
-`datarecord` depends only on `duckdb`, `pydantic` and `mathspec`, whose dtypes a schema declares; its one optional dependency, `datarecord[remote]`, adds boto3 for a location on S3 ([files, local and remote](layers.md#files-local-and-remote)).
+A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works. `datarecord` depends on `duckdb`, `pydantic` and `mathspec`, whose dtypes a schema declares. Its optional `datarecord[remote]` adds boto3 for a location on S3 ([files, local and remote](storage/store.md#files-local-and-remote)). A framework's tool lives under `datarecord/tools/` behind its own extra ([the package](package.md)).
 
 ## Scope
 
-- **In scope:** the [`Record` protocol](record.md) (the definition) and [`WorkingRecord`](working-record.md); the [parquet format](format.md) that stores it; [the schema](schema.md); [overlay resolution](layers.md) and its [owner map](read-path.md#owner-map); [the write path](writing.md); [why one directory needs no second implementation](read-path.md#one-record-over-one-fold).
-- **Out of scope:** a non-DuckDB implementation ([one engine](record.md#one-engine)); concurrent writers to one record; unmaterialised/meta layers.
+The design covers the `RecordLike` protocol and `WorkingRecord`, the data model and its schema, layers and their resolution, the write path, and the parquet format that stores a record.
+
+Out of scope are an implementation on an engine other than DuckDB ([one engine](use/reading.md#one-engine)) and layers that are not materialised as parquet. Concurrent writers to one record meet only at the manifest ([concurrent writers](storage/concurrency.md)).
 
 ## The pages
 
-| page                                 | what it settles                                       |
-| ------------------------------------ | ----------------------------------------------------- |
-| [The Record protocol](record.md)     | what a consumer codes against, and what it may assume |
-| [The record format](format.md)       | the parquet directory a record is stored as           |
-| [The schema](schema.md)              | what may exist: dims, attributes, patch granularity   |
-| [Layered resolution](layers.md)      | a tree of layers, folded last-writer-wins             |
-| [The DuckDB read path](read-path.md) | the owner map and how a relation resolves             |
-| [Writing a record](writing.md)       | `root`, `child`, `ws.write`, and what they validate   |
-| [`WorkingRecord`](working-record.md) | editing: staging, `edits`, reading back               |
-| [Consuming a record](tools.md)       | tools, and the seam a framework meets                 |
-| [Module layout](module-layout.md)    | where the code lives, and the one-way dependency      |
-| [Open questions](open-questions.md)  | what is deliberately unsettled                        |
+| section                             | what it settles                                                        |
+| ----------------------------------- | ---------------------------------------------------------------------- |
+| [The data model](model/dims.md)     | dims, groups, properties, attributes and the schema that declares them |
+| [Layers](layers/tree.md)            | the tree of layers, removing labels, and how a read resolves           |
+| [Using a record](use/reading.md)    | reading, editing with `WorkingRecord`, and writing a layer             |
+| [Storage](storage/format.md)        | the parquet format, workspaces and stores, threads and processes       |
+| [Frameworks](tools/index.md)        | tools, and the PyPSA tool                                              |
+| [The package](package.md)           | where the code lives, and the one-way dependency                       |
+| [Open questions](open-questions.md) | what is deliberately unsettled                                         |

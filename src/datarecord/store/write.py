@@ -9,9 +9,9 @@ producing one from a framework's own object is a tool's job.
 
 Notes
 -----
-- [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+- [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-- [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
+- [module layout](https://energy-models.github.io/datarecord/design/package/)
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
 
     Notes
     -----
-    - [LayerData](https://energy-models.github.io/datarecord/design/record/#layerdata)
+    - [LayerData](https://energy-models.github.io/datarecord/design/use/writing/#layerdata)
     """
     if isinstance(source, LayerData):
         return source
@@ -110,7 +110,7 @@ def write_layer(
         If a long frame is missing a long-schema column, or the schema
         declares a key dim no frame carries - either would make the fold
         misresolve the layer.
-        If a group tuple or a property that takes its labels from a dim names
+        If a group tuple or a property that refers to a dim names
         a label dead after the layer, in a subject the layer restates or whose
         rows name a label the layer removes.
         If a column's type does not fit its dtype, naming the attribute,
@@ -130,18 +130,18 @@ def write_layer(
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
-    - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/writing/#a-revision-exists-only-by-its-file)
+    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+    - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/storage/store/#a-revision-exists-only-by-its-file)
     """
     local = "://" not in base
     if local and Path(base).exists():
-        msg = f"layer {base} already exists; a write creates a new layer (https://energy-models.github.io/datarecord/design/writing/)"
+        msg = f"layer {base} already exists; a write creates a new layer (https://energy-models.github.io/datarecord/design/use/writing/)"
         raise FileExistsError(msg)
     schema = data.schema
 
     # Staged then renamed, so a frame that fails validation part-way through
-    # leaves no layer rather than half of one (https://energy-models.github.io/datarecord/design/writing/). Validation happens as each
+    # leaves no layer rather than half of one (https://energy-models.github.io/datarecord/design/use/writing/). Validation happens as each
     # frame is built, since building it twice would defeat the laziness.
     staging = f"{base.rstrip('/')}.staging/" if local else base
     if local:
@@ -163,7 +163,7 @@ def write_layer(
             for key in keys:
                 rel = read(
                     key
-                )  # looked up exactly once (https://energy-models.github.io/datarecord/design/writing/)
+                )  # looked up exactly once (https://energy-models.github.io/datarecord/design/use/writing/)
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
@@ -225,8 +225,8 @@ def _write_frame(
 
     Notes
     -----
-    - [relations](https://energy-models.github.io/datarecord/design/record/#relations)
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+    - [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
     """
     file = f"{kind}/{key}.parquet"
     uri = f"{staging}{file}"
@@ -265,7 +265,7 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     dims = schema.coordinates_of(attribute)
     refuse_twice(
@@ -273,7 +273,7 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
         [*dims, "breakpoint"],
         f"attributes/{attribute}.parquet",
         "they name the same dims, so neither is the more specific there. Keep "
-        "one of them (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)",
+        "one of them (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)",
     )
     if len(dims) < 2:
         return
@@ -306,7 +306,7 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
             f"attributes/{attribute}.parquet holds a row naming {list(a)} and one "
             f"naming {list(b)} that both cover {coordinate}; neither names every "
             f"dim the other does, so neither is the more specific there. Name the "
-            f"labels of one of them row by row, leaving that coordinate out (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
+            f"labels of one of them row by row, leaving that coordinate out (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
         )
         raise ValueError(msg)
 
@@ -338,7 +338,7 @@ def _refuse_reordered(
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+    - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
     """
     mine = rel.project(col(key), sql("row_number() OVER ()").alias("_mine"))
     theirs = parent.project(col(key), sql("row_number() OVER ()").alias("_theirs"))
@@ -364,7 +364,7 @@ def _refuse_reordered(
         msg = (
             f"{file} puts {key} {first[0]!r} out of its parent's order; a "
             f"restatement keeps the order of the labels its parent holds and "
-            f"places a new one anywhere (https://energy-models.github.io/datarecord/design/record/#axis-order)"
+            f"places a new one anywhere (https://energy-models.github.io/datarecord/design/model/dims/#axis-order)"
         )
         raise ValueError(msg)
 
@@ -378,7 +378,7 @@ def _require_living_references(
     """Reject a layer leaving a reference to a dead label in a subject it touches.
 
     A reference is a group tuple's field over a dim, or a property that
-    takes its labels from a dim. A property's subject the layer restates is
+    refers to a dim. A property's subject the layer restates is
     checked whole, in its final state, against every dead label; any other
     reference only for the labels the layer removes, its parent's axis minus
     its restatement. A restated group's tuples `refuse_unheld`
@@ -395,7 +395,7 @@ def _require_living_references(
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     touched = layer.axes() | layer.groups()
     references = [
@@ -455,7 +455,7 @@ def _require_living_references(
         msg = (
             f"{'; '.join(problems)}; removing a label removes the tuples naming "
             f"it and leaves no property holding it, so restate those groups "
-            f"without the tuples and clear those properties (https://energy-models.github.io/datarecord/design/layers/#deletion)"
+            f"without the tuples and clear those properties (https://energy-models.github.io/datarecord/design/layers/removal/)"
         )
         raise ValueError(msg)
 
@@ -477,10 +477,10 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
 
     Notes
     -----
-    - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
+    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
     columns = set(rel.columns)
 
@@ -491,7 +491,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         if key not in schema.attributes:
             msg = (
                 f"attributes/{key}.parquet is not a declared attribute; its `dims` "
-                f"are what say which columns the file carries (https://energy-models.github.io/datarecord/design/schema/#attributespec)"
+                f"are what say which columns the file carries (https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)"
             )
             raise ValueError(msg)
         required = set(schema.long_columns_for(key))
@@ -499,7 +499,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         if missing:
             msg = (
                 f"attributes/{key}.parquet is missing long-schema columns {missing}; "
-                f"the resolved relation needs {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
+                f"the resolved relation needs {sorted(required)} (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)"
             )
             raise ValueError(msg)
         # Nor anything else: a coordinate the attribute is not addressed by
@@ -511,7 +511,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         if extra:
             msg = (
                 f"attributes/{key}.parquet carries columns {extra} the attribute is "
-                f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/design/format/#the-long-schema)"
+                f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)"
             )
             raise ValueError(msg)
         schema.check_group_columns(
@@ -524,7 +524,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         if key not in schema.dimensions:
             return
         if key not in columns:
-            msg = f"dims/{key}.parquet is missing its key column {key!r} (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+            msg = f"dims/{key}.parquet is missing its key column {key!r} (https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)"
             raise ValueError(msg)
         refuse_foreign_columns(
             columns, {key, "order_key"}, schema, key, f"dims/{key}.parquet"
@@ -536,7 +536,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
     if key not in columns:
         msg = (
             f"groups/{key}.parquet is missing {[key]}; a group file is keyed "
-            f"by one struct column named for the group (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+            f"by one struct column named for the group (https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)"
         )
         raise ValueError(msg)
     refuse_foreign_columns(
@@ -556,7 +556,7 @@ class _RecordLikeAsLayerData:
 
     Notes
     -----
-    - [LayerData](https://energy-models.github.io/datarecord/design/record/#layerdata)
+    - [LayerData](https://energy-models.github.io/datarecord/design/use/writing/#layerdata)
     """
 
     def __init__(self, source: RecordLike, con: DuckDBPyConnection) -> None:

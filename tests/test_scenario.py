@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+- [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
@@ -39,7 +39,7 @@ def stochastic():
 
     Notes
     -----
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    - [a label is unique within its dim](https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)
     """
     import pypsa
 
@@ -75,7 +75,7 @@ def test_map_is_scenario_expanded(store, parent, stochastic):
 
     Notes
     -----
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
     schema = parent.record.schema
     df = parent.record._fold.owner_map.df()
@@ -132,8 +132,8 @@ def test_child_adds_new_scenario(store, parent, stochastic):
 
     Notes
     -----
-    - [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [layered resolution](https://energy-models.github.io/datarecord/design/layers/tree/)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     child = empty_child(parent)
     write_scenarios(
@@ -177,8 +177,8 @@ def test_scenario_order_survives_a_chain_of_closed_layers(store, parent, stochas
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     rec = parent
     added = []
@@ -198,7 +198,7 @@ def test_resolved_dims_are_node_scoped(store, parent, stochastic):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     middle = empty_child(parent)
     middle.materialise()

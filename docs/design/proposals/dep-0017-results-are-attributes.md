@@ -46,7 +46,7 @@ The distinction belongs to a framework. PyPSA marks an attribute "Output" in its
 | `results` in compatibility                          | gone; `attributes` versions as before                            |
 | `RecordLike.outputs`, `Record.outputs`              | gone; `record.attributes[name]`                                  |
 | `Kind`, `attributes(kind)`, `attribute(name, kind)` | `attributes()`, `attribute(name)`                                |
-| the read path's [outputs](../read-path.md)          | gone; a result overlays like any attribute, latest layer winning |
+| the read path's [outputs](../layers/resolution.md)  | gone; a result overlays like any attribute, latest layer winning |
 | owner maps keyed by kind                            | one owner map: `owner_map_uri(id)`, `owner_map_<id>`             |
 | `set(..., kind="outputs")`                          | `set(name, frame)`                                               |
 | the name check of a result against `results`        | the attribute check of `set`                                     |
@@ -104,7 +104,7 @@ On every `results_only` write the tool replaces them. The model does not say wha
 
 **Results inherit.** A child that changes nothing a solve reads keeps its parent's solution. A child that changes inputs holds results computed from its parent. That is the same staleness a staged result has today after an input edit.
 
-**The tool owns "output".** PyPSA's registry already says which attributes a solve fills. Only the tool's import reads that. This matches [the module layout](../module-layout.md), which keeps framework knowledge out of core.
+**The tool owns "output".** PyPSA's registry already says which attributes a solve fills. Only the tool's import reads that. This matches [the module layout](../package.md), which keeps framework knowledge out of core.
 
 **One import, two scopes.** A full export and a results layer differ only in what they present. One `to_datarecord` keeps the rule for each result in one place.
 
@@ -153,7 +153,7 @@ schema.attributes["p"]
 9. `tools/base.py`: `results` goes; `to_datarecord` takes `results_only` and `base`.
 10. `tools/pypsa.py`: as [above](#the-pypsa-tool); `results` folds into `to_datarecord`; intermediates in `base` are replaced as [above](#intermediate-results).
 11. Tests: `kind="outputs"` and `outputs` tests in `test_mutable.py`, `test_records.py`, `test_tools.py`, `test_overlay.py`, `test_write.py`, `test_properties.py`, `test_owner_map.py` are rewritten or deleted; `fixtures.py` declares results as attributes.
-12. Pages: [format](../format.md), [read path](../read-path.md), [schema](../schema.md), [working record](../working-record.md), [writing](../writing.md), [tools](../tools.md), [record](../record.md), [layers](../layers.md), [open questions](../open-questions.md), the usage pages, `CHANGELOG.md`.
+12. Pages: [format](../storage/format.md), [read path](../layers/resolution.md), [schema](../model/schema.md), [working record](../use/editing.md), [writing](../use/writing.md), [tools](../tools/index.md), [record](../use/reading.md), [layers](../layers/tree.md), [open questions](../open-questions.md), the usage pages, `CHANGELOG.md`.
 
 Checks: no `outputs`, `Kind` or `results` field in `src/`; an old layer is refused naming `attributes/`; a solved PyPSA network round-trips with its results; a child reads its parent's results; a re-solve leaves no stale SubNetwork; `results_only` without `base`, or `base` without it, is refused.
 

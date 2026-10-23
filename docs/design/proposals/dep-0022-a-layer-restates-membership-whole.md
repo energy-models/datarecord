@@ -45,7 +45,7 @@ DEP 20's sections [removal](dep-0020-a-layer-restates-an-axis-whole.md#removal),
 | `properties/<subject>.<name>.parquet` | the subject's key column and the column `<name>`, one row per label the layer sets |
 | `attributes/<attr>.parquet`           | unchanged                                                                          |
 
-The file name is the property's address ([properties](../schema.md#properties)). `bus.x` lives in `properties/bus.x.parquet`, and `connection.role` in `properties/connection.role.parquet`, keyed by the `connection` struct. A row sets the property for its label, a row holding NULL sets it to NULL, and a label without a row keeps the value a shallower layer gave it. One property per file keeps an unset cell apart from a NULL one with no mask, since a file holds no cell its layer does not set.
+The file name is the property's address ([properties](../model/properties.md#properties)). `bus.x` lives in `properties/bus.x.parquet`, and `connection.role` in `properties/connection.role.parquet`, keyed by the `connection` struct. A row sets the property for its label, a row holding NULL sets it to NULL, and a label without a row keeps the value a shallower layer gave it. One property per file keeps an unset cell apart from a NULL one with no mask, since a file holds no cell its layer does not set.
 
 A resolved property is, per label, the row of the deepest layer holding one. A resolved axis or group is the membership in its order with every property's fold joined on as a column, the shape `Record.dims`, `Record.properties` and `Record.groups` read today, so neither the API nor `Coords` changes shape. Properties of every subject fold per label, whether or not the subject is in `partial`.
 
@@ -83,7 +83,7 @@ A materialised node writes `resolved/dims/<dim>.parquet` and `resolved/groups/<g
 
 ## Rationale
 
-Membership and order are facts about a whole axis, so DEP 20's case for a whole file holds for them. A property is a fact about one label, so a per-label patch loses nothing, and the last writer per label and property decides it as [`set`](../working-record.md#set) already treats it. `partial` keeps the one meaning DEP 20 gives it, attribute ownership: a property never varies along another dim, so it cannot leave the hole `partial` guards against, and every subject's properties are patched per label.
+Membership and order are facts about a whole axis, so DEP 20's case for a whole file holds for them. A property is a fact about one label, so a per-label patch loses nothing, and the last writer per label and property decides it as [`set`](../use/editing.md#set) already treats it. `partial` keeps the one meaning DEP 20 gives it, attribute ownership: a property never varies along another dim, so it cannot leave the hole `partial` guards against, and every subject's properties are patched per label.
 
 ### Added complexity
 
@@ -159,7 +159,7 @@ Paths are under `src/datarecord/`.
 5. In `mutable.py`, DEP 20's note 3 with the staging table narrowed to the key and the position, a staging table per property, `_patch_axis` without the sibling carry, `add` staging NULL rows, and `remove` deleting the label's staged property rows.
 6. In `tests/fixtures.py`, DEP 20's note 5, with each property column written as its own file.
 7. `CHANGELOG.md` under `[Unreleased]`: DEP 20's entry, and a property is a file of per-label patches under `properties/`.
-8. On landing, DEP 20's page list, with [where a value lives](../format.md#where-a-value-lives) and [properties](../schema.md#properties) placing a property in its own file. Whichever of DEP 20 and DEP 22 is implemented, the other takes `Superseded` with `Superseded-By` naming it.
+8. On landing, DEP 20's page list, with [where a value lives](../storage/format.md#where-a-value-lives) and [properties](../model/properties.md#properties) placing a property in its own file. Whichever of DEP 20 and DEP 22 is implemented, the other takes `Superseded` with `Superseded-By` naming it.
 
 Checks: DEP 20's checks; a property set by two layers on two labels reads per label; a label added again reads no property from below its removal, materialised or not, staged or committed.
 

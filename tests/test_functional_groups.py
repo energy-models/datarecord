@@ -2,17 +2,16 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Classifications: a property that takes its labels from a dim.
+"""Classifications: a property that refers to a dim.
 
 `bus.state` `one_of: state` says every bus is in at most one state: a
 column of the bus axis whose values are labels of `state`, which keeps an axis
-file for its order and for its properties. A group's property takes its labels
-from a dim the same way.
+file for its order and for its properties. A group's property refers to a dim the same way.
 
 Notes
 -----
-- [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
-- [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+- [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+- [groups](https://energy-models.github.io/datarecord/design/model/groups/)
 """
 
 from typing import Any
@@ -64,25 +63,27 @@ def _schema(**overrides) -> Schema:
 @pytest.mark.parametrize(
     ("one_of", "duck", "categorizing"),
     [
-        pytest.param(None, sqltypes.VARCHAR, (), id="open"),
+        pytest.param(None, sqltypes.VARCHAR, (), id="no-one-of"),
         pytest.param(
             ("lower", "upper"),
             duckdb.sqltypes.DuckDBPyType("ENUM('lower', 'upper')"),
             ("state",),
-            id="listed",
+            id="one-of",
         ),
     ],
 )
 def test_a_property_takes_its_dims_type_and_categorizes_if_the_dim_lists_labels(
     one_of, duck, categorizing
 ):
-    """Its values are the dim's labels, typed as them; categories only where the dim lists them."""
+    """Its values are the dim's labels, typed as them; categories only where the dim has `one_of`."""
     s = _schema(
         dimensions={**_schema().dimensions, "state": Dimension(one_of=one_of)},
         partial=frozenset({"bus"}),
     )
     assert s.column_type("state", "bus") == duck
-    assert s.categorizing("bus") == categorizing, "an open dim's labels are data"
+    assert s.categorizing("bus") == categorizing, (
+        "only a property referring to a dim with one_of categorizes"
+    )
     assert Schema.model_validate_json(s.model_dump_json()) == s, "the dtype round-trips"
 
 
@@ -138,7 +139,7 @@ def test_a_misplaced_one_of_fails_to_load(manifest, match):
 
     Notes
     -----
-    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
     """
     dimensions = {d: {"dtype": "str"} for d in ("bus", "state", "country", "scenario")}
     manifest = {**manifest, "dimensions": dimensions | manifest.get("dimensions", {})}
@@ -182,13 +183,13 @@ def test_a_malformed_group_is_refused(groups, match):
                     )
                 }
             },
-            "which lists no labels, so they are data, not categories",
-            id="a-default-by-on-an-open-dim",
+            "refers to 'state', but 'state' is not a one_of dim",
+            id="a-default-by-on-a-plain-dim",
         ),
     ],
 )
-def test_a_malformed_property_taking_labels_from_a_dim_is_refused(spec, extra, match):
-    """A property takes its labels from a declared dim, and from one that lists none categorizes nothing."""
+def test_a_malformed_property_referring_to_a_dim_is_refused(spec, extra, match):
+    """A property that refers to a dim without `one_of` categorizes nothing."""
     with pytest.raises(ValidationError, match=match):
         _schema(
             properties={"bus": {"state": spec}},
@@ -210,7 +211,7 @@ def _budget_schema() -> Schema:
 
 
 def test_a_classified_axis_folds_as_an_ordinary_axis(store):
-    """The fold learns nothing new: a dim a property takes its labels from has an axis file like any dim.
+    """The fold learns nothing new: a dim a property refers to has an axis file like any dim.
 
     Its own file is what gives it order and a place for `co2_budget`, which no
     bus column could hold.
@@ -237,7 +238,7 @@ def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     revision = empty_root(store)
     write_schema(_schema(), store)
@@ -272,7 +273,7 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
     grandchild's addition comes after the materialised copy's members.
 
     No `order_key` column - member order is the file's own row order
-    (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+    (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis).
     """
     schema = _budget_schema()
     write_schema(schema, store)
@@ -390,7 +391,7 @@ def test_a_child_layer_restates_an_axis_whole(store, partial):
 
     Notes
     -----
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
     revision = empty_root(store)
     properties = {"country": {"co2_budget": PropertySpec(dtype="float")}}
@@ -455,7 +456,7 @@ def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
 
 
-# -- a property that takes its labels from a dim holds a live label --------
+# -- a property that refers to a dim holds a live label --------
 
 
 @pytest.fixture
@@ -508,7 +509,7 @@ def test_a_property_naming_a_dim_refuses_a_label_it_lacks(classified, edit):
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
     """
     staged = WorkingRecord(classified.record)
     with pytest.raises(KeyError, match=r"names '(state|country)' labels \['coal'\]"):
@@ -539,7 +540,7 @@ def test_add_group_refuses_a_label_the_dim_does_not_list(store):
         "SELECT {'bus': 'a', 'state': 'b'}::STRUCT(bus VARCHAR, state VARCHAR) "
         "AS bus_state, 'coal'::VARCHAR AS country"
     )
-    with pytest.raises(KeyError, match="lists its labels, so use one of them"):
+    with pytest.raises(KeyError, match="has `one_of`, so use one of its labels"):
         staged.add_group("bus_state", rel)
 
 
@@ -548,7 +549,7 @@ def test_remove_is_refused_while_a_property_names_the_label(classified):
 
     Notes
     -----
-    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
     """
     staged = WorkingRecord(classified.record)
     with pytest.raises(
@@ -569,7 +570,7 @@ def test_the_writer_refuses_a_property_naming_a_removed_label(classified):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     staged = WorkingRecord(classified.record)
     staged.remove("country", ["NO"])

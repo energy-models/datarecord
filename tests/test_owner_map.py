@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+- [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+- [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
@@ -62,7 +62,7 @@ def test_union_all_by_name_folds_every_relation(store):
 
     Notes
     -----
-    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
     """
     rels = [store.workspace.con.sql(f"SELECT {i} AS x") for i in (1, 2, 3)]
     got = union_all_by_name(rels, store.workspace.con).fetchall()
@@ -77,8 +77,8 @@ def test_union_all_by_name_fills_a_missing_column_with_null(store):
 
     Notes
     -----
-    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
     rels = [
         store.workspace.con.sql("SELECT 1 AS x, 'a' AS y"),
@@ -97,8 +97,8 @@ def keys(revision):
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     df = revision.record._fold.owner_map.df()
     return {(r["entity"], str(r.attribute)) for _, r in df.iterrows()}
@@ -113,11 +113,11 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     assert Path(store.resolved_dir(parent.id), "owner_map.parquet").exists()
     # The entity axis folds like an axis now, materialised under `dims/`, not as
-    # an owner map (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+    # an owner map (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis).
     assert Path(store.resolved_dir(parent.id), "dims", "entity.parquet").exists()
     assert not Path(
         store.resolved_dir(parent.id), "owner_map", "entities.parquet"
@@ -125,7 +125,7 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
     # The cache shares the record's directory but stays out of the layer's own
     # namespace, so a reader that knows nothing about layering still sees a
     # plain parquet directory: every glob into a layer is single-level, so nothing
-    # under `resolved/` is reachable by one (https://energy-models.github.io/datarecord/design/layers/#deletion).
+    # under `resolved/` is reachable by one (https://energy-models.github.io/datarecord/design/layers/removal/).
     assert not Path(store.layer_dir(parent.id), "owner_map").exists()
     # The globs the fold and `Record.at` actually use must not reach a
     # cached file.
@@ -153,7 +153,7 @@ def test_last_writer_wins_per_key(store, parent):
 
     Notes
     -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
     """
     record = parent.record
     assert set(record._fold.owner_map.df()["layer_uuid"]) == {parent.id}
@@ -184,7 +184,7 @@ def test_removing_a_component_removes_all_its_attributes(store, ac_dc):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     parent = export_network(ac_dc, store)
     parent.materialise()
@@ -215,7 +215,7 @@ def test_a_removed_cache_falls_back_to_the_fold(store, parent):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     child = empty_child(parent)
     write_attribute(
@@ -236,7 +236,7 @@ def test_any_node_may_be_a_parent(store, parent):
 
     Notes
     -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     """
     child = empty_child(parent)
     write_attribute(
@@ -262,8 +262,8 @@ def test_a_record_with_no_manifest_folds(store):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     revision = empty_root(store)
     assert revision.record.schema.dims == ()
@@ -282,7 +282,7 @@ def test_a_parquet_layer_locates_a_layers_files(store):
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
     revision_id = uuid4()
     source = ParquetLayer(revision_id, Schema(), store)
@@ -326,7 +326,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
 
     Notes
     -----
-    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
     """
     write_schema(
         Schema(
@@ -374,7 +374,7 @@ def test_the_fold_broadcasts_by_hash_join(store):
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     write_schema(
         Schema(

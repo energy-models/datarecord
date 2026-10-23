@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+- [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
 """
 
 from dataclasses import dataclass
@@ -74,7 +74,7 @@ def both(written, store):
 
     Notes
     -----
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
     """
     node = written.record
     directory = store.layer(written.id)
@@ -94,7 +94,7 @@ def test_every_construction_satisfies_the_protocol(both):
 
     Notes
     -----
-    - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
+    - [one record over one fold](https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold)
     """
     for record in both:
         assert isinstance(record, RecordLike)
@@ -149,7 +149,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
 
     Notes
     -----
-    - [relations](https://energy-models.github.io/datarecord/design/record/#relations)
+    - [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
     """
     record = _dict_record(store)
     assert isinstance(record, RecordLike)
@@ -165,7 +165,7 @@ def test_the_writer_refuses_timestamps_with_a_time_zone(store):
 
     Notes
     -----
-    - [the write API](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [the write API](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     record = _dict_record(store, "TIMESTAMPTZ '2020-01-01 00:00:00+00'")
     with pytest.raises(ValueError, match="carry timestamps with a time zone"):
@@ -185,7 +185,7 @@ def test_constructions_agree_on_flags(both):
 
     Notes
     -----
-    - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
+    - [one record over one fold](https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold)
     """
     node, *rest = both
     for other in rest:
@@ -214,7 +214,7 @@ def test_constructions_agree_on_rows(both):
             assert left.equals(right), attribute
 
 
-# -- laziness (https://energy-models.github.io/datarecord/design/record/#relations, https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) ---------------------------------------------------
+# -- laziness (https://energy-models.github.io/datarecord/design/use/reading/#relations, https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold) ---------------------------------------------------
 
 
 @pytest.mark.parametrize("member", ["dims", "properties", "groups", "attributes"])
@@ -234,7 +234,7 @@ def test_relations_stay_unmaterialised(both):
     assert "FILTER" in filtered.explain().upper(), "a filter pushes into the plan"
 
 
-# -- flags, the one non-frame member (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) ----------------------------------
+# -- flags, the one non-frame member (https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold) ----------------------------------
 
 
 def test_flags_report_both_sets_where_components_disagree(store):
@@ -246,7 +246,7 @@ def test_flags_report_both_sets_where_components_disagree(store):
 
     Notes
     -----
-    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
     """
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
@@ -281,8 +281,8 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
 
     Notes
     -----
-    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
     """
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
@@ -327,8 +327,8 @@ def test_node_record_orders_members(store):
 
     Notes
     -----
-    - [one record over one fold](https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [one record over one fold](https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     root = empty_root(store)
     write_schema(schema(), store)
@@ -359,7 +359,7 @@ def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
     """
     revision = empty_root(store)
     write_schema(schema(), store)
@@ -375,7 +375,7 @@ def test_missing_key_raises(both):
 
     Notes
     -----
-    - [relations](https://energy-models.github.io/datarecord/design/record/#relations)
+    - [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
     """
     for record in both:
         assert "p_max_pu" in record.attributes
@@ -390,13 +390,13 @@ def test_an_unsolved_network_has_no_results(both):
 
     Notes
     -----
-    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
     for record in both:
         assert not {"p", "marginal_price"} & set(record.attributes)
 
 
-# -- one schema per record root (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ----------------------------------------
+# -- one schema per record root (https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record) ----------------------------------------
 
 
 def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
@@ -426,7 +426,7 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
     assert b.broadcast_dims == ("entity", "bus", "vintage", "ctype", "connection")
 
     # A layer read directly needs no schema supplied either: its own directory
-    # carries none (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record), so its store's answers.
+    # carries none (https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record), so its store's answers.
     assert store_b.layer(revision_b.id).schema.broadcast_dims == (
         "entity",
         "bus",

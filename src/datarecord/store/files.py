@@ -10,7 +10,7 @@ URI's scheme.
 
 Notes
 -----
-- [files, local and remote](https://energy-models.github.io/datarecord/design/layers/#files-local-and-remote)
+- [files, local and remote](https://energy-models.github.io/datarecord/design/storage/store/#files-local-and-remote)
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class Files(Protocol):
 
     Notes
     -----
-    - [files, local and remote](https://energy-models.github.io/datarecord/design/layers/#files-local-and-remote)
+    - [files, local and remote](https://energy-models.github.io/datarecord/design/storage/store/#files-local-and-remote)
     """
 
     def read_text(self, uri: str) -> tuple[str, Version] | None:
@@ -166,7 +166,7 @@ class RemoteFiles:
 
     Notes
     -----
-    - [files, local and remote](https://energy-models.github.io/datarecord/design/layers/#files-local-and-remote)
+    - [files, local and remote](https://energy-models.github.io/datarecord/design/storage/store/#files-local-and-remote)
     """
 
     def __init__(self) -> None:

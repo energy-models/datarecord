@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+- [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
 """
 
 import pandas as pd
@@ -142,7 +142,7 @@ def test_categories_read_off_the_list_when_the_axis_lacks_one(record):
 
     Notes
     -----
-    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
+    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
     """
     assert record.dims["ctype"].df()["ctype"].tolist() == ["Generator", "Load"]
     assert record.schema.categorizing("entity") == ("ctype",)
@@ -225,7 +225,7 @@ def test_set_names_a_property_dotted_and_selects_by_it_bare(
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     with pytest.raises(error, match=match):
         WorkingRecord(record).set(*args, **kwargs)

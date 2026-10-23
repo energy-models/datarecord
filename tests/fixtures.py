@@ -37,7 +37,7 @@ TYPES = (
 """The `ctype` labels `schema()` declares - every one a test writes."""
 
 # No `ctype`: an attribute row is keyed by `name`, unique across every type
-# (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
+# (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim). The entity tables below keep it.
 LONG_COLUMNS = [
     "entity",
     "bus",
@@ -72,8 +72,8 @@ def write_attribute(
 
     Notes
     -----
-    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
+    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
     """
     df = pd.DataFrame(rows)
     if connection is None:
@@ -145,7 +145,7 @@ def restate(
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     old = _as_written(revision, kind, name)
     records = old.to_dict("records")
@@ -171,7 +171,7 @@ def write_group(revision: Revision, group: str, rows: list[dict]) -> None:
 
     Notes
     -----
-    - [where the rows live](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [where the rows live](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
     restate(revision, "groups", group, rows)
 
@@ -198,8 +198,8 @@ def write_connections(revision: Revision, rows: list[dict]) -> None:
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    - [where the rows live](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [where the rows live](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
     restate(revision, "groups", "connection", [_connection(r) for r in rows])
 
@@ -209,7 +209,7 @@ def drop_connections(revision: Revision, pairs: list[tuple[str, str]]) -> None:
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
     """
     gone = [{"entity": e, "bus": b} for e, b in pairs]
     restate(revision, "groups", "connection", [], drop=gone)
@@ -225,7 +225,7 @@ def drop_entities(revision: Revision, names: list[str]) -> None:
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     restate(revision, "dims", "entity", [], drop=names)
 
@@ -235,7 +235,7 @@ def write_axis(revision: Revision, dim: str, rows: list[dict]) -> None:
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
     restate(revision, "dims", dim, rows)
 
@@ -290,7 +290,7 @@ def rename_components(n, ctype: str, suffix: str) -> None:
 
     Notes
     -----
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    - [a label is unique within its dim](https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     c = n.c[ctype]
@@ -321,7 +321,7 @@ def empty_root(store: Store) -> Revision:
     """A new root revision, for a test to hand-write its layer into.
 
     No public API makes an empty revision; this is the store's private
-    revision-file write. Its layer holds nothing, the axis of a dim that lists its labels
+    revision-file write. Its layer holds nothing, the axis of a dim with `one_of`
     included: a label a property names is one a test adds.
 
     Write every file of a layer before its first read: a read freezes the
@@ -349,7 +349,7 @@ def export_network(n, store: Store) -> Revision:
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
     from datarecord.tools.pypsa import PyPSA
 
@@ -364,7 +364,7 @@ def write_schema(schema: Schema, store: Store) -> None:
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
     tree = schema.model_copy(update={"id": None})
     store.files.write_text(store.manifest_uri, tree.model_dump_json(), expect=None)
@@ -388,7 +388,7 @@ class RivalWrite:
 
     Notes
     -----
-    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
+    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/storage/concurrency/#the-manifests-compare-and-swap)
     """
 
     def __init__(self, inner: Files, uri: str, text: str) -> None:
@@ -425,7 +425,7 @@ def _default_attributes(dims: dict[str, Any], groups: dict[str, dict[str, str]])
     """
     varying = {"entity", *dims}
     connection = "connection" if "connection" in groups else "entity"
-    # A dim the connection's column already carries cannot address it again.
+    # A dim named like a coordinate of the connection would clash with its keyword.
     per_connection = set(dims) - set(groups.get(connection, ()))
     declared = {
         "p_nom": AttributeSpec(dtype="float", dims=varying),
@@ -460,7 +460,7 @@ def schema(
     """A schema shaped like the PyPSA records most tests build on.
 
     Defaults match `PyPSA.to_datarecord`: the `entity` axis carrying the
-    `ctype` property, which takes its labels from the dim `ctype` listing `TYPES`, a
+    `ctype` property, which refers to the dim `ctype` listing `TYPES`, a
     `connection` group over
     `(entity, bus)`, and three declared dims. Override `partial` to pin a
     different layering granularity, `dims` to declare another axis by its
@@ -474,8 +474,8 @@ def schema(
 
     Notes
     -----
-    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
     """
     # Callers declare per type, which is how a modelling framework thinks; the
     # schema stores one spec per attribute, record-wide. Flattening here keeps

@@ -59,6 +59,7 @@ pypsa = "*"
 mkdocs = ">=1.6,<2"
 mkdocs-material = ">=9.5,<10"
 mkdocstrings-python = ">=1.10"
+mkdocs-redirects = ">=1.2"
 # mkdocstrings formats signatures with one of these; without it every signature
 # renders on a single unwrapped line.
 ruff = "*"

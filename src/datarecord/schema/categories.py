@@ -9,8 +9,8 @@ combination a relation holds.
 
 Notes
 -----
-- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
-- [default_by](https://energy-models.github.io/datarecord/design/schema/#default_by-a-default-per-category)
+- [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+- [default_by](https://energy-models.github.io/datarecord/design/model/properties/#default_by-a-default-per-category)
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ def categorized_dim(schema: Schema, categories: Categories) -> str:
         k for k in categories if not any(k in schema.categorizing(d) for d in dims)
     )
     if unknown:
-        msg = f"{unknown} categorize no dim; a categorizing property is a property of a `partial` dim that takes its labels from a dim listing its labels"
+        msg = f"{unknown} categorize no dim; a categorizing property is a property of a `partial` dim that refers to a dim with `one_of`"
         raise ValueError(msg)
     if len(dims) != 1:
         msg = f"{sorted(categories)} categorize several dims {sorted(dims)}; name one dim's"

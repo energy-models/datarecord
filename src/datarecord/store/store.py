@@ -11,9 +11,9 @@ A revision is one node of that tree, and holds no state beyond its place in it.
 
 Notes
 -----
-- [the store](https://energy-models.github.io/datarecord/design/layers/#the-store)
-- [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
-- [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
+- [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+- [layered resolution](https://energy-models.github.io/datarecord/design/layers/tree/)
+- [module layout](https://energy-models.github.io/datarecord/design/package/)
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ class _Cursors(threading.local):
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
 
     def __init__(self, db: DuckDBPyConnection) -> None:
@@ -86,8 +86,8 @@ class Workspace:
 
     Notes
     -----
-    - [the store](https://energy-models.github.io/datarecord/design/layers/#the-store)
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
 
     def __init__(self, database: str = ":memory:") -> None:
@@ -113,7 +113,7 @@ class Workspace:
 
         Notes
         -----
-        - [crossing a process boundary](https://energy-models.github.io/datarecord/design/layers/#crossing-a-process-boundary)
+        - [crossing a process boundary](https://energy-models.github.io/datarecord/design/storage/concurrency/#crossing-a-process-boundary)
         """
         global _process
         with _process_lock:
@@ -155,7 +155,7 @@ class Workspace:
 
         Notes
         -----
-        - [files, local and remote](https://energy-models.github.io/datarecord/design/layers/#files-local-and-remote)
+        - [files, local and remote](https://energy-models.github.io/datarecord/design/storage/store/#files-local-and-remote)
         """
         files = RemoteFiles()
         options = ["TYPE s3", "PROVIDER credential_chain"]
@@ -205,8 +205,8 @@ class Workspace:
 
         Notes
         -----
-        - [the record format](https://energy-models.github.io/datarecord/design/format/)
-        - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+        - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+        - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
         """
         base = _absolute(uri) + "/"
         found = self.files(base).read_text(base + "manifest.json")
@@ -243,8 +243,8 @@ class Workspace:
 
         Notes
         -----
-        - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
-        - [a standalone directory](https://energy-models.github.io/datarecord/design/writing/#a-standalone-directory)
+        - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+        - [a standalone directory](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-standalone-directory)
         """
         base = _absolute(uri) + "/"
         if self.files(base).exists(base):
@@ -279,8 +279,8 @@ class Store:
 
     Notes
     -----
-    - [the store](https://energy-models.github.io/datarecord/design/layers/#the-store)
-    - [the tree beside the layers](https://energy-models.github.io/datarecord/design/layers/#the-tree-beside-the-layers)
+    - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+    - [the tree beside the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-tree-beside-the-layers)
     """
 
     def __init__(self, uri: str, workspace: Workspace) -> None:
@@ -309,7 +309,7 @@ class Store:
 
         Notes
         -----
-        - [the record format](https://energy-models.github.io/datarecord/design/format/)
+        - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
         """
         return f"{self.uri}/layers/{id}/"
 
@@ -318,7 +318,7 @@ class Store:
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
         return f"{self.layer_dir(id)}resolved/"
 
@@ -327,7 +327,7 @@ class Store:
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
         return f"{self.resolved_dir(id)}owner_map.parquet"
 
@@ -347,8 +347,8 @@ class Store:
 
         Notes
         -----
-        - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
-        - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/writing/#a-revision-exists-only-by-its-file)
+        - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+        - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/storage/store/#a-revision-exists-only-by-its-file)
         """
         return self._write(source, None)
 
@@ -423,7 +423,7 @@ class Store:
 
         Notes
         -----
-        - [the tree beside the layers](https://energy-models.github.io/datarecord/design/layers/#the-tree-beside-the-layers)
+        - [the tree beside the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-tree-beside-the-layers)
         """
         row = self._held(id)
         if row is None:
@@ -448,7 +448,7 @@ class Store:
 
         Notes
         -----
-        - [the tree beside the layers](https://energy-models.github.io/datarecord/design/layers/#the-tree-beside-the-layers)
+        - [the tree beside the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-tree-beside-the-layers)
         """
         held = {
             row[0]
@@ -508,7 +508,7 @@ def ancestry(store: Store, revision_id: UUID) -> list[UUID]:
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     rows = store.workspace.con.execute(
         _ANCESTRY, {"location": store.uri, "id": revision_id}
@@ -530,8 +530,8 @@ class Revision(BaseModel):
 
     Notes
     -----
-    - [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
-    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/layers/#crossing-a-process-boundary)
+    - [layered resolution](https://energy-models.github.io/datarecord/design/layers/tree/)
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/storage/concurrency/#crossing-a-process-boundary)
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -567,10 +567,10 @@ class Revision(BaseModel):
 
         Notes
         -----
-        - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+        - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
-        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
         if self._record is None:
             full = ancestry(self.store, self.id)
@@ -597,9 +597,9 @@ class Revision(BaseModel):
 
         Notes
         -----
-        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
-        - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
-        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
+        - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+        - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
         """
         if isinstance(source, StagedSource) and source.base != self.id:
             msg = (
@@ -619,7 +619,7 @@ class Revision(BaseModel):
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
         materialise(self.id, self.record.sources, self.store)
         self._record = None
@@ -631,7 +631,7 @@ class Revision(BaseModel):
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
         return ancestry(self.store, self.id)
 
@@ -648,7 +648,7 @@ def _manifest(schema: Schema, id: UUID) -> str:
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
     return schema.model_copy(update={"id": id}).model_dump_json()
 

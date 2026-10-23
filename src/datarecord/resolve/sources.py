@@ -12,8 +12,8 @@ written once and knows about none of them.
 
 Notes
 -----
-- [the record format](https://energy-models.github.io/datarecord/design/format/)
-- [the DuckDB read path](https://energy-models.github.io/datarecord/design/read-path/)
+- [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+- [the DuckDB read path](https://energy-models.github.io/datarecord/design/layers/resolution/)
 """
 
 from __future__ import annotations
@@ -61,8 +61,8 @@ class LayerSource(Protocol):
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/format/)
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     """
 
     # Properties rather than variables, so a frozen dataclass satisfies this:
@@ -85,7 +85,7 @@ class LayerSource(Protocol):
 
         Notes
         -----
-        - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+        - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
         """
         ...
 
@@ -146,7 +146,7 @@ class LayerSource(Protocol):
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
         """
         ...
 
@@ -175,7 +175,7 @@ class _FileLayer:
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
 
     schema: Schema
@@ -256,7 +256,7 @@ def refuse_foreign_columns(
 
     Notes
     -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
     known = structural | set(schema.properties.get(subject, {}))
     extra = sorted(columns - known)
@@ -273,7 +273,7 @@ def refuse_foreign_columns(
     msg = (
         f"{file} carries columns {extra} the schema does not declare as "
         f"properties of {subject!r}; the file holds only its key and those "
-        f"properties, {sorted(known)}{hint} (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+        f"properties, {sorted(known)}{hint} (https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)"
     )
     raise ValueError(msg)
 
@@ -287,7 +287,7 @@ class ParquetLayer(_FileLayer):
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/format/)
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
 
     revision_id: UUID
@@ -331,8 +331,8 @@ class DirectorySource(_FileLayer):
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/format/)
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
 
     base: str

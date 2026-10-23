@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-- [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+- [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+- [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
 """
 
 from __future__ import annotations
@@ -42,8 +42,8 @@ def materialised(revision_id: UUID, store: Store) -> bool:
 
     Notes
     -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     uri = store.owner_map_uri(revision_id)
     return try_read_parquet(uri, store.workspace.con) is not None
@@ -81,7 +81,7 @@ def sources_to_read(
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     for depth in range(len(ancestry) - 2, -1, -1):
         if materialised(ancestry[depth], store):
@@ -108,8 +108,8 @@ def materialise(
 
     Notes
     -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     schema = read_schema(store)
     con = store.workspace.con
@@ -160,7 +160,7 @@ def _materialise_dims(
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     con = store.workspace.con
     dims = resolve_coords(schema, sources, con)

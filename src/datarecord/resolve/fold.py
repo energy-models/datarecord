@@ -11,8 +11,8 @@ materialised source's `Fold` as its base and folds the layers below it on top,
 so a `Fold` read from disk is the prior incarnation of one computed live - the
 same shape either tense.
 
-This is the object `ResolvedLayer` used to masquerade as: a fold result, held as
-a base, never one of the `sources` folded on top of it. The folding that builds
+A `Fold` is held as a base, never one of the `sources` folded on top of it.
+The folding that builds
 a live `Fold` stays in `coords.py` and `owner_map.py`, where the DuckDB
 expression machinery lives; `Fold.read` reads a materialised one back, and the
 map reads gated by the fold (`owners`, `attributes`, `flags`) are here, on the
@@ -20,8 +20,8 @@ object that holds the map.
 
 Notes
 -----
-- [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+- [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+- [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
 """
 
 from __future__ import annotations
@@ -86,7 +86,7 @@ def flags_from_rows(
 
     Notes
     -----
-    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
     """
 
     def scope(attribute: str) -> tuple[str, ...]:
@@ -140,7 +140,7 @@ class Fold:
 
         Notes
         -----
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
         return list(distinct_values(self.owner_map, "attribute"))
 
@@ -149,7 +149,7 @@ class Fold:
 
         Notes
         -----
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
         return self.owner_map.filter(col("attribute") == lit(attribute))
 
@@ -173,8 +173,8 @@ class Fold:
 
         Notes
         -----
-        - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
+        - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+        - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
         """
         dims = self.schema.broadcast_dims
         if not categories:

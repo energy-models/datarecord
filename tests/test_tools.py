@@ -156,7 +156,7 @@ def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
 
     Notes
     -----
-    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
     """
     record = single_revision.record
     assert not {"Bus", "Carrier"} & set(record.schema.dimensions["ctype"].one_of or ())
@@ -193,7 +193,7 @@ def test_an_unlisted_carrier_is_added_and_an_empty_one_is_none(store):
 
     Notes
     -----
-    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
     """
     n = _north()
     n.add("Carrier", "AC", color="black")
@@ -217,8 +217,8 @@ def test_a_property_is_addressed_by_its_subject(single_revision):
 
     Notes
     -----
-    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     from datarecord.mutable import WorkingRecord
 
@@ -240,7 +240,7 @@ def test_a_carrier_is_a_live_label(single_revision):
 
     Notes
     -----
-    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
     """
     from datarecord.mutable import WorkingRecord
 
@@ -256,7 +256,7 @@ def test_a_value_its_type_does_not_take_is_reported_and_left_out(single_revision
 
     Notes
     -----
-    - [a value its type does not take](https://energy-models.github.io/datarecord/design/tools/#a-value-its-type-does-not-take)
+    - [a value its type does not take](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-value-its-type-does-not-take)
     """
     from datarecord.mutable import WorkingRecord
 
@@ -278,7 +278,7 @@ def test_verify_reports_an_entity_attached_to_no_bus(single_revision):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     from datarecord.mutable import WorkingRecord
 
@@ -323,7 +323,7 @@ def test_verify_reports_a_missing_dim(exported):
 def test_verify_reports_a_type_the_tool_does_not_know(exported):
     """A type outside PyPSA's registry is reported by `verify`, not raised in the fold.
 
-    The type must be one the *schema* declares - `ctype` lists its labels and
+    The type must be one the *schema* declares - `ctype` has `one_of` and
     its list is upheld everywhere, so a record cannot hold a type its own
     schema excludes. What it can hold is a type this tool has no
     registry entry for, which reads back fine and is this tool's business rather
@@ -331,7 +331,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
 
     Notes
     -----
-    - [entity types](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
+    - [entity types](https://energy-models.github.io/datarecord/design/model/properties/#categories)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision, store = exported, exported.store
@@ -378,7 +378,7 @@ def _with_schema(revision, **kwargs) -> None:
 
     Notes
     -----
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
     was = read_schema(revision.store)
     now = schema(**kwargs)
@@ -418,7 +418,7 @@ def test_verify_reports_a_snapshot_key(exported):
 
     Notes
     -----
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
     revision = exported
     _with_schema(revision, partial={"scenario", "snapshot"})
@@ -438,7 +438,7 @@ def test_verify_reports_a_missing_required_attribute(exported, ac_dc):
     """
     revision, store = exported, exported.store
     # A Generator member with no connection row supplying its bus
-    # (https://energy-models.github.io/datarecord/design/record/#connections).
+    # (https://energy-models.github.io/datarecord/design/tools/pypsa/#ports).
     write_component(revision, "Generator", [{"entity": "g1"}])
     # One file across every type, so the Generators' rows are dropped from it
     # rather than a per-type file being unlinked.
@@ -462,7 +462,7 @@ def test_verify_reports_a_piecewise_linear_attribute(exported):
 
     Notes
     -----
-    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
     """
     revision, store = exported, exported.store
     write_attribute(
@@ -515,7 +515,7 @@ def test_to_datarecord_rejects_a_cross_type_name_collision(workspace):
 
     Notes
     -----
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    - [a label is unique within its dim](https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     n = _north()
@@ -599,7 +599,7 @@ def test_shapes_round_trip_in_their_crs(store):
 
     Notes
     -----
-    - [geometry](https://energy-models.github.io/datarecord/design/tools/#geometry)
+    - [geometry](https://energy-models.github.io/datarecord/design/tools/pypsa/#geometry)
     """
     import pypsa
     import shapely
@@ -635,7 +635,7 @@ def test_sub_networks_are_labels_of_their_own_dim(store, ac_dc):
 
     Notes
     -----
-    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
     n = ac_dc.copy()
     n.determine_network_topology()
@@ -755,8 +755,8 @@ def test_a_solved_network_exports_its_results_long_form(single_revision, solved)
     # Relations, lazy so a tool may fetch on demand (https://energy-models.github.io/datarecord/design/tools/).
     assert isinstance(results["p"], DuckDBPyRelation)
     p = results["p"].df()
-    # The long schema's columns (https://energy-models.github.io/datarecord/design/record/), so the write path can persist it as-is -
-    # and no `ctype`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+    # The long schema's columns (https://energy-models.github.io/datarecord/design/use/reading/), so the write path can persist it as-is -
+    # and no `ctype`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim).
     assert {"connection", "snapshot", "scenario", "value"} <= set(p.columns)
     assert "ctype" not in p.columns
     assert "period" not in p.columns, "a series over `snapshot` reaches its period"
@@ -781,7 +781,7 @@ def test_an_export_skips_results_still_at_their_default(single_revision):
 
     Notes
     -----
-    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
     n = PyPSA.build(single_revision.record)
     results = PyPSA.to_datarecord(n, single_revision.record.con).attributes
@@ -794,7 +794,7 @@ def test_a_solved_p_is_one_row_per_connection(single_revision, solved):
 
     Notes
     -----
-    - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
+    - [results on connections](https://energy-models.github.io/datarecord/design/tools/pypsa/#results-on-connections)
     """
     n = solved
 
@@ -824,8 +824,8 @@ def test_bus_results_are_keyed_by_bus(exported, solved):
 
     Notes
     -----
-    - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
-    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    - [results on connections](https://energy-models.github.io/datarecord/design/tools/pypsa/#results-on-connections)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
     revision = _results_over(exported, solved)
     schema = revision.record.schema
@@ -855,7 +855,7 @@ def test_a_child_reads_its_parents_results_and_the_latest_wins(exported, solved)
 
     Notes
     -----
-    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
     revision = _results_over(exported, solved)
     expected = _prices(revision)
@@ -872,7 +872,7 @@ def test_a_re_solve_leaves_no_stale_sub_network(exported, solved):
 
     Notes
     -----
-    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
     revision = _results_over(exported, solved)
     *kept, dropped = sorted(solved.c["SubNetwork"].static.index)
@@ -898,7 +898,7 @@ def test_results_without_sub_networks_list_none(exported, solved, over_solved, l
 
     Notes
     -----
-    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
     base = _results_over(exported, solved) if over_solved else exported
     n = PyPSA.build(base.record)
@@ -924,7 +924,7 @@ def test_a_result_a_re_solve_leaves_out_reads_as_null(exported, solved, ctype, a
 
     Notes
     -----
-    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
     n = PyPSA.build(_results_over(exported, solved).record)
     n.c[ctype].dynamic[attr] = pd.DataFrame(
@@ -957,7 +957,7 @@ def test_results_only_takes_base_exactly_with_it(single_revision, solved, result
 
     Notes
     -----
-    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
     base = None if results_only else single_revision.record
     with pytest.raises(ValueError, match="takes `base` exactly when"):
@@ -971,7 +971,7 @@ def test_link_internal_power_is_p_internal(single_revision, solved):
 
     Notes
     -----
-    - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
+    - [results on connections](https://energy-models.github.io/datarecord/design/tools/pypsa/#results-on-connections)
     """
     n = solved
 
@@ -1000,7 +1000,7 @@ def test_a_third_port_result_lands_on_its_connection(workspace):
 
     Notes
     -----
-    - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
+    - [results on connections](https://energy-models.github.io/datarecord/design/tools/pypsa/#results-on-connections)
     """
     n = _three_port_link()
     n.c["Link"].dynamic["p2"] = pd.DataFrame({"split": [1.0, 2.0]}, index=n.snapshots)
@@ -1018,7 +1018,7 @@ def test_a_three_port_record_writes_p_on_each_connection(store):
 
     Notes
     -----
-    - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
+    - [results on connections](https://energy-models.github.io/datarecord/design/tools/pypsa/#results-on-connections)
     """
     n = _three_port_link()
     flows = {"p0": [3.0, 4.0], "p1": [-1.0, -2.0], "p2": [-1.5, -1.5]}
@@ -1040,7 +1040,7 @@ def test_a_stochastic_third_port_efficiency_survives_a_round_trip(store):
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [ports](https://energy-models.github.io/datarecord/design/tools/pypsa/#ports)
     """
     n = _three_port_link()
     n.set_scenarios({"low": 0.5, "high": 0.5})
@@ -1073,7 +1073,7 @@ def test_process_rate_is_one_attribute_on_its_connections(workspace):
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [ports](https://energy-models.github.io/datarecord/design/tools/pypsa/#ports)
     """
     n = _three_port_process()
     n.c["Process"].static.loc["dri", ["rate0", "rate1", "rate2"]] = [-2.0, 1.5, 0.3]
@@ -1114,7 +1114,7 @@ def test_per_port_values_survive_a_round_trip(
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [ports](https://energy-models.github.io/datarecord/design/tools/pypsa/#ports)
     """
     n = network()
     n.c[ctype].static.loc[name, columns] = values
@@ -1148,7 +1148,7 @@ def test_a_time_varying_port_survives_a_round_trip(
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [ports](https://energy-models.github.io/datarecord/design/tools/pypsa/#ports)
     """
     (static_attr, static_value), (series_attr, values) = static, series
     n = network()
@@ -1172,7 +1172,7 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
 
     Notes
     -----
-    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
     """
     import pypsa
 
@@ -1223,7 +1223,7 @@ def test_delays_are_rows_keyed_by_their_connections(workspace, store):
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [ports](https://energy-models.github.io/datarecord/design/tools/pypsa/#ports)
     """
     n = _three_port_process()
     n.c["Process"].static.loc["dri", ["delay0", "delay1"]] = [1, 2]
@@ -1277,7 +1277,7 @@ def test_a_name_is_never_an_identifier_in_the_melt_or_pivot(store):
 
     Notes
     -----
-    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
     """
     import pypsa
 
@@ -1351,7 +1351,7 @@ def test_schema_dims_stay_generic(exported):
     record = revision.record
     assert "vintage" in record.schema.dims
     # No axis rows anywhere, so the dim is absent from the mapping rather than
-    # present-and-empty (https://energy-models.github.io/datarecord/design/record/#relations).
+    # present-and-empty (https://energy-models.github.io/datarecord/design/use/reading/#relations).
     assert "vintage" not in record.dims
     # PyPSA's own required dims are still satisfied, and the extra dim is
     # simply not something the tool looks at.
@@ -1435,7 +1435,7 @@ def test_a_multi_period_snapshot_is_one_flat_axis(multiperiod, multiperiod_revis
 
     Notes
     -----
-    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
     """
     schema = multiperiod_revision.record.schema
     timesteps = multiperiod.snapshots.get_level_values("timestep")
@@ -1490,7 +1490,7 @@ def test_a_set_on_some_snapshots_keeps_the_rest_of_the_series(
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     from datarecord.mutable import WorkingRecord
 

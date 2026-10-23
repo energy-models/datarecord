@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+- [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
 """
 
 import pytest
@@ -99,7 +99,7 @@ def test_breakpoints_distinguishes_curve_from_scalar(store):
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     revision = _root_with_curve(store)
     write_attribute(
@@ -131,7 +131,7 @@ def test_curve_on_a_connection(store):
 
     Notes
     -----
-    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
     """
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)

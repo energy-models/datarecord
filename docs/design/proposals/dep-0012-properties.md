@@ -24,11 +24,11 @@ It lands in two steps. **Step 1** — properties, categories, and `entity` as an
 
 ## What starts it
 
-**Where a value is read depends on how many coordinates address it, not on what it is.** `p_nom` and `carrier` are both declared under `attributes` with `dims: [entity]`, so both land on the entity axis — and `record.attributes` hands over neither, since it [holds long frames only](../record.md); a caller finds them on `record.dims["entity"]` or `record.entity_types["Generator"]`. Yet `p_nom` is data a model optimises against, and `carrier` a label describing the generator. The rule placing them — [exactly one addressing coordinate](../format.md#where-a-value-lives) — groups the two by an accident of shape.
+**Where a value is read depends on how many coordinates address it, not on what it is.** `p_nom` and `carrier` are both declared under `attributes` with `dims: [entity]`, so both land on the entity axis — and `record.attributes` hands over neither, since it [holds long frames only](../use/reading.md); a caller finds them on `record.dims["entity"]` or `record.entity_types["Generator"]`. Yet `p_nom` is data a model optimises against, and `carrier` a label describing the generator. The rule placing them — [exactly one addressing coordinate](../storage/format.md#where-a-value-lives) — groups the two by an accident of shape.
 
-The same rule makes a compatible schema change move a file. Widening `p_nom` to `dims: [entity, scenario]` is [compatible](../schema.md#versioning) because NULL broadcasts, but it moves `p_nom` from a column of the entity axis to `inputs/p_nom.parquet`, so the rows a layer wrote before are in a file the new schema no longer reads it from.
+The same rule makes a compatible schema change move a file. Widening `p_nom` to `dims: [entity, scenario]` is [compatible](../model/schema.md#versioning) because NULL broadcasts, but it moves `p_nom` from a column of the entity axis to `inputs/p_nom.parquet`, so the rows a layer wrote before are in a file the new schema no longer reads it from.
 
-**The entity-type axis is a special case at every layer.** It is a dim, plus a group over `entity` `into` it, whose rows are [the entity axis file rather than a `groups/` file](../format.md#where-a-value-lives) — the one exception to a file per group. Its name is reserved as an attribute name. Whether it is declared decides the [layout of the entity axis](../format.md#the-entity-axis): per-type member files under `dims/entity_type/` in one case, columns of `dims/entity.parquet` in the other. Traits may be scoped by it. Its `Enum` dtype is what makes it a vocabulary, while a `String`-typed declaration of it is an [open question](dep-0006-a-member-file-holds-values.md#what-it-opens-rather-than-settles).
+**The entity-type axis is a special case at every layer.** It is a dim, plus a group over `entity` `into` it, whose rows are [the entity axis file rather than a `groups/` file](../storage/format.md#where-a-value-lives) — the one exception to a file per group. Its name is reserved as an attribute name. Whether it is declared decides the [layout of the entity axis](../storage/format.md#axis-files): per-type member files under `dims/entity_type/` in one case, columns of `dims/entity.parquet` in the other. Traits may be scoped by it. Its `Enum` dtype is what makes it a vocabulary, while a `String`-typed declaration of it is an [open question](dep-0006-a-member-file-holds-values.md#what-it-opens-rather-than-settles).
 
 **`entity` is a special case too.** It is in the fold key whatever `partial` says, a NULL in it never broadcasts, its tombstones alone cascade into a group's fields, and the read API answers per entity type (`entity_types`, `entity_type(ctype)`, `flags(ctype)`). None of that is said in the schema; all of it is code naming `"entity"`.
 
@@ -119,7 +119,7 @@ partial: [entity, scenario, connection]
 
 Which a name is, is the author's declaration, not derived. The test is the one above, and a tool reads it from its registry where it can.
 
-**One name, one spec, across every section.** A name declared as a property and as an attribute, or as a property of two subjects, is rejected — [`flags`](../record.md#flags) would have two answers for it. So is a property sharing a dim's or a group's name, which would collide with that coordinate's column. This is the [flat-attributes argument](../schema.md#attributespec) extended to the new section.
+**One name, one spec, across every section.** A name declared as a property and as an attribute, or as a property of two subjects, is rejected — [`flags`](../use/reading.md#flags) would have two answers for it. So is a property sharing a dim's or a group's name, which would collide with that coordinate's column. This is the [flat-attributes argument](../model/attributes.md#attributespec) extended to the new section.
 
 ### An `Enum` property of a `partial` dim categorizes its subject
 
@@ -210,7 +210,7 @@ Adding a component with its connections and varying values is now `add`, `add_gr
 | property of a dim     | `dims/<dim>.parquet` — a column of the axis file |
 | attribute, any `dims` | `inputs/<attr>.parquet` — long rows              |
 
-That replaces [where a value lives](../format.md#where-a-value-lives) as a rule over `len(dims)`. `inputs/p_nom.parquet` is `entity | attribute | breakpoint | value`, one row per entity, and widening `p_nom` over `scenario` adds a column to the same file — NULL in every row written before, which is what [the broadcast rule](../record.md#the-broadcast-rule) needs to read them unchanged. An axis file then carries only its labels, its `within` keys, its tombstones and the subject's properties; no data.
+That replaces [where a value lives](../storage/format.md#where-a-value-lives) as a rule over `len(dims)`. `inputs/p_nom.parquet` is `entity | attribute | breakpoint | value`, one row per entity, and widening `p_nom` over `scenario` adds a column to the same file — NULL in every row written before, which is what [the broadcast rule](../model/attributes.md#the-broadcast-rule) needs to read them unchanged. An axis file then carries only its labels, its `within` keys, its tombstones and the subject's properties; no data.
 
 Step 1 keeps single-dim attributes as axis columns, so no file moves yet.
 
@@ -288,9 +288,9 @@ What would decide it: a case where layer data, not the schema, must reach every 
 
 **Re-categorized labels keep stale values.** A label whose category changes keeps what it held for attributes it no longer carries; they are out of every per-category read's reach, but stored.
 
-**Entity-only data reads through the fold, not the axis** (step 2). `p_nom` was a column resolved with the entity row; it becomes long rows keyed by the [fold key](../schema.md#partial-the-granularity-of-an-override) like any attribute — a static frame of forty columns is forty attribute reads and a pivot where it was one file.
+**Entity-only data reads through the fold, not the axis** (step 2). `p_nom` was a column resolved with the entity row; it becomes long rows keyed by the [fold key](../layers/tree.md#partial-the-granularity-of-an-override) like any attribute — a static frame of forty columns is forty attribute reads and a pivot where it was one file.
 
-**The choice is the author's, and can be wrong.** Nothing derives whether `x` on a bus is metadata or data; a schema declaring it either way is valid. Moving a name between sections moves its file and is an [incompatible change](../schema.md#versioning).
+**The choice is the author's, and can be wrong.** Nothing derives whether `x` on a bus is metadata or data; a schema declaring it either way is valid. Moving a name between sections moves its file and is an [incompatible change](../model/schema.md#versioning).
 
 **A per-type value addressed by the type alone loses its home.** An `icon` per entity type lived on `dims/entity_type.parquet`; with no `entity_type` dim there is no file keyed by category. Nothing in the tools declares one; if a case appears, it is a property of a dim declared for the purpose.
 
@@ -298,7 +298,7 @@ What would decide it: a case where layer data, not the schema, must reach every 
 
 ## What it opens
 
-**Whether a functional group over one coordinate is a property.** `country` over `[bus]` `into` `country` is one label per bus — metadata, of a dtype ranging over a dim. The old entity-type axis was exactly that, and this proposal turns it into a property; `into` might go the same way, or [the chain argument](../schema.md#properties) might keep it a group.
+**Whether a functional group over one coordinate is a property.** `country` over `[bus]` `into` `country` is one label per bus — metadata, of a dtype ranging over a dim. The old entity-type axis was exactly that, and this proposal turns it into a property; `into` might go the same way, or [the chain argument](../model/properties.md#properties) might keep it a group.
 
 **Whether wide-frame editing comes back** — one call adding a component with its properties, connections and values, built on `add`, `add_group` and `set`, as the inverse of what `to_datarecord` produces.
 

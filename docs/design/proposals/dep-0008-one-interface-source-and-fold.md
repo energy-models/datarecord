@@ -17,9 +17,9 @@ SPDX-License-Identifier: CC-BY-4.0
 
 > All three commits below landed on `refactor/staging-as-a-layer` (`cd2ce92`,
 > `006c159`, `7f244a9`). The authoritative account is [the read
-> path](../read-path.md#one-record-over-one-fold), [the Record
-> protocol](../record.md) — including [`LayerData`](../record.md#layerdata) —
-> [writing](../writing.md) and [the module layout](../module-layout.md); this
+> path](../layers/resolution.md#one-record-over-one-fold), [the Record
+> protocol](../use/reading.md) — including [`LayerData`](../use/writing.md#layerdata) —
+> [writing](../use/writing.md) and [the module layout](../package.md); this
 > page is kept as the argument that led there, and those pages are authoritative
 > where the two disagree. `NodeCache` landed as `Resolver`, `ResolvedLayer` is
 > deleted, the base is a `Fold` (`datarecord/layered/fold.py`) discovered from
@@ -28,9 +28,9 @@ SPDX-License-Identifier: CC-BY-4.0
 > [`a-member-file-holds-values`](dep-0006-a-member-file-holds-values.md). The "Commit N as
 > landed" notes below record where the implementation departed from this sketch.
 
-One claim: **`axis(dim)` should mean the same thing wherever it is written — "the rows of the thing I am holding".** You pick "one layer's contribution" versus "the resolved answer to here" by _which object you hold_, not by a `resolved_` prefix on a method nor by a mode flag. A [`LayerSource`](../read-path.md#owner-map) answers for its own layer; a fold answers for everything folded into it; both answer under the same names.
+One claim: **`axis(dim)` should mean the same thing wherever it is written — "the rows of the thing I am holding".** You pick "one layer's contribution" versus "the resolved answer to here" by _which object you hold_, not by a `resolved_` prefix on a method nor by a mode flag. A [`LayerSource`](../layers/resolution.md#owner-map) answers for its own layer; a fold answers for everything folded into it; both answer under the same names.
 
-The codebase is already most of the way there and inconsistent about the last step. [`WorkingRecord`](../working-record.md) does it the clean way — the fold and the staged-layer's-own-rows are _two objects_ (`WorkingRecord` the [`Record`](../record.md) over a `NodeCache`, `StagedSource` the source). `ResolvedLayer` does it the muddy way — _one object_ that is a fold (a persisted `NodeCache`) but is typed as a source and put in the fold's own input list, so it answers for its own layer through some methods and for the fold-to-here through others.
+The codebase is already most of the way there and inconsistent about the last step. [`WorkingRecord`](../use/editing.md) does it the clean way — the fold and the staged-layer's-own-rows are _two objects_ (`WorkingRecord` the [`Record`](../use/reading.md) over a `NodeCache`, `StagedSource` the source). `ResolvedLayer` does it the muddy way — _one object_ that is a fold (a persisted `NodeCache`) but is typed as a source and put in the fold's own input list, so it answers for its own layer through some methods and for the fold-to-here through others.
 
 This is the prerequisite [`a-member-file-holds-values`](dep-0006-a-member-file-holds-values.md) names, taken at its root rather than at the symptom. That page proposes adding `resolved_axis`/`resolved_axes` beside `map_uri` — a third folded-answer method under a distinct name, papering the dual role. The root cause is that a fold-result (`ResolvedLayer`, a persisted `NodeCache`) is masquerading as a fold-input (a `LayerSource`); untangle _that_ and no new method name is needed.
 
@@ -40,13 +40,13 @@ Three abstractions, each with a one-line contract the code states explicitly:
 
 - **`LayerSource`** — "One layer's own rows, however they are stored" (the `sources.py` protocol docstring). `axis` "means 'this layer's own rows'". Every implementation obeys it: `ParquetLayer`, `DirectorySource`, `StagedSource`.
 - **`NodeCache`** — "A record's resolved view: owner map, dims, schema, and the relations over them" (`resolve.py`). It holds a `sources` list and _folds_ it: the `inputs` owner map, `dims` (the entity axis and groups among them), and every `relation`/`entity_type_frame`/`group_frame` are computed from those sources.
-- **`Record`/`RecordLike`** — "the narwhals interface over one fold" ([`record.md`](../record.md)). A `Record` wraps exactly one `NodeCache` and presents its fold as narwhals frames.
+- **`Record`/`RecordLike`** — "the narwhals interface over one fold" ([`record.md`](../use/reading.md)). A `Record` wraps exactly one `NodeCache` and presents its fold as narwhals frames.
 
 So `NodeCache` _is_ the fold, and a `Record` is its public face. The line between "own rows" (`LayerSource`) and "the fold" (`NodeCache`) is clean until one object straddles it.
 
 ### `ResolvedLayer` _is_ a `NodeCache`, persisted
 
-This is the fact the rest of the page turns on. `Revision.materialise()` folds a node's sources and writes the result to `resolved/` — `_fold_kind` for the `inputs` owner map, `resolve_coords` for the axes (the entity axis and groups among them) ([`materialise`](../layers.md#materialised-node-caches)). That is _exactly_ what a `NodeCache` computes in memory; materialising is persisting a `NodeCache`'s output. `ResolvedLayer` is the handle that reads it back, and `NodeCache` seeds from it to skip the re-fold:
+This is the fact the rest of the page turns on. `Revision.materialise()` folds a node's sources and writes the result to `resolved/` — `_fold_kind` for the `inputs` owner map, `resolve_coords` for the axes (the entity axis and groups among them) ([`materialise`](../layers/resolution.md#materialised-node-caches)). That is _exactly_ what a `NodeCache` computes in memory; materialising is persisting a `NodeCache`'s output. `ResolvedLayer` is the handle that reads it back, and `NodeCache` seeds from it to skip the re-fold:
 
 ```python
 NodeCache._fold_map: seed = read(
@@ -252,7 +252,7 @@ The discipline that keeps this from becoming "one protocol for two unlike things
 
 ### `schema` governs which pairs are live, it is not a peer of them
 
-The table above lists `schema` as one shared member among the enumerate-and-read pairs, but it is not their peer — it is what decides _which of them exist_. [`a-member-file-holds-values`](dep-0006-a-member-file-holds-values.md#what-starts-it) establishes that the [entity-type axis is optional](../schema.md): where a schema declares no type axis (`entity_type_dim is None`), there are no member files, no `entity_type` column, and a component's attribute values live on `dims/entity.parquet` directly. So the `entity_types()`/`entity_type(name)` pair is not universal — it is populated exactly when the schema declares the axis, and `groups()` reflects only the groups the schema declares.
+The table above lists `schema` as one shared member among the enumerate-and-read pairs, but it is not their peer — it is what decides _which of them exist_. [`a-member-file-holds-values`](dep-0006-a-member-file-holds-values.md#what-starts-it) establishes that the [entity-type axis is optional](../model/schema.md): where a schema declares no type axis (`entity_type_dim is None`), there are no member files, no `entity_type` column, and a component's attribute values live on `dims/entity.parquet` directly. So the `entity_types()`/`entity_type(name)` pair is not universal — it is populated exactly when the schema declares the axis, and `groups()` reflects only the groups the schema declares.
 
 `LayerData` therefore reads _through_ `schema`, not alongside it: `schema` is the one member the other pairs are conditional on, and a `LayerData` for an untyped record is a first-class shape, not the typed shape with types nulled out. The new source enumerators inherit `a-member-file-holds-values`'s own acceptance test on this — the failure mode is an enumerator answering `{None}` rather than `∅`:
 

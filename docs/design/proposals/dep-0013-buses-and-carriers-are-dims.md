@@ -15,7 +15,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Created  | 2026-10-14                       |
 | Version  | Unreleased                       |
 
-Once implemented, [the tool page](../tools.md), [the schema](../schema.md#properties) and [the format](../format.md#entity-is-unique-across-types) are authoritative where they and this text disagree.
+Once implemented, [the tool page](../tools/index.md), [the schema](../model/properties.md#properties) and [the format](../storage/format.md#a-label-is-unique-within-its-dim) are authoritative where they and this text disagree.
 
 ## Abstract
 
@@ -23,7 +23,7 @@ In the PyPSA tool, `Bus` and `Carrier` stop being entity types: a bus is a label
 
 ## Motivation
 
-A bus exists twice: as a label of `bus`, which `connection` ranges over, and as an entity of type `Bus` holding `v_nom`, `x`, `carrier`; nothing joins the two but the spelling, so `remove` on either leaves half. Because the bus is an entity, a Bus and a Load both named `north` — every clustered pypsa-eur network — is a [collision](../format.md#entity-is-unique-across-types), `Bus.x` and `Line.x` are one attribute, and `Bus.p` cannot be written. A carrier is a string no axis checks. [PyPSA#1474](https://github.com/PyPSA/PyPSA/issues/1474) makes buses and carriers indices, the same way.
+A bus exists twice: as a label of `bus`, which `connection` ranges over, and as an entity of type `Bus` holding `v_nom`, `x`, `carrier`; nothing joins the two but the spelling, so `remove` on either leaves half. Because the bus is an entity, a Bus and a Load both named `north` — every clustered pypsa-eur network — is a [collision](../storage/format.md#a-label-is-unique-within-its-dim), `Bus.x` and `Line.x` are one attribute, and `Bus.p` cannot be written. A carrier is a string no axis checks. [PyPSA#1474](https://github.com/PyPSA/PyPSA/issues/1474) makes buses and carriers indices, the same way.
 
 ## Specification
 
@@ -77,7 +77,7 @@ partial: [entity, bus, scenario, connection]
 ### The tool
 
 - **`entity.component`**, renamed from `entity_type`, categorizes `entity`; its `Enum` is the types exported as entities — no `Bus`, no `Carrier`. `Shape` and `GlobalConstraint` are out of scope, as today. `on` and `default_by` name a categorizing property dotted.
-- **Placement** follows [the properties rule](../schema.md#properties), read off the registry per name; every name is PyPSA's.
+- **Placement** follows [the properties rule](../model/properties.md#properties), read off the registry per name; every name is PyPSA's.
 
 | PyPSA                                                                   | record                                               |
 | ----------------------------------------------------------------------- | ---------------------------------------------------- |
@@ -91,34 +91,34 @@ partial: [entity, bus, scenario, connection]
 | a component's `carrier`                                                 | `entity.carrier`, `into` `carrier`                   |
 
 - **`partial`** gains `bus`, not `carrier`: a layer patches one bus's `v_nom`; it restates every carrier's `co2_emissions`, a few dozen rows.
-- **Deletion.** `remove("bus", …)` is [the cascade every dim has](../layers.md#deletion); an entity left unattached is `verify`'s to report. `remove("carrier", …)` is refused while a stored `carrier` names the label, as a label a tuple still names is.
+- **Deletion.** `remove("bus", …)` is [the cascade every dim has](../layers/removal.md); an entity left unattached is `verify`'s to report. `remove("carrier", …)` is refused while a stored `carrier` names the label, as a label a tuple still names is.
 - **Collisions are within a dim.** A bus and a load may share a name; two exported types may not.
 - **A custom column clashes only with an attribute**: custom `Bus.country` beside custom `Generator.country` is `country` with two `dims`, reported via `Requirements.columns` as today; a name a property has does not clash.
-- **`to_datarecord`** writes the two axes in PyPSA's order, adds every carrier named but not listed in `n.carriers`, and stores `""` as NULL. **`build`** rebuilds `n.buses` and `n.carriers` from axis, properties with [defaults](../schema.md#default_by-a-default-per-category) and attribute rows, series by [flags](../record.md#flags), bus results from `outputs`.
+- **`to_datarecord`** writes the two axes in PyPSA's order, adds every carrier named but not listed in `n.carriers`, and stores `""` as NULL. **`build`** rebuilds `n.buses` and `n.carriers` from axis, properties with [defaults](../model/properties.md#default_by-a-default-per-category) and attribute rows, series by [flags](../use/reading.md#flags), bus results from `outputs`.
 
 ### A property `into` a dim
 
-`PropertySpec.into` names a declared dim; the property's values are its labels and its `dtype` is the dim's. A stored value must name a live label, checked where a group field is — [`set`, `add`](../working-record.md#validation), [the writer](../layers.md#deletion); NULL means none. It does not [categorize](../schema.md): a category is a schema `Enum`, labels are data. Any subject may declare one. A group `over` one coordinate `into` a dim is refused; [`into` on a group](../schema.md) stays for two or more coordinates, and [a chain is still not denormalised](../schema.md#properties).
+`PropertySpec.into` names a declared dim; the property's values are its labels and its `dtype` is the dim's. A stored value must name a live label, checked where a group field is — [`set`, `add`](../use/editing.md#validation), [the writer](../layers/removal.md); NULL means none. It does not [categorize](../model/schema.md): a category is a schema `Enum`, labels are data. Any subject may declare one. A group `over` one coordinate `into` a dim is refused; [`into` on a group](../model/schema.md) stays for two or more coordinates, and [a chain is still not denormalised](../model/properties.md#properties).
 
 ### A property's name is its subject's
 
 **One name, one spec** holds for attributes and results. A property is a column of its subject's file, and its name is unique there only: `x` on `bus` beside the attribute `x`, `carrier` on `entity`, on `bus` and as a dim, `type` on both, `Shape`'s attribute `component` beside `entity.component`. Refused at schema load:
 
-- a property named like its subject's key — the dim, a [`within`](../schema.md#a-dim-is-flat) parent, or a group's struct column;
+- a property named like its subject's key — the dim, a [`within`](../model/dims.md#mapping-labels-to-another-dim) parent, or a group's struct column;
 - a property of a group named like one of its coordinates, which are the keywords a tuple is addressed by;
-- two spellings differing only in case, record-wide, and a `.` in any name ([names](../schema.md#names)).
+- two spellings differing only in case, record-wide, and a `.` in any name ([names](../model/schema.md#names)).
 
 **A property is always addressed as `subject.name`** — `bus.carrier`, `connection.role`, `entity.component`. A plain name is an attribute or result, or unknown, the error suggesting the dotted forms of properties so named. Resolution reads the name alone, never the keywords. `Schema.resolve(name)` returns the `AttributeSpec` or `(subject, PropertySpec)` and is what `set`, `default_for`, `flags` and staging call; `subject_of` and `property_spec(name)` go. A trait bundles a property by its dotted name.
 
-A **selector keyword** is bare and names a coordinate of the attribute or a categorizing property of a dim it reaches, coordinate first: `carrier="gas"` on `co2_emissions` is the dim; `component="Generator"` on `p_max_pu` is `entity.component`, never the `Shape` attribute. [`add(dim, labels, **columns)`](../working-record.md#add-remove) takes the dim's properties bare. `kind="outputs"` and an `nw.Expr` refuse a dotted name. [`flags`](../record.md#flags) and the frames of `properties[subject]` keep plain names.
+A **selector keyword** is bare and names a coordinate of the attribute or a categorizing property of a dim it reaches, coordinate first: `carrier="gas"` on `co2_emissions` is the dim; `component="Generator"` on `p_max_pu` is `entity.component`, never the `Shape` attribute. [`add(dim, labels, **columns)`](../use/editing.md#add-remove) takes the dim's properties bare. `kind="outputs"` and an `nw.Expr` refuse a dotted name. [`flags`](../use/reading.md#flags) and the frames of `properties[subject]` keep plain names.
 
 ### Pages that change
 
-- [tools](../tools.md) → collision example Generator/Load; `partial` sentence; properties list; the table above; the five derived bus results; custom-column clash narrowed.
-- [format](../format.md#entity-is-unique-across-types) → collision example; [where a value lives](../format.md#where-a-value-lives) loses "no column on the classified axis"; "one name, one spec" scoped to attributes.
-- [schema](../schema.md#properties) → `into` on a property, per-subject rule, dotted addressing, the example; [`into`](../schema.md) one-coordinate rule; [names](../schema.md#names); [`partial`](../schema.md#partial-the-granularity-of-an-override) "not `timestep` or `carrier`".
-- [record](../record.md#the-broadcast-rule) → "never a load"; [`flags`](../record.md#flags) plain names.
-- [working record](../working-record.md#set) → dotted `set`, selector rule; [validation](../working-record.md#validation) unknown-name error; [`add` / `remove`](../working-record.md#add-remove) referenced-label refusal.
+- [tools](../tools/index.md) → collision example Generator/Load; `partial` sentence; properties list; the table above; the five derived bus results; custom-column clash narrowed.
+- [format](../storage/format.md#a-label-is-unique-within-its-dim) → collision example; [where a value lives](../storage/format.md#where-a-value-lives) loses "no column on the classified axis"; "one name, one spec" scoped to attributes.
+- [schema](../model/properties.md#properties) → `into` on a property, per-subject rule, dotted addressing, the example; [`into`](../model/schema.md) one-coordinate rule; [names](../model/schema.md#names); [`partial`](../layers/tree.md#partial-the-granularity-of-an-override) "not `timestep` or `carrier`".
+- [record](../model/attributes.md#the-broadcast-rule) → "never a load"; [`flags`](../use/reading.md#flags) plain names.
+- [working record](../use/editing.md#set) → dotted `set`, selector rule; [validation](../use/editing.md#validation) unknown-name error; [`add` / `remove`](../use/editing.md#add-remove) referenced-label refusal.
 - usage [schema](../../usage/schema.md), [reading](../../usage/reading.md), [editing](../../usage/editing.md), `CHANGELOG.md`; `entity_type` → `component` in the tool, the pages and ~20 test files (core: two docstrings).
 
 ## Rationale

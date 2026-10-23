@@ -10,7 +10,7 @@ Tools are module-level objects imported by name - no registry.
 
 Notes
 -----
-- [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+- [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
@@ -67,8 +67,8 @@ class Requirements:
 
     Notes
     -----
-    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
+    - [a label is unique within its dim](https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
 
@@ -114,7 +114,7 @@ class Requirements:
         if self.names:
             parts.append(
                 f"labels claimed by more than one category "
-                f"{sorted(self.names)} (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"
+                f"{sorted(self.names)} (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)"
             )
         if self.columns:
             parts.append(
@@ -170,7 +170,7 @@ class Attr:
 
         Notes
         -----
-        - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
+        - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
         """
         rels = [record.attributes[s] for s in self.source]
         if self.compute is None:
@@ -193,7 +193,7 @@ class Schema:
 
     Notes
     -----
-    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
 
@@ -300,7 +300,7 @@ class Tool(Protocol):
 
         Notes
         -----
-        - [the record format](https://energy-models.github.io/datarecord/design/format/)
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+        - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
         """
         ...

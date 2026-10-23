@@ -19,8 +19,8 @@ must be unset, or botocore reads that profile instead.
 
 Notes
 -----
-- [files, local and remote](https://energy-models.github.io/datarecord/design/layers/#files-local-and-remote)
-- [a revision exists only by its file](https://energy-models.github.io/datarecord/design/writing/#a-revision-exists-only-by-its-file)
+- [files, local and remote](https://energy-models.github.io/datarecord/design/storage/store/#files-local-and-remote)
+- [a revision exists only by its file](https://energy-models.github.io/datarecord/design/storage/store/#a-revision-exists-only-by-its-file)
 """
 
 import os

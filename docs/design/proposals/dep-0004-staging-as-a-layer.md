@@ -15,11 +15,11 @@ SPDX-License-Identifier: CC-BY-4.0
 | Version       | v0.1.0a1                                                                                                                               |
 | Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its per-label axis fold, and `partial` as how many labels an axis layer carries) |
 
-Landed in [the read path](../read-path.md#one-record-over-one-fold) and [`WorkingRecord`](../working-record.md#reading-with-pending-edits); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
+Landed in [the read path](../layers/resolution.md#one-record-over-one-fold) and [`WorkingRecord`](../use/editing.md#reading-with-pending-edits); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 
-[`WorkingRecord`](../working-record.md) already claims to be a layer:
+[`WorkingRecord`](../use/editing.md) already claims to be a layer:
 
-> A set of pending edits **is** a layer — an unwritten one. So the reads compose the same way: the staged rows are the last layer, resolved over whatever the record was reading before. ([reading with pending edits](../working-record.md#reading-with-pending-edits))
+> A set of pending edits **is** a layer — an unwritten one. So the reads compose the same way: the staged rows are the last layer, resolved over whatever the record was reading before. ([reading with pending edits](../use/editing.md#reading-with-pending-edits))
 
 The code does not deliver that. `mutable.py` reimplements the overlay in its own terms — an anti-join and a union per kind, a `_collapsed_*` per kind, its own flags aggregate — while `layered/resolve.py` folds. This proposal makes the sentence true: one fold, reading parquet layers, a plain directory or a staging area, differing in where a layer's rows come from and nothing else.
 
@@ -29,7 +29,7 @@ Three pieces of the same algebra exist twice, and the duplication is not inciden
 
 **The overlay.** `fold_inputs` anti-joins the parent on `input_key` and unions the layer's own rows ([resolve.py](https://github.com/energy-models/datarecord/blob/main/datarecord/layered/resolve.py)); `_overlay`, `_entity_union` and `_group_union` do the same against staged rows. Five sites, one rule.
 
-**The flags.** The fold computes `varies`/`broadcast`/`breakpoints` in its ownership `GROUP BY`, so `LayeredRecord.flags` is free. `WorkingRecord._flags_arm` computes the identical two structs over the staging tables, one arm per attribute, then unions them into the base's answer. `flags_from_rows` is shared, so the coordinate scoping [`flags` depends on](../record.md#flags) is written once; the aggregate feeding it is not.
+**The flags.** The fold computes `varies`/`broadcast`/`breakpoints` in its ownership `GROUP BY`, so `LayeredRecord.flags` is free. `WorkingRecord._flags_arm` computes the identical two structs over the staging tables, one arm per attribute, then unions them into the base's answer. `flags_from_rows` is shared, so the coordinate scoping [`flags` depends on](../use/reading.md#flags) is written once; the aggregate feeding it is not.
 
 **The collapse.** `_latest_per` collapses staged rows last-write-wins per coordinate; the fold does the same across layers by depth. Different mechanisms (`_seq` versus layer order) for one rule.
 
@@ -73,13 +73,13 @@ class LayerSource(Protocol):
     def all_attributes(self, kind: Kind = "inputs") -> DuckDBPyRelation | None: ...
 ```
 
-Each member is one file, addressed by what keys it — `dims/<dim>.parquet`, `dims/entity_types/<name>.parquet`, `groups/<name>.parquet`, `inputs|outputs/<name>.parquet`. `Kind` is `Literal["inputs", "outputs"]` — the same alias [`set`](../working-record.md#set) already takes, kept a literal rather than promoted to an enum so the two signatures stay one vocabulary.
+Each member is one file, addressed by what keys it — `dims/<dim>.parquet`, `dims/entity_types/<name>.parquet`, `groups/<name>.parquet`, `inputs|outputs/<name>.parquet`. `Kind` is `Literal["inputs", "outputs"]` — the same alias [`set`](../use/editing.md#set) already takes, kept a literal rather than promoted to an enum so the two signatures stay one vocabulary.
 
 Two asymmetries, both the format's rather than the protocol's:
 
 **`entity` is a dim like any other.** `dims/entity.parquet` is an axis file, so it is `axis("entity")`; there is no separate `entities` member. What differs is only what the fold does with it — the entity axis is folded into the components map, with `order_key` and tombstones, where `period.parquet` is folded by `resolve_dims` on `axis_key`. Same file accessor, two consumers. `entity_type(name)` is a different thing entirely: one type's wide member rows, read after the map named a winner.
 
-**Only `inputs/` has a plural.** `all_attributes` exists because `fold_inputs` decides ownership across every attribute in one `GROUP BY` — the files share `input_key`, so one scan answers for all of them. Nothing else does: each axis folds on its own `axis_key(dim)`, each group on its own `group_key`, so a combined read would have no key to fold on and `union_by_name` across them would be meaningless. `attribute(name)` is not the singular of it in disguise — it is the _owned_ read, one file with its own exact columns, which `relation()` needs because a padded column is ambiguous against [the broadcast rule](../record.md#the-broadcast-rule).
+**Only `inputs/` has a plural.** `all_attributes` exists because `fold_inputs` decides ownership across every attribute in one `GROUP BY` — the files share `input_key`, so one scan answers for all of them. Nothing else does: each axis folds on its own `axis_key(dim)`, each group on its own `group_key`, so a combined read would have no key to fold on and `union_by_name` across them would be meaningless. `attribute(name)` is not the singular of it in disguise — it is the _owned_ read, one file with its own exact columns, which `relation()` needs because a padded column is ambiguous against [the broadcast rule](../model/attributes.md#the-broadcast-rule).
 
 `all_attributes` returns the union **unprojected**. `fold_inputs` keeps its `with_columns` padding to `long_columns`, and `StagedSource` gets that for free: its staging tables carry the same per-attribute column variation as the files do, so one call fixes both.
 
@@ -106,7 +106,7 @@ class NodeCache:
 
 A `WorkingRecord` is then `sources + [StagedSource(self)]`. No second class and no mode flag: the staged layer is the last entry, which is what "staging is a layer" was supposed to mean.
 
-What that list has to carry is the caching rule, because the sources differ in exactly one respect that matters. `_table` materialises a folded map with `.create(name)` and never invalidates it; `dims` and `schema` are `cached_property`; the class docstring says outright that nothing an instance caches can go stale. All of that rests on [layers being write-once](../layers.md#a-layers-data-is-write-once) — which a staging area is not, since every `set` changes its rows under the reader.
+What that list has to carry is the caching rule, because the sources differ in exactly one respect that matters. `_table` materialises a folded map with `.create(name)` and never invalidates it; `dims` and `schema` are `cached_property`; the class docstring says outright that nothing an instance caches can go stale. All of that rests on [layers being write-once](../layers/tree.md#a-layers-data-is-write-once) — which a staging area is not, since every `set` changes its rows under the reader.
 
 Hence `frozen` on the protocol, and one rule over it:
 
@@ -116,11 +116,11 @@ So `_map(kind)` folds the frozen prefix and `.create()`s it exactly as today, th
 
 Nothing needs invalidating, because nothing past the prefix is materialised: a DuckDB relation over a staging table reads whatever the table holds when it is collected, so a `set` is picked up with no bookkeeping at all — no generation counter, no cache key, no drop-and-rebuild.
 
-What re-executes per read is one anti-join, one union and the ownership `GROUP BY` over the staging tables, against an already-materialised parent map. The ancestry does not. That is [what the design already promises](../working-record.md#reading-with-pending-edits) — "exactly one more fold step over the same owner-map machinery … it costs what one more layer costs" — with the qualifier that page leaves implicit, that a written layer pays that cost once while the staged one pays it per read, being the one layer that can still change.
+What re-executes per read is one anti-join, one union and the ownership `GROUP BY` over the staging tables, against an already-materialised parent map. The ancestry does not. That is [what the design already promises](../use/editing.md#reading-with-pending-edits) — "exactly one more fold step over the same owner-map machinery … it costs what one more layer costs" — with the qualifier that page leaves implicit, that a written layer pays that cost once while the staged one pays it per read, being the one layer that can still change.
 
 Two things fall out of stating it as a property of the sources rather than a mode of the cache. A second staged layer, or a frozen one under an unfrozen one, needs no new code — the prefix is wherever `frozen` stops being true. And `ancestry_to_read`'s truncation at the deepest materialised ancestor becomes _source construction_: fewer sources rather than a shorter list of UUIDs, with `materialised()` unchanged, being a question about a revision.
 
-The one wart: `dims` cannot stay a `cached_property` where the tail is live. It becomes a plain property that caches the frozen prefix's axes and re-folds the rest — the same rule as `_map`, so it is one concept applied twice rather than a special case. `schema` is unaffected: [one schema per record](../schema.md#one-schema-per-record), not layered data, so no source contributes to it.
+The one wart: `dims` cannot stay a `cached_property` where the tail is live. It becomes a plain property that caches the frozen prefix's axes and re-folds the rest — the same rule as `_map`, so it is one concept applied twice rather than a special case. `schema` is unaffected: [one schema per record](../model/schema.md#one-schema-per-record), not layered data, so no source contributes to it.
 
 ## What makes the staged source foldable
 
@@ -138,7 +138,7 @@ So the precondition, not the algebra, is what differs. **Establish the precondit
 
 It runs **per insert, not once per attribute**, because the completion is scoped by _which keys an edit named_: a component no edit mentioned keeps its rows in the parent, and carrying them would claim an extent the layer was never given. Table creation cannot be the hook, since no keys are staged yet when the table is made. The anti-join against what the table already holds makes it idempotent, so a second edit carries only what the first did not.
 
-A staged row leaving a whole-owned dim NULL is excluded: it already covers every label by [the broadcast rule](../record.md#the-broadcast-rule), so its key has nothing to carry and a carried row beside it would overlap.
+A staged row leaving a whole-owned dim NULL is excluded: it already covers every label by [the broadcast rule](../model/attributes.md#the-broadcast-rule), so its key has nothing to carry and a carried row beside it would overlap.
 
 One consequence accepted deliberately: **`set` reads the base when it touches a completed attribute** — a fold, where a deep unmaterialised ancestry makes an expensive one. Bounded by what is staged rather than by how often, the anti-join making a repeat edit carry nothing; an attribute with no owned-whole dim never triggers it at all. [Measured](#how-to-know-it-worked) at ~5 ms for a repeat, twenty layers deep.
 
@@ -158,11 +158,11 @@ Settled by `DirectorySource`: a `DirectoryRecord` is a parquet directory in the 
 
 Nothing constructs such a `WorkingRecord` today, and `_base_revision` already refuses it with a clear message. If a caller appears, it is its own proposal.
 
-**One design note this owes.** [read-path](../read-path.md#one-record-over-one-fold) makes "no owner map" a property of `DirectoryRecord`, and that stays true — a bare `DirectoryRecord` still scans for `flags`. What is new is that a `WorkingRecord` _over_ one builds a map, which belongs to the `WorkingRecord` exactly as a `LayeredRecord`'s map belongs to the node rather than to the layers it folds. The page needs that sentence, or the next reader reads the map as a contradiction.
+**One design note this owes.** [read-path](../layers/resolution.md#one-record-over-one-fold) makes "no owner map" a property of `DirectoryRecord`, and that stays true — a bare `DirectoryRecord` still scans for `flags`. What is new is that a `WorkingRecord` _over_ one builds a map, which belongs to the `WorkingRecord` exactly as a `LayeredRecord`'s map belongs to the node rather than to the layers it folds. The page needs that sentence, or the next reader reads the map as a contradiction.
 
 ### 3. Results become schema-declared
 
-Today a result attribute is not declared: [`Tool.results`](../tools.md) derives which attributes count as results from the framework's own registry, and `write_record` persists `outputs/` without consulting the schema. So `set(..., kind="outputs")` accepts any name, and `output_names()` has to _discover_ what is there by globbing.
+Today a result attribute is not declared: [`Tool.results`](../tools/index.md) derives which attributes count as results from the framework's own registry, and `write_record` persists `outputs/` without consulting the schema. So `set(..., kind="outputs")` accepts any name, and `output_names()` has to _discover_ what is there by globbing.
 
 **Declare them.** `Schema` gains result attributes beside its input ones, and three things follow:
 
@@ -171,7 +171,7 @@ Today a result attribute is not declared: [`Tool.results`](../tools.md) derives 
 - **One vocabulary.** `Schema` stops having two classes of attribute, one it validates and one it cannot see.
 - **`value_hint` retires.** `_empty_long` types a staging table's `value` as `schema.value_type(attribute) or value_hint or String()`, where the hint is the dtype the caller's frame arrived with — "that being the only thing that knows" for an undeclared result. Once results are declared the schema knows, so the fallback is dead. Retiring it removes the parameter from `_ensure` and `_empty_long`, its three call sites, and the two helpers that compute it (`_value_dtype`, `_scalar_dtype`) — check those have no other caller first.
 
-The cost is real and lands outside this repo. A tool must declare a result before attaching it, where today it may attach anything its registry produced — and PyPSA's `SubNetwork` exists only _after_ a solve, which is exactly the case [results through `kind="outputs"`](../working-record.md) cites for not requiring declaration. So a tool either declares its full result vocabulary up front, or amends the schema at solve time, and [`Schema.compatible_with`](../schema.md#versioning) is what says whether existing layers survive the amendment.
+The cost is real and lands outside this repo. A tool must declare a result before attaching it, where today it may attach anything its registry produced — and PyPSA's `SubNetwork` exists only _after_ a solve, which is exactly the case [results through `kind="outputs"`](../use/editing.md) cites for not requiring declaration. So a tool either declares its full result vocabulary up front, or amends the schema at solve time, and [`Schema.compatible_with`](../model/schema.md#versioning) is what says whether existing layers survive the amendment.
 
 The membership check stays relaxed regardless: a result may name a component the record never declared, which is a separate rule from whether the _attribute_ is declared and is not changed here.
 
@@ -190,7 +190,7 @@ Yes, and it is stated in the protocol docstring: a source hands over "the layer 
 
 ### 6. What `DirectoryRecord.flags` keeps, and the aggregate it shares
 
-`DirectoryRecord` is not affected by the fold, and must not be. It deliberately pays the `GROUP BY` scan — [the table in read-path](../read-path.md#one-record-over-one-fold) makes that a design property, not an omission.
+`DirectoryRecord` is not affected by the fold, and must not be. It deliberately pays the `GROUP BY` scan — [the table in read-path](../layers/resolution.md#one-record-over-one-fold) makes that a design property, not an omission.
 
 So after this change the flags aggregate exists twice: once inside `fold_inputs` reading `_raw_<dim>` columns, once in `DirectoryRecord` reading parquet columns directly. Sharing them is in scope, done **last**, once `_flags_arm` is gone and the remaining pair is what has to fit.
 
@@ -297,7 +297,7 @@ Two of the three hold and one does not.
 
 **A second `set` costs the completion ~5 ms**, which is the difference between a repeat on an attribute with an owned-whole dim and one without. So [what makes the staged source foldable](#what-makes-the-staged-source-foldable) holds: the base fold it runs is the _first_ touch's 166 ms, and the anti-join reaching no rows afterwards is nearly free.
 
-Getting there took a fix. The first measurement put a repeat at 188 ms, which looked like the completion refolding per insert and read as the proposal being wrong. It was `set`'s _validation_: `_name_types` and `_resolved_names` assembled "what type is this name" from each type's resolved member frame — a union and a join per type, uncached under a live tail — to read two columns [the owner map](../read-path.md#owner-map) already holds. Off the map instead, a repeat `set` went from 157 ms to 10 ms.
+Getting there took a fix. The first measurement put a repeat at 188 ms, which looked like the completion refolding per insert and read as the proposal being wrong. It was `set`'s _validation_: `_name_types` and `_resolved_names` assembled "what type is this name" from each type's resolved member frame — a union and a join per type, uncached under a live tail — to read two columns [the owner map](../layers/resolution.md#owner-map) already holds. Off the map instead, a repeat `set` went from 157 ms to 10 ms.
 
 **A `WorkingRecord` over a directory folds where a bare one scans**, 12 ms against a cached scan's nothing. `DirectoryRecord` memoises `flags` per type and the fold does not, so this is the first call either way; the fold's answer is a relation, and what it buys is that one code path serves both bases.
 
@@ -327,8 +327,8 @@ Those deletions are what make the two smaller cleanups this grew out of unnecess
 
 **Two sections still owe an edit**, neither optional — when behaviour changes, the page changes, not just the code:
 
-- [results through `kind="outputs"`](../working-record.md) says a result attribute is not schema-declared, and gives the reason. Question 3 reverses that; the page keeps the membership rule and loses the declaration one.
-- [reading with pending edits](../working-record.md#reading-with-pending-edits) says the staged fold "costs what one more layer costs". True per read, and the page should say per read — a written layer pays that once and is cached forever, the staged one pays it on every read, being the only layer that can still change.
+- [results through `kind="outputs"`](../use/editing.md) says a result attribute is not schema-declared, and gives the reason. Question 3 reverses that; the page keeps the membership rule and loses the declaration one.
+- [reading with pending edits](../use/editing.md#reading-with-pending-edits) says the staged fold "costs what one more layer costs". True per read, and the page should say per read — a written layer pays that once and is cached forever, the staged one pays it on every read, being the only layer that can still change.
 
 ## What it opens
 

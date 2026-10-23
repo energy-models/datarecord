@@ -22,10 +22,10 @@ SPDX-License-Identifier: CC-BY-4.0
 
 A PyPSA-Eur workflow exports its network with `PyPSA.to_datarecord(n, ws.con)`, under the tool's schema. Beside it, the workflow holds data PyPSA does not model, keyed by the same entities, buses and periods: custom constraints, a country per bus, an emission intensity per generator. There is no correct way to put both in one record:
 
-- **A layer declares nothing.** There is [one schema per record](../schema.md#one-schema-per-record), so `w.set("co2_intensity", …)` is refused as undeclared.
-- **A hand-written union is unchecked.** A child layer under a wider schema widens the manifest, but the check is [compatibility](../schema.md#versioning), which lets the union change a base attribute's `default` or `unit` or widen a base `Enum`.
-- **A property on a shared subject cannot be added by a layer.** An axis row wins whole per label ([one fold for every axis](../read-path.md#one-fold-for-every-axis)), so a child adding `bus.country` must restate every base property of each bus.
-- **A [standalone directory](../writing.md#a-standalone-directory) is one source with one schema.**
+- **A layer declares nothing.** There is [one schema per record](../model/schema.md#one-schema-per-record), so `w.set("co2_intensity", …)` is refused as undeclared.
+- **A hand-written union is unchecked.** A child layer under a wider schema widens the manifest, but the check is [compatibility](../model/schema.md#versioning), which lets the union change a base attribute's `default` or `unit` or widen a base `Enum`.
+- **A property on a shared subject cannot be added by a layer.** An axis row wins whole per label ([one fold for every axis](../layers/resolution.md#one-fold-for-every-axis)), so a child adding `bus.country` must restate every base property of each bus.
+- **A [standalone directory](../storage/concurrency.md#a-standalone-directory) is one source with one schema.**
 
 ## Specification
 
@@ -49,24 +49,24 @@ A PyPSA-Eur workflow exports its network with `PyPSA.to_datarecord(n, ws.con)`, 
 
 ### The combined record
 
-`combine` computes the united schema and refuses an extension holding rows of an attribute or result the base declares, both at the call and from the mapping keys alone ([`Frames`](../record.md)). Every frame is planned on `con` through `as_relation`, so a relation from another connection is [refused](../read-path.md#a-relation-from-another-connection-is-rejected) and nothing is collected.
+`combine` computes the united schema and refuses an extension holding rows of an attribute or result the base declares, both at the call and from the mapping keys alone ([`Frames`](../use/reading.md)). Every frame is planned on `con` through `as_relation`, so a relation from another connection is [refused](../storage/concurrency.md#a-relation-from-another-connection-is-rejected) and nothing is collected.
 
-- **`dims`, `groups`**: union by key, the base's keys in its order, then the extension's new keys in its order ([axis order](../record.md#axis-order)).
+- **`dims`, `groups`**: union by key, the base's keys in its order, then the extension's new keys in its order ([axis order](../model/dims.md#axis-order)).
 - **`properties[s]`**: joined per subject over the united keys. A base-declared column comes from the base for its keys and from the extension for keys only the extension holds; an extension-added column comes from the extension; anything else reads NULL.
 - **`attributes`, `outputs`**: by name, each one side's frame unchanged.
-- **`flags(**categories)`**: computed from the combined frames against the united schema, by [the protocol's definition](../record.md#flags).
+- **`flags(**categories)`**: computed from the combined frames against the united schema, by [the protocol's definition](../use/reading.md#flags).
 
 **`combine` is a read-time view.** It folds nothing and removes nothing, takes any `RecordLike` on either side (a tool's record, a `Record`, a `WorkingRecord`, another combination), and becomes an ordinary record when written: `ws.write(combine(...), uri)`, `store.root(...)`, or `rev.child(combine(rev.record, ext, con))`, whose manifest widening the invariant guarantees. It is not a `Record`, so it is edited after being written.
 
 **`FrameRecord(schema, dims=, properties=, groups=, attributes=, outputs=)`** is an extension's shape: native frames of any backend narwhals reads. A subject with properties and no `dims` frame takes its labels from the properties' key, and a declared column a frame lacks reads NULL.
 
-`combine` and `FrameRecord` live in core as `datarecord/combine.py`, and `extended_by` in `schema.py` beside `compatible_with` ([module layout](../module-layout.md)).
+`combine` and `FrameRecord` live in core as `datarecord/combine.py`, and `extended_by` in `schema.py` beside `compatible_with` ([module layout](../package.md)).
 
 ## Rationale
 
 **The rule protects the base, not only its names.** A new trait claiming `p_nom` for generators collides with nothing yet takes it from every other entity, because [a trait narrows](dep-0016-remove-traits.md). Identity on shared entries plus new traits claiming only new names is what makes the invariant hold, so a tool reads a combined record's base names as it reads its own record.
 
-**Subjects split by key, attributes by name.** An axis or group row is keyed by one label, so the two sides meet on it. Attribute rows overlap through [broadcast](../record.md#the-broadcast-rule), and dividing them between sources is [the fold](../read-path.md#owner-map), which is a layer's job. For the same reason, an extension's value for a base-declared column on a base-held key is not read: changing a base value is a layer's job.
+**Subjects split by key, attributes by name.** An axis or group row is keyed by one label, so the two sides meet on it. Attribute rows overlap through [broadcast](../model/attributes.md#the-broadcast-rule), and dividing them between sources is [the fold](../layers/resolution.md#owner-map), which is a layer's job. For the same reason, an extension's value for a base-declared column on a base-held key is not read: changing a base value is a layer's job.
 
 **What it costs.** `flags` is a scan per call where a `Record`'s is free. An extension may add labels to a shared axis, so a mistyped label becomes a new one. An extension disagreeing with the base on a base-held key goes unnoticed. Re-declaring shared entries makes an extension verbose.
 
@@ -113,14 +113,14 @@ ws.write(record, "resources/networks/base_s_37.record")
 2. `combine`'s members over `con`, ordered by numbering each side's rows and sorting outermost.
 3. The frames-based `flags`, sharing `categorized_dim`, `selected` and `attributes_among` with the fold's.
 4. `FrameRecord`, exported with `combine` from `datarecord`.
-5. Pages: a "Combining records" section on [writing](../writing.md), `extended_by` under [one schema per record](../schema.md#one-schema-per-record), [module layout](../module-layout.md), usage, changelog.
+5. Pages: a "Combining records" section on [writing](../use/writing.md), `extended_by` under [one schema per record](../model/schema.md#one-schema-per-record), [module layout](../package.md), usage, changelog.
 
 Checks: reading every member of a combination over frames that raise on collect runs no query; projected to base names and keys, every combined frame equals the base's; `flags(component="Bus")` lacks `co2_intensity`.
 
 ## Rejected Ideas
 
-- **An extension layer**, whether declaring its own schema additions or written under a hand-united schema. The first is the layered schema [one schema per record](../schema.md#one-schema-per-record) rejects. Both need a tree, cannot be read before written, and restate the base's properties of every shared subject.
-- **The prototype's eager widening**, which collected both sides to pyarrow and broke [lazy `Frames`](../record.md).
+- **An extension layer**, whether declaring its own schema additions or written under a hand-united schema. The first is the layered schema [one schema per record](../model/schema.md#one-schema-per-record) rejects. Both need a tree, cannot be read before written, and restate the base's properties of every shared subject.
+- **The prototype's eager widening**, which collected both sides to pyarrow and broke [lazy `Frames`](../use/reading.md).
 - **Refusing only colliding trait names**, which lets a new trait narrow base attributes.
 - **Taking `flags` from the sides.** The extension has no category data, and the PyPSA tool's record answers `{}`.
 - **Merging two sides' rows of one attribute.** Dividing overlapping rows is a fold.

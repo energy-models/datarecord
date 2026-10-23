@@ -29,22 +29,35 @@ nav:
   - Usage:
       - usage/index.md
       - Reading a record: usage/reading.md
-      - The schema: usage/schema.md
-      - Layers: usage/layers.md
+      - Declaring a schema: usage/schema.md
       - Editing: usage/editing.md
-      - Writing: usage/writing.md
-      - Tools: usage/tools.md
+      - Branching and layers: usage/layers.md
+      - Storage: usage/storage.md
+      - The PyPSA tool: usage/tools.md
   - Design:
-      - design/index.md
-      - The Record protocol: design/record.md
-      - The record format: design/format.md
-      - The schema: design/schema.md
-      - Layered resolution: design/layers.md
-      - The DuckDB read path: design/read-path.md
-      - Writing a record: design/writing.md
-      - WorkingRecord: design/working-record.md
-      - Consuming a record: design/tools.md
-      - Module layout: design/module-layout.md
+      - Overview: design/index.md
+      - The data model:
+          - Dims and labels: design/model/dims.md
+          - Groups: design/model/groups.md
+          - Properties and categories: design/model/properties.md
+          - Attributes and the broadcast rule: design/model/attributes.md
+          - The schema: design/model/schema.md
+      - Layers:
+          - A tree of layers: design/layers/tree.md
+          - Removing labels: design/layers/removal.md
+          - Resolution: design/layers/resolution.md
+      - Using a record:
+          - Reading: design/use/reading.md
+          - Editing: design/use/editing.md
+          - Writing: design/use/writing.md
+      - Storage:
+          - The record format: design/storage/format.md
+          - Workspaces and stores: design/storage/store.md
+          - Threads, processes and concurrent writers: design/storage/concurrency.md
+      - Frameworks:
+          - Tools: design/tools/index.md
+          - PyPSA: design/tools/pypsa.md
+      - The package: design/package.md
       - Open questions: design/open-questions.md
       - Enhancement proposals:
           - Template: design/proposals/dep-NNNN-template.md
@@ -74,11 +87,12 @@ nav:
   - Changelog: changelog.md
   - API Reference:
       - api/index.md
-      - Record: api/record.md
-      - Schema: api/schema.md
-      - Store: api/store.md
-      - WorkingRecord: api/mutable.md
-      - Tools: api/tools.md
+      - The data model: api/schema.md
+      - Using a record:
+          - Reading: api/record.md
+          - Editing: api/mutable.md
+      - Storage: api/store.md
+      - Frameworks: api/tools.md
 
 theme:
   name: material
@@ -134,6 +148,17 @@ markdown_extensions:
 
 plugins:
   - search
+  - redirects:
+      redirect_maps:
+        design/schema.md: design/model/schema.md
+        design/record.md: design/use/reading.md
+        design/layers.md: design/layers/tree.md
+        design/read-path.md: design/layers/resolution.md
+        design/working-record.md: design/use/editing.md
+        design/writing.md: design/use/writing.md
+        design/format.md: design/storage/format.md
+        design/module-layout.md: design/package.md
+        usage/writing.md: usage/layers.md
   - mkdocstrings:
       handlers:
         python:

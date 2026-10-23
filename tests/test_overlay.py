@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [layered resolution](https://energy-models.github.io/datarecord/design/layers/)
+- [layered resolution](https://energy-models.github.io/datarecord/design/layers/tree/)
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
@@ -77,7 +77,7 @@ def test_child_overwrites_component(store, parent):
 
     Notes
     -----
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
     child = empty_child(parent)
     write_attribute(
@@ -135,7 +135,7 @@ def test_closed_child_reads_own_cache(store, network):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     child = empty_child(network)
     write_attribute(
@@ -238,7 +238,7 @@ def test_a_new_attribute_is_a_schema_amendment(store, network):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
     amended = read_schema(store)
     amended.attributes["p_min_pu"] = AttributeSpec(
@@ -247,7 +247,7 @@ def test_a_new_attribute_is_a_schema_amendment(store, network):
     write_schema(amended, store)
 
     # Adding an attribute is compatible, so the layers written before the
-    # amendment stay readable (https://energy-models.github.io/datarecord/design/schema/#versioning).
+    # amendment stay readable (https://energy-models.github.io/datarecord/design/model/schema/#versioning).
     assert amended.compatible_with(read_schema(store)) == []
 
     child = empty_child(network)
@@ -268,8 +268,8 @@ def test_a_schema_narrowing_is_refused(store, parent):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
     narrowed = read_schema(store)
     narrowed.attributes["p_max_pu"] = AttributeSpec(dtype="float", dims=frozenset())

@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
-- [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
+- [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+- [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/storage/concurrency/#the-manifests-compare-and-swap)
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ def read_schema(store: Store) -> Schema:
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
     found = store.files.read_text(store.manifest_uri)
     return Schema() if found is None else Schema.model_validate_json(found[0])
@@ -63,9 +63,9 @@ def reconcile_schema(schema: Schema, store: Store) -> None:
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
-    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
+    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/storage/concurrency/#the-manifests-compare-and-swap)
     """
     schema = schema.model_copy(update={"id": None})
     files = store.files
@@ -80,7 +80,7 @@ def reconcile_schema(schema: Schema, store: Store) -> None:
             if problems:
                 msg = (
                     f"this layer's schema is incompatible with the record's: "
-                    f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/schema/#versioning)"
+                    f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/model/schema/#versioning)"
                 )
                 raise ValueError(msg)
         try:
@@ -94,7 +94,7 @@ def reconcile_schema(schema: Schema, store: Store) -> None:
     msg = (
         f"{store.manifest_uri} changed under each of {_ATTEMPTS} writes, or cannot "
         f"be read: a 403 on read counts as missing, so check s3:GetObject "
-        f"(https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)"
+        f"(https://energy-models.github.io/datarecord/design/storage/concurrency/#the-manifests-compare-and-swap)"
     )
     raise RuntimeError(msg)
 
