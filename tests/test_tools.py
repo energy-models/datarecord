@@ -127,6 +127,22 @@ def test_verify_accepts_a_complete_record(single_revision):
     assert not PyPSA.verify(single_revision.record)
 
 
+@pytest.mark.parametrize("dim", ["ctype", "role"])
+def test_the_tool_writes_every_type_and_role_it_lists(single_revision, dim):
+    """A tool convention, not a rule of closed dims: the axis is the whole list.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    """
+    record = single_revision.record
+    listed = record.schema.dimensions[dim].dtype
+    assert isinstance(listed, OneOf)
+    assert record.dims[dim].df()[dim].tolist() == list(listed.one_of), (
+        "every label listed, those the network leaves unused included"
+    )
+
+
 def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
     """`n.buses` and `n.carriers` are the `bus` and `carrier` axes, under PyPSA's names.
 

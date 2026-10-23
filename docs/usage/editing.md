@@ -62,6 +62,7 @@ import pandas as pd
 
 w.add("carrier", ["wind"])
 w.add("bus", ["north", "south"])
+w.add("ctype", ["Generator", "Link"])
 w.add("entity", ["wind1", "wind2"], ctype="Generator", carrier="wind")
 w.add("entity", ["dc"], ctype="Link")
 w.set("p_nom", [100.0, 80.0], entity=["wind1", "wind2"])

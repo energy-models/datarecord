@@ -224,10 +224,12 @@ All notable changes to datarecord are documented here. The format follows
   pandas, polars or arrow frame, read by DuckDB's own scanner, and refuse
   timestamps with a time zone; `set` and `add_group` cast a frame column only
   to a wider type of its kind and refuse any other. A dtype is mathspec's (`float`, `int`, `bool`, `str`, `datetime`);
-  a dim may list its labels, `{"one_of": [...]}`, an `ENUM` `add` checks, and
+  a dim may list its labels, `{"one_of": [...]}`, an `ENUM` `add` checks:
+  the labels it allows, its axis holding only those added, and
   a property may name a dim, `{"one_of": "<dim>"}`, which replaces `into` on
   properties and groups. The PyPSA tool declares closed `ctype` and `role`
-  dims and a `timestep` dim. Every record is re-exported.
+  dims, writing every label they list, and a `timestep` dim. Every record is
+  re-exported.
 
 ### Fixed
 

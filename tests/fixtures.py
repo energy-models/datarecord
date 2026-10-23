@@ -16,14 +16,12 @@ import duckdb
 import pandas as pd
 
 from datarecord.files import Files, Version
-from datarecord.layered.resolve import read_schema as record_read_schema
 from datarecord.layered.resolve import write_schema as record_write_schema
 from datarecord.layered.revision import Revision
 from datarecord.schema import (
     AttributeSpec,
     Dimension,
     Group,
-    OneOf,
     PropertySpec,
     Schema,
 )
@@ -327,22 +325,13 @@ def empty_root(store: Store) -> Revision:
     """A new root revision, for a test to hand-write its layer into.
 
     No public API makes an empty revision; this is the store's private
-    revision-file write. Its layer holds each closed dim's axis, every label
-    the schema lists, as `PyPSA.to_datarecord` writes `ctype`'s - so a label
-    a property names is live.
+    revision-file write. Its layer holds nothing, a closed dim's axis
+    included: a label a property names is one a test adds.
 
     Write every file of a layer before its first read: a read freezes the
     layer for its workspace, as a layer is write-once.
     """
-    revision = store._create(None)
-    for dim, spec in record_read_schema(store).dimensions.items():
-        if isinstance(spec.dtype, OneOf):
-            write_axis(
-                store.layer_dir(revision.id),
-                dim,
-                [{dim: label} for label in spec.dtype.one_of],
-            )
-    return revision
+    return store._create(None)
 
 
 def empty_child(parent: Revision) -> Revision:

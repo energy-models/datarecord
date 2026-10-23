@@ -143,7 +143,7 @@ w.remove("carrier", ["gas"])  # refused while a property naming carrier names it
 
 `add(dim, labels, **columns)` stages whole axis rows: `columns` are the other columns of `dims/<dim>.parquet` — the dim's properties, bare since the subject is `dim` — each a scalar for every label or a sequence aligned to `labels`.
 A column no keyword names is NULL on these rows, since `add` restates a label's row whole.
-A label of a [closed dim](schema.md#dtypes) must be one it lists: the dim's own in `add(dim, ...)`, a property's naming one.
+A label of a [closed dim](schema.md#dtypes) must be one it lists: the dim's own in `add(dim, ...)`, a property's naming one. A closed dim's axis holds only the labels added, so a property naming a listed label not on the axis is refused as any unknown label is, and `remove` takes a closed dim's label as any dim's.
 An attribute keyword is refused with a pointer to `set`: an attribute's values are long rows whatever its `dims`, never a column of the axis.
 A column the schema does not declare is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column. A tool that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
 

@@ -68,6 +68,7 @@ def _small(store, **declared):
     write_schema(schema(**declared), store)
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
+    staged.add("ctype", [GEN, "Bus"])
     staged.add("entity", ["Manchester Wind", "Norway Wind"], ctype=GEN)
     staged.add("entity", ["Norway"], ctype="Bus")
     staged.add("bus", ["Norway"])
@@ -656,6 +657,29 @@ def test_an_edit_refuses_an_unknown_label_category_or_keyword(
     """
     with pytest.raises(error, match=match):
         getattr(units, op)(*args, **kwargs)
+
+
+def test_a_closed_dim_holds_the_labels_added_and_removes_like_any_dim(units):
+    """Its list bounds what may be added; its axis is what was.
+
+    Notes
+    -----
+    - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    with pytest.raises(ValueError, match="names them"):
+        units.remove("tech", ["node"])
+    units.set("unit.tech", "plant", unit=["n1"])
+    units.remove("tech", ["node"])
+    assert units.dims["tech"].df()["tech"].tolist() == ["plant"], (
+        "a listed label not on the axis is absent"
+    )
+    with pytest.raises(KeyError, match="no 'tech' label \\['node'\\]"):
+        units.add("unit", ["n2"], tech="node")
+
+    units.add("tech", ["node"])
+    units.add("unit", ["n2"], tech="node")
+    assert _unit_axis(units).loc["n2", "tech"] == "node"
 
 
 def _output_units(record):

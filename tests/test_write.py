@@ -624,10 +624,11 @@ def _plant(p_nom: frozenset[str], *, categorized: bool = False) -> Schema:
 
 
 def _plant_layer(store, schema: Schema, **columns):
-    """A root holding entities `g1` and `g2` with their `p_nom`, under `schema`."""
+    """A root holding `ctype` `Gen` and entities `g1` and `g2` with their `p_nom`, under `schema`."""
     write_schema(schema, store)
     root = empty_root(store)
     staged = WorkingRecord(root.record)
+    staged.add("ctype", ["Gen"])
     staged.add("entity", ["g1", "g2"], **columns)
     staged.set("p_nom", {"g1": 1.0, "g2": 2.0})
     return root.child(staged.edits)
@@ -708,9 +709,6 @@ def test_categories_add_one_column_to_the_entity_axis_and_nothing_else(tmp_path)
 
     (plain_files, plain_axis), (typed_files, typed_axis) = layouts[False], layouts[True]
     assert plain_files == typed_files, "the same files"
-    assert not any(f.startswith("dims/ctype") for f in typed_files), (
-        "the closed dim's labels stay in the layer that added them"
-    )
     assert set(typed_axis.columns) - set(plain_axis.columns) == {"ctype"}
     assert set(plain_axis.columns) <= set(typed_axis.columns), (
         "differing by exactly one column"

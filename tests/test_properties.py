@@ -21,7 +21,7 @@ from tests.fixtures import empty_root
 
 @pytest.fixture
 def schema():
-    """`sign` defaults by type.
+    """`sign` defaults by type, `Link` a type no label has.
 
     `x` is an attribute and a property of `bus`, `bus` a dim and a property of
     `entity`.
@@ -31,7 +31,7 @@ def schema():
             "entity": Dimension(dtype="str"),
             "bus": Dimension(dtype="str"),
             "snapshot": Dimension(dtype="int"),
-            "ctype": Dimension(dtype={"one_of": ["Generator", "Load"]}),
+            "ctype": Dimension(dtype={"one_of": ["Generator", "Link", "Load"]}),
         },
         properties={
             "entity": {
@@ -134,6 +134,31 @@ def test_a_scalar_property_reaches_labels_added_in_the_same_record(record):
     carriers = {e: r["carrier"] for e, r in _rows(staged.properties["entity"]).items()}
     assert carriers == {"g1": "solar", "l1": "solar", "g2": "solar"}, (
         "a scalar reaches every label as staged, g2 included"
+    )
+
+
+def test_categories_read_off_the_list_when_the_axis_lacks_one(record):
+    """`Link` is listed but never added: still a category, selecting no label.
+
+    Notes
+    -----
+    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
+    """
+    assert record.dims["ctype"].df()["ctype"].tolist() == ["Generator", "Load"]
+    assert record.schema.categorizing("entity") == ("ctype",)
+    assert record.flags(ctype="Link") == {}, "a category no label has flags nothing"
+    signs = {
+        c: record.schema.default_for("entity.sign", ctype=c)
+        for c in ("Generator", "Link", "Load")
+    }
+    assert signs == {"Generator": 1.0, "Link": 1.0, "Load": -1.0}, (
+        "default_by applies per listed category"
+    )
+
+    staged = WorkingRecord(record)
+    staged.set("p_set", 2.0, ctype="Link")
+    assert _rows(staged.attributes["p_set"]) == _rows(record.attributes["p_set"]), (
+        "selecting a category no label has stages nothing"
     )
 
 

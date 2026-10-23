@@ -53,6 +53,7 @@ def _root(store) -> Revision:
     write_schema(schema(), store)
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
+    write_axis(layer, "ctype", [{"ctype": PROCESS}])
     write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer,
