@@ -26,7 +26,6 @@ from tests.fixtures import (
     write_input,
     write_periods,
     write_schema,
-    write_snapshots,
 )
 
 
@@ -121,72 +120,6 @@ def test_the_fold_unions_maps_by_name(store):
     wind = df[(df["entity"] == "Manchester Wind") & (df["layer_uuid"] == child.id)]
     assert wind["scenario"].tolist() == ["high"]
     assert wind["period"].tolist() == [2030]
-
-
-# -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------
-
-_NESTED_DIMS = {
-    "snapshot": nw.Datetime(),
-    "period": nw.Int64(),
-    "scenario": nw.String(),
-}
-_NESTED_WITHIN = {"snapshot": {"period"}}
-
-
-def test_a_nested_axis_keeps_a_label_per_parent(store):
-    """`snapshot within period` keys the axis by the pair, not the timestamp.
-
-    Two periods holding the same timestamp are two points: `t1` alone
-    names nothing once the axis is nested, so folding by the label would
-    collapse them into one row.
-
-    Notes
-    -----
-    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
-    """
-    revision = empty_root(store)
-    write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN), store)
-    write_snapshots(
-        store.layer_dir(revision.id),
-        [
-            {"snapshot": "2020-01-01 00:00", "period": 2020},
-            {"snapshot": "2020-01-01 01:00", "period": 2020},
-            {"snapshot": "2020-01-01 00:00", "period": 2030},
-            {"snapshot": "2020-01-01 01:00", "period": 2030},
-        ],
-    )
-
-    axis = revision.resolver.dims.axes["snapshot"].df()
-    assert len(axis) == 4
-    assert sorted(axis["period"].tolist()) == [2020, 2020, 2030, 2030]
-
-
-def test_a_child_overrides_one_nested_point(store):
-    """Last-writer-wins applies to `(period, snapshot)`, not to the timestamp.
-
-    A child restating one period's hour leaves the other period's identically
-    labelled hour to the parent.
-    """
-    revision = empty_root(store)
-    write_schema(schema(dims=_NESTED_DIMS, within=_NESTED_WITHIN), store)
-    write_snapshots(
-        store.layer_dir(revision.id),
-        [
-            {"snapshot": "2020-01-01 00:00", "period": 2020, "weight": 1.0},
-            {"snapshot": "2020-01-01 00:00", "period": 2030, "weight": 1.0},
-        ],
-    )
-    revision.materialise()
-
-    child = empty_child(revision)
-    write_snapshots(
-        store.layer_dir(child.id),
-        [{"snapshot": "2020-01-01 00:00", "period": 2030, "weight": 7.0}],
-    )
-
-    axis = child.resolver.dims.axes["snapshot"].df()
-    weights = dict(zip(axis["period"], axis["weight"], strict=True))
-    assert weights == {2020: 1.0, 2030: 7.0}
 
 
 def test_a_dim_names_its_own_file(store):

@@ -50,7 +50,7 @@ Decided by the section a name is [declared in](schema.md#properties), not by how
 
 `inputs/p_nom.parquet` is `entity | attribute | breakpoint | value`, one row per entity, and widening `p_nom` over `scenario` adds a column to the same file — NULL in every row written before, which is what [the broadcast rule](record.md#the-broadcast-rule) needs to read them unchanged. A scenario `weight` over `scenario` alone is long rows too: an attribute with one coordinate is still data.
 
-An axis or group file then carries only its key, its `within` keys, its tombstones and its subject's properties — no data. A framework's constant frame per category is the category's properties joined with the coordinate-only rows of its attributes; the [tool](tools.md) builds it.
+An axis or group file then carries only its key, its tombstones and its subject's properties — no data. A framework's constant frame per category is the category's properties joined with the coordinate-only rows of its attributes; the [tool](tools.md) builds it.
 
 A [group](schema.md#groups)'s rows are in `groups/<group>.parquet`, keyed by that group's tuple and carrying their own tombstones — `groups/connection.parquet` for the `connection` group over `(entity, bus)`.
 **The file is keyed by one struct column named for the group**, `connection STRUCT(entity, bus) | role | deleted`, `role` being a property of `connection`, exactly as `dims/<dim>.parquet` is keyed by the column named for the dim: the column an attribute row carries the group as is the one the group's own file is keyed by, so no read or write converts between two shapes.

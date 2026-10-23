@@ -29,7 +29,12 @@ gens = entities.filter(nw.col("component") == "Generator").collect().to_pandas()
 
 ## Labels and properties
 
-`dims[dim]` is the axis's key columns only — the labels, and a nested dim's parent keys — in axis order.
+`dims[dim]` is the axis's label column only, in axis order. A dim is flat, so a multi-period snapshot's period is a property beside it ([design](../design/schema.md#a-dim-is-flat)):
+
+```python
+record.dims["snapshot"]  # snapshot
+record.properties["snapshot"]  # snapshot | period | timestep
+```
 
 `properties[subject]` is a dim's or a group's key with every property declared for it, **as stored**: a NULL is a value no layer wrote.
 

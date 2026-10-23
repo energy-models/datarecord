@@ -22,8 +22,8 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
-from graphlib import CycleError, TopologicalSorter
 from typing import Any
+from uuid import UUID
 
 import narwhals as nw
 from pydantic import (
@@ -187,7 +187,13 @@ def flag_type(dims: tuple[str, ...]) -> nw.dtypes.DType:
     return nw.Struct({d: nw.Boolean() for d in dims})
 
 
-class Dimension(BaseModel):
+class _Declared(BaseModel):
+    """A model `manifest.json` is parsed into, refusing a key it does not declare."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+
+
+class Dimension(_Declared):
     """One axis attribute data may vary over: its shape, not its data.
 
     Not which dims an *attribute* varies over (`AttributeSpec.dims`), nor the
@@ -200,8 +206,6 @@ class Dimension(BaseModel):
         The axis labels' type, as a narwhals dtype instance (`nw.String()`,
         `nw.Datetime()`, ...) - translated to its DuckDB name only where a
         column of it is built.
-    within
-        Dims this one's labels identify a point only *within*; transitive.
     unit
         What this axis's *labels* measure, if anything - `None` is undeclared,
         `""` genuinely dimensionless.
@@ -212,14 +216,10 @@ class Dimension(BaseModel):
     -----
     - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
     - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
-    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     dtype: nw.dtypes.DType
-    within: frozenset[str] = frozenset()
     unit: str | None = None
     description: str | None = None
 
@@ -233,14 +233,12 @@ class Dimension(BaseModel):
         return _dump_dtype(value)
 
 
-class _ValueSpec(BaseModel):
+class _ValueSpec(_Declared):
     """What `AttributeSpec` and `PropertySpec` share: a typed value and its defaults.
 
     The `default`/`default_by` encoding lives here once, so a property and an
     attribute round-trip `manifest.json` identically.
     """
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     dtype: nw.dtypes.DType
     default: Any | None = None
@@ -402,7 +400,7 @@ class PropertySpec(_ValueSpec):
         return self
 
 
-class Group(BaseModel):
+class Group(_Declared):
     """Which tuples over several dims exist: a sparse subset of a dim product.
 
     Not a dim. A dim declares an axis of labels and NULL in its column means
@@ -460,7 +458,7 @@ class Group(BaseModel):
         return tuple(self.over)
 
 
-class Trait(BaseModel):
+class Trait(_Declared):
     """A named bundle of attributes, and which categories and labels carry it.
 
     The narrowing direction: an attribute the schema declares is carried by
@@ -508,11 +506,15 @@ class Trait(BaseModel):
         return self
 
 
-class Schema(BaseModel):
+class Schema(_Declared):
     """One record's schema.
 
     Attributes
     ----------
+    id
+        A standalone record's id, which its `manifest.json` carries beside the
+        declarations and `Workspace.write` mints; `None` on a tree's schema,
+        and then left out of a dump.
     version
         Bumped by any change to the declarations. A reader meeting a
         version it was not written for should refuse rather than guess.
@@ -549,6 +551,7 @@ class Schema(BaseModel):
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
 
+    id: UUID | None = Field(default=None, exclude_if=lambda id: id is None)
     version: int = 1
     dimensions: dict[str, Dimension] = Field(default_factory=dict)
     attributes: dict[str, AttributeSpec] = Field(default_factory=dict)
@@ -578,7 +581,6 @@ class Schema(BaseModel):
         - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
-        - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
         - [names](https://energy-models.github.io/datarecord/design/schema/#names)
         """
         self._check_names()
@@ -593,25 +595,6 @@ class Schema(BaseModel):
                 "attribute data varying over no axis is not a record (https://energy-models.github.io/datarecord/design/schema/#dimensions)"
             )
             raise ValueError(msg)
-
-        for dim, spec in self.dimensions.items():
-            unknown = sorted(spec.within - declared)
-            if unknown:
-                msg = f"dim {dim!r} is `within` undeclared dims {unknown}"
-                raise ValueError(msg)
-            if dim in spec.within:
-                msg = f"dim {dim!r} is `within` itself"
-                raise ValueError(msg)
-        # `TopologicalSorter` only needs preparing to reject a cycle, and
-        # `CycleError.args[1]` is the offending path - so the acyclicity `within`
-        # requires is stdlib rather than a graph walk kept here.
-        try:
-            TopologicalSorter(
-                {d: s.within for d, s in self.dimensions.items()}
-            ).prepare()
-        except CycleError as e:
-            msg = f"`within` is cyclic: {' -> '.join(e.args[1])}"
-            raise ValueError(msg) from e
 
         for group, group_spec in self.groups.items():
             unknown = sorted(set(group_spec.over.values()) - declared)
@@ -962,16 +945,11 @@ class Schema(BaseModel):
             raise ValueError(msg)
 
     def _key_of(self, subject: str) -> set[str]:
-        """The columns of `subject`'s file a property cannot be named: a dim and its `within` parents, a group's struct column and `into`.
-
-        Read before `within` and `into` are checked, so an undeclared or
-        cyclic parent still names a column here.
-        """
+        """The columns of `subject`'s file a property cannot be named: a dim, a group's struct column and `into`."""
         group = self.groups.get(subject)
         if group is not None:
             return {subject} | ({group.into} if group.into else set())
-        within = {d: s.within for d, s in self.dimensions.items()}
-        return {subject, *_ancestors(subject, within)}
+        return {subject}
 
     @staticmethod
     def _dotted(subject: str, names: Iterable[str]) -> set[str]:
@@ -1395,19 +1373,6 @@ class Schema(BaseModel):
         partial = self.partial or frozenset()
         return tuple(d for d in self.broadcast_dims if d in partial)
 
-    def axis_key(self, dim: str) -> tuple[str, ...]:
-        """A dim's axis-table key: `(*parents, dim)`, parents first.
-
-        Parents in declaration order, and transitively - a dim `within` another
-        that is itself `within` a third is keyed by all three.
-
-        Notes
-        -----
-        - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
-        """
-        seen = _ancestors(dim, {d: s.within for d, s in self.dimensions.items()})
-        return (*(d for d in self.dims if d in seen), dim)
-
     # -- key and column sets (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/read-path/#owner-map) -----------------------------------
 
     @property
@@ -1584,10 +1549,6 @@ class Schema(BaseModel):
                 continue
             if now.dtype != was.dtype:
                 problems.append(f"dim {dim!r} dtype {was.dtype} -> {now.dtype}")
-            if now.within != was.within:
-                problems.append(
-                    f"dim {dim!r} nesting changed; the axis key changes shape"
-                )
 
         # Results version like inputs: a layer's `outputs/<attr>.parquet` is
         # unreadable for the same reasons its `inputs/` counterpart would be.
@@ -1664,16 +1625,3 @@ class Schema(BaseModel):
                             f"labels have no valid reading"
                         )
         return problems
-
-
-def _ancestors(dim: str, within: dict[str, frozenset[str]]) -> set[str]:
-    """Every dim `dim` is transitively `within`."""
-    seen: set[str] = set()
-    stack = list(within.get(dim, ()))
-    while stack:
-        node = stack.pop()
-        if node in seen:
-            continue
-        seen.add(node)
-        stack.extend(within.get(node, ()))
-    return seen

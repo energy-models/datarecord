@@ -298,7 +298,7 @@ What would decide it: a case where layer data, not the schema, must reach every 
 
 ## What it opens
 
-**Whether a functional group over one coordinate is a property.** `country` over `[bus]` `into` `country` is one label per bus — metadata, of a dtype ranging over a dim. The old entity-type axis was exactly that, and this proposal turns it into a property; `into` might go the same way, or [the chain argument](../schema.md#within-is-not-into) might keep it a group.
+**Whether a functional group over one coordinate is a property.** `country` over `[bus]` `into` `country` is one label per bus — metadata, of a dtype ranging over a dim. The old entity-type axis was exactly that, and this proposal turns it into a property; `into` might go the same way, or [the chain argument](../schema.md#properties) might keep it a group.
 
 **Whether wide-frame editing comes back** — one call adding a component with its properties, connections and values, built on `add`, `add_group` and `set`, as the inverse of what `to_datarecord` produces.
 

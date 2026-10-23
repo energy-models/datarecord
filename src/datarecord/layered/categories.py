@@ -174,16 +174,15 @@ def with_defaults(
     schema: Schema,
     subject: str,
     rel: DuckDBPyRelation,
-    key: Sequence[str],
     names: Sequence[str],
     con: DuckDBPyConnection,
 ) -> DuckDBPyRelation:
-    """`rel` projected to `key` and `names`, an unset name read as its default.
+    """`rel` projected to `subject` and `names`, an unset name read as its default.
 
     A label not carrying a name reads NULL for it, a stored value included.
     """
     if not names:
-        return rel.project(*(col(k) for k in key))
+        return rel.project(col(subject))
     duck = DuckTypes(con)
 
     def columns(cats: dict[str, str]) -> list[Expression]:
@@ -200,7 +199,7 @@ def with_defaults(
         ]
 
     return _per_combination(schema, subject, rel, columns, con).project(
-        *(col("r", k) for k in key),
+        col("r", subject),
         *(
             duckdb.CaseExpression(
                 col("t", f"_carries_{n}"),

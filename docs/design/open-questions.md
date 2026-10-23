@@ -44,13 +44,15 @@ SPDX-License-Identifier: CC-BY-4.0
 
 - **Whether a default must name a live label.** `bus.carrier` defaults to `AC` in PyPSA's schema, and a default is [never stored](schema.md#default_by-a-default-per-category), so nothing checks that `AC` is a label of `carrier`.
 
-- **Whether a property `into` a nested dim should be checked.** Its values name labels of a dim keyed by its parents too, which one column does not carry, so `remove` and [the writer](layers.md#deletion) skip the live-label check for one, as they do for a [group field](working-record.md#add-remove) over a nested dim; `set` and `add` check the label alone, under any parent.
-
 - **Whether `bus` earns its place in the fold key.** PyPSA's `partial` gains `bus` so a layer patches one bus's `v_nom`, and every `partial` coordinate is paid for by every read ([keep it small](schema.md#partial-the-granularity-of-an-override)). Measuring it on a pypsa-eur-sized record would settle it.
 
 - **Whether a custom bus column can be a property.** It is an attribute over `bus` today, so custom `Bus.country` beside custom `Generator.country` is [one attribute over two dims](tools.md) and refused. Placing it as `bus.country` would dissolve the one remaining custom-column clash, but needs a rule telling a custom property from a custom attribute.
 
 - **Whether selector keywords need a qualified form.** A bare [selector](working-record.md#set) naming a property of two dims one attribute reaches is refused, with no way to say which is meant short of setting per dim.
+
+- **Whether `Schema` should declare a dim with its parent property in one call.** A label scoped per parent is [a flat label and a property `into` the parent](schema.md#a-dim-is-flat), two declarations a helper could make one.
+
+- **A pointwise `set` leaving one of two whole-owned dims NULL drops the rest of the series.** It is a fold bug with any two whole-owned dims on one series; [a dim being flat](schema.md#a-dim-is-flat) removed the routine case, `period` beside `snapshot`.
 
 - **What PyPSA#1474 lands as.** Upstream making buses and carriers indices may turn an unlisted carrier into an error, or stop `""` meaning none; the tool adds the one and stores the other as NULL today ([tools](tools.md)).
 
@@ -63,10 +65,3 @@ SPDX-License-Identifier: CC-BY-4.0
 - **What a connection value staged without its `bus` should mean** — nothing; the call is [rejected](working-record.md#set).
   `{entity: dc, bus: NULL}` is [no group value](record.md#the-broadcast-rule), a group value being a whole tuple or NULL, so it is refused wherever a row comes in.
   The alternative, "every connection of this entity", would broadcast over part of a tuple — a group column broadcasts only whole, a NULL struct meaning every tuple.
-
-- **Whether `within` should subsume `bus`** — no; [groups](schema.md#groups) do it.
-  The recorded blocker was that `bus` inverts the rule NULL follows for a dim: a NULL declared dim means "all values" and the fold expands it against the axis, while a NULL `bus` is compared NULL-safely and never expanded.
-  That premise did not survive. Expansion is governed by whether a coordinate is in the fold's key set, and a non-`partial` dim is never expanded either — so the behaviour that "makes a dim a dim" was never uniform, and `bus` was not an exception to it.
-  A group states the rule instead of carrying an exception: a group coordinate addresses a sparse subset with no axis to expand against, which is [the broadcast rule](record.md#the-broadcast-rule) rather than a special case in it.
-  Since [a group is one struct column](proposals/dep-0010-a-group-is-a-struct-column.md), a connection's `bus` is a field of `connection` rather than the dim's column, so the dim `bus` broadcasts like any other and the exception is gone from the dim entirely.
-  Since [a group is a dim](proposals/dep-0010-a-group-is-a-struct-column.md#amendment-a-group-is-a-dim) it is gone from the group too: a NULL struct expands against the resolved group, as a NULL dim does against its axis.

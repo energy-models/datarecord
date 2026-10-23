@@ -329,17 +329,15 @@ class DuckTypes:
 
 def fold_axis(
     axes: Sequence[DuckDBPyRelation | None],
-    key: tuple[str, ...],
+    key: str,
     con: DuckDBPyConnection,
 ) -> DuckDBPyRelation | None:
     """Fold one keyed relation over each layer's, keyed by `key`, in member order.
 
     The one fold for every axis - a dim's coordinates, a group.
     `axes` is root first, one entry per layer - `None` where that layer has no
-    rows. Last-writer-wins per `key`, which is `Schema.axis_key` for a dim or
-    the group's struct column for a group, so a nested dim is keyed by
-    `(*parents, dim)` and two periods' identically labelled timesteps stay
-    distinct.
+    rows. Last-writer-wins per `key`, the dim for a dim or the group's struct
+    column for a group.
 
     A `deleted = true` row is a tombstone: it removes its key unless a still-
     deeper layer restates it, and never survives into the output, which carries
@@ -356,7 +354,6 @@ def fold_axis(
     -----
     - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
     - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
-    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
     layers = []
@@ -375,7 +372,7 @@ def fold_axis(
 
     union = union_all_by_name(layers, con)
     has_deleted = "deleted" in union.columns
-    partition = ", ".join(str(col(c)) for c in key)
+    partition = str(col(key))
     # `OVER (PARTITION BY ...)` stays text below: DuckDB's expression API has no
     # window construct, so only what the window wraps is built as an expression.
     ranked = union.project(
@@ -411,7 +408,7 @@ def fold_axis(
 
 def dead_keys(
     axes: Sequence[DuckDBPyRelation | None],
-    key: tuple[str, ...],
+    key: str,
     con: DuckDBPyConnection,
 ) -> DuckDBPyRelation | None:
     """The keys `fold_axis` drops: those whose deepest row is a tombstone.
@@ -429,7 +426,7 @@ def dead_keys(
         return None
     layers = [
         rel.project(
-            *(col(c) for c in key),
+            col(key),
             lit(depth).alias("_depth"),
             (
                 coalesce(col("deleted"), lit(False))  # noqa: FBT003
@@ -441,8 +438,8 @@ def dead_keys(
     ]
     deepest = union_all_by_name(layers, con).aggregate(
         [
-            *(col(c) for c in key),
+            col(key),
             fn.arg_max(col("_dead"), col("_depth")).alias("_dead"),
         ]
     )
-    return deepest.filter(col("_dead")).project(*(col(c) for c in key))
+    return deepest.filter(col("_dead")).project(col(key))

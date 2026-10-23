@@ -98,13 +98,13 @@ partial: [entity, bus, scenario, connection]
 
 ### A property `into` a dim
 
-`PropertySpec.into` names a declared dim; the property's values are its labels and its `dtype` is the dim's. A stored value must name a live label, checked where a group field is — [`set`, `add`](../working-record.md#validation), [the writer](../layers.md#deletion); NULL means none. It does not [categorize](../schema.md#categories-an-enum-property-of-a-partial-dim): a category is a schema `Enum`, labels are data. Any subject may declare one. A group `over` one coordinate `into` a dim is refused; [`into` on a group](../schema.md#into-a-group-that-classifies) stays for two or more coordinates, and [a chain is still not denormalised](../schema.md#within-is-not-into).
+`PropertySpec.into` names a declared dim; the property's values are its labels and its `dtype` is the dim's. A stored value must name a live label, checked where a group field is — [`set`, `add`](../working-record.md#validation), [the writer](../layers.md#deletion); NULL means none. It does not [categorize](../schema.md#categories-an-enum-property-of-a-partial-dim): a category is a schema `Enum`, labels are data. Any subject may declare one. A group `over` one coordinate `into` a dim is refused; [`into` on a group](../schema.md#into-a-group-that-classifies) stays for two or more coordinates, and [a chain is still not denormalised](../schema.md#properties).
 
 ### A property's name is its subject's
 
 **One name, one spec** holds for attributes and results. A property is a column of its subject's file, and its name is unique there only: `x` on `bus` beside the attribute `x`, `carrier` on `entity`, on `bus` and as a dim, `type` on both, `Shape`'s attribute `component` beside `entity.component`. Refused at schema load:
 
-- a property named like its subject's key — the dim, a [`within`](../schema.md#within-an-axis-inside-an-axis) parent, or a group's struct column;
+- a property named like its subject's key — the dim, a [`within`](../schema.md#a-dim-is-flat) parent, or a group's struct column;
 - a property of a group named like one of its coordinates, which are the keywords a tuple is addressed by;
 - two spellings differing only in case, record-wide, and a `.` in any name ([names](../schema.md#names)).
 

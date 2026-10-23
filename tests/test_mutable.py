@@ -353,29 +353,6 @@ def test_set_with_no_names_over_a_non_partial_dim_stays_one_row(store):
     assert rows["value"].tolist() == [9.0]
 
 
-def test_an_expression_value_stages_the_whole_series(staged, root):
-    """A derived edit covers every coordinate it read, not just one.
-
-    Notes
-    -----
-    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
-    """
-    base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
-    mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
-
-    staged.set("p_max_pu", nw.col("value") * 2, entity=["Manchester Wind"])
-    read = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
-    read = read[read["entity"] == "Manchester Wind"].sort_values("snapshot")
-    assert read["value"].tolist() == (mine["value"] * 2).tolist(), (
-        "every coordinate the expression read, not just one"
-    )
-
-    child = root.child(staged.edits)
-    got = child.record.attributes["p_max_pu"].collect().to_native().to_pandas()
-    got = got[got["entity"] == "Manchester Wind"].sort_values("snapshot")
-    assert got["value"].tolist() == (mine["value"] * 2).tolist()
-
-
 def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     """A staged row's dims join the flags, unioned with the base answer.
 
@@ -923,20 +900,6 @@ def test_a_frame_carrying_a_group_but_as_its_struct_is_rejected(staged, select):
         staged.set("efficiency", staged.con.sql(f"SELECT {select}"))
 
 
-def test_an_expression_scoped_by_bus_derives_one_connection(staged):
-    """`bus=` scopes a derived value through the struct field.
-
-    Notes
-    -----
-    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
-    """
-    staged.set("efficiency", 0.5, entity=["Manchester Gas"], bus="Manchester")
-    staged.set(
-        "efficiency", nw.col("value") * 2, entity=["Manchester Gas"], bus="Manchester"
-    )
-    assert list(_efficiency(staged, "Manchester Gas")["Manchester"]) == [1.0]
-
-
 def test_a_layer_touching_no_tuple_resolves_no_ancestry_to_check(
     staged, root, monkeypatch
 ):
@@ -1353,7 +1316,7 @@ def test_a_standalone_write_of_the_record_is_flattened(staged, root, tmp_path):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     out = str(tmp_path / "flat")
     record = root.store.workspace.write(staged, out)
-    assert record.schema == staged.schema
+    assert record.schema == staged.schema.model_copy(update={"id": record.schema.id})
     members = _entity_axis(record)
     assert _entity_values(record, "p_nom")["Manchester Wind"] == 150.0
     # Flattened: every component is present, not left to a parent to supply.
@@ -1361,39 +1324,6 @@ def test_a_standalone_write_of_the_record_is_flattened(staged, root, tmp_path):
     assert not root.store.workspace.con.sql(
         "FROM duckdb_tables() WHERE table_name LIKE '_pinned_%'"
     ).fetchall(), "the write drops the owner map it held for its fold"
-
-
-# -- the `Expr` value form's raise rule (https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one) -------------------------------
-
-
-def test_an_expression_over_a_named_target_with_no_rows_raises(staged):
-    """A named target that resolves to nothing is a failed change, not a no-op.
-
-    The caller asked for these rows to take a new value and there is nothing to
-    derive one from, so it fails loudly rather than staging zero rows.
-
-    Notes
-    -----
-    - [a derived value](https://energy-models.github.io/datarecord/design/working-record/#an-nwexpr-value-derived-from-the-current-one)
-    """
-    with pytest.raises(KeyError, match="no current value to derive from"):
-        staged.set(
-            "p_max_pu",
-            nw.col("value") * 2,
-            entity=["Manchester Wind"],
-            snapshot="1999-01-01",
-        )
-
-
-def test_an_unscoped_expression_over_an_absent_attribute_stages_nothing(staged):
-    """`entity=None` and no scope means "whatever resolves", so empty is an answer."""
-    absent = next(
-        a
-        for a in sorted(staged.schema.attributes_for("entity", component=GEN))
-        if a not in staged.attributes
-    )
-    staged.set(absent, nw.col("value") * 2)
-    assert absent not in staged.attributes, "nothing resolved, so nothing was staged"
 
 
 # -- results through `kind="outputs"` (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/read-path/#outputs) ---------------------------

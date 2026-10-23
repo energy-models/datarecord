@@ -208,16 +208,15 @@ class Workspace:
                 f"its store's `layer(id)`"
             )
             raise FileNotFoundError(msg)
-        id = json.loads(found[0]).get("id")
-        if id is None:
+        schema = Schema.model_validate_json(found[0])
+        if schema.id is None:
             msg = (
                 f"{base}manifest.json carries no record id; a standalone "
                 f"record's id is minted by `Workspace.write`, so write it again "
                 f"through that"
             )
             raise ValueError(msg)
-        schema = Schema.model_validate_json(found[0])
-        return _record(DirectorySource(base, schema, self, UUID(id)), workspace=self)
+        return _record(DirectorySource(base, schema, self, schema.id), workspace=self)
 
     def write(self, source: LayerData | RecordLike, uri: str) -> Record:
         """Write `source` as a standalone record at `uri`, and read it back.
@@ -495,17 +494,15 @@ def _absolute(uri: str) -> str:
 
 
 def _manifest(schema: Schema, id: UUID) -> str:
-    """A standalone record's `manifest.json`: `schema`, with its `id` beside it.
+    """A standalone record's `manifest.json`: `schema`, carrying `id`.
 
-    Beside the schema's keys rather than wrapping them, so the file still
-    parses as the schema alone. A tree's manifest carries no id, its
-    revisions naming its layers.
+    A tree's manifest carries no id, its revisions naming its layers.
 
     Notes
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    return json.dumps({"id": str(id), **json.loads(schema.model_dump_json())})
+    return schema.model_copy(update={"id": id}).model_dump_json()
 
 
 def _process_store(uri: str) -> Store:

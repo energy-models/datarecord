@@ -242,25 +242,6 @@ def write_periods(layer: str, rows: list[dict]) -> None:
     df.to_parquet(target / "period.parquet", index=False)
 
 
-def write_snapshots(layer: str, rows: list[dict]) -> None:
-    """Write `dims/snapshot.parquet`; each row needs `snapshot`.
-
-    A `period` column makes it a nested axis, keyed by `(period,
-    snapshot)` rather than by the timestamp alone.
-
-    Notes
-    -----
-    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
-    """
-    df = pd.DataFrame(rows)
-    df["snapshot"] = pd.Series(df["snapshot"]).astype("datetime64[ns]")
-    if "period" in df:
-        df["period"] = df["period"].astype("Int64")
-    target = Path(layer, "dims")
-    target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / "snapshot.parquet", index=False)
-
-
 def write_axis(layer: str, dim: str, rows: list[dict]) -> None:
     """Write `dims/<dim>.parquet` from plain rows, whatever columns they carry.
 
@@ -486,7 +467,6 @@ def schema(
     groups: dict[str, dict[str, str]] = {
         "connection": {"entity": "entity", "bus": "bus"}
     },
-    within: dict[str, set[str]] | None = None,
 ) -> Schema:
     """A schema shaped like the PyPSA records most tests build on.
 
@@ -494,8 +474,7 @@ def schema(
     `component` property (categories `TYPES`), a `connection` group over
     `(entity, bus)`, and three declared dims. Override `partial` to pin a
     different layering granularity, `dims` to declare another axis, `groups` to
-    declare a different sparse relation, `within` to nest one axis inside
-    another.
+    declare a different sparse relation.
 
     A group's coordinates are declared dims. `entity` is always `partial`, so
     a layer patches one component's value without restating the rest, and
@@ -506,9 +485,7 @@ def schema(
     -----
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
     """
-    nesting = within or {}
     # Callers declare per type, which is how a modelling framework thinks; the
     # schema stores one spec per attribute, record-wide, and a trait per type
     # narrows it back. Flattening here keeps the tests readable and is exactly
@@ -537,10 +514,7 @@ def schema(
     }
     return Schema(
         groups={g: Group(over=over) for g, over in groups.items()},
-        dimensions={
-            d: Dimension(dtype=t, within=frozenset(nesting.get(d, set())))
-            for d, t in declared.items()
-        },
+        dimensions={d: Dimension(dtype=t) for d, t in declared.items()},
         properties={"entity": {"component": PropertySpec(dtype=nw.Enum(TYPES))}},
         attributes=flat,
         traits=traits,
