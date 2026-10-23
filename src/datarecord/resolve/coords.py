@@ -162,7 +162,12 @@ def refuse_unheld(
     via = "" if key == name else f" in {key!r}"
     if staged:
         holder = f"the staged {'group' if group else 'axis'}"
-        remedy = f"`{'add_group' if group else 'add'}` them first"
+        if group:
+            remedy = "`add_group` them first"
+        elif schema.dimensions[name].one_of is not None:
+            remedy = "that dim lists its labels, so use one of them"
+        else:
+            remedy = "`add` them first"
         link = "working-record/#validation"
     else:
         holder = f"the layer's {'groups' if group else 'dims'}/{name}.parquet"
