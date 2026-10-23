@@ -222,7 +222,9 @@ All notable changes to datarecord are documented here. The format follows
   for a `partial` dim, and at a tuple that its group, as staged, does not
   hold (breaking); a tuple naming an unknown label is refused for the label.
   `add_group` refuses a tuple naming a label that its
-  field's axis, as staged, does not hold (breaking). `write_layer` refuses
+  field's axis, as staged, does not hold, and a value of a property that
+  takes its labels from a dim that its axis, as staged, does not hold
+  (breaking). `write_layer` refuses
   an attribute row naming a label or a tuple that the layer's final axis or
   group does not hold, and a group tuple naming a label that the layer's
   final axis does not hold, so a layer written by hand or by a tool meets
