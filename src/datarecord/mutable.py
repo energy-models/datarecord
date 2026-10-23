@@ -44,7 +44,7 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.protocols import RecordLike
-from datarecord.resolve.coords import first_unheld
+from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.record import Record
 from datarecord.schema.categories import matching
@@ -672,60 +672,9 @@ class WorkingRecord(Record):
                     coordinates[c], labels, f"`set({attribute!r}, ...)`"
                 )
 
-    def _require_held(self, rows: DuckDBPyRelation, attribute: str) -> None:
-        """Refuse a row of `attribute` naming a label or tuple the staged axis or group lacks.
-
-        Labels are checked before tuples, so a tuple naming an unknown label
-        is refused for that label. NULL is no label and passes.
-
-        Raises
-        ------
-        KeyError
-            Naming the dim, the group's field or the group, and up to three
-            such labels or tuples.
-
-        Notes
-        -----
-        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
-        """
-        dims, groups = self.dims, self.groups
-        coordinates = self._staged_coordinates(attribute)
-        over = {
-            c: self.schema.groups[c].over
-            for c in coordinates
-            if c in self.schema.groups
-        }
-        fields = {f"{g}.{f}": (g, f, d) for g, o in over.items() for f, d in o.items()}
-        named = {
-            **{c: (col(c), dims.get(c), c) for c in coordinates if c not in over},
-            **{
-                k: (fn.struct_extract(col(g), lit(f)), dims.get(d), d)
-                for k, (g, f, d) in fields.items()
-            },
-            **{g: (col(g), groups.get(g), g) for g in over},
-        }
-        unheld = first_unheld(rows, named)
-        if unheld is None:
-            return
-        name, labels = unheld
-        if name in fields:
-            g, f, d = fields[name]
-            msg = (
-                f"`set({attribute!r}, ...)`: field {f!r} of {g!r} names {d!r} "
-                f"labels {labels} its axis does not hold; `add` them first - a "
-                f"tuple names labels its fields' axes hold"
-            )
-        elif name in over:
-            msg = (
-                f"no {name!r} tuple [{', '.join(labels)}]; `add_group` them "
-                f"first - an attribute's value is set at tuples its groups hold"
-            )
-        else:
-            msg = (
-                f"no {name!r} label {labels}; `add` them first - an "
-                f"attribute's value is set at labels its dims' axes hold"
-            )
-        raise KeyError(msg)
+    def _held(self, name: str) -> DuckDBPyRelation | None:
+        """Return the staged axis or group `name`, `None` where there is none."""
+        return (self.groups if name in self.schema.groups else self.dims).get(name)
 
     def set(
         self,
@@ -906,7 +855,7 @@ class WorkingRecord(Record):
         self.schema.require_listed(dim, data, call)
         self._require_live(dim, data, call)
         if keyed:
-            self._require_existing(dim, list(values))
+            self._require_existing(dim, dim, list(values), call)
         self._stage_axis(dim, name, values)
 
     def _set_group_property(
@@ -965,22 +914,25 @@ class WorkingRecord(Record):
 
     def _require_existing(
         self,
+        column: str,
         dim: str,
         labels: Sequence[Any],
-        why: str = "a value for a label no layer declares would resolve to nothing",
+        call: str,
+        subject: str | None = None,
     ) -> None:
-        """Reject labels of `dim` that its axis, as staged, does not hold, saying `why`.
+        """Refuse `labels` of `dim`, given in `column`, that its staged axis does not hold.
 
         Raises
         ------
         KeyError
-            Naming up to three such labels.
+            As `refuse_unheld` does.
         """
-        given = self._values_relation({dim: labels}, {dim: self._column_type(dim)})
-        unheld = first_unheld(given, {dim: (col(dim), self.dims.get(dim), dim)})
-        if unheld is not None:
-            msg = f"no {dim!r} label {unheld[1]}; `add` them first - {why}"
-            raise KeyError(msg)
+        given = self._values_relation(
+            {column: labels}, {column: self._column_type(dim)}
+        )
+        refuse_unheld(
+            given, self.schema, [column], self._held, call, staged=True, subject=subject
+        )
 
     def _require_live(
         self, subject: str, data: Mapping[str, Sequence[Any]], call: str
@@ -1006,11 +958,7 @@ class WorkingRecord(Record):
             dim = named.get((subject, name))
             if dim is not None:
                 self._require_typed(dim, values, call)
-                self._require_existing(
-                    dim,
-                    values,
-                    why=f"each value of `{subject}.{name}` must be a label of {dim!r}",
-                )
+                self._require_existing(name, dim, values, call, subject)
 
     def _select(self, name: str, coords: Mapping[str, Any]) -> dict[str, Any]:
         """`coords` with each property keyword replaced by the labels it selects.
@@ -1227,13 +1175,15 @@ class WorkingRecord(Record):
                 return _packed(self.schema, d, present, dims).alias(d)
             return lit(dims.get(d)).cast(self._column_type(d)).alias(d)
 
+        coordinates = self._staged_coordinates(attribute)
         shaped = rel.project(
-            *(coordinate(d) for d in self._staged_coordinates(attribute)),
+            *(coordinate(d) for d in coordinates),
             lit(attribute).alias("attribute"),
             lit(None).cast(sqltypes.DOUBLE).alias("breakpoint"),
             col("value"),
         )
-        self._require_held(shaped, attribute)
+        call = f"`set({attribute!r}, ...)`"
+        refuse_unheld(shaped, self.schema, coordinates, self._held, call, staged=True)
         self._insert(
             shaped,
             table,
@@ -1614,41 +1564,13 @@ class WorkingRecord(Record):
             raise ValueError(msg)
         self._reject_undeclared(call, _group_columns(self.schema, group), rel.columns)
         rel = self.schema.require_takes(rel, call, subject=group)
-        self._require_fields_held(rel, group, call)
+        refuse_unheld(
+            rel, self.schema, [group], self._held, call, staged=True, subject=group
+        )
         table = self._ensure(group)
         self._insert_snapshot(
             self._positioned(rel, table, group, group), table, {}, key=(group,)
         )
-
-    def _require_fields_held(
-        self, rel: DuckDBPyRelation, group: str, call: str
-    ) -> None:
-        """Refuse a tuple of `group` in `rel` naming a label the staged axis of its field's dim lacks.
-
-        Raises
-        ------
-        KeyError
-            Naming `call`, the field and up to three such labels.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        """
-        dims = self.dims
-        over = self.schema.groups[group].over
-        named = {
-            f: (fn.struct_extract(col(group), lit(f)), dims.get(d), d)
-            for f, d in over.items()
-        }
-        unheld = first_unheld(rel, named)
-        if unheld is not None:
-            field, labels = unheld
-            msg = (
-                f"{call}: field {field!r} names {over[field]!r} labels {labels} "
-                f"its axis does not hold; `add` them first - a tuple names "
-                f"labels its fields' axes hold"
-            )
-            raise KeyError(msg)
 
     def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None:
         """Stage `group` without the tuples `keys` name, each in `Schema.group_key` order.

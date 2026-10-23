@@ -12,7 +12,7 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import reduce
 
@@ -22,6 +22,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb.sqltypes import VARCHAR
 
+from datarecord.duck import fn
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.sources import LayerSource
 from datarecord.schema.schema import Schema
@@ -80,7 +81,91 @@ def refuse_twice(rel: DuckDBPyRelation, key: str, file: str) -> None:
         raise ValueError(msg)
 
 
-def first_unheld(
+def refuse_unheld(
+    rows: DuckDBPyRelation,
+    schema: Schema,
+    columns: Iterable[str],
+    held: Callable[[str], DuckDBPyRelation | None],
+    where: str,
+    *,
+    staged: bool,
+    subject: str | None = None,
+) -> None:
+    """Refuse a label or tuple in `rows` that the axis or group holding it lacks.
+
+    A dim's column of `columns` names labels of that dim, a group's column
+    tuples of that group and, through each field, labels of the field's dim,
+    and a property of `subject` that takes its labels from a dim labels of
+    that dim. Any other column is not checked. `subject`'s own column holds
+    the labels or tuples being added, so of it only a group's fields are
+    checked.
+    Labels are checked before tuples, so a tuple naming an unheld label is
+    refused for that label. NULL is no label and passes.
+
+    Parameters
+    ----------
+    held
+        Returns the axis or group of a name, `None` where there is none:
+        as staged where `staged`, else the layer's final one.
+    where
+        What names the labels, to start the message with.
+
+    Raises
+    ------
+    KeyError
+        Where `staged`, naming the dim or group and up to three such labels
+        or tuples.
+    ValueError
+        Where not `staged`, naming the same.
+
+    Notes
+    -----
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+    """
+    taken = {n: d for (s, n), d in schema.one_of_properties().items() if s == subject}
+    labels: dict[str, tuple[Expression, str]] = {}
+    fields: dict[str, tuple[Expression, str]] = {}
+    tuples: dict[str, tuple[Expression, str]] = {}
+    for c in columns:
+        if c in taken:
+            labels[f"{subject}.{c}"] = (col(c), taken[c])
+        elif c in schema.groups:
+            fields |= {
+                f"{c}.{f}": (fn.struct_extract(col(c), lit(f)), d)
+                for f, d in schema.groups[c].over.items()
+            }
+            if c != subject:
+                tuples[c] = (col(c), c)
+        elif c in schema.dimensions and c != subject:
+            labels[c] = (col(c), c)
+    named = labels | fields | tuples
+    unheld = _first_unheld(rows, {k: (e, held(n), n) for k, (e, n) in named.items()})
+    if unheld is None:
+        return
+    key, found = unheld
+    name = named[key][1]
+    group = name in schema.groups
+    shown = (
+        f"{name!r} tuples [{', '.join(found)}]" if group else f"{name!r} labels {found}"
+    )
+    via = "" if key == name else f" in {key!r}"
+    if staged:
+        holder = f"the staged {'group' if group else 'axis'}"
+        remedy = f"`{'add_group' if group else 'add'}` them first"
+        link = "working-record/#validation"
+    else:
+        holder = f"the layer's {'groups' if group else 'dims'}/{name}.parquet"
+        remedy = "add them there or drop those rows"
+        link = "writing/"
+    msg = (
+        f"{where} names {shown}{via}, which {holder} does not hold; {remedy} "
+        f"(https://energy-models.github.io/datarecord/design/{link})"
+    )
+    raise (KeyError if staged else ValueError)(msg)
+
+
+def _first_unheld(
     rows: DuckDBPyRelation,
     named: Mapping[str, tuple[Expression, DuckDBPyRelation | None, str]],
 ) -> tuple[str, list[str]] | None:
@@ -91,11 +176,6 @@ def first_unheld(
     key column. A `None` relation holds nothing. NULL is no label and
     passes. The labels come back as text, in sorted order. `rows` is
     anti-joined against every relation in one query.
-
-    Notes
-    -----
-    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     """
     parts = []
     for i, (label, held, key) in enumerate(named.values()):
