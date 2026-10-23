@@ -50,35 +50,45 @@ def _fold_axis(
         return seed
     source, rel = files[-1]
     if source.frozen:
-        refuse_twice(rel, key, file)
+        refuse_twice(rel, [key], file)
     return rel
 
 
-def refuse_twice(rel: DuckDBPyRelation, key: str, file: str) -> None:
-    """Refuse an axis or group file holding one `key` in two rows.
+def refuse_twice(
+    rel: DuckDBPyRelation,
+    keys: Sequence[str],
+    file: str,
+    why: str = "an axis or group file holds each of its labels once "
+    "(https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)",
+) -> None:
+    """Refuse `file`, read as `rel`, holding two rows that agree on every one of `keys`.
+
+    NULL agrees with NULL.
 
     Raises
     ------
     ValueError
-        Naming the key and how many rows hold it.
+        Naming the values both rows hold, how many rows hold them, and `why`.
 
     Notes
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
+    key = ", ".join(str(col(k)) for k in keys)
     twin = (
-        rel.aggregate(f"{col(key)}, count(*) AS _rows", str(col(key)))
+        rel.aggregate(f"{key}, count(*) AS _rows", key)
         .filter(col("_rows") > lit(1))
         .limit(1)
         .fetchone()
     )
-    if twin is not None:
-        label, rows = twin
-        msg = (
-            f"{file} holds {key} {label!r} in {rows} rows; an axis or group "
-            f"file holds each of its labels once (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
-        )
-        raise ValueError(msg)
+    if twin is None:
+        return
+    *values, rows = twin
+    at = ", ".join(
+        f"{k}={v}" for k, v in zip(keys, values, strict=True) if v is not None
+    )
+    msg = f"{file} holds {rows} rows at {at or 'every coordinate'}; {why}"
+    raise ValueError(msg)
 
 
 def refuse_unheld(
