@@ -42,9 +42,9 @@ def written(store):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_component(layer, "Generator", [{"entity": "wind"}])
+    write_component(revision, "Generator", [{"entity": "wind"}])
     write_group(
-        layer, "connection", [{"connection": {"entity": "wind", "bus": "north"}}]
+        revision, "connection", [{"connection": {"entity": "wind", "bus": "north"}}]
     )
     write_attribute(
         layer,
@@ -120,7 +120,7 @@ class DictRecord:
 def _dict_record(store, snapshot: str = "NULL::VARCHAR") -> DictRecord:
     """One `wind` entity with a `p_nom`, as eager relations, `snapshot` the SQL of its column."""
     entity_axis = store.workspace.con.sql(
-        "SELECT 'wind' AS entity, 'Generator' AS ctype, FALSE AS deleted"
+        "SELECT 'wind' AS entity, 'Generator' AS ctype"
     )
     # `p_nom`'s own coordinates and no others: no `ctype` in a long
     # row, and no `bus`, which is the connection group's coordinate rather than
@@ -251,7 +251,7 @@ def test_flags_report_both_sets_where_components_disagree(store):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_component(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
+    write_component(revision, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
     write_attribute(
         layer,
         "p_max_pu",
@@ -300,7 +300,7 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
         ),
         store,
     )
-    write_component(layer, "Generator", [{"entity": "wind"}])
+    write_component(revision, "Generator", [{"entity": "wind"}])
     write_attribute(layer, "p_nom", [{"entity": "wind", "value": 100.0}])
     write_attribute(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
 
@@ -320,10 +320,10 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
 
 
 def test_node_record_orders_members(store):
-    """A `Record` promises member order; for an overlay that means `order_key`.
+    """A `Record` promises member order: the deepest restatement's row order.
 
-    The order follows the true owning layer through a closed intermediate node
-    that changes nothing about membership.
+    The order holds through a closed intermediate node that changes nothing
+    about membership.
 
     Notes
     -----
@@ -333,7 +333,7 @@ def test_node_record_orders_members(store):
     root = empty_root(store)
     write_schema(schema(), store)
     write_component(
-        store.layer_dir(root.id),
+        root,
         "Generator",
         [{"entity": "wind"}, {"entity": "gas"}, {"entity": "coal"}],
     )
@@ -342,12 +342,12 @@ def test_node_record_orders_members(store):
     middle.materialise()
 
     child = empty_child(middle)
-    write_component(store.layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
+    write_component(child, "Generator", [{"entity": "New Solar"}])
 
     axis = child.record.properties["entity"].df()
     names = list(axis[axis["ctype"] == "Generator"]["entity"])
     assert names == ["wind", "gas", "coal", "New Solar"], (
-        "first-introduced order: the root's members, then the child's addition"
+        "the child restates the root's members in order, then its addition"
     )
 
 
@@ -362,9 +362,8 @@ def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
     revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_component(layer, "Generator", [{"entity": "wind"}])
+    write_component(revision, "Generator", [{"entity": "wind"}])
 
     assert "connection" not in store.layer(revision.id).groups
 

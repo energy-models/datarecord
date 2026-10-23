@@ -6,14 +6,15 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 11: deletion cascades through tombstones, not through filters
 
-| DEP      | 11                                                        |
-| -------- | --------------------------------------------------------- |
-| Title    | deletion cascades through tombstones, not through filters |
-| Author   | Jonas Hörsch                                              |
-| Status   | Implemented 2026-10-13                                    |
-| Requires | [DEP 10](dep-0010-a-group-is-a-struct-column.md)          |
-| Created  | 2026-10-13                                                |
-| Version  | Unreleased                                                |
+| DEP           | 11                                                                                                                     |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Title         | deletion cascades through tombstones, not through filters                                                              |
+| Author        | Jonas Hörsch                                                                                                           |
+| Status        | Implemented 2026-10-13                                                                                                 |
+| Requires      | [DEP 10](dep-0010-a-group-is-a-struct-column.md)                                                                       |
+| Created       | 2026-10-13                                                                                                             |
+| Version       | Unreleased                                                                                                             |
+| Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its removal by tombstone, and dead labels as winning tombstones) |
 
 A label is removed by a tombstone, and only by a tombstone: removing one tombstones every [group](../schema.md#groups) tuple naming it, a layer leaving such a tuple alive is refused, and nothing is inferred on read from a dead label a row refers to.
 

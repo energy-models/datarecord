@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 The owner map answers, for a node, which layer owns each key.
 **One map, over every attribute.** It is the only relation whose winning _key_ and winning row's _values_ live in different files — an attribute's ownership spans every `attributes/<attr>.parquet`, so the map names the owning layer per key and a read then goes to that layer's file for the value.
-Every axis — a [dim](schema.md#partial-the-granularity-of-an-override)'s coordinates, the entity axis among them, and a [group](schema.md#groups) — is a single keyed file whose winning row _is_ the whole row, so none needs a map; each folds to a [resolved relation](#one-fold-for-every-axis) read inline.
+Every axis — a [dim](schema.md#partial-the-granularity-of-an-override)'s coordinates, the entity axis among them, and a [group](schema.md#groups) — is a single keyed file a layer restates whole, so none needs a map; each resolves to a [resolved relation](#one-fold-for-every-axis) read inline.
 
 The map's columns, keys first:
 
@@ -25,7 +25,7 @@ broadcast   STRUCT(<coordinate>: BOOLEAN, ...)
 breakpoints BOOLEAN
 ```
 
-It maps each key to the owning `layer_uuid`, with deletions already applied.
+It maps each key to the owning `layer_uuid`, with removals already applied.
 It carries no `value`, no varying dim's value, and no `breakpoint`, so it stays small regardless of the series data or the size of a curve.
 
 The **owner-map key is schema-derived**, not spelled: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`.
@@ -39,26 +39,28 @@ An attribute over such a group and no other `partial` coordinate has the key `(a
 No category is in the owner map: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the resolved entity axis is what says which categories an entity has.
 That axis is what every category-scoped question goes through — [per-category `flags`](record.md#flags) join it, as does a consumer wanting one type's frame — and it carries each [categorizing property](schema.md#categories-labels-a-dim-lists) as a column, functionally determined by the label rather than keyed alongside it, so a re-categorized label is one row with a new value.
 
-The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
+The map is built by folding along the root→node path: parent map minus removals and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
-Every key column's tombstones reach this map in the fold: `fold_attributes` anti-joins the parent against the deleted rows of each partial dim and group — read from the same file that axis or group folds from — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map rather than filtered at read.
-A group's tombstones are one NULL-safe anti-join on its struct column, the group file's own key — the same shape as a dim's.
-A layer's tombstones apply to its parents' keys, not to its own rows.
-A dim's anti-join matches its top-level column only. A label inside a struct is reached through its tuple: [removing a label](layers.md#deletion) tombstones the live tuples naming it in the same layer, and each group honours its _own_ tombstones.
-A row leaving a key column NULL is not addressed by it, and its NULL-safe anti-join never takes it; only a row naming a dead entity, tuple or label is dropped.
+Every key column's removals reach this map in the fold: `fold_attributes` drops the parent rows naming a label of a partial dim, or a tuple of a partial group, that the layer's restatement omits while the previous restatement held it ([deletion](layers.md#deletion)), so a key whose entity, connection tuple or dim coordinate was removed is absent from the resolved map rather than filtered at read.
+A group's removed tuples are one NULL-safe anti-join on its struct column, the group file's own key — the same shape as a dim's.
+A layer's removals apply to its parents' keys, not to its own rows.
+A dim's anti-join matches its top-level column only. A label inside a struct is reached through its tuple: [removing a label](layers.md#deletion) restates each group without the tuples naming it in the same layer.
+A row leaving a key column NULL is not addressed by it, and its NULL-safe anti-join never takes it; only a row naming a removed entity, tuple or label is dropped.
 
 **On a categorized dim a NULL reaches every label too.** The fold expands a NULL against the axis whatever the labels' categories, so `set("p_max_pu", 0.9)` reaches every entity, loads included ([an attribute reaches every label it addresses](schema.md#an-attribute-reaches-every-label-it-addresses)); one scoped to generators is written per label, `set("p_max_pu", 0.9, ctype="Generator")`. A materialised ancestor's map is seeded already expanded, so its NULL rows do not reach labels a descendant adds ([open](open-questions.md)).
 
 ## One fold for every axis
 
-A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer patches per key — a group's key being its one struct column, as a dim's is the column named for it.
-They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), its other columns carried on the winning row (`ctype` on the entity axis, `role` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
+A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer restates whole — a group's key being its one struct column, as a dim's is the column named for it.
+They resolve by one path: a node's **resolved relation** for an axis or group is the deepest file for it on the path from the root, its properties carried on each row (`ctype` on the entity axis, `role` on a group), with no `layer_uuid`.
+The fold refuses a file holding a key twice and a column that is neither the file's key nor a declared property of its subject.
 
-The resolved relation is returned **in member order**, each key where it was introduced — root first, then file order within a layer — and a node's caches persist it _in that order_, so a reader recovers member order from the resolved file's own row number.
-A key that a layer removes and a later layer adds again is introduced where it is added again: only its rows deeper than its deepest tombstone count.
+The resolved relation is returned **in member order**, the deepest file's row order, and a node's caches persist it _in that order_, so a reader recovers member order from the resolved file's own row number.
+A key that a layer removes and a later layer adds again is a row of that later layer's file, and sits where that file puts it.
 There is no persisted `order_key` column: member order is the file's row order.
-A consumer wanting positional ports numbers an entity's connections by this order, so a patch layer adding a connection appends rather than renumbering — the [positional-keying failure](record.md#connections) that order exists to prevent.
-Across a materialised parent it still holds: the resolved seed is read in its own row order and a descendant's new rows number after it.
+A consumer wanting positional ports numbers an entity's connections by this order, so the writer refuses a restatement whose order on its parent's labels differs from the parent's, naming the first label out of place — the [positional-keying failure](record.md#connections) that order exists to prevent.
+A new label may sit anywhere among its parent's; a [`WorkingRecord`](working-record.md#staging) appends one, so a layer it writes renumbers no existing port.
+Across a materialised parent it still holds: the parent's resolved file is a copy of the deepest layer file at or below it, read in its own row order.
 
 Every property is a column of its subject's file, so the resolved axis or group is the whole of what a per-category read needs: `properties[dim]` filtered on categorizing columns, with no second file to gate against.
 
@@ -111,7 +113,7 @@ The join's arms follow from the same place — the key columns the attribute's f
 A coordinate outside the key, `timestep` here or a group outside `partial`, is in no arm and passes straight through.
 
 The map already names the winning layer per key, so resolution reads only the owning layers' files.
-There is no per-read `MAX`/group-by, and the only tombstone filter is for what the map cannot see — see [below](#a-label-outside-the-key).
+There is no per-read `MAX`/group-by, and the only filter of removed labels is for what the map cannot see — see [below](#a-label-outside-the-key).
 
 Each owned-per coordinate's arm is **NULL-aware**: a stored NULL means "all values", and the map may own it for only some of them, so the row joins every entry naming its layer and takes that value in the output.
 The arm cannot be the obvious condition: `u.scenario IS NULL OR u.scenario IS NOT DISTINCT FROM o.scenario` is no hash key, so DuckDB joins on the other columns and filters the dim afterwards, which costs the square of the dim's length per key.
@@ -137,10 +139,11 @@ An attribute no layer wrote is absent from the map; its relation is empty, and t
 
 ### A label outside the key
 
-Every coordinate in the key is [tombstone-pruned in the fold](#owner-map), so a row whose entity, partial connection tuple or partial dim label was deleted is already gone from the map.
+Every coordinate in the key is [pruned of removed labels in the fold](#owner-map), so a row whose entity, partial connection tuple or partial dim label was removed is already gone from the map.
 A dim or group outside `partial` is not in the key, so the fold cannot see its labels: with `connection` owned whole, a connection attribute's map row is `(attribute)` alone, and owns every tuple's value.
-The read drops those rows instead, anti-joining each such coordinate against its **dead labels** — those whose winning row in the fold is a tombstone, a group's being its dead tuples — so a removed tuple's values go whichever way the group is keyed.
-The fold keeps them beside the resolved axes and groups, and a [materialised node](layers.md#materialised-node-caches) caches them, since its resolved relations hold no tombstones and a read above it would otherwise not see a label removed below.
+The read drops those rows instead, anti-joining each such coordinate against its **dead labels** — the labels some layer [removed](layers.md#deletion) that the final axis lacks, a group's being its dead tuples — so a removed tuple's values go whichever way the group is keyed.
+The fold computes them for each coordinate outside the owner-map key, and for each dim a group's field ranges over or a property takes its labels from, as the base's dead set, the base's resolved axis and every restatement above the base, minus the final axis.
+The fold keeps them beside the resolved axes and groups, and a [materialised node](layers.md#materialised-node-caches) caches them, since its resolved relations hold only the labels that live and a read above it would otherwise not see a label removed below.
 The set is usually empty, and the join against it cheap.
 
 ## One record over one fold
@@ -150,7 +153,7 @@ There is one `Record`, and it is the fold itself: its mappings hand over the fol
 So a directory takes the same properties as a tree node, rather than its own column of exceptions:
 
 - **`flags`** are computed in the ownership `GROUP BY`, one scan rather than the second one a separate aggregate would cost. They need a real aggregate either way: parquet's footer statistics are per row group, not per category, so a file mixing one type's series rows with another's constant says nothing about either.
-- **Member order** is `order_key`, which over one source is `(0, file order)` — file order, arrived at by the general rule.
+- **Member order** is the file's row order, the general rule over one source.
 - **`schema.partial`** is the granularity of a patch, and one layer patches nothing, so it is inert rather than absent.
 
 Being a node in a layer tree is not what the fold requires; being a layer _layout_ is, and that is what a record directory is. A directory copied out of any tree, with no revision file, reads identically.

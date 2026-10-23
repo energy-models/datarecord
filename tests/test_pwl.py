@@ -45,7 +45,7 @@ def _root_with_curve(store, *, scalar: float | None = None) -> Revision:
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_component(revision, PROCESS, [{"entity": "steel_dri"}])
     rows = (
         [{"ctype": PROCESS, "entity": "steel_dri", "value": scalar}]
         if scalar is not None
@@ -136,12 +136,12 @@ def test_curve_on_a_connection(store):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_component(revision, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
-        layer,
+        revision,
         [
-            {"entity": "steel_dri", "bus": "h2_north", "role": "input"},
-            {"entity": "steel_dri", "bus": "dri", "role": "output"},
+            {"entity": "steel_dri", "bus": "h2_north"},
+            {"entity": "steel_dri", "bus": "dri"},
         ],
     )
     write_attribute(
@@ -201,7 +201,7 @@ def test_curve_varying_by_snapshot(store):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_component(revision, PROCESS, [{"entity": "steel_dri"}])
     write_attribute(
         layer,
         "marginal_cost",

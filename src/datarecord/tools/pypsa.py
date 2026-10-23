@@ -36,13 +36,13 @@ from duckdb import (
     DuckDBPyConnection,
     DuckDBPyRelation,
     Expression,
-    FunctionExpression,
     sqltypes,
 )
 from duckdb import StarExpression as star
 
 from datarecord.duck import empty_relation, ex_all, fn, null_safe, struct_of
 from datarecord.protocols import EMPTY, Flags, LazyRelations, RecordLike, Relations
+from datarecord.resolve.owner_map import cast_declared
 from datarecord.resolve.record import Record
 from datarecord.schema.categories import matching, with_defaults
 from datarecord.schema.schema import Schema as RecordSchema
@@ -76,11 +76,12 @@ TIMESTEP = "timestep"
 # weighting is renamed on the way in and back to `weight` on build.
 SCENARIO_WEIGHT = "scenario_weight"
 ENTITY, BUS, CARRIER, CONNECTION = "entity", "bus", "carrier", "connection"
+SUB_NETWORK = "sub_network"
 CTYPE = "ctype"
 #: `ctype` as a `default_by` names it, by its subject.
 BY_CTYPE = f"{ENTITY}.{CTYPE}"
 #: The PyPSA types whose members are labels of a dim of their own, not entities.
-_AXIS_TYPES = {"Bus": BUS, "Carrier": CARRIER}
+_AXIS_TYPES = {"Bus": BUS, "Carrier": CARRIER, "SubNetwork": SUB_NETWORK}
 #: The registry inputs declared as properties, by subject: what describes a
 #: label rather than data a model optimises against. `entity` also has
 #: `ctype`, and a `carrier` property is one of the `carrier` dim.
@@ -88,7 +89,10 @@ _PROPERTIES = {
     ENTITY: ("carrier", "sign", "type"),
     BUS: ("carrier", "type", "x", "y", "unit", "location"),
     CARRIER: ("color", "nice_name"),
+    SUB_NETWORK: (CARRIER,),
 }
+#: How a SubNetwork's `carrier` is described, PyPSA registering it as an output.
+_SUB_NETWORK_CARRIER = "The carrier of a sub-network's buses."
 #: A property of the `connection` group, and the dim listing its
 #: labels. The port vocabulary is this tool's.
 ROLE = "role"
@@ -626,42 +630,6 @@ def _empty_for_none(rel: DuckDBPyRelation) -> DuckDBPyRelation:
     )
 
 
-_SUB_NETWORK = "SubNetwork"
-#: After a SubNetwork's name in a record. PyPSA numbers them `0`, `1`, ... as it
-#: numbers Lines, and a record's names are unique across types.
-_SUB_NETWORK_SUFFIX = " SubNetwork"
-
-
-def _record_name(ctype: str, name: str) -> str:
-    """`name` as the record keys it: a SubNetwork's suffixed, any other as is."""
-    return f"{name}{_SUB_NETWORK_SUFFIX}" if ctype == _SUB_NETWORK else name
-
-
-def _sub_network_named(rel: DuckDBPyRelation, column: str) -> DuckDBPyRelation:
-    """`rel` with `_SUB_NETWORK_SUFFIX` after every value of `column`."""
-    return rel.select(
-        *(
-            FunctionExpression("concat", col(c), lit(_SUB_NETWORK_SUFFIX)).alias(c)
-            if c == column
-            else col(c)
-            for c in rel.columns
-        )
-    )
-
-
-def _sub_network_unnamed(rel: DuckDBPyRelation, column: str) -> DuckDBPyRelation:
-    """`rel` with `_SUB_NETWORK_SUFFIX` taken off `column`, where it ends with it."""
-    pattern = lit(f"{re.escape(_SUB_NETWORK_SUFFIX)}$")
-    return rel.select(
-        *(
-            FunctionExpression("regexp_replace", col(c), pattern, lit("")).alias(c)
-            if c == column
-            else col(c)
-            for c in rel.columns
-        )
-    )
-
-
 def _colliding_names(n: pypsa.Network) -> frozenset[str]:
     """Names more than one exported entity type claims.
 
@@ -686,7 +654,7 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
             index.get_level_values("name") if "name" in (index.names or []) else index
         )
         for value in names:
-            name = _record_name(c.name, str(value))
+            name = str(value)
             if seen.setdefault(name, c.name) != c.name:
                 clashing.add(name)
     return frozenset(clashing)
@@ -1176,10 +1144,9 @@ def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
         rows = attached[[column]].rename(columns={column: "bus"})
         rows = rows.reset_index().rename(columns={"name": "entity"})
         rows["role"] = _port_role(port)
-        rows["deleted"] = False
         frames.append(rows)
     if not frames:
-        return pd.DataFrame(columns=["entity", "bus", "role", "deleted"])
+        return pd.DataFrame(columns=["entity", "bus", "role"])
     return pd.concat(frames, ignore_index=True)
 
 
@@ -1470,8 +1437,6 @@ class PyPSATool(Tool):
             static = members.members
             if static is None:
                 continue
-            if ctype == _SUB_NETWORK:
-                static = _sub_network_unnamed(static, ENTITY)
             if not shape.stochastic and SCENARIO in static.columns:
                 static = static.project(star(exclude=[SCENARIO]))
             # `_pos` in member order before any join scrambles it: the member
@@ -1499,10 +1464,6 @@ class PyPSATool(Tool):
                 # scoped to this type's members here: every consumer joins it
                 # on `entity` against them (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
                 long = _unpack_connection(self.schema.resolve(record, ctype, attr))
-                if ctype == _SUB_NETWORK:
-                    long = _sub_network_unnamed(long, ENTITY)
-                if attr == "sub_network":
-                    long = _sub_network_unnamed(long, "value")
                 if CONNECTION in schema.attributes[attr].dims:
                     for column, rows in _port_columns(
                         long, attr, connections, ctype, con
@@ -1525,7 +1486,7 @@ class PyPSATool(Tool):
         shape: NetworkShape,
         con: DuckDBPyConnection,
     ) -> None:
-        """Add an `_AXIS_TYPES` type's members: its dim's labels, as `n.buses` or `n.carriers`.
+        """Add an `_AXIS_TYPES` type's members: its dim's labels, as `n.buses`, `n.carriers` or `n.sub_networks`.
 
         Each label with its properties, defaults applied, then the attributes
         over the dim, a series by its flags, so a solved bus keeps its
@@ -1578,9 +1539,9 @@ class PyPSATool(Tool):
 
         With `results_only` the record is a thin layer over `base`: the
         outputs, at their default too, `base`'s output rows it does not write
-        again restated as NULL, and the SubNetworks they name as
-        entities, `base`'s SubNetworks this solve did not number again
-        tombstoned.
+        again restated as NULL, and this solve's SubNetworks as the
+        `sub_network` axis, which drops `base`'s this solve did not number
+        again.
 
         Raises
         ------
@@ -1781,9 +1742,11 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
     `default_by` (`_with_default_by`). A per-port column collapses to its stem
     (`_port_spec`), and a port's bus is the `connection` tuple itself.
 
-    `Bus` and `Carrier` are no entity types (`_AXIS_TYPES`): their members are
-    the labels of `bus` and `carrier`, and their inputs and results are over
-    that dim. The properties of each subject are `_PROPERTIES`. `entity` also
+    `Bus`, `Carrier` and `SubNetwork` are no entity types (`_AXIS_TYPES`):
+    their members are the labels of `bus`, `carrier` and `sub_network`, and
+    their inputs and results are over that dim. The properties of each subject
+    are `_PROPERTIES`; a SubNetwork's `carrier` is declared here, PyPSA
+    registering it as an output. `entity` also
     has `ctype`, which takes its labels from the dim `ctype` that lists the
     entity types, so a type outside it is refused; `role` is a property of
     `connection` that takes its labels from the dim `role`. Every other input,
@@ -1858,9 +1821,11 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
             for attr in c.defaults.index
             if attr != "name" and attr not in _output_attributes(c)
         }
-        properties[dim] = {
-            name: _property(name, specs.pop(name)) for name in _PROPERTIES[dim]
-        }
+        properties[dim] = (
+            {CARRIER: PropertySpec(one_of=CARRIER, description=_SUB_NETWORK_CARRIER)}
+            if dim == SUB_NETWORK
+            else {name: _property(name, specs.pop(name)) for name in _PROPERTIES[dim]}
+        )
         attributes |= specs
     inputs = frozenset(
         {*attributes, *(name for named in properties.values() for name in named)}
@@ -1905,6 +1870,10 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
             BUS: Dimension(dtype="str", description="A node of the network."),
             CARRIER: Dimension(
                 dtype="str", description="An energy carrier or technology."
+            ),
+            SUB_NETWORK: Dimension(
+                dtype="str",
+                description="A connected part of the network, as PyPSA numbers them.",
             ),
             ROLE: Dimension(
                 one_of=_ROLES,
@@ -2034,8 +2003,7 @@ class _NetworkSource:
     def dims(self) -> LazyRelations:
         """Every axis this network holds, `entity`, `bus` and `carrier` among them, as keys.
 
-        Each labelled axis carries its tombstone column beside the key; its
-        properties are in `properties`. The dims `ctype` and `role`, which list their labels, carry
+        Each labelled axis is its keys; its properties are in `properties`. The dims `ctype` and `role`, which list their labels, carry
         every label they list, and `timestep` the timesteps a multi-period
         network's positional snapshots name.
 
@@ -2049,17 +2017,18 @@ class _NetworkSource:
             TIMESTEP: lambda: self._timesteps,
             PERIOD: lambda: self.n.investment_periods.to_frame(index=False),
             SCENARIO: lambda: self.n.scenario_weightings.index.to_frame(index=False),
-            BUS: lambda: self._buses[[BUS, "deleted"]],
-            CARRIER: lambda: self._carriers[[CARRIER, "deleted"]],
+            BUS: lambda: self._buses[[BUS]],
+            CARRIER: lambda: self._carriers[[CARRIER]],
+            SUB_NETWORK: lambda: self._sub_networks[[SUB_NETWORK]],
             CTYPE: lambda: _listed_axis(schema, CTYPE),
             ROLE: lambda: _listed_axis(schema, ROLE),
         }
         present = tuple(
             d
-            for d in (SNAPSHOT, TIMESTEP, PERIOD, SCENARIO, BUS, CARRIER)
+            for d in (SNAPSHOT, TIMESTEP, PERIOD, SCENARIO, BUS, CARRIER, SUB_NETWORK)
             if len(axes[d]()) > 0
         )
-        axes[ENTITY] = lambda: self._entity_frame()[[ENTITY, "deleted"]]
+        axes[ENTITY] = lambda: self._entity_frame()[[ENTITY]]
         return LazyRelations(
             (*present, ENTITY, CTYPE, ROLE), lambda dim: self.con.from_df(axes[dim]())
         )
@@ -2082,6 +2051,11 @@ class _NetworkSource:
         return self._labels("Bus")
 
     @cached_property
+    def _sub_networks(self) -> pd.DataFrame:
+        """`n.sub_networks` as the `sub_network` axis, each label with its carrier."""
+        return self._labels("SubNetwork")
+
+    @cached_property
     def _carriers(self) -> pd.DataFrame:
         """`n.carriers` as the `carrier` axis, then every carrier named but not listed.
 
@@ -2096,7 +2070,7 @@ class _NetworkSource:
         listed = self._labels("Carrier")
         named = [
             frame[CARRIER]
-            for frame in (self._buses, self._entity_frame())
+            for frame in (self._buses, self._sub_networks, self._entity_frame())
             if CARRIER in frame
         ]
         unlisted = (
@@ -2105,7 +2079,7 @@ class _NetworkSource:
             else pd.Series([], dtype=object)
         )
         unlisted = unlisted[~unlisted.isin(listed[CARRIER])]
-        added = pd.DataFrame({CARRIER: unlisted.to_numpy(), "deleted": False})
+        added = pd.DataFrame({CARRIER: unlisted.to_numpy()})
         return pd.concat([listed, added], ignore_index=True)
 
     def _labels(self, ctype: str) -> pd.DataFrame:
@@ -2133,9 +2107,9 @@ class _NetworkSource:
             if _as_entities(c)
         ]
         if not frames:
-            return pd.DataFrame(columns=[ENTITY, CTYPE, "deleted"])
+            return pd.DataFrame(columns=[ENTITY, CTYPE])
         merged = _none_for_empty(pd.concat(frames, ignore_index=True))
-        lead = [ENTITY, CTYPE, "deleted"]
+        lead = [ENTITY, CTYPE]
         return merged[[*lead, *(c for c in merged.columns if c not in lead)]]
 
     @property
@@ -2156,7 +2130,7 @@ class _NetworkSource:
         return LazyRelations((CONNECTION,), lambda _: self._connection_frame())
 
     def _connection_frame(self) -> DuckDBPyRelation:
-        """Every type's connections in one frame, `(connection, role, deleted)`.
+        """Every type's connections in one frame, `(connection, role)`.
 
         Notes
         -----
@@ -2424,15 +2398,20 @@ class _NetworkSource:
 
     @property
     def properties(self) -> LazyRelations:
-        """The keys and property columns of the entities, buses, carriers, connections and multi-period snapshots."""
+        """The keys and property columns of the entities, buses, carriers, sub-networks, connections and multi-period snapshots."""
         frames = {
             ENTITY: lambda: self.con.from_df(self._entity_frame()),
             BUS: lambda: self.con.from_df(self._buses),
             CARRIER: lambda: self.con.from_df(self._carriers),
+            SUB_NETWORK: lambda: self.con.from_df(self._sub_networks),
             CONNECTION: self._connection_frame,
             SNAPSHOT: lambda: self.con.from_df(self._snapshots),
         }
-        labels = {BUS: self._buses, CARRIER: self._carriers}
+        labels = {
+            BUS: self._buses,
+            CARRIER: self._carriers,
+            SUB_NETWORK: self._sub_networks,
+        }
         labelled = [d for d, frame in labels.items() if len(frame)]
         timed = [SNAPSHOT] if PERIOD in self._snapshots else []
         subjects = (ENTITY, *labelled, CONNECTION, *timed)
@@ -2507,12 +2486,11 @@ class _NetworkSource:
         c = self.n.c[ctype]
         columns = [p for p in _PROPERTIES[ENTITY] if p in c.static.columns]
         frame = c.static[columns].reset_index().rename(columns={"name": "entity"})
-        frame["entity"] = [_record_name(ctype, str(x)) for x in frame["entity"]]
         return self._tagged(frame, ENTITY)
 
     @staticmethod
     def _tagged(frame: pd.DataFrame, dim: str) -> pd.DataFrame:
-        """A `dims/` frame with the tombstone column the fold scopes by.
+        """A `dims/` frame, one row per label.
 
         No `scenario`: an entity exists or it does not, so nothing scopes
         membership per value of an axis. A stochastic network repeats its
@@ -2527,8 +2505,6 @@ class _NetworkSource:
         """
         if SCENARIO in frame.columns:
             frame = frame.drop(columns=[SCENARIO]).drop_duplicates(subset=[dim])
-        if "deleted" not in frame.columns:
-            frame["deleted"] = False
         return frame
 
     def _tagged_long_rel(
@@ -2693,10 +2669,6 @@ class _NetworkSource:
                     continue
                 if rel is None:
                     continue
-                if ctype == _SUB_NETWORK:
-                    rel = _sub_network_named(rel, ENTITY)
-                if column == "sub_network":
-                    rel = _sub_network_named(rel, "value")
                 rels.append(rel)
         return rels
 
@@ -2733,11 +2705,11 @@ class _NetworkSource:
 class _ResultsSource(_NetworkSource):
     """A solved `pypsa.Network`'s results, as a thin layer over `base`.
 
-    Its result attributes and the SubNetworks they name, entities of their
-    own: `base`'s SubNetworks this solve does not write again are tombstoned,
-    so a re-solve numbering them differently leaves none behind. A result's
-    rows at their default are written too, and `base`'s result rows it does
-    not write again as NULL, each standing over `base`'s value.
+    Its result attributes and this solve's SubNetworks, the `sub_network`
+    axis restated whole, so a re-solve numbering them differently, or finding
+    none, leaves none of `base`'s behind. A result's rows at their default are written too, and
+    `base`'s result rows it does not write again as NULL, each standing over
+    `base`'s value.
 
     Notes
     -----
@@ -2754,42 +2726,44 @@ class _ResultsSource(_NetworkSource):
         """`base`'s schema: a results layer declares nothing the record does not."""
         return self.base.schema
 
-    @cached_property
-    def _sub_networks(self) -> pd.DataFrame:
-        """This solve's SubNetwork entities, then `base`'s it drops, tombstoned."""
-        live = _none_for_empty(
-            self._static_frame(_SUB_NETWORK).assign(**{CTYPE: _SUB_NETWORK})
-        )
-        frame = self.base.properties.get(ENTITY)
-        named = (
-            []
-            if frame is None
-            else [
-                name
-                for (name,) in frame.filter(col(CTYPE) == lit(_SUB_NETWORK))
-                .project(col(ENTITY))
-                .fetchall()
-            ]
-        )
-        stale = sorted(set(named) - set(live[ENTITY]))
-        dead = pd.DataFrame({ENTITY: stale, "deleted": True})
-        return pd.concat([live, dead], ignore_index=True)
-
     @property
     def dims(self) -> LazyRelations:
-        """The `entity` axis: SubNetworks, live or tombstoned."""
+        """The `sub_network` axis: this solve's SubNetworks, as `_restates` says."""
         return LazyRelations(
-            (ENTITY,),
-            lambda _: self.con.from_df(self._sub_networks[[ENTITY, "deleted"]]),
+            self._restates, lambda _: self._sub_network_rel().project(col(SUB_NETWORK))
         )
 
     @property
     def properties(self) -> LazyRelations:
-        """The live SubNetworks' `ctype` and the properties of `entity` they carry."""
-        live = self._sub_networks[~self._sub_networks["deleted"].astype(bool)]
-        declared = [ENTITY, *self.schema.properties[ENTITY]]
-        columns = [c for c in live.columns if c in declared]
-        return LazyRelations((ENTITY,), lambda _: self.con.from_df(live[columns]))
+        """This solve's SubNetworks' properties."""
+        return LazyRelations(self._restates, lambda _: self._sub_network_rel())
+
+    @cached_property
+    def _restates(self) -> tuple[str, ...]:
+        """The axes this layer restates: `sub_network` where the solve or `base` has one.
+
+        A solve without SubNetworks over a `base` with a `sub_network` axis
+        restates it empty, so the record lists none of `base`'s.
+        """
+        held = len(self._sub_networks) > 0 or SUB_NETWORK in self.base.dims
+        return (SUB_NETWORK,) if held else ()
+
+    def _sub_network_rel(self) -> DuckDBPyRelation:
+        """`_sub_networks` with its columns typed as the schema declares them, not as an empty frame infers them."""
+        rel = self.con.from_df(self._sub_networks)
+        return cast_declared(self.schema, rel, SUB_NETWORK)
+
+    def _dead_sub_networks(self) -> DuckDBPyRelation | None:
+        """`base`'s SubNetworks this solve does not number, aliased `d`; `None` where `base` has no axis."""
+        axis = self.base.dims.get(SUB_NETWORK)
+        if axis is None:
+            return None
+        live = self._sub_network_rel().set_alias("n")
+        return (
+            axis.set_alias("a")
+            .join(live, col("a", SUB_NETWORK) == col("n", SUB_NETWORK), how="anti")
+            .set_alias("d")
+        )
 
     @property
     def groups(self) -> LazyRelations:
@@ -2807,13 +2781,11 @@ class _ResultsSource(_NetworkSource):
 
         A row the solve does not write would otherwise keep `base`'s value by
         inheritance, though the network holds none there. Rows of a
-        tombstoned SubNetwork are left out with it.
+        SubNetwork of `base` this solve does not number are left out with it.
         """
         written = self._result_rels
         outputs = _registry_schema().attributes.keys() - _input_names()
-        dead = self._sub_networks.loc[
-            self._sub_networks["deleted"].astype(bool), ENTITY
-        ].tolist()
+        dead = self._dead_sub_networks()
         restated = dict(written)
         for attr in sorted(outputs & set(self.base.attributes)):
             columns = self.schema.long_columns_for(attr)
@@ -2823,8 +2795,10 @@ class _ResultsSource(_NetworkSource):
                 stale = stale.join(
                     written[attr].set_alias("w"), null_safe("b", "w", keys), how="anti"
                 )
-            if dead and ENTITY in keys:
-                stale = stale.filter(~col(ENTITY).isin(*map(lit, dead)))
+            if dead is not None and SUB_NETWORK in keys:
+                stale = stale.set_alias("s").join(
+                    dead, col("s", SUB_NETWORK) == col("d", SUB_NETWORK), how="anti"
+                )
             null = lit(None).cast(self.schema.duck_type(self.schema.attributes[attr]))
             rows = stale.project(*map(col, keys), null.alias("value"))
             restated[attr] = rows if attr not in written else written[attr].union(rows)
@@ -2862,9 +2836,8 @@ def _ordered_connections(
     """One type's connections with a port index assigned per component.
 
     The positional collapse: connections come in member order and are
-    numbered within each component, so a port index follows the order
-    connections were introduced and a patch that adds one appends rather than
-    renumbering. Inputs are placed before outputs, so `bus0` is the input end
+    numbered within each component, so a port index follows the group's
+    row order, and a restatement that appends a connection renumbers none. Inputs are placed before outputs, so `bus0` is the input end
     PyPSA's sign convention expects.
 
     Scoped to one type by its `members`, `frame` (`_connection_frame`) holding

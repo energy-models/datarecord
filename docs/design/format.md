@@ -24,16 +24,16 @@ A solve's results are [attributes](schema.md#a-result-is-an-attribute) like any 
 
 ## The entity axis
 
-`dims/entity.parquet` is what an entity's identity **is**: which entities the layer names, what describes each, and which are tombstoned.
+`dims/entity.parquet` is what an entity's identity **is**: which entities exist at the layer's node, in order, and what describes each.
 
 ```text
-entity | <entity key dims> | deleted | <property> ...
+entity | <entity key dims> | <property> ...
 ```
 
 It is **an axis file like any other**, with nothing about it particular to `entity`: a `Record` hands it over as `dims["entity"]`, [the writer](writing.md) writes it, and every other `dims/<dim>.parquet` has the same shape.
 
-- **Membership.** An entity exists because it has a row here.
-- **Its tombstone.** Deleting an entity is a `deleted` row here, and the fold reads its tombstones from the file it folds membership from: membership from one source and deletions from another would resolve a deletion the fold never saw.
+- **Membership.** An entity exists at a node because the deepest `dims/entity.parquet` on its path has a row for it, and that file's row order is the axis order.
+- **Its removal.** A layer removes an entity by writing this file without it ([deletion](layers.md#deletion)), so no column marks a removed row.
 - **Its properties**, one column each — `ctype`, `carrier`, `sign` in PyPSA's schema — NULL where no layer wrote one.
 
 **One layout, categories or none.** A record whose entities have categories and one whose entities have none differ by a column: there is no per-category member file. Per-type files existed because every type had a different column set; every label now carries every property of its dim, so a category's frame is a filter on its property — recoverable from one file, where per-category files would state each entity's category twice, once in a column and once in a filename. Parquet stores an all-NULL column chunk for almost nothing and DuckDB reads only what it projects. Only a per-category `dtype` would need per-category files, and [a subject's property has one spec](schema.md#properties).
@@ -50,10 +50,10 @@ Decided by the section a name is [declared in](schema.md#properties), not by how
 
 `attributes/p_nom.parquet` is `entity | attribute | breakpoint | value`, one row per entity, and widening `p_nom` over `scenario` adds a column to the same file — NULL in every row written before, which is what [the broadcast rule](record.md#the-broadcast-rule) needs to read them unchanged. A scenario `weight` over `scenario` alone is long rows too: an attribute with one coordinate is still data.
 
-An axis or group file then carries only its key, its tombstones and its subject's properties — no data. A framework's constant frame per category is the category's properties joined with the coordinate-only rows of its attributes; the [tool](tools.md) builds it.
+An axis or group file then carries only its key and its subject's properties — no data. A framework's constant frame per category is the category's properties joined with the coordinate-only rows of its attributes; the [tool](tools.md) builds it.
 
-A [group](schema.md#groups)'s rows are in `groups/<group>.parquet`, keyed by that group's tuple and carrying their own tombstones — `groups/connection.parquet` for the `connection` group over `(entity, bus)`.
-**The file is keyed by one struct column named for the group**, `connection STRUCT(entity, bus) | role | deleted`, `role` being a property of `connection`, exactly as `dims/<dim>.parquet` is keyed by the column named for the dim: the column an attribute row carries the group as is the one the group's own file is keyed by, so no read or write converts between two shapes.
+A [group](schema.md#groups)'s rows are in `groups/<group>.parquet`, keyed by that group's tuple, every tuple the group has at the layer's node in order — `groups/connection.parquet` for the `connection` group over `(entity, bus)`.
+**The file is keyed by one struct column named for the group**, `connection STRUCT(entity, bus) | role`, `role` being a property of `connection`, exactly as `dims/<dim>.parquet` is keyed by the column named for the dim: the column an attribute row carries the group as is the one the group's own file is keyed by, so no read or write converts between two shapes.
 A record with no such file has no rows of that group.
 
 **One file per group, never split by category.** A group's rows are keyed by its coordinates and `ctype` is not one of them: splitting put `connection` rows for a `Link` and a `Line` in different files despite identical keys, forcing a union on every read and privileging `entity` among the coordinates. A `corridor` between two buses has no type to split on at all, and a `contract` between two entities has two — one per coordinate, neither of them the row's — so the split never generalised beyond the case it was written for.

@@ -71,7 +71,7 @@ A layer written before this DEP with properties in an axis or group file thus fa
 
 ### The reference check
 
-[DEP 20's check](dep-0020-a-layer-restates-an-axis-whole.md#the-reference-check) holds for group tuples, which a restatement holds whole. A property that refers to a dim is checked whole, in its final state, against the final dead labels wherever the layer writes rows of that property or removes a label of the dim it refers to. A layer repairs a dangling value an ancestor left by writing a row for its label, so the strict check costs nothing a patch cannot fix, and an edit of another property never meets the dangling value. `_require_living_references` reads the property's fold over the parents and the layer, instead of rows of the axis file.
+[DEP 20's check](dep-0020-a-layer-restates-an-axis-whole.md#the-reference-check) holds for group tuples, which a restatement holds whole. A property that takes its labels from a dim is checked whole, in its final state, against the final dead labels wherever the layer writes rows of that property or removes a label of the dim it takes its labels from. A layer repairs a dangling value an ancestor left by writing a row for its label, so the strict check costs nothing a patch cannot fix, and an edit of another property never meets the dangling value. `_require_living_references` reads the property's fold over the parents and the layer, instead of rows of the axis file.
 
 ### Caches and staging
 
@@ -155,7 +155,7 @@ Paths are under `src/datarecord/`.
 1. DEP 20's implementation notes 1, 2, 4 and 6 to 8, with `_fold_axis` reading the key column alone and keeping, per removed label, the depth of its deepest removal.
 2. In `resolve/sources.py`, `LayerSource` gains `properties()` and `property(subject, name)`, and `_FileLayer.axis` and `group` refuse a column beside the key.
 3. In `resolve/coords.py`, a property fold takes the base's resolved column and each layer's property file, cut by the removal depths, keeps the deepest row per label, and `resolve_coords` and `resolve_groups` join each fold onto the membership.
-4. In `store/write.py`, `write_layer` writes and checks a `properties` kind, `_require_living_references` reads a property that refers to a dim from the fold, and `_RecordLikeAsLayerData.axis` loses its join on `properties`.
+4. In `store/write.py`, `write_layer` writes and checks a `properties` kind, `_require_living_references` reads a property that takes its labels from a dim from the fold, and `_RecordLikeAsLayerData.axis` loses its join on `properties`.
 5. In `mutable.py`, DEP 20's note 3 with the staging table narrowed to the key and the position, a staging table per property, `_patch_axis` without the sibling carry, `add` staging NULL rows, and `remove` deleting the label's staged property rows.
 6. In `tests/fixtures.py`, DEP 20's note 5, with each property column written as its own file.
 7. `CHANGELOG.md` under `[Unreleased]`: DEP 20's entry, and a property is a file of per-label patches under `properties/`.
