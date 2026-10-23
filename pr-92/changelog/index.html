@@ -1163,14 +1163,10 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>WorkingRecord</code> stages an edited axis or group whole, copied from the base
   at its first edit. A materialised node's <code>resolved/dims/</code> and
   <code>resolved/groups/</code> hold copies of the deepest file.</li>
-<li>A <code>dims/</code> or <code>groups/</code> file with a <code>deleted</code> column is refused at read and
-  at write, so a layer written before this release fails rather than losing
-  every label it did not touch; re-export it, or flatten it with <code>ws.write</code>
-  under the previous release (breaking). A patch layer written without that
-  column reads as a restatement. A key held twice in such a file, and a
-  column that is neither its key nor a declared property of its subject, are
-  refused at read too, and <code>write_layer</code> refuses a restatement that orders
-  its parent's labels otherwise than the parent.</li>
+<li>A key held twice in a <code>dims/</code> or <code>groups/</code> file, and a column that is
+  neither its key nor a declared property of its subject, are refused at
+  read too, and <code>write_layer</code> refuses a restatement that orders its parent's
+  labels otherwise than the parent.</li>
 <li>A reference to a dead label in a group tuple or a property is checked in
   every subject a layer restates, whole, so one an ancestor left dangling
   fails the next layer restating its subject (breaking).</li>
@@ -1202,22 +1198,19 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong><code>set</code> no longer takes an expression</strong> (breaking): an <code>nw.Expr</code> value
-  is refused with a <code>TypeError</code>. Compute the new values from
-  <code>attributes[name]</code> and <code>set</code> the frame.</li>
-<li><strong>A dim is flat</strong> (breaking): <code>Dimension.within</code> is gone, every axis is
-  keyed by its label alone, and a manifest declaring <code>within</code> fails to load
-  naming the replacement, a property <code>into</code> the parent dim
-  (<code>snapshot.period</code> into <code>period</code>), with labels unique across the dim.
-  Every earlier manifest carries <code>within</code>, if only as <code>[]</code>, so none loads:
-  drop the key, or re-export the record.
+<li><strong><code>set</code> no longer takes an expression</strong> (breaking): compute the new
+  values from <code>attributes[name]</code> and <code>set</code> the frame.</li>
+<li><strong>A dim is flat</strong> (breaking): <code>Dimension.within</code> is gone and every axis is
+  keyed by its label alone. A nested dim becomes a property <code>into</code> the
+  parent dim (<code>snapshot.period</code> into <code>period</code>), with labels unique across
+  the dim. Every earlier manifest carries <code>within</code>, if only as <code>[]</code>, so none
+  loads: drop the key, or re-export the record.
   <code>add</code> takes no parent keys, and <code>set</code> on a property, <code>remove</code>'s refusal and
   group cascade, the writer's live-label check and the label and trait check
   of <code>set</code> now cover every dim. <code>Schema.axis_key</code> is gone. <code>PyPSA.results</code>
   no longer carries an always-NULL <code>period</code> column.</li>
 <li><strong>Traits are gone</strong> (breaking): <code>Trait</code>, <code>Schema.traits</code>,
-  <code>Schema.attributes_for</code> and <code>Schema.properties_for</code> are removed, and a
-  manifest declaring <code>traits</code> fails to load naming the replacement. An
+  <code>Schema.attributes_for</code> and <code>Schema.properties_for</code> are removed. An
   attribute reaches every label its <code>dims</code> address and a property every
   label of its subject, whatever their categories: a NULL on a categorized
   dim reaches every label, <code>flags(**categories)</code> holds every attribute with
@@ -1230,8 +1223,7 @@ SPDX-License-Identifier: CC-BY-4.0
   per type in the schema's <code>meta</code>. Every record declaring traits is
   re-exported.</li>
 <li><strong>Results are attributes</strong> (breaking): a layer holds every attribute in
-  one <code>attributes/</code> directory, and one with <code>inputs/</code> or <code>outputs/</code> is
-  refused; <code>Schema.results</code> (refused at load), <code>Record.outputs</code>, <code>Kind</code>,
+  one <code>attributes/</code> directory; <code>Schema.results</code>, <code>Record.outputs</code>, <code>Kind</code>,
   <code>set(..., kind=...)</code> and <code>Tool.results</code> are gone, and a result inherits
   through layers like any attribute. The PyPSA tool declares its outputs as
   attributes, <code>build</code> copies them, and
@@ -1251,12 +1243,10 @@ SPDX-License-Identifier: CC-BY-4.0
   mathspec: its column is an <code>ENUM</code> of them, <code>add</code> refuses an unlisted label,
   and its axis holds only the labels added. A property declares exactly one
   of <code>dtype</code> and <code>one_of: &lt;dim&gt;</code>, and one that declares <code>one_of</code> takes its
-  labels from that dim, which replaces <code>into</code> on properties and groups. A
-  manifest with an old dtype name, a <code>{"one_of": ...}</code> dtype, <code>enum</code>,
-  <code>refers</code> or <code>into</code> fails to load naming the replacement, as does a list
-  under a property's <code>one_of</code> or a dim name under a dim's. The PyPSA tool
-  declares the dims <code>ctype</code> and <code>role</code>, which list their labels, writing
-  every label they list, and a <code>timestep</code> dim. Every record is re-exported.</li>
+  labels from that dim, which replaces <code>into</code> on properties and groups. The
+  PyPSA tool declares the dims <code>ctype</code> and <code>role</code>, which list their labels,
+  writing every label they list, and a <code>timestep</code> dim. Every record is
+  re-exported.</li>
 <li><code>Resolver</code> and <code>Revision.resolver</code> are removed (breaking). <code>Record</code> is
   constructed from <code>revision_id</code>, <code>sources</code>, <code>workspace</code> and <code>schema</code>
   instead of from a <code>Resolver</code>, and is read through its mappings alone:
@@ -1296,9 +1286,7 @@ SPDX-License-Identifier: CC-BY-4.0
   property - is refused naming the attribute, property or dim and its dtype,
   rather than parsed or cast. A column holding only NULLs passes as its
   declared type's NULL, in <code>set</code> and <code>add_group</code> too, whatever type its
-  dataframe library gave it, and <code>set</code> and <code>add_group</code> refuse a column
-  spelling a declared one in another case rather than storing it unchecked
-  or dropping it. The PyPSA
+  dataframe library gave it. The PyPSA
   tool's static rows no longer widen an integer <code>snapshot</code> to <code>DOUBLE</code>.</li>
 <li>A label of a type that does not fit its dim's dtype - a series index, mapping
   keys or a keyword of <code>set</code>, a group property's field keyword, the labels of

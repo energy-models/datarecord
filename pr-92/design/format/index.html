@@ -1337,7 +1337,7 @@ A record that is never written has no directory, and answers <a href="../record/
 </code></pre></div>
 <p>Every file under <code>dims/</code> and <code>groups/</code> is named for what it holds, singular: <code>dims/scenario.parquet</code> for the <code>scenario</code> axis, as <code>attributes/p_nom.parquet</code> is for <code>p_nom</code>.
 A dim's file is its name and nothing else — no pluralisation, which would be English grammar applied to a declared identifier and would spell a dim named <code>bus</code> as <code>buss.parquet</code>.</p>
-<p>A solve's results are <a href="../schema/#a-result-is-an-attribute">attributes</a> like any other, in the one <code>attributes/</code> directory. A layer holding an <code>inputs/</code> or <code>outputs/</code> directory, the layout that kept them apart, is refused when read, the error naming <code>attributes/</code>: the record is re-exported.</p>
+<p>A solve's results are <a href="../schema/#a-result-is-an-attribute">attributes</a> like any other, in the one <code>attributes/</code> directory.</p>
 <h2 id="the-entity-axis">The entity axis<a class="headerlink" href="#the-entity-axis" title="Permanent link">&para;</a></h2>
 <p><code>dims/entity.parquet</code> is what an entity's identity <strong>is</strong>: which entities exist at the layer's node, in order, and what describes each.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>entity | &lt;entity key dims&gt; | &lt;property&gt; ...
@@ -1345,7 +1345,7 @@ A dim's file is its name and nothing else — no pluralisation, which would be E
 <p>It is <strong>an axis file like any other</strong>, with nothing about it particular to <code>entity</code>: a <code>Record</code> hands it over as <code>dims["entity"]</code>, <a href="../writing/">the writer</a> writes it, and every other <code>dims/&lt;dim&gt;.parquet</code> has the same shape.</p>
 <ul>
 <li><strong>Membership.</strong> An entity exists at a node because the deepest <code>dims/entity.parquet</code> on its path has a row for it, and that file's row order is the axis order.</li>
-<li><strong>Its removal.</strong> A layer removes an entity by writing this file without it (<a href="../layers/#deletion">deletion</a>), so no column marks a removed row and a file with a <code>deleted</code> column is refused.</li>
+<li><strong>Its removal.</strong> A layer removes an entity by writing this file without it (<a href="../layers/#deletion">deletion</a>), so no column marks a removed row.</li>
 <li><strong>Its properties</strong>, one column each — <code>ctype</code>, <code>carrier</code>, <code>sign</code> in PyPSA's schema — NULL where no layer wrote one.</li>
 </ul>
 <p><strong>One layout, categories or none.</strong> A record whose entities have categories and one whose entities have none differ by a column: there is no per-category member file. Per-type files existed because every type had a different column set; every label now carries every property of its dim, so a category's frame is a filter on its property — recoverable from one file, where per-category files would state each entity's category twice, once in a column and once in a filename. Parquet stores an all-NULL column chunk for almost nothing and DuckDB reads only what it projects. Only a per-category <code>dtype</code> would need per-category files, and <a href="../schema/#properties">a subject's property has one spec</a>.</p>

@@ -1452,7 +1452,7 @@ A row leaving a key column NULL is not addressed by it, and its NULL-safe anti-j
 <h2 id="one-fold-for-every-axis">One fold for every axis<a class="headerlink" href="#one-fold-for-every-axis" title="Permanent link">&para;</a></h2>
 <p>A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer restates whole — a group's key being its one struct column, as a dim's is the column named for it.
 They resolve by one path: a node's <strong>resolved relation</strong> for an axis or group is the deepest file for it on the path from the root, its properties carried on each row (<code>ctype</code> on the entity axis, <code>role</code> on a group), with no <code>layer_uuid</code>.
-The fold refuses a file holding a key twice, a file with a <code>deleted</code> column (<a href="../layers/#deletion">deletion</a>), and a column that is neither the file's key nor a declared property of its subject.</p>
+The fold refuses a file holding a key twice and a column that is neither the file's key nor a declared property of its subject.</p>
 <p>The resolved relation is returned <strong>in member order</strong>, the deepest file's row order, and a node's caches persist it <em>in that order</em>, so a reader recovers member order from the resolved file's own row number.
 A key that a layer removes and a later layer adds again is a row of that later layer's file, and sits where that file puts it.
 There is no persisted <code>order_key</code> column: member order is the file's row order.

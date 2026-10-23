@@ -1331,7 +1331,7 @@ The column is held to its dtype as <a href="../working-record/#set"><code>set</c
 <p>Validation is structural: a long frame carries <a href="../format/#the-long-schema">its attribute's own coordinates</a>, and an entity frame carries every dim it is keyed by.
 Which entity types are valid belongs to <a href="../schema/">the schema's vocabulary</a>, which the record layer does not interpret.</p>
 <p>A <code>dims/</code> or <code>groups/</code> file is the whole axis or group at the new node, in order (<a href="../layers/#deletion">deletion</a>).
-The writer refuses one carrying a <code>deleted</code> column, holding a key twice, or carrying a column that is neither its key nor a declared property of its subject.
+The writer refuses one holding a key twice or carrying a column that is neither its key nor a declared property of its subject.
 It refuses one whose order on its parent's labels differs from the parent's too, naming the first label out of place, since a consumer numbers ports by <a href="../record/#axis-order">that order</a>.
 An attribute row naming a label that the layer's final axis of its dim does not hold is refused for every dim, naming the dim and up to three such labels.
 An attribute row at a tuple that the layer's final group does not hold is refused the same way, naming the group.
