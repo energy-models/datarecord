@@ -16,7 +16,6 @@ Notes
 
 from __future__ import annotations
 
-import copy
 import random
 import shutil
 from itertools import combinations
@@ -33,9 +32,14 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import as_relation, ex_all, fn, null_safe
 from datarecord.files import Absent, PreconditionFailedError, Version
-from datarecord.layered.resolve import PinnedResolver, cast_declared, resolve_coords
+from datarecord.layered.resolve import (
+    PinnedRecord,
+    Record,
+    cast_declared,
+    resolve_coords,
+)
 from datarecord.layered.sources import DirectorySource
-from datarecord.record import LayerData, Record, RecordLike, Relations
+from datarecord.record import LayerData, RecordLike, Relations
 from datarecord.schema import DERIVED, Schema
 
 if TYPE_CHECKING:
@@ -48,10 +52,12 @@ if TYPE_CHECKING:
 
 
 def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> LayerData:
-    """`source` as the `LayerData` the writer reads, planned on `con`.
+    """Return `source` as the `LayerData` the writer reads, planned on `con`.
 
-    A framework's `RecordLike` is wrapped in a thin adapter reading its
-    `Relations` through the same enumerate-and-read pairs.
+    A `RecordLike` is wrapped in a thin adapter reading its `Relations`
+    through the same enumerate-and-read pairs. A `Record` that is not frozen
+    is read as a `PinnedRecord` over the same four fields, which folds its
+    staged edits once for the write, during which nothing stages.
 
     Notes
     -----
@@ -59,21 +65,11 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     """
     if isinstance(source, LayerData):
         return source
-    return _RecordLikeAsLayerData(_pinned(source), con)
-
-
-def _pinned(source: RecordLike) -> RecordLike:
-    """`source`, or where it is a `Record` past a staging area, a copy over a `PinnedResolver`.
-
-    The copy keeps every member of `source`'s class and swaps only the resolver, so it reads what
-    `source` reads with the fold done once. Held only for one write, during
-    which nothing stages.
-    """
-    if not isinstance(source, Record) or source.resolver.frozen:
-        return source
-    pinned = copy.copy(source)
-    object.__setattr__(pinned, "resolver", PinnedResolver.of(source.resolver))
-    return pinned
+    if isinstance(source, Record) and not source.frozen:
+        source = PinnedRecord(
+            source.revision_id, source.sources, source.workspace, source.schema
+        )
+    return _RecordLikeAsLayerData(source, con)
 
 
 def write_layer(
@@ -619,18 +615,10 @@ class _RecordLikeAsLayerData:
     def schema(self) -> Schema:
         return self._source.schema
 
-    @property
-    def frozen(self) -> bool:
-        # A framework object is read once to produce a layer, never folded
-        # under a reader, so there is nothing for staleness to mean here.
-        return True
-
     def release(self) -> None:
         """Drop what a pinned source holds for this write."""
-        if isinstance(self._source, Record) and isinstance(
-            self._source.resolver, PinnedResolver
-        ):
-            self._source.resolver.release()
+        if isinstance(self._source, PinnedRecord):
+            self._source.release()
 
     def _frames(self, kind: str) -> Relations:
         """Return the `Relations` of the source named `kind`, enumerated once per adapter.

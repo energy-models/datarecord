@@ -1312,15 +1312,15 @@ def test_schema_dims_stay_generic(exported):
     """
     revision = exported
     _with_schema(revision, dims={**_DIMS, "vintage": "str"})
-    dims = revision.resolver.dims
-    assert "vintage" in dims.schema.dims
+    record = revision.record
+    assert "vintage" in record.schema.dims
     # No axis rows anywhere, so the dim is absent from the mapping rather than
     # present-and-empty (https://energy-models.github.io/datarecord/design/record/#relations).
-    assert "vintage" not in dims.axes
+    assert "vintage" not in record.dims
     # PyPSA's own required dims are still satisfied, and the extra dim is
     # simply not something the tool looks at.
     assert not PyPSA.verify(revision.record)
-    assert "vintage" in dims.schema.long_columns
+    assert "vintage" in record.schema.long_columns
 
 
 def test_a_null_scenario_weight_reaches_every_scenario_its_own_row_does_not():

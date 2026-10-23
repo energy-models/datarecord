@@ -15,7 +15,7 @@ import pytest
 from duckdb import DuckDBPyRelation
 
 from datarecord.mutable import WorkingRecord
-from datarecord.record import Flags, Record, RecordLike, Relations
+from datarecord.record import Flags, RecordLike, Relations
 from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
@@ -73,7 +73,7 @@ def both(written, store):
     -----
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
     """
-    node = Record(written.resolver)
+    node = written.record
     directory = store.layer(written.id)
     return (
         node,
@@ -341,7 +341,7 @@ def test_node_record_orders_members(store):
     child = empty_child(middle)
     write_component(store.layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
-    axis = Record(child.resolver).properties["entity"].df()
+    axis = child.record.properties["entity"].df()
     names = list(axis[axis["ctype"] == "Generator"]["entity"])
     assert names == ["wind", "gas", "coal", "New Solar"], (
         "first-introduced order: the root's members, then the child's addition"

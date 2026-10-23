@@ -399,14 +399,15 @@ def fold_axis(
 
     A `deleted = true` row is a tombstone: it removes its key unless a still-
     deeper layer restates it, and never survives into the output, which carries
-    no `deleted` column. The output is returned **in first-introduced member
-    order** - root first, then within a layer file order - so a reader recovers
-    member order from the resolved file's own row order without a persisted
-    `order_key`.
+    no `deleted` column. The output is returned **in member order**, each key
+    where it was introduced - root first, then within a layer file order - so a
+    reader recovers member order from the resolved file's own row order without
+    a persisted `order_key`. A key removed and added again is introduced where
+    it is added again: only its rows deeper than its deepest tombstone count.
 
     `_row` is tagged **per layer, before any union**: `UNION ALL` defines no
     order, so a bare `row_number() OVER ()` over the unioned relation would
-    silently scramble which row counts as first-introduced.
+    silently scramble which row introduces its key.
 
     Notes
     -----
@@ -431,33 +432,42 @@ def fold_axis(
     union = union_all_by_name(layers, con)
     has_deleted = "deleted" in union.columns
     partition = str(col(key))
+    # A row from a layer whose file lacks the column reads `deleted` as NULL
+    # once unioned by name; NULL is not a tombstone, so coalesce to false
+    # rather than letting `~NULL` drop a live row.
+    dead = coalesce(col("deleted"), lit(False)) if has_deleted else lit(False)  # noqa: FBT003
     # `OVER (PARTITION BY ...)` stays text below: DuckDB's expression API has no
     # window construct, so only what the window wraps is built as an expression.
-    ranked = union.project(
+    cut = union.project(
+        star(),
+        sql(f"max(_depth) FILTER (WHERE {dead}) OVER (PARTITION BY {partition})").alias(
+            "_cut"
+        ),
+    )
+    ranked = cut.project(
         star(),
         sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _depth DESC)").alias(
             "_rank"
         ),
-        # The first-introducing (depth, row) pair, as one orderable struct -
+        # The introducing (depth, row) pair, as one orderable struct -
         # `min()` over two separate window aggregates would answer "smallest
         # _depth" and "smallest _row" independently, not the pair belonging
         # to the earliest actual row.
         sql(
             f"{fn.min(struct_of({'d': col('_depth'), 'r': col('_row')}))} "
+            "FILTER (WHERE _cut IS NULL OR _depth > _cut) "
             f"OVER (PARTITION BY {partition})"
         ).alias("_first"),
     )
     winners = ranked.filter(col("_rank") == lit(1))
     # The deepest statement of a key wins; a tombstone there removes it.
     if has_deleted:
-        # A row from a layer whose file lacks the column reads `deleted` as NULL
-        # once unioned by name; NULL is not a tombstone, so coalesce to false
-        # rather than letting `~NULL` drop a live row.
-        winners = winners.filter(~coalesce(col("deleted"), lit(False)))  # noqa: FBT003
+        winners = winners.filter(~dead)
     scaffold = [
         "_depth",
         "_rank",
         "_row",
+        "_cut",
         "_first",
         *(["deleted"] if has_deleted else []),
     ]

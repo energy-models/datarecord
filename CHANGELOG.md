@@ -172,6 +172,15 @@ All notable changes to datarecord are documented here. The format follows
 - **A standalone record's id is `Schema.id`**, an optional field its
   `manifest.json` carries as before and the record's `schema.id` answers; a
   tree's manifest still carries none.
+- `LayerData` no longer declares `frozen`, and its `axes()`, `groups()` and
+  `attributes()` return `set[str]`. A `Record` is not a `LayerData`: written
+  whole, it reaches the writer through the adapter for a `RecordLike`.
+- A `WorkingRecord` folds its staged layer onto the base's folded axes,
+  groups and dead labels, which the workspace keeps as tables, so folding
+  them with staged edits opens no file of the base.
+- A label or group tuple that one layer removes and a later layer adds again
+  now takes its place where it is added again, in a working record, a
+  written record and over a materialised node alike.
 
 ### Added
 
@@ -232,6 +241,15 @@ All notable changes to datarecord are documented here. The format follows
   PyPSA tool declares the dims `ctype` and `role`, which list their labels,
   writing every label they list, and a `timestep` dim. Every record is
   re-exported.
+- `Resolver` and `Revision.resolver` are removed (breaking). `Record` is
+  constructed from `revision_id`, `sources`, `workspace` and `schema`
+  instead of from a `Resolver`, and is read through its mappings alone:
+  `rev.resolver.sources` is `rev.record.sources`, `axis(dim)` is
+  `dims[dim]` or `properties[dim]`, `group(name)` and `group_frame(name)`
+  are `groups[name]`, and `attribute(name)` is `attributes[name]`, which
+  raises `KeyError` where `attribute` returned an empty relation.
+  `with_source`, `inputs` and the enumerators `axes()`, `groups()` and
+  `attributes()` are gone.
 
 ### Fixed
 

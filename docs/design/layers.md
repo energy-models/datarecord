@@ -92,7 +92,7 @@ record = ws.at("out/")  # a standalone directory, read under its own manifest
 layer = store.layer(rid)  # one layer read alone, under the store's manifest
 ```
 
-A call reaches the workspace explicitly only where nothing in hand carries one: `ws.store`, `ws.at`, and the `con` a tool converting a framework object is handed. Everything built _from_ something takes it from that: a revision from its store, a `Record` from its `Resolver`, a `WorkingRecord` from its base record.
+A call reaches the workspace explicitly only where nothing in hand carries one: `ws.store`, `ws.at`, and the `con` a tool converting a framework object is handed. Everything built _from_ something takes it from that: a revision from its store, a `Record` from the revision or workspace building it, a `WorkingRecord` from its base record.
 
 **The location is required and absolute.** `ws.store("")` raises, and a local path is resolved, so neither a later `chdir` nor a process with another cwd moves it — there is no default location left to fall back to. `layer_dir`, `resolved_dir` and the manifest's location derive from it and nothing else.
 

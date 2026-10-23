@@ -2,11 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The `RecordLike` protocol and `Record`, the class this package provides.
+"""The `RecordLike` and `LayerData` protocols, and the relations a record hands over.
 
-`Record` is the one resolver-backed record; a framework object presenting
-itself as a record satisfies the protocol structurally, which is what `tools/`
-is built on.
+`layered.resolve.Record` is the one record this package provides; a framework
+object presenting itself as a record satisfies the protocol structurally, which
+is what `tools/` is built on.
 
 Notes
 -----
@@ -16,21 +16,13 @@ Notes
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from functools import wraps
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-from duckdb import ColumnExpression as col
 from duckdb import DuckDBPyRelation
 
-from datarecord.layered.categories import with_properties
 from datarecord.schema import Schema
-
-if TYPE_CHECKING:
-    from duckdb import DuckDBPyConnection
-
-    from datarecord.layered.resolve import Resolver
 
 Relations = Mapping[str, DuckDBPyRelation]
 """What a `Record` hands over: named relations, each an unmaterialised plan.
@@ -223,15 +215,13 @@ class RecordLike(Protocol):
 
 @runtime_checkable
 class LayerData(Protocol):
-    """The rows of one thing - a layer, or a fold - enumerated and read.
+    """The rows of one layer, enumerated and read.
 
     `write_layer`'s input: it needs `schema` and, per kind, which keys this
-    thing holds and each one's rows - the enumerate-and-read pairs below, no
-    more. `layered.sources.LayerSource` and `layered.resolve.Resolver` both
-    satisfy this structurally, one answering for its own layer and the other
-    for everything folded into it; the object decides which, never a mode flag
-    or a name prefix. A framework's own producer speaks `RecordLike` instead,
-    which `write_layer` adapts.
+    layer holds and each one's rows - the enumerate-and-read pairs below, no
+    more. `layered.sources.LayerSource` satisfies this structurally. A whole
+    record, a `Record` included, speaks `RecordLike` instead, which
+    `write_layer` adapts.
 
     `schema` is not a peer of the other members but what decides which of them
     exist: `groups`/`group` answer only for the groups it declares - an
@@ -246,157 +236,11 @@ class LayerData(Protocol):
     @property
     def schema(self) -> Schema: ...
 
-    @property
-    def frozen(self) -> bool: ...
-
-    def axes(self) -> Iterable[str]: ...
+    def axes(self) -> set[str]: ...
     def axis(self, dim: str) -> DuckDBPyRelation | None: ...
 
-    def groups(self) -> Iterable[str]: ...
+    def groups(self) -> set[str]: ...
     def group(self, name: str) -> DuckDBPyRelation | None: ...
 
-    def attributes(self) -> Iterable[str]: ...
+    def attributes(self) -> set[str]: ...
     def attribute(self, name: str) -> DuckDBPyRelation | None: ...
-
-
-def _stable_cache(method: Callable[[Record], LazyRelations]) -> property:
-    """A `Record` member cached only while the fold behind it cannot go stale.
-
-    Every one of these answers a *key set*, which is a question about which
-    layers exist rather than about their rows - so it is cacheable exactly when
-    `Resolver.frozen` holds. Past a staging area it is not: an `add` or a `set`
-    naming a new attribute changes the answer, and a cached tuple of names would
-    hide the edit that was just made.
-
-    What is cached is the names and a lookup building each relation per access,
-    so none is held and the record reads from any thread.
-
-    Notes
-    -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
-    """
-    attr = f"_cached_{method.__name__}"
-
-    @wraps(method)
-    def get(self: Record) -> LazyRelations:
-        if not self.resolver.frozen:
-            return method(self)
-        try:
-            return cast("LazyRelations", object.__getattribute__(self, attr))
-        except AttributeError:
-            value = method(self)
-            object.__setattr__(self, attr, value)
-            return value
-
-    return property(get)
-
-
-@dataclass(frozen=True)
-class Record:
-    """A record's resolved view, as DuckDB relations.
-
-    The interface over one `Resolver`, not a second implementation of it: a member costs what the equivalent `Resolver` call costs, and `flags`
-    in particular is free, the owner map having folded it in.
-
-    One class for every backing, because a fold over one source degenerates to
-    a scan of it - so a plain parquet directory is read as the one layer it is
-    (`Workspace.at`) rather than by a second code path. `RecordLike` is the
-    protocol a caller annotates against; this is the class a caller holds.
-
-    Notes
-    -----
-    - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    """
-
-    resolver: Resolver
-
-    @property
-    def schema(self) -> Schema:
-        return self.resolver.schema
-
-    @property
-    def con(self) -> DuckDBPyConnection:
-        """The cursor of the calling thread, which the relations of this record are planned on."""
-        return self.resolver.con
-
-    @_stable_cache
-    def dims(self) -> LazyRelations:
-        names = tuple(self.resolver.dims.axes)
-        return LazyRelations(names, self._axis_frame)
-
-    @_stable_cache
-    def properties(self) -> LazyRelations:
-        coords = self.resolver.dims
-        subjects = tuple(
-            s for s in self.schema.properties if s in coords.axes or s in coords.groups
-        )
-        return LazyRelations(subjects, self._property_frame)
-
-    @_stable_cache
-    def groups(self) -> LazyRelations:
-        """Each declared group's rows, keyed by group - one relation each.
-
-        Only groups some layer wrote a row of; a declared group nothing
-        populates is absent rather than present-and-empty.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        """
-        groups = tuple(
-            g for g in self.resolver.schema.groups if self.resolver.group(g) is not None
-        )
-        return LazyRelations(groups, self._group_frame)
-
-    @_stable_cache
-    def attributes(self) -> LazyRelations:
-        names = tuple(self.resolver.attributes())
-        return LazyRelations(names, self._attribute_relation)
-
-    def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
-        """Straight off the owner map, which folded these in for free.
-
-        Notes
-        -----
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-        """
-        return self.resolver.fold.flags(**categories)
-
-    # -- relations, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) --
-
-    def _axis_frame(self, dim: str) -> DuckDBPyRelation:
-        return self._rel(self.resolver.axis(dim), dim).project(col(dim))
-
-    def _attribute_relation(self, attribute: str) -> DuckDBPyRelation:
-        return self._rel(self.resolver.attribute(attribute), attribute)
-
-    def _property_frame(self, subject: str) -> DuckDBPyRelation:
-        is_group = subject in self.schema.groups
-        found = (
-            self.resolver.group(subject) if is_group else self.resolver.axis(subject)
-        )
-        rel = with_properties(self.schema, self._rel(found, subject), subject)
-        names = (subject, *self.schema.properties[subject])
-        return rel.project(*(col(n) for n in names))
-
-    def _group_frame(self, group: str) -> DuckDBPyRelation:
-        return self._rel(self.resolver.group_frame(group), group)
-
-    @staticmethod
-    def _rel(rel: DuckDBPyRelation | None, key: str) -> DuckDBPyRelation:
-        """Return `rel`, whose row order is member order, or raise `KeyError(key)` if it is None.
-
-        The resolved relation is folded in first-introduced member order and read
-        back order-preserving (`fold_axis`), so a `Record` promises that order
-        without a re-sort and without a persisted `order_key`.
-
-        Notes
-        -----
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-        """
-        if rel is None:
-            raise KeyError(key)
-        return rel

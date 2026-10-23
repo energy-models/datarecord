@@ -97,12 +97,12 @@ def keys(revision):
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    df = revision.resolver.inputs.df()
+    df = revision.record._fold.owner_map.df()
     return {(r["entity"], str(r.attribute)) for _, r in df.iterrows()}
 
 
 def entity_names(revision):
-    return set(revision.resolver.axis("entity").df()["entity"])
+    return set(revision.record.dims["entity"].df()["entity"])
 
 
 def test_materialise_writes_the_map_under_resolved(store, parent):
@@ -152,9 +152,9 @@ def test_last_writer_wins_per_key(store, parent):
     -----
     - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
     """
-    om = parent.resolver
-    assert set(om.inputs.df()["layer_uuid"]) == {parent.id}
-    assert "layer_uuid" not in om.axis("entity").columns
+    record = parent.record
+    assert set(record._fold.owner_map.df()["layer_uuid"]) == {parent.id}
+    assert "layer_uuid" not in record._coords.axes["entity"].columns
     assert ("Manchester Wind", "p_max_pu") in keys(parent)
 
     child = empty_child(parent)
@@ -163,7 +163,7 @@ def test_last_writer_wins_per_key(store, parent):
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
     )
-    df = child.resolver.inputs.df()
+    df = child.record._fold.owner_map.df()
 
     def owner_of(name, attr):
         sel = df[(df["entity"] == name) & (df["attribute"].astype(str) == attr)]
@@ -244,7 +244,7 @@ def test_any_node_may_be_a_parent(store, parent):
     grandchild = empty_child(child)
     # The child was never materialised, yet its layer resolves for the
     # grandchild all the same.
-    df = grandchild.resolver.inputs.df()
+    df = grandchild.record._fold.owner_map.df()
     row = df[(df["entity"] == "Manchester Wind") & (df["attribute"] == "p_max_pu")]
     assert set(row["layer_uuid"]) == {child.id}
 
@@ -265,7 +265,7 @@ def test_a_record_with_no_manifest_folds(store):
     revision = empty_root(store)
     assert revision.record.schema.dims == ()
 
-    inputs = revision.resolver.inputs
+    inputs = revision.record._fold.owner_map
     assert "varies" in inputs.columns
     assert inputs.fetchall() == []
 
@@ -396,8 +396,8 @@ def test_the_fold_broadcasts_by_hash_join(store):
         "p_max_pu",
         pd.DataFrame({"entity": ["wind", "wind"], "snapshot": [0, 1], "value": 0.5}),
     )
-    resolver = base.child(staged.edits).resolver
+    record = base.child(staged.edits).record
 
-    plan = _fold_map(resolver.sources, resolver.con, resolver.schema).explain()
+    plan = _fold_map(record.sources, record.con, record.schema).explain()
     assert "HASH_JOIN" in plan, "the fold joins at all"
     assert "NL_JOIN" not in plan and "NESTED_LOOP" not in plan, plan

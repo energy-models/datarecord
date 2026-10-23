@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 
 from datarecord.layered.resolve import (
-    Resolver,
+    Record,
     read_schema,
     sources_to_read,
     write_schema,
@@ -34,12 +34,6 @@ from tests.fixtures import (
     write_group,
     write_input,
 )
-
-
-def _entities(revision) -> set[str]:
-    axis = revision.resolver.axis("entity")
-    assert axis is not None, "every revision here has entities"
-    return set(axis.df()["entity"])
 
 
 @pytest.fixture
@@ -135,7 +129,7 @@ def test_child_adds_attribute(store, network):
     assert n.c["Generator"].static.loc["Norway Wind", "p_min_pu"] == 0.0
 
 
-def test_closed_child_reads_own_resolver(store, network):
+def test_closed_child_reads_own_cache(store, network):
     """Reading a closed non-root record uses its own persisted dims/manifest/map.
 
     Its `ancestry_since_closed` is just itself, so the raw layer (which has
@@ -198,19 +192,19 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     schema = read_schema(store)
     full = ancestry(store, grandchild.id)
     workspace = store.workspace
-    truncated = Resolver(
+    truncated = Record(
         grandchild.id, sources_to_read(full, store, schema), workspace, schema
     )
-    unresolved = Resolver(
+    unresolved = Record(
         grandchild.id,
         [_Unmaterialised(uid, schema, store) for uid in full],
         workspace,
         schema,
     )
 
-    def ownership(nc):
+    def ownership(record):
         return sorted(
-            nc.inputs.project("attribute, entity, layer_uuid").fetchall(),
+            record._fold.owner_map.project("attribute, entity, layer_uuid").fetchall(),
             key=str,
         )
 
@@ -218,18 +212,16 @@ def test_resolved_reads_same_as_unresolved(store, parent):
         "the owner map folded through the base matches folding from the root"
     )
 
-    t_axis, u_axis = truncated.axis("entity"), unresolved.axis("entity")
-    assert t_axis is not None and u_axis is not None
-    assert set(t_axis.df()["entity"]) == set(u_axis.df()["entity"]), (
-        "the resolved entity axis is the same either way"
-    )
+    assert set(truncated.dims["entity"].df()["entity"]) == set(
+        unresolved.dims["entity"].df()["entity"]
+    ), "the resolved entity axis is the same either way"
 
-    for attr in truncated.attributes():
-        a = sorted(truncated.attribute(attr).fetchall(), key=str)
-        b = sorted(unresolved.attribute(attr).fetchall(), key=str)
+    for attr in truncated.attributes:
+        a = sorted(truncated.attributes[attr].fetchall(), key=str)
+        b = sorted(unresolved.attributes[attr].fetchall(), key=str)
         assert a == b, f"{attr} resolves the same through the base as from the root"
 
-    manchester = truncated.attribute("p_max_pu").df()
+    manchester = truncated.attributes["p_max_pu"].df()
     assert manchester[manchester["entity"] == "Manchester Wind"]["value"].tolist() == [
         0.99
     ], "grandchild's value wins over the materialised base"

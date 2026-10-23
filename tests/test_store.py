@@ -199,7 +199,7 @@ def test_a_writer_that_always_loses_gives_up(workspace, store, monkeypatch):
 def test_a_revision_crosses_a_process_boundary(workspace, tree):
     """Serialised as its store's location, read back through the process workspace.
 
-    Read before serialising, so a cached resolver would have to travel if any
+    Read before serialising, so a cached record would have to travel if any
     did. The fixture's workspace is not the process one, so the ancestry can
     only come from reading the revision files again.
 
@@ -255,8 +255,7 @@ def test_two_threads_missing_the_fold_at_once_both_get_it(store, tree):
 
     def fold(_):
         fresh = store.revision(child.id)
-        fresh._resolver = None
-        return sorted(fresh.resolver.inputs.fetchall(), key=str)
+        return sorted(fresh.record._fold.owner_map.fetchall(), key=str)
 
     first, second = _in_threads(2, fold)
     assert first == second
@@ -289,7 +288,7 @@ def _folded_then_widened(store, partial=frozenset(), *, materialised=False):
     layer = store.layer_dir(revision.id)
     write_component(layer, "Generator", [{"entity": "wind"}])
     write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
-    before = revision.resolver.inputs
+    before = revision.record._fold.owner_map
     assert "scenario" not in str(before.types[before.columns.index("varies")])
     if materialised:
         revision.materialise()
@@ -302,10 +301,10 @@ def _folded_then_widened(store, partial=frozenset(), *, materialised=False):
     wide = {**_NARROW, "scenario": "str"}
     write_schema(schema(dims=wide, partial=set(partial)), store)
     after = store.revision(revision.id)
-    assert after.resolver is not revision.resolver
+    assert after.record is not revision.record
     if materialised:
         return empty_child(after)
-    inputs = after.resolver.inputs
+    inputs = after.record._fold.owner_map
     assert "scenario" not in str(inputs.types[inputs.columns.index("varies")]), (
         "the fold table is read as it was folded, not re-folded or cast"
     )
@@ -353,7 +352,7 @@ def test_a_staged_tail_folds_onto_a_fold_table_from_before_a_widening(store):
     w = WorkingRecord(after.record)
     w.set("p_max_pu", 0.7, entity=["wind"], period=2030, scenario="high")
 
-    inputs = w.resolver.inputs
+    inputs = w._fold.owner_map
     assert "scenario" in str(inputs.types[inputs.columns.index("varies")])
     rows = (
         w.attributes["p_max_pu"]

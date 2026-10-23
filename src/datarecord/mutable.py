@@ -45,8 +45,8 @@ from datarecord.duck import (
 )
 from datarecord.layered.categories import matching
 from datarecord.layered.fold import Fold
-from datarecord.layered.resolve import Resolver
-from datarecord.record import LazyRelations, Record, RecordLike, Relations
+from datarecord.layered.resolve import Record
+from datarecord.record import LazyRelations, RecordLike, Relations
 from datarecord.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
@@ -247,9 +247,9 @@ class WorkingRecord(Record):
     staged row exists: the reads fold them rather than holding a copy, so what
     is staged is asked of the reads themselves.
 
-    The `Resolver` is fixed at construction and the source list never changes;
-    a `set` changes what the last source's tables hold, not which sources there
-    are. That is what lets the inherited members stay correct - they cache a key
+    The source list is fixed at construction and never changes; a `set`
+    changes what the last source's tables hold, not which sources there are.
+    That is what lets the inherited members stay correct - they cache a key
     set only where the fold is stable, which a staged source makes it not.
 
     Notes
@@ -265,10 +265,10 @@ class WorkingRecord(Record):
     #: `edits` is written as one, and it names the staging tables too - so two
     #: `WorkingRecord`s on one connection collide in neither.
     _layer_id: UUID
-    #: What the base resolves from, which every use of the base here wants: the
-    #: schema, one dim's axis, one attribute's rows and the revision the edits
-    #: are a delta against are all members of one.
-    _base: Resolver
+    #: The record these edits are made over: its sources are this record's
+    #: but the staged one, and its `revision_id` is what the edits are a delta
+    #: against.
+    _base: Record
     #: Keyed by `(kind, attribute)`, the attribute being None for an axis or a
     #: group. Attributes stage one table per attribute because that is the
     #: file it stands for: one `value` column at the attribute's own type, and
@@ -276,17 +276,34 @@ class WorkingRecord(Record):
     _staged: dict[tuple[str, str | None], str]
 
     def __init__(self, base: RecordLike) -> None:
+        """Stage edits over `base`, which must be a `Record`.
+
+        Raises
+        ------
+        TypeError
+            For any other `RecordLike`. A framework object hands over relations
+            and has no layer layout behind it, so synthesising one would be
+            rebuilding the format from a protocol that deliberately lacks it.
+        """
+        if not isinstance(base, Record):
+            msg = (
+                f"a `WorkingRecord` reads by folding its staged rows over the base's, "
+                f"and a {type(base).__name__} has no layer layout to fold - pass a "
+                f"`Record`, which `Revision.record` and `Workspace.at(uri)` both give"
+            )
+            raise TypeError(msg)
         # `object.__setattr__` throughout: the base is a frozen dataclass, and
         # these are set before `super().__init__` because the `StagedSource`
         # below reads them off `self`.
         object.__setattr__(self, "_layer_id", uuid4())
         object.__setattr__(self, "_staged", {})
-        base_cache = _base_resolver(base)
-        object.__setattr__(self, "_base", base_cache)
-        # This record *is* the fold one layer deeper, and that layer is the
-        # staging area - so the field the base class holds is that fold, whose
-        # last source is the staged layer, `edits`.
-        super().__init__(base_cache.with_source(StagedSource(self, self._layer_id)))
+        object.__setattr__(self, "_base", base)
+        super().__init__(
+            base.revision_id,
+            [*base.sources, StagedSource(self, self._layer_id)],
+            base.workspace,
+            base.schema,
+        )
 
     # -- staging tables -----------------------------------------------------
 
@@ -540,7 +557,7 @@ class WorkingRecord(Record):
             {dim: list(value), name: list(value.values())},
             {dim: self._column_type(dim), name: self._column_type(name, dim)},
         )
-        self._patch_axis(dim, name, table, edit, self._base.dims.axes.get(dim))
+        self._patch_axis(dim, name, table, edit, self._base.properties.get(dim))
 
     def _patch_axis(
         self,
@@ -664,8 +681,11 @@ class WorkingRecord(Record):
         -----
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
-        if dim in (self.schema.partial or ()) and self.resolver.axis(dim) is not None:
-            self._require_existing(dim, labels)
+        if (
+            dim in (self.schema.partial or ())
+            and (axis := self.dims.get(dim)) is not None
+        ):
+            self._require_existing(dim, labels, axis)
 
     def set(
         self,
@@ -846,7 +866,7 @@ class WorkingRecord(Record):
         self.schema.require_listed(dim, data, call)
         self._require_live(dim, data, call)
         if keyed:
-            self._require_existing(dim, list(values))
+            self._require_existing(dim, list(values), self.dims.get(dim))
         self._stage_axis(dim, name, values)
 
     def _set_group_property(
@@ -882,7 +902,7 @@ class WorkingRecord(Record):
             raise ValueError(msg)
         self.schema.require_listed(group, {name: [value]}, f"`{call}`")
         self._require_live(group, {name: [value]}, f"`{call}`")
-        tuples = self.resolver.dims.groups.get(group)
+        tuples = self.groups.get(group)
         if tuples is None:
             msg = f"`{call}` finds no tuple of {group!r}; `add_group` them first"
             raise KeyError(msg)
@@ -902,16 +922,17 @@ class WorkingRecord(Record):
         dtype = self._column_type(name, group)
         edit = rel.project(col(group), lit(value).cast(dtype).alias(name))
         self._patch_axis(
-            group, name, self._ensure(group), edit, self._base.dims.groups.get(group)
+            group, name, self._ensure(group), edit, self._base.groups.get(group)
         )
 
     def _require_existing(
         self,
         dim: str,
         labels: Sequence[Any],
+        axis: DuckDBPyRelation | None,
         why: str = "a value for a label no layer declares would resolve to nothing",
     ) -> None:
-        """Reject labels of `dim` the record as staged does not resolve, saying `why`.
+        """Reject labels of `dim` missing from `axis`, its labels as staged, saying `why`.
 
         Raises
         ------
@@ -919,7 +940,6 @@ class WorkingRecord(Record):
             Naming the unknown labels.
         """
         wanted = list(dict.fromkeys(str(n) for n in labels if n is not None))
-        axis = self.resolver.axis(dim)
         found = (
             set()
             if axis is None or not wanted
@@ -964,6 +984,7 @@ class WorkingRecord(Record):
                 self._require_existing(
                     dim,
                     values,
+                    self.dims.get(dim),
                     why=f"each value of `{subject}.{name}` must be a label of {dim!r}",
                 )
 
@@ -1038,7 +1059,7 @@ class WorkingRecord(Record):
 
     def _labels_matching(self, dim: str, wanted: Mapping[str, list[Any]]) -> list[Any]:
         """The labels of `dim`, as staged, storing one of `wanted`'s values of each property."""
-        axis = self.resolver.axis(dim)
+        axis = self.properties.get(dim)
         if axis is None:
             return []
         return [r[0] for r in matching(axis, wanted).project(col(dim)).fetchall()]
@@ -1310,7 +1331,7 @@ class WorkingRecord(Record):
         - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         """
         whole = self._owned_whole(attribute)
-        if not whole or attribute not in self._base.attributes():
+        if not whole or attribute not in self._base.attributes:
             return
 
         # Intersected with the attribute's own columns: a key column its file
@@ -1325,7 +1346,7 @@ class WorkingRecord(Record):
             return
         coordinate = self._long_key(attribute)
         staged = self.con.table(table)
-        base = self._base.attribute(attribute)
+        base = self._base.attributes[attribute]
         # A staged row leaving a whole-owned dim NULL already covers that dim's
         # whole extent by the broadcast rule, so its key has nothing left to
         # carry and a base row there would overlap it.
@@ -1459,7 +1480,7 @@ class WorkingRecord(Record):
             {"deleted": lit(True)},  # noqa: FBT003
             key=(dim,),
         )
-        groups = self.resolver.dims.groups
+        groups = self.groups
         for g in self.schema.group_columns:
             fields = [f for f, d in self.schema.groups[g].over.items() if d == dim]
             if not fields or g not in groups:
@@ -1496,11 +1517,7 @@ class WorkingRecord(Record):
         problems = []
         naming = [k for k, d in self.schema.one_of_properties().items() if d == dim]
         for subject, name in naming:
-            rows = (
-                self.resolver.dims.groups.get(subject)
-                if subject in self.schema.groups
-                else self.resolver.axis(subject)
-            )
+            rows = self.properties.get(subject)
             if rows is None:
                 continue
             hits = (
@@ -1760,7 +1777,10 @@ class WorkingRecord(Record):
         """
         staged = self._rows(f"{_AXIS_PREFIX}{dim}")
         assert staged is not None, "only a staged dim reaches an axis layer"
-        base = self._base.dims.axes.get(dim)
+        rows = (
+            self._base.properties if dim in self.schema.properties else self._base.dims
+        )
+        base = rows.get(dim)
         if base is None or dim in self.schema.partial_dims:
             return staged
         # The untouched labels the layer owns whole and so must carry, taken from
@@ -1803,31 +1823,7 @@ class WorkingRecord(Record):
         - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         """
-        return cast("StagedSource", self.resolver.sources[-1])
-
-
-def _base_resolver(base: RecordLike) -> Resolver:
-    """What `base` resolves from, as a `Resolver` a staged layer can extend.
-
-    A `Record` is one already - whether it came from a revision or from
-    `Workspace.at(uri)`, since a directory read as its one layer is a fold like
-    any other.
-
-    Raises
-    ------
-    TypeError
-        For anything else. A framework object hands over relations and has no
-        layer layout behind it, so synthesising one would be rebuilding the
-        format from a protocol that deliberately lacks it.
-    """
-    if not isinstance(base, Record):
-        msg = (
-            f"a `WorkingRecord` reads by folding its staged rows over the base's, "
-            f"and a {type(base).__name__} has no layer layout to fold - pass a "
-            f"`Record`, which `Revision.record` and `Workspace.at(uri)` both give"
-        )
-        raise TypeError(msg)
-    return base.resolver
+        return cast("StagedSource", self.sources[-1])
 
 
 def _column_type(

@@ -38,14 +38,12 @@ PROCESS = "Process"
 
 
 def _connections(revision):
-    """`group_frame`, asserted non-`None` for tests where a row must exist.
+    """The resolved `connection` group, which these tests need a row of.
 
     No type: one `groups/connection.parquet` holds every type's rows, and these
     tests declare a single one.
     """
-    frame = revision.resolver.group_frame("connection")
-    assert frame is not None
-    return frame
+    return revision.record.groups["connection"]
 
 
 def _root(store) -> Revision:
@@ -276,10 +274,9 @@ def test_a_component_tombstone_reaches_its_connections_through_theirs(store):
         store.layer_dir(both.id),
         [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
     )
-    frame = both.resolver.group_frame("connection")
-    assert frame is not None, "the group was written, so it is present"
+    frame = both.record.groups["connection"]
     assert frame.count("*").fetchone() == (0,), "every connection row is tombstoned"
-    assert _efficiencies(both) == {}, "and their values go with them"
+    assert "efficiency" not in both.record.attributes, "and their values go with them"
 
 
 def test_a_dim_a_group_draws_on_still_broadcasts(store):
@@ -317,7 +314,7 @@ def test_a_dim_a_group_draws_on_still_broadcasts(store):
 
     assert prices(root) == {"north": 5.0, "south": 5.0}, "one row, every bus"
     assert prices(child) == {"north": 5.0, "south": 7.0}, "a patch hits its bus"
-    assert "bus" in root.resolver.fold.flags()["marginal_price"].broadcast
+    assert "bus" in root.record.flags()["marginal_price"].broadcast
 
 
 def test_a_null_connection_broadcasts_to_every_connection(store):
