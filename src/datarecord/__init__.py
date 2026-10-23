@@ -11,12 +11,12 @@ except importlib.metadata.PackageNotFoundError as e:  # pragma: no cover
     warnings.warn(f"Could not determine version of {__name__}\n{e!s}", stacklevel=2)
     __version__ = "unknown"
 
+from datarecord.layered.resolve import Record
 from datarecord.layered.revision import Revision
 from datarecord.mutable import WorkingRecord
 from datarecord.record import (
     Flags,
     LazyRelations,
-    Record,
     RecordLike,
     Relations,
 )

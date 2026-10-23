@@ -242,7 +242,7 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
     try:
         again = elsewhere.at(out)
         assert again.schema == record.schema
-        assert again.resolver.revision_id == record.resolver.revision_id, (
+        assert again.revision_id == record.revision_id, (
             "the manifest's id names one layer to every reader"
         )
     finally:
@@ -261,8 +261,8 @@ def test_only_a_standalone_manifest_carries_an_id(store, tmp_path):
     record = store.workspace.write(source, str(out))
 
     written = Schema.model_validate_json((out / "manifest.json").read_text())
-    assert written.id == record.resolver.revision_id
-    assert record.schema.id == record.resolver.revision_id
+    assert written.id == record.revision_id
+    assert record.schema.id == record.revision_id
 
     copy = store.workspace.write(record, str(tmp_path / "copy"))
     assert copy.schema.id not in {None, record.schema.id}, "a copy mints its own id"
@@ -1255,7 +1255,7 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     assert got == {("a", "near"): 1.0, ("b", "far"): 5.0}, (
         "the child's value wins at its coordinate and the root's elsewhere"
     )
-    axis = child.resolver.dims.axes["select"].df()
+    axis = child.record.properties["select"].df()
     assert dict(zip(axis["select"], axis["Group"])) == {"a": 1.0, "b": 2.0}
 
     out = str(tmp_path / "standalone")

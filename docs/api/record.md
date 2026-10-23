@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Record
 
-::: datarecord.record.Record
+::: datarecord.layered.resolve.Record
 
 ::: datarecord.record.RecordLike
 

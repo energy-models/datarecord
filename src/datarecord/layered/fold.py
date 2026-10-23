@@ -6,7 +6,7 @@
 
 A `Fold` is what `materialise` wrote and what a live resolution computes: the
 folded axes, groups and the owner map, each
-folded over the node's whole ancestry. `Resolver.fold` takes the deepest
+folded over the node's whole ancestry. `Record._fold` takes the deepest
 materialised source's `Fold` as its base and folds the layers below it on top,
 so a `Fold` read from disk is the prior incarnation of one computed live - the
 same shape either tense.

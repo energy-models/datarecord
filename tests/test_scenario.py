@@ -77,8 +77,8 @@ def test_map_is_scenario_expanded(store, parent, stochastic):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    schema = parent.resolver.schema
-    df = parent.resolver.inputs.df()
+    schema = parent.record.schema
+    df = parent.record._fold.owner_map.df()
     by_scenario = df[
         [
             "scenario" in schema.coordinates_of(str(a))
@@ -110,7 +110,7 @@ def test_partial_scenario_override(store, parent, stochastic):
         ],
     )
 
-    df = child.resolver.inputs.df()
+    df = child.record._fold.owner_map.df()
     solar = df[
         (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
     ]
@@ -192,7 +192,7 @@ def test_scenario_order_survives_a_chain_of_closed_layers(store, parent, stochas
         rec.materialise()
         added.append(name)
 
-    scenarios = rec.resolver.dims.axes["scenario"].df()["scenario"].tolist()
+    scenarios = rec.record.dims["scenario"].df()["scenario"].tolist()
     assert scenarios == list(stochastic.scenarios) + added
 
 
@@ -232,7 +232,7 @@ def test_scenario_axis_survives_closed_grandchild(store, parent, stochastic):
         [{"entity": "solar Gen", "value": 0.88}],
     )
 
-    df = grandchild.resolver.inputs.df()
+    df = grandchild.record._fold.owner_map.df()
     solar = df[
         (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
     ]

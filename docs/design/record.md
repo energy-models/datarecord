@@ -35,37 +35,34 @@ Each accessor holds one section of [the schema](schema.md): `dims` the labels, `
 
 ## `LayerData`
 
-`RecordLike` is what a caller reads; [the writer](writing.md) writes a different, narrower protocol — **`LayerData`**, "the rows of one thing, enumerated and read":
+`RecordLike` is what a caller reads; [the writer](writing.md) writes a different, narrower protocol — **`LayerData`**, "the rows of one layer, enumerated and read":
 
 ```python
 @runtime_checkable
 class LayerData(Protocol):
     @property
     def schema(self) -> Schema: ...
-    @property
-    def frozen(self) -> bool: ...
 
-    def axes(self) -> Iterable[str]: ...
+    def axes(self) -> set[str]: ...
     def axis(self, dim: str) -> DuckDBPyRelation | None: ...
-    def groups(self) -> Iterable[str]: ...
+    def groups(self) -> set[str]: ...
     def group(self, name: str) -> DuckDBPyRelation | None: ...
-    def attributes(self) -> Iterable[str]: ...
+    def attributes(self) -> set[str]: ...
     def attribute(self, name: str) -> DuckDBPyRelation | None: ...
 ```
 
 Each pair is an enumerator — the keys of that kind — and a read for one key.
-The enumerators return `Iterable[str]` rather than `set[str]` so a `Resolver`, whose keys carry a stable order a `Record` over it relies on, can return a `list` where a source returns a `set`; the meaning is the same set of keys either way.
 
 An `axis` is the rows of its file: the labels, their tombstones and the dim's properties. A `group` is its tuples and the group's properties.
 
-One object, two meanings: a [`LayerSource`](read-path.md#owner-map) answers `axis`/`group`/`attribute` for its own layer's rows; a `Resolver` answers the same names for everything folded into it.
-The writer cannot tell which it holds and does not need to — a staged layer's own rows (`w.edits`) and a resolved whole record are both a `LayerData`, so a [`WorkingRecord`](working-record.md#edits) hands over either without a third shape adapting one to the other.
+A [`LayerSource`](read-path.md#owner-map) answers `axis`/`group`/`attribute` for its own layer's rows.
+A staged layer's own rows (`w.edits`) are such a source, so a [`WorkingRecord`](working-record.md#edits) hands its edits to the writer as they are.
 
 `schema` governs which of the other pairs are populated, rather than standing beside them as a peer: `groups`/`group` answer only for the groups it declares.
 An enumerator answers the **empty set**, never a phantom key, where the schema declares nothing of that kind.
 
 Rows are `DuckDBPyRelation`s, as a `RecordLike`'s are — the write path stays one engine throughout.
-A framework object satisfying `RecordLike` instead (as [`Tool.to_datarecord`](tools.md) returns) is not itself a `LayerData`; the writer wraps it in a thin adapter that reads its `Relations` mappings through the same enumerate-and-read pairs, so the writer grows no second code path.
+A `RecordLike` is not itself a `LayerData`, whether it is a `Record`, a `WorkingRecord` included, or a framework object (as [`Tool.to_datarecord`](tools.md) returns); the writer wraps it in a thin adapter that reads its `Relations` mappings through the same enumerate-and-read pairs, so the writer grows no second code path.
 
 ## Wide and long rows
 
@@ -160,8 +157,9 @@ Along any other dim it answers a row leaving the dim NULL beside a more specific
 
 An axis's order is the row order of its frame in `dims`.
 
-Labels and a group's rows are in the order they were first introduced across layers ([the owner map](read-path.md#owner-map)).
-Order is never a stored column: a file's row order is the input, and the fold derives first-introduced order from it.
+Labels and a group's rows are in the order they were introduced across layers ([the owner map](read-path.md#owner-map)).
+A label or tuple that a layer removes and a later layer adds again is introduced where it is added again.
+Order is never a stored column: a file's row order is the input, and the fold derives that order from it.
 
 ## Relations
 

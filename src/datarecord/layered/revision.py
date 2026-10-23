@@ -31,8 +31,8 @@ from pydantic import (
 )
 
 from datarecord.layered import resolve
-from datarecord.layered.resolve import Resolver
-from datarecord.record import LayerData, Record, RecordLike
+from datarecord.layered.resolve import Record
+from datarecord.record import LayerData, RecordLike
 from datarecord.store import Store, Workspace
 
 _ANCESTRY = """
@@ -89,7 +89,7 @@ class Revision(BaseModel):
     parent: UUID | None = None
     store: Annotated[Store, PlainSerializer(lambda s: s.uri, return_type=str)]
 
-    _resolver: Resolver | None = PrivateAttr(default=None)
+    _record: Record | None = PrivateAttr(default=None)
 
     @model_validator(mode="before")
     @classmethod
@@ -105,37 +105,28 @@ class Revision(BaseModel):
         return self.store.revision, (self.id,)
 
     @property
-    def resolver(self) -> Resolver:
-        """This record's `Resolver`, built once from its ancestry.
+    def record(self) -> Record:
+        """This revision's resolved view, as a `Record` built once from its ancestry.
 
         The ancestry is truncated at the deepest materialised ancestor, so a
         deep tree resolves from few entries. Cached rather than rebuilt per
         call: layers are write-once, so the only thing that can change
         the truncation point is `materialise`, which clears this itself. The
-        `Resolver` holds no cursor, so the cache serves every thread.
-
-        Notes
-        -----
-        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
-        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-        """
-        if self._resolver is None:
-            full = ancestry(self.store, self.id)
-            schema = resolve.read_schema(self.store)
-            sources = resolve.sources_to_read(full, self.store, schema)
-            self._resolver = Resolver(self.id, sources, self.store.workspace, schema)
-        return self._resolver
-
-    @property
-    def record(self) -> Record:
-        """This revision's resolved view, as a `Record`.
+        `Record` holds no cursor, so the cache serves every thread.
 
         Notes
         -----
         - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
-        return Record(self.resolver)
+        if self._record is None:
+            full = ancestry(self.store, self.id)
+            schema = resolve.read_schema(self.store)
+            sources = resolve.sources_to_read(full, self.store, schema)
+            self._record = Record(self.id, sources, self.store.workspace, schema)
+        return self._record
 
     # -- tree ---------------------------------------------------------------
 
@@ -181,8 +172,8 @@ class Revision(BaseModel):
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
-        resolve.materialise(self.id, self.resolver.sources, self.store)
-        self._resolver = None
+        resolve.materialise(self.id, self.record.sources, self.store)
+        self._record = None
 
     # -- read ---------------------------------------------------------------
 

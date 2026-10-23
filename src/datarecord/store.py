@@ -29,10 +29,10 @@ import duckdb
 from duckdb import DuckDBPyConnection
 
 from datarecord.files import Absent, Files, LocalFiles, RemoteFiles
-from datarecord.layered.resolve import Resolver, read_schema
-from datarecord.layered.sources import DirectorySource, LayerSource
+from datarecord.layered.resolve import Record, read_schema
+from datarecord.layered.sources import DirectorySource
 from datarecord.layered.write import layer_data, reconcile_schema, write_layer
-from datarecord.record import LayerData, Record, RecordLike
+from datarecord.record import LayerData, RecordLike
 from datarecord.schema import Schema
 
 if TYPE_CHECKING:
@@ -215,7 +215,8 @@ class Workspace:
                 f"through that"
             )
             raise ValueError(msg)
-        return _record(DirectorySource(base, schema, self, schema.id), workspace=self)
+        source = DirectorySource(base, schema, self, schema.id)
+        return Record(schema.id, [source], self, schema)
 
     def write(self, source: LayerData | RecordLike, uri: str) -> Record:
         """Write `source` as a standalone record at `uri`, and read it back.
@@ -350,7 +351,7 @@ class Store:
         """
         id = uuid4()
         data = layer_data(source, self.workspace.con)
-        parents = [] if parent is None else self.revision(parent).resolver.sources
+        parents = [] if parent is None else self.revision(parent).record.sources
         write_layer(data, self.layer_dir(id), self.workspace, parents=parents)
         reconcile_schema(data.schema, self)
         return self._create(parent, id)
@@ -475,16 +476,11 @@ class Store:
         Under this store's schema: a layer holds only data. Not the revision's
         record - nothing beneath it is folded in.
         """
-        return _record(
-            DirectorySource(
-                self.layer_dir(id),
-                read_schema(self),
-                self.workspace,
-                # Not `id`, whose fold tables hold the whole ancestry's fold.
-                uuid5(id, "layer"),
-            ),
-            workspace=self.workspace,
-        )
+        # Not `id`, whose fold tables hold the whole ancestry's fold.
+        layer_id = uuid5(id, "layer")
+        schema = read_schema(self)
+        source = DirectorySource(self.layer_dir(id), schema, self.workspace, layer_id)
+        return Record(layer_id, [source], self.workspace, schema)
 
 
 def _absolute(uri: str) -> str:
@@ -507,14 +503,3 @@ def _manifest(schema: Schema, id: UUID) -> str:
 def _process_store(uri: str) -> Store:
     """`uri` as a store of the process workspace, which is what unpickling needs."""
     return Workspace.process().store(uri)
-
-
-def _record(*sources: LayerSource, workspace: Workspace) -> Record:
-    """A record folded over `sources`, root first.
-
-    The last source's `layer_id` names the record and its `schema` is the
-    record's - every source in one fold carries the same one.
-    """
-    return Record(
-        Resolver(sources[-1].layer_id, list(sources), workspace, sources[-1].schema)
-    )

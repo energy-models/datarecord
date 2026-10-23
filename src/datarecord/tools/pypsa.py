@@ -2861,12 +2861,11 @@ def _ordered_connections(
 ) -> pd.DataFrame | None:
     """One type's connections with a port index assigned per component.
 
-    The positional collapse: connections come in member order (an
-    overlay's `order_key`: first-introduced) and are numbered within each
-    component, so a port index follows the order connections were introduced
-    and a patch that adds one appends rather than renumbering. Inputs are
-    placed before outputs, so `bus0` is the input end PyPSA's sign convention
-    expects.
+    The positional collapse: connections come in member order and are
+    numbered within each component, so a port index follows the order
+    connections were introduced and a patch that adds one appends rather than
+    renumbering. Inputs are placed before outputs, so `bus0` is the input end
+    PyPSA's sign convention expects.
 
     Scoped to one type by its `members`, `frame` (`_connection_frame`) holding
     every type's connections.

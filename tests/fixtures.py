@@ -526,4 +526,4 @@ def relation(revision, attribute: str):
     duplicate `record.attributes[attr]`. Tests want relations because they
     assert on `.df()`, so the affordance lives here.
     """
-    return revision.resolver.attribute(attribute)
+    return revision.record.attributes[attribute]
