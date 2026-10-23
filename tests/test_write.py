@@ -567,26 +567,53 @@ def test_a_write_rejects_an_axis_without_its_key_column(store):
     _nothing_reachable(store)
 
 
-def test_a_write_rejects_an_undeclared_axis_column(store):
-    """An axis file's payload is the schema's to state, like a long frame's.
+def _set_junk(store):
+    _, staged = _rows_staged(store, [], "p_nom")
+    staged.set("p_nom", pd.DataFrame({"entity": ["a"], "value": [1.0], "junk": [1]}))
 
-    A column no declaration accounts for would be read back with no dtype and
-    no meaning, so it is refused rather than carried along.
+
+def _add_junk(store):
+    _, staged = _rows_staged(store, [], "p_nom")
+    staged.add("entity", ["c"], junk=1)
+
+
+def _add_group_junk(store):
+    _, staged = _rows_staged(store, [], "p_nom")
+    staged.add_group("connection", pd.DataFrame({"connection": [_AB], "junk": [1]}))
+
+
+def _write_junk(store):
+    frame = pd.DataFrame({"scenario": ["high"], "junk": [1]})
+    try:
+        store.root(_Source(_SCHEMA, dims={"scenario": frame}))
+    finally:
+        _nothing_reachable(store)
+
+
+@pytest.mark.parametrize(
+    ("write", "accepted"),
+    [
+        pytest.param(
+            _set_junk,
+            "['entity', 'period', 'scenario', 'snapshot', 'value']",
+            id="set",
+        ),
+        pytest.param(_add_junk, "['ctype', 'deleted', 'entity']", id="add"),
+        pytest.param(_add_group_junk, "['connection', 'deleted']", id="add_group"),
+        pytest.param(_write_junk, "['deleted', 'order_key', 'scenario']", id="write"),
+    ],
+)
+def test_an_undeclared_column_is_refused(store, write, accepted):
+    """A column no declaration accounts for has no dtype and no meaning, so it is refused, not dropped.
 
     Notes
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
-    source = _Source(
-        schema(),
-        dims={"scenario": pd.DataFrame({"scenario": ["high"], "nonsense": [1.0]})},
-    )
-
-    with pytest.raises(
-        ValueError, match="does not declare as properties of 'scenario'"
-    ):
-        store.root(source)
-    _nothing_reachable(store)
+    with pytest.raises(ValueError, match=r"\['junk'\]") as raised:
+        write(store)
+    assert accepted in str(raised.value), "the error names the columns it accepts"
 
 
 def test_an_attribute_column_in_a_dims_frame_is_refused(store):

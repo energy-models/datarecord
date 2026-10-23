@@ -856,23 +856,6 @@ def test_re_adding_a_label_replaces_its_row(staged, root):
     assert _entity_axis(child.record).loc["Manchester Wind", "ctype"] == "Load"
 
 
-def test_add_rejects_a_column_the_schema_does_not_declare(staged):
-    """An axis column no declaration accounts for is an error, not a new column.
-
-    A staging table is shaped like the file it becomes, from the schema, so an
-    undeclared column has no dtype to be given it. A tool that grows a column
-    declares it first.
-
-    Notes
-    -----
-    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
-    """
-    assert "capex" not in staged.schema.attributes, "undeclared, which is the case here"
-    with pytest.raises(ValueError, match="capex"):
-        staged.add("entity", ["NewSolar"], capex=1234.5)
-
-
 def test_add_fills_a_declared_column_another_add_omitted(staged):
     """An `add` omitting a declared column stages it as NULL rather than failing.
 
@@ -1055,12 +1038,33 @@ def test_set_takes_an_all_none_column_as_a_broadcast(staged):
             r"\['snapshot'\] carry timestamps with a time zone",
             id="time-zone",
         ),
+        pytest.param(
+            "p_nom",
+            pd.DataFrame({"entity": ["Manchester Wind"], "VALUE": ["high"]}),
+            r"columns \['VALUE'\] the schema does not declare",
+            id="case-variant-value",
+        ),
+        pytest.param(
+            "p_max_pu",
+            pd.DataFrame(
+                {
+                    "entity": ["Manchester Wind"],
+                    "Snapshot": pd.to_datetime(["2015-01-01"]),
+                    "value": [0.5],
+                }
+            ),
+            r"columns \['Snapshot'\] the schema does not declare",
+            id="case-variant-coordinate",
+        ),
     ],
 )
 def test_set_refuses_a_frame_column_that_does_not_fit_its_dtype(
     staged, attribute, frame, match
 ):
     """A column is cast only to a wider type of its kind; a time zone is not dropped.
+
+    A column spelling a declared one in another case is undeclared, so it is
+    refused.
 
     Notes
     -----

@@ -553,7 +553,8 @@ def _refuse_extra(
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    extra = sorted(columns - structural - set(schema.properties.get(subject, {})))
+    known = structural | set(schema.properties.get(subject, {}))
+    extra = sorted(columns - known)
     if not extra:
         return
     attributes = [c for c in extra if c in schema.attributes]
@@ -566,8 +567,8 @@ def _refuse_extra(
     )
     msg = (
         f"{file} carries columns {extra} the schema does not declare as "
-        f"properties of {subject!r}; the file holds its key, tombstones and "
-        f"{subject!r}'s properties{hint} (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+        f"properties of {subject!r}; the file holds only its key, tombstones "
+        f"and those properties, {sorted(known)}{hint} (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
     )
     raise ValueError(msg)
 

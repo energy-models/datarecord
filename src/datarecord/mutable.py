@@ -721,7 +721,8 @@ class WorkingRecord(Record):
             keys whose coordinate is ambiguous, a label its enum-dtype dim does
             not list, a property keyword whose dim the attribute does not reach
             through exactly one coordinate, or that is given beside that
-            coordinate's own keyword, or a frame column or label whose type
+            coordinate's own keyword, a frame column the schema does not
+            declare for `attribute`, or a frame column or label whose type
             does not fit its dtype, timestamps with a time zone among them.
 
         Notes
@@ -751,6 +752,18 @@ class WorkingRecord(Record):
             )
             self._validate_frame(rel, attribute, coords)
             table = self._ensure(_ATTRIBUTES, attribute)
+            known = [
+                *self._staged_coordinates(attribute),
+                *_flat_coordinates(self.schema, attribute),
+                "value",
+            ]
+            extra = sorted(set(rel.columns) - set(known))
+            if extra:
+                msg = (
+                    f"{call} was given columns {extra} the schema does not "
+                    f"declare for {attribute!r}; it takes {sorted(set(known))}"
+                )
+                raise ValueError(msg)
             rel = self.schema.require_takes(rel, call, attribute=attribute)
             self._insert_long(rel, table, attribute, set(rel.columns), coords)
             return
@@ -1390,7 +1403,7 @@ class WorkingRecord(Record):
             raise KeyError(msg)
         call = f"add({dim!r}, ...)"
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
-        self._reject_undeclared(call, table, [*columns])
+        self._reject_undeclared(f"`{call}`", table, [*columns])
         names = list(labels)
         self._require_typed(dim, names, f"`{call}`")
         data: dict[str, list[Any]] = {dim: names}
@@ -1554,7 +1567,7 @@ class WorkingRecord(Record):
             else ""
         )
         msg = (
-            f"`{call}` was given columns {extra} the schema does not declare "
+            f"{call} was given columns {extra} the schema does not declare "
             f"there; it holds {sorted(known)}. A column there is a property, so "
             f"declare it on its subject before writing it (https://energy-models.github.io/datarecord/design/schema/#versioning){hint}"
         )

@@ -233,6 +233,9 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- `set` refuses a frame column the schema does not declare for the
+  attribute, naming the column and the columns it takes, where it dropped
+  the column before.
 - A later `set` replaces the rows an earlier one staged that it covers,
   that is, at each of their coordinates it names the same label or leaves
   NULL, labels selected by a property keyword or a group's fields included:
