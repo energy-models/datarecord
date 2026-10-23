@@ -98,7 +98,7 @@ All notable changes to datarecord are documented here. The format follows
   rebuilt.
 - A group file is keyed by one struct column named for the group, as an
   axis file is by its dim: `groups/connection.parquet` is
-  `connection STRUCT(entity, bus) | role | deleted`, an `into` label a plain
+  `connection STRUCT(entity, bus) | role`, an `into` label a plain
   column beside it. This is an on-disk format change. `Record.groups[...]`
   hands back that shape; `add_group` takes the struct column and rejects the
   coordinates flat; `remove_group` still takes a tuple per key. The PyPSA

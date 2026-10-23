@@ -528,6 +528,21 @@ def test_a_property_naming_a_dim_takes_null_or_a_label_added_first(
     classified.child(staged.edits)
 
 
+def test_add_group_refuses_a_label_the_dim_does_not_list(store):
+    """A label outside the list cannot be added, so the message does not say to."""
+    revision = empty_root(store)
+    dimensions = {**_schema().dimensions, "country": Dimension(one_of=["DE", "NO"])}
+    write_schema(_schema(dimensions=dimensions), store)
+    write_axis(revision, "country", [{"country": "DE"}])
+    staged = WorkingRecord(revision.record)
+    rel = staged.con.sql(
+        "SELECT {'bus': 'a', 'state': 'b'}::STRUCT(bus VARCHAR, state VARCHAR) "
+        "AS bus_state, 'coal'::VARCHAR AS country"
+    )
+    with pytest.raises(KeyError, match="lists its labels, so use one of them"):
+        staged.add_group("bus_state", rel)
+
+
 def test_remove_is_refused_while_a_property_names_the_label(classified):
     """A property's row outlives the label it names, so clearing it comes first.
 
