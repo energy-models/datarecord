@@ -1240,7 +1240,7 @@ def _scalar_rows(c: pypsa.Components, attr: str, exclude: pd.Index) -> pd.DataFr
     """Build null-snapshot long rows from the static scalars of `attr`.
 
     Ported from `pypsa.components.array.Components._scalar_rows`, with its
-    columns in long order (`entity, snapshot, scenario, period, value`) and
+    columns in long order (`entity, snapshot, scenario, value`) and
     built in one constructor rather than by `reset_index` and column inserts:
     it runs once per attribute and type, where pandas' per-call overhead
     dominated an export.
@@ -1257,7 +1257,6 @@ def _scalar_rows(c: pypsa.Components, attr: str, exclude: pd.Index) -> pd.DataFr
             "entity": index.get_level_values("name") if stochastic else index,
             "snapshot": np.nan,
             "scenario": index.get_level_values(SCENARIO) if stochastic else np.nan,
-            "period": np.nan,
             "value": static.array,
         }
     )
@@ -1539,7 +1538,7 @@ class PyPSATool(Tool):
         schema = record.schema
         rel = to_relation(frame)
         names = carried_properties(schema, dim, rel)
-        labels = with_defaults(schema, dim, rel, schema.axis_key(dim), names, con)
+        labels = with_defaults(schema, dim, rel, names, con)
         static = _keyed_as_entity(_empty_for_none(labels), dim).project(
             "*, row_number() OVER () AS _pos"
         )
@@ -2167,7 +2166,7 @@ class _NetworkSource:
     def _as_long_rel(
         self, c: pypsa.Components, attr: str, *, drop_defaults: bool = False
     ) -> DuckDBPyRelation | None:
-        """`attr` as a long relation `(entity, snapshot, scenario, period, value)`.
+        """`attr` as a long relation `(entity, snapshot, scenario, value)`.
 
         `None` where the attribute contributes no rows on this network, so a
         caller unions only the types that do rather than empty relations.
@@ -2276,7 +2275,7 @@ class _NetworkSource:
             entity, scenario = "colname", "CAST(NULL AS VARCHAR)"
         return con.sql(
             f"SELECT {entity} AS entity, snapshot, {scenario} AS scenario, "
-            "CAST(NULL AS BIGINT) AS period, value FROM melted"
+            "value FROM melted"
         )
 
     def _scalar_rel(
@@ -2659,8 +2658,8 @@ class _NetworkSource:
     def _output_columns(self, attribute: str) -> list[str]:
         """A result's long columns: `connection` or `bus` where it is over either.
 
-        Every network axis whether or not the result varies over it, as the
-        melt produces them.
+        The melt's `snapshot` and `scenario`, whether or not the result varies
+        over them.
 
         Notes
         -----
@@ -2668,7 +2667,7 @@ class _NetworkSource:
         """
         spec = _registry_schema().results[attribute]
         member = next((d for d in (CONNECTION, BUS) if d in spec.dims), ENTITY)
-        return [member, *self._DIMS, "attribute", "breakpoint", "value"]
+        return [member, SNAPSHOT, SCENARIO, "attribute", "breakpoint", "value"]
 
     def _output_rels(self, attribute: str, ctypes: list[str]) -> list[DuckDBPyRelation]:
         """One result attribute's per-type long relations, empties dropped.
@@ -3027,8 +3026,7 @@ def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
         return None
     rel = matching(to_relation(record.properties[ENTITY]), {COMPONENT: (ctype,)})
     names = carried_properties(schema, ENTITY, rel)
-    key = schema.axis_key(ENTITY)
-    defaulted = with_defaults(schema, ENTITY, rel, key, names, _connection(record))
+    defaulted = with_defaults(schema, ENTITY, rel, names, _connection(record))
     return _empty_for_none(defaulted.project(star(exclude=[COMPONENT])))
 
 

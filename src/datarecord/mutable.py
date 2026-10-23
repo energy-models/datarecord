@@ -562,8 +562,8 @@ class WorkingRecord(Record):
         Raises
         ------
         ValueError
-            On a keyword other than `dim`, a sequence with no labels to align
-            to, or a nested `dim`.
+            On a keyword other than `dim`, or a sequence with no labels to
+            align to.
 
         Notes
         -----
@@ -594,14 +594,6 @@ class WorkingRecord(Record):
                 f"`set({f'{dim}.{name}'!r}, <sequence>)` has no labels to align to; "
                 f"{name!r} is a property of {dim!r}, so pass a mapping from "
                 f"{dim!r} label to value, or a scalar for every label"
-            )
-            raise ValueError(msg)
-        if len(self.schema.axis_key(dim)) > 1:
-            msg = (
-                f"{name!r} is a property of {dim!r}, which is `within` "
-                f"{sorted(self.schema.dimensions[dim].within)}; a nested axis's "
-                f"labels identify a point only within its parents, which a "
-                f"mapping from label alone cannot name"
             )
             raise ValueError(msg)
         return value
@@ -773,12 +765,11 @@ class WorkingRecord(Record):
     def _require_labels(self, attribute: str, dim: str, labels: Sequence[Any]) -> None:
         """Reject labels of a `partial` dim the record does not resolve, or whose categories lack `attribute`.
 
-        Only a `partial` dim keyed by itself alone, and with an axis some layer
-        wrote: its label is what the fold keys a row by, so a value for one no
-        layer declares would resolve to nothing - caught here rather than
-        dropped at read time. Its categories are checked only where one
-        coordinate of `attribute` alone is over `dim`; a label of no category
-        passes.
+        Only a `partial` dim with an axis some layer wrote: its label is what
+        the fold keys a row by, so a value for one no layer declares would
+        resolve to nothing - caught here rather than dropped at read time. Its
+        categories are checked only where one coordinate of `attribute` alone
+        is over `dim`; a label of no category passes.
 
         Raises
         ------
@@ -791,9 +782,7 @@ class WorkingRecord(Record):
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         - [traits](https://energy-models.github.io/datarecord/design/schema/#traits)
         """
-        if dim not in (self.schema.partial or ()) or self.schema.axis_key(dim) != (
-            dim,
-        ):
+        if dim not in (self.schema.partial or ()):
             return
         axis = self.resolver.axis(dim)
         if axis is None:
@@ -1161,15 +1150,15 @@ class WorkingRecord(Record):
             if c in flat or not owners:
                 rest[c] = given
                 continue
-            within = [d for d in owners if d in reached]
-            if len(within) > 1:
+            among = [d for d in owners if d in reached]
+            if len(among) > 1:
                 msg = (
-                    f"`{call}` selects by {c!r}, a property of each of {within}, "
+                    f"`{call}` selects by {c!r}, a property of each of {among}, "
                     f"which {name!r} all reaches; set it per dim instead"
                 )
                 raise ValueError(msg)
             values = list(given) if _is_labels(given) else [given]
-            by_dim.setdefault((within or owners)[0], {})[c] = values
+            by_dim.setdefault((among or owners)[0], {})[c] = values
         for dim, wanted in by_dim.items():
             drawing = [c for c, d in flat.items() if d == dim]
             if len(drawing) != 1:
@@ -1479,12 +1468,10 @@ class WorkingRecord(Record):
     def add(self, dim: str, labels: Sequence[Any], **columns: Any) -> None:
         """Stage labels of `dim`, each as one whole row of its axis file.
 
-        `columns` are that file's other columns - `dim`'s properties and a
-        nested dim's parent keys - each a scalar for every label or a sequence
-        aligned to `labels`. A column
-        no keyword names is NULL on these rows: `add` restates a label's row
-        whole, replacing any this record staged for it, a `remove`'s tombstone
-        included.
+        `columns` are `dim`'s properties, each a scalar for every label or a
+        sequence aligned to `labels`. A column no keyword names is NULL on
+        these rows: `add` restates a label's row whole, replacing any this
+        record staged for it, a `remove`'s tombstone included.
 
         Not a sequence of `set` calls: a label exists by virtue of its axis row,
         so adding one with no columns at all is an edit. An attribute's value,
@@ -1497,9 +1484,9 @@ class WorkingRecord(Record):
             If the schema declares no `dim`, or on a value of a property `into`
             a dim naming no label of it.
         ValueError
-            On an attribute, a column the axis file has no place for, a nested
-            dim's missing parent key, a sequence of the wrong length, or a
-            value an `Enum` property does not list.
+            On an attribute, a column the axis file has no place for, a
+            sequence of the wrong length, or a value an `Enum` property does
+            not list.
 
         Notes
         -----
@@ -1512,16 +1499,6 @@ class WorkingRecord(Record):
         call = f"add({dim!r}, ...)"
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
         self._reject_undeclared(call, table, [*columns])
-        missing = [
-            c for c in self.schema.axis_key(dim) if c != dim and c not in columns
-        ]
-        if missing:
-            msg = (
-                f"`{call}` gives no {missing}; {dim!r} is `within` them, so a "
-                f"label names a point only with its parents' keys "
-                f"(https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)"
-            )
-            raise ValueError(msg)
         names = list(labels)
         data: dict[str, list[Any]] = {dim: names}
         for c, given in columns.items():
@@ -1538,22 +1515,19 @@ class WorkingRecord(Record):
             rel,
             table,
             {"deleted": lit(False)},  # noqa: FBT003
-            key=self.schema.axis_key(dim),
+            key=(dim,),
         )
 
     def remove(self, dim: str, labels: Sequence[Any]) -> None:
         """Stage a tombstone per label of `dim`.
 
         Need not enumerate what it deletes: one axis row per label, and the fold
-        drops every value keyed by the label where `dim` is `partial`. A nested
-        dim's label is a tuple in `Schema.axis_key` order. No labels stage
-        nothing.
+        drops every value keyed by the label where `dim` is `partial`. No
+        labels stage nothing.
 
         And one tombstone per tuple, of any group, with a field over `dim`
         naming one of `labels`, read from the record as it currently resolves:
-        a group attribute's value goes with its tuple. Only for a dim keyed by
-        its label alone, a nested dim's label naming no point without its
-        parents, which a tuple does not carry.
+        a group attribute's value goes with its tuple.
 
         Raises
         ------
@@ -1568,22 +1542,14 @@ class WorkingRecord(Record):
         """
         if not labels:
             return
-        key = self.schema.axis_key(dim)
-        if len(key) == 1:
-            self._require_unnamed(dim, labels)
-        rows = [label if len(key) > 1 else (label,) for label in labels]
-        rel = self._values_relation(
-            {c: [row[i] for row in rows] for i, c in enumerate(key)},
-            {c: self._column_type(c) for c in key},
-        )
+        self._require_unnamed(dim, labels)
+        rel = self._values_relation({dim: list(labels)}, {dim: self._column_type(dim)})
         self._insert(
             rel,
             self._ensure(f"{_AXIS_PREFIX}{dim}"),
             {"deleted": lit(True)},  # noqa: FBT003
-            key=key,
+            key=(dim,),
         )
-        if len(key) > 1:
-            return
         groups = self.resolver.dims.groups
         for g in self.schema.group_columns:
             fields = [f for f, d in self.schema.groups[g].over.items() if d == dim]
@@ -1592,7 +1558,7 @@ class WorkingRecord(Record):
             naming = reduce(
                 operator.or_,
                 (
-                    fn.struct_extract(col(g), lit(f)).isin(*(lit(r[0]) for r in rows))
+                    fn.struct_extract(col(g), lit(f)).isin(*map(lit, labels))
                     for f in fields
                 ),
             )
@@ -1802,11 +1768,10 @@ class WorkingRecord(Record):
         for dim in self.schema.partial or ():
             if dim not in self.schema.dimensions:
                 continue
-            key = self.schema.axis_key(dim)
             dead = self._tombstoned(dim)
-            if dead is not None and set(key) <= set(rel.columns):
+            if dead is not None and dim in rel.columns:
                 rel = rel.set_alias("l").join(
-                    dead.set_alias("d"), null_safe("l", "d", key), how="anti"
+                    dead.set_alias("d"), null_safe("l", "d", [dim]), how="anti"
                 )
         for g in self.schema.groups_of(attribute):
             tuples = self._rows(g)
@@ -1820,9 +1785,9 @@ class WorkingRecord(Record):
         return rel
 
     def _tombstoned(self, dim: str) -> DuckDBPyRelation | None:
-        """The axis keys of `dim` whose staged row is a tombstone.
+        """The labels of `dim` whose staged row is a tombstone.
 
-        One row per label in the table already (`_replace` on the axis key), so
+        One row per label in the table already (`_replace` on the label), so
         an `add` after a `remove` has replaced the tombstone rather than sitting
         above it - the scan is the answer.
 
@@ -1833,9 +1798,7 @@ class WorkingRecord(Record):
         rel = self._rows(f"{_AXIS_PREFIX}{dim}")
         if rel is None:
             return None
-        return rel.filter(col("deleted")).project(
-            *(col(c) for c in self.schema.axis_key(dim))
-        )
+        return rel.filter(col("deleted")).project(col(dim))
 
     def _collapsed_group(self, group: str) -> DuckDBPyRelation | None:
         """One group's staged rows - a table scan, one per tuple.
@@ -1903,7 +1866,7 @@ class WorkingRecord(Record):
         # carrying any column the base lacks and the base side the reverse.
         untouched = base.set_alias("b").join(
             staged.set_alias("s"),
-            null_safe("b", "s", self.schema.axis_key(dim)),
+            null_safe("b", "s", [dim]),
             how="anti",
         )
         return union_all_by_name([staged, untouched], self.con)
@@ -2081,7 +2044,7 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     return {
-        **{c: _column_type(schema, c) for c in schema.axis_key(dim)},
+        dim: _column_type(schema, dim),
         "deleted": nw.Boolean(),
         **{p: spec.dtype for p, spec in schema.properties.get(dim, {}).items()},
     }

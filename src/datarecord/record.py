@@ -151,10 +151,9 @@ class RecordLike(Protocol):
 
     @property
     def dims(self) -> Frames:
-        """Axis frames, keyed by dim: each one's key columns, nothing else.
+        """Axis frames, keyed by dim: each one's label column, nothing else.
 
-        The labels and their `within` parents; properties are in
-        `properties`, attributes in `attributes`.
+        Properties are in `properties`, attributes in `attributes`.
 
         Notes
         -----

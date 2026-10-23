@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | ------------------------------------------------- |
 | Title    | a dim is flat                                     |
 | Author   | Jonas Hoersch                                     |
-| Status   | Draft 2026-10-19                                  |
+| Status   | Implemented (2026-10-20)                          |
 | Requires | [DEP 13](dep-0013-buses-and-carriers-are-dims.md) |
 | Created  | 2026-10-19                                        |
 | Version  | Unreleased                                        |
@@ -21,7 +21,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## Motivation
 
-A multi-period PyPSA network declares `snapshot` [`within`](../schema.md#within-an-axis-inside-an-axis) `period`, and every place that touches the snapshot axis pays for it:
+A multi-period PyPSA network declares `snapshot` [`within`](../schema.md#a-dim-is-flat) `period`, and every place that touches the snapshot axis pays for it:
 
 - **Every series carries its period.** Every input and result over `snapshot` is over `period` too, so `p_max_pu` is keyed by `(entity, period, snapshot)`, and a NULL `period` is a second way of reaching a snapshot ([tools](../tools.md)).
 - **Checks skip a nested dim.** A property `into` one, or a group field over one, is not checked by [`remove`](../working-record.md#add-remove) or [the writer](../layers.md#deletion); `remove` does not cascade to its tuples; the trait check passes over a nested `partial` dim; `set("dim.name", mapping)` refuses one. The page lists the first as an [open question](../open-questions.md).
@@ -42,7 +42,7 @@ A multi-period PyPSA network declares `snapshot` [`within`](../schema.md#within-
 | `timestep` in `period` in `horizon`   | `snapshot.period` `into` `period`; `period.horizon` `into` `horizon` |
 | `timestep` `within` `{period, stage}` | `snapshot.period` `into` `period`; `snapshot.stage` `into` `stage`   |
 
-**A chain is not denormalised**, [as for any classification](../schema.md#within-is-not-into): `snapshot` carries no `horizon` column, the horizon being a join through `period`.
+**A chain is not denormalised**, [as for any classification](../schema.md#properties): `snapshot` carries no `horizon` column, the horizon being a join through `period`.
 
 **Selecting by a parent is a selector keyword.** One is bare and matches any property of a dim the attribute reaches ([`set`](../working-record.md#set)), so `period=2030` on `p_max_pu` picks the snapshots whose `snapshot.period` is 2030, and `timestep=t0` the snapshot at `t0` in every period. Two reached dims both declaring `period` stay refused.
 
@@ -69,7 +69,7 @@ A multi-period PyPSA network declares `snapshot` [`within`](../schema.md#within-
 
 ### Pages that change
 
-- [schema](../schema.md) → `Dimension` without `within`; [dimensions](../schema.md#dimensions) "its type"; [`within`](../schema.md#within-an-axis-inside-an-axis) replaced by a short "a dim is flat" with the table above; [`within` is not `into`](../schema.md#within-is-not-into)'s chain and cross-level paragraphs move to [properties](../schema.md#properties); [properties](../schema.md#properties) loses the `within`-parent refusal; [versioning](../schema.md#versioning) loses its entry.
+- [schema](../schema.md) → `Dimension` without `within`; [dimensions](../schema.md#dimensions) "its type"; [`within`](../schema.md#a-dim-is-flat) replaced by a short "a dim is flat" with the table above; [`within` is not `into`](../schema.md#properties)'s chain and cross-level paragraphs move to [properties](../schema.md#properties); [properties](../schema.md#properties) loses the `within`-parent refusal; [versioning](../schema.md#versioning) loses its entry.
 - [record](../record.md) → `dims[dim]` and the axis row without `within` keys.
 - [format](../format.md#where-a-value-lives) → an axis file carries its key, tombstones and properties.
 - [layers](../layers.md#deletion) and [working record](../working-record.md#add-remove) → the nested-dim exemptions; [validation](../working-record.md#validation) loses the missing parent key.
@@ -83,7 +83,7 @@ A multi-period PyPSA network declares `snapshot` [`within`](../schema.md#within-
 
 **One key column is one rule.** The axis key, the fold key and the broadcast rule each had a branch for `(*parents, dim)`, and every check that could not place a label by one column skipped it rather than branch. Removing the shape removes the skips: the bugs above are not fixed, they become unrepresentable — no attribute can be over a nested dim without its parent when no dim has a parent, and no series carries a parent to leave NULL.
 
-**`into` can now express `timestep`.** The [distinction](../schema.md#within-is-not-into) held because `within` scoped a label set and `into` could not. A flat label set makes the snapshot a classification like any other: each snapshot picks one period.
+**`into` can now express `timestep`.** The [distinction](../schema.md#properties) held because `within` scoped a label set and `into` could not. A flat label set makes the snapshot a classification like any other: each snapshot picks one period.
 
 **The NULL-parent `set` bug is narrower than `within`.** It is a fold bug with any two whole-owned dims, which `within` made routine by putting a second whole-owned dim on every series. It goes from the snapshot and stays for other schemas.
 

@@ -128,12 +128,7 @@ def resolve_coords(
         holding = [s for s, names in zip(above, present) if dim in names]
         if seed is None and not holding:
             continue
-        # Keyed by the axis key, not the dim alone: a nested dim's labels
-        # identify a point only within its parents (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis), so `(period,
-        # timestep)` is what last-writer-wins applies to.
-        rel = fold_axis(
-            [seed, *(s.axis(dim) for s in holding)], schema.axis_key(dim), con
-        )
+        rel = fold_axis([seed, *(s.axis(dim) for s in holding)], dim, con)
         if rel is not None:
             axes[dim] = rel
     return Coords(
@@ -187,15 +182,13 @@ def _resolve_dead(
     dead = {}
     for name in mortal(schema):
         if name in schema.groups:
-            key: tuple[str, ...] = (name,)
             rows = [source.group(name) for source in above]
         else:
-            key = schema.axis_key(name)
             rows = [s.axis(name) for s, names in zip(above, present) if name in names]
         seed = None if base is None else base.dead.get(name)
         if seed is not None:
-            seed = seed.project(*(col(c) for c in key), lit(True).alias("deleted"))  # noqa: FBT003
-        rel = dead_keys([seed, *rows], key, con)
+            seed = seed.project(col(name), lit(True).alias("deleted"))  # noqa: FBT003
+        rel = dead_keys([seed, *rows], name, con)
         if rel is not None:
             dead[name] = rel
     return dead
@@ -228,7 +221,7 @@ def resolve_groups(
         rows = [seed, *(source.group(group) for source in above)]
         if all(rel is None for rel in rows):
             continue
-        rel = fold_axis(rows, (group,), con)
+        rel = fold_axis(rows, group, con)
         if rel is not None:
             groups[group] = rel
     return groups
@@ -510,14 +503,12 @@ def _living(
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    schema = keys.schema
     for c in unkeyed:
         dead = keys.dead.get(c)
-        key = (c,) if c in schema.groups else schema.axis_key(c)
-        if dead is None or not set(key) <= set(rel.columns):
+        if dead is None or c not in rel.columns:
             continue
         rel = rel.set_alias("r").join(
-            dead.set_alias("x"), null_safe("r", "x", key), how="anti"
+            dead.set_alias("x"), null_safe("r", "x", (c,)), how="anti"
         )
     return rel
 
@@ -527,7 +518,7 @@ def _deleted_relation(
     keys: Coords,
     con: DuckDBPyConnection,
     *,
-    fixed: tuple[str, ...],
+    fixed: str,
 ) -> DuckDBPyRelation:
     """One layer's tombstones of one membership, keyed as the map they filter.
 
@@ -544,8 +535,8 @@ def _deleted_relation(
     rel
         The layer's rows of that membership, or `None` where it has none.
     fixed
-        The key columns: a dim's `axis_key` for a label, the group's struct
-        column for a group.
+        The key column: the dim for a label, the group's struct column for a
+        group.
 
     Notes
     -----
@@ -554,8 +545,8 @@ def _deleted_relation(
     """
     schema = keys.schema
     if rel is None or "deleted" not in rel.columns:
-        return _empty_relation(schema, con, *fixed)
-    return rel.filter(col("deleted")).project(*(col(c) for c in fixed)).distinct()
+        return _empty_relation(schema, con, fixed)
+    return rel.filter(col("deleted")).project(col(fixed)).distinct()
 
 
 def cast_declared(
@@ -728,19 +719,11 @@ def fold_inputs(
     # Each membership this layer tombstones anti-joins `parent`, keyed as it is
     # in `input_key` (https://energy-models.github.io/datarecord/design/read-path/#owner-map).
     keyed = set(schema.input_key)
-    # A partial dim's `axis_key` is always in `input_key`, so a miss there is a
-    # nested dim whose parents the schema failed to keep in the fold key, and
-    # the assert names it.
     partial_dims = [d for d in schema.partial or () if d in schema.dimensions]
-    for d in partial_dims:
-        assert keyed.issuperset(schema.axis_key(d)), (
-            f"partial dim keyed by {schema.axis_key(d)} outruns `input_key` "
-            f"{schema.input_key}; a nested dim needs its parents in the fold key"
-        )
     memberships = [
         *(
             (
-                _deleted_relation(source.group(g), keys, con, fixed=(g,)),
+                _deleted_relation(source.group(g), keys, con, fixed=g),
                 null_safe("x", "p", (g,)),
             )
             for g in schema.group_columns
@@ -748,8 +731,8 @@ def fold_inputs(
         ),
         *(
             (
-                _deleted_relation(source.axis(d), keys, con, fixed=schema.axis_key(d)),
-                null_safe("x", "p", schema.axis_key(d)),
+                _deleted_relation(source.axis(d), keys, con, fixed=d),
+                null_safe("x", "p", (d,)),
             )
             for d in partial_dims
         ),

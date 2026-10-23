@@ -13,7 +13,6 @@ class Dimension(BaseModel):
     """One axis attribute data may vary over."""
 
     dtype: str  # the axis labels' type
-    within: frozenset[str] = frozenset()  # labels unique only within these dims
     unit: str | None = None  # what the labels measure, if anything
     description: str | None = None  # what the axis is, in prose
 
@@ -92,7 +91,7 @@ It is stored and never interpreted, since none of it describes the dimensioned d
 
 Every dim is declared: a record with `region`, `technology` or `vintage` needs no code change, and `dtype` is the axis's own property.
 
-A `Dimension` declares the axis's shape — its type and its [nesting](#within-an-axis-inside-an-axis).
+A `Dimension` declares the axis's shape — its type. [A dim is flat](#a-dim-is-flat).
 It does not declare which dims an _attribute_ varies over (that is [per attribute](#attributespec)), nor [the patch granularity](#partial-the-granularity-of-an-override), nor [order](record.md#axis-order), nor what describes or classifies its labels — its [properties](#properties) say that, and [a group `into` it](#into-a-group-that-classifies) from the relation's side.
 
 ## `AttributeSpec`
@@ -181,11 +180,19 @@ properties = {
 
 **An attribute is data**: what a model reads as part of its problem and what a layer would vary. Which a name is, is the author's declaration rather than derived from its shape; a tool reads it from its registry where it can ([PyPSA](tools.md)).
 
-**A property's name is its subject's.** One name is one spec for attributes and results, each one file with one `value` dtype ([flat attributes](#attributespec)). A property is a column of its subject's file, so its name is unique there only: `x` on `bus` beside an attribute `x` — a line's reactance — and `carrier` on `entity`, on `bus` and as a dim. Refused at load are a property named like a column of its subject's key — the dim, a [`within`](#within-an-axis-inside-an-axis) parent, a group's struct column or its [`into`](#into-a-group-that-classifies) — and a group's property named like one of its coordinates, the keywords a tuple is addressed by. Two spellings differing only in case stay refused record-wide ([names](#names)).
+**A property's name is its subject's.** One name is one spec for attributes and results, each one file with one `value` dtype ([flat attributes](#attributespec)). A property is a column of its subject's file, so its name is unique there only: `x` on `bus` beside an attribute `x` — a line's reactance — and `carrier` on `entity`, on `bus` and as a dim. Refused at load are a property named like a column of its subject's key — the dim, a group's struct column or its [`into`](#into-a-group-that-classifies) — and a group's property named like one of its coordinates, the keywords a tuple is addressed by. Two spellings differing only in case stay refused record-wide ([names](#names)).
 
 **A property is addressed as `subject.name`** — `entity.component`, `bus.x`, `connection.role` — wherever a caller names one: [`set`](working-record.md#set), a [trait](#traits)'s `on` and bundle, a [`default_by`](#default_by-a-default-per-category) key, `default_for`. A plain name is an attribute or result, never a property, however few subjects declare it, so its meaning does not change when another subject declares it later. `Schema.resolve(name)` returns the `AttributeSpec`, or the subject and the `PropertySpec`, and refuses an unknown plain name naming the dotted forms of the properties so called. A column keeps its plain name: the frames of `properties[subject]` and the categories [`flags`](record.md#flags) and `attributes_for` take are each read against one subject already, and a [selector keyword](working-record.md#set) is bare — a coordinate of the attribute first, else any property of a dim the attribute reaches.
 
 **A property may be `into` a dim**: its values are that dim's labels and its `dtype` is the dim's, so `entity.carrier` and `bus.carrier` above name labels of `carrier`, `bus.country` one of `country`, and any subject may declare one. A stored value that is not NULL must name a live label, checked where a group's field is: [`set` and `add`](working-record.md#validation) refuse one the record as staged lacks, the [writer](layers.md#deletion) a layer storing one it removed, and [`remove`](working-record.md#add-remove) a label one still names. NULL names none. Refused at load are `into` an undeclared dim and a `dtype` other than the dim's. It does not [categorize](#categories-an-enum-property-of-a-partial-dim): a category is a declared `Enum`, a label is data a layer adds and removes. One coordinate classified [`into`](#into-a-group-that-classifies) a dim is such a property, never a group.
+
+A classification is **single-valued by declaration** rather than by construction, which is the whole of what `into` adds — a many-to-many classification is an ordinary group, and expressible as one.
+
+**A chain is not denormalised.** bus→state→country is two properties, `bus.state` and `state.country`, never a `country` column on `dims/bus.parquet`. Two columns asserting bus→country would let a layer restating the states leave every bus's country stale with nothing to detect it, so the chain is a join over two axis files.
+
+**The record does not resolve across levels.** An attribute over `country` is handed back keyed by country; projecting it down to buses is a join through the classification, and that is the consumer's work. The fold learns no new operation.
+
+Membership could not vary along a classification either, if it varied along anything: whether an entity exists in Germany is already settled by its bus and that bus's country, so there would be no freedom for it to vary independently ([existence does not vary](#existence-does-not-vary-along-a-dim)).
 
 **Why the split.** Without it, where a value is stored follows how many coordinates address it rather than what it is: `p_nom`, data a model optimises against, and `carrier`, a label describing a generator, would both be columns of the entity axis, and widening `p_nom` to `dims: [entity, scenario]` — a [compatible](#versioning) change — would move it to `inputs/p_nom.parquet`, away from the rows earlier layers wrote.
 
@@ -377,52 +384,40 @@ That is a deliberate narrowing. An earlier `Dimension.keys` declared exactly thi
 
 What remains is the distinction that was doing the useful work: a **value** may vary along an axis where the **thing** may not. A stochastic network holding a different `capital_cost` per scenario is expressing exactly that, and it is an attribute with `dims = {"entity", "scenario"}` — long rows in `inputs/`, not an entity that exists twice. [Where a value lives](format.md#where-a-value-lives) already places it.
 
-## `within` — an axis inside an axis
+## A dim is flat
 
-A dim whose labels identify a point only _within_ another dim's value.
-Multi-period time is the case: the axis is a `(period, timestep)` pair, so `t1` alone names nothing and two periods may hold different timesteps.
+Every dim is one label set, keyed by its label alone: `dims/<dim>.parquet` is keyed by the one column `<dim>`, `record.dims[dim]` is that column, and its labels are unique across the dim.
+
+**A label scoped per parent is a flat label and a property [`into`](#properties) the parent.** The source picks the labels; they need only be unique across the dim. What the source called the point inside its parent, if it matters, is a further property. A chain is a chain of such properties, [not denormalised](#properties); several parents are several.
+
+| scoped per parent                     | declared flat                                                        |
+| ------------------------------------- | -------------------------------------------------------------------- |
+| `timestep` `within` `period`          | `snapshot`; `snapshot.period` `into` `period`; `snapshot.timestep`   |
+| `timestep` in `period` in `horizon`   | `snapshot.period` `into` `period`; `period.horizon` `into` `horizon` |
+| `timestep` `within` `{period, stage}` | `snapshot.period` `into` `period`; `snapshot.stage` `into` `stage`   |
 
 ```python
-dimensions = {
-    "period": Dimension(dtype="int64"),
-    "timestep": Dimension(dtype="datetime64[us]", within={"period"}),
-}
+schema = Schema(
+    dimensions={
+        "entity": Dimension(dtype="str"),
+        "period": Dimension(dtype="int64"),
+        "snapshot": Dimension(dtype="int64"),
+    },
+    properties={
+        "snapshot": {
+            "period": PropertySpec(into="period"),
+            "timestep": PropertySpec(dtype="datetime64[us]"),
+        }
+    },
+    attributes={
+        "p_max_pu": AttributeSpec(dtype="float64", dims={"entity", "snapshot"})
+    },
+)
 ```
 
-`within` makes `timestep.parquet` carry a `period` column, and the axis key `(period, timestep)` rather than `timestep`.
-It is on `Dimension` because nesting is structural — true of the data however stored, so a directory record needs it exactly as much as a layered one.
+**Selecting by a parent is a selector keyword.** One is bare and matches any property of a dim the attribute reaches ([`set`](working-record.md#set)), so `period=2030` on `p_max_pu` picks the snapshots whose `snapshot.period` is 2030, and `timestep=t0` the snapshot at `t0` in every period. Two reached dims both declaring `period` stay refused.
 
-A **set**, because two different things could each be one parent:
-
-- _Chained_ — `timestep` in `period` in `horizon`.
-  Each dim names its immediate parent and the chain is walked, giving `(horizon, period, timestep)`.
-- _Several direct parents_ — `timestep` identified only within a `(period, stage)` pair, where neither contains the other.
-  This is what a multi-stage stochastic program with investment periods looks like.
-
-So the axis key is `(*parents, dim)`, parents in declaration order.
-Every name in `within` must be a declared dim, and the nesting graph must be acyclic.
-
-Distinct from `AttributeSpec.dims` despite the similar shape: `dims` names _independent coordinates_ — a value exists at each combination and the set never chains — whereas `within` _qualifies a label_ and is transitive, so naming `period` pulls in `period`'s own parents.
-
-The inner dim is named for the thing it indexes (`timestep`) rather than for the pair (`snapshot`), because once nesting exists the pair needs its own name: a framework consuming the record calls `(period, timestep)` a snapshot.
-
-### `within` is not `into`
-
-Both are acyclic and both relate one dim to another. They mean opposite things:
-
-- **`within`** names a dim's _parents_: its label set is **scoped per parent**, so `t1` in 2015 and `t1` in 2020 are different points and the axis key is `(period, timestep)`.
-- **`into`** names the dim a _property_ or _group_ classifies its subject by: one flat label set, each label or `over` tuple picking one of its labels. `country` is not scoped by `bus`; it is a partition of buses, and its axis key is `country` alone.
-
-Nesting versus classification. `within` cannot express `country`, and `into` cannot express `timestep`.
-`within` stays on `Dimension` because nesting is a property of the axis itself; `into` is on a property or a `Group` because a classification is a relation: a column of the classified axis, or rows of a group.
-
-A classification is **single-valued by declaration** rather than by construction, which is the whole of what `into` adds — a many-to-many classification is an ordinary group, and expressible as one.
-
-**A chain is not denormalised.** bus→state→country is two properties, `bus.state` and `state.country`, never a `country` column on `dims/bus.parquet`. Two columns asserting bus→country would let a layer restating the states leave every bus's country stale with nothing to detect it, so the chain is a join over two axis files.
-
-**The record does not resolve across levels.** An attribute over `country` is handed back keyed by country; projecting it down to buses is a join through the classification, and that is the consumer's work. The fold learns no new operation.
-
-Membership could not vary along a classification either, if it varied along anything: whether an entity exists in Germany is already settled by its bus and that bus's country, so there would be no freedom for it to vary independently ([existence does not vary](#existence-does-not-vary-along-a-dim)).
+**The scoping belongs to the source's labels, not to the axis.** `t1` names nothing alone because PyPSA reuses it per period, and a source that numbers its snapshots once has no nesting to declare. As a property, the relation is in the one form the record already checks, folds and selects on, and a consumer reads `snapshot.period` exactly as it reads `bus.carrier`. A source whose inner labels repeat across parents synthesises unique ones; "the same timestep in every period" is a selector over `snapshot.timestep`, which stages one row per matching snapshot.
 
 ## `partial` — the granularity of an override
 
@@ -527,7 +522,6 @@ One schema outlives many layers ([above](#one-schema-per-record)), so a change t
 - changing a `dtype`, which includes dropping a category from an `Enum`
 - moving a name between `properties` and `attributes`, or between subjects: it moves the [file](format.md#where-a-value-lives) the value is read from
 - removing from `partial`: a layer that patched one value along that axis is now a partial override of an axis owned whole, which is exactly the hole [`partial`](#partial-the-granularity-of-an-override) forbids
-- changing `within`, since the axis key changes shape
 - a category ceasing to carry an attribute, whether by dropping it or by a trait no longer claiming it for that category: its rows are still in the file, now with no valid reading for that category
 
 Adding a functional group is compatible in the same sense adding any group is: the record gains a file, and until some layer writes it every coordinate reads as unclassified — no row, which is what "no country assigned" means anyway.

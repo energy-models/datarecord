@@ -289,9 +289,8 @@ def _require_living_references(
     first; a layer written otherwise carries both itself. Only what `layer`
     does is checked - the rows it writes, and the rows still naming a label it
     tombstones - so a reference an ancestor left dangling fails no later write.
-    Only a dim keyed by its label alone is checked: a nested dim's label names
-    no point without its parents, which a reference does not carry. A layer
-    writing no referring row and killing no referenced label resolves nothing.
+    A layer writing no referring row and killing no referenced label resolves
+    nothing.
 
     Raises
     ------
@@ -310,7 +309,6 @@ def _require_living_references(
         ),
         *((s, p, col("t", p), d) for (s, p), d in schema.into_properties().items()),
     ]
-    references = [r for r in references if len(schema.axis_key(r[3])) == 1]
     referenced = {dim for *_, dim in references}
     killed = {
         d: tomb
@@ -465,25 +463,15 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         return
 
     if kind == "dims":
-        # A nested axis is keyed by `(*parents, dim)` (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis), so its file needs
-        # a column per parent - without one the fold would key by a column that
-        # is not there, and two periods' identically-labelled timesteps would
-        # resolve as one row. An undeclared dim has no nesting to check: the
-        # schema's vocabulary is what `axis_key` reads, and a source may hand
-        # over an axis the schema does not name.
+        # A source may hand over an axis the schema does not name.
         if key not in schema.dimensions:
             return
-        missing = sorted(set(schema.axis_key(key)) - columns)
-        if missing:
-            msg = (
-                f"dims/{key}.parquet is missing axis key columns {missing}; "
-                f"{key!r} is `within` {sorted(schema.dimensions[key].within)} so "
-                f"its labels identify a point only within them (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)"
-            )
+        if key not in columns:
+            msg = f"dims/{key}.parquet is missing its key column {key!r} (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
             raise ValueError(msg)
         _refuse_extra(
             columns,
-            {*schema.axis_key(key), "deleted", "order_key"},
+            {key, "deleted", "order_key"},
             schema,
             key,
             f"dims/{key}.parquet",
@@ -598,7 +586,7 @@ class _RecordLikeAsLayerData:
         return set(self._frames("dims"))
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        """`dims[dim]` with `properties[dim]` joined on the axis key, in `dims[dim]`'s row order.
+        """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order.
 
         The row is numbered on `dims[dim]` alone, as `fold_axis` numbers a
         layer's, and the `ORDER BY` on it is the outermost clause, since a
@@ -618,7 +606,7 @@ class _RecordLikeAsLayerData:
             .set_alias("a")
             .join(
                 props.set_alias("p"),
-                null_safe("a", "p", self.schema.axis_key(dim)),
+                null_safe("a", "p", (dim,)),
                 how="left",
             )
             .project(

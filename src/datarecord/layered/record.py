@@ -153,18 +153,17 @@ class Record:
 
     def _axis_frame(self, dim: str) -> nw.LazyFrame:
         rel = self._rel(self.resolver.axis(dim), dim)
-        return nw.from_native(rel.project(*(col(k) for k in self.schema.axis_key(dim))))
+        return nw.from_native(rel.project(col(dim)))
 
     def _property_frame(self, subject: str) -> nw.LazyFrame:
         is_group = subject in self.schema.groups
         found = (
             self.resolver.group(subject) if is_group else self.resolver.axis(subject)
         )
-        key = (subject,) if is_group else self.schema.axis_key(subject)
         rel = with_properties(
             self.schema, self._rel(found, subject), subject, self.resolver.con
         )
-        names = (*key, *self.schema.properties[subject])
+        names = (subject, *self.schema.properties[subject])
         return nw.from_native(rel.project(*(col(n) for n in names)))
 
     def _group_frame(self, group: str) -> nw.LazyFrame:

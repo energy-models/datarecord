@@ -38,7 +38,7 @@ def _schema(**overrides) -> Schema:
             "entity": Dimension(dtype=nw.String()),
             "bus": Dimension(dtype=nw.String()),
             "period": Dimension(dtype=nw.Int64()),
-            "timestep": Dimension(dtype=nw.Datetime(), within={"period"}),
+            "timestep": Dimension(dtype=nw.Datetime()),
             "scenario": Dimension(dtype=nw.String()),
         },
         "properties": {
@@ -449,13 +449,6 @@ def test_an_enum_property_categorizes_only_a_partial_dim():
         ),
         pytest.param(
             lambda: _schema(
-                properties={"timestep": {"period": PropertySpec(dtype=nw.Int64())}}
-            ),
-            "named like a column of its key",
-            id="a-within-parents-name",
-        ),
-        pytest.param(
-            lambda: _schema(
                 properties={
                     "connection": {"connection": PropertySpec(dtype=nw.String())}
                 }
@@ -840,77 +833,9 @@ def test_default_by_takes_the_first_key_listing_a_category():
     ], "the order survives `manifest.json`"
 
 
-# -- nesting (https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis) ----------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("dimensions", "dim", "key"),
-    [
-        pytest.param(
-            _schema().dimensions, "timestep", ("period", "timestep"), id="nested"
-        ),
-        pytest.param(_schema().dimensions, "period", ("period",), id="a-parent"),
-        pytest.param(_schema().dimensions, "scenario", ("scenario",), id="unnested"),
-        pytest.param(
-            {
-                "horizon": Dimension(dtype=nw.Int64()),
-                "period": Dimension(dtype=nw.Int64(), within={"horizon"}),
-                "timestep": Dimension(dtype=nw.Datetime(), within={"period"}),
-            },
-            "timestep",
-            ("horizon", "period", "timestep"),
-            id="transitive",
-        ),
-        pytest.param(
-            {
-                "period": Dimension(dtype=nw.Int64()),
-                "stage": Dimension(dtype=nw.String()),
-                "timestep": Dimension(dtype=nw.Datetime(), within={"period", "stage"}),
-            },
-            "timestep",
-            ("period", "stage", "timestep"),
-            id="several-direct-parents",
-        ),
-    ],
-)
-def test_axis_key_is_parents_then_dim(dimensions, dim, key):
-    """A nested axis's labels identify only within its parents.
-
-    Naming a parent pulls in that parent's own parents, and `within` is a set,
-    since two axes may each qualify a label without containing each other.
-
-    Notes
-    -----
-    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
-    """
-    assert Schema(dimensions=dimensions).axis_key(dim) == key
-
-
 @pytest.mark.parametrize(
     ("build", "match"),
     [
-        pytest.param(
-            lambda: Schema(
-                dimensions={"timestep": Dimension(dtype=nw.Datetime(), within={"nope"})}
-            ),
-            "undeclared",
-            id="nesting-names-an-undeclared-dim",
-        ),
-        pytest.param(
-            lambda: Schema(
-                dimensions={
-                    "a": Dimension(dtype=nw.Int64(), within={"b"}),
-                    "b": Dimension(dtype=nw.Int64(), within={"a"}),
-                }
-            ),
-            "cyclic",
-            id="cyclic-nesting",
-        ),
-        pytest.param(
-            lambda: Schema(dimensions={"a": Dimension(dtype=nw.Int64(), within={"a"})}),
-            "within` itself",
-            id="within-itself",
-        ),
         pytest.param(
             lambda: Schema(
                 dimensions={"scenario": Dimension(dtype=nw.String())},
@@ -922,7 +847,7 @@ def test_axis_key_is_parents_then_dim(dimensions, dim, key):
     ],
 )
 def test_a_dim_reference_must_resolve(build, match):
-    """`within` and an attribute's `dims` name declared dims, nesting acyclically."""
+    """An attribute's `dims` name declared dims."""
     with pytest.raises(ValidationError, match=match):
         build()
 
@@ -1048,17 +973,6 @@ _LABELLED = _with_entity_property("label", PropertySpec(dtype=nw.String()))
             ),
             "category 'Generator' of 'component' on 'entity' no longer carries ['label']",
             id="a-category-losing-a-property",
-        ),
-        pytest.param(
-            _schema(),
-            _schema(
-                dimensions={
-                    **_schema().dimensions,
-                    "timestep": Dimension(dtype=nw.Datetime()),
-                }
-            ),
-            "nesting changed",
-            id="changing-nesting",
         ),
     ],
 )

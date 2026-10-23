@@ -531,24 +531,18 @@ def test_a_write_rejects_a_group_struct_not_of_its_key(store):
         store.root(source)
 
 
-def test_a_write_rejects_a_nested_axis_without_its_parent(store):
-    """A `within` dim's file needs a column per parent, or the fold miskeys it.
-
-    `snapshot within period` makes the axis key `(period, snapshot)`, so a
-    `snapshot.parquet` carrying only timestamps would fold two periods'
-    identically labelled hours into one row.
+def test_a_write_rejects_an_axis_without_its_key_column(store):
+    """An axis file is keyed by its dim's column; one without it labels nothing.
 
     Notes
     -----
-    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    nested = schema(within={"snapshot": {"period"}})
     source = _Source(
-        nested,
-        dims={"snapshot": pd.DataFrame({"snapshot": pd.to_datetime(["2020-01-01"])})},
+        schema(), dims={"snapshot": pd.DataFrame({"period": pd.array([2030])})}
     )
 
-    with pytest.raises(ValueError, match="axis key columns.*period"):
+    with pytest.raises(ValueError, match="missing its key column 'snapshot'"):
         store.root(source)
     _nothing_reachable(store)
 

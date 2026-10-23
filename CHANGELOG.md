@@ -20,8 +20,8 @@ All notable changes to datarecord are documented here. The format follows
     `default_by` keys (`{"entity.component": {...}}`). One name, one spec
     now holds across attributes and results only, so a property may share
     its name with an attribute, a dim or another subject's property; one
-    named like its subject's key (the dim, a `within` parent, a group's
-    struct column or `into`), or a group's property named like one of its
+    named like its subject's key (the dim, a group's struct column or
+    `into`), or a group's property named like one of its
     coordinates, is refused. A plain name is an attribute or result, one
     only properties are called refused naming their dotted forms.
     `Schema.resolve(name)` replaces `subject_of` and `property_spec`, and
@@ -182,6 +182,15 @@ All notable changes to datarecord are documented here. The format follows
 
 - **`set` no longer takes an expression** (breaking): compute the new
   values from `attributes[name]` and `set` the frame.
+- **A dim is flat** (breaking): `Dimension.within` is gone and every axis is
+  keyed by its label alone. A nested dim becomes a property `into` the
+  parent dim (`snapshot.period` into `period`), with labels unique across
+  the dim. Every earlier manifest carries `within`, if only as `[]`, so none
+  loads: drop the key, or re-export the record.
+  `add` takes no parent keys, and `set` on a property, `remove`'s refusal and
+  group cascade, the writer's live-label check and the label and trait check
+  of `set` now cover every dim. `Schema.axis_key` is gone. `PyPSA.results`
+  no longer carries an always-NULL `period` column.
 
 ### Fixed
 
