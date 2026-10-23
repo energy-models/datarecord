@@ -17,10 +17,10 @@ from datarecord import (
     AttributeSpec,
     Dimension,
     Flags,
-    Frames,
-    LazyFrames,
+    LazyRelations,
     Record,
     RecordLike,
+    Relations,
     Revision,
     Schema,
     Store,
@@ -29,10 +29,10 @@ from datarecord import (
 )
 ```
 
-| page                        | symbols                                                 |
-| --------------------------- | ------------------------------------------------------- |
-| [Record](record.md)         | `Record`, `RecordLike`, `Frames`, `LazyFrames`, `Flags` |
-| [Schema](schema.md)         | `Schema`, `Dimension`, `AttributeSpec`                  |
-| [Layered](layered.md)       | `Workspace`, `Store`, `Revision`                        |
-| [WorkingRecord](mutable.md) | `WorkingRecord`                                         |
-| [Tools](tools.md)           | `Tool`, `Requirements`, the PyPSA tool                  |
+| page                        | symbols                                                       |
+| --------------------------- | ------------------------------------------------------------- |
+| [Record](record.md)         | `Record`, `RecordLike`, `Relations`, `LazyRelations`, `Flags` |
+| [Schema](schema.md)         | `Schema`, `Dimension`, `AttributeSpec`                        |
+| [Layered](layered.md)       | `Workspace`, `Store`, `Revision`                              |
+| [WorkingRecord](mutable.md) | `WorkingRecord`                                               |
+| [Tools](tools.md)           | `Tool`, `Requirements`, the PyPSA tool                        |

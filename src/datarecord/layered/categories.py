@@ -9,7 +9,7 @@ combination a relation holds.
 
 Notes
 -----
-- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
+- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
 - [default_by](https://energy-models.github.io/datarecord/design/schema/#default_by-a-default-per-category)
 """
 
@@ -25,7 +25,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb import StarExpression as star
 
-from datarecord.duck import DuckTypes, ex_all, null_safe
+from datarecord.duck import ex_all, null_safe
 from datarecord.schema import Schema
 
 Categories = Mapping[str, "str | Sequence[str]"]
@@ -45,7 +45,7 @@ def categorized_dim(schema: Schema, categories: Categories) -> str:
         k for k in categories if not any(k in schema.categorizing(d) for d in dims)
     )
     if unknown:
-        msg = f"{unknown} categorize no dim; a category is an Enum property of a partial dim"
+        msg = f"{unknown} categorize no dim; a categorizing property is a property of a `partial` dim that takes its labels from a dim listing its labels"
         raise ValueError(msg)
     if len(dims) != 1:
         msg = f"{sorted(categories)} categorize several dims {sorted(dims)}; name one dim's"
@@ -94,14 +94,12 @@ def with_defaults(
     """`rel` projected to `subject` and `names`, an unset name read as its default."""
     if not names:
         return rel.project(col(subject))
-    duck = DuckTypes(con)
 
     def columns(cats: dict[str, str]) -> list[Expression]:
         return [
-            duck.lit(
-                schema.default_for(f"{subject}.{n}", **cats),
-                schema.properties[subject][n].dtype,
-            ).alias(f"_default_{n}")
+            lit(schema.default_for(f"{subject}.{n}", **cats))
+            .cast(schema.duck_type(schema.properties[subject][n]))
+            .alias(f"_default_{n}")
             for n in names
         ]
 
@@ -112,16 +110,18 @@ def with_defaults(
 
 
 def with_properties(
-    schema: Schema, rel: DuckDBPyRelation, subject: str, con: DuckDBPyConnection
+    schema: Schema, rel: DuckDBPyRelation, subject: str
 ) -> DuckDBPyRelation:
     """`rel` with each property of `subject` it lacks added as a typed NULL."""
     missing = [n for n in schema.properties.get(subject, {}) if n not in rel.columns]
     if not missing:
         return rel
-    duck = DuckTypes(con)
     return rel.project(
         star(),
-        *(duck.null(schema.properties[subject][n].dtype).alias(n) for n in missing),
+        *(
+            lit(None).cast(schema.duck_type(schema.properties[subject][n])).alias(n)
+            for n in missing
+        ),
     )
 
 

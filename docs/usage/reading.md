@@ -14,16 +14,17 @@ Everything a consumer codes against. It is read-only, and structural — a plain
 record.schema  # what may exist: the axes, the properties, the attributes
 record.dims["entity"]  # axis labels, keyed by dim
 record.properties["entity"]  # stored property values, keyed by dim or group
-record.groups["connection"]  # group rows, keyed by group — one frame each
-record.attributes["p_max_pu"]  # long frames, results included, keyed by attribute
+record.groups["connection"]  # group rows, keyed by group — one relation each
+record.attributes["p_max_pu"]  # long relations, results included, keyed by attribute
 record.flags(ctype="Generator")  # which axes each attribute actually uses
 ```
 
-Every frame is a `narwhals.LazyFrame` — a plan, not data. Nothing is read until you `.collect()`, and listing the keys reads nothing at all ([design](../design/record.md#frames)).
+Every value is a `duckdb.DuckDBPyRelation` on `record.con` — a plan, not data. Nothing is read until you fetch it, with `.df()`, `.pl()` or `.to_arrow_table()`, and listing the keys reads nothing at all ([design](../design/record.md#relations)).
 
 ```python
 entities = record.properties["entity"]
-gens = entities.filter(nw.col("ctype") == "Generator").collect().to_pandas()
+gens = entities.filter("ctype = 'Generator'").df()
+p_nom = record.attributes["p_nom"].filter("value > 0").df()
 ```
 
 ## Labels and properties
@@ -37,7 +38,7 @@ record.properties["snapshot"]  # snapshot | period | timestep
 
 `properties[subject]` is a dim's or a group's key with every property declared for it, **as stored**: a NULL is a value no layer wrote.
 
-One category's labels are `properties[dim]` filtered on a categorizing property — an `Enum` property of a `partial` dim. They carry every property of the dim, and an unset one's default, `default_by` per category included, is `Schema.default_for("entity.sign", **categories)` — a property named by its subject, the categories by their plain names, as the frame's columns are ([design](../design/record.md#properties-and-categories)).
+One category's labels are `properties[dim]` filtered on a categorizing property — a property of a `partial` dim that takes its labels from a dim listing them. They carry every property of the dim, and an unset one's default, `default_by` per category included, is `Schema.default_for("entity.sign", **categories)` — a property named by its subject, the categories by their plain names, as the frame's columns are ([design](../design/record.md#properties-and-categories)).
 
 ## Wide and long
 
@@ -78,7 +79,7 @@ from datarecord import Workspace
 
 ws = Workspace()
 record = ws.at("s3://bucket/my-record/")
-record.attributes["p_nom"].collect()
+record.attributes["p_nom"].df()
 ```
 
 The layout is the whole format ([design](../design/format.md)):

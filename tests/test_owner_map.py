@@ -328,19 +328,11 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
     write_schema(
         Schema(
             dimensions={
-                "entity": {"dtype": "String"},
-                "snapshot": {"dtype": "Int64"},
+                "entity": {"dtype": "str"},
+                "snapshot": {"dtype": "int"},
             },
-            properties={
-                "entity": {
-                    "ctype": {
-                        "dtype": {"Enum": ["Generator"]},
-                    }
-                }
-            },
-            attributes={
-                "p_max_pu": {"dtype": "Float64", "dims": ["entity", "snapshot"]}
-            },
+            properties={"entity": {"ctype": {"dtype": "str"}}},
+            attributes={"p_max_pu": {"dtype": "float", "dims": ["entity", "snapshot"]}},
             partial=frozenset({"entity", "snapshot"}),
         ),
         store,
@@ -361,7 +353,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
     )
     revision = base.child(staged.edits)
 
-    rel = revision.record.attributes["p_max_pu"].to_native()
+    rel = revision.record.attributes["p_max_pu"]
     stored = len(names) * snapshots
     assert rel.count("*").fetchone() == (stored,), "one row per stored value"
     assert _largest_intermediate(store, rel) <= stored, (
@@ -383,19 +375,13 @@ def test_the_fold_broadcasts_by_hash_join(store):
     write_schema(
         Schema(
             dimensions={
-                "entity": {"dtype": "String"},
-                "snapshot": {"dtype": "Int64"},
+                "entity": {"dtype": "str"},
+                "snapshot": {"dtype": "int"},
             },
-            properties={
-                "entity": {
-                    "ctype": {
-                        "dtype": {"Enum": ["Generator"]},
-                    }
-                }
-            },
+            properties={"entity": {"ctype": {"dtype": "str"}}},
             attributes={
-                "p_max_pu": {"dtype": "Float64", "dims": ["entity", "snapshot"]},
-                "weight": {"dtype": "Float64", "dims": ["snapshot"]},
+                "p_max_pu": {"dtype": "float", "dims": ["entity", "snapshot"]},
+                "weight": {"dtype": "float", "dims": ["snapshot"]},
             },
             partial=frozenset({"entity", "snapshot"}),
         ),

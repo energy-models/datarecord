@@ -9,15 +9,19 @@ Notes
 - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)
 """
 
-import narwhals as nw
+import re
+
+import numpy as np
 import pandas as pd
+import polars as pl
+import pyarrow as pa
 import pytest
 
 from datarecord import Workspace
-from datarecord.layered.record import Record
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.layered.sources import ParquetLayer
 from datarecord.mutable import WorkingRecord, normalise_value
+from datarecord.record import Record
 from datarecord.schema import (
     AttributeSpec,
     Dimension,
@@ -67,6 +71,7 @@ def _small(store, **declared):
     write_schema(schema(**declared), store)
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
+    staged.add("ctype", [GEN, "Bus"])
     staged.add("entity", ["Manchester Wind", "Norway Wind"], ctype=GEN)
     staged.add("entity", ["Norway"], ctype="Bus")
     staged.add("bus", ["Norway"])
@@ -98,7 +103,7 @@ def _layer_axis(revision, dim):
 
 def _unpacked(frame, group="connection"):
     """A group attribute's rows with the group's struct spread flat, as pandas."""
-    native = frame.collect().to_native().to_pandas()
+    native = frame.df()
     fields = pd.DataFrame(native.pop(group).tolist(), index=native.index)
     return pd.concat([fields, native], axis=1)
 
@@ -201,7 +206,7 @@ def test_a_staged_edit_is_visible_through_the_record(staged):
     """
     staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
 
-    rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    rows = staged.attributes["p_max_pu"].df()
     mine = rows[rows["entity"] == "Manchester Wind"]
     assert set(mine["value"]) == {0.42}
     assert mine["snapshot"].isna().all(), (
@@ -222,7 +227,7 @@ def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, root):
 
     Notes
     -----
-    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
+    - [relations](https://energy-models.github.io/datarecord/design/record/#relations)
     """
     staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
     first = staged.attributes["p_max_pu"]
@@ -231,8 +236,8 @@ def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, root):
     second = staged.attributes["p_min_pu"]
 
     # Collected only now, after the second frame was built.
-    got_first = first.collect().to_native().to_pandas()
-    got_second = second.collect().to_native().to_pandas()
+    got_first = first.df()
+    got_second = second.df()
     assert set(got_first["attribute"]) == {"p_max_pu"}
     assert 0.42 in set(got_first["value"])
     assert set(got_second["attribute"]) == {"p_min_pu"}
@@ -277,6 +282,119 @@ def test_set_rejects_an_unknown_name(staged, value, kwargs):
         staged.set("p_max_pu", value, **kwargs)
 
 
+_SNAPSHOT = "does not fit 'snapshot' of dtype datetime"
+_ENTITY = "does not fit 'entity' of dtype str"
+
+
+@pytest.mark.parametrize(
+    ("edit", "match"),
+    [
+        pytest.param(
+            lambda s: s.set(
+                "p_max_pu",
+                pd.Series({"2030-01-01": 0.4}).rename_axis("snapshot"),
+                entity="Manchester Wind",
+            ),
+            _SNAPSHOT,
+            id="series-index",
+        ),
+        pytest.param(
+            lambda s: s.set(
+                "p_max_pu", {"2030-01-01": 0.4}, entity="Manchester Wind", scenario=None
+            ),
+            _SNAPSHOT,
+            id="mapping-keys",
+        ),
+        pytest.param(
+            lambda s: s.set("p_max_pu", 0.4, entity="Manchester Wind", snapshot=5),
+            _SNAPSHOT,
+            id="selector-keyword",
+        ),
+        pytest.param(
+            lambda s: s.set("p_nom", 1.0, entity=[1]),
+            _ENTITY,
+            id="selector-keyword-list",
+        ),
+        pytest.param(
+            lambda s: s.set("p_nom", 1.0, entity=[1, "Manchester Wind"]),
+            _ENTITY,
+            id="selector-keyword-mixed",
+        ),
+        pytest.param(
+            lambda s: s.set("entity.ctype", {1: GEN}),
+            _ENTITY,
+            id="property-mapping-keys",
+        ),
+        pytest.param(
+            lambda s: s.set("connection.role", "input", bus=5),
+            "does not fit 'bus' of dtype str",
+            id="group-keyword",
+        ),
+        pytest.param(
+            lambda s: s.set("connection.role", "input", entity=[1]),
+            _ENTITY,
+            id="group-keyword-list",
+        ),
+        pytest.param(
+            lambda s: s.add("snapshot", ["2030-01-01"]),
+            _SNAPSHOT,
+            id="add",
+        ),
+        pytest.param(
+            lambda s: s.add("snapshot", [1, pd.Timestamp("2030-01-01")]),
+            _SNAPSHOT,
+            id="add-mixed",
+        ),
+        pytest.param(
+            lambda s: s.add("carrier", [1, "x"]),
+            "does not fit 'carrier' of dtype str",
+            id="add-mixed-str",
+        ),
+        pytest.param(
+            lambda s: s.add("entity", ["zz"], carrier=5),
+            "does not fit 'carrier' of dtype str",
+            id="add-a-property-taking-labels-from-a-dim",
+        ),
+        pytest.param(
+            lambda s: s.add("ctype", [5]),
+            """does not fit 'ctype' of dtype {"dtype": "str", "one_of":""",
+            id="add-to-a-dim-listing-labels",
+        ),
+        pytest.param(
+            lambda s: s.remove("entity", [1]),
+            _ENTITY,
+            id="remove",
+        ),
+    ],
+)
+def test_a_label_of_a_type_that_does_not_fit_its_dim_is_refused(staged, edit, match):
+    """A label is held to its dim's dtype as a frame's column is, never parsed into it.
+
+    Notes
+    -----
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    """
+    with pytest.raises(ValueError, match=re.escape(match)):
+        edit(staged)
+
+
+@pytest.mark.parametrize(
+    ("dim", "labels"),
+    [
+        pytest.param(
+            "snapshot",
+            pd.date_range("2031-01-01", periods=2, freq="h"),
+            id="nanosecond-timestamps",
+        ),
+        pytest.param("period", [np.int64(2040)], id="numpy-int"),
+    ],
+)
+def test_a_label_its_dtype_widens_is_taken(staged, dim, labels):
+    """A label of a type its dtype widens, as a frame's column is, is staged."""
+    staged.add(dim, labels)
+    assert set(labels) <= set(staged.dims[dim].df()[dim]), "staged as given"
+
+
 def test_set_accepts_a_name_staged_by_add(staged, root):
     """`add` makes the name exist, so a value for it is no longer unknown.
 
@@ -306,13 +424,13 @@ def test_a_pointwise_edit_keeps_the_rest_of_the_series(staged):
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
     """
-    base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    base = staged.attributes["p_max_pu"].df()
     mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
     one = mine.iloc[[0]][["entity", "snapshot"]].assign(value=0.123)
 
     staged.set("p_max_pu", one)
 
-    rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    rows = staged.attributes["p_max_pu"].df()
     got = rows[rows["entity"] == "Manchester Wind"].sort_values("snapshot")
     assert len(got) == len(mine)
     assert got.iloc[0]["value"] == 0.123
@@ -327,8 +445,8 @@ def test_set_with_no_names_over_a_non_partial_dim_stays_one_row(store):
     """
     write_schema(
         Schema(
-            dimensions={"entity": Dimension(dtype=nw.String())},
-            attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"})},
+            dimensions={"entity": Dimension(dtype="str")},
+            attributes={"p_nom": AttributeSpec(dtype="float", dims={"entity"})},
             partial=frozenset(),
         ),
         store,
@@ -341,8 +459,7 @@ def test_set_with_no_names_over_a_non_partial_dim_stays_one_row(store):
 
     staged = WorkingRecord(root.record)
     staged.set("p_nom", 9.0)
-    rows = root.child(staged.edits).record.attributes["p_nom"].collect()
-    rows = rows.to_native().to_pandas()
+    rows = root.child(staged.edits).record.attributes["p_nom"].df()
     assert rows["entity"].isna().all(), "one broadcast row, not one per label"
     assert rows["value"].tolist() == [9.0]
 
@@ -350,7 +467,7 @@ def test_set_with_no_names_over_a_non_partial_dim_stays_one_row(store):
 def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     """A staged row's dims join the flags, unioned with the base answer.
 
-    `flags` is the one non-`Frames` member of `Record`, so the promise that a
+    `flags` is the one non-`Relations` member of `Record`, so the promise that a
     read reflects pending edits has to hold for it too - and it decides which
     container a consumer puts a value in (`PyPSA.build` splits static from
     series on exactly this). `marginal_cost` starts broadcast over `snapshot`
@@ -445,14 +562,12 @@ def test_a_non_float_attribute_stages_and_commits(store):
     """
     root = _small(store)
     amended = read_schema(store)
-    amended.attributes["fuel"] = AttributeSpec(
-        dtype=nw.String(), dims={"entity", "scenario"}
-    )
+    amended.attributes["fuel"] = AttributeSpec(dtype="str", dims={"entity", "scenario"})
     write_schema(amended, store)
 
     staged = WorkingRecord(root.record)
     staged.set("fuel", "solar", entity=["Manchester Wind"])
-    rows = staged.attributes["fuel"].collect().to_native().to_pandas()
+    rows = staged.attributes["fuel"].df()
     assert rows[rows["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
 
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
@@ -461,7 +576,7 @@ def test_a_non_float_attribute_stages_and_commits(store):
     )
 
     child = root.child(staged.edits)
-    got = child.record.attributes["fuel"].collect().to_native().to_pandas()
+    got = child.record.attributes["fuel"].df()
     assert got[got["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
 
 
@@ -483,7 +598,7 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
     - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    base = staged.attributes["p_max_pu"].df()
     mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
     assert len(mine) > 2, "the series needs an untouched middle to keep"
 
@@ -512,13 +627,13 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
 
 def _entity_axis(record):
     """The record's resolved `properties["entity"]`, indexed by label, as pandas."""
-    frame = record.properties["entity"].collect().to_native().to_pandas()
+    frame = record.properties["entity"].df()
     return frame.set_index("entity")
 
 
 def _entity_values(record, attribute):
     """`attribute`'s rows naming an entity alone - every other coordinate NULL - by label."""
-    rows = record.attributes[attribute].collect().to_native().to_pandas()
+    rows = record.attributes[attribute].df()
     others = [c for c in rows.columns if c not in ("entity", "attribute", "value")]
     return rows[rows[others].isna().all(axis=1)].set_index("entity")["value"]
 
@@ -537,24 +652,26 @@ def units(store):
     write_schema(
         Schema(
             dimensions={
-                "unit": Dimension(dtype=nw.String()),
-                "hour": Dimension(dtype=nw.Int64()),
+                "unit": Dimension(dtype="str"),
+                "hour": Dimension(dtype="int"),
+                "tech": Dimension(one_of=["plant", "node"]),
             },
             properties={
                 "unit": {
-                    "tech": PropertySpec(dtype=nw.Enum(["plant", "node"])),
-                    "site": PropertySpec(dtype=nw.String()),
+                    "tech": PropertySpec(one_of="tech"),
+                    "site": PropertySpec(dtype="str"),
                 }
             },
             attributes={
-                "output": AttributeSpec(dtype=nw.Float64(), dims={"unit", "hour"}),
-                "demand": AttributeSpec(dtype=nw.Float64(), dims={"hour"}),
+                "output": AttributeSpec(dtype="float", dims={"unit", "hour"}),
+                "demand": AttributeSpec(dtype="float", dims={"hour"}),
             },
             partial=frozenset({"unit"}),
         ),
         store,
     )
     staged = WorkingRecord(empty_root(store).record)
+    staged.add("tech", ["plant", "node"])
     staged.add(
         "unit",
         ["p1", "p2", "n1"],
@@ -565,7 +682,7 @@ def units(store):
 
 
 def _unit_axis(record):
-    return record.properties["unit"].collect().to_native().to_pandas().set_index("unit")
+    return record.properties["unit"].df().set_index("unit")
 
 
 def test_set_may_change_a_category(units):
@@ -597,21 +714,28 @@ def test_set_may_change_a_category(units):
             ("unit.tech", "mill"),
             {"unit": "p1"},
             ValueError,
-            "'tech' values \\['mill'\\]",
+            "'tech' labels \\['mill'\\]",
         ),
         (
             "add",
             ("unit", ["m"]),
             {"tech": "mill"},
             ValueError,
-            "'tech' values \\['mill'\\]",
+            "'tech' labels \\['mill'\\]",
         ),
         (
             "set",
             ("output", 1.0),
             {"tech": "mill", "hour": [0]},
             ValueError,
-            "'tech' values \\['mill'\\]",
+            "'tech' labels \\['mill'\\]",
+        ),
+        (
+            "add",
+            ("tech", ["mill"]),
+            {},
+            ValueError,
+            "'tech' labels \\['mill'\\].*lists \\['plant', 'node'\\]",
         ),
         (
             "set",
@@ -633,6 +757,7 @@ def test_set_may_change_a_category(units):
         "unknown-category",
         "add-unknown-category",
         "keyword-unknown-category",
+        "add-unlisted-label",
         "keyword-and-label",
         "keyword-reaching-no-coordinate",
     ],
@@ -640,7 +765,7 @@ def test_set_may_change_a_category(units):
 def test_an_edit_refuses_an_unknown_label_category_or_keyword(
     units, op, args, kwargs, error, match
 ):
-    """A category is checked against its `Enum`, a label against the axis.
+    """A category is checked against the labels its dim lists, a label against the axis.
 
     Notes
     -----
@@ -648,6 +773,29 @@ def test_an_edit_refuses_an_unknown_label_category_or_keyword(
     """
     with pytest.raises(error, match=match):
         getattr(units, op)(*args, **kwargs)
+
+
+def test_a_dim_listing_labels_holds_the_labels_added_and_removes_like_any_dim(units):
+    """Its list bounds what may be added; its axis is what was.
+
+    Notes
+    -----
+    - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    """
+    with pytest.raises(ValueError, match="names them"):
+        units.remove("tech", ["node"])
+    units.set("unit.tech", "plant", unit=["n1"])
+    units.remove("tech", ["node"])
+    assert units.dims["tech"].df()["tech"].tolist() == ["plant"], (
+        "a listed label not on the axis is absent"
+    )
+    with pytest.raises(KeyError, match="no 'tech' label \\['node'\\]"):
+        units.add("unit", ["n2"], tech="node")
+
+    units.add("tech", ["node"])
+    units.add("unit", ["n2"], tech="node")
+    assert _unit_axis(units).loc["n2", "tech"] == "node"
 
 
 def _output_units(record):
@@ -706,23 +854,6 @@ def test_re_adding_a_label_replaces_its_row(staged, root):
 
     child = root.child(staged.edits)
     assert _entity_axis(child.record).loc["Manchester Wind", "ctype"] == "Load"
-
-
-def test_add_rejects_a_column_the_schema_does_not_declare(staged):
-    """An axis column no declaration accounts for is an error, not a new column.
-
-    A staging table is shaped like the file it becomes, from the schema, so an
-    undeclared column has no dtype to be given it. A tool that grows a column
-    declares it first.
-
-    Notes
-    -----
-    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
-    """
-    assert "capex" not in staged.schema.attributes, "undeclared, which is the case here"
-    with pytest.raises(ValueError, match="capex"):
-        staged.add("entity", ["NewSolar"], capex=1234.5)
 
 
 def test_add_fills_a_declared_column_another_add_omitted(staged):
@@ -849,6 +980,100 @@ def test_a_frame_carries_a_group_as_its_struct(staged):
     assert list(_efficiency(staged)["Manchester"]) == [0.25], "one key, replaced"
 
 
+FRAMES = {
+    "pandas": pd.DataFrame,
+    "polars": pl.DataFrame,
+    "arrow": pa.table,
+}
+
+
+@pytest.mark.parametrize("build", FRAMES.values(), ids=FRAMES)
+def test_set_takes_a_frame_duckdb_scans(staged, build):
+    """A pandas, polars or arrow frame lands through DuckDB's own scanner.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    staged.set("p_nom", build({"entity": ["Manchester Wind"], "value": [42]}))
+    assert _entity_values(staged, "p_nom")["Manchester Wind"] == 42.0, (
+        "an integer column widens to the declared float"
+    )
+
+
+def test_set_takes_an_all_none_column_as_a_broadcast(staged):
+    """A column of None alone is a broadcast, whatever type the frame gave it.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    staged.set("p_nom", 1.0, entity=["Manchester Wind"])
+    staged.set("p_nom", pd.DataFrame({"entity": [None], "value": [2.0]}))
+
+    rows = staged.edits.attribute("p_nom").project("entity, value").fetchall()
+    assert rows == [(None, 2.0)], "the broadcast replaces the staged label it covers"
+
+
+@pytest.mark.parametrize(
+    ("attribute", "frame", "match"),
+    [
+        pytest.param(
+            "p_nom",
+            pd.DataFrame({"entity": ["Manchester Wind"], "value": ["high"]}),
+            "column 'value' has type VARCHAR, which does not fit 'p_nom' of dtype "
+            "float",
+            id="mistyped",
+        ),
+        pytest.param(
+            "p_max_pu",
+            pd.DataFrame(
+                {
+                    "entity": ["Manchester Wind"],
+                    "snapshot": pd.to_datetime(["2015-01-01"]).tz_localize("UTC"),
+                    "value": [0.5],
+                }
+            ),
+            r"\['snapshot'\] carry timestamps with a time zone",
+            id="time-zone",
+        ),
+        pytest.param(
+            "p_nom",
+            pd.DataFrame({"entity": ["Manchester Wind"], "VALUE": ["high"]}),
+            r"columns \['VALUE'\] the schema does not declare",
+            id="case-variant-value",
+        ),
+        pytest.param(
+            "p_max_pu",
+            pd.DataFrame(
+                {
+                    "entity": ["Manchester Wind"],
+                    "Snapshot": pd.to_datetime(["2015-01-01"]),
+                    "value": [0.5],
+                }
+            ),
+            r"columns \['Snapshot'\] the schema does not declare",
+            id="case-variant-coordinate",
+        ),
+    ],
+)
+def test_set_refuses_a_frame_column_that_does_not_fit_its_dtype(
+    staged, attribute, frame, match
+):
+    """A column is cast only to a wider type of its kind; a time zone is not dropped.
+
+    A column spelling a declared one in another case is undeclared, so it is
+    refused.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    with pytest.raises(ValueError, match=match):
+        staged.set(attribute, frame)
+
+
 @pytest.mark.parametrize(
     "select",
     [
@@ -926,11 +1151,38 @@ def _connections(record):
             "pass 'connection' as one struct column",
         ),
         (pd.DataFrame([{"role": "attached"}]), "needs a 'connection' column"),
+        (
+            pd.DataFrame([{"connection": {"entity": 1, "bus": "Norway"}}]),
+            "'connection' has type STRUCT",
+        ),
     ],
-    ids=["flat-coordinates", "no-struct-column"],
+    ids=["flat-coordinates", "no-struct-column", "mistyped-field"],
 )
 def test_add_group_needs_the_struct_column(staged, frame, match):
     with pytest.raises(ValueError, match=match):
+        staged.add_group("connection", frame)
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        pytest.param(
+            pa.RecordBatchReader.from_batches(
+                pa.schema([("connection", pa.string())]), []
+            ),
+            id="single-use-reader",
+        ),
+        pytest.param([{"connection": {"entity": "Manchester Wind"}}], id="rows"),
+    ],
+)
+def test_add_group_refuses_what_is_no_frame_duckdb_rescans(staged, frame):
+    """A reader is consumed by its first scan, and an edit scans a frame more than once.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    with pytest.raises(TypeError, match="is no frame"):
         staged.add_group("connection", frame)
 
 
@@ -980,13 +1232,13 @@ def _with_roles(store):
     write_schema(
         Schema(
             dimensions={
-                "entity": Dimension(dtype=nw.String()),
-                "bus": Dimension(dtype=nw.String()),
+                "entity": Dimension(dtype="str"),
+                "bus": Dimension(dtype="str"),
             },
             groups={"connection": Group(over={"entity": "entity", "bus": "bus"})},
-            properties={"connection": {"role": PropertySpec(dtype=nw.String())}},
+            properties={"connection": {"role": PropertySpec(dtype="str")}},
             attributes={
-                "efficiency": AttributeSpec(dtype=nw.Float64(), dims={"connection"})
+                "efficiency": AttributeSpec(dtype="float", dims={"connection"})
             },
             partial=frozenset({"entity", "connection"}),
         ),
@@ -1061,6 +1313,14 @@ def test_add_and_add_group_refuse_an_attribute(store):
         staged.add_group("connection", frame)
 
 
+def test_add_group_refuses_a_case_variant_of_a_property(store):
+    """DuckDB matches a column by name whatever its case, so only the declared spelling is taken."""
+    staged = WorkingRecord(_with_roles(store).record)
+    frame = pd.DataFrame([{"connection": {"entity": "l1", "bus": "b0"}, "Role": 1}])
+    with pytest.raises(ValueError, match=r"columns \['Role'\] the schema does not"):
+        staged.add_group("connection", frame)
+
+
 # -- rollback (https://energy-models.github.io/datarecord/design/working-record/#edits) --------------------------------------------------------
 
 
@@ -1070,7 +1330,7 @@ def test_rollback_discards_everything_staged(staged, root):
     staged.rollback()
 
     # The record reads the base rows again, edit and tombstone alike.
-    rows = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    rows = staged.attributes["p_max_pu"].df()
     assert 0.42 not in set(rows["value"])
     assert "Norway Gas" in _entity_axis(staged).index, (
         "the tombstone went with the rest"
@@ -1122,7 +1382,7 @@ def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root):
     assert "snapshot" not in staged.schema.owned_per("p_max_pu"), (
         "owned per entity, but not per snapshot, the axis this test is about"
     )
-    base = staged.attributes["p_max_pu"].collect().to_native().to_pandas()
+    base = staged.attributes["p_max_pu"].df()
     mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
     one = mine.iloc[[0]][["entity", "snapshot"]].assign(value=0.123)
     assert len(mine) > 1, "a one-snapshot series would not distinguish the two scopes"
@@ -1199,7 +1459,7 @@ def test_an_edit_over_a_directory_base_reads_back(root):
     staged = WorkingRecord(root.store.layer(root.id))
 
     def marginal_cost() -> list[float]:
-        frame = staged.attributes["marginal_cost"].collect().to_native().to_pandas()
+        frame = staged.attributes["marginal_cost"].df()
         return frame[frame["entity"] == "Manchester Wind"]["value"].tolist()
 
     before = marginal_cost()
@@ -1311,11 +1571,11 @@ def test_a_string_valued_attribute_keeps_its_declared_type(staged):
     - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
     """
     staged.set("sub_network", "0", entity=["Manchester Wind"])
-    rows = staged.attributes["sub_network"].collect().to_native().to_pandas()
+    rows = staged.attributes["sub_network"].df()
     assert rows["value"].tolist() == ["0"], "a string value survives the round trip"
 
     staged.set("p", 42.0, entity=["Manchester Wind"], bus="Manchester")
-    numeric = staged.attributes["p"].collect().to_native().to_pandas()
+    numeric = staged.attributes["p"].df()
     assert numeric["value"].tolist() == [42.0], "a numeric value comes back a number"
 
 

@@ -19,24 +19,23 @@ from __future__ import annotations
 import copy
 import random
 import shutil
+from itertools import combinations
 from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-import narwhals as nw
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import as_relation, fn, null_safe
+from datarecord.duck import as_relation, ex_all, fn, null_safe
 from datarecord.files import Absent, PreconditionFailedError, Version
-from datarecord.layered.record import Record
 from datarecord.layered.resolve import PinnedResolver, cast_declared, resolve_coords
 from datarecord.layered.sources import DirectorySource
-from datarecord.record import Frames, LayerData, RecordLike
+from datarecord.record import LayerData, Record, RecordLike, Relations
 from datarecord.schema import DERIVED, Schema
 
 if TYPE_CHECKING:
@@ -51,8 +50,8 @@ if TYPE_CHECKING:
 def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> LayerData:
     """`source` as the `LayerData` the writer reads, planned on `con`.
 
-    A framework's `RecordLike` is wrapped in a thin adapter reading its `Frames`
-    through the same enumerate-and-read pairs.
+    A framework's `RecordLike` is wrapped in a thin adapter reading its
+    `Relations` through the same enumerate-and-read pairs.
 
     Notes
     -----
@@ -114,8 +113,13 @@ def write_layer(
     ValueError
         If a long frame is missing a long-schema column, or the schema declares a key
         dim no frame carries - either would make the fold misresolve the layer.
-        If a group tuple or a property `into` a dim alive after the layer names
-        a label dead after it.
+        If a group tuple or a property that takes its labels from a dim, alive after the
+        layer, names a label dead after it.
+        If a column's type does not fit its dtype, naming the attribute,
+        property or dim that declares the column, and the dtype.
+        If two rows of one attribute cover one coordinate and both name the
+        same dims, or each names a dim the other leaves NULL, naming the
+        attribute and the coordinate.
 
     Notes
     -----
@@ -149,12 +153,9 @@ def write_layer(
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
-                _write_frame(
-                    rel,
-                    f"{staging}{kind}/{key}.parquet",
-                    schema,
-                    key if kind in ("dims", "groups") else None,
-                )
+                uri = _write_frame(rel, staging, kind, key, schema)
+                if kind == "attributes":
+                    _refuse_unordered(workspace.con.read_parquet(uri), key, schema)
         if data.groups() or data.axes():
             layer = DirectorySource(staging, schema, workspace, uuid4())
             _require_living_references(parents, layer, workspace.con, schema)
@@ -240,27 +241,131 @@ _ATTEMPTS = 10
 
 
 def _write_frame(
-    rel: DuckDBPyRelation, uri: str, schema: Schema, subject: str | None
-) -> None:
-    """Persist one relation as parquet, unmaterialised.
+    rel: DuckDBPyRelation, staging: str, kind: str, key: str, schema: Schema
+) -> str:
+    """Write `rel` as `{kind}/{key}.parquet` under `staging`, unmaterialised; return its URI.
 
     Columns are cast to their declared types on the way out, so a reader can
-    trust them rather than re-casting an all-NULL column pandas typed as float.
+    trust them. Before that, a column whose type does not fit its declared
+    type (`takes`) is refused, judged by the relation's types, not its rows.
 
     `DERIVED` is dropped here rather than in the callers, so a column a source
     happens to carry cannot reach a file by a path that forgot to strip it.
 
+    Raises
+    ------
+    ValueError
+        As `Schema.require_takes` does.
+
     Notes
     -----
-    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
+    - [relations](https://energy-models.github.io/datarecord/design/record/#relations)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     """
+    file = f"{kind}/{key}.parquet"
+    uri = f"{staging}{file}"
     if "://" not in uri:
         Path(uri).parent.mkdir(parents=True, exist_ok=True)
     unwritable = [c for c in DERIVED if c in rel.columns]
     if unwritable:
         rel = rel.project(star(exclude=unwritable))
-    cast_declared(schema, rel, subject).to_parquet(uri)
+    subject = key if kind in ("dims", "groups") else None
+    attribute = key if kind == "attributes" else None
+    rel = schema.require_takes(rel, file, subject, attribute)
+    cast_declared(schema, rel, subject, attribute).to_parquet(uri)
+    return uri
+
+
+def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
+    """Refuse two rows of `attribute` covering one coordinate where neither is more specific.
+
+    Two rows cover one coordinate where they agree on every dim both name. A
+    row is more specific than another where it names every dim the other
+    names, and more. Of two rows of one layer covering a coordinate, a read
+    keeps the more specific one, so where both name the same dims, or each
+    names a dim the other leaves NULL, it has none to keep. `breakpoint` is
+    part of a row, so the rows of one curve are no such pair.
+
+    Rows naming the same dims are found by one group-by over the coordinates.
+    Only the distinct NULL patterns are paired, and they are few. Each pair is
+    joined on the distinct coordinates its rows name, so one series is not
+    multiplied against another. `rel` is the file as written, so the source
+    is built only once, and only its dims and `breakpoint` are read.
+
+    Raises
+    ------
+    ValueError
+        Naming the attribute and one coordinate both rows cover.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    dims = schema.coordinates_of(attribute)
+    key = ", ".join(str(col(c)) for c in (*dims, "breakpoint"))
+    twin = (
+        rel.aggregate(f"{key}, count(*) AS _rows", key)
+        .filter(col("_rows") > lit(1))
+        .limit(1)
+        .fetchone()
+    )
+    if twin is not None:
+        *values, rows = twin
+        at = ", ".join(
+            f"{c}={v}"
+            for c, v in zip((*dims, "breakpoint"), values, strict=True)
+            if v is not None
+        )
+        msg = (
+            f"attributes/{attribute}.parquet holds {rows} rows at "
+            f"{at or 'every coordinate'} naming the same dims, so neither is the "
+            f"more specific there. Keep one of them (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
+        )
+        raise ValueError(msg)
+    if len(dims) < 2:
+        return
+    patterns = [
+        tuple(d for d, named in zip(dims, row, strict=True) if named)
+        for row in rel.project(*(col(d).isnotnull() for d in dims))
+        .distinct()
+        .fetchall()
+    ]
+    for a, b in combinations(patterns, 2):
+        if set(a) <= set(b) or set(b) <= set(a):
+            continue
+        rows_a, rows_b = _named_rows(rel, dims, a, "a"), _named_rows(rel, dims, b, "b")
+        both = [d for d in a if d in b]
+        joined = (
+            rows_a.join(rows_b, ex_all(col("a", d) == col("b", d) for d in both))
+            if both
+            else rows_a.cross(rows_b)
+        )
+        union = [d for d in dims if d in a or d in b]
+        row = (
+            joined.project(*(col("a" if d in a else "b", d) for d in union))
+            .limit(1)
+            .fetchone()
+        )
+        if row is None:
+            continue
+        coordinate = ", ".join(f"{d}={v}" for d, v in zip(union, row, strict=True))
+        msg = (
+            f"attributes/{attribute}.parquet holds a row naming {list(a)} and one "
+            f"naming {list(b)} that both cover {coordinate}; neither names every "
+            f"dim the other does, so neither is the more specific there. Name the "
+            f"labels of one of them row by row, leaving that coordinate out (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
+        )
+        raise ValueError(msg)
+
+
+def _named_rows(
+    rel: DuckDBPyRelation, dims: Sequence[str], named: Sequence[str], alias: str
+) -> DuckDBPyRelation:
+    """Return the distinct values of `named` in the rows of `rel` that name exactly those of `dims`."""
+    exact = ex_all(col(d).isnotnull() if d in named else col(d).isnull() for d in dims)
+    return (
+        rel.filter(exact).project(*(col(d) for d in named)).distinct().set_alias(alias)
+    )
 
 
 def _require_living_references(
@@ -271,9 +376,10 @@ def _require_living_references(
 ) -> None:
     """Reject a layer storing a reference to a dead label, or killing a label one names.
 
-    A reference is a group tuple's field over a dim, or a property `into` one.
+    A reference is a group tuple's field over a dim, or a property that
+    takes its labels from a dim.
     Removing a label tombstones the tuples naming it in the same layer, which
-    `WorkingRecord.remove` writes, and a property naming it must be cleared
+    `WorkingRecord.remove` writes, and a property holding it must be cleared
     first; a layer written otherwise carries both itself. Only what `layer`
     does is checked - the rows it writes, and the rows still naming a label it
     tombstones - so a reference an ancestor left dangling fails no later write.
@@ -295,7 +401,7 @@ def _require_living_references(
             for g in schema.group_columns
             for f, d in schema.groups[g].over.items()
         ),
-        *((s, p, col("t", p), d) for (s, p), d in schema.into_properties().items()),
+        *((s, p, col("t", p), d) for (s, p), d in schema.one_of_properties().items()),
     ]
     referenced = {dim for *_, dim in references}
     killed = {
@@ -350,7 +456,7 @@ def _require_living_references(
     if problems:
         msg = (
             f"{'; '.join(problems)}; removing a label removes the tuples naming "
-            f"it and leaves no property naming it, so tombstone those tuples and "
+            f"it and leaves no property holding it, so tombstone those tuples and "
             f"clear those properties in the same layer (https://energy-models.github.io/datarecord/design/layers/#deletion)"
         )
         raise ValueError(msg)
@@ -425,9 +531,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             )
             raise ValueError(msg)
         schema.check_group_columns(
-            schema.groups_of(key),
-            nw.from_native(rel),
-            carrier=f"attributes/{key}.parquet",
+            schema.groups_of(key), rel, carrier=f"attributes/{key}.parquet"
         )
         return
 
@@ -449,25 +553,16 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
 
     if kind != "groups" or key not in schema.groups:
         return
-    into = schema.groups[key].into
-    missing = sorted({key, *([into] if into else [])} - columns)
-    if missing:
+    if key not in columns:
         msg = (
-            f"groups/{key}.parquet is missing {missing}; a group file is keyed "
-            f"by one struct column named for the group, its `into` label beside "
-            f"it (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+            f"groups/{key}.parquet is missing {[key]}; a group file is keyed "
+            f"by one struct column named for the group (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
         )
         raise ValueError(msg)
     _refuse_extra(
-        columns,
-        {key, *([into] if into else []), "deleted", "order_key"},
-        schema,
-        key,
-        f"groups/{key}.parquet",
+        columns, {key, "deleted", "order_key"}, schema, key, f"groups/{key}.parquet"
     )
-    schema.check_group_columns(
-        [key], nw.from_native(rel), carrier=f"groups/{key}.parquet"
-    )
+    schema.check_group_columns([key], rel, carrier=f"groups/{key}.parquet")
 
 
 def _refuse_extra(
@@ -481,7 +576,8 @@ def _refuse_extra(
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    extra = sorted(columns - structural - set(schema.properties.get(subject, {})))
+    known = structural | set(schema.properties.get(subject, {}))
+    extra = sorted(columns - known)
     if not extra:
         return
     attributes = [c for c in extra if c in schema.attributes]
@@ -494,8 +590,8 @@ def _refuse_extra(
     )
     msg = (
         f"{file} carries columns {extra} the schema does not declare as "
-        f"properties of {subject!r}; the file holds its key, tombstones and "
-        f"{subject!r}'s properties{hint} (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
+        f"properties of {subject!r}; the file holds only its key, tombstones "
+        f"and those properties, {sorted(known)}{hint} (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
     )
     raise ValueError(msg)
 
@@ -504,10 +600,10 @@ class _RecordLikeAsLayerData:
     """A `RecordLike` read through `LayerData`'s enumerate-and-read pairs.
 
     The adapter that lets `write_layer` stay one code path over raw
-    relations: a framework's `to_datarecord()` hands over narwhals `Frames`,
-    one lookup per key exactly as `write_layer` already does, so this wraps
-    each mapping rather than eagerly converting it. `con` is needed only to
-    land a non-DuckDB frame as a relation (`as_relation`).
+    relations: a framework's `to_datarecord()` hands over `Relations`, one
+    lookup per key exactly as `write_layer` already does, so this wraps each
+    mapping rather than eagerly converting it. `con` is what each relation is
+    checked to be planned on (`as_relation`).
 
     Notes
     -----
@@ -517,7 +613,7 @@ class _RecordLikeAsLayerData:
     def __init__(self, source: RecordLike, con: DuckDBPyConnection) -> None:
         self._source = source
         self._con = con
-        self._mappings: dict[str, Frames] = {}
+        self._mappings: dict[str, Relations] = {}
 
     @property
     def schema(self) -> Schema:
@@ -536,8 +632,8 @@ class _RecordLikeAsLayerData:
         ):
             self._source.resolver.release()
 
-    def _frames(self, kind: str) -> Frames:
-        """The source's `Frames` mapping named `kind`, enumerated once per adapter.
+    def _frames(self, kind: str) -> Relations:
+        """Return the `Relations` of the source named `kind`, enumerated once per adapter.
 
         A `RecordLike`'s mappings may be properties that re-enumerate the whole
         source on each access, which per key would be quadratic in the keys.
@@ -546,7 +642,7 @@ class _RecordLikeAsLayerData:
             self._mappings[kind] = getattr(self._source, kind)
         return self._mappings[kind]
 
-    def _read(self, frames: Frames, key: str) -> DuckDBPyRelation | None:
+    def _read(self, frames: Relations, key: str) -> DuckDBPyRelation | None:
         if key not in frames:
             return None
         return as_relation(frames[key], self._con)

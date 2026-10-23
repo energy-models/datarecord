@@ -20,86 +20,48 @@ Notes
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
-import narwhals as nw
+import duckdb
+from duckdb import ColumnExpression as col
+from duckdb import ConstantExpression as lit
+from duckdb import DuckDBPyRelation, sqltypes
+from duckdb import SQLExpression as sql
+from duckdb.sqltypes import DuckDBPyType
+from mathspec.program import DimensionDtype, ParameterDtype
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    ValidationInfo,
     field_serializer,
     field_validator,
     model_validator,
 )
 
-# Narwhals dtypes `manifest.json` encodes by bare class name, covering what a
-# dim or attribute actually declares. `Enum` and `Datetime` carry parameters
-# and are handled separately in `_dump_dtype`/`_parse_dtype` - extend here as
-# a new bare dtype shows up rather than widening the parametrized branches.
-_BARE_DTYPES: dict[str, type[nw.dtypes.DType]] = {
-    "String": nw.String,
-    "Float64": nw.Float64,
-    "Int64": nw.Int64,
-    "Boolean": nw.Boolean,
-    "Date": nw.Date,
-}
+from datarecord.duck import DUCK_TYPES, enum_type, fn, takes
 
 
-def _dump_dtype(dtype: nw.dtypes.DType) -> Any:
-    """Encode a narwhals dtype for `manifest.json`.
+class _Declared(BaseModel):
+    """Base of the models `manifest.json` is parsed into, which refuse undeclared keys."""
 
-    A bare class name for what `_BARE_DTYPES` covers; a one-key dict of class
-    name to constructor args for `Enum`/`Datetime`, the parametrized dtypes a
-    schema actually declares.
-    """
-    if isinstance(dtype, nw.Enum):
-        return {"Enum": list(dtype.categories)}
-    if isinstance(dtype, nw.Datetime):
-        return {"Datetime": dtype.time_unit}
-    base = dtype.base_type()
-    if base.__name__ in _BARE_DTYPES:
-        return base.__name__
-    msg = f"no manifest.json encoding for narwhals dtype {base.__name__}"
-    raise ValueError(msg)
-
-
-def _parse_dtype(value: Any) -> nw.dtypes.DType:
-    """The `dtype=` field_validator shared by `Dimension` and `AttributeSpec`.
-
-    An instance (`nw.String()`) passes through; anything else is what
-    `_dump_dtype` wrote to `manifest.json`, decoded back to an instance -
-    `dtype=` takes an instance only, not a bare class.
-    """
-    if isinstance(value, nw.dtypes.DType):
-        return value
-    if isinstance(value, str):
-        if value not in _BARE_DTYPES:
-            msg = f"unknown narwhals dtype {value!r} in manifest.json"
-            raise ValueError(msg)
-        return _BARE_DTYPES[value]()
-    if isinstance(value, dict) and len(value) == 1:
-        ((name, arg),) = value.items()
-        if name == "Enum":
-            return nw.Enum(arg)
-        if name == "Datetime":
-            return nw.Datetime(arg)
-    msg = f"unrecognised dtype encoding in manifest.json: {value!r}"
-    raise ValueError(msg)
+    model_config = ConfigDict(extra="forbid")
 
 
 # Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Not the
 # dims or properties: each is declared and typed from that declaration, which is
-# what lets an `Enum` there pin its vocabulary. These are the ones no schema
+# what lets the `ENUM` of a dim that lists its labels pin them. These are the ones no schema
 # names - `breakpoint` is NULL for an ordinary scalar, so one column set serves
 # every row.
 STRUCTURAL_TYPES = {
-    "attribute": nw.String(),
-    "breakpoint": nw.Float64(),
-    "deleted": nw.Boolean(),
-    "breakpoints": nw.Boolean(),
+    "attribute": sqltypes.VARCHAR,
+    "breakpoint": sqltypes.DOUBLE,
+    "deleted": sqltypes.BOOLEAN,
+    "breakpoints": sqltypes.BOOLEAN,
 }
 
 
@@ -172,7 +134,7 @@ def _misnamed(name: str) -> str | None:
     return None
 
 
-def flag_type(dims: tuple[str, ...]) -> nw.dtypes.DType:
+def flag_type(dims: tuple[str, ...]) -> DuckDBPyType:
     """One flag struct's type: a BOOLEAN field per declared dim.
 
     `dims` is never empty: a schema declaring no dims describes no dimensioned
@@ -184,13 +146,7 @@ def flag_type(dims: tuple[str, ...]) -> nw.dtypes.DType:
     - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    return nw.Struct({d: nw.Boolean() for d in dims})
-
-
-class _Declared(BaseModel):
-    """A model `manifest.json` is parsed into, refusing a key it does not declare."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
+    return duckdb.struct_type(dict.fromkeys(dims, sqltypes.BOOLEAN))
 
 
 class Dimension(_Declared):
@@ -203,9 +159,11 @@ class Dimension(_Declared):
     Attributes
     ----------
     dtype
-        The axis labels' type, as a narwhals dtype instance (`nw.String()`,
-        `nw.Datetime()`, ...) - translated to its DuckDB name only where a
-        column of it is built.
+        The axis labels' type, a mathspec `DimensionDtype`.
+    one_of
+        The labels the dim allows, in order, or None for any. A dim that
+        lists its labels has an `ENUM` of them as its column, and `add`
+        refuses a label outside the list. Only a `str` dim lists its labels.
     unit
         What this axis's *labels* measure, if anything - `None` is undeclared,
         `""` genuinely dimensionless.
@@ -217,20 +175,36 @@ class Dimension(_Declared):
     - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
     - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
     - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
+    - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
     """
 
-    dtype: nw.dtypes.DType
+    dtype: DimensionDtype = "str"
+    one_of: tuple[str, ...] | None = Field(
+        default=None, min_length=1, exclude_if=lambda one_of: one_of is None
+    )
     unit: str | None = None
     description: str | None = None
 
-    @field_validator("dtype", mode="before")
+    @field_validator("one_of", mode="before")
     @classmethod
-    def _parse_dtype(cls, value: Any) -> Any:
-        return _parse_dtype(value)
-
-    @field_serializer("dtype")
-    def _dump_dtype(self, value: nw.dtypes.DType) -> Any:
-        return _dump_dtype(value)
+    def _strict_labels(cls, value: Any, info: ValidationInfo) -> Any:
+        dtype = info.data.get("dtype", "str")
+        if value is not None and dtype != "str":
+            msg = (
+                f"a dim of dtype {dtype!r} takes no `one_of`; "
+                'only a "str" dim lists its labels'
+            )
+            raise ValueError(msg)
+        if isinstance(value, (list, tuple)):
+            other = [label for label in value if not isinstance(label, str)]
+            if other:
+                msg = f"`one_of` lists {other}, which are no strings; quote each label"
+                raise ValueError(msg)
+            repeated = sorted({label for label in value if value.count(label) > 1})
+            if repeated:
+                msg = f"`one_of` lists {repeated} more than once; list each label once"
+                raise ValueError(msg)
+        return value
 
 
 class _ValueSpec(_Declared):
@@ -240,20 +214,10 @@ class _ValueSpec(_Declared):
     attribute round-trip `manifest.json` identically.
     """
 
-    dtype: nw.dtypes.DType
     default: Any | None = None
     default_by: dict[str, dict[str, Any]] = Field(default_factory=dict)
     unit: str | None = None
     description: str | None = None
-
-    @field_validator("dtype", mode="before")
-    @classmethod
-    def _parse_dtype(cls, value: Any) -> Any:
-        return _parse_dtype(value)
-
-    @field_serializer("dtype")
-    def _dump_dtype(self, value: nw.dtypes.DType) -> Any:
-        return _dump_dtype(value)
 
     @field_serializer("default")
     def _serialise_default(self, value: Any) -> Any:
@@ -314,9 +278,7 @@ class AttributeSpec(_ValueSpec):
     Attributes
     ----------
     dtype
-        The value column's type, as a narwhals dtype instance (`nw.String()`,
-        `nw.Datetime()`, ...) - translated to its DuckDB name only where a
-        column of it is built.
+        The value column's type, a mathspec `ParameterDtype`.
     dims
         Dims and groups this attribute may vary over; a subset of those
         declared. Whatever they are, its values are long rows of
@@ -345,8 +307,10 @@ class AttributeSpec(_ValueSpec):
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
     - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
+    - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
     """
 
+    dtype: ParameterDtype
     dims: frozenset[str] = frozenset()
     breakpoints: bool = False
 
@@ -358,17 +322,19 @@ class PropertySpec(_ValueSpec):
     column of `dims/{dim}.parquet`, or of `groups/{group}.parquet` for a group.
     Its name is its subject's alone, so it is addressed as `subject.name`
     (`Schema.resolve`).
-    An `Enum` property of a dim in `partial` categorizes it
-    (`Schema.categorizing`); a group's never does, nor one `into` a dim.
+    A property declares exactly one of `dtype` and `one_of`. A property of a
+    dim in `partial` that takes its labels from a dim listing its labels
+    categorizes its subject (`Schema.categorizing`). A property of a group
+    never does.
 
     Attributes
     ----------
     dtype
-        The column's type, as a narwhals dtype instance. Optional with `into`,
-        whose dim's dtype it takes and must equal.
-    into
-        The dim whose labels this property's values are, or `None`. A stored
-        non-NULL value names a live label of it.
+        The column's type, a mathspec `ParameterDtype`.
+    one_of
+        The dim the property takes its labels from. Its values have that
+        dim's type, and a stored value that is not NULL must be a live label
+        of the dim.
     default
         The value a label no row sets takes.
     default_by
@@ -386,16 +352,21 @@ class PropertySpec(_ValueSpec):
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
     - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
     """
 
-    dtype: nw.dtypes.DType = None  # type: ignore[assignment]  # `Schema` types it from `into`
-    into: str | None = None
+    dtype: ParameterDtype | None = Field(
+        default=None, exclude_if=lambda dtype: dtype is None
+    )
+    one_of: str | None = Field(default=None, exclude_if=lambda dim: dim is None)
 
     @model_validator(mode="after")
-    def _require_dtype(self) -> PropertySpec:
-        """Refuse a property declaring neither a `dtype` nor the dim it is `into`."""
-        if self.dtype is None and self.into is None:
-            msg = "a property declares its `dtype`, or the dim it is `into`"
+    def _dtype_or_one_of(self) -> PropertySpec:
+        if (self.dtype is None) == (self.one_of is None):
+            msg = (
+                "a property declares exactly one of `dtype` and `one_of`, "
+                f"not {'both' if self.one_of else 'neither'}"
+            )
             raise ValueError(msg)
         return self
 
@@ -420,11 +391,6 @@ class Group(_Declared):
         Coordinate name -> the dim it draws its labels from. A list is sugar for
         the dict with identical keys and values; the dict form is what lets two
         coordinates draw on one dim, as `corridor`'s `{from: bus, to: bus}` does.
-    into
-        The dim each tuple of `over` carries exactly one label of, or `None` for
-        a bare tuple set. Must name a declared dim, and needs two coordinates or
-        more: one coordinate `into` a dim is a property of its dim
-        (`PropertySpec.into`).
     description
         What the group is, in prose. Never interpreted.
 
@@ -434,7 +400,6 @@ class Group(_Declared):
     """
 
     over: dict[str, str]
-    into: str | None = None
     description: str | None = None
 
     @field_validator("over", mode="before")
@@ -449,13 +414,19 @@ class Group(_Declared):
     def key(self) -> tuple[str, ...]:
         """The coordinates a row is unique over: `over`'s, in declaration order.
 
-        `into` is none of them: it follows from the key.
-
         Notes
         -----
-        - [into](https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         return tuple(self.over)
+
+
+def _typed_as(spec: Dimension | AttributeSpec | PropertySpec) -> str:
+    """Show how `spec` declares its type: its dtype, or the fields its manifest writes."""
+    declared = spec.model_dump(include={"dtype", "one_of"})
+    return (
+        str(declared["dtype"]) if declared.keys() == {"dtype"} else json.dumps(declared)
+    )
 
 
 class Schema(_Declared):
@@ -479,8 +450,8 @@ class Schema(_Declared):
         Subject dim or group -> property name -> spec: the columns of
         `dims/{dim}.parquet` or `groups/{group}.parquet` that describe its
         labels. A name is unique within its subject only, addressed as
-        `subject.name`. A dim's `Enum` properties categorize it where it is in
-        `partial`.
+        `subject.name`. A property of a dim in `partial` that takes its
+        labels from a dim listing its labels categorizes its subject.
     groups
         Group name -> which tuples over several dims exist.
     partial
@@ -541,31 +512,8 @@ class Schema(_Declared):
                 msg = (
                     f"group {group!r} shares its name with the dim {group!r}; a "
                     f"group is carried as a column named for it, so the two would "
-                    f"be one column. Rename the group, e.g. {renamed!r} into "
-                    f"{group!r} (https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)"
-                )
-                raise ValueError(msg)
-            if group_spec.into is not None and group_spec.into not in declared:
-                msg = (
-                    f"group {group!r} is `into` undeclared dim "
-                    f"{group_spec.into!r}; `into` names the axis whose labels "
-                    f"the group's tuples carry (https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)"
-                )
-                raise ValueError(msg)
-            if group_spec.into is not None and len(group_spec.over) == 1:
-                (dim,) = group_spec.over.values()
-                msg = (
-                    f"group {group!r} is over one coordinate and `into` "
-                    f"{group_spec.into!r}; declare the property "
-                    f"`{dim}.{group_spec.into}` `into` {group_spec.into!r} "
-                    f"instead (https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)"
-                )
-                raise ValueError(msg)
-            if group_spec.into is not None and group_spec.into in group_spec.over:
-                msg = (
-                    f"group {group!r} is `into` {group_spec.into!r}, which is "
-                    f"also one of its `over` coordinates; a group cannot map a "
-                    f"coordinate to itself"
+                    f"be one column. Rename the group, e.g. {renamed!r} "
+                    f"(https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)"
                 )
                 raise ValueError(msg)
 
@@ -591,17 +539,6 @@ class Schema(_Declared):
                             f"twice over (https://energy-models.github.io/datarecord/design/schema/#groups)"
                         )
                         raise ValueError(msg)
-                if group_spec.into is None or group_spec.into not in attr_spec.dims:
-                    continue
-                both = sorted(set(group_spec.over) & attr_spec.dims)
-                if both:
-                    msg = (
-                        f"attribute {attr!r} is addressed by "
-                        f"{group_spec.into!r} and {both}, which the group "
-                        f"{group!r} maps it from; `into` says the first follows "
-                        f"from the second, so naming both keys a row twice over"
-                    )
-                    raise ValueError(msg)
 
         if self.partial is not None:
             unknown = sorted(self.partial - declared - set(self.groups))
@@ -611,7 +548,15 @@ class Schema(_Declared):
         return self
 
     def _categorized_by(self, name: str, what: str) -> tuple[str, str]:
-        """The dim and property dotted `name` categorizes, for a `default_by` key `what` names."""
+        """Split the `default_by` key `name` into a dim and one of its categorizing properties.
+
+        `what` names the declaration holding the key, for the error.
+
+        Raises
+        ------
+        ValueError
+            If `name` is not `subject.name` of a categorizing property.
+        """
         subject, _, prop = name.partition(".")
         if prop not in self.properties.get(subject, {}):
             reason = "is no property, named `subject.name`"
@@ -619,10 +564,13 @@ class Schema(_Declared):
             reason = (
                 f"is a property of the group {subject!r}; a group is never categorized"
             )
-        elif (into := self.properties[subject][prop].into) is not None:
-            reason = f"is `into` {into!r}, whose labels are data, not categories"
-        elif not isinstance(self.properties[subject][prop].dtype, nw.Enum):
-            reason = "is no `Enum` property"
+        elif (one_of := self.properties[subject][prop].one_of) is None:
+            reason = "takes its labels from no dim"
+        elif self.dimensions[one_of].one_of is None:
+            reason = (
+                f"takes its labels from {one_of!r}, which lists no labels, so "
+                f"they are data, not categories"
+            )
         elif subject not in (self.partial or set()):
             reason = f"is a property of {subject!r}, which `partial` does not list"
         else:
@@ -631,7 +579,7 @@ class Schema(_Declared):
         raise ValueError(msg)
 
     def _check_properties(self) -> None:
-        """Refuse a property on an undeclared subject, a malformed `into` or `default_by`."""
+        """Refuse a property of an undeclared subject, one that takes its labels from an undeclared dim, and a malformed `default_by`."""
         unknown = sorted(set(self.properties) - set(self.dimensions) - set(self.groups))
         if unknown:
             msg = (
@@ -639,12 +587,14 @@ class Schema(_Declared):
                 f"a property is a column of its subject's axis or group file"
             )
             raise ValueError(msg)
-        for subject, by_name in self.properties.items():
-            for name, declared in by_name.items():
-                if declared.into is not None:
-                    by_name[name] = self._into_dim(
-                        f"{subject}.{name}", declared.into, declared
-                    )
+        for (subject, name), dim in self.one_of_properties().items():
+            if dim not in self.dimensions:
+                msg = (
+                    f"property {subject}.{name} takes its labels from {dim!r}, "
+                    f"an undeclared dim "
+                    f"(https://energy-models.github.io/datarecord/design/schema/#properties)"
+                )
+                raise ValueError(msg)
         for subject, by_name in self.properties.items():
             for name in self.categorizing(subject):
                 if by_name[name].default_by:
@@ -687,35 +637,18 @@ class Schema(_Declared):
                     )
                     raise ValueError(msg)
 
-    def _into_dim(self, dotted: str, into: str, spec: PropertySpec) -> PropertySpec:
-        """`spec` typed as the dim it is `into`: an undeclared dim or another `dtype` refused."""
-        if into not in self.dimensions:
-            msg = (
-                f"property {dotted} is `into` undeclared dim {into!r}; `into` "
-                f"names the axis whose labels its values are (https://energy-models.github.io/datarecord/design/schema/#properties)"
-            )
-            raise ValueError(msg)
-        dtype = self.dimensions[into].dtype
-        if spec.dtype is not None and spec.dtype != dtype:
-            msg = (
-                f"property {dotted} is `into` {into!r}, so its dtype is the "
-                f"dim's {dtype}, not {spec.dtype}; drop its `dtype`"
-            )
-            raise ValueError(msg)
-        return spec.model_copy(update={"dtype": dtype})
-
-    def into_properties(self) -> dict[tuple[str, str], str]:
-        """Each property `into` a dim, as `(subject, name)` -> that dim.
+    def one_of_properties(self) -> dict[tuple[str, str], str]:
+        """Map each property that takes its labels from a dim, as `(subject, name)`, to that dim.
 
         Notes
         -----
         - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
         """
         return {
-            (subject, name): spec.into
+            (subject, name): spec.one_of
             for subject, by_name in self.properties.items()
             for name, spec in by_name.items()
-            if spec.into is not None
+            if spec.one_of is not None
         }
 
     def _reached_by(self, subject: str) -> frozenset[str]:
@@ -794,10 +727,10 @@ class Schema(_Declared):
             raise ValueError(msg)
 
     def _key_of(self, subject: str) -> set[str]:
-        """The columns of `subject`'s file a property cannot be named: a dim, a group's struct column and `into`."""
-        group = self.groups.get(subject)
-        if group is not None:
-            return {subject} | ({group.into} if group.into else set())
+        """Return the key column of the file of `subject`, a name no property of it may take.
+
+        That is the dim's own column, or the group's struct column.
+        """
         return {subject}
 
     # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
@@ -862,23 +795,40 @@ class Schema(_Declared):
         """
         return tuple(self.groups)
 
-    def group_type(self, group: str) -> nw.dtypes.DType:
+    def group_type(self, group: str) -> DuckDBPyType:
         """The struct a row carries `group` as: a field per key coordinate.
 
-        Each field typed as the dim the coordinate draws on. `into` is no field:
-        it follows from the key, so carrying it would key a row twice over.
+        Each field typed as the dim the coordinate draws on.
 
         Notes
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         spec = self.groups[group]
-        return nw.Struct({c: self.dimensions[spec.over[c]].dtype for c in spec.key})
+        return duckdb.struct_type(
+            {c: self.duck_type(self.dimensions[spec.over[c]]) for c in spec.key}
+        )
+
+    def duck_type(self, spec: Dimension | AttributeSpec | PropertySpec) -> DuckDBPyType:
+        """Return the DuckDB type of a declared dim, attribute or property.
+
+        A dim that lists its labels has the `ENUM` of them. A property that
+        takes its labels from a dim has the type of that dim.
+
+        Notes
+        -----
+        - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+        """
+        if isinstance(spec, PropertySpec) and spec.one_of is not None:
+            return self.duck_type(self.dimensions[spec.one_of])
+        if isinstance(spec, Dimension) and spec.one_of is not None:
+            return enum_type(spec.one_of)
+        return DUCK_TYPES[cast("str", spec.dtype)]
 
     def check_group_columns(
         self,
         groups: Iterable[str],
-        frame: nw.LazyFrame[Any],
+        rel: DuckDBPyRelation,
         *,
         carrier: str,
     ) -> None:
@@ -903,16 +853,16 @@ class Schema(_Declared):
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         """
-        columns = frame.collect_schema()
+        types = dict(zip(rel.columns, rel.types, strict=True))
         for group in groups:
             key = self.group_key(group)
-            flat = [c for c in key if c in columns]
-            dtype = columns.get(group)
+            flat = [c for c in key if c in types]
+            dtype = types.get(group)
             fields = (
                 key
                 if dtype is None
-                else [f.name for f in dtype.fields]
-                if isinstance(dtype, nw.Struct)
+                else [name for name, _ in dtype.children]
+                if dtype.id == "struct"
                 else None
             )
             if flat or fields is None or set(fields) != set(key):
@@ -924,11 +874,11 @@ class Schema(_Declared):
                 raise ValueError(msg)
             if dtype is None:
                 continue
-            struct = nw.col(group)
-            partly = ~struct.is_null() & nw.any_horizontal(
-                *(struct.struct.field(c).is_null() for c in key), ignore_nulls=True
+            some = " OR ".join(
+                f"{fn.struct_extract(col(group), lit(c))} IS NULL" for c in key
             )
-            if not frame.filter(partly).head(1).collect().is_empty():
+            partly = sql(f"{col(group)} IS NOT NULL AND ({some})")
+            if rel.filter(partly).limit(1).fetchone() is not None:
                 msg = (
                     f"{carrier} carries a {group!r} with some fields NULL; a "
                     f"group value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
@@ -954,24 +904,42 @@ class Schema(_Declared):
         return (*self.coordinates_of(attribute), *LONG_TAIL)
 
     def categorizing(self, dim: str) -> tuple[str, ...]:
-        """The `Enum` properties of `dim` `into` no dim, if `partial` lists it: what `default_by` keys on.
+        """Return the categorizing properties of `dim`, the ones `default_by` keys on.
+
+        A categorizing property is a property of `dim` that takes its labels
+        from a dim listing its labels. Only a dim in `partial` has any.
 
         Notes
         -----
-        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
+        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
         """
         if dim not in self.dimensions or dim not in (self.partial or set()):
             return ()
         return tuple(
             name
             for name, spec in self.properties.get(dim, {}).items()
-            if isinstance(spec.dtype, nw.Enum) and spec.into is None
+            if spec.one_of is not None
+            and self.dimensions[spec.one_of].one_of is not None
         )
 
     def _categories(self, dim: str, name: str) -> tuple[str, ...]:
-        """The `Enum` categories of property `name` of `dim`; empty for any other dtype."""
-        dtype = self.properties[dim][name].dtype
-        return tuple(dtype.categories) if isinstance(dtype, nw.Enum) else ()
+        """Return the categories property `name` of `dim` can hold.
+
+        These are the labels listed by the dim the property takes its labels
+        from; there are none if that dim lists none.
+        """
+        return self._listed(self.properties[dim][name]) or ()
+
+    def _listed(self, spec: Dimension | PropertySpec) -> tuple[str, ...] | None:
+        """Return the labels a dim lists, or None if it lists none.
+
+        `spec` is the dim, or a property that takes its labels from the dim.
+        """
+        if isinstance(spec, PropertySpec):
+            if spec.one_of is None:
+                return None
+            spec = self.dimensions[spec.one_of]
+        return spec.one_of
 
     def require_categorizing(self, subject: str, keys: Iterable[str]) -> None:
         """Refuse a key that is not a categorizing property of `subject`.
@@ -983,7 +951,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
+        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
         """
         allowed = self.categorizing(subject)
         unknown = sorted(set(keys) - set(allowed))
@@ -997,28 +965,38 @@ class Schema(_Declared):
     def require_listed(
         self, subject: str, data: Mapping[str, Iterable[Any]], what: str
     ) -> None:
-        """Refuse a value of an `Enum` property of `subject` its categories do not list.
+        """Refuse a label its dim does not list.
 
-        `data` maps names to values; a name that is no `Enum` property of
-        `subject` is skipped, as is a NULL.
+        `data` maps column names to values. A name is checked where it is
+        `subject` and `subject` lists its labels, or where it is a property of
+        `subject` that takes its labels from a dim listing them. Other names
+        and NULL values are skipped.
 
         Raises
         ------
         ValueError
-            Naming `what`, the property, the unlisted values and its categories.
+            Naming `what`, the column, the unlisted labels and the labels the
+            dim lists.
+
+        Notes
+        -----
+        - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
         """
         specs = self.properties.get(subject, {})
         for name, values in data.items():
-            dtype = specs[name].dtype if name in specs else None
-            if not isinstance(dtype, nw.Enum):
+            if name in specs:
+                listed = self._listed(specs[name])
+            elif name == subject and subject in self.dimensions:
+                listed = self._listed(self.dimensions[subject])
+            else:
                 continue
-            unknown = sorted(
-                {str(v) for v in values if v is not None} - {*dtype.categories}
-            )
+            if listed is None:
+                continue
+            unknown = sorted({str(v) for v in values if v is not None} - {*listed})
             if unknown:
                 msg = (
-                    f"{what} gives {name!r} values {unknown}, which are not "
-                    f"categories of {name!r}; it declares {list(dtype.categories)}"
+                    f"{what} gives {name!r} labels {unknown}, which its dim "
+                    f"does not list; that dim lists {list(listed)}"
                 )
                 raise ValueError(msg)
 
@@ -1211,11 +1189,9 @@ class Schema(_Declared):
     def group_key(self, group: str) -> tuple[str, ...]:
         """One group's key coordinates - its struct column's fields - or `()` if undeclared.
 
-        `into` is none of them: the tuple is the key, whatever label it carries.
-
         Notes
         -----
-        - [into](https://energy-models.github.io/datarecord/design/schema/#into-a-group-that-classifies)
+        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
         spec = self.groups.get(group)
@@ -1235,18 +1211,17 @@ class Schema(_Declared):
 
     def column_type(
         self, column: str, subject: str | None = None
-    ) -> nw.dtypes.DType | None:
-        """The declared type for one column, or None if the schema declares none.
+    ) -> DuckDBPyType | None:
+        """Return the declared DuckDB type of `column`, or None if the schema declares none.
 
         Covers the structural columns the format fixes, the declared dims and
         groups, the properties of `subject` - columns of its axis or group
         file, read first - and the owner map's two flag structs, whose fields
-        follow the schema's dims. A narwhals dtype, translated to DuckDB
-        (`duck.DuckTypes`) only where a caller builds a column of it.
+        follow the schema's dims.
 
         No dim is structural: each is declared, and typed from that
-        declaration. So an `Enum` property pins its vocabulary everywhere the
-        column is built. An attribute is no column but a long row's value,
+        declaration. So the `ENUM` of a dim that lists its labels pins them
+        everywhere the column is built. An attribute is no column but a long row's value,
         typed by `value_type`.
 
         A schema declaring no dims at all is "no manifest yet" rather
@@ -1259,33 +1234,122 @@ class Schema(_Declared):
         - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
         - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
         """
-        own = self.properties.get(subject or "", {})
-        if column in own:
-            return own[column].dtype
+        found = self.declared(column, subject)
+        return None if found is None else found[1]
+
+    def _structural_type(self, column: str) -> DuckDBPyType | None:
+        """Return the type the format fixes for `column`: a group struct or a flag struct."""
         if column in STRUCTURAL_TYPES:
             return STRUCTURAL_TYPES[column]
-        if column in self.dimensions:
-            return self.dimensions[column].dtype
         if column in self.groups:
             return self.group_type(column)
         if column in ("varies", "broadcast"):
             return flag_type(self.broadcast_dims) if self.broadcast_dims else None
         return None
 
-    def value_type(self, attribute: str) -> nw.dtypes.DType | None:
-        """The `value` column's type for one attribute.
+    def declared(
+        self, column: str, subject: str | None = None, attribute: str | None = None
+    ) -> tuple[str, DuckDBPyType, str] | None:
+        """Look up the declaration of `column`.
+
+        Parameters
+        ----------
+        subject
+            The dim or group whose file holds the column. A column named like
+            one of its properties is that property, named `subject.name`.
+        attribute
+            The attribute whose long rows hold the column. Its `value` column
+            is the attribute, named as it is.
+
+        Returns
+        -------
+        tuple of str, DuckDBPyType and str, or None
+            The declared name, the DuckDB type, and the dtype as an error
+            message shows it; None where the schema declares no type for
+            `column`.
+
+        Notes
+        -----
+        - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+        """
+        own = self.properties.get(subject or "", {})
+        spec: Dimension | AttributeSpec | PropertySpec
+        if attribute is not None and column == "value":
+            name, spec = attribute, self.attributes[attribute]
+        elif column in own:
+            name, spec = f"{subject}.{column}", own[column]
+        elif column in self.dimensions and column not in STRUCTURAL_TYPES:
+            name, spec = column, self.dimensions[column]
+        else:
+            duck = self._structural_type(column)
+            return None if duck is None else (column, duck, str(duck))
+        duck = self.duck_type(spec)
+        return name, duck, f"{_typed_as(spec)} ({duck})"
+
+    def require_takes(
+        self,
+        rel: DuckDBPyRelation,
+        what: str,
+        subject: str | None = None,
+        attribute: str | None = None,
+    ) -> DuckDBPyRelation:
+        """Check that each column of `rel` has a type that fits its declaration, and return `rel`, with its all-NULL columns cast to their declared types.
+
+        A column type fits where `takes` says so. A column
+        that fails this but holds only NULLs passes and is cast to its declared
+        type, because dataframe libraries guess the type of an empty or
+        all-None column. Only such columns have their rows read. `subject` and
+        `attribute` are as in `declared`.
+
+        Raises
+        ------
+        ValueError
+            Naming `what`, and for each refused column its type, its
+            declared name and its dtype.
+
+        Notes
+        -----
+        - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        """
+        wrong = []
+        nulls: dict[str, DuckDBPyType] = {}
+        for c, given in zip(rel.columns, rel.types, strict=True):
+            found = self.declared(c, subject, attribute)
+            if found is None or takes(found[1], given):
+                continue
+            if rel.filter(col(c).isnotnull()).limit(1).fetchone() is None:
+                nulls[c] = found[1]
+                continue
+            name, _, shown = found
+            wrong.append(
+                f"column {c!r} has type {given}, which does not fit {name!r} "
+                f"of dtype {shown}"
+            )
+        if wrong:
+            msg = f"{what}: {'; '.join(wrong)}"
+            raise ValueError(msg)
+        if not nulls:
+            return rel
+        return rel.project(
+            *(
+                col(c).cast(nulls[c]).alias(c) if c in nulls else col(c)
+                for c in rel.columns
+            )
+        )
+
+    def value_type(self, attribute: str) -> DuckDBPyType | None:
+        """Return the DuckDB type of the `value` column of `attribute`.
 
         No `ctype`: one attribute is one `attributes/<attr>.parquet` with one
-        `value` column, so the dtype is the attribute's alone. A narwhals
-        dtype, translated to DuckDB (`duck.DuckTypes`) only where a caller builds
-        a column of it.
+        `value` column, so the dtype is the attribute's alone.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
         spec = self.attributes.get(attribute)
-        return None if spec is None else spec.dtype
+        return None if spec is None else DUCK_TYPES[spec.dtype]
 
     # -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) --------------------------------------------------
 
@@ -1314,8 +1378,8 @@ class Schema(_Declared):
             if now is None:
                 problems.append(f"dim {dim!r} removed")
                 continue
-            if now.dtype != was.dtype:
-                problems.append(f"dim {dim!r} dtype {was.dtype} -> {now.dtype}")
+            if _typed_as(now) != _typed_as(was):
+                problems.append(f"dim {dim!r} {_typed_as(was)} -> {_typed_as(now)}")
 
         for attr, was_spec in other.attributes.items():
             now_spec = self.attributes.get(attr)
@@ -1338,10 +1402,10 @@ class Schema(_Declared):
                 now_prop = self.properties.get(dim, {}).get(name)
                 if now_prop is None:
                     problems.append(f"property {name!r} of {dim!r} removed")
-                elif now_prop.dtype != was_prop.dtype:
+                elif _typed_as(now_prop) != _typed_as(was_prop):
                     problems.append(
-                        f"property {name!r} of {dim!r} dtype {was_prop.dtype} "
-                        f"-> {now_prop.dtype}"
+                        f"property {name!r} of {dim!r} {_typed_as(was_prop)} "
+                        f"-> {_typed_as(now_prop)}"
                     )
 
         if other.partial is not None and self.partial is not None:

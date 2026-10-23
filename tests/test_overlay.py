@@ -10,7 +10,6 @@ Notes
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
-import narwhals as nw
 import pandas as pd
 import pytest
 
@@ -253,7 +252,7 @@ def test_a_new_attribute_is_a_schema_amendment(store, network):
     """
     amended = read_schema(store)
     amended.attributes["p_min_pu"] = AttributeSpec(
-        dtype=nw.Float64(), dims={"entity", "snapshot"}, default=0.25
+        dtype="float", dims={"entity", "snapshot"}, default=0.25
     )
     write_schema(amended, store)
 
@@ -283,9 +282,7 @@ def test_a_schema_narrowing_is_refused(store, parent):
     - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
     narrowed = read_schema(store)
-    narrowed.attributes["p_max_pu"] = AttributeSpec(
-        dtype=nw.Float64(), dims=frozenset()
-    )
+    narrowed.attributes["p_max_pu"] = AttributeSpec(dtype="float", dims=frozenset())
 
     class _Narrowed:
         """The record's own source, with one attribute's dims taken away."""

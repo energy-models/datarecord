@@ -25,7 +25,7 @@ classifiers = [
 ]
 requires-python = ">=3.12"
 readme = "README.md"
-dependencies = ["duckdb>=1.5.4", "narwhals>=2,<3,!=2.21.0", "pydantic>=2.12"]
+dependencies = ["duckdb>=1.5.4", "pydantic>=2.12"]
 
 [project.optional-dependencies]
 pypsa = ["pypsa"]
@@ -72,9 +72,16 @@ no_implicit_optional = true
 check_untyped_defs = true
 files = "src/"
 
-# pandas, boto3, shapely and geopandas ship no stubs.
+# pandas, pyarrow, boto3, shapely and geopandas ship no stubs.
 [[tool.mypy.overrides]]
-module = ["pandas.*", "boto3.*", "botocore.*", "shapely.*", "geopandas.*"]
+module = [
+  "pandas.*",
+  "pyarrow.*",
+  "boto3.*",
+  "botocore.*",
+  "shapely.*",
+  "geopandas.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

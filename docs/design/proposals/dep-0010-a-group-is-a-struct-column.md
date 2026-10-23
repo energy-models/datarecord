@@ -43,7 +43,7 @@ A group's tombstones are a multi-column anti-join over coordinates that other gr
 
 ## The construct
 
-**An attribute row carries a group as one struct column named for the group**, with one field per [key](../schema.md#into-a-group-that-classifies) coordinate, in `over` order:
+**An attribute row carries a group as one struct column named for the group**, with one field per [key](../schema.md) coordinate, in `over` order:
 
 ```text
 inputs/efficiency.parquet   connection STRUCT(entity, bus) | timestep | attribute | breakpoint | value
@@ -119,7 +119,7 @@ Removing an entity still drops its connections' values and leaves the tuples, wh
 
 An attribute naming a group and a dim one of its key coordinates is named for — `dims={"connection", "bus"}` — is rejected: the row would hold the bus twice, free to disagree.
 It is unexpressible today only because the two land on one column; the struct makes it expressible, so the schema says so instead.
-It is the same "keyed twice over" rule [`into`](../schema.md#into-a-group-that-classifies) already states.
+It is the same "keyed twice over" rule [`into`](../schema.md) already states.
 
 ## Landing
 
