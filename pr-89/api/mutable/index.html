@@ -1400,16 +1400,6 @@ coordinate's own keyword.</p>
               </div>
             </td>
           </tr>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="TypeError">TypeError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>On an <code>nw.Expr</code> value.</p>
-              </div>
-            </td>
-          </tr>
       </tbody>
     </table>
 
@@ -1552,15 +1542,7 @@ coordinate's own keyword.</p>
 <span class="normal"><a href="#__codelineno-0-822">822</a></span>
 <span class="normal"><a href="#__codelineno-0-823">823</a></span>
 <span class="normal"><a href="#__codelineno-0-824">824</a></span>
-<span class="normal"><a href="#__codelineno-0-825">825</a></span>
-<span class="normal"><a href="#__codelineno-0-826">826</a></span>
-<span class="normal"><a href="#__codelineno-0-827">827</a></span>
-<span class="normal"><a href="#__codelineno-0-828">828</a></span>
-<span class="normal"><a href="#__codelineno-0-829">829</a></span>
-<span class="normal"><a href="#__codelineno-0-830">830</a></span>
-<span class="normal"><a href="#__codelineno-0-831">831</a></span>
-<span class="normal"><a href="#__codelineno-0-832">832</a></span>
-<span class="normal"><a href="#__codelineno-0-833">833</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="k">def</span><span class="w"> </span><span class="nf">set</span><span class="p">(</span>
+<span class="normal"><a href="#__codelineno-0-825">825</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-698" name="__codelineno-0-698"></a><span class="k">def</span><span class="w"> </span><span class="nf">set</span><span class="p">(</span>
 <a id="__codelineno-0-699" name="__codelineno-0-699"></a>    <span class="bp">self</span><span class="p">,</span>
 <a id="__codelineno-0-700" name="__codelineno-0-700"></a>    <span class="n">attribute</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <a id="__codelineno-0-701" name="__codelineno-0-701"></a>    <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
@@ -1612,90 +1594,82 @@ coordinate's own keyword.</p>
 <a id="__codelineno-0-747" name="__codelineno-0-747"></a><span class="sd">        not list, or a property keyword whose dim the attribute does not</span>
 <a id="__codelineno-0-748" name="__codelineno-0-748"></a><span class="sd">        reach through exactly one coordinate, or that is given beside that</span>
 <a id="__codelineno-0-749" name="__codelineno-0-749"></a><span class="sd">        coordinate's own keyword.</span>
-<a id="__codelineno-0-750" name="__codelineno-0-750"></a><span class="sd">    TypeError</span>
-<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">        On an `nw.Expr` value.</span>
-<a id="__codelineno-0-752" name="__codelineno-0-752"></a>
-<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-754" name="__codelineno-0-754"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">    - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)</span>
-<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)</span>
-<a id="__codelineno-0-757" name="__codelineno-0-757"></a><span class="sd">    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)</span>
-<a id="__codelineno-0-758" name="__codelineno-0-758"></a><span class="sd">    """</span>
-<a id="__codelineno-0-759" name="__codelineno-0-759"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">nw</span><span class="o">.</span><span class="n">Expr</span><span class="p">):</span>
-<a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-761" name="__codelineno-0-761"></a>            <span class="sa">f</span><span class="s2">"`set(</span><span class="si">{</span><span class="n">attribute</span><span class="si">!r}</span><span class="s2">, &lt;expression&gt;)` takes a value, not an "</span>
-<a id="__codelineno-0-762" name="__codelineno-0-762"></a>            <span class="sa">f</span><span class="s2">"expression: compute the value from the record and `set` that"</span>
-<a id="__codelineno-0-763" name="__codelineno-0-763"></a>        <span class="p">)</span>
-<a id="__codelineno-0-764" name="__codelineno-0-764"></a>        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-<a id="__codelineno-0-765" name="__codelineno-0-765"></a>    <span class="n">keyed</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">)</span> <span class="ow">or</span> <span class="n">_series_index</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-<a id="__codelineno-0-766" name="__codelineno-0-766"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="n">attribute</span><span class="p">),</span> <span class="nb">tuple</span><span class="p">):</span>
-<a id="__codelineno-0-767" name="__codelineno-0-767"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_set_dotted</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
-<a id="__codelineno-0-768" name="__codelineno-0-768"></a>        <span class="k">return</span>
-<a id="__codelineno-0-769" name="__codelineno-0-769"></a>    <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_select</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
-<a id="__codelineno-0-770" name="__codelineno-0-770"></a>    <span class="n">listed</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">coords</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">v</span><span class="p">)}</span>
-<a id="__codelineno-0-771" name="__codelineno-0-771"></a>
-<a id="__codelineno-0-772" name="__codelineno-0-772"></a>    <span class="k">if</span> <span class="n">_is_frame</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">keyed</span><span class="p">:</span>
-<a id="__codelineno-0-773" name="__codelineno-0-773"></a>        <span class="k">if</span> <span class="n">listed</span><span class="p">:</span>
-<a id="__codelineno-0-774" name="__codelineno-0-774"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-775" name="__codelineno-0-775"></a>                <span class="sa">f</span><span class="s2">"`set(</span><span class="si">{</span><span class="n">attribute</span><span class="si">!r}</span><span class="s2">, &lt;frame&gt;)` supplies its own keys, so "</span>
-<a id="__codelineno-0-776" name="__codelineno-0-776"></a>                <span class="sa">f</span><span class="s2">"keywords </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">listed</span><span class="p">)</span><span class="si">}</span><span class="s2"> may give one label each, not a list"</span>
-<a id="__codelineno-0-777" name="__codelineno-0-777"></a>            <span class="p">)</span>
-<a id="__codelineno-0-778" name="__codelineno-0-778"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-<a id="__codelineno-0-779" name="__codelineno-0-779"></a>        <span class="n">lazy</span> <span class="o">=</span> <span class="n">_incoming</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="p">)</span>
-<a id="__codelineno-0-780" name="__codelineno-0-780"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">check_group_columns</span><span class="p">(</span>
-<a id="__codelineno-0-781" name="__codelineno-0-781"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups_of</span><span class="p">(</span><span class="n">attribute</span><span class="p">),</span>
-<a id="__codelineno-0-782" name="__codelineno-0-782"></a>            <span class="n">lazy</span><span class="p">,</span>
-<a id="__codelineno-0-783" name="__codelineno-0-783"></a>            <span class="n">carrier</span><span class="o">=</span><span class="sa">f</span><span class="s2">"`set(</span><span class="si">{</span><span class="n">attribute</span><span class="si">!r}</span><span class="s2">, &lt;frame&gt;)`"</span><span class="p">,</span>
-<a id="__codelineno-0-784" name="__codelineno-0-784"></a>        <span class="p">)</span>
-<a id="__codelineno-0-785" name="__codelineno-0-785"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_validate_frame</span><span class="p">(</span><span class="n">lazy</span><span class="p">,</span> <span class="n">attribute</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
-<a id="__codelineno-0-786" name="__codelineno-0-786"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_stage_long</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">lazy</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
-<a id="__codelineno-0-787" name="__codelineno-0-787"></a>        <span class="k">return</span>
-<a id="__codelineno-0-788" name="__codelineno-0-788"></a>
-<a id="__codelineno-0-789" name="__codelineno-0-789"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_validate_input</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
-<a id="__codelineno-0-790" name="__codelineno-0-790"></a>
-<a id="__codelineno-0-791" name="__codelineno-0-791"></a>    <span class="k">if</span> <span class="n">keyed</span><span class="p">:</span>
-<a id="__codelineno-0-792" name="__codelineno-0-792"></a>        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_key_coordinate</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
-<a id="__codelineno-0-793" name="__codelineno-0-793"></a>        <span class="n">keys</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">normalise_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-<a id="__codelineno-0-794" name="__codelineno-0-794"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_require_labels</span><span class="p">(</span>
-<a id="__codelineno-0-795" name="__codelineno-0-795"></a>            <span class="n">_flat_coordinates</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="p">,</span> <span class="n">attribute</span><span class="p">)[</span><span class="n">key</span><span class="p">],</span>
-<a id="__codelineno-0-796" name="__codelineno-0-796"></a>            <span class="n">cast</span><span class="p">(</span><span class="s2">"list[Any]"</span><span class="p">,</span> <span class="n">keys</span><span class="p">),</span>
-<a id="__codelineno-0-797" name="__codelineno-0-797"></a>        <span class="p">)</span>
-<a id="__codelineno-0-798" name="__codelineno-0-798"></a>        <span class="n">column</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">cast</span><span class="p">(</span><span class="s2">"list[Any]"</span><span class="p">,</span> <span class="n">keys</span><span class="p">)}</span>
-<a id="__codelineno-0-799" name="__codelineno-0-799"></a>    <span class="k">elif</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
-<a id="__codelineno-0-800" name="__codelineno-0-800"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">listed</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
-<a id="__codelineno-0-801" name="__codelineno-0-801"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-802" name="__codelineno-0-802"></a>                <span class="sa">f</span><span class="s2">"`set(</span><span class="si">{</span><span class="n">attribute</span><span class="si">!r}</span><span class="s2">, &lt;sequence&gt;)` aligns to exactly one list "</span>
-<a id="__codelineno-0-803" name="__codelineno-0-803"></a>                <span class="sa">f</span><span class="s2">"keyword, and was given </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">listed</span><span class="p">)</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">'none'</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-804" name="__codelineno-0-804"></a>            <span class="p">)</span>
-<a id="__codelineno-0-805" name="__codelineno-0-805"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-<a id="__codelineno-0-806" name="__codelineno-0-806"></a>        <span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="n">labels</span><span class="p">),)</span> <span class="o">=</span> <span class="n">listed</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
-<a id="__codelineno-0-807" name="__codelineno-0-807"></a>        <span class="k">del</span> <span class="n">listed</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
-<a id="__codelineno-0-808" name="__codelineno-0-808"></a>        <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">normalise_value</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">labels</span><span class="p">)</span>
-<a id="__codelineno-0-809" name="__codelineno-0-809"></a>        <span class="n">column</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">labels</span><span class="p">}</span>
-<a id="__codelineno-0-810" name="__codelineno-0-810"></a>    <span class="k">else</span><span class="p">:</span>
-<a id="__codelineno-0-811" name="__codelineno-0-811"></a>        <span class="n">values</span> <span class="o">=</span> <span class="p">[</span><span class="n">value</span><span class="p">]</span>
-<a id="__codelineno-0-812" name="__codelineno-0-812"></a>        <span class="n">column</span> <span class="o">=</span> <span class="p">{}</span>
-<a id="__codelineno-0-813" name="__codelineno-0-813"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span>
-<a id="__codelineno-0-814" name="__codelineno-0-814"></a>        <span class="p">{</span><span class="o">**</span><span class="n">column</span><span class="p">,</span> <span class="s2">"value"</span><span class="p">:</span> <span class="n">values</span><span class="p">},</span>
-<a id="__codelineno-0-815" name="__codelineno-0-815"></a>        <span class="p">{</span>
-<a id="__codelineno-0-816" name="__codelineno-0-816"></a>            <span class="o">**</span><span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_coordinate_type</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">column</span><span class="p">},</span>
-<a id="__codelineno-0-817" name="__codelineno-0-817"></a>            <span class="s2">"value"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-<a id="__codelineno-0-818" name="__codelineno-0-818"></a>        <span class="p">},</span>
-<a id="__codelineno-0-819" name="__codelineno-0-819"></a>    <span class="p">)</span>
-<a id="__codelineno-0-820" name="__codelineno-0-820"></a>    <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">labels</span> <span class="ow">in</span> <span class="n">listed</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-821" name="__codelineno-0-821"></a>        <span class="n">rel</span> <span class="o">=</span> <span class="n">rel</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span>
-<a id="__codelineno-0-822" name="__codelineno-0-822"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span>
-<a id="__codelineno-0-823" name="__codelineno-0-823"></a>                <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="n">labels</span><span class="p">},</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_coordinate_type</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">c</span><span class="p">)}</span>
-<a id="__codelineno-0-824" name="__codelineno-0-824"></a>            <span class="p">)</span>
-<a id="__codelineno-0-825" name="__codelineno-0-825"></a>        <span class="p">)</span>
-<a id="__codelineno-0-826" name="__codelineno-0-826"></a>    <span class="n">fixed</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">coords</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">v</span><span class="p">)}</span>
-<a id="__codelineno-0-827" name="__codelineno-0-827"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert_long</span><span class="p">(</span>
-<a id="__codelineno-0-828" name="__codelineno-0-828"></a>        <span class="n">rel</span><span class="p">,</span>
-<a id="__codelineno-0-829" name="__codelineno-0-829"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">_ATTRIBUTES</span><span class="p">,</span> <span class="n">attribute</span><span class="p">),</span>
-<a id="__codelineno-0-830" name="__codelineno-0-830"></a>        <span class="n">attribute</span><span class="p">,</span>
-<a id="__codelineno-0-831" name="__codelineno-0-831"></a>        <span class="nb">set</span><span class="p">(</span><span class="n">rel</span><span class="o">.</span><span class="n">columns</span><span class="p">),</span>
-<a id="__codelineno-0-832" name="__codelineno-0-832"></a>        <span class="n">fixed</span><span class="p">,</span>
-<a id="__codelineno-0-833" name="__codelineno-0-833"></a>    <span class="p">)</span>
+<a id="__codelineno-0-750" name="__codelineno-0-750"></a>
+<a id="__codelineno-0-751" name="__codelineno-0-751"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-752" name="__codelineno-0-752"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-753" name="__codelineno-0-753"></a><span class="sd">    - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)</span>
+<a id="__codelineno-0-754" name="__codelineno-0-754"></a><span class="sd">    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)</span>
+<a id="__codelineno-0-755" name="__codelineno-0-755"></a><span class="sd">    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)</span>
+<a id="__codelineno-0-756" name="__codelineno-0-756"></a><span class="sd">    """</span>
+<a id="__codelineno-0-757" name="__codelineno-0-757"></a>    <span class="n">keyed</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">)</span> <span class="ow">or</span> <span class="n">_series_index</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<a id="__codelineno-0-758" name="__codelineno-0-758"></a>    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="n">attribute</span><span class="p">),</span> <span class="nb">tuple</span><span class="p">):</span>
+<a id="__codelineno-0-759" name="__codelineno-0-759"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_set_dotted</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-760" name="__codelineno-0-760"></a>        <span class="k">return</span>
+<a id="__codelineno-0-761" name="__codelineno-0-761"></a>    <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_select</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-762" name="__codelineno-0-762"></a>    <span class="n">listed</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">coords</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">v</span><span class="p">)}</span>
+<a id="__codelineno-0-763" name="__codelineno-0-763"></a>
+<a id="__codelineno-0-764" name="__codelineno-0-764"></a>    <span class="k">if</span> <span class="n">_is_frame</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">keyed</span><span class="p">:</span>
+<a id="__codelineno-0-765" name="__codelineno-0-765"></a>        <span class="k">if</span> <span class="n">listed</span><span class="p">:</span>
+<a id="__codelineno-0-766" name="__codelineno-0-766"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-767" name="__codelineno-0-767"></a>                <span class="sa">f</span><span class="s2">"`set(</span><span class="si">{</span><span class="n">attribute</span><span class="si">!r}</span><span class="s2">, &lt;frame&gt;)` supplies its own keys, so "</span>
+<a id="__codelineno-0-768" name="__codelineno-0-768"></a>                <span class="sa">f</span><span class="s2">"keywords </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">listed</span><span class="p">)</span><span class="si">}</span><span class="s2"> may give one label each, not a list"</span>
+<a id="__codelineno-0-769" name="__codelineno-0-769"></a>            <span class="p">)</span>
+<a id="__codelineno-0-770" name="__codelineno-0-770"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-771" name="__codelineno-0-771"></a>        <span class="n">lazy</span> <span class="o">=</span> <span class="n">_incoming</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="p">)</span>
+<a id="__codelineno-0-772" name="__codelineno-0-772"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">check_group_columns</span><span class="p">(</span>
+<a id="__codelineno-0-773" name="__codelineno-0-773"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups_of</span><span class="p">(</span><span class="n">attribute</span><span class="p">),</span>
+<a id="__codelineno-0-774" name="__codelineno-0-774"></a>            <span class="n">lazy</span><span class="p">,</span>
+<a id="__codelineno-0-775" name="__codelineno-0-775"></a>            <span class="n">carrier</span><span class="o">=</span><span class="sa">f</span><span class="s2">"`set(</span><span class="si">{</span><span class="n">attribute</span><span class="si">!r}</span><span class="s2">, &lt;frame&gt;)`"</span><span class="p">,</span>
+<a id="__codelineno-0-776" name="__codelineno-0-776"></a>        <span class="p">)</span>
+<a id="__codelineno-0-777" name="__codelineno-0-777"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_validate_frame</span><span class="p">(</span><span class="n">lazy</span><span class="p">,</span> <span class="n">attribute</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-778" name="__codelineno-0-778"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_stage_long</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">lazy</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-779" name="__codelineno-0-779"></a>        <span class="k">return</span>
+<a id="__codelineno-0-780" name="__codelineno-0-780"></a>
+<a id="__codelineno-0-781" name="__codelineno-0-781"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_validate_input</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-782" name="__codelineno-0-782"></a>
+<a id="__codelineno-0-783" name="__codelineno-0-783"></a>    <span class="k">if</span> <span class="n">keyed</span><span class="p">:</span>
+<a id="__codelineno-0-784" name="__codelineno-0-784"></a>        <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_key_coordinate</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">value</span><span class="p">,</span> <span class="n">coords</span><span class="p">)</span>
+<a id="__codelineno-0-785" name="__codelineno-0-785"></a>        <span class="n">keys</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">normalise_value</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+<a id="__codelineno-0-786" name="__codelineno-0-786"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_require_labels</span><span class="p">(</span>
+<a id="__codelineno-0-787" name="__codelineno-0-787"></a>            <span class="n">_flat_coordinates</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="p">,</span> <span class="n">attribute</span><span class="p">)[</span><span class="n">key</span><span class="p">],</span>
+<a id="__codelineno-0-788" name="__codelineno-0-788"></a>            <span class="n">cast</span><span class="p">(</span><span class="s2">"list[Any]"</span><span class="p">,</span> <span class="n">keys</span><span class="p">),</span>
+<a id="__codelineno-0-789" name="__codelineno-0-789"></a>        <span class="p">)</span>
+<a id="__codelineno-0-790" name="__codelineno-0-790"></a>        <span class="n">column</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">cast</span><span class="p">(</span><span class="s2">"list[Any]"</span><span class="p">,</span> <span class="n">keys</span><span class="p">)}</span>
+<a id="__codelineno-0-791" name="__codelineno-0-791"></a>    <span class="k">elif</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+<a id="__codelineno-0-792" name="__codelineno-0-792"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">listed</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+<a id="__codelineno-0-793" name="__codelineno-0-793"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-794" name="__codelineno-0-794"></a>                <span class="sa">f</span><span class="s2">"`set(</span><span class="si">{</span><span class="n">attribute</span><span class="si">!r}</span><span class="s2">, &lt;sequence&gt;)` aligns to exactly one list "</span>
+<a id="__codelineno-0-795" name="__codelineno-0-795"></a>                <span class="sa">f</span><span class="s2">"keyword, and was given </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">listed</span><span class="p">)</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">'none'</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-796" name="__codelineno-0-796"></a>            <span class="p">)</span>
+<a id="__codelineno-0-797" name="__codelineno-0-797"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-798" name="__codelineno-0-798"></a>        <span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="n">labels</span><span class="p">),)</span> <span class="o">=</span> <span class="n">listed</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<a id="__codelineno-0-799" name="__codelineno-0-799"></a>        <span class="k">del</span> <span class="n">listed</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+<a id="__codelineno-0-800" name="__codelineno-0-800"></a>        <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">normalise_value</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">labels</span><span class="p">)</span>
+<a id="__codelineno-0-801" name="__codelineno-0-801"></a>        <span class="n">column</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">labels</span><span class="p">}</span>
+<a id="__codelineno-0-802" name="__codelineno-0-802"></a>    <span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-0-803" name="__codelineno-0-803"></a>        <span class="n">values</span> <span class="o">=</span> <span class="p">[</span><span class="n">value</span><span class="p">]</span>
+<a id="__codelineno-0-804" name="__codelineno-0-804"></a>        <span class="n">column</span> <span class="o">=</span> <span class="p">{}</span>
+<a id="__codelineno-0-805" name="__codelineno-0-805"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span>
+<a id="__codelineno-0-806" name="__codelineno-0-806"></a>        <span class="p">{</span><span class="o">**</span><span class="n">column</span><span class="p">,</span> <span class="s2">"value"</span><span class="p">:</span> <span class="n">values</span><span class="p">},</span>
+<a id="__codelineno-0-807" name="__codelineno-0-807"></a>        <span class="p">{</span>
+<a id="__codelineno-0-808" name="__codelineno-0-808"></a>            <span class="o">**</span><span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_coordinate_type</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">column</span><span class="p">},</span>
+<a id="__codelineno-0-809" name="__codelineno-0-809"></a>            <span class="s2">"value"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-810" name="__codelineno-0-810"></a>        <span class="p">},</span>
+<a id="__codelineno-0-811" name="__codelineno-0-811"></a>    <span class="p">)</span>
+<a id="__codelineno-0-812" name="__codelineno-0-812"></a>    <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">labels</span> <span class="ow">in</span> <span class="n">listed</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-813" name="__codelineno-0-813"></a>        <span class="n">rel</span> <span class="o">=</span> <span class="n">rel</span><span class="o">.</span><span class="n">cross</span><span class="p">(</span>
+<a id="__codelineno-0-814" name="__codelineno-0-814"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span>
+<a id="__codelineno-0-815" name="__codelineno-0-815"></a>                <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="n">labels</span><span class="p">},</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_coordinate_type</span><span class="p">(</span><span class="n">attribute</span><span class="p">,</span> <span class="n">c</span><span class="p">)}</span>
+<a id="__codelineno-0-816" name="__codelineno-0-816"></a>            <span class="p">)</span>
+<a id="__codelineno-0-817" name="__codelineno-0-817"></a>        <span class="p">)</span>
+<a id="__codelineno-0-818" name="__codelineno-0-818"></a>    <span class="n">fixed</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">coords</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">v</span><span class="p">)}</span>
+<a id="__codelineno-0-819" name="__codelineno-0-819"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert_long</span><span class="p">(</span>
+<a id="__codelineno-0-820" name="__codelineno-0-820"></a>        <span class="n">rel</span><span class="p">,</span>
+<a id="__codelineno-0-821" name="__codelineno-0-821"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">_ATTRIBUTES</span><span class="p">,</span> <span class="n">attribute</span><span class="p">),</span>
+<a id="__codelineno-0-822" name="__codelineno-0-822"></a>        <span class="n">attribute</span><span class="p">,</span>
+<a id="__codelineno-0-823" name="__codelineno-0-823"></a>        <span class="nb">set</span><span class="p">(</span><span class="n">rel</span><span class="o">.</span><span class="n">columns</span><span class="p">),</span>
+<a id="__codelineno-0-824" name="__codelineno-0-824"></a>        <span class="n">fixed</span><span class="p">,</span>
+<a id="__codelineno-0-825" name="__codelineno-0-825"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1774,7 +1748,15 @@ not list.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1330">1330</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1322">1322</a></span>
+<span class="normal"><a href="#__codelineno-0-1323">1323</a></span>
+<span class="normal"><a href="#__codelineno-0-1324">1324</a></span>
+<span class="normal"><a href="#__codelineno-0-1325">1325</a></span>
+<span class="normal"><a href="#__codelineno-0-1326">1326</a></span>
+<span class="normal"><a href="#__codelineno-0-1327">1327</a></span>
+<span class="normal"><a href="#__codelineno-0-1328">1328</a></span>
+<span class="normal"><a href="#__codelineno-0-1329">1329</a></span>
+<span class="normal"><a href="#__codelineno-0-1330">1330</a></span>
 <span class="normal"><a href="#__codelineno-0-1331">1331</a></span>
 <span class="normal"><a href="#__codelineno-0-1332">1332</a></span>
 <span class="normal"><a href="#__codelineno-0-1333">1333</a></span>
@@ -1817,66 +1799,58 @@ not list.</p>
 <span class="normal"><a href="#__codelineno-0-1370">1370</a></span>
 <span class="normal"><a href="#__codelineno-0-1371">1371</a></span>
 <span class="normal"><a href="#__codelineno-0-1372">1372</a></span>
-<span class="normal"><a href="#__codelineno-0-1373">1373</a></span>
-<span class="normal"><a href="#__codelineno-0-1374">1374</a></span>
-<span class="normal"><a href="#__codelineno-0-1375">1375</a></span>
-<span class="normal"><a href="#__codelineno-0-1376">1376</a></span>
-<span class="normal"><a href="#__codelineno-0-1377">1377</a></span>
-<span class="normal"><a href="#__codelineno-0-1378">1378</a></span>
-<span class="normal"><a href="#__codelineno-0-1379">1379</a></span>
-<span class="normal"><a href="#__codelineno-0-1380">1380</a></span>
-<span class="normal"><a href="#__codelineno-0-1381">1381</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1330" name="__codelineno-0-1330"></a><span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="o">**</span><span class="n">columns</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1331" name="__codelineno-0-1331"></a><span class="w">    </span><span class="sd">"""Stage labels of `dim`, each as one whole row of its axis file.</span>
-<a id="__codelineno-0-1332" name="__codelineno-0-1332"></a>
-<a id="__codelineno-0-1333" name="__codelineno-0-1333"></a><span class="sd">    `columns` are `dim`'s properties, each a scalar for every label or a</span>
-<a id="__codelineno-0-1334" name="__codelineno-0-1334"></a><span class="sd">    sequence aligned to `labels`. A column no keyword names is NULL on</span>
-<a id="__codelineno-0-1335" name="__codelineno-0-1335"></a><span class="sd">    these rows: `add` restates a label's row whole, replacing any this</span>
-<a id="__codelineno-0-1336" name="__codelineno-0-1336"></a><span class="sd">    record staged for it, a `remove`'s tombstone included.</span>
-<a id="__codelineno-0-1337" name="__codelineno-0-1337"></a>
-<a id="__codelineno-0-1338" name="__codelineno-0-1338"></a><span class="sd">    Not a sequence of `set` calls: a label exists by virtue of its axis row,</span>
-<a id="__codelineno-0-1339" name="__codelineno-0-1339"></a><span class="sd">    so adding one with no columns at all is an edit. An attribute's value,</span>
-<a id="__codelineno-0-1340" name="__codelineno-0-1340"></a><span class="sd">    whatever its `dims`, goes through `set`, a group's row through</span>
-<a id="__codelineno-0-1341" name="__codelineno-0-1341"></a><span class="sd">    `add_group`.</span>
-<a id="__codelineno-0-1342" name="__codelineno-0-1342"></a>
-<a id="__codelineno-0-1343" name="__codelineno-0-1343"></a><span class="sd">    Raises</span>
-<a id="__codelineno-0-1344" name="__codelineno-0-1344"></a><span class="sd">    ------</span>
-<a id="__codelineno-0-1345" name="__codelineno-0-1345"></a><span class="sd">    KeyError</span>
-<a id="__codelineno-0-1346" name="__codelineno-0-1346"></a><span class="sd">        If the schema declares no `dim`, or on a value of a property `into`</span>
-<a id="__codelineno-0-1347" name="__codelineno-0-1347"></a><span class="sd">        a dim naming no label of it.</span>
-<a id="__codelineno-0-1348" name="__codelineno-0-1348"></a><span class="sd">    ValueError</span>
-<a id="__codelineno-0-1349" name="__codelineno-0-1349"></a><span class="sd">        On an attribute, a column the axis file has no place for, a</span>
-<a id="__codelineno-0-1350" name="__codelineno-0-1350"></a><span class="sd">        sequence of the wrong length, or a value an `Enum` property does</span>
-<a id="__codelineno-0-1351" name="__codelineno-0-1351"></a><span class="sd">        not list.</span>
-<a id="__codelineno-0-1352" name="__codelineno-0-1352"></a>
-<a id="__codelineno-0-1353" name="__codelineno-0-1353"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-1354" name="__codelineno-0-1354"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-1355" name="__codelineno-0-1355"></a><span class="sd">    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)</span>
-<a id="__codelineno-0-1356" name="__codelineno-0-1356"></a><span class="sd">    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)</span>
-<a id="__codelineno-0-1357" name="__codelineno-0-1357"></a><span class="sd">    """</span>
-<a id="__codelineno-0-1358" name="__codelineno-0-1358"></a>    <span class="k">if</span> <span class="n">dim</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">dimensions</span><span class="p">:</span>
-<a id="__codelineno-0-1359" name="__codelineno-0-1359"></a>        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"the schema declares no dim </span><span class="si">{</span><span class="n">dim</span><span class="si">!r}</span><span class="s2">"</span>
-<a id="__codelineno-0-1360" name="__codelineno-0-1360"></a>        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-<a id="__codelineno-0-1361" name="__codelineno-0-1361"></a>    <span class="n">call</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"add(</span><span class="si">{</span><span class="n">dim</span><span class="si">!r}</span><span class="s2">, ...)"</span>
-<a id="__codelineno-0-1362" name="__codelineno-0-1362"></a>    <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">_AXIS_PREFIX</span><span class="si">}{</span><span class="n">dim</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-1363" name="__codelineno-0-1363"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_reject_undeclared</span><span class="p">(</span><span class="n">call</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="p">[</span><span class="o">*</span><span class="n">columns</span><span class="p">])</span>
-<a id="__codelineno-0-1364" name="__codelineno-0-1364"></a>    <span class="n">names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>
-<a id="__codelineno-0-1365" name="__codelineno-0-1365"></a>    <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span><span class="n">dim</span><span class="p">:</span> <span class="n">names</span><span class="p">}</span>
-<a id="__codelineno-0-1366" name="__codelineno-0-1366"></a>    <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">given</span> <span class="ow">in</span> <span class="n">columns</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-1367" name="__codelineno-0-1367"></a>        <span class="n">data</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">given</span><span class="p">)</span> <span class="k">if</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">given</span><span class="p">)</span> <span class="k">else</span> <span class="p">[</span><span class="n">given</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)</span>
-<a id="__codelineno-0-1368" name="__codelineno-0-1368"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="n">c</span><span class="p">])</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">):</span>
-<a id="__codelineno-0-1369" name="__codelineno-0-1369"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
-<a id="__codelineno-0-1370" name="__codelineno-0-1370"></a>                <span class="sa">f</span><span class="s2">"`</span><span class="si">{</span><span class="n">call</span><span class="si">}</span><span class="s2">` has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="n">c</span><span class="p">])</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">c</span><span class="si">!r}</span><span class="s2"> values for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)</span><span class="si">}</span><span class="s2"> labels"</span>
-<a id="__codelineno-0-1371" name="__codelineno-0-1371"></a>            <span class="p">)</span>
-<a id="__codelineno-0-1372" name="__codelineno-0-1372"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-<a id="__codelineno-0-1373" name="__codelineno-0-1373"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">require_listed</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"`</span><span class="si">{</span><span class="n">call</span><span class="si">}</span><span class="s2">`"</span><span class="p">)</span>
-<a id="__codelineno-0-1374" name="__codelineno-0-1374"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_require_live</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
-<a id="__codelineno-0-1375" name="__codelineno-0-1375"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_column_type</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">data</span><span class="p">})</span>
-<a id="__codelineno-0-1376" name="__codelineno-0-1376"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
-<a id="__codelineno-0-1377" name="__codelineno-0-1377"></a>        <span class="n">rel</span><span class="p">,</span>
-<a id="__codelineno-0-1378" name="__codelineno-0-1378"></a>        <span class="n">table</span><span class="p">,</span>
-<a id="__codelineno-0-1379" name="__codelineno-0-1379"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">False</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
-<a id="__codelineno-0-1380" name="__codelineno-0-1380"></a>        <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">dim</span><span class="p">,),</span>
-<a id="__codelineno-0-1381" name="__codelineno-0-1381"></a>    <span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-1373">1373</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1322" name="__codelineno-0-1322"></a><span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="o">**</span><span class="n">columns</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1323" name="__codelineno-0-1323"></a><span class="w">    </span><span class="sd">"""Stage labels of `dim`, each as one whole row of its axis file.</span>
+<a id="__codelineno-0-1324" name="__codelineno-0-1324"></a>
+<a id="__codelineno-0-1325" name="__codelineno-0-1325"></a><span class="sd">    `columns` are `dim`'s properties, each a scalar for every label or a</span>
+<a id="__codelineno-0-1326" name="__codelineno-0-1326"></a><span class="sd">    sequence aligned to `labels`. A column no keyword names is NULL on</span>
+<a id="__codelineno-0-1327" name="__codelineno-0-1327"></a><span class="sd">    these rows: `add` restates a label's row whole, replacing any this</span>
+<a id="__codelineno-0-1328" name="__codelineno-0-1328"></a><span class="sd">    record staged for it, a `remove`'s tombstone included.</span>
+<a id="__codelineno-0-1329" name="__codelineno-0-1329"></a>
+<a id="__codelineno-0-1330" name="__codelineno-0-1330"></a><span class="sd">    Not a sequence of `set` calls: a label exists by virtue of its axis row,</span>
+<a id="__codelineno-0-1331" name="__codelineno-0-1331"></a><span class="sd">    so adding one with no columns at all is an edit. An attribute's value,</span>
+<a id="__codelineno-0-1332" name="__codelineno-0-1332"></a><span class="sd">    whatever its `dims`, goes through `set`, a group's row through</span>
+<a id="__codelineno-0-1333" name="__codelineno-0-1333"></a><span class="sd">    `add_group`.</span>
+<a id="__codelineno-0-1334" name="__codelineno-0-1334"></a>
+<a id="__codelineno-0-1335" name="__codelineno-0-1335"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-1336" name="__codelineno-0-1336"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-1337" name="__codelineno-0-1337"></a><span class="sd">    KeyError</span>
+<a id="__codelineno-0-1338" name="__codelineno-0-1338"></a><span class="sd">        If the schema declares no `dim`, or on a value of a property `into`</span>
+<a id="__codelineno-0-1339" name="__codelineno-0-1339"></a><span class="sd">        a dim naming no label of it.</span>
+<a id="__codelineno-0-1340" name="__codelineno-0-1340"></a><span class="sd">    ValueError</span>
+<a id="__codelineno-0-1341" name="__codelineno-0-1341"></a><span class="sd">        On an attribute, a column the axis file has no place for, a</span>
+<a id="__codelineno-0-1342" name="__codelineno-0-1342"></a><span class="sd">        sequence of the wrong length, or a value an `Enum` property does</span>
+<a id="__codelineno-0-1343" name="__codelineno-0-1343"></a><span class="sd">        not list.</span>
+<a id="__codelineno-0-1344" name="__codelineno-0-1344"></a>
+<a id="__codelineno-0-1345" name="__codelineno-0-1345"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-1346" name="__codelineno-0-1346"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-1347" name="__codelineno-0-1347"></a><span class="sd">    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)</span>
+<a id="__codelineno-0-1348" name="__codelineno-0-1348"></a><span class="sd">    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)</span>
+<a id="__codelineno-0-1349" name="__codelineno-0-1349"></a><span class="sd">    """</span>
+<a id="__codelineno-0-1350" name="__codelineno-0-1350"></a>    <span class="k">if</span> <span class="n">dim</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">dimensions</span><span class="p">:</span>
+<a id="__codelineno-0-1351" name="__codelineno-0-1351"></a>        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"the schema declares no dim </span><span class="si">{</span><span class="n">dim</span><span class="si">!r}</span><span class="s2">"</span>
+<a id="__codelineno-0-1352" name="__codelineno-0-1352"></a>        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-1353" name="__codelineno-0-1353"></a>    <span class="n">call</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"add(</span><span class="si">{</span><span class="n">dim</span><span class="si">!r}</span><span class="s2">, ...)"</span>
+<a id="__codelineno-0-1354" name="__codelineno-0-1354"></a>    <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">_AXIS_PREFIX</span><span class="si">}{</span><span class="n">dim</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-1355" name="__codelineno-0-1355"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_reject_undeclared</span><span class="p">(</span><span class="n">call</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="p">[</span><span class="o">*</span><span class="n">columns</span><span class="p">])</span>
+<a id="__codelineno-0-1356" name="__codelineno-0-1356"></a>    <span class="n">names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>
+<a id="__codelineno-0-1357" name="__codelineno-0-1357"></a>    <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span><span class="n">dim</span><span class="p">:</span> <span class="n">names</span><span class="p">}</span>
+<a id="__codelineno-0-1358" name="__codelineno-0-1358"></a>    <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">given</span> <span class="ow">in</span> <span class="n">columns</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-1359" name="__codelineno-0-1359"></a>        <span class="n">data</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">given</span><span class="p">)</span> <span class="k">if</span> <span class="n">_is_labels</span><span class="p">(</span><span class="n">given</span><span class="p">)</span> <span class="k">else</span> <span class="p">[</span><span class="n">given</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)</span>
+<a id="__codelineno-0-1360" name="__codelineno-0-1360"></a>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="n">c</span><span class="p">])</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">):</span>
+<a id="__codelineno-0-1361" name="__codelineno-0-1361"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-0-1362" name="__codelineno-0-1362"></a>                <span class="sa">f</span><span class="s2">"`</span><span class="si">{</span><span class="n">call</span><span class="si">}</span><span class="s2">` has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">[</span><span class="n">c</span><span class="p">])</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">c</span><span class="si">!r}</span><span class="s2"> values for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)</span><span class="si">}</span><span class="s2"> labels"</span>
+<a id="__codelineno-0-1363" name="__codelineno-0-1363"></a>            <span class="p">)</span>
+<a id="__codelineno-0-1364" name="__codelineno-0-1364"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-1365" name="__codelineno-0-1365"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">require_listed</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"`</span><span class="si">{</span><span class="n">call</span><span class="si">}</span><span class="s2">`"</span><span class="p">)</span>
+<a id="__codelineno-0-1366" name="__codelineno-0-1366"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_require_live</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+<a id="__codelineno-0-1367" name="__codelineno-0-1367"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_column_type</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">data</span><span class="p">})</span>
+<a id="__codelineno-0-1368" name="__codelineno-0-1368"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
+<a id="__codelineno-0-1369" name="__codelineno-0-1369"></a>        <span class="n">rel</span><span class="p">,</span>
+<a id="__codelineno-0-1370" name="__codelineno-0-1370"></a>        <span class="n">table</span><span class="p">,</span>
+<a id="__codelineno-0-1371" name="__codelineno-0-1371"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">False</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
+<a id="__codelineno-0-1372" name="__codelineno-0-1372"></a>        <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">dim</span><span class="p">,),</span>
+<a id="__codelineno-0-1373" name="__codelineno-0-1373"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1939,7 +1913,15 @@ as staged read.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1383">1383</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1375">1375</a></span>
+<span class="normal"><a href="#__codelineno-0-1376">1376</a></span>
+<span class="normal"><a href="#__codelineno-0-1377">1377</a></span>
+<span class="normal"><a href="#__codelineno-0-1378">1378</a></span>
+<span class="normal"><a href="#__codelineno-0-1379">1379</a></span>
+<span class="normal"><a href="#__codelineno-0-1380">1380</a></span>
+<span class="normal"><a href="#__codelineno-0-1381">1381</a></span>
+<span class="normal"><a href="#__codelineno-0-1382">1382</a></span>
+<span class="normal"><a href="#__codelineno-0-1383">1383</a></span>
 <span class="normal"><a href="#__codelineno-0-1384">1384</a></span>
 <span class="normal"><a href="#__codelineno-0-1385">1385</a></span>
 <span class="normal"><a href="#__codelineno-0-1386">1386</a></span>
@@ -1980,64 +1962,56 @@ as staged read.</p>
 <span class="normal"><a href="#__codelineno-0-1421">1421</a></span>
 <span class="normal"><a href="#__codelineno-0-1422">1422</a></span>
 <span class="normal"><a href="#__codelineno-0-1423">1423</a></span>
-<span class="normal"><a href="#__codelineno-0-1424">1424</a></span>
-<span class="normal"><a href="#__codelineno-0-1425">1425</a></span>
-<span class="normal"><a href="#__codelineno-0-1426">1426</a></span>
-<span class="normal"><a href="#__codelineno-0-1427">1427</a></span>
-<span class="normal"><a href="#__codelineno-0-1428">1428</a></span>
-<span class="normal"><a href="#__codelineno-0-1429">1429</a></span>
-<span class="normal"><a href="#__codelineno-0-1430">1430</a></span>
-<span class="normal"><a href="#__codelineno-0-1431">1431</a></span>
-<span class="normal"><a href="#__codelineno-0-1432">1432</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1383" name="__codelineno-0-1383"></a><span class="k">def</span><span class="w"> </span><span class="nf">remove</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1384" name="__codelineno-0-1384"></a><span class="w">    </span><span class="sd">"""Stage a tombstone per label of `dim`.</span>
+<span class="normal"><a href="#__codelineno-0-1424">1424</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1375" name="__codelineno-0-1375"></a><span class="k">def</span><span class="w"> </span><span class="nf">remove</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1376" name="__codelineno-0-1376"></a><span class="w">    </span><span class="sd">"""Stage a tombstone per label of `dim`.</span>
+<a id="__codelineno-0-1377" name="__codelineno-0-1377"></a>
+<a id="__codelineno-0-1378" name="__codelineno-0-1378"></a><span class="sd">    Need not enumerate what it deletes: one axis row per label, and the fold</span>
+<a id="__codelineno-0-1379" name="__codelineno-0-1379"></a><span class="sd">    drops every value keyed by the label where `dim` is `partial`. No</span>
+<a id="__codelineno-0-1380" name="__codelineno-0-1380"></a><span class="sd">    labels stage nothing.</span>
+<a id="__codelineno-0-1381" name="__codelineno-0-1381"></a>
+<a id="__codelineno-0-1382" name="__codelineno-0-1382"></a><span class="sd">    And one tombstone per tuple, of any group, with a field over `dim`</span>
+<a id="__codelineno-0-1383" name="__codelineno-0-1383"></a><span class="sd">    naming one of `labels`, read from the record as it currently resolves:</span>
+<a id="__codelineno-0-1384" name="__codelineno-0-1384"></a><span class="sd">    a group attribute's value goes with its tuple.</span>
 <a id="__codelineno-0-1385" name="__codelineno-0-1385"></a>
-<a id="__codelineno-0-1386" name="__codelineno-0-1386"></a><span class="sd">    Need not enumerate what it deletes: one axis row per label, and the fold</span>
-<a id="__codelineno-0-1387" name="__codelineno-0-1387"></a><span class="sd">    drops every value keyed by the label where `dim` is `partial`. No</span>
-<a id="__codelineno-0-1388" name="__codelineno-0-1388"></a><span class="sd">    labels stage nothing.</span>
-<a id="__codelineno-0-1389" name="__codelineno-0-1389"></a>
-<a id="__codelineno-0-1390" name="__codelineno-0-1390"></a><span class="sd">    And one tombstone per tuple, of any group, with a field over `dim`</span>
-<a id="__codelineno-0-1391" name="__codelineno-0-1391"></a><span class="sd">    naming one of `labels`, read from the record as it currently resolves:</span>
-<a id="__codelineno-0-1392" name="__codelineno-0-1392"></a><span class="sd">    a group attribute's value goes with its tuple.</span>
-<a id="__codelineno-0-1393" name="__codelineno-0-1393"></a>
-<a id="__codelineno-0-1394" name="__codelineno-0-1394"></a><span class="sd">    Raises</span>
-<a id="__codelineno-0-1395" name="__codelineno-0-1395"></a><span class="sd">    ------</span>
-<a id="__codelineno-0-1396" name="__codelineno-0-1396"></a><span class="sd">    ValueError</span>
-<a id="__codelineno-0-1397" name="__codelineno-0-1397"></a><span class="sd">        While a property `into` `dim` stores one of `labels`, the record</span>
-<a id="__codelineno-0-1398" name="__codelineno-0-1398"></a><span class="sd">        as staged read.</span>
-<a id="__codelineno-0-1399" name="__codelineno-0-1399"></a>
-<a id="__codelineno-0-1400" name="__codelineno-0-1400"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-1401" name="__codelineno-0-1401"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-1402" name="__codelineno-0-1402"></a><span class="sd">    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)</span>
-<a id="__codelineno-0-1403" name="__codelineno-0-1403"></a><span class="sd">    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)</span>
-<a id="__codelineno-0-1404" name="__codelineno-0-1404"></a><span class="sd">    """</span>
-<a id="__codelineno-0-1405" name="__codelineno-0-1405"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">labels</span><span class="p">:</span>
-<a id="__codelineno-0-1406" name="__codelineno-0-1406"></a>        <span class="k">return</span>
-<a id="__codelineno-0-1407" name="__codelineno-0-1407"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_require_unnamed</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">labels</span><span class="p">)</span>
-<a id="__codelineno-0-1408" name="__codelineno-0-1408"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">({</span><span class="n">dim</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">labels</span><span class="p">)},</span> <span class="p">{</span><span class="n">dim</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_column_type</span><span class="p">(</span><span class="n">dim</span><span class="p">)})</span>
-<a id="__codelineno-0-1409" name="__codelineno-0-1409"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
-<a id="__codelineno-0-1410" name="__codelineno-0-1410"></a>        <span class="n">rel</span><span class="p">,</span>
-<a id="__codelineno-0-1411" name="__codelineno-0-1411"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">_AXIS_PREFIX</span><span class="si">}{</span><span class="n">dim</span><span class="si">}</span><span class="s2">"</span><span class="p">),</span>
-<a id="__codelineno-0-1412" name="__codelineno-0-1412"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">True</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
-<a id="__codelineno-0-1413" name="__codelineno-0-1413"></a>        <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">dim</span><span class="p">,),</span>
-<a id="__codelineno-0-1414" name="__codelineno-0-1414"></a>    <span class="p">)</span>
-<a id="__codelineno-0-1415" name="__codelineno-0-1415"></a>    <span class="n">groups</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">resolver</span><span class="o">.</span><span class="n">dims</span><span class="o">.</span><span class="n">groups</span>
-<a id="__codelineno-0-1416" name="__codelineno-0-1416"></a>    <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">group_columns</span><span class="p">:</span>
-<a id="__codelineno-0-1417" name="__codelineno-0-1417"></a>        <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="n">g</span><span class="p">]</span><span class="o">.</span><span class="n">over</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">d</span> <span class="o">==</span> <span class="n">dim</span><span class="p">]</span>
-<a id="__codelineno-0-1418" name="__codelineno-0-1418"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">fields</span> <span class="ow">or</span> <span class="n">g</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">groups</span><span class="p">:</span>
-<a id="__codelineno-0-1419" name="__codelineno-0-1419"></a>            <span class="k">continue</span>
-<a id="__codelineno-0-1420" name="__codelineno-0-1420"></a>        <span class="n">naming</span> <span class="o">=</span> <span class="n">reduce</span><span class="p">(</span>
-<a id="__codelineno-0-1421" name="__codelineno-0-1421"></a>            <span class="n">operator</span><span class="o">.</span><span class="n">or_</span><span class="p">,</span>
-<a id="__codelineno-0-1422" name="__codelineno-0-1422"></a>            <span class="p">(</span>
-<a id="__codelineno-0-1423" name="__codelineno-0-1423"></a>                <span class="n">fn</span><span class="o">.</span><span class="n">struct_extract</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="n">g</span><span class="p">),</span> <span class="n">lit</span><span class="p">(</span><span class="n">f</span><span class="p">))</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="o">*</span><span class="nb">map</span><span class="p">(</span><span class="n">lit</span><span class="p">,</span> <span class="n">labels</span><span class="p">))</span>
-<a id="__codelineno-0-1424" name="__codelineno-0-1424"></a>                <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fields</span>
-<a id="__codelineno-0-1425" name="__codelineno-0-1425"></a>            <span class="p">),</span>
-<a id="__codelineno-0-1426" name="__codelineno-0-1426"></a>        <span class="p">)</span>
-<a id="__codelineno-0-1427" name="__codelineno-0-1427"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_insert_snapshot</span><span class="p">(</span>
-<a id="__codelineno-0-1428" name="__codelineno-0-1428"></a>            <span class="n">groups</span><span class="p">[</span><span class="n">g</span><span class="p">]</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">naming</span><span class="p">)</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="n">g</span><span class="p">)),</span>
-<a id="__codelineno-0-1429" name="__codelineno-0-1429"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">g</span><span class="p">),</span>
-<a id="__codelineno-0-1430" name="__codelineno-0-1430"></a>            <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">True</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
-<a id="__codelineno-0-1431" name="__codelineno-0-1431"></a>            <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">g</span><span class="p">,),</span>
-<a id="__codelineno-0-1432" name="__codelineno-0-1432"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1386" name="__codelineno-0-1386"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-1387" name="__codelineno-0-1387"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-1388" name="__codelineno-0-1388"></a><span class="sd">    ValueError</span>
+<a id="__codelineno-0-1389" name="__codelineno-0-1389"></a><span class="sd">        While a property `into` `dim` stores one of `labels`, the record</span>
+<a id="__codelineno-0-1390" name="__codelineno-0-1390"></a><span class="sd">        as staged read.</span>
+<a id="__codelineno-0-1391" name="__codelineno-0-1391"></a>
+<a id="__codelineno-0-1392" name="__codelineno-0-1392"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-1393" name="__codelineno-0-1393"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-1394" name="__codelineno-0-1394"></a><span class="sd">    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)</span>
+<a id="__codelineno-0-1395" name="__codelineno-0-1395"></a><span class="sd">    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)</span>
+<a id="__codelineno-0-1396" name="__codelineno-0-1396"></a><span class="sd">    """</span>
+<a id="__codelineno-0-1397" name="__codelineno-0-1397"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">labels</span><span class="p">:</span>
+<a id="__codelineno-0-1398" name="__codelineno-0-1398"></a>        <span class="k">return</span>
+<a id="__codelineno-0-1399" name="__codelineno-0-1399"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_require_unnamed</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">labels</span><span class="p">)</span>
+<a id="__codelineno-0-1400" name="__codelineno-0-1400"></a>    <span class="n">rel</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">({</span><span class="n">dim</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">labels</span><span class="p">)},</span> <span class="p">{</span><span class="n">dim</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_column_type</span><span class="p">(</span><span class="n">dim</span><span class="p">)})</span>
+<a id="__codelineno-0-1401" name="__codelineno-0-1401"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
+<a id="__codelineno-0-1402" name="__codelineno-0-1402"></a>        <span class="n">rel</span><span class="p">,</span>
+<a id="__codelineno-0-1403" name="__codelineno-0-1403"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">_AXIS_PREFIX</span><span class="si">}{</span><span class="n">dim</span><span class="si">}</span><span class="s2">"</span><span class="p">),</span>
+<a id="__codelineno-0-1404" name="__codelineno-0-1404"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">True</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
+<a id="__codelineno-0-1405" name="__codelineno-0-1405"></a>        <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">dim</span><span class="p">,),</span>
+<a id="__codelineno-0-1406" name="__codelineno-0-1406"></a>    <span class="p">)</span>
+<a id="__codelineno-0-1407" name="__codelineno-0-1407"></a>    <span class="n">groups</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">resolver</span><span class="o">.</span><span class="n">dims</span><span class="o">.</span><span class="n">groups</span>
+<a id="__codelineno-0-1408" name="__codelineno-0-1408"></a>    <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">group_columns</span><span class="p">:</span>
+<a id="__codelineno-0-1409" name="__codelineno-0-1409"></a>        <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="n">g</span><span class="p">]</span><span class="o">.</span><span class="n">over</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">d</span> <span class="o">==</span> <span class="n">dim</span><span class="p">]</span>
+<a id="__codelineno-0-1410" name="__codelineno-0-1410"></a>        <span class="k">if</span> <span class="ow">not</span> <span class="n">fields</span> <span class="ow">or</span> <span class="n">g</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">groups</span><span class="p">:</span>
+<a id="__codelineno-0-1411" name="__codelineno-0-1411"></a>            <span class="k">continue</span>
+<a id="__codelineno-0-1412" name="__codelineno-0-1412"></a>        <span class="n">naming</span> <span class="o">=</span> <span class="n">reduce</span><span class="p">(</span>
+<a id="__codelineno-0-1413" name="__codelineno-0-1413"></a>            <span class="n">operator</span><span class="o">.</span><span class="n">or_</span><span class="p">,</span>
+<a id="__codelineno-0-1414" name="__codelineno-0-1414"></a>            <span class="p">(</span>
+<a id="__codelineno-0-1415" name="__codelineno-0-1415"></a>                <span class="n">fn</span><span class="o">.</span><span class="n">struct_extract</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="n">g</span><span class="p">),</span> <span class="n">lit</span><span class="p">(</span><span class="n">f</span><span class="p">))</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="o">*</span><span class="nb">map</span><span class="p">(</span><span class="n">lit</span><span class="p">,</span> <span class="n">labels</span><span class="p">))</span>
+<a id="__codelineno-0-1416" name="__codelineno-0-1416"></a>                <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fields</span>
+<a id="__codelineno-0-1417" name="__codelineno-0-1417"></a>            <span class="p">),</span>
+<a id="__codelineno-0-1418" name="__codelineno-0-1418"></a>        <span class="p">)</span>
+<a id="__codelineno-0-1419" name="__codelineno-0-1419"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_insert_snapshot</span><span class="p">(</span>
+<a id="__codelineno-0-1420" name="__codelineno-0-1420"></a>            <span class="n">groups</span><span class="p">[</span><span class="n">g</span><span class="p">]</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">naming</span><span class="p">)</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="n">col</span><span class="p">(</span><span class="n">g</span><span class="p">)),</span>
+<a id="__codelineno-0-1421" name="__codelineno-0-1421"></a>            <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">g</span><span class="p">),</span>
+<a id="__codelineno-0-1422" name="__codelineno-0-1422"></a>            <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">True</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
+<a id="__codelineno-0-1423" name="__codelineno-0-1423"></a>            <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">g</span><span class="p">,),</span>
+<a id="__codelineno-0-1424" name="__codelineno-0-1424"></a>        <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2097,7 +2071,15 @@ through, a record's <code>connection</code> group included.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1531">1531</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1523">1523</a></span>
+<span class="normal"><a href="#__codelineno-0-1524">1524</a></span>
+<span class="normal"><a href="#__codelineno-0-1525">1525</a></span>
+<span class="normal"><a href="#__codelineno-0-1526">1526</a></span>
+<span class="normal"><a href="#__codelineno-0-1527">1527</a></span>
+<span class="normal"><a href="#__codelineno-0-1528">1528</a></span>
+<span class="normal"><a href="#__codelineno-0-1529">1529</a></span>
+<span class="normal"><a href="#__codelineno-0-1530">1530</a></span>
+<span class="normal"><a href="#__codelineno-0-1531">1531</a></span>
 <span class="normal"><a href="#__codelineno-0-1532">1532</a></span>
 <span class="normal"><a href="#__codelineno-0-1533">1533</a></span>
 <span class="normal"><a href="#__codelineno-0-1534">1534</a></span>
@@ -2123,49 +2105,41 @@ through, a record's <code>connection</code> group included.</p>
 <span class="normal"><a href="#__codelineno-0-1554">1554</a></span>
 <span class="normal"><a href="#__codelineno-0-1555">1555</a></span>
 <span class="normal"><a href="#__codelineno-0-1556">1556</a></span>
-<span class="normal"><a href="#__codelineno-0-1557">1557</a></span>
-<span class="normal"><a href="#__codelineno-0-1558">1558</a></span>
-<span class="normal"><a href="#__codelineno-0-1559">1559</a></span>
-<span class="normal"><a href="#__codelineno-0-1560">1560</a></span>
-<span class="normal"><a href="#__codelineno-0-1561">1561</a></span>
-<span class="normal"><a href="#__codelineno-0-1562">1562</a></span>
-<span class="normal"><a href="#__codelineno-0-1563">1563</a></span>
-<span class="normal"><a href="#__codelineno-0-1564">1564</a></span>
-<span class="normal"><a href="#__codelineno-0-1565">1565</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1531" name="__codelineno-0-1531"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">group</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">frame</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1532" name="__codelineno-0-1532"></a><span class="w">    </span><span class="sd">"""Stage rows of one declared group from a frame keyed by its struct column.</span>
-<a id="__codelineno-0-1533" name="__codelineno-0-1533"></a>
-<a id="__codelineno-0-1534" name="__codelineno-0-1534"></a><span class="sd">    The frame carries the group as one struct column named for it, its</span>
-<a id="__codelineno-0-1535" name="__codelineno-0-1535"></a><span class="sd">    `into` label and the group's properties as plain columns - the shape of</span>
-<a id="__codelineno-0-1536" name="__codelineno-0-1536"></a><span class="sd">    `groups/&lt;group&gt;.parquet`. The one path every group is added</span>
-<a id="__codelineno-0-1537" name="__codelineno-0-1537"></a><span class="sd">    through, a record's `connection` group included.</span>
-<a id="__codelineno-0-1538" name="__codelineno-0-1538"></a>
-<a id="__codelineno-0-1539" name="__codelineno-0-1539"></a><span class="sd">    Raises</span>
-<a id="__codelineno-0-1540" name="__codelineno-0-1540"></a><span class="sd">    ------</span>
-<a id="__codelineno-0-1541" name="__codelineno-0-1541"></a><span class="sd">    ValueError</span>
-<a id="__codelineno-0-1542" name="__codelineno-0-1542"></a><span class="sd">        On a missing group or `into` column, an attribute column, and as</span>
-<a id="__codelineno-0-1543" name="__codelineno-0-1543"></a><span class="sd">        `Schema.check_group_columns` does.</span>
-<a id="__codelineno-0-1544" name="__codelineno-0-1544"></a>
-<a id="__codelineno-0-1545" name="__codelineno-0-1545"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-1546" name="__codelineno-0-1546"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-1547" name="__codelineno-0-1547"></a><span class="sd">    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)</span>
-<a id="__codelineno-0-1548" name="__codelineno-0-1548"></a><span class="sd">    """</span>
-<a id="__codelineno-0-1549" name="__codelineno-0-1549"></a>    <span class="n">call</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"`add_group(</span><span class="si">{</span><span class="n">group</span><span class="si">!r}</span><span class="s2">, ...)`"</span>
-<a id="__codelineno-0-1550" name="__codelineno-0-1550"></a>    <span class="n">lazy</span> <span class="o">=</span> <span class="n">_incoming</span><span class="p">(</span><span class="n">frame</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="p">)</span>
-<a id="__codelineno-0-1551" name="__codelineno-0-1551"></a>    <span class="n">columns</span> <span class="o">=</span> <span class="n">lazy</span><span class="o">.</span><span class="n">collect_schema</span><span class="p">()</span>
-<a id="__codelineno-0-1552" name="__codelineno-0-1552"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">check_group_columns</span><span class="p">([</span><span class="n">group</span><span class="p">],</span> <span class="n">lazy</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="n">call</span><span class="p">)</span>
-<a id="__codelineno-0-1553" name="__codelineno-0-1553"></a>    <span class="n">into</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="n">group</span><span class="p">]</span><span class="o">.</span><span class="n">into</span>
-<a id="__codelineno-0-1554" name="__codelineno-0-1554"></a>    <span class="k">for</span> <span class="n">required</span> <span class="ow">in</span> <span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="o">*</span><span class="p">([</span><span class="n">into</span><span class="p">]</span> <span class="k">if</span> <span class="n">into</span> <span class="k">else</span> <span class="p">[])):</span>
-<a id="__codelineno-0-1555" name="__codelineno-0-1555"></a>        <span class="k">if</span> <span class="n">required</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">:</span>
-<a id="__codelineno-0-1556" name="__codelineno-0-1556"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">call</span><span class="si">}</span><span class="s2"> needs a </span><span class="si">{</span><span class="n">required</span><span class="si">!r}</span><span class="s2"> column"</span>
-<a id="__codelineno-0-1557" name="__codelineno-0-1557"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-<a id="__codelineno-0-1558" name="__codelineno-0-1558"></a>    <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
-<a id="__codelineno-0-1559" name="__codelineno-0-1559"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_reject_undeclared</span><span class="p">(</span><span class="n">call</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">columns</span><span class="p">))</span>
-<a id="__codelineno-0-1560" name="__codelineno-0-1560"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
-<a id="__codelineno-0-1561" name="__codelineno-0-1561"></a>        <span class="n">as_relation</span><span class="p">(</span><span class="n">lazy</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="p">),</span>
-<a id="__codelineno-0-1562" name="__codelineno-0-1562"></a>        <span class="n">table</span><span class="p">,</span>
-<a id="__codelineno-0-1563" name="__codelineno-0-1563"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">False</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
-<a id="__codelineno-0-1564" name="__codelineno-0-1564"></a>        <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">group</span><span class="p">,),</span>
-<a id="__codelineno-0-1565" name="__codelineno-0-1565"></a>    <span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-1557">1557</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1523" name="__codelineno-0-1523"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">group</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">frame</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1524" name="__codelineno-0-1524"></a><span class="w">    </span><span class="sd">"""Stage rows of one declared group from a frame keyed by its struct column.</span>
+<a id="__codelineno-0-1525" name="__codelineno-0-1525"></a>
+<a id="__codelineno-0-1526" name="__codelineno-0-1526"></a><span class="sd">    The frame carries the group as one struct column named for it, its</span>
+<a id="__codelineno-0-1527" name="__codelineno-0-1527"></a><span class="sd">    `into` label and the group's properties as plain columns - the shape of</span>
+<a id="__codelineno-0-1528" name="__codelineno-0-1528"></a><span class="sd">    `groups/&lt;group&gt;.parquet`. The one path every group is added</span>
+<a id="__codelineno-0-1529" name="__codelineno-0-1529"></a><span class="sd">    through, a record's `connection` group included.</span>
+<a id="__codelineno-0-1530" name="__codelineno-0-1530"></a>
+<a id="__codelineno-0-1531" name="__codelineno-0-1531"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-1532" name="__codelineno-0-1532"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-1533" name="__codelineno-0-1533"></a><span class="sd">    ValueError</span>
+<a id="__codelineno-0-1534" name="__codelineno-0-1534"></a><span class="sd">        On a missing group or `into` column, an attribute column, and as</span>
+<a id="__codelineno-0-1535" name="__codelineno-0-1535"></a><span class="sd">        `Schema.check_group_columns` does.</span>
+<a id="__codelineno-0-1536" name="__codelineno-0-1536"></a>
+<a id="__codelineno-0-1537" name="__codelineno-0-1537"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-1538" name="__codelineno-0-1538"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-1539" name="__codelineno-0-1539"></a><span class="sd">    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)</span>
+<a id="__codelineno-0-1540" name="__codelineno-0-1540"></a><span class="sd">    """</span>
+<a id="__codelineno-0-1541" name="__codelineno-0-1541"></a>    <span class="n">call</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"`add_group(</span><span class="si">{</span><span class="n">group</span><span class="si">!r}</span><span class="s2">, ...)`"</span>
+<a id="__codelineno-0-1542" name="__codelineno-0-1542"></a>    <span class="n">lazy</span> <span class="o">=</span> <span class="n">_incoming</span><span class="p">(</span><span class="n">frame</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="p">)</span>
+<a id="__codelineno-0-1543" name="__codelineno-0-1543"></a>    <span class="n">columns</span> <span class="o">=</span> <span class="n">lazy</span><span class="o">.</span><span class="n">collect_schema</span><span class="p">()</span>
+<a id="__codelineno-0-1544" name="__codelineno-0-1544"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">check_group_columns</span><span class="p">([</span><span class="n">group</span><span class="p">],</span> <span class="n">lazy</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="n">call</span><span class="p">)</span>
+<a id="__codelineno-0-1545" name="__codelineno-0-1545"></a>    <span class="n">into</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="n">group</span><span class="p">]</span><span class="o">.</span><span class="n">into</span>
+<a id="__codelineno-0-1546" name="__codelineno-0-1546"></a>    <span class="k">for</span> <span class="n">required</span> <span class="ow">in</span> <span class="p">(</span><span class="n">group</span><span class="p">,</span> <span class="o">*</span><span class="p">([</span><span class="n">into</span><span class="p">]</span> <span class="k">if</span> <span class="n">into</span> <span class="k">else</span> <span class="p">[])):</span>
+<a id="__codelineno-0-1547" name="__codelineno-0-1547"></a>        <span class="k">if</span> <span class="n">required</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">columns</span><span class="p">:</span>
+<a id="__codelineno-0-1548" name="__codelineno-0-1548"></a>            <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">call</span><span class="si">}</span><span class="s2"> needs a </span><span class="si">{</span><span class="n">required</span><span class="si">!r}</span><span class="s2"> column"</span>
+<a id="__codelineno-0-1549" name="__codelineno-0-1549"></a>            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+<a id="__codelineno-0-1550" name="__codelineno-0-1550"></a>    <span class="n">table</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
+<a id="__codelineno-0-1551" name="__codelineno-0-1551"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_reject_undeclared</span><span class="p">(</span><span class="n">call</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">columns</span><span class="p">))</span>
+<a id="__codelineno-0-1552" name="__codelineno-0-1552"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
+<a id="__codelineno-0-1553" name="__codelineno-0-1553"></a>        <span class="n">as_relation</span><span class="p">(</span><span class="n">lazy</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="p">),</span>
+<a id="__codelineno-0-1554" name="__codelineno-0-1554"></a>        <span class="n">table</span><span class="p">,</span>
+<a id="__codelineno-0-1555" name="__codelineno-0-1555"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">False</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
+<a id="__codelineno-0-1556" name="__codelineno-0-1556"></a>        <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">group</span><span class="p">,),</span>
+<a id="__codelineno-0-1557" name="__codelineno-0-1557"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2201,7 +2175,15 @@ no part of a key: the tuple is removed, whatever label it carried.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1567">1567</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1559">1559</a></span>
+<span class="normal"><a href="#__codelineno-0-1560">1560</a></span>
+<span class="normal"><a href="#__codelineno-0-1561">1561</a></span>
+<span class="normal"><a href="#__codelineno-0-1562">1562</a></span>
+<span class="normal"><a href="#__codelineno-0-1563">1563</a></span>
+<span class="normal"><a href="#__codelineno-0-1564">1564</a></span>
+<span class="normal"><a href="#__codelineno-0-1565">1565</a></span>
+<span class="normal"><a href="#__codelineno-0-1566">1566</a></span>
+<span class="normal"><a href="#__codelineno-0-1567">1567</a></span>
 <span class="normal"><a href="#__codelineno-0-1568">1568</a></span>
 <span class="normal"><a href="#__codelineno-0-1569">1569</a></span>
 <span class="normal"><a href="#__codelineno-0-1570">1570</a></span>
@@ -2215,37 +2197,29 @@ no part of a key: the tuple is removed, whatever label it carried.</p>
 <span class="normal"><a href="#__codelineno-0-1578">1578</a></span>
 <span class="normal"><a href="#__codelineno-0-1579">1579</a></span>
 <span class="normal"><a href="#__codelineno-0-1580">1580</a></span>
-<span class="normal"><a href="#__codelineno-0-1581">1581</a></span>
-<span class="normal"><a href="#__codelineno-0-1582">1582</a></span>
-<span class="normal"><a href="#__codelineno-0-1583">1583</a></span>
-<span class="normal"><a href="#__codelineno-0-1584">1584</a></span>
-<span class="normal"><a href="#__codelineno-0-1585">1585</a></span>
-<span class="normal"><a href="#__codelineno-0-1586">1586</a></span>
-<span class="normal"><a href="#__codelineno-0-1587">1587</a></span>
-<span class="normal"><a href="#__codelineno-0-1588">1588</a></span>
-<span class="normal"><a href="#__codelineno-0-1589">1589</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1567" name="__codelineno-0-1567"></a><span class="k">def</span><span class="w"> </span><span class="nf">remove_group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">group</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="o">...</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1568" name="__codelineno-0-1568"></a><span class="w">    </span><span class="sd">"""Stage a tombstone per tuple, each in `Schema.group_key` order.</span>
-<a id="__codelineno-0-1569" name="__codelineno-0-1569"></a>
-<a id="__codelineno-0-1570" name="__codelineno-0-1570"></a><span class="sd">    Each tuple is packed into the group's struct column. An `into` label is</span>
-<a id="__codelineno-0-1571" name="__codelineno-0-1571"></a><span class="sd">    no part of a key: the tuple is removed, whatever label it carried.</span>
-<a id="__codelineno-0-1572" name="__codelineno-0-1572"></a>
-<a id="__codelineno-0-1573" name="__codelineno-0-1573"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-1574" name="__codelineno-0-1574"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-1575" name="__codelineno-0-1575"></a><span class="sd">    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)</span>
-<a id="__codelineno-0-1576" name="__codelineno-0-1576"></a><span class="sd">    """</span>
-<a id="__codelineno-0-1577" name="__codelineno-0-1577"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">group_key</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
-<a id="__codelineno-0-1578" name="__codelineno-0-1578"></a>    <span class="n">over</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="n">group</span><span class="p">]</span><span class="o">.</span><span class="n">over</span>
-<a id="__codelineno-0-1579" name="__codelineno-0-1579"></a>    <span class="n">types</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">dimensions</span><span class="p">[</span><span class="n">d</span><span class="p">]</span><span class="o">.</span><span class="n">dtype</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">over</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
-<a id="__codelineno-0-1580" name="__codelineno-0-1580"></a>    <span class="n">flat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span>
-<a id="__codelineno-0-1581" name="__codelineno-0-1581"></a>        <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="p">[</span><span class="n">k</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">key</span><span class="p">)},</span> <span class="n">types</span>
-<a id="__codelineno-0-1582" name="__codelineno-0-1582"></a>    <span class="p">)</span>
-<a id="__codelineno-0-1583" name="__codelineno-0-1583"></a>    <span class="n">packed</span> <span class="o">=</span> <span class="n">_packed</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="p">{},</span> <span class="n">DuckTypes</span><span class="p">(</span><span class="n">flat</span><span class="p">))</span>
-<a id="__codelineno-0-1584" name="__codelineno-0-1584"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
-<a id="__codelineno-0-1585" name="__codelineno-0-1585"></a>        <span class="n">flat</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="n">packed</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">group</span><span class="p">)),</span>
-<a id="__codelineno-0-1586" name="__codelineno-0-1586"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">group</span><span class="p">),</span>
-<a id="__codelineno-0-1587" name="__codelineno-0-1587"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">True</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
-<a id="__codelineno-0-1588" name="__codelineno-0-1588"></a>        <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">group</span><span class="p">,),</span>
-<a id="__codelineno-0-1589" name="__codelineno-0-1589"></a>    <span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-1581">1581</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1559" name="__codelineno-0-1559"></a><span class="k">def</span><span class="w"> </span><span class="nf">remove_group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">group</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="o">...</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1560" name="__codelineno-0-1560"></a><span class="w">    </span><span class="sd">"""Stage a tombstone per tuple, each in `Schema.group_key` order.</span>
+<a id="__codelineno-0-1561" name="__codelineno-0-1561"></a>
+<a id="__codelineno-0-1562" name="__codelineno-0-1562"></a><span class="sd">    Each tuple is packed into the group's struct column. An `into` label is</span>
+<a id="__codelineno-0-1563" name="__codelineno-0-1563"></a><span class="sd">    no part of a key: the tuple is removed, whatever label it carried.</span>
+<a id="__codelineno-0-1564" name="__codelineno-0-1564"></a>
+<a id="__codelineno-0-1565" name="__codelineno-0-1565"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-1566" name="__codelineno-0-1566"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-1567" name="__codelineno-0-1567"></a><span class="sd">    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)</span>
+<a id="__codelineno-0-1568" name="__codelineno-0-1568"></a><span class="sd">    """</span>
+<a id="__codelineno-0-1569" name="__codelineno-0-1569"></a>    <span class="n">key</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">group_key</span><span class="p">(</span><span class="n">group</span><span class="p">)</span>
+<a id="__codelineno-0-1570" name="__codelineno-0-1570"></a>    <span class="n">over</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="n">group</span><span class="p">]</span><span class="o">.</span><span class="n">over</span>
+<a id="__codelineno-0-1571" name="__codelineno-0-1571"></a>    <span class="n">types</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">dimensions</span><span class="p">[</span><span class="n">d</span><span class="p">]</span><span class="o">.</span><span class="n">dtype</span> <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">over</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+<a id="__codelineno-0-1572" name="__codelineno-0-1572"></a>    <span class="n">flat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_values_relation</span><span class="p">(</span>
+<a id="__codelineno-0-1573" name="__codelineno-0-1573"></a>        <span class="p">{</span><span class="n">c</span><span class="p">:</span> <span class="p">[</span><span class="n">k</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">key</span><span class="p">)},</span> <span class="n">types</span>
+<a id="__codelineno-0-1574" name="__codelineno-0-1574"></a>    <span class="p">)</span>
+<a id="__codelineno-0-1575" name="__codelineno-0-1575"></a>    <span class="n">packed</span> <span class="o">=</span> <span class="n">_packed</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="p">{},</span> <span class="n">DuckTypes</span><span class="p">(</span><span class="n">flat</span><span class="p">))</span>
+<a id="__codelineno-0-1576" name="__codelineno-0-1576"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_insert</span><span class="p">(</span>
+<a id="__codelineno-0-1577" name="__codelineno-0-1577"></a>        <span class="n">flat</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="n">packed</span><span class="o">.</span><span class="n">alias</span><span class="p">(</span><span class="n">group</span><span class="p">)),</span>
+<a id="__codelineno-0-1578" name="__codelineno-0-1578"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">_ensure</span><span class="p">(</span><span class="n">group</span><span class="p">),</span>
+<a id="__codelineno-0-1579" name="__codelineno-0-1579"></a>        <span class="p">{</span><span class="s2">"deleted"</span><span class="p">:</span> <span class="n">lit</span><span class="p">(</span><span class="kc">True</span><span class="p">)},</span>  <span class="c1"># noqa: FBT003</span>
+<a id="__codelineno-0-1580" name="__codelineno-0-1580"></a>        <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="n">group</span><span class="p">,),</span>
+<a id="__codelineno-0-1581" name="__codelineno-0-1581"></a>    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2277,25 +2251,25 @@ no part of a key: the tuple is removed, whatever label it carried.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/mutable.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1593">1593</a></span>
-<span class="normal"><a href="#__codelineno-0-1594">1594</a></span>
-<span class="normal"><a href="#__codelineno-0-1595">1595</a></span>
-<span class="normal"><a href="#__codelineno-0-1596">1596</a></span>
-<span class="normal"><a href="#__codelineno-0-1597">1597</a></span>
-<span class="normal"><a href="#__codelineno-0-1598">1598</a></span>
-<span class="normal"><a href="#__codelineno-0-1599">1599</a></span>
-<span class="normal"><a href="#__codelineno-0-1600">1600</a></span>
-<span class="normal"><a href="#__codelineno-0-1601">1601</a></span>
-<span class="normal"><a href="#__codelineno-0-1602">1602</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1593" name="__codelineno-0-1593"></a><span class="k">def</span><span class="w"> </span><span class="nf">rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-1594" name="__codelineno-0-1594"></a><span class="w">    </span><span class="sd">"""Clear every staged row without writing.</span>
-<a id="__codelineno-0-1595" name="__codelineno-0-1595"></a>
-<a id="__codelineno-0-1596" name="__codelineno-0-1596"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-1597" name="__codelineno-0-1597"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-1598" name="__codelineno-0-1598"></a><span class="sd">    - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)</span>
-<a id="__codelineno-0-1599" name="__codelineno-0-1599"></a><span class="sd">    """</span>
-<a id="__codelineno-0-1600" name="__codelineno-0-1600"></a>    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_staged</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
-<a id="__codelineno-0-1601" name="__codelineno-0-1601"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">"DROP TABLE IF EXISTS </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-1602" name="__codelineno-0-1602"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_staged</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-1585">1585</a></span>
+<span class="normal"><a href="#__codelineno-0-1586">1586</a></span>
+<span class="normal"><a href="#__codelineno-0-1587">1587</a></span>
+<span class="normal"><a href="#__codelineno-0-1588">1588</a></span>
+<span class="normal"><a href="#__codelineno-0-1589">1589</a></span>
+<span class="normal"><a href="#__codelineno-0-1590">1590</a></span>
+<span class="normal"><a href="#__codelineno-0-1591">1591</a></span>
+<span class="normal"><a href="#__codelineno-0-1592">1592</a></span>
+<span class="normal"><a href="#__codelineno-0-1593">1593</a></span>
+<span class="normal"><a href="#__codelineno-0-1594">1594</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-1585" name="__codelineno-0-1585"></a><span class="k">def</span><span class="w"> </span><span class="nf">rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-1586" name="__codelineno-0-1586"></a><span class="w">    </span><span class="sd">"""Clear every staged row without writing.</span>
+<a id="__codelineno-0-1587" name="__codelineno-0-1587"></a>
+<a id="__codelineno-0-1588" name="__codelineno-0-1588"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-1589" name="__codelineno-0-1589"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-1590" name="__codelineno-0-1590"></a><span class="sd">    - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)</span>
+<a id="__codelineno-0-1591" name="__codelineno-0-1591"></a><span class="sd">    """</span>
+<a id="__codelineno-0-1592" name="__codelineno-0-1592"></a>    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_staged</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+<a id="__codelineno-0-1593" name="__codelineno-0-1593"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">"DROP TABLE IF EXISTS </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-1594" name="__codelineno-0-1594"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">_staged</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
