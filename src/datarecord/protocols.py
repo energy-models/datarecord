@@ -4,7 +4,7 @@
 
 """The `RecordLike` and `LayerData` protocols, and the relations a record hands over.
 
-`layered.resolve.Record` is the one record this package provides; a framework
+`resolve.record.Record` is the one record this package provides; a framework
 object presenting itself as a record satisfies the protocol structurally, which
 is what `tools/` is built on.
 
@@ -22,7 +22,7 @@ from typing import Protocol, runtime_checkable
 
 from duckdb import DuckDBPyRelation
 
-from datarecord.schema import Schema
+from datarecord.schema.schema import Schema
 
 Relations = Mapping[str, DuckDBPyRelation]
 """What a `Record` hands over: named relations, each an unmaterialised plan.
@@ -219,7 +219,7 @@ class LayerData(Protocol):
 
     `write_layer`'s input: it needs `schema` and, per kind, which keys this
     layer holds and each one's rows - the enumerate-and-read pairs below, no
-    more. `layered.sources.LayerSource` satisfies this structurally. A whole
+    more. `resolve.sources.LayerSource` satisfies this structurally. A whole
     record, a `Record` included, speaks `RecordLike` instead, which
     `write_layer` adapts.
 

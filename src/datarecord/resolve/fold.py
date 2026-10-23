@@ -11,11 +11,12 @@ materialised source's `Fold` as its base and folds the layers below it on top,
 so a `Fold` read from disk is the prior incarnation of one computed live - the
 same shape either tense.
 
-This is the object `ResolvedLayer` used to masquerade as: a fold-result, held as
-a base, never an entry in the fold-input `sources` list. The folding that builds
-a live `Fold` stays in `resolve.py`, where the DuckDB expression machinery lives;
-`Fold.read` reads a materialised one back, and the map reads gated by the fold
-(`owners`, `attributes`, `flags`) are here, on the object that holds the map.
+This is the object `ResolvedLayer` used to masquerade as: a fold result, held as
+a base, never one of the `sources` folded on top of it. The folding that builds
+a live `Fold` stays in `coords.py` and `owner_map.py`, where the DuckDB
+expression machinery lives; `Fold.read` reads a materialised one back, and the
+map reads gated by the fold (`owners`, `attributes`, `flags`) are here, on the
+object that holds the map.
 
 Notes
 -----
@@ -43,20 +44,20 @@ from datarecord.duck import (
     struct_of,
     try_read_parquet,
 )
-from datarecord.layered.categories import (
+from datarecord.protocols import Flags
+from datarecord.schema.categories import (
     categorized_dim,
     matching,
     selected,
 )
-from datarecord.record import Flags
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from duckdb import DuckDBPyConnection
 
-    from datarecord.schema import Schema
-    from datarecord.store import Store
+    from datarecord.schema.schema import Schema
+    from datarecord.store.store import Store
 
 
 def flags_from_rows(
@@ -107,7 +108,7 @@ class Fold:
     """A node's resolved view, and the map reads over it.
 
     Each member is folded over the node's ancestry: `read` builds one from a
-    `resolved/` cache, and `resolve.py` builds one live over sources. Either way
+    `resolved/` cache, and `Record._fold` builds one live over sources. Either way
     it is the same shape, which is what lets a live fold start from a read one as
     its base.
 
@@ -120,10 +121,10 @@ class Fold:
     groups
         Each resolved group's relation, keyed by group.
     owner_map
-        The resolved owner map: `(input_key, layer_uuid, varies,
+        The resolved owner map: `(owner_map_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per owned key.
     dead
-        Each `resolve.mortal` coordinate's dead labels, where it has any.
+        Each `coords.mortal` coordinate's dead labels, where it has any.
     """
 
     schema: Schema
@@ -133,7 +134,7 @@ class Fold:
     dead: dict[str, DuckDBPyRelation]
 
     def attributes(self) -> list[str]:
-        """Every input attribute any layer owns a row for, from the owner map.
+        """Return every attribute the owner map holds a row for.
 
         Ordered, so a `Record` over this has a stable key order.
 
@@ -242,7 +243,7 @@ class Fold:
         """This node's `Fold`, or `None` if it is not materialised.
 
         The owner map is the presence marker: the map, dims and groups
-        are written together (`resolve.materialise`), so if the map is absent
+        are written together (`cache.materialise`), so if the map is absent
         the node has no `resolved/` cache at all.
         """
         base = store.resolved_dir(revision_id)

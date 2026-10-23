@@ -93,7 +93,7 @@ That join is against a relation the read path already builds.
 
 Two things follow, and they are the reason to want this.
 An attribute row is addressed the way an entity is, so `set("p_nom", 150.0, entity="wind1")` needs no category: the entity determines it ([set](working-record.md#set)).
-And the inputs key carries no category, so the fold's key is `(*partial dims and groups, attribute)` — one less column to compare NULL-safely in every join in [the read path](read-path.md).
+And the owner-map key carries no category, so it is `(*partial dims and groups, attribute)` — one less column to compare NULL-safely in every join in [the read path](read-path.md).
 
 **Structural, not checked.** One axis row per label is the uniqueness: an entity's categories are columns of its one row, so there is no second table for a name to recur in, and `add` of a label already there restates its row ([add / remove](working-record.md#add-remove)).
 

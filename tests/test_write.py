@@ -18,10 +18,11 @@ import pandas as pd
 import pytest
 
 from datarecord import Workspace
-from datarecord.layered.resolve import read_schema
 from datarecord.mutable import WorkingRecord
-from datarecord.record import EMPTY, LazyRelations
-from datarecord.schema import AttributeSpec, Dimension, PropertySpec, Schema
+from datarecord.protocols import EMPTY, LazyRelations
+from datarecord.schema.schema import Schema
+from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
+from datarecord.store.manifest import read_schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_root,
@@ -455,7 +456,7 @@ def test_a_write_rejects_an_undeclared_attribute(store):
     -----
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
     """
-    source = _Source(_SCHEMA, attributes={"not_declared": _long(attribute="nope")})
+    source = _Source(_SCHEMA, attributes={"not_declared": _long()})
 
     with pytest.raises(ValueError, match="not a declared attribute"):
         store.root(source)

@@ -15,17 +15,10 @@ from typing import Any
 import duckdb
 import pandas as pd
 
-from datarecord.files import Files, Version
-from datarecord.layered.resolve import write_schema as record_write_schema
-from datarecord.layered.revision import Revision
-from datarecord.schema import (
-    AttributeSpec,
-    Dimension,
-    Group,
-    PropertySpec,
-    Schema,
-)
-from datarecord.store import Store
+from datarecord.schema.schema import Schema
+from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
+from datarecord.store.files import Files, Version
+from datarecord.store.store import Revision, Store
 
 TYPES = (
     "Bus",
@@ -56,7 +49,7 @@ LONG_COLUMNS = [
 ]
 
 
-def write_input(
+def write_attribute(
     layer: str,
     attribute: str,
     rows: list[dict],
@@ -370,7 +363,8 @@ def write_schema(schema: Schema, store: Store) -> None:
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
     """
-    record_write_schema(schema, store)
+    tree = schema.model_copy(update={"id": None})
+    store.files.write_text(store.manifest_uri, tree.model_dump_json(), expect=None)
 
 
 def widened(base: Schema, attribute: str) -> Schema:

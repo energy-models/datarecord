@@ -16,11 +16,10 @@ Notes
 
 from __future__ import annotations
 
-import random
 import shutil
+from functools import cached_property
 from itertools import combinations
 from pathlib import Path
-from time import sleep
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -31,24 +30,21 @@ from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import as_relation, ex_all, fn, null_safe
-from datarecord.files import Absent, PreconditionFailedError, Version
-from datarecord.layered.resolve import (
-    PinnedRecord,
-    Record,
-    cast_declared,
-    resolve_coords,
-)
-from datarecord.layered.sources import DirectorySource
-from datarecord.record import LayerData, RecordLike, Relations
-from datarecord.schema import DERIVED, Schema
+from datarecord.protocols import LayerData, RecordLike, Relations
+from datarecord.resolve.coords import resolve_coords
+from datarecord.resolve.owner_map import cast_declared
+from datarecord.resolve.record import PinnedRecord, Record
+from datarecord.resolve.sources import DirectorySource
+from datarecord.schema.schema import DERIVED, Schema
+from datarecord.store.files import Absent
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
-    from datarecord.layered.sources import LayerSource
-    from datarecord.store import Store, Workspace
+    from datarecord.resolve.sources import LayerSource
+    from datarecord.store.store import Workspace
 
 
 def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> LayerData:
@@ -170,70 +166,6 @@ def write_layer(
             data.release()
     if local:
         Path(staging).rename(base.rstrip("/"))
-
-
-def reconcile_schema(schema: Schema, store: Store) -> None:
-    """Declare the record's schema, or check this layer agrees with it.
-
-    A schema is not layered data, so there is nothing to fold: the first writer
-    states it and the rest must be `compatible_with` it. Read and written beside
-    `store`'s own layers, so one record never consults another's manifest.
-
-    A compare-and-swap: the manifest is written only if unchanged since it was
-    read, and a writer that lost re-reads and checks again, so two writers
-    widening at once end with both widenings or an incompatibility reported,
-    never one silently lost. A lost write backs off with jitter and is retried
-    up to `_ATTEMPTS` times.
-
-    Raises
-    ------
-    ValueError
-        If this layer's schema would make the record's existing layers
-        unreadable.
-    RuntimeError
-        If every attempt lost: the manifest kept changing, or it cannot be read
-        and a 403 was taken for a missing key.
-
-    Notes
-    -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
-    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
-    """
-    schema = schema.model_copy(update={"id": None})
-    files = store.files
-    for attempt in range(_ATTEMPTS):
-        found = files.read_text(store.manifest_uri)
-        expect: Version | Absent = Absent() if found is None else found[1]
-        existing = Schema() if found is None else Schema.model_validate_json(found[0])
-        if existing.dimensions or existing.attributes:
-            if schema == existing:
-                return
-            problems = schema.compatible_with(existing)
-            if problems:
-                msg = (
-                    f"this layer's schema is incompatible with the record's: "
-                    f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/schema/#versioning)"
-                )
-                raise ValueError(msg)
-        try:
-            files.write_text(
-                store.manifest_uri, schema.model_dump_json(), expect=expect
-            )
-        except PreconditionFailedError:
-            sleep(random.uniform(0, 0.05 * 2**attempt))
-            continue
-        return
-    msg = (
-        f"{store.manifest_uri} changed under each of {_ATTEMPTS} writes, or cannot "
-        f"be read: a 403 on read counts as missing, so check s3:GetObject "
-        f"(https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)"
-    )
-    raise RuntimeError(msg)
-
-
-_ATTEMPTS = 10
-"""How many times `reconcile_schema` writes the manifest before giving up."""
 
 
 def _write_frame(
@@ -609,7 +541,6 @@ class _RecordLikeAsLayerData:
     def __init__(self, source: RecordLike, con: DuckDBPyConnection) -> None:
         self._source = source
         self._con = con
-        self._mappings: dict[str, Relations] = {}
 
     @property
     def schema(self) -> Schema:
@@ -620,15 +551,27 @@ class _RecordLikeAsLayerData:
         if isinstance(self._source, PinnedRecord):
             self._source.release()
 
-    def _frames(self, kind: str) -> Relations:
-        """Return the `Relations` of the source named `kind`, enumerated once per adapter.
+    @cached_property
+    def _dims(self) -> Relations:
+        """Return the source's `dims`, enumerated once per adapter.
 
         A `RecordLike`'s mappings may be properties that re-enumerate the whole
-        source on each access, which per key would be quadratic in the keys.
+        source on each access, which per key would be quadratic in the keys, so
+        `_properties`, `_groups` and `_attributes` are kept the same way.
         """
-        if kind not in self._mappings:
-            self._mappings[kind] = getattr(self._source, kind)
-        return self._mappings[kind]
+        return self._source.dims
+
+    @cached_property
+    def _properties(self) -> Relations:
+        return self._source.properties
+
+    @cached_property
+    def _groups(self) -> Relations:
+        return self._source.groups
+
+    @cached_property
+    def _attributes(self) -> Relations:
+        return self._source.attributes
 
     def _read(self, frames: Relations, key: str) -> DuckDBPyRelation | None:
         if key not in frames:
@@ -636,7 +579,7 @@ class _RecordLikeAsLayerData:
         return as_relation(frames[key], self._con)
 
     def axes(self) -> set[str]:
-        return set(self._frames("dims"))
+        return set(self._dims)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order.
@@ -645,10 +588,10 @@ class _RecordLikeAsLayerData:
         layer's, and the `ORDER BY` on it is the outermost clause, since a
         join defines no order.
         """
-        axis = self._read(self._frames("dims"), dim)
-        if axis is None or dim not in self._frames("properties"):
+        axis = self._read(self._dims, dim)
+        if axis is None or dim not in self._properties:
             return axis
-        props = self._read(self._frames("properties"), dim)
+        props = self._read(self._properties, dim)
         if props is None:
             return axis
         values = [c for c in props.columns if c not in axis.columns]
@@ -671,13 +614,13 @@ class _RecordLikeAsLayerData:
         return joined.query("j", "SELECT * EXCLUDE (_row) FROM j ORDER BY _row")
 
     def groups(self) -> set[str]:
-        return set(self._frames("groups"))
+        return set(self._groups)
 
     def group(self, name: str) -> DuckDBPyRelation | None:
-        return self._read(self._frames("groups"), name)
+        return self._read(self._groups, name)
 
     def attributes(self) -> set[str]:
-        return set(self._frames("attributes"))
+        return set(self._attributes)
 
     def attribute(self, name: str) -> DuckDBPyRelation | None:
-        return self._read(self._frames("attributes"), name)
+        return self._read(self._attributes, name)

@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Title    | one Record and a package layout                                                                                                                                  |
 | Author   | Jonas Hoersch                                                                                                                                                    |
-| Status   | Accepted (2026-10-21)                                                                                                                                            |
+| Status   | Implemented (2026-10-21)                                                                                                                                         |
 | Requires | [DEP 18](dep-0018-drop-narwhals.md)                                                                                                                              |
 | Created  | 2026-10-21                                                                                                                                                       |
 | Version  | Unreleased                                                                                                                                                       |

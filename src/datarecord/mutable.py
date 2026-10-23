@@ -35,19 +35,18 @@ from duckdb.sqltypes import DuckDBPyType
 from datarecord.duck import (
     as_relation,
     empty_relation,
-    enum_labels,
     fn,
     is_frame,
     null_safe,
     struct_of,
-    takes,
     union_all_by_name,
 )
-from datarecord.layered.categories import matching
-from datarecord.layered.fold import Fold
-from datarecord.layered.resolve import Record
-from datarecord.record import LazyRelations, RecordLike, Relations
-from datarecord.schema import LONG_TAIL, Schema
+from datarecord.protocols import LazyRelations, RecordLike, Relations
+from datarecord.resolve.fold import Fold
+from datarecord.resolve.record import Record
+from datarecord.schema.categories import matching
+from datarecord.schema.dtypes import enum_labels, takes
+from datarecord.schema.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
@@ -133,16 +132,13 @@ class StagedSource:
     """A staging area as one layer's rows - the last source the fold reads.
 
     "The layer as it would be written": each member reads its staging table,
-    which an edit replaces by key rather than appending to (`_replace`), so the
+    which an edit replaces by key rather than appending to (`_insert`), so the
     table is already one row per key and what a write would persist.
 
     Unfrozen, which is the whole of what distinguishes it: a `set` changes these
     rows under a reader, so the fold must stay a relation past this point rather
     than materialise. Nothing here needs invalidating in exchange - a relation
     over a staging table reads whatever the table holds when it is collected.
-
-    Structural rather than inheriting `LayerSource`, so `mutable.py` keeps its
-    rule of importing from `layered/` only inside function bodies.
 
     Notes
     -----
@@ -215,7 +211,7 @@ class StagedSource:
 
         By name because the tables carry per-attribute column variation exactly
         as the files do - one attribute's coordinates and no others - which is
-        what lets `fold_inputs` pad both the same way.
+        what lets `fold_attributes` pad both the same way.
 
         Notes
         -----
@@ -1322,7 +1318,7 @@ class WorkingRecord(Record):
         to the same attribute carries only what the first did not. That
         anti-join is also the whole of what keeps a fill off an edited
         coordinate - it keys on `_long_key`, the same coordinate a later `set`
-        deletes on (`_replace`), so the fill it excludes and the row that
+        deletes on (`_delete_covered`), so the fill it excludes and the row that
         replaces one are one key, and no ordering column is needed to rank them.
 
         Notes
@@ -1338,7 +1334,9 @@ class WorkingRecord(Record):
         # does not carry is absent from both sides rather than NULL in them,
         # and joining on it would fail to bind (`long_columns_for`).
         columns = set(self.schema.long_columns_for(attribute))
-        scope = [c for c in self.schema.input_key if c not in whole and c in columns]
+        scope = [
+            c for c in self.schema.owner_map_key if c not in whole and c in columns
+        ]
         present = [d for d in whole if d in columns]
         if not present:
             # No column for any whole-owned dim, so the file holds one row per
@@ -1665,7 +1663,7 @@ class WorkingRecord(Record):
         """One attribute's staged rows, tombstones applied.
 
         The rows are already one per coordinate - an edit replaced its key rather
-        than appending beside it (`_replace`) - so this is the table scan minus
+        than appending beside it (`_insert`) - so this is the table scan minus
         the coordinates a tombstone of this layer reaches. Those anti-joins stay,
         being a cross-table fact rather than an ordering one, and the fold
         applies a layer's tombstones to its parents only: a `remove` has to
@@ -1707,7 +1705,7 @@ class WorkingRecord(Record):
     def _tombstoned(self, dim: str) -> DuckDBPyRelation | None:
         """The labels of `dim` whose staged row is a tombstone.
 
-        One row per label in the table already (`_replace` on the label), so
+        One row per label in the table already (`_insert` keyed on the label), so
         an `add` after a `remove` has replaced the tombstone rather than sitting
         above it - the scan is the answer.
 
@@ -1723,7 +1721,7 @@ class WorkingRecord(Record):
     def _collapsed_group(self, group: str) -> DuckDBPyRelation | None:
         """One group's staged rows - a table scan, one per tuple.
 
-        Restating a tuple replaced its row (`_replace` on the group's column), so the
+        Restating a tuple replaced its row (`_insert` keyed on the group's column), so the
         table already holds one per key.
 
         Notes

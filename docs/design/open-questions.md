@@ -15,7 +15,7 @@ SPDX-License-Identifier: CC-BY-4.0
   Reopening it means deciding all three: whether it is needed at all, whether an entity table and a group may disagree about which dims scope them, and what the coarser one's rows mean if they may.
 
 - **Whether `partial` should ever be per attribute.** [The schema](schema.md#partial-the-granularity-of-an-override) puts it on the axis because it is true of every attribute varying over that axis.
-  A counter-example would be an attribute whose series a consumer _can_ accept in pieces while others cannot — none known, and permitting it would make the fold's key vary per attribute, which the fixed inputs key assumes it does not.
+  A counter-example would be an attribute whose series a consumer _can_ accept in pieces while others cannot — none known, and permitting it would make the fold's key vary per attribute, which the fixed owner-map key assumes it does not.
 
 - **Whether a broadcast survives materialisation.** A materialised ancestor's owner map stores a NULL row already expanded to the labels that existed then, and seeds a child's fold without re-expanding.
   So `set("p_max_pu", 0.9)` reaches an entity added in a child only while the ancestor is unmaterialised.

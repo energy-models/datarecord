@@ -97,11 +97,11 @@ docstring nobody opens:
 
 - **A justification of a line that reads as a mistake** — a swallowed exception,
   a magic literal, a deliberate no-op, a slower construct chosen over the obvious
-  fast one. `duck.py`'s note on why `PROVIDER credential_chain` is skipped for
-  local records, and `record.py`'s on why `__contains__` is overridden, are the
-  model: they answer "why not the obvious thing", which no reader can recover
-  from the code. Keep them as short as the reason allows — a couple of lines
-  where the reason genuinely takes that, not a paragraph.
+  fast one. `duck.py`'s note on why an HTTP 403 counts as a missing file, and
+  `protocols.py`'s on why `__contains__` is overridden, are the model: they
+  answer "why not the obvious thing", which no reader can recover from the code.
+  Keep them as short as the reason allows — a couple of lines where the reason
+  genuinely takes that, not a paragraph.
 - **A case label** where parametrizing the test would distort it.
 - **Pragmas with their reason** (`# type: ignore[…]`, `# noqa: …`, `# fmt: skip`),
   `#:` attribute docs, and section banners.
@@ -128,8 +128,8 @@ name is the _caller_, not the implementer.
   inside belongs in the code, where anyone who needs it is already looking.
 - **A private helper is the exception** — there the reader _is_ a maintainer:
   write the constraint that made it exist, and the invariant a change could break
-  unknowingly. `layered/resolve.py`'s `_deleted_relation` and
-  `_component_deleted_for_connections` are the model.
+  unknowingly. `resolve/owner_map.py`'s `_deleted_relation` and
+  `resolve/coords.py`'s `_base_and_above` are the model.
 - **Cut** restatement of the signature, argument for a settled decision,
   narration of how the answer was found, and any tour of internals a caller
   cannot see.
@@ -150,9 +150,9 @@ name is the _caller_, not the implementer.
 - **Document the parameters that need it, not all of them.** Unlike Google style
   there is no all-or-nothing rule and no linter counting them, so a `Parameters`
   block covering the two arguments that carry a constraint and skipping `con` is
-  correct — `resolve_dims` and `_deleted_relation` both do it. A parameter whose
-  name and annotation already say everything gets no entry, and a function where
-  that is true of every parameter gets the one-line docstring and no block.
+  correct — `_deleted_relation` does it. A parameter whose name and annotation
+  already say everything gets no entry, and a function where that is true of
+  every parameter gets the one-line docstring and no block.
 - **The gate is `datarecord/`**, where a docstring is a contract with a caller.
   Under `tests/` the bullets above are off: there a docstring argues for one
   assertion, and a summary line it has to fit in is the worse sentence.
