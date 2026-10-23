@@ -71,4 +71,4 @@ solved.record.attributes["marginal_price"]  # a child of solved reads it too
 PyPSA.build(solved.record)  # marginal_price is in the network
 ```
 
-`base` is required with `results_only` and refused without it. The layer carries the SubNetworks the results name, as entities, and tombstones those of `base` the solve did not write again, so a re-solve leaves none stale ([design](../design/tools.md#writing-results)).
+`base` is required with `results_only` and refused without it. A SubNetwork is a label of the dim `sub_network`, `0`, `1`, … as PyPSA names it. The layer restates that axis with this solve's SubNetworks and leaves the entity axis to `base`, so a re-solve leaves none stale ([design](../design/tools.md#writing-results)).

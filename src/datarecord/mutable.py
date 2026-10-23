@@ -16,20 +16,20 @@ Notes
 from __future__ import annotations
 
 import operator
-import re
 import sys
-from collections.abc import Container, Mapping, Sequence
+from collections.abc import Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import reduce
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 
-import duckdb
+from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, Expression, sqltypes
 from duckdb import SQLExpression as sql
+from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
 
 from datarecord.duck import (
@@ -41,11 +41,12 @@ from datarecord.duck import (
     struct_of,
     union_all_by_name,
 )
-from datarecord.protocols import LazyRelations, RecordLike, Relations
+from datarecord.protocols import RecordLike
+from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.record import Record
 from datarecord.schema.categories import matching
-from datarecord.schema.dtypes import enum_labels, takes
+from datarecord.schema.dtypes import takes
 from datarecord.schema.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
@@ -133,7 +134,8 @@ class StagedSource:
 
     "The layer as it would be written": each member reads its staging table,
     which an edit replaces by key rather than appending to (`_insert`), so the
-    table is already one row per key and what a write would persist.
+    table is already one row per key and what a write would persist. An axis
+    or group is staged whole, and handed over in position order.
 
     Unfrozen, which is the whole of what distinguishes it: a `set` changes these
     rows under a reader, so the fold must stay a relation past this point rather
@@ -170,34 +172,24 @@ class StagedSource:
         return None
 
     def axes(self) -> set[str]:
-        """The dims with staged rows - by `add`, `remove` or a `set` on an axis column."""
+        """The dims staged whole - by `add`, `remove` or a `set` on an axis column."""
         return set(self.record._staged_dims())
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        """One axis as this layer would write it - `_axis_layer`, exactly.
-
-        Which matters for the columns rather than the labels: the fold is
-        last-writer-wins per *label*, over the whole row, so a source handing
-        over only the column its `set` named would blank every sibling
-        property on that label. A `set` on an axis carries the siblings into
-        the staged row when it patches it (`_patch_axis`), so the table is
-        already the row a write of `edits` persists.
+        """One axis as this layer would write it: every label, with its properties, in order.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         """
-        if self.record._rows(f"{_AXIS_PREFIX}{dim}") is None:
-            return None
-        return self.record._axis_layer(dim)
+        return self.record._restatement(f"{_AXIS_PREFIX}{dim}")
 
     def groups(self) -> set[str]:
-        """Which declared groups have staged rows."""
+        """Which declared groups are staged whole."""
         return set(self.record._staged_groups())
 
     def group(self, name: str) -> DuckDBPyRelation | None:
-        return self.record._collapsed_group(name)
+        return self.record._restatement(name)
 
     def attributes(self) -> set[str]:
         """Which attributes have staged rows."""
@@ -341,7 +333,67 @@ class WorkingRecord(Record):
         name = self._table(kind, attribute)
         self._shape(kind, attribute).create(name)
         self._staged[key] = name
+        base = None if attribute is not None else self._base_rows(kind)
+        if base is not None:
+            numbered = base.project(
+                star(), sql("row_number() OVER ()").alias(_POSITION)
+            )
+            self._insert(numbered, name, {})
         return name
+
+    def _base_rows(self, kind: str) -> DuckDBPyRelation | None:
+        """The base's resolved axis or group `kind` stands for, with its properties."""
+        if not kind.startswith(_AXIS_PREFIX):
+            return self._base.groups.get(kind)
+        dim = kind[len(_AXIS_PREFIX) :]
+        rows = (
+            self._base.properties if dim in self.schema.properties else self._base.dims
+        )
+        return rows.get(dim)
+
+    def _restatement(self, kind: str) -> DuckDBPyRelation | None:
+        """The staged axis or group `kind` stands for, in position order; `None` where unstaged."""
+        name = self._staged.get((kind, None))
+        if name is None:
+            return None
+        return self.con.sql(
+            f"SELECT * EXCLUDE ({_POSITION}) FROM {name} ORDER BY {_POSITION}"
+        )
+
+    def _positioned(
+        self, rel: DuckDBPyRelation, table: str, kind: str, key: str
+    ) -> DuckDBPyRelation:
+        """`rel` with each row's position in the staged axis or group `table`.
+
+        A label keeps its staged position, a label of the base takes its base
+        position back, and any other comes after every position either holds,
+        in `rel`'s order.
+        """
+        staged = self.con.table(table)
+        base = self._base_rows(kind)
+        start = max(
+            staged.aggregate(f"coalesce(max({_POSITION}), 0)").fetchall()[0][0],
+            0 if base is None else base.count("*").fetchall()[0][0],
+        )
+        numbered = rel.project(star(), sql("row_number() OVER ()").alias("_n"))
+        held = [staged.project(col(key), col(_POSITION))]
+        if base is not None:
+            held.append(
+                base.project(col(key), sql("row_number() OVER ()").alias(_POSITION))
+            )
+        joined = numbered.set_alias("r")
+        for i, positions in enumerate(held):
+            alias = f"h{i}"
+            joined = joined.join(
+                positions.set_alias(alias), null_safe("r", alias, [key]), how="left"
+            )
+        position = coalesce(
+            *(col(f"h{i}", _POSITION) for i in range(len(held))),
+            lit(start) + col("r", "_n"),
+        )
+        return joined.project(
+            *(col("r", c) for c in rel.columns), position.alias(_POSITION)
+        )
 
     def _shape(self, kind: str, attribute: str | None) -> DuckDBPyRelation:
         """A row-less relation shaped like the file `kind` becomes.
@@ -355,7 +407,7 @@ class WorkingRecord(Record):
             columns = _axis_columns(self.schema, kind[len(_AXIS_PREFIX) :])
         else:
             columns = _group_columns(self.schema, kind)
-        return empty_relation(self.con, **columns)
+        return empty_relation(self.con, **columns, **{_POSITION: sqltypes.BIGINT})
 
     def _empty_long(self, attribute: str) -> DuckDBPyRelation:
         """A row-less relation shaped like one attribute's long file.
@@ -548,74 +600,32 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
         if not value:
             return
-        table = self._ensure(f"{_AXIS_PREFIX}{dim}", None)
         edit = self._values_relation(
             {dim: list(value), name: list(value.values())},
             {dim: self._column_type(dim), name: self._column_type(name, dim)},
         )
-        self._patch_axis(dim, name, table, edit, self._base.properties.get(dim))
+        self._patch(f"{_AXIS_PREFIX}{dim}", dim, name, edit)
 
-    def _patch_axis(
-        self,
-        key: str,
-        attribute: str,
-        table: str,
-        edit: DuckDBPyRelation,
-        base: DuckDBPyRelation | None,
-    ) -> None:
-        """Set property `attribute` on each label or tuple `edit` names, in place.
+    def _patch(self, kind: str, key: str, name: str, edit: DuckDBPyRelation) -> None:
+        """Set property `name` on each label or tuple `edit` names, in the staged `kind`.
 
         `key` is the one column a row is keyed by: a dim, or a group's struct
-        column. `base` is the base's resolved axis or group.
-
-        An axis row's columns are independently editable, so this patches the one
-        column rather than replacing the row - a sibling a `set` did not name is
-        never read and so cannot be lost. A label falls to one of two statements
-        by whether a prior `set` already staged it:
-
-        - **INSERT** a label not yet staged, taking its siblings from the base row
-          where the base has one and the edited column from `edit`. Its siblings
-          have to travel with it: the fold is whole-row last-writer-wins per label
-          (`_fold_axis`), so a staged patch carrying only its own column would win
-          the label and blank the rest - the resolved row is the layer's, not one
-          the read rebuilds column by column. A label the base also lacks is new,
-          and the edit is the whole of its row.
-        - **UPDATE** a label already staged, patching the one column in place so
-          the siblings an earlier edit carried stay put.
-
-        `partial` decides only the label *extent* the layer carries, which is
-        `_axis_layer`'s business, not this.
+        column. The first edit stages the base's axis or group whole, so the
+        row is there to update, its other properties with it.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
         - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
         """
-        staged = self.con.table(table)
+        table = self._ensure(kind)
         # Raw SQL because `UPDATE ... FROM` is a join-update, which the relational
         # `update` cannot express (https://duckdb.org/docs/stable/clients/python/relational_api).
         self.con.execute(
-            f"UPDATE {table} AS t SET {col(attribute)} = {col('e', attribute)} "
+            f"UPDATE {table} AS t SET {col(name)} = {col('e', name)} "
             f"FROM edit e "
             f"WHERE {col('t', key)} IS NOT DISTINCT FROM {col('e', key)}"
         )
-        fresh = edit.set_alias("e").join(
-            staged.set_alias("s"), null_safe("e", "s", [key]), how="anti"
-        )
-        if base is None:
-            rows = fresh.set_alias("e").select(col(key), col(attribute))
-        else:
-            # A left join, since a fresh label the base also lacks has no row.
-            siblings = [c for c in base.columns if c not in (key, attribute)]
-            rows = (
-                fresh.set_alias("e")
-                .join(base.set_alias("b"), null_safe("e", "b", [key]), how="left")
-                .select(
-                    col("e", key), col("e", attribute), *(col("b", c) for c in siblings)
-                )
-            )
-        self._insert(rows, table, {})
 
     def _validate_dims(self, dims: Mapping[str, Any]) -> None:
         """The dim vocabulary.
@@ -659,29 +669,10 @@ class WorkingRecord(Record):
                 self._require_typed(
                     coordinates[c], labels, f"`set({attribute!r}, ...)`"
                 )
-                self._require_labels(coordinates[c], labels)
 
-    def _require_labels(self, dim: str, labels: Sequence[Any]) -> None:
-        """Reject labels of a `partial` dim the record does not resolve.
-
-        Only a `partial` dim with an axis some layer wrote: its label is what
-        the fold keys a row by, so a value for one no layer declares would
-        resolve to nothing - caught here rather than dropped at read time.
-
-        Raises
-        ------
-        KeyError
-            Naming the unknown labels.
-
-        Notes
-        -----
-        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
-        """
-        if (
-            dim in (self.schema.partial or ())
-            and (axis := self.dims.get(dim)) is not None
-        ):
-            self._require_existing(dim, labels, axis)
+    def _held(self, name: str) -> DuckDBPyRelation | None:
+        """Return the staged axis or group `name`, `None` where there is none."""
+        return (self.groups if name in self.schema.groups else self.dims).get(name)
 
     def set(
         self,
@@ -728,9 +719,10 @@ class WorkingRecord(Record):
         Raises
         ------
         KeyError
-            On an undeclared attribute or keyword, a `partial` dim's
-            label the record does not resolve, a property's label no layer
-            wrote, or a value of a property that takes its labels from a dim and is no
+            On an undeclared attribute or keyword, a label that its dim's
+            axis, as staged, does not hold, a tuple that its group, as
+            staged, does not hold, a property's label no layer wrote, or a
+            value of a property that takes its labels from a dim and is no
             label of it.
         ValueError
             On a keyword the attribute does not vary over, a sequence with no single list keyword to align to,
@@ -766,7 +758,7 @@ class WorkingRecord(Record):
             self.schema.check_group_columns(
                 self.schema.groups_of(attribute), rel, carrier=call
             )
-            self._validate_frame(rel, attribute, coords)
+            self._validate_input(attribute, coords)
             table = self._ensure(_ATTRIBUTES, attribute)
             known = [
                 *self._staged_coordinates(attribute),
@@ -793,7 +785,6 @@ class WorkingRecord(Record):
             self._require_typed(
                 dim, cast("list[Any]", keys), f"`set({attribute!r}, ...)`"
             )
-            self._require_labels(dim, cast("list[Any]", keys))
             column: dict[str, Sequence[Any]] = {key: cast("list[Any]", keys)}
         elif _is_labels(value):
             if len(listed) != 1:
@@ -862,7 +853,7 @@ class WorkingRecord(Record):
         self.schema.require_listed(dim, data, call)
         self._require_live(dim, data, call)
         if keyed:
-            self._require_existing(dim, list(values), self.dims.get(dim))
+            self._require_existing(dim, dim, list(values), call)
         self._stage_axis(dim, name, values)
 
     def _set_group_property(
@@ -917,41 +908,29 @@ class WorkingRecord(Record):
             raise KeyError(msg)
         dtype = self._column_type(name, group)
         edit = rel.project(col(group), lit(value).cast(dtype).alias(name))
-        self._patch_axis(
-            group, name, self._ensure(group), edit, self._base.groups.get(group)
-        )
+        self._patch(group, group, name, edit)
 
     def _require_existing(
         self,
+        column: str,
         dim: str,
         labels: Sequence[Any],
-        axis: DuckDBPyRelation | None,
-        why: str = "a value for a label no layer declares would resolve to nothing",
+        call: str,
+        subject: str | None = None,
     ) -> None:
-        """Reject labels of `dim` missing from `axis`, its labels as staged, saying `why`.
+        """Refuse `labels` of `dim`, given in `column`, that its staged axis does not hold.
 
         Raises
         ------
         KeyError
-            Naming the unknown labels.
+            As `refuse_unheld` does.
         """
-        wanted = list(dict.fromkeys(str(n) for n in labels if n is not None))
-        found = (
-            set()
-            if axis is None or not wanted
-            else {
-                str(label)
-                for (label,) in axis.filter(
-                    col(dim).cast(sqltypes.VARCHAR).isin(*map(lit, wanted))
-                )
-                .project(col(dim))
-                .fetchall()
-            }
+        given = self._values_relation(
+            {column: labels}, {column: self._column_type(dim)}
         )
-        unknown = [n for n in wanted if n not in found]
-        if unknown:
-            msg = f"no {dim!r} label {unknown}; `add` them first - {why}"
-            raise KeyError(msg)
+        refuse_unheld(
+            given, self.schema, [column], self._held, call, staged=True, subject=subject
+        )
 
     def _require_live(
         self, subject: str, data: Mapping[str, Sequence[Any]], call: str
@@ -977,12 +956,7 @@ class WorkingRecord(Record):
             dim = named.get((subject, name))
             if dim is not None:
                 self._require_typed(dim, values, call)
-                self._require_existing(
-                    dim,
-                    values,
-                    self.dims.get(dim),
-                    why=f"each value of `{subject}.{name}` must be a label of {dim!r}",
-                )
+                self._require_existing(name, dim, values, call, subject)
 
     def _select(self, name: str, coords: Mapping[str, Any]) -> dict[str, Any]:
         """`coords` with each property keyword replaced by the labels it selects.
@@ -1060,42 +1034,6 @@ class WorkingRecord(Record):
             return []
         return [r[0] for r in matching(axis, wanted).project(col(dim)).fetchall()]
 
-    def _validate_frame(
-        self, rel: DuckDBPyRelation, attribute: str, coords: Mapping[str, Any]
-    ) -> None:
-        """A long input frame's keywords, and the labels its coordinates carry.
-
-        Every coordinate over a `partial` dim the frame supplies - a column, or
-        a field of a group's struct, so each party of a contract - must name a
-        label the record resolves.
-
-        Notes
-        -----
-        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
-        """
-        self._validate_input(attribute, coords)
-        columns = rel.columns
-        partial = self.schema.partial or frozenset()
-        for c, dim in _flat_coordinates(self.schema, attribute).items():
-            if dim not in partial or c in coords:
-                continue
-            field = (
-                col(c)
-                if c in columns
-                else next(
-                    (
-                        fn.struct_extract(col(g), lit(c))
-                        for g in self.schema.groups_of(attribute)
-                        if g in columns and c in self.schema.group_key(g)
-                    ),
-                    None,
-                )
-            )
-            if field is None:
-                continue
-            labels = [n for (n,) in rel.project(field).distinct().fetchall()]
-            self._require_labels(dim, labels)
-
     def _require_typed(self, dim: str, labels: Sequence[Any], call: str) -> None:
         """Refuse a label whose type does not fit the dtype of `dim` (`takes`).
 
@@ -1146,8 +1084,7 @@ class WorkingRecord(Record):
         out (`_delete_covered`).
         `rel` must not read `table`, or the delete changes what the insert then
         reads: a caller deriving from the staged rows snapshots them first
-        (`_insert_snapshot`), and the one path that patches columns in place
-        (`_patch_axis`) passes no `key`.
+        (`_insert_snapshot`).
 
         Notes
         -----
@@ -1171,36 +1108,7 @@ class WorkingRecord(Record):
         )
         if key is not None:
             self._delete_covered(projected, table, key, broadcast)
-        try:
-            projected.insert_into(table)
-        except duckdb.ConversionException as exc:
-            # The column of a dim listing its labels reaches DuckDB as an
-            # `ENUM`, so this is what rejects a label it does not list - as a
-            # conversion to `UINT8`,
-            # the enum's storage type, naming neither the dim nor its labels.
-            # The source column is in the message, which is what makes it
-            # restatable.
-            match = re.search(r"casting from source column (\w+)", str(exc))
-            if match is None:
-                raise
-            source = match.group(1)
-            subject = next(
-                (
-                    k.removeprefix(_AXIS_PREFIX)
-                    for (k, a), n in self._staged.items()
-                    if n == table and a is None
-                ),
-                None,
-            )
-            dtype = self.schema.column_type(source, subject)
-            listed = None if dtype is None else enum_labels(dtype)
-            if listed is None:
-                raise
-            msg = (
-                f"{source!r} names a label its dim does not list; "
-                f"that dim lists {list(listed)}"
-            )
-            raise ValueError(msg) from exc
+        projected.insert_into(table)
 
     def _insert_long(
         self,
@@ -1236,12 +1144,15 @@ class WorkingRecord(Record):
                 return _packed(self.schema, d, present, dims).alias(d)
             return lit(dims.get(d)).cast(self._column_type(d)).alias(d)
 
+        coordinates = self._staged_coordinates(attribute)
         shaped = rel.project(
-            *(coordinate(d) for d in self._staged_coordinates(attribute)),
+            *(coordinate(d) for d in coordinates),
             lit(attribute).alias("attribute"),
             lit(None).cast(sqltypes.DOUBLE).alias("breakpoint"),
             col("value"),
         )
+        call = f"`set({attribute!r}, ...)`"
+        refuse_unheld(shaped, self.schema, coordinates, self._held, call, staged=True)
         self._insert(
             shaped,
             table,
@@ -1375,8 +1286,7 @@ class WorkingRecord(Record):
         parameter, unnested beside the others.
 
         A `None` in `schema` is inferred, as `set` leaves the `value` column.
-        An `ENUM` is built as text and cast by the insert, which is what
-        rejects a label it does not list with the column named (`_insert`).
+        An `ENUM` is built as text and cast by the insert.
         """
         params = [[_scalar(v) for v in values] for values in columns.values()]
         built = {
@@ -1395,7 +1305,9 @@ class WorkingRecord(Record):
         `columns` are `dim`'s properties, each a scalar for every label or a
         sequence aligned to `labels`. A column no keyword names is NULL on
         these rows: `add` restates a label's row whole, replacing any this
-        record staged for it, a `remove`'s tombstone included.
+        record staged for it. A label keeps its place in the axis, a label of
+        the base removed here takes its base place back, and a new one is
+        appended.
 
         Not a sequence of `set` calls: a label exists by virtue of its axis row,
         so adding one with no columns at all is an edit. An attribute's value,
@@ -1422,8 +1334,8 @@ class WorkingRecord(Record):
             msg = f"the schema declares no dim {dim!r}"
             raise KeyError(msg)
         call = f"add({dim!r}, ...)"
-        table = self._ensure(f"{_AXIS_PREFIX}{dim}")
-        self._reject_undeclared(f"`{call}`", table, [*columns])
+        kind = f"{_AXIS_PREFIX}{dim}"
+        self._reject_undeclared(f"`{call}`", _axis_columns(self.schema, dim), columns)
         names = list(labels)
         self._require_typed(dim, names, f"`{call}`")
         data: dict[str, list[Any]] = {dim: names}
@@ -1437,23 +1349,20 @@ class WorkingRecord(Record):
         self.schema.require_listed(dim, data, f"`{call}`")
         self._require_live(dim, data, f"`{call}`")
         rel = self._values_relation(data, {c: self._column_type(c, dim) for c in data})
-        self._insert(
-            rel,
-            table,
-            {"deleted": lit(False)},  # noqa: FBT003
-            key=(dim,),
+        table = self._ensure(kind)
+        self._insert_snapshot(
+            self._positioned(rel, table, kind, dim), table, {}, key=(dim,)
         )
 
     def remove(self, dim: str, labels: Sequence[Any]) -> None:
-        """Stage a tombstone per label of `dim`.
+        """Stage `dim`'s axis without `labels`.
 
-        Need not enumerate what it deletes: one axis row per label, and the fold
-        drops every value keyed by the label where `dim` is `partial`. No
-        labels stage nothing.
+        Need not enumerate what it deletes: the fold drops every value keyed
+        by a removed label where `dim` is `partial`. No labels stage nothing.
 
-        And one tombstone per tuple, of any group, with a field over `dim`
-        naming one of `labels`, read from the record as it currently resolves:
-        a group attribute's value goes with its tuple.
+        And every group with a field over `dim` without the tuples naming one
+        of `labels`, read from the record as it currently resolves: a group
+        attribute's value goes with its tuple.
 
         Raises
         ------
@@ -1471,13 +1380,7 @@ class WorkingRecord(Record):
             return
         self._require_typed(dim, labels, f"`remove({dim!r}, ...)`")
         self._require_unnamed(dim, labels)
-        rel = self._values_relation({dim: list(labels)}, {dim: self._column_type(dim)})
-        self._insert(
-            rel,
-            self._ensure(f"{_AXIS_PREFIX}{dim}"),
-            {"deleted": lit(True)},  # noqa: FBT003
-            key=(dim,),
-        )
+        gone = self._values_relation({dim: list(labels)}, {dim: self._column_type(dim)})
         groups = self.groups
         for g in self.schema.group_columns:
             fields = [f for f, d in self.schema.groups[g].over.items() if d == dim]
@@ -1490,12 +1393,22 @@ class WorkingRecord(Record):
                     for f in fields
                 ),
             )
-            self._insert_snapshot(
-                groups[g].filter(naming).project(col(g)),
-                self._ensure(g),
-                {"deleted": lit(True)},  # noqa: FBT003
-                key=(g,),
-            )
+            if groups[g].filter(naming).limit(1).fetchone() is None:
+                continue
+            table = self._ensure(g)
+            for f in fields:
+                self._delete(table, gone, dim, fn.struct_extract(col(table, g), lit(f)))
+        table = self._ensure(f"{_AXIS_PREFIX}{dim}")
+        self._delete(table, gone, dim, col(table, dim))
+
+    def _delete(
+        self, table: str, gone: DuckDBPyRelation, key: str, target: Expression
+    ) -> None:
+        """Delete the rows of `table` whose `target` is one of `gone`'s `key` values."""
+        self.con.execute(
+            f"DELETE FROM {table} USING gone g "
+            f"WHERE {target} IS NOT DISTINCT FROM {col('g', key)}"
+        )
 
     def _require_unnamed(self, dim: str, labels: Sequence[Any]) -> None:
         """Refuse removing `labels` of `dim` while a property that takes its labels from `dim` stores one of them.
@@ -1552,8 +1465,10 @@ class WorkingRecord(Record):
         finally:
             self.con.execute(f"DROP TABLE {snapshot}")
 
-    def _reject_undeclared(self, call: str, table: str, columns: Sequence[str]) -> None:
-        """Refuse a column the staging table's file has no place for, an attribute's included.
+    def _reject_undeclared(
+        self, call: str, known: Collection[str], columns: Iterable[str]
+    ) -> None:
+        """Refuse a column outside `known`, the columns of the staged file, an attribute's included.
 
         A staging table is shaped from the schema, like the file it becomes, so
         a column outside that shape has no declared dtype; widening the table
@@ -1571,7 +1486,6 @@ class WorkingRecord(Record):
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
         """
-        known = list(self.con.table(table).columns)
         extra = sorted(c for c in columns if c not in known)
         if not extra:
             return
@@ -1599,6 +1513,10 @@ class WorkingRecord(Record):
 
         Raises
         ------
+        KeyError
+            On a tuple naming a label that its field's axis, as staged, does
+            not hold, or a value of a property that takes its labels from a
+            dim and that its axis, as staged, does not hold.
         ValueError
             On a missing group column, an attribute column, a column whose type
             does not fit its dtype, and as `Schema.check_group_columns` does.
@@ -1613,18 +1531,18 @@ class WorkingRecord(Record):
         if group not in rel.columns:
             msg = f"{call} needs a {group!r} column"
             raise ValueError(msg)
-        table = self._ensure(group)
-        self._reject_undeclared(call, table, rel.columns)
+        self._reject_undeclared(call, _group_columns(self.schema, group), rel.columns)
         rel = self.schema.require_takes(rel, call, subject=group)
-        self._insert(
-            rel,
-            table,
-            {"deleted": lit(False)},  # noqa: FBT003
-            key=(group,),
+        refuse_unheld(
+            rel, self.schema, rel.columns, self._held, call, staged=True, subject=group
+        )
+        table = self._ensure(group)
+        self._insert_snapshot(
+            self._positioned(rel, table, group, group), table, {}, key=(group,)
         )
 
     def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None:
-        """Stage a tombstone per tuple, each in `Schema.group_key` order.
+        """Stage `group` without the tuples `keys` name, each in `Schema.group_key` order.
 
         Each tuple is packed into the group's struct column.
 
@@ -1638,13 +1556,9 @@ class WorkingRecord(Record):
         flat = self._values_relation(
             {c: [k[i] for k in keys] for i, c in enumerate(key)}, types
         )
-        packed = _packed(self.schema, group, key, {})
-        self._insert(
-            flat.project(packed.alias(group)),
-            self._ensure(group),
-            {"deleted": lit(True)},  # noqa: FBT003
-            key=(group,),
-        )
+        gone = flat.project(_packed(self.schema, group, key, {}).alias(group))
+        table = self._ensure(group)
+        self._delete(table, gone, group, col(table, group))
 
     # -- edits / rollback (https://energy-models.github.io/datarecord/design/working-record/#edits) --------------------------
 
@@ -1660,16 +1574,18 @@ class WorkingRecord(Record):
         self._staged.clear()
 
     def _collapsed_attribute(self, attribute: str) -> DuckDBPyRelation | None:
-        """One attribute's staged rows, tombstones applied.
+        """One attribute's staged rows, without those naming a label its staged axis lacks.
 
         The rows are already one per coordinate - an edit replaced its key rather
         than appending beside it (`_insert`) - so this is the table scan minus
-        the coordinates a tombstone of this layer reaches. Those anti-joins stay,
-        being a cross-table fact rather than an ordering one, and the fold
-        applies a layer's tombstones to its parents only: a `remove` has to
-        clear this attribute's rows for a `partial` dim's label too, and a
-        `remove_group` its rows for the tuple. A group attribute's row naming a
-        removed label goes by its tuple, which `remove` tombstoned.
+        the rows naming a label, or a tuple of one of the attribute's groups,
+        that the staged axis or group does not hold. `set` refuses a label the
+        staged axis lacks, so a row is dropped here only where `remove` took
+        its label after the `set`: the drop is that removal. The fold drops
+        only the parent's rows of a label a layer removes, and a label added
+        and removed in one staging area is in no restatement, so it is dead
+        nowhere. A group attribute's row naming a removed label goes by its
+        tuple, which `remove` dropped.
 
         None where nothing is staged for it, which is what says the base's rows
         stand alone.
@@ -1683,126 +1599,41 @@ class WorkingRecord(Record):
         rel = self._rows(_ATTRIBUTES, attribute)
         if rel is None:
             return None
-        for dim in self.schema.partial or ():
-            if dim not in self.schema.dimensions:
+        columns = rel.columns
+        kinds = {
+            **{d: f"{_AXIS_PREFIX}{d}" for d in self.schema.dims},
+            **{g: g for g in self.schema.groups_of(attribute)},
+        }
+        for name, kind in kinds.items():
+            held = self._rows(kind)
+            if held is None or name not in columns:
                 continue
-            dead = self._tombstoned(dim)
-            if dead is not None and dim in rel.columns:
-                rel = rel.set_alias("l").join(
-                    dead.set_alias("d"), null_safe("l", "d", [dim]), how="anti"
-                )
-        for g in self.schema.groups_of(attribute):
-            tuples = self._rows(g)
-            if tuples is None:
-                continue
-            rel = rel.set_alias("l").join(
-                tuples.filter(col("deleted")).set_alias("d"),
-                null_safe("l", "d", [g]),
-                how="anti",
+            kept = held.project(col(name), lit(True).alias("_kept"))  # noqa: FBT003
+            rel = (
+                rel.set_alias("l")
+                .join(kept.set_alias("k"), null_safe("l", "k", [name]), how="left")
+                .filter(col("l", name).isnull() | col("k", "_kept").isnotnull())
+                .project(*(col("l", c) for c in columns))
             )
         return rel
-
-    def _tombstoned(self, dim: str) -> DuckDBPyRelation | None:
-        """The labels of `dim` whose staged row is a tombstone.
-
-        One row per label in the table already (`_insert` keyed on the label), so
-        an `add` after a `remove` has replaced the tombstone rather than sitting
-        above it - the scan is the answer.
-
-        Notes
-        -----
-        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
-        """
-        rel = self._rows(f"{_AXIS_PREFIX}{dim}")
-        if rel is None:
-            return None
-        return rel.filter(col("deleted")).project(col(dim))
-
-    def _collapsed_group(self, group: str) -> DuckDBPyRelation | None:
-        """One group's staged rows - a table scan, one per tuple.
-
-        Restating a tuple replaced its row (`_insert` keyed on the group's column), so the
-        table already holds one per key.
-
-        Notes
-        -----
-        - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
-        """
-        return self._rows(group)
 
     # -- what edits write (https://energy-models.github.io/datarecord/design/working-record/#edits) ------------------------------------------
 
     def _staged_dims(self) -> tuple[str, ...]:
-        """Which axes have staged rows, in declaration order.
-
-        Rows rather than tables: `_ensure` creates the table before the label
-        checks run, so a rejected `set` leaves an empty one behind and a table
-        that exists is not yet an edit.
+        """Which axes are staged whole, in declaration order.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         - [the schema](https://energy-models.github.io/datarecord/design/schema/)
         """
-        staged = {
-            k[len(_AXIS_PREFIX) :]
-            for (k, _), _ in self._staged.items()
-            if k.startswith(_AXIS_PREFIX)
-        }
         return tuple(
-            d
-            for d in self.schema.dims
-            if d in staged
-            and self.con.table(self._table(f"{_AXIS_PREFIX}{d}")).limit(1).fetchone()
+            d for d in self.schema.dims if (f"{_AXIS_PREFIX}{d}", None) in self._staged
         )
 
-    def _axis_layer(self, dim: str) -> DuckDBPyRelation:
-        """One axis as this layer writes it, which `partial` decides the extent of.
-
-        The staged table already holds one complete row per label an edit touched
-        (`_patch_axis`), so there is nothing to merge on the way out - what
-        `partial` decides is only how many labels are in it:
-
-        - **`partial`** - the touched labels alone, the fold resolving the rest
-          from the parent. The staged table is exactly that.
-        - **not `partial`** - a dim a layer owns whole once it touches it, so the
-          untouched labels are carried from the base, unioned by name so a base
-          row lacking a newly-added column reads NULL there.
-
-        Notes
-        -----
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        """
-        staged = self._rows(f"{_AXIS_PREFIX}{dim}")
-        assert staged is not None, "only a staged dim reaches an axis layer"
-        rows = (
-            self._base.properties if dim in self.schema.properties else self._base.dims
-        )
-        base = rows.get(dim)
-        if base is None or dim in self.schema.partial_dims:
-            return staged
-        # The untouched labels the layer owns whole and so must carry, taken from
-        # the base with their whole rows - unioned by name, the staged side
-        # carrying any column the base lacks and the base side the reverse.
-        untouched = base.set_alias("b").join(
-            staged.set_alias("s"),
-            null_safe("b", "s", [dim]),
-            how="anti",
-        )
-        return union_all_by_name([staged, untouched], self.con)
-
-    def _staged_groups(self) -> Relations:
-        """Return the staged rows of each group, one relation per group.
-
-        `StagedSource.groups()` reads only its keys; `StagedSource.group` reads
-        the rows directly from `_collapsed_group`.
-        """
-        staged = {
-            g: rel
-            for g in self.schema.groups
-            if (rel := self._collapsed_group(g)) is not None
-        }
-        return LazyRelations(tuple(staged), staged.__getitem__)
+    def _staged_groups(self) -> tuple[str, ...]:
+        """Which groups are staged whole, in declaration order."""
+        return tuple(g for g in self.schema.groups if (g, None) in self._staged)
 
     @property
     def edits(self) -> StagedSource:
@@ -1850,7 +1681,7 @@ def _column_type(
 
 
 def _group_columns(schema: Schema, group: str) -> dict[str, DuckDBPyType]:
-    """Return the staged columns of `group`: its struct column, its tombstone and its properties.
+    """Return the columns of `group`'s file: its struct column and its properties.
 
     Notes
     -----
@@ -1859,7 +1690,6 @@ def _group_columns(schema: Schema, group: str) -> dict[str, DuckDBPyType]:
     """
     return {
         group: schema.group_type(group),
-        "deleted": sqltypes.BOOLEAN,
         **{p: _column_type(schema, p, group) for p in schema.properties.get(group, {})},
     }
 
@@ -1927,7 +1757,7 @@ def _packed(
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, DuckDBPyType]:
-    """One axis's staged columns - the shape of `dims/{dim}.parquet`: its key, its tombstone, its properties.
+    """One axis's columns - the shape of `dims/{dim}.parquet`: its key and its properties.
 
     Notes
     -----
@@ -1935,7 +1765,6 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, DuckDBPyType]:
     """
     return {
         dim: _column_type(schema, dim),
-        "deleted": sqltypes.BOOLEAN,
         **{p: _column_type(schema, p, dim) for p in schema.properties.get(dim, {})},
     }
 
@@ -1954,6 +1783,9 @@ def _scalar(value: Any) -> Any:
 
 _ATTRIBUTES = "attributes"
 """The staging kind of an attribute's long rows, one table per attribute."""
+
+_POSITION = "_position"
+"""The column a staged axis or group keeps its order in, which a table does not."""
 
 # A staging kind, so it becomes part of a table name: no punctuation a SQL
 # identifier would need quoting for, and no collision with a group's name,

@@ -6,13 +6,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 4: staging as a layer — one fold, two sources
 
-| DEP     | 4                                          |
-| ------- | ------------------------------------------ |
-| Title   | staging as a layer — one fold, two sources |
-| Author  | Jonas Hörsch                               |
-| Status  | Implemented 2026-09-01                     |
-| Created | 2026-09-01                                 |
-| Version | v0.1.0a1                                   |
+| DEP           | 4                                                                                                                                      |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Title         | staging as a layer — one fold, two sources                                                                                             |
+| Author        | Jonas Hörsch                                                                                                                           |
+| Status        | Implemented 2026-09-01                                                                                                                 |
+| Created       | 2026-09-01                                                                                                                             |
+| Version       | v0.1.0a1                                                                                                                               |
+| Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its per-label axis fold, and `partial` as how many labels an axis layer carries) |
 
 Landed in [the read path](../read-path.md#one-record-over-one-fold) and [`WorkingRecord`](../working-record.md#reading-with-pending-edits); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 

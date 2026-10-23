@@ -86,7 +86,9 @@ w.remove_group("connection", [("dc", "south")])
 
 `add(dim, labels, **columns)` works on any dim. The keywords are the axis file's other columns — the dim's properties, bare — each a scalar or a sequence aligned to `labels`. An attribute keyword is refused: attributes go through `set`, whatever their `dims` ([design](../design/working-record.md#add-remove)). A label exists by virtue of its axis row, so `add` is not a sequence of `set` calls: adding a bus with no properties makes the point.
 
-`remove(dim, labels)` stages a tombstone per label, with no dim scope — a label [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every value keyed by the label, and `remove` also tombstones every group tuple naming one ([design](../design/layers.md#deletion)). It is refused while a property that takes its labels from the dim still stores one of the labels — `entity.carrier` naming `gas` — since that row is its subject's and outlives the label: `set` it to another label or None first ([design](../design/working-record.md#add-remove)).
+`remove(dim, labels)` takes the labels out of the staged axis, with no dim scope — a label [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every value keyed by the label, and `remove` also takes every group tuple naming one out of its group ([design](../design/layers.md#deletion)).
+
+A layer restates each axis or group it changes whole: every label the base has, with the edits applied, in the base's order, then the labels it adds. An `add` of a label `remove` took out puts it back where the base has it. It is refused while a property that takes its labels from the dim still stores one of the labels — `entity.carrier` naming `gas` — since that row is its subject's and outlives the label: `set` it to another label or None first ([design](../design/working-record.md#add-remove)).
 
 `add_group`/`remove_group` stage a group's tuples, as one struct column named for the group with the group's properties beside it. Every group is reached the same way — `connection` has no call of its own, being one group among however many the schema declares.
 
@@ -110,7 +112,7 @@ ws.write(w, "out/")  # a standalone record, flattened
 w.rollback()  # clear the staging area, if you are done
 ```
 
-`w.edits` is **only the edits**, and the fold resolves the rest from the parent. `w` itself is **the resolved result** — what is staged plus what the record already reads — which is what a standalone directory needs, there being no parent to resolve against.
+`w.edits` is **only the edits** — the attribute rows set, and each axis and group changed, restated whole — and the fold resolves the rest from the parent. `w` itself is **the resolved result** — what is staged plus what the record already reads — which is what a standalone directory needs, there being no parent to resolve against.
 
 The edits are a delta against the revision `w` was built over, so `child` raises if you write them under another one. The layer lands in the **child**, never in the node you branched from — layers are write-once ([design](../design/layers.md#a-layers-data-is-write-once)) — so it is the returned node that reads the edits back:
 
@@ -120,7 +122,7 @@ new.record.attributes["p_nom"].df()
 
 Writing clears nothing: a `WorkingRecord` still holding its edits reads exactly what it did before, until `rollback()`.
 
-An edit replaces the rows it names, so restating a coordinate overwrites it and the last write is what stands. A `remove` after a `set` wins regardless of order — a deleted label has no values — and an `add` after a `remove` brings the label back, without its group tuples.
+An edit replaces the rows it names, so restating a coordinate overwrites it and the last write is what stands. A `remove` after a `set` wins regardless of order — a deleted label has no values — and an `add` after a `remove` brings the label back with its parent's values, without its group tuples.
 
 A base's results are attributes and carry like any other: a child written from `edits` inherits them, though an edited input may no longer support them. A solve's results are written by the tool, not staged ([tools](tools.md#solving-and-writing-results-back)).
 

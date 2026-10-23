@@ -16,7 +16,7 @@ Notes
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from hashlib import sha256
 from uuid import UUID
 
@@ -34,7 +34,12 @@ from datarecord.duck import (
     try_read_parquet,
     union_all_by_name,
 )
-from datarecord.resolve.coords import Coords, _base_and_above, resolve_coords
+from datarecord.resolve.coords import (
+    Coords,
+    _base_and_above,
+    resolve_coords,
+    restatement,
+)
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import LAYER_COLUMN, Schema
 
@@ -89,42 +94,6 @@ def _shared(
         except duckdb.CatalogException:
             pass
         return con.table(name)
-
-
-def _deleted_relation(
-    rel: DuckDBPyRelation | None,
-    keys: Coords,
-    con: DuckDBPyConnection,
-    *,
-    fixed: str,
-) -> DuckDBPyRelation:
-    """One layer's tombstones of one membership, keyed as the map they filter.
-
-    A deletion removes the thing whole - across every attribute and every dim,
-    since a row exists or it does not. So the tombstone is its key columns and
-    nothing else: no axis to scope it along, none to expand.
-
-    Read from the same source relation the membership itself folds from
-    (`source.axis(dim)`, `source.group(g)`), since reading membership from one
-    file and deletions from another would resolve a deletion the map never saw.
-
-    Parameters
-    ----------
-    rel
-        The layer's rows of that membership, or `None` where it has none.
-    fixed
-        The key column: the dim for a label, the group's struct column for a
-        group.
-
-    Notes
-    -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-    """
-    schema = keys.schema
-    if rel is None or "deleted" not in rel.columns:
-        return _empty_relation(schema, con, fixed)
-    return rel.filter(col("deleted")).project(col(fixed)).distinct()
 
 
 def cast_declared(
@@ -192,13 +161,17 @@ def with_columns(
 
 
 def fold_attributes(
-    source: LayerSource, keys: Coords, con: DuckDBPyConnection, parent: DuckDBPyRelation
+    source: LayerSource,
+    keys: Coords,
+    con: DuckDBPyConnection,
+    parent: DuckDBPyRelation,
+    removed: Mapping[str, DuckDBPyRelation],
 ) -> DuckDBPyRelation:
     """This layer's owner map: its `attributes/` keys, folded over `parent`.
 
-    A tombstone drops the parent rows keyed by its label: a `partial` dim's,
-    a `partial` group's tuple. A label inside a struct is reached through its
-    tuple's tombstone, which removing it wrote.
+    The parent rows naming a label `removed` holds are dropped first, per
+    `partial` dim or keyed group. A label inside a struct is reached through
+    its tuple, which the layer removed with it.
 
     Notes
     -----
@@ -262,30 +235,10 @@ def fold_attributes(
             ]
         )
 
-    # Each membership this layer tombstones anti-joins `parent`, keyed as it is
-    # in `owner_map_key` (https://energy-models.github.io/datarecord/design/read-path/#owner-map).
-    keyed = set(schema.owner_map_key)
-    partial_dims = [d for d in schema.partial or () if d in schema.dimensions]
-    memberships = [
-        *(
-            (
-                _deleted_relation(source.group(g), keys, con, fixed=g),
-                null_safe("x", "p", (g,)),
-            )
-            for g in schema.group_columns
-            if g in keyed
-        ),
-        *(
-            (
-                _deleted_relation(source.axis(d), keys, con, fixed=d),
-                null_safe("x", "p", (d,)),
-            )
-            for d in partial_dims
-        ),
-    ]
     kept = parent.set_alias("p")
-    for deleted, on in memberships:
-        kept = kept.join(deleted.set_alias("x"), on, how="anti").set_alias("p")
+    for name, gone in removed.items():
+        on = null_safe("x", "p", (name,))
+        kept = kept.join(gone.set_alias("x"), on, how="anti").set_alias("p")
     # Parent minus what this layer restates, union this layer's own.
     kept = kept.join(
         own.set_alias("o"), null_safe("p", "o", schema.owner_map_key), how="anti"
@@ -321,8 +274,68 @@ def _fold_map(
             seed[-1].layer_id, seed, con, keys.schema, read=base.owner_map
         )
 
-    for source in above:
-        rel = fold_attributes(source, keys, con, rel)
+    held = {
+        name: None if base is None else (base.groups | base.axes).get(name)
+        for name in _pruned(schema)
+    }
+    return _fold_onto(rel, above, held, keys, con)
+
+
+def _pruned(schema: Schema) -> tuple[str, ...]:
+    """The memberships whose removed labels prune the owner map: the keyed ones.
+
+    A `partial` dim, and a group in the owner-map key.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    """
+    keyed = set(schema.owner_map_key)
+    return (
+        *(g for g in schema.group_columns if g in keyed),
+        *(d for d in schema.partial or () if d in schema.dimensions),
+    )
+
+
+def _fold_onto(
+    rel: DuckDBPyRelation,
+    sources: Sequence[LayerSource],
+    held: dict[str, DuckDBPyRelation | None],
+    keys: Coords,
+    con: DuckDBPyConnection,
+) -> DuckDBPyRelation:
+    """Fold each of `sources` onto the owner map `rel`.
+
+    A source restating a membership removes the labels the previous
+    restatement held and its own omits. `held` is that previous restatement
+    per `_pruned` membership as of the first source, `None` where there is
+    none, so a first restatement removes nothing.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    schema = keys.schema
+    held = dict(held)
+    for source in sources:
+        removed = {}
+        for name, before in held.items():
+            now = restatement(source, name, schema)
+            if now is None:
+                continue
+            if before is not None:
+                removed[name] = (
+                    before.project(col(name))
+                    .set_alias("b")
+                    .join(
+                        now.project(col(name)).set_alias("n"),
+                        col("b", name) == col("n", name),
+                        how="anti",
+                    )
+                )
+            held[name] = now
+        rel = fold_attributes(source, keys, con, rel, removed)
     return rel
 
 
@@ -351,8 +364,8 @@ def _table(
     revision_id: UUID,
     sources: Sequence[LayerSource],
     con: DuckDBPyConnection,
-    schema: Schema,
     keys: Coords,
+    prefix: Coords,
 ) -> DuckDBPyRelation:
     """The owner map for `revision_id`, materialised as far as `frozen` allows.
 
@@ -361,7 +374,8 @@ def _table(
     it is folded on top per call, against `keys`, the coords folded over every
     source, and handed back as a relation, so a staging area's edits are picked
     up with no bookkeeping at all: a relation over a staging table reads
-    whatever the table holds when it is collected.
+    whatever the table holds when it is collected. `prefix` is the frozen
+    prefix's coords, which a restatement after it removes labels from.
 
     Notes
     -----
@@ -369,11 +383,11 @@ def _table(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
     """
-    prefix = frozen_prefix(sources)
-    rel = _frozen_table(revision_id, sources[:prefix], con, schema)
-    for source in sources[prefix:]:
-        rel = fold_attributes(source, keys, con, rel)
-    return rel
+    schema = keys.schema
+    frozen = frozen_prefix(sources)
+    rel = _frozen_table(revision_id, sources[:frozen], con, schema)
+    held = {name: (prefix.groups | prefix.axes).get(name) for name in _pruned(schema)}
+    return _fold_onto(rel, sources[frozen:], held, keys, con)
 
 
 def _frozen_table(

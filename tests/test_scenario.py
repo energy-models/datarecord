@@ -137,7 +137,7 @@ def test_child_adds_new_scenario(store, parent, stochastic):
     """
     child = empty_child(parent)
     write_scenarios(
-        store.layer_dir(child.id),
+        child,
         [{"scenario": s} for s in ("high", "low", "med", "extra")],
     )
     write_attribute(
@@ -169,14 +169,11 @@ def test_child_adds_new_scenario(store, parent, stochastic):
 
 
 def test_scenario_order_survives_a_chain_of_closed_layers(store, parent, stochastic):
-    """Axis row order stays root-first, then each layer's own append order.
+    """Axis row order stays root-first, then each layer's own appended label.
 
-    `_fold_axis` tags each layer's row order (`_row`) before the cross-layer
-    `UNION ALL` in `union_all_by_name`, not after: a bare `row_number()` on
-    the unioned relation would have no defined order to draw from and could
-    silently permute which scenario counts as "first introduced". A single
-    child is too small a union to expose this: chain several closed layers,
-    each adding one new scenario, to stress the fold across many arms.
+    Each layer restates the axis whole, and its row order is the order a read
+    and the next materialised copy keep. Several closed layers, each adding
+    one new scenario, check that no copy permutes it.
 
     Notes
     -----
@@ -188,7 +185,7 @@ def test_scenario_order_survives_a_chain_of_closed_layers(store, parent, stochas
     for i in range(5):
         rec = empty_child(rec)
         name = f"extra{i}"
-        write_scenarios(store.layer_dir(rec.id), [{"scenario": name}])
+        write_scenarios(rec, [{"scenario": name}])
         rec.materialise()
         added.append(name)
 

@@ -9,6 +9,7 @@ Notes
 - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
 """
 
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -19,12 +20,12 @@ from datarecord.mutable import WorkingRecord
 from datarecord.schema.specs import AttributeSpec
 from datarecord.store.store import Revision
 from tests.fixtures import (
+    drop_connections,
+    drop_entities,
     empty_child,
     empty_root,
     relation,
     schema,
-    tombstone,
-    tombstone_connection,
     unpacked,
     write_attribute,
     write_axis,
@@ -51,14 +52,15 @@ def _root(store) -> Revision:
     write_schema(schema(), store)
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
-    write_axis(layer, "ctype", [{"ctype": PROCESS}])
-    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_axis(revision, "ctype", [{"ctype": PROCESS}])
+    write_axis(revision, "bus", [{"bus": b} for b in ("h2_north", "iron_ore", "dri")])
+    write_component(revision, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
-        layer,
+        revision,
         [
-            {"entity": "steel_dri", "bus": "h2_north", "role": "input"},
-            {"entity": "steel_dri", "bus": "iron_ore", "role": "input"},
-            {"entity": "steel_dri", "bus": "dri", "role": "output"},
+            {"entity": "steel_dri", "bus": "h2_north"},
+            {"entity": "steel_dri", "bus": "iron_ore"},
+            {"entity": "steel_dri", "bus": "dri"},
         ],
     )
     write_attribute(
@@ -78,13 +80,10 @@ def _efficiencies(revision) -> dict[str, float]:
 
 
 def test_connections_resolve_in_order(store):
-    """A component's connections come back in first-introduced order."""
+    """A component's connections come back in the order of the file holding them."""
     revision = _root(store)
     frame = unpacked(_connections(revision))
     assert list(frame["bus"]) == ["h2_north", "iron_ore", "dri"]
-    # `role` describes the connection rather than keying it, so it rides along
-    # from the owning layer's file (https://energy-models.github.io/datarecord/design/record/#connections).
-    assert list(frame["role"]) == ["input", "input", "output"]
 
 
 def test_patch_overrides_one_connection_only(store):
@@ -120,8 +119,8 @@ def test_patch_hits_the_bus_it_named_not_a_position(store):
     # would shift every later index by one.
     middle = empty_child(root)
     write_connections(
-        store.layer_dir(middle.id),
-        [{"entity": "steel_dri", "bus": "elec_north", "role": "input"}],
+        middle,
+        [{"entity": "steel_dri", "bus": "elec_north"}],
     )
     write_attribute(
         store.layer_dir(middle.id),
@@ -200,10 +199,8 @@ def test_per_connection_attribute_varies_by_snapshot(store):
     write_schema(schema(), store)
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
-    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_connections(
-        layer, [{"entity": "steel_dri", "bus": "h2_north", "role": "input"}]
-    )
+    write_component(revision, PROCESS, [{"entity": "steel_dri"}])
+    write_connections(revision, [{"entity": "steel_dri", "bus": "h2_north"}])
     write_attribute(
         layer,
         "efficiency",
@@ -243,13 +240,13 @@ def test_per_connection_attribute_varies_by_snapshot(store):
     assert len(relation(revision, "efficiency").df()) == 3
 
 
-def test_connection_tombstone_removes_one_connection(store):
-    """A connection tombstone drops its connection row and its `attributes/` rows."""
+def test_restating_without_a_connection_removes_it(store):
+    """A restatement omitting a connection drops its row and its `attributes/` rows."""
     root = _root(store)
     root.materialise()
 
     child = empty_child(root)
-    tombstone_connection(store.layer_dir(child.id), [("steel_dri", "iron_ore")])
+    drop_connections(child, [("steel_dri", "iron_ore")])
 
     frame = unpacked(_connections(child))
     assert set(frame["bus"]) == {"h2_north", "dri"}
@@ -258,8 +255,8 @@ def test_connection_tombstone_removes_one_connection(store):
     assert _efficiencies(child) == {"h2_north": 2.1, "dri": 1.0}
 
 
-def test_a_component_tombstone_reaches_its_connections_through_theirs(store):
-    """The fold infers nothing from the entity: the tuples' own tombstones clear them.
+def test_a_removed_component_reaches_its_connections_through_their_removal(store):
+    """The fold infers nothing from the entity: the group's own restatement clears them.
 
     Notes
     -----
@@ -269,13 +266,13 @@ def test_a_component_tombstone_reaches_its_connections_through_theirs(store):
     root.materialise()
 
     both = empty_child(root)
-    tombstone(store.layer_dir(both.id), PROCESS, ["steel_dri"])
-    tombstone_connection(
-        store.layer_dir(both.id),
+    drop_entities(both, ["steel_dri"])
+    drop_connections(
+        both,
         [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
     )
     frame = both.record.groups["connection"]
-    assert frame.count("*").fetchone() == (0,), "every connection row is tombstoned"
+    assert frame.count("*").fetchone() == (0,), "every connection row is removed"
     assert "efficiency" not in both.record.attributes, "and their values go with them"
 
 
@@ -296,7 +293,7 @@ def test_a_dim_a_group_draws_on_still_broadcasts(store):
     )
     root = empty_root(store)
     layer = store.layer_dir(root.id)
-    write_axis(layer, "bus", [{"bus": "north"}, {"bus": "south"}])
+    write_axis(root, "bus", [{"bus": "north"}, {"bus": "south"}])
     write_attribute(layer, "marginal_price", [{"value": 5.0}], connection=False)
     root.materialise()
 
@@ -357,7 +354,7 @@ def test_a_group_outside_partial_is_owned_whole(store):
     assert _efficiencies(child) == {"h2_north": 9.9}, "the child restates the attribute"
 
     gone = empty_child(root)
-    tombstone_connection(store.layer_dir(gone.id), [("steel_dri", "iron_ore")])
+    drop_connections(gone, [("steel_dri", "iron_ore")])
     assert _efficiencies(gone) == {"h2_north": 2.1, "dri": 1.0}
 
 
@@ -376,7 +373,7 @@ def _efficiency_rows(record) -> dict[tuple[str, str], float]:
     }
 
 
-def test_remove_tombstones_the_tuples_naming_the_entity(store):
+def test_remove_drops_the_tuples_naming_the_entity(store):
     """`remove` writes the cascade: the connections go, and their values with them.
 
     Notes
@@ -407,8 +404,8 @@ def test_remove_tombstones_the_tuples_naming_the_entity(store):
     assert _efficiency_rows(child.record) == {("blast_furnace", "iron_ore"): 3.0}
 
 
-def test_the_writer_refuses_a_tuple_naming_a_removed_entity(store):
-    """Below a materialised node too: the dead labels survive in its cache.
+def test_add_group_refuses_a_tuple_naming_a_removed_entity(store):
+    """Below a materialised node too: its cached axis lacks the label.
 
     Notes
     -----
@@ -421,13 +418,44 @@ def test_the_writer_refuses_a_tuple_naming_a_removed_entity(store):
     removed.materialise()
 
     revived = WorkingRecord(removed.record)
-    revived.add_group("connection", _connection_frame(revived, "steel_dri", "dri"))
-    with pytest.raises(ValueError, match=r"a removed entity in 'entity'"):
-        removed.child(revived.edits)
+    frame = _connection_frame(revived, "steel_dri", "dri")
+    with pytest.raises(
+        KeyError, match=r"names 'entity' labels \['steel_dri'\] in 'connection.entity'"
+    ):
+        revived.add_group("connection", frame)
 
 
-def test_a_tuple_an_ancestor_left_dangling_fails_no_later_write(store):
-    """The writer checks what a layer does, not what it inherits.
+def _add_furnace(staged):
+    staged.add("entity", ["blast_furnace"], ctype=PROCESS)
+
+
+def _connect_furnace(staged):
+    _add_furnace(staged)
+    staged.add_group("connection", _connection_frame(staged, "blast_furnace", "dri"))
+
+
+def _disconnect_steel(staged):
+    pairs = [("steel_dri", b) for b in ("h2_north", "iron_ore", "dri")]
+    staged.remove_group("connection", pairs)
+
+
+_DANGLING = r"groups/connection.parquet names 'entity' labels \['steel_dri'\]"
+
+
+@pytest.mark.parametrize(
+    ("edit", "outcome"),
+    [
+        pytest.param(_add_furnace, nullcontext(), id="other-subject"),
+        pytest.param(
+            _connect_furnace, pytest.raises(ValueError, match=_DANGLING), id="restated"
+        ),
+        pytest.param(_disconnect_steel, nullcontext(), id="repaired"),
+    ],
+)
+def test_a_tuple_an_ancestor_left_dangling_fails_the_next_restatement(
+    store, edit, outcome
+):
+    """A layer restating a group is checked whole, so it drops or repairs what an ancestor left.
 
     Notes
     -----
@@ -435,13 +463,12 @@ def test_a_tuple_an_ancestor_left_dangling_fails_no_later_write(store):
     """
     root = _root(store)
     dangling = empty_child(root)
-    tombstone(store.layer_dir(dangling.id), PROCESS, ["steel_dri"])
+    drop_entities(dangling, ["steel_dri"])
 
     staged = WorkingRecord(dangling.record)
-    staged.add("entity", ["blast_furnace"], ctype=PROCESS)
-    child = dangling.child(staged.edits)
-    entities = child.record.dims["entity"].df()["entity"].tolist()
-    assert "blast_furnace" in entities
+    edit(staged)
+    with outcome:
+        dangling.child(staged.edits)
 
 
 def test_set_requires_every_party_to_exist(store):
@@ -525,10 +552,10 @@ def _contract_root(store) -> Revision:
     )
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
-    write_component(layer, SELLER, [{"entity": "plant"}])
-    write_component(layer, BUYER, [{"entity": "mill"}, {"entity": "smelter"}])
+    write_component(revision, SELLER, [{"entity": "plant"}])
+    write_component(revision, BUYER, [{"entity": "mill"}, {"entity": "smelter"}])
     write_group(
-        layer,
+        revision,
         "contract",
         [
             {"contract": {"from": "plant", "to": "mill"}},

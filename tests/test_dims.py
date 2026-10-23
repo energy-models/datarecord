@@ -20,6 +20,7 @@ from tests.fixtures import (
     empty_child,
     empty_root,
     relation,
+    restate,
     schema,
     write_attribute,
     write_component,
@@ -28,13 +29,13 @@ from tests.fixtures import (
 )
 
 
-def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store):
-    """A dim tombstone removes the attribute rows over that coordinate, not others.
+def test_removing_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store):
+    """A restatement omitting a label removes the attribute rows over it, not others.
 
-    The fold anti-joins every membership's tombstones into the owner map, dims
-    included: deleting `period=2030` drops a `p_max_pu` row keyed on 2030 while
-    the row over 2020 survives. Not a cascade - the attribute honours the dim's
-    own tombstone because that coordinate is part of its key.
+    The fold anti-joins every keyed membership's removed labels into the owner
+    map, dims included: restating `period` without 2030 drops a `p_max_pu` row
+    keyed on 2030 while the row over 2020 survives. Not a cascade - the
+    coordinate is part of the attribute's key.
 
     Notes
     -----
@@ -42,10 +43,8 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store):
     """
     revision = empty_root(store)
     write_schema(schema(partial={"period"}), store)
-    write_component(
-        store.layer_dir(revision.id), "Generator", [{"entity": "Manchester Wind"}]
-    )
-    write_periods(store.layer_dir(revision.id), [{"period": 2020}, {"period": 2030}])
+    write_component(revision, "Generator", [{"entity": "Manchester Wind"}])
+    write_periods(revision, [{"period": 2020}, {"period": 2030}])
     write_attribute(
         store.layer_dir(revision.id),
         "p_max_pu",
@@ -57,11 +56,11 @@ def test_deleting_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store):
     revision.materialise()
 
     child = empty_child(revision)
-    write_periods(store.layer_dir(child.id), [{"period": 2030, "deleted": True}])
+    restate(child, "dims", "period", [], drop=[2030])
 
     rel = relation(child, "p_max_pu").df()
     wind = rel[rel["entity"] == "Manchester Wind"]
-    assert set(wind["period"]) == {2020}, "the deleted coordinate's row is gone"
+    assert set(wind["period"]) == {2020}, "the removed coordinate's row is gone"
 
     keys = child.record._fold.owner_map.df()
     keyed = keys[
@@ -84,9 +83,7 @@ def test_the_fold_unions_maps_by_name(store):
     """
     revision = empty_root(store)
     write_schema(schema(partial={"scenario", "period"}), store)
-    write_component(
-        store.layer_dir(revision.id), "Generator", [{"entity": "Manchester Wind"}]
-    )
+    write_component(revision, "Generator", [{"entity": "Manchester Wind"}])
     write_attribute(
         store.layer_dir(revision.id),
         "p_max_pu",

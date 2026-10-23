@@ -103,7 +103,7 @@ A dtype is mathspec's: `DimensionDtype` and `ParameterDtype` from `mathspec.prog
 
 **An attribute declares no `one_of`**, as a mathspec parameter has none, and **no property is `datetime`**: a timestep a property describes is a label of a `datetime` dim it takes its labels from.
 
-**Struct columns are derived, never declared.** A group's column is a `STRUCT` with a field per key coordinate, each typed as its dim, and an owner flag a `STRUCT` of `BOOLEAN`. The fixed columns stay fixed: `attribute VARCHAR`, `breakpoint DOUBLE`, `deleted BOOLEAN`, `breakpoints BOOLEAN`.
+**Struct columns are derived, never declared.** A group's column is a `STRUCT` with a field per key coordinate, each typed as its dim, and an owner flag a `STRUCT` of `BOOLEAN`. The fixed columns stay fixed: `attribute VARCHAR`, `breakpoint DOUBLE`, `breakpoints BOOLEAN`.
 
 The manifest writes a dtype as its string — `"dtype": "float"` — beside `"one_of": [...]` on a dim that lists its labels, and a property that takes its labels from a dim as `"one_of": "<dim>"` in place of `dtype`.
 
@@ -319,7 +319,7 @@ A classifying group is named for the relation rather than the axis it classifies
 
 ## Existence does not vary along a dim
 
-An entity exists or it does not. There is no declaration making membership vary per value of an axis — no generator present in scenario `high` and absent from `low` — so `dims/entity.parquet` holds one row per entity and a tombstone removes it whole.
+An entity exists or it does not. There is no declaration making membership vary per value of an axis — no generator present in scenario `high` and absent from `low` — so `dims/entity.parquet` holds one row per entity and a layer restating it without one removes it whole.
 
 That is a deliberate narrowing. An earlier `Dimension.keys` declared exactly this, putting the dim in an entity table's key so an entity existed per scenario; it is gone, with nothing in its place, because [what it should mean is unsettled](open-questions.md) once connections are one group among several rather than a fixed second entity table.
 
@@ -386,7 +386,7 @@ partial_dims         = broadcast coordinates ∩ schema.partial
 ```
 
 `partial_dims` is the fold key: exactly the broadcast coordinates — dims and groups — declared `partial`. No dim is in it by name; a schema patching entity by entity lists `entity`, as PyPSA's `{entity, bus, scenario, connection}` does.
-A dim a group draws on is a broadcast dim like any other, so a layer patching a per-bus `marginal_price` one bus at a time needs `bus` in `partial`; a layer patching one connection's `efficiency` needs `connection` there, and the connection's bus is patched with it, inside the `connection` column. Neither is needed for the group itself: a dim a group draws on may stay out of `partial`, a removed label's tuples being [tombstoned with it](layers.md#deletion).
+A dim a group draws on is a broadcast dim like any other, so a layer patching a per-bus `marginal_price` one bus at a time needs `bus` in `partial`; a layer patching one connection's `efficiency` needs `connection` there, and the connection's bus is patched with it, inside the `connection` column. Neither is needed for the group itself: a dim a group draws on may stay out of `partial`, a removed label's tuples being [removed with it](layers.md#deletion).
 So `p_max_pu` is owned per entity and per scenario — `timestep` is not partial, so a patch to one hour restates that entity-scenario's whole series; `marginal_cost` per entity and scenario; `p_nom` per entity, once across everything else.
 
 Two things this buys.
@@ -396,9 +396,8 @@ And a `p_nom` row carrying a non-NULL `scenario` becomes a write-time violation 
 What the fold does with this is unchanged: the owner-map key is one fixed tuple over all attributes, and an attribute not varying over a dim writes NULL there.
 So the declarations constrain and validate; they do not make the key vary per row.
 
-**An axis file is owned the same way**, and the [properties it carries](format.md#where-a-value-lives) do not argue for adding it — save one: a dim with a [category](#categories-labels-a-dim-lists) must be in `partial`, since only there is it checked per label.
-Outside `partial`, a layer touching an axis restates it whole — every label, with the properties attached to them — because a layer holding one label is not saying the others are unchanged but that they are not there: the fold keys by the axis key, so what this layer carries is what the axis has here.
-That is the same "no half-owned extent" rule a series obeys, applied to a set of labels rather than a curve.
+**An axis or group file is not owned this way**: a layer touching one restates it whole, every label with its properties, in order, whether or not `partial` names it ([deletion](layers.md#deletion)).
+`partial` is attribute ownership alone, so the [properties an axis carries](format.md#where-a-value-lives) do not argue for adding it — save one: a dim with a [category](#categories-labels-a-dim-lists) must be in `partial`, since only there is it checked per label.
 
 **Keep it small.** Every `partial` coordinate widens the fold key, and the key is paid for by every read of every attribute.
 The cost of leaving one out is paid once per edit and bounded by the axis or group; the cost of putting it in is paid by every read forever.
@@ -409,7 +408,7 @@ So `partial` names only the dims and groups a layer genuinely patches value by v
 A declared dim, group, group coordinate, attribute or property name becomes a column, beside the columns datarecord writes itself. `Schema` refuses one at load that could not stand there, naming it and the reason:
 
 - **`"` or `.`.** A name reaches DuckDB as a column reference, which reads `a.b` as column `b` of table `a` and cannot spell a `"` at all. A space, mixed case, a keyword or a leading digit are fine: those quote.
-- **A column the format writes.** `attribute`, `breakpoint` and `value` on [every long row](format.md#the-long-schema), `deleted` as a [tombstone](layers.md#deletion), `varies`, `broadcast`, `breakpoints` and `layer_uuid` in [the owner map](read-path.md#owner-map), and `order_key` on a resolved frame. Ignoring case, as DuckDB resolves a column name. A collision is silent otherwise: a dim named `value` gives the long file two columns of one name, and one named `deleted` reads every label as a tombstone, dropping its rows with nothing reported.
+- **A column the format writes.** `attribute`, `breakpoint` and `value` on [every long row](format.md#the-long-schema), `varies`, `broadcast`, `breakpoints` and `layer_uuid` in [the owner map](read-path.md#owner-map), and `order_key` on a resolved frame. Ignoring case, as DuckDB resolves a column name. A collision is silent otherwise: a dim named `value` gives the long file two columns of one name.
 - **A leading `_`.** The prefix of every scratch column a fold adds and drops, so that set can grow without growing this list.
 - **Two spellings differing only in case.** DuckDB resolves `Country` and `country` to one column, so a schema declaring both would have one read the other's values. One spelling declared twice, as when a group's coordinate is named after the dim it ranges over, is a single column and fine.
 

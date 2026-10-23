@@ -45,9 +45,9 @@ def parent(store):
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
     names = ["Manchester Wind", "Norway Wind"]
-    write_component(layer, "Generator", [{"entity": n} for n in names])
+    write_component(revision, "Generator", [{"entity": n} for n in names])
     write_group(
-        layer, "connection", [{"connection": {"entity": "Norway Wind", "bus": "NO"}}]
+        revision, "connection", [{"connection": {"entity": "Norway Wind", "bus": "NO"}}]
     )
     write_attribute(
         layer,

@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | ------------- | ---------------------------------------------------------------------------------- |
 | Title         | Title                                                                              |
 | Author        | Name                                                                               |
-| Status        | Draft \| Accepted \| Implemented \| Superseded, with its date                      |
+| Status        | Draft \| Accepted \| On hold \| Implemented \| Superseded, with its date           |
 | Requires      | DEPs this one builds on, linked (omit if none)                                     |
 | Created       | YYYY-MM-DD                                                                         |
 | Version       | the datarecord release it ships in, `Unreleased` until then; omitted while a draft |

@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import SQLExpression as sql
@@ -31,10 +30,15 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import as_relation, ex_all, fn, null_safe
 from datarecord.protocols import LayerData, RecordLike, Relations
-from datarecord.resolve.coords import resolve_coords
+from datarecord.resolve.coords import (
+    refuse_twice,
+    refuse_unheld,
+    resolve_coords,
+    resolve_one,
+)
 from datarecord.resolve.owner_map import cast_declared
 from datarecord.resolve.record import PinnedRecord, Record
-from datarecord.resolve.sources import DirectorySource
+from datarecord.resolve.sources import DirectorySource, refuse_foreign_columns
 from datarecord.schema.schema import DERIVED, Schema
 from datarecord.store.files import Absent
 
@@ -103,15 +107,26 @@ def write_layer(
     FileExistsError
         If the layer directory already exists locally.
     ValueError
-        If a long frame is missing a long-schema column, or the schema declares a key
-        dim no frame carries - either would make the fold misresolve the layer.
-        If a group tuple or a property that takes its labels from a dim, alive after the
-        layer, names a label dead after it.
+        If a long frame is missing a long-schema column, or the schema
+        declares a key dim no frame carries - either would make the fold
+        misresolve the layer.
+        If a group tuple or a property that takes its labels from a dim names
+        a label dead after the layer, in a subject the layer restates or whose
+        rows name a label the layer removes.
         If a column's type does not fit its dtype, naming the attribute,
         property or dim that declares the column, and the dtype.
         If two rows of one attribute cover one coordinate and both name the
         same dims, or each names a dim the other leaves NULL, naming the
         attribute and the coordinate.
+        If an axis or group file holds one label twice, naming it, or orders
+        its parent's labels otherwise than the parent, naming the first label
+        out of place.
+        If a group tuple names a label that the layer's final axis of that
+        dim does not hold, naming the group, the field and up to three such
+        labels.
+        If an attribute row names a label that the layer's final axis of
+        that dim does not hold, or a tuple that the layer's final group does
+        not hold, naming the dim or group and up to three such labels.
 
     Notes
     -----
@@ -137,6 +152,13 @@ def write_layer(
             ("groups", data.groups(), data.group),
             ("attributes", data.attributes(), data.attribute),
         ]
+        resolved: dict[str, DuckDBPyRelation | None] = {}
+
+        def final(name: str) -> DuckDBPyRelation | None:
+            if name not in resolved:
+                resolved[name] = resolve_one(schema, parents, workspace.con, name)
+            return resolved[name]
+
         for kind, keys, read in kinds:
             for key in keys:
                 rel = read(
@@ -146,8 +168,24 @@ def write_layer(
                     continue
                 _validate_frame(rel, kind, key, schema)
                 uri = _write_frame(rel, staging, kind, key, schema)
+                written = workspace.con.read_parquet(uri)
+                file = f"{kind}/{key}.parquet"
                 if kind == "attributes":
-                    _refuse_unordered(workspace.con.read_parquet(uri), key, schema)
+                    _refuse_unordered(written, key, schema)
+                    coordinates = schema.coordinates_of(key)
+                    refuse_unheld(
+                        written, schema, coordinates, final, file, staged=False
+                    )
+                    continue
+                if kind == "groups":
+                    refuse_unheld(
+                        written, schema, [key], final, file, staged=False, subject=key
+                    )
+                resolved[key] = written
+                refuse_twice(written, [key], file)
+                before = resolve_one(schema, parents, workspace.con, key)
+                if before is not None:
+                    _refuse_reordered(written, before, key, file)
         if data.groups() or data.axes():
             layer = DirectorySource(staging, schema, workspace, uuid4())
             _require_living_references(parents, layer, workspace.con, schema)
@@ -214,7 +252,7 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
     names a dim the other leaves NULL, it has none to keep. `breakpoint` is
     part of a row, so the rows of one curve are no such pair.
 
-    Rows naming the same dims are found by one group-by over the coordinates.
+    Rows naming the same dims are found by `refuse_twice` over the coordinates.
     Only the distinct NULL patterns are paired, and they are few. Each pair is
     joined on the distinct coordinates its rows name, so one series is not
     multiplied against another. `rel` is the file as written, so the source
@@ -230,26 +268,13 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
     dims = schema.coordinates_of(attribute)
-    key = ", ".join(str(col(c)) for c in (*dims, "breakpoint"))
-    twin = (
-        rel.aggregate(f"{key}, count(*) AS _rows", key)
-        .filter(col("_rows") > lit(1))
-        .limit(1)
-        .fetchone()
+    refuse_twice(
+        rel,
+        [*dims, "breakpoint"],
+        f"attributes/{attribute}.parquet",
+        "they name the same dims, so neither is the more specific there. Keep "
+        "one of them (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)",
     )
-    if twin is not None:
-        *values, rows = twin
-        at = ", ".join(
-            f"{c}={v}"
-            for c, v in zip((*dims, "breakpoint"), values, strict=True)
-            if v is not None
-        )
-        msg = (
-            f"attributes/{attribute}.parquet holds {rows} rows at "
-            f"{at or 'every coordinate'} naming the same dims, so neither is the "
-            f"more specific there. Keep one of them (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
-        )
-        raise ValueError(msg)
     if len(dims) < 2:
         return
     patterns = [
@@ -296,23 +321,72 @@ def _named_rows(
     )
 
 
+def _refuse_reordered(
+    rel: DuckDBPyRelation, parent: DuckDBPyRelation, key: str, file: str
+) -> None:
+    """Refuse a restatement ordering the labels it shares with `parent` otherwise.
+
+    Only the relative order of the labels both hold is compared, so a new
+    label may sit anywhere. The labels are ranked by each side's row order,
+    and the first label, in the restatement's order, whose two ranks differ
+    is named.
+
+    Raises
+    ------
+    ValueError
+        Naming the file and that label.
+
+    Notes
+    -----
+    - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+    """
+    mine = rel.project(col(key), sql("row_number() OVER ()").alias("_mine"))
+    theirs = parent.project(col(key), sql("row_number() OVER ()").alias("_theirs"))
+    shared = (
+        mine.set_alias("m")
+        .join(theirs.set_alias("t"), col("m", key) == col("t", key))
+        .project(col("m", key).alias(key), col("_mine"), col("_theirs"))
+    )
+    ranked = shared.project(
+        col(key),
+        col("_mine"),
+        sql("row_number() OVER (ORDER BY _mine)").alias("_a"),
+        sql("row_number() OVER (ORDER BY _theirs)").alias("_b"),
+    )
+    first = (
+        ranked.filter(col("_a") != col("_b"))
+        .order("_mine")
+        .project(col(key))
+        .limit(1)
+        .fetchone()
+    )
+    if first is not None:
+        msg = (
+            f"{file} puts {key} {first[0]!r} out of its parent's order; a "
+            f"restatement keeps the order of the labels its parent holds and "
+            f"places a new one anywhere (https://energy-models.github.io/datarecord/design/record/#axis-order)"
+        )
+        raise ValueError(msg)
+
+
 def _require_living_references(
     parents: Sequence[LayerSource],
     layer: LayerSource,
     con: DuckDBPyConnection,
     schema: Schema,
 ) -> None:
-    """Reject a layer storing a reference to a dead label, or killing a label one names.
+    """Reject a layer leaving a reference to a dead label in a subject it touches.
 
     A reference is a group tuple's field over a dim, or a property that
-    takes its labels from a dim.
-    Removing a label tombstones the tuples naming it in the same layer, which
-    `WorkingRecord.remove` writes, and a property holding it must be cleared
-    first; a layer written otherwise carries both itself. Only what `layer`
-    does is checked - the rows it writes, and the rows still naming a label it
-    tombstones - so a reference an ancestor left dangling fails no later write.
-    A layer writing no referring row and killing no referenced label resolves
-    nothing.
+    takes its labels from a dim. A property's subject the layer restates is
+    checked whole, in its final state, against every dead label; any other
+    reference only for the labels the layer removes, its parent's axis minus
+    its restatement. A restated group's tuples `refuse_unheld`
+    already holds to the final axes. Removing a label restates every group
+    naming it without its tuples, which `WorkingRecord.remove` writes, and a
+    property holding it must be cleared first; a layer written otherwise
+    carries both itself. A property an ancestor left dangling thus fails the
+    next layer restating its subject, which can drop or repair it.
 
     Raises
     ------
@@ -323,85 +397,67 @@ def _require_living_references(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
+    touched = layer.axes() | layer.groups()
     references = [
         *(
-            (g, f, fn.struct_extract(col("t", g), lit(f)), d)
+            (g, f, fn.struct_extract(col("t", g), lit(f)), d, False)
             for g in schema.group_columns
             for f, d in schema.groups[g].over.items()
         ),
-        *((s, p, col("t", p), d) for (s, p), d in schema.one_of_properties().items()),
+        *(
+            (s, p, col("t", p), d, s in touched)
+            for (s, p), d in schema.one_of_properties().items()
+        ),
     ]
-    referenced = {dim for *_, dim in references}
-    killed = {
-        d: tomb
-        for d in layer.axes()
-        if d in referenced
-        and (rel := layer.axis(d)) is not None
-        and "deleted" in rel.columns
-        and (tomb := rel.filter(col("deleted"))).limit(1).fetchone() is not None
-    }
-    written = {
-        s: rel
-        for s in {subject for subject, *_ in references}
-        if (rel := _living(_rows_of(layer, s, schema))) is not None
-        and rel.limit(1).fetchone() is not None
-    }
-    if not killed and not written:
+    referenced = {r[3] for r in references}
+    whole = any(r[4] for r in references)
+    killed = {}
+    for dim in layer.axes() & referenced:
+        before = resolve_one(schema, parents, con, dim)
+        now = layer.axis(dim)
+        if before is None or now is None:
+            continue
+        gone = (
+            before.project(col(dim))
+            .set_alias("b")
+            .join(
+                now.project(col(dim)).set_alias("n"),
+                col("b", dim) == col("n", dim),
+                how="anti",
+            )
+        )
+        if gone.limit(1).fetchone() is not None:
+            killed[dim] = gone
+    if not whole and not killed:
         return
     coords = resolve_coords(schema, [*parents, layer], con)
     problems = []
-    for subject, column, label, dim in references:
+    for subject, column, label, dim, restated in references:
         dead = coords.dead.get(dim)
-        if dead is None:
-            continue
+        resolved = (coords.groups | coords.axes).get(subject)
         stored = subject if subject in schema.groups else column
-        suspects = (
-            [(written[subject], dead)]
-            if subject in written and stored in written[subject].columns
-            else []
-        )
-        resolved = (coords.groups if subject in schema.groups else coords.axes).get(
-            subject
-        )
-        if dim in killed and resolved is not None:
-            mine = dead.set_alias("d").join(
-                killed[dim].set_alias("k"),
-                col("d", dim) == col("k", dim),
-                how="semi",
-            )
-            suspects.append((resolved, mine))
+        if dead is None or resolved is None or stored not in resolved.columns:
+            continue
+        labels = dead if restated else killed.get(dim)
+        if labels is None:
+            continue
         hits = [
             h
-            for rows, labels in suspects
-            for (h,) in rows.set_alias("t")
+            for (h,) in resolved.set_alias("t")
             .join(labels.set_alias("x"), label == col("x", dim), how="semi")
             .project(col(subject))
             .limit(3)
             .fetchall()
         ]
         if hits:
-            problems.append(f"{subject} {hits[:3]} name a removed {dim} in {column!r}")
+            problems.append(f"{subject} {hits} name a removed {dim} in {column!r}")
     if problems:
         msg = (
             f"{'; '.join(problems)}; removing a label removes the tuples naming "
-            f"it and leaves no property holding it, so tombstone those tuples and "
-            f"clear those properties in the same layer (https://energy-models.github.io/datarecord/design/layers/#deletion)"
+            f"it and leaves no property holding it, so restate those groups "
+            f"without the tuples and clear those properties (https://energy-models.github.io/datarecord/design/layers/#deletion)"
         )
         raise ValueError(msg)
-
-
-def _rows_of(
-    source: LayerSource, subject: str, schema: Schema
-) -> DuckDBPyRelation | None:
-    """`source`'s rows of `subject`, a group or a dim."""
-    return source.group(subject) if subject in schema.groups else source.axis(subject)
-
-
-def _living(rel: DuckDBPyRelation | None) -> DuckDBPyRelation | None:
-    """`rel`'s rows that are no tombstone."""
-    if rel is None or "deleted" not in rel.columns:
-        return rel
-    return rel.filter(~coalesce(col("deleted"), lit(False)))  # noqa: FBT003
 
 
 def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) -> None:
@@ -470,12 +526,8 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         if key not in columns:
             msg = f"dims/{key}.parquet is missing its key column {key!r} (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
             raise ValueError(msg)
-        _refuse_extra(
-            columns,
-            {key, "deleted", "order_key"},
-            schema,
-            key,
-            f"dims/{key}.parquet",
+        refuse_foreign_columns(
+            columns, {key, "order_key"}, schema, key, f"dims/{key}.parquet"
         )
         return
 
@@ -487,41 +539,10 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             f"by one struct column named for the group (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
         )
         raise ValueError(msg)
-    _refuse_extra(
-        columns, {key, "deleted", "order_key"}, schema, key, f"groups/{key}.parquet"
+    refuse_foreign_columns(
+        columns, {key, "order_key"}, schema, key, f"groups/{key}.parquet"
     )
     schema.check_group_columns([key], rel, carrier=f"groups/{key}.parquet")
-
-
-def _refuse_extra(
-    columns: set[str], structural: set[str], schema: Schema, subject: str, file: str
-) -> None:
-    """Refuse a column of an axis or group file beyond `structural` and `subject`'s properties.
-
-    `structural` is the key, the tombstone and an explicit order key.
-
-    Notes
-    -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-    """
-    known = structural | set(schema.properties.get(subject, {}))
-    extra = sorted(columns - known)
-    if not extra:
-        return
-    attributes = [c for c in extra if c in schema.attributes]
-    named = "they" if attributes == extra else str(attributes)
-    hint = (
-        f"; {named} are attributes, whose values are long rows of "
-        f"attributes/<attr>.parquet whatever their `dims`"
-        if attributes
-        else ""
-    )
-    msg = (
-        f"{file} carries columns {extra} the schema does not declare as "
-        f"properties of {subject!r}; the file holds only its key, tombstones "
-        f"and those properties, {sorted(known)}{hint} (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)"
-    )
-    raise ValueError(msg)
 
 
 class _RecordLikeAsLayerData:
@@ -584,9 +605,8 @@ class _RecordLikeAsLayerData:
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order.
 
-        The row is numbered on `dims[dim]` alone, as `_fold_axis` numbers a
-        layer's, and the `ORDER BY` on it is the outermost clause, since a
-        join defines no order.
+        The row is numbered on `dims[dim]` alone, and the `ORDER BY` on it is
+        the outermost clause, since a join defines no order.
         """
         axis = self._read(self._dims, dim)
         if axis is None or dim not in self._properties:

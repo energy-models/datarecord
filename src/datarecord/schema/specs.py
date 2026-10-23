@@ -79,10 +79,6 @@ class Dimension(_Declared):
             )
             raise ValueError(msg)
         if isinstance(value, (list, tuple)):
-            other = [label for label in value if not isinstance(label, str)]
-            if other:
-                msg = f"`one_of` lists {other}, which are no strings; quote each label"
-                raise ValueError(msg)
             repeated = sorted({label for label in value if value.count(label) > 1})
             if repeated:
                 msg = f"`one_of` lists {repeated} more than once; list each label once"

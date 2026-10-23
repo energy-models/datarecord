@@ -25,11 +25,11 @@ from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
+    drop_entities,
     empty_child,
     empty_root,
     export_network,
     schema,
-    tombstone,
     write_attribute,
     write_component,
     write_schema,
@@ -43,7 +43,7 @@ def parent(store):
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
     names = ["Manchester Wind", "Norway Wind", "Norway Gas"]
-    write_component(layer, "Generator", [{"entity": n} for n in names])
+    write_component(revision, "Generator", [{"entity": n} for n in names])
     for attribute, value in (("p_max_pu", 0.5), ("marginal_cost", 10.0)):
         write_attribute(
             layer, attribute, [{"entity": n, "value": value} for n in names]
@@ -91,9 +91,9 @@ def test_union_all_by_name_fills_a_missing_column_with_null(store):
 def keys(revision):
     """The owner map's keys: `(name, attribute)`, no type.
 
-    The map is tombstone-pruned in the fold (`fold_attributes` anti-joins each
-    membership's deletions), so a key whose component or group tuple was deleted
-    is already gone from it - the read needs no further gating.
+    The map is pruned in the fold (`fold_attributes` anti-joins each keyed
+    membership's removed labels), so a key whose component or group tuple was
+    removed is already gone from it - the read needs no further gating.
 
     Notes
     -----
@@ -177,8 +177,8 @@ def test_last_writer_wins_per_key(store, parent):
     assert owner_of("Norway Wind", "p_max_pu") == parent.id
 
 
-def test_tombstone_removes_all_attributes(store, ac_dc):
-    """A tombstone removes every attribute and the component row of the component.
+def test_removing_a_component_removes_all_its_attributes(store, ac_dc):
+    """Removing a component removes every attribute and the component row of it.
 
     Only on the branch that carries it, and through to a built model.
 
@@ -193,12 +193,12 @@ def test_tombstone_removes_all_attributes(store, ac_dc):
     assert "Norway Gas" in entity_names(parent)
 
     child = empty_child(parent)
-    tombstone(store.layer_dir(child.id), "Generator", ["Norway Gas"])
+    drop_entities(child, ["Norway Gas"])
     sibling = empty_child(parent)
     assert not {k for k in keys(child) if k[0] == "Norway Gas"}
     assert "Norway Gas" not in entity_names(child)
     assert "Norway Gas" in entity_names(sibling), (
-        "a tombstone only affects the branch that carries it"
+        "a removal only affects the branch that carries it"
     )
 
     n = PyPSA.build(child.record)
@@ -344,6 +344,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
     base = empty_root(store)
     staged = WorkingRecord(base.record)
     staged.add("entity", names, ctype="Generator")
+    staged.add("snapshot", list(range(snapshots)))
     staged.set(
         "p_max_pu",
         pd.DataFrame(

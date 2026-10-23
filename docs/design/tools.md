@@ -58,8 +58,8 @@ PyPSA permits a `Generator` and a `Load` both called `north`, so `to_datarecord`
 Collisions are within a dim: a bus is a label of `bus`, not an entity, so a `Bus` and a `Load` called `north` — every clustered pypsa-eur network — are no collision.
 Reported rather than repaired: renaming to `Generator:north` would hand back a network whose components the framework can no longer find by their own names, and the record layer does not own a framework's vocabulary.
 PyPSA is itself moving to record-wide unique names, so this is a constraint that resolves rather than one to design around.
-SubNetworks are the exception: PyPSA names them `0`, `1`, … on every topology pass, as it numbers Lines, so there is no caller to report to. The record keys them `0 SubNetwork`, …, as a caller suffixes a clashing `Load`, the `sub_network` results pointing at them likewise, and `build` takes the suffix off, so the framework finds them by their own names again.
-It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by [`order_key`](read-path.md#owner-map), and where a curve is either translated or reported unbuildable.
+SubNetworks, which PyPSA names `0`, `1`, … on every topology pass as it numbers Lines, are labels of their own dim `sub_network` ([writing results](#writing-results)), so they collide with no entity.
+It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by the [connection order](record.md#axis-order), and where a curve is either translated or reported unbuildable.
 A per-connection input follows its connection's position: `efficiency` on a Link's `bus2` connection is PyPSA's `efficiency2`, static or per snapshot.
 The PyPSA schema declares `partial={"entity", "bus", "scenario", "connection"}`, so a layer patches one link's `efficiency` series, or one bus's `v_nom`, without restating every other's ([`partial`](schema.md#partial-the-granularity-of-an-override)); `entity` is there also because `ctype` [categorizes it](schema.md#categories-labels-a-dim-lists).
 `carrier` is not: a layer restates every carrier's `co2_emissions`, a few dozen rows.
@@ -146,9 +146,12 @@ solved = inputs.child(
 ```
 
 Nothing is staged through a `WorkingRecord`. The layer holds the result attributes, a value at its default included so a re-solve stands over its parent's, and the **intermediate results** they need: a solve derives structure as well as values.
-A result row `base` holds that the solve does not write again — `mu_*` duals under `assign_all_duals=False` — is restated as NULL, so no stale value is inherited. NULL reads as no value, where a `marginal_price` at its default `0.0` would read as a price; `build` leaves PyPSA its own default there. The layer format has no tombstone for a value, only for a label or a tuple, so restating is how it is replaced. `base`'s inputs are never written.
-A PyPSA SubNetwork is an `entity` with `ctype="SubNetwork"` and a line's `sub_network` an attribute naming one, declared like any other name.
-The model does not say what `base` held, so the tool reads `base`'s SubNetwork entities and tombstones those it does not write again: a re-solve that numbers SubNetworks differently leaves no stale label behind.
+A result row `base` holds that the solve does not write again — `mu_*` duals under `assign_all_duals=False` — is restated as NULL, so no stale value is inherited. NULL reads as no value, where a `marginal_price` at its default `0.0` would read as a price; `build` leaves PyPSA its own default there. A layer removes a label or a tuple by restating its axis or group without it, and has no way to remove a value, so restating is how it is replaced. `base`'s inputs are never written.
+A PyPSA SubNetwork is a label of the dim `sub_network`, `0`, `1`, … as PyPSA names it: `sub_network.carrier` is a property that takes its labels from `carrier`, `slack_bus` an attribute over `sub_network`, and a line's `sub_network` an attribute over `entity` holding the plain label.
+`ctype` does not list `SubNetwork`, and `sub_network` stays outside `partial`, since a results layer writes every SubNetwork's values.
+A results layer restates the `sub_network` axis alone, never the entity axis, so a re-solve that numbers SubNetworks differently leaves no stale label behind and rewrites no input axis.
+A solve without SubNetworks over a record with a `sub_network` axis restates the axis empty, its columns typed as the schema declares them, so the record lists none of the earlier SubNetworks; over a record without one, it writes no `sub_network` axis.
+A full export writes the axis beside `bus` and `carrier`, and `build` adds the SubNetworks from it.
 A results layer meets full validation, so it carries the labels its results name.
 
 ## Geometry
