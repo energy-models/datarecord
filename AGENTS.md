@@ -68,9 +68,12 @@ In the tree nothing is marked: `Co-Authored-By: Claude …` is the record.
 
 The project is pre-1.0 and holds no compatibility promise. Asked to change
 something, change it: rename, move, delete. No alias, no deprecation cycle, no
-`legacy_` path — spend the effort on the error that fires where the old name was
-used instead. **A test asserting the old behaviour is not a blocker**; say in the
-PR what coverage moved where.
+`legacy_` path, and no code that recognises an old name only to refuse it. The
+error the renamed construct already raises (pydantic's unknown key, a missing
+column) is enough. A dedicated refusal with a hint comes only from v0.1.0 on,
+and only for a name a release from v0.1.0 on shipped.
+**A test asserting the old behaviour is not a blocker**; say in the PR what
+coverage moved where.
 
 Where the change is to a construct the design pages define, the rename lands in
 [`docs/design/`](docs/design/) too — a docstring's `Notes` links to a section by
