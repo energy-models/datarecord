@@ -233,6 +233,12 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- A label of a type its dim's dtype does not take - a series index, mapping
+  keys or a keyword of `set`, a group property's field keyword, the labels of
+  `add` and `remove`, or a value of a property naming a dim - is refused with
+  the dim and its dtype named, by the rule a frame's column is held to, rather
+  than failing deep in DuckDB or being parsed: `snapshot="2030-01-01"` on a
+  `datetime` dim was read as a timestamp, and is now refused.
 - The PyPSA tool round-trips a network's snapshot and investment period
   weightings: `to_datarecord` writes them as `snapshot_weighting_objective`,
   `_stores` and `_generators` over `snapshot` and

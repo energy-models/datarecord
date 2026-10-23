@@ -9,6 +9,9 @@ Notes
 - [WorkingRecord](https://energy-models.github.io/datarecord/design/working-record/)
 """
 
+import re
+
+import numpy as np
 import pandas as pd
 import polars as pl
 import pyarrow as pa
@@ -277,6 +280,119 @@ def test_set_rejects_an_unknown_name(staged, value, kwargs):
     """
     with pytest.raises(KeyError, match="Nope"):
         staged.set("p_max_pu", value, **kwargs)
+
+
+_SNAPSHOT = "'snapshot' does not take, its dtype being datetime"
+_ENTITY = "'entity' does not take, its dtype being str"
+
+
+@pytest.mark.parametrize(
+    ("edit", "match"),
+    [
+        pytest.param(
+            lambda s: s.set(
+                "p_max_pu",
+                pd.Series({"2030-01-01": 0.4}).rename_axis("snapshot"),
+                entity="Manchester Wind",
+            ),
+            _SNAPSHOT,
+            id="series-index",
+        ),
+        pytest.param(
+            lambda s: s.set(
+                "p_max_pu", {"2030-01-01": 0.4}, entity="Manchester Wind", scenario=None
+            ),
+            _SNAPSHOT,
+            id="mapping-keys",
+        ),
+        pytest.param(
+            lambda s: s.set("p_max_pu", 0.4, entity="Manchester Wind", snapshot=5),
+            _SNAPSHOT,
+            id="selector-keyword",
+        ),
+        pytest.param(
+            lambda s: s.set("p_nom", 1.0, entity=[1]),
+            _ENTITY,
+            id="selector-keyword-list",
+        ),
+        pytest.param(
+            lambda s: s.set("p_nom", 1.0, entity=[1, "Manchester Wind"]),
+            _ENTITY,
+            id="selector-keyword-mixed",
+        ),
+        pytest.param(
+            lambda s: s.set("entity.ctype", {1: GEN}),
+            _ENTITY,
+            id="property-mapping-keys",
+        ),
+        pytest.param(
+            lambda s: s.set("connection.role", "input", bus=5),
+            "'bus' does not take, its dtype being str",
+            id="group-keyword",
+        ),
+        pytest.param(
+            lambda s: s.set("connection.role", "input", entity=[1]),
+            _ENTITY,
+            id="group-keyword-list",
+        ),
+        pytest.param(
+            lambda s: s.add("snapshot", ["2030-01-01"]),
+            _SNAPSHOT,
+            id="add",
+        ),
+        pytest.param(
+            lambda s: s.add("snapshot", [1, pd.Timestamp("2030-01-01")]),
+            _SNAPSHOT,
+            id="add-mixed",
+        ),
+        pytest.param(
+            lambda s: s.add("carrier", [1, "x"]),
+            "'carrier' does not take, its dtype being str",
+            id="add-mixed-str",
+        ),
+        pytest.param(
+            lambda s: s.add("entity", ["zz"], carrier=5),
+            "'carrier' does not take, its dtype being str",
+            id="add-one-of-property",
+        ),
+        pytest.param(
+            lambda s: s.add("ctype", [5]),
+            """'ctype' does not take, its dtype being {"one_of":""",
+            id="add-closed",
+        ),
+        pytest.param(
+            lambda s: s.remove("entity", [1]),
+            _ENTITY,
+            id="remove",
+        ),
+    ],
+)
+def test_a_label_of_a_type_its_dim_does_not_take_is_refused(staged, edit, match):
+    """A label is held to its dim's dtype as a frame's column is, never parsed into it.
+
+    Notes
+    -----
+    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    """
+    with pytest.raises(ValueError, match=re.escape(match)):
+        edit(staged)
+
+
+@pytest.mark.parametrize(
+    ("dim", "labels"),
+    [
+        pytest.param(
+            "snapshot",
+            pd.date_range("2031-01-01", periods=2, freq="h"),
+            id="nanosecond-timestamps",
+        ),
+        pytest.param("period", [np.int64(2040)], id="numpy-int"),
+    ],
+)
+def test_a_label_its_dtype_widens_is_taken(staged, dim, labels):
+    """A label of a type its dtype widens, as a frame's column is, is staged."""
+    staged.add(dim, labels)
+    assert set(labels) <= set(staged.dims[dim].df()[dim]), "staged as given"
 
 
 def test_set_accepts_a_name_staged_by_add(staged, root):

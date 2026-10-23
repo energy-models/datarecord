@@ -239,7 +239,7 @@ What editing adds is edit-level, caught when the edit is **staged**, not at writ
 - an undeclared attribute, property or keyword, or a keyword the attribute does not vary over; a plain name only properties are called is refused naming their dotted forms, `set("carrier", …)` suggesting `bus.carrier` and `entity.carrier`;
 - a label of a `partial` dim the record does not resolve, `add` them first;
 - a label a [closed dim](schema.md#dtypes) does not list, in `add` or `set`;
-- a frame column of a type its dtype does not take, timestamps with a time zone among them;
+- a frame column of a type its dtype does not take, timestamps with a time zone among them, and by the same rule a label given to `set`, `add` or `remove`, or a value of a property naming a dim — a string is not parsed into a `datetime` dim's label;
 - a value of a [property naming a dim](schema.md#properties) naming no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
 - an `add` naming an attribute.
 

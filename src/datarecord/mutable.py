@@ -46,7 +46,7 @@ from datarecord.layered.categories import matching
 from datarecord.layered.fold import Fold
 from datarecord.layered.resolve import Resolver
 from datarecord.record import LazyRelations, Record, RecordLike, Relations
-from datarecord.schema import LONG_TAIL, Schema
+from datarecord.schema import LONG_TAIL, OneOf, Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
@@ -674,6 +674,9 @@ class WorkingRecord(Record):
         for c, given in coords.items():
             if c in coordinates:
                 labels = list(given) if _is_labels(given) else [given]
+                self._require_typed(
+                    coordinates[c], labels, f"`set({attribute!r}, ...)`"
+                )
                 self._require_labels(coordinates[c], labels)
 
     def _require_labels(self, dim: str, labels: Sequence[Any]) -> None:
@@ -747,8 +750,8 @@ class WorkingRecord(Record):
             keys whose coordinate is ambiguous, a label a closed dim does not
             list, a property keyword whose dim the attribute does not reach
             through exactly one coordinate, or that is given beside that
-            coordinate's own keyword, or a frame column of a type its dtype
-            does not take, timestamps with a time zone among them.
+            coordinate's own keyword, or a frame column or label of a type its
+            dtype does not take, timestamps with a time zone among them.
 
         Notes
         -----
@@ -786,10 +789,11 @@ class WorkingRecord(Record):
         if keyed:
             key = self._key_coordinate(attribute, value, coords)
             keys, values = normalise_value(value)
-            self._require_labels(
-                _flat_coordinates(self.schema, attribute)[key],
-                cast("list[Any]", keys),
+            dim = _flat_coordinates(self.schema, attribute)[key]
+            self._require_typed(
+                dim, cast("list[Any]", keys), f"`set({attribute!r}, ...)`"
             )
+            self._require_labels(dim, cast("list[Any]", keys))
             column: dict[str, Sequence[Any]] = {key: cast("list[Any]", keys)}
         elif _is_labels(value):
             if len(listed) != 1:
@@ -846,13 +850,17 @@ class WorkingRecord(Record):
             On a label the record does not resolve, or a value of a property
             `{"one_of": <dim>}` naming no label of it.
         ValueError
-            On a label a closed dim does not list, and as `_axis_values` does.
+            On a label a closed dim does not list or of a type its dtype does
+            not take, and as `_axis_values` does.
         """
+        call = f"`set({f'{dim}.{name}'!r}, ...)`"
         values = self._axis_values(dim, name, value, coords)
         keyed = isinstance(values, Mapping)
+        if keyed:
+            self._require_typed(dim, list(values), call)
         data = {name: list(values.values()) if keyed else [values]}
-        self.schema.require_listed(dim, data, f"`set({f'{dim}.{name}'!r}, ...)`")
-        self._require_live(dim, data)
+        self.schema.require_listed(dim, data, call)
+        self._require_live(dim, data, call)
         if keyed:
             self._require_existing(dim, list(values))
         self._stage_axis(dim, name, values)
@@ -869,7 +877,8 @@ class WorkingRecord(Record):
             property `{"one_of": <dim>}` naming no label of it.
         ValueError
             On a keyword naming no field of `group`, a value that is not a
-            scalar, or a label a closed dim does not list.
+            scalar, or a label a closed dim does not list or of a type its
+            dtype does not take.
         """
         call = f"set({f'{group}.{name}'!r}, ...)"
         key = self.schema.group_key(group)
@@ -888,13 +897,16 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
         self.schema.require_listed(group, {name: [value]}, f"`{call}`")
-        self._require_live(group, {name: [value]})
+        self._require_live(group, {name: [value]}, f"`{call}`")
         tuples = self.resolver.dims.groups.get(group)
         if tuples is None:
             msg = f"`{call}` finds no tuple of {group!r}; `add_group` them first"
             raise KeyError(msg)
         for field, given in coords.items():
             labels = list(given) if _is_labels(given) else [given]
+            self._require_typed(
+                self.schema.groups[group].over[field], labels, f"`{call}`"
+            )
             tuples = tuples.filter(
                 fn.struct_extract(col(group), lit(field)).isin(*map(lit, labels))
             )
@@ -941,7 +953,9 @@ class WorkingRecord(Record):
             msg = f"no {dim!r} label {unknown}; `add` them first - {why}"
             raise KeyError(msg)
 
-    def _require_live(self, subject: str, data: Mapping[str, Sequence[Any]]) -> None:
+    def _require_live(
+        self, subject: str, data: Mapping[str, Sequence[Any]], call: str
+    ) -> None:
         """Reject a value of a property `{"one_of": <dim>}` of `subject` naming no label of it, as staged.
 
         NULL names none and passes.
@@ -950,6 +964,8 @@ class WorkingRecord(Record):
         ------
         KeyError
             Naming the unknown labels.
+        ValueError
+            On a value of a type `<dim>`'s dtype does not take.
 
         Notes
         -----
@@ -959,6 +975,7 @@ class WorkingRecord(Record):
         for name, values in data.items():
             dim = named.get((subject, name))
             if dim is not None:
+                self._require_typed(dim, values, call)
                 self._require_existing(
                     dim,
                     values,
@@ -1101,6 +1118,38 @@ class WorkingRecord(Record):
         if wrong:
             msg = f"{call}: {'; '.join(wrong)}, as its dtype declares"
             raise ValueError(msg)
+
+    def _require_typed(self, dim: str, labels: Sequence[Any], call: str) -> None:
+        """Refuse a label of `dim` of a type its dtype does not take (`_takes`).
+
+        A label's type is the one DuckDB binds it as, so a string never reaches
+        a `datetime` dim's cast, which would parse it. One label per Python
+        type is bound, a list mixing types being checked per type.
+
+        Raises
+        ------
+        ValueError
+            Naming `call`, the label, its type, `dim` and its dtype.
+
+        Notes
+        -----
+        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+        """
+        declared = self._column_type(dim)
+        for label in {type(n): n for n in labels if n is not None}.values():
+            given = self._values_relation({dim: [label]}, {dim: None}).types[0]
+            if not _takes(declared, given):
+                dtype = self.schema.dimensions[dim].dtype
+                shown = (
+                    dtype.model_dump_json()
+                    if isinstance(dtype, OneOf)
+                    else f"{dtype} ({declared})"
+                )
+                msg = (
+                    f"{call}: label {label!r} is {given}, which {dim!r} does "
+                    f"not take, its dtype being {shown}"
+                )
+                raise ValueError(msg)
 
     def _insert(
         self,
@@ -1344,8 +1393,9 @@ class WorkingRecord(Record):
             `{"one_of": <dim>}` naming no label of it.
         ValueError
             On an attribute, a column the axis file has no place for, a
-            sequence of the wrong length, or a label a closed dim does not
-            list, `dim`'s own included.
+            sequence of the wrong length, a label a closed dim does not
+            list, `dim`'s own included, or a label of a type `dim`'s dtype
+            does not take.
 
         Notes
         -----
@@ -1359,6 +1409,7 @@ class WorkingRecord(Record):
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
         self._reject_undeclared(call, table, [*columns])
         names = list(labels)
+        self._require_typed(dim, names, f"`{call}`")
         data: dict[str, list[Any]] = {dim: names}
         for c, given in columns.items():
             data[c] = list(given) if _is_labels(given) else [given] * len(names)
@@ -1368,7 +1419,7 @@ class WorkingRecord(Record):
                 )
                 raise ValueError(msg)
         self.schema.require_listed(dim, data, f"`{call}`")
-        self._require_live(dim, data)
+        self._require_live(dim, data, f"`{call}`")
         rel = self._values_relation(data, {c: self._column_type(c, dim) for c in data})
         self._insert(
             rel,
@@ -1391,8 +1442,9 @@ class WorkingRecord(Record):
         Raises
         ------
         ValueError
-            While a property `{"one_of": dim}` stores one of `labels`, the
-            record as staged read.
+            On a label of a type `dim`'s dtype does not take, or while a
+            property `{"one_of": dim}` stores one of `labels`, the record as
+            staged read.
 
         Notes
         -----
@@ -1401,6 +1453,7 @@ class WorkingRecord(Record):
         """
         if not labels:
             return
+        self._require_typed(dim, labels, f"`remove({dim!r}, ...)`")
         self._require_unnamed(dim, labels)
         rel = self._values_relation({dim: list(labels)}, {dim: self._column_type(dim)})
         self._insert(
