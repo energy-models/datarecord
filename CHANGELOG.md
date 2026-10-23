@@ -136,11 +136,11 @@ All notable changes to datarecord are documented here. The format follows
   connection; `on_connection` is gone.
 - A schema declaring a dim, group, group coordinate, attribute or result
   whose name holds `"` or `.`, starts with `_`, or is a column datarecord
-  writes itself (`value`, `deleted`, `layer_uuid`, ... ignoring case, and
+  writes itself (`value`, `layer_uuid`, ... ignoring case, and
   `entity_type` for an attribute), or that differs from another declared
   name only in case, is refused at load, naming each offender.
-  Such a name used to collide silently: a dim named `deleted` read every
-  label as a tombstone. A manifest declaring one no longer loads; rename it.
+  Such a name used to collide silently: a dim named `value` gave the long
+  file two columns of one name. A manifest declaring one no longer loads; rename it.
   Based on #26 by @FBumann.
 - The PyPSA tool stores per-port results on connections, like per-port
   inputs: `p0`, `p1`, `p2`, ... and a one-port type's `p` are one result `p`

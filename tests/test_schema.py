@@ -812,7 +812,6 @@ WRITTEN = {
     "attribute": "a column datarecord writes",
     "breakpoint": "a column datarecord writes",
     "value": "a column datarecord writes",
-    "deleted": "a column datarecord writes",
     "breakpoints": "a column datarecord writes",
     "varies": "a column datarecord writes",
     "broadcast": "a column datarecord writes",
@@ -835,8 +834,7 @@ WRITTEN = {
 def test_a_name_that_cannot_be_its_own_column_is_refused(name, position):
     """Every column the format or the fold writes beside a schema's own, `.` and
     `"`, which `duckdb.ColumnExpression` cannot spell, and case folded as DuckDB
-    folds it. `deleted` as a dim read every label as a tombstone, and `value`
-    gave the long file two columns of one name."""
+    folds it. `value` as a dim gave the long file two columns of one name."""
     with pytest.raises(ValidationError) as refused:
         _declaring(position, name)
     message = str(refused.value)
@@ -892,7 +890,7 @@ def test_a_name_duckdb_quotes_is_accepted(name, position):
         ),
         pytest.param(
             lambda: Dimension(one_of=["a", 2030]),
-            r"lists \[2030\], which are no strings",
+            r"one_of\.1\n  Input should be a valid string",
             id="one-of-non-str-label",
         ),
         pytest.param(
