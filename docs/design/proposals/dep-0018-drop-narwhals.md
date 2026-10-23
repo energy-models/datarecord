@@ -17,7 +17,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## Abstract
 
-narwhals leaves datarecord, core and tools alike. DuckDB is the one query engine. A record answers bare `DuckDBPyRelation`s, and the write path takes relations and pandas, polars or arrow frames. Dtypes are mathspec's `DimensionDtype` and `ParameterDtype`, stored as plain strings, with one fixed DuckDB type map. A dim may list its labels with `{one_of: [...]}`, and a property may name a dim with `{one_of: <dim>}`, which replaces `into` on properties and groups.
+narwhals leaves datarecord, core and tools alike. DuckDB is the one query engine. A record answers bare `DuckDBPyRelation`s, and the write path takes relations and pandas, polars or arrow frames. Dtypes are mathspec's `DimensionDtype` and `ParameterDtype`, stored as plain strings, with one fixed DuckDB type map. A dim may list its labels with `one_of: [...]` beside its `dtype`, and a property may take its labels from a dim with `one_of: <dim>` in place of its `dtype`, which replaces `into` on properties and groups.
 
 ## Motivation
 
@@ -36,27 +36,27 @@ The footprint is 175 lines in 9 files under `src/`, and 219 lines in 13 test fil
 
 ### mathspec
 
-datarecord pins mathspec at `04911f1bc6bc6bb2fe03e3d7c24db063b8d6ed52`, the head of [energy-models/mathspec#915](https://github.com/energy-models/mathspec/pull/915). There a dimension may write `dtype: {one_of: [labels]}`. `program.Dimension` carries `dtype: DimensionDtype` (`float`, `int`, `str`, `datetime`; `str` where labels are listed) and `members: tuple[str, ...] | None`. `ParameterDtype` is `float`, `int`, `bool`, `str`, with no `one_of`.
+datarecord pins mathspec at `9f180255a180ce7cc1f046fdc75020cdbfc9d90e`, the head of [energy-models/mathspec#915](https://github.com/energy-models/mathspec/pull/915). There a dimension may write `one_of: [labels]` beside `dtype: str`, and `dtype` defaults to `str`. `program.Dimension` carries `dtype: DimensionDtype` (`float`, `int`, `str`, `datetime`) and `one_of: tuple[str, ...] | None`. `ParameterDtype` is `float`, `int`, `bool`, `str`, and a parameter takes no `one_of`.
 
 A git pin to a PR branch lasts only while the commit exists on GitHub. Before a release, the pin moves to the merged commit.
 
 ### Dtypes
 
-| declares                 | dtype                | DuckDB type                |
-| ------------------------ | -------------------- | -------------------------- |
-| dim, attribute, property | `float`              | `DOUBLE`                   |
-| dim, attribute, property | `int`                | `BIGINT`                   |
-| attribute, property      | `bool`               | `BOOLEAN`                  |
-| dim, attribute, property | `str`                | `VARCHAR`                  |
-| dim                      | `datetime`           | `TIMESTAMP` (no time zone) |
-| dim                      | `{one_of: [labels]}` | `ENUM` of the labels       |
-| property                 | `{one_of: <dim>}`    | that dim's type            |
+| declares                 | declaration                    | DuckDB type                |
+| ------------------------ | ------------------------------ | -------------------------- |
+| dim, attribute, property | `dtype: float`                 | `DOUBLE`                   |
+| dim, attribute, property | `dtype: int`                   | `BIGINT`                   |
+| attribute, property      | `dtype: bool`                  | `BOOLEAN`                  |
+| dim, attribute, property | `dtype: str`                   | `VARCHAR`                  |
+| dim                      | `dtype: datetime`              | `TIMESTAMP` (no time zone) |
+| dim                      | `dtype: str, one_of: [labels]` | `ENUM` of the labels       |
+| property                 | `one_of: <dim>`                | that dim's type            |
 
 The map is one constant in `duck.py`, read wherever a column is typed. `Date`, `Int32`, `Float32` and time zones are gone.
 
-**A dim listing its labels is closed.** Its column is an `ENUM`, and `add` refuses a label outside the list, naming the list.
+**A dim that lists its labels has an `ENUM` column.** `add` refuses a label outside the list, naming the list. Only a `str` dim lists its labels, as in mathspec.
 
-**A property `{one_of: <dim>}` names labels of that dim.** Its column has the dim's type: an `ENUM` where the dim lists its labels, `TIMESTAMP` for a `datetime` dim. A stored value that is not NULL names a live label, checked where `into` is checked today. The property may be of a dim or of a group. This is datarecord's own spelling: #915 refuses a dimension reference on a parameter, but a datarecord property is a mathspec relation column, not a parameter.
+**A property `one_of: <dim>` takes its labels from that dim.** It declares no `dtype`, and its column has the dim's type: an `ENUM` where the dim lists its labels, `TIMESTAMP` for a `datetime` dim. A stored value that is not NULL names a live label, checked where `into` is checked today. The property may be of a dim or of a group. This is datarecord's own spelling: #915 refuses a dimension reference on a parameter, but a datarecord property is a mathspec relation column, not a parameter.
 
 **An attribute takes no `one_of`**, neither a list nor a dim, as a mathspec parameter has none.
 
@@ -64,7 +64,7 @@ The map is one constant in `duck.py`, read wherever a column is typed. `Date`, `
 
 ### `into` goes
 
-`PropertySpec.into` and `GroupSpec.into` are removed. `bus.country` `into` `country` becomes `bus.country: {dtype: {one_of: country}}`. A group `bus_country` over `[bus, scenario]` `into` `country` becomes the group over `[bus, scenario]` with a property `country: {dtype: {one_of: country}}`.
+`PropertySpec.into` and `GroupSpec.into` are removed. `bus.country` `into` `country` becomes `bus.country: {one_of: country}`. A group `bus_country` over `[bus, scenario]` `into` `country` becomes the group over `[bus, scenario]` with a property `country: {one_of: country}`.
 
 Lost from group `into`:
 
@@ -73,22 +73,22 @@ Lost from group `into`:
 
 ### Categories
 
-`Schema.categorizing(dim)` today picks the `Enum`-typed properties of a dim in `partial`. Under this DEP it picks the properties of such a dim that are `{one_of: <d>}` where `d` lists its labels. A property naming a dim without a list does not categorize: its labels are data a layer adds and removes.
+`Schema.categorizing(dim)` today picks the `Enum`-typed properties of a dim in `partial`. Under this DEP it picks the properties of such a dim that are `{one_of: <d>}` where `d` lists its labels. A property taking its labels from a dim that lists none does not categorize: its labels are data a layer adds and removes.
 
-PyPSA's `ctype` becomes a dim `{one_of: [Generator, Line, ...]}`, and `entity.ctype` becomes `{one_of: ctype}`. `connection.role`, an `Enum` of `_ROLES` today, becomes `{one_of: role}` on a dim `role` listing `input`, `output` and `attached`.
+PyPSA's `ctype` becomes a dim `{dtype: str, one_of: [Generator, Line, ...]}`, and `entity.ctype` becomes `{one_of: ctype}`. `connection.role`, an `Enum` of `_ROLES` today, becomes `{one_of: role}` on a dim `role` listing `input`, `output` and `attached`.
 
 ### The manifest
 
-A dtype is written as its mathspec string: `"dtype": "float"`, or `{"one_of": [...]}` on a dim, or `{"one_of": "<dim>"}` on a property.
+A dtype is written as its mathspec string, `"dtype": "float"`. A dim lists its labels as `"one_of": [...]` beside its `dtype`, and a property takes its labels from a dim as `"one_of": "<dim>"` in place of its `dtype`.
 
 An old manifest fails at load, naming the replacement:
 
 ```text
 dimension 'snapshot' declares dtype {"Datetime": "us"}, a narwhals name;
-write "datetime" (one of float, int, str, datetime, or {"one_of": [...]})
+write "datetime" (one of float, int, str, datetime)
 ```
 
-`String`, `Float64`, `Int64`, `Boolean` and `Datetime` map to `str`, `float`, `int`, `bool` and `datetime`. `Enum` names a dim `{"one_of": [...]}` and a property `{"one_of": "<dim>"}`. `Date` has no replacement and names `datetime`. A property or group declaring `into` fails at load, naming `dtype: {one_of: <dim>}`.
+`String`, `Float64`, `Int64`, `Boolean` and `Datetime` map to `str`, `float`, `int`, `bool` and `datetime`. `Enum` names `"one_of": [...]` on a dim and `"one_of": "<dim>"` on a property. `Date` has no replacement and names `datetime`. A property or group declaring `into` fails at load, naming `one_of: <dim>`.
 
 ### The read API
 
@@ -122,7 +122,7 @@ A property declares no `datetime` dtype, since mathspec's `ParameterDtype` has n
 
 **mathspec owns the vocabulary.** A record feeds a mathspec model, which declares five dtypes and a dimension's labels. Storing those keeps the manifest and the model in one language. A wider vocabulary bought distinctions nobody read.
 
-**One spelling for "labels of a dim".** `into` on a property, `into` on a group and an `Enum` property were three spellings of one idea. `{one_of: <dim>}` is one, and it is the relation column a mathspec model reads. A category is then a label of a closed dim, so `ctype` gets an axis file and an order like any dim.
+**One spelling for "labels of a dim".** `into` on a property, `into` on a group and an `Enum` property were three spellings of one idea. `one_of: <dim>` is one, and it is the relation column a mathspec model reads. A category is then a label that a dim lists, so `ctype` gets an axis file and an order like any dim.
 
 **A fixed map over a translation library.** Seven entries replace a private narwhals import. They change only when mathspec does.
 
@@ -150,10 +150,10 @@ After:
 
 ```python
 Dimension(dtype="datetime", description="A snapshot.")
-Dimension(dtype={"one_of": ["Generator", "Line"]})  # the ctype dim
+Dimension(one_of=["Generator", "Line"])  # the ctype dim
 AttributeSpec(dtype="float", dims={"entity"})
-PropertySpec(dtype={"one_of": "ctype"})
-PropertySpec(dtype={"one_of": "carrier"})
+PropertySpec(one_of="ctype")
+PropertySpec(one_of="carrier")
 Group(over=["bus", "scenario"])  # with property country: {"one_of": "country"}
 
 p_nom = record.attributes["p_nom"]
@@ -163,8 +163,8 @@ w.set("p_nom", polars_frame)  # or pandas, arrow, a relation
 
 ## Implementation notes
 
-1. `pixi.toml` (small): mathspec pinned at `04911f1`; narwhals goes from it and `pyproject.toml`; `pixi lock`.
-2. `schema.py` (large): dtypes become mathspec strings and `one_of`; `_BARE_DTYPES`, `_dump_dtype` and `_parse_dtype` go; `PropertySpec.into` and `GroupSpec.into` go, with their checks; old names and `into` are refused at load; `categorizing` reads `one_of`; `group_type` and `flag_type` return DuckDB structs; `check_group_columns` runs in SQL.
+1. `pixi.toml` (small): mathspec pinned at `9f18025`; narwhals goes from it and `pyproject.toml`; `pixi lock`.
+2. `schema.py` (large): dtypes become mathspec strings, and dims and properties gain `one_of`; `_BARE_DTYPES`, `_dump_dtype` and `_parse_dtype` go; `PropertySpec.into` and `GroupSpec.into` go, with their checks; old names and `into` are refused at load; `categorizing` reads `one_of`; `group_type` and `flag_type` return DuckDB structs; `check_group_columns` runs in SQL.
 3. `duck.py` (small): the type map replaces `DuckTypes`' narwhals call; `as_relation` takes relations and pandas, polars or arrow frames.
 4. `record.py` and `layered/record.py` (medium): `Relations` and `LazyRelations`; `Record` moves into `record.py`, `layered/record.py` goes.
 5. `layered/resolve.py`, `layered/write.py` (small): defaults and empty columns read the type map; `nw.from_native` goes.

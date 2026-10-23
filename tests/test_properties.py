@@ -31,11 +31,11 @@ def schema():
             "entity": Dimension(dtype="str"),
             "bus": Dimension(dtype="str"),
             "snapshot": Dimension(dtype="int"),
-            "ctype": Dimension(dtype={"one_of": ["Generator", "Link", "Load"]}),
+            "ctype": Dimension(one_of=["Generator", "Link", "Load"]),
         },
         properties={
             "entity": {
-                "ctype": PropertySpec(dtype={"one_of": "ctype"}),
+                "ctype": PropertySpec(one_of="ctype"),
                 "carrier": PropertySpec(dtype="str", default=""),
                 "sign": PropertySpec(
                     dtype="float",
@@ -142,7 +142,7 @@ def test_categories_read_off_the_list_when_the_axis_lacks_one(record):
 
     Notes
     -----
-    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-an-enum-dtype-dim)
+    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
     """
     assert record.dims["ctype"].df()["ctype"].tolist() == ["Generator", "Load"]
     assert record.schema.categorizing("entity") == ("ctype",)

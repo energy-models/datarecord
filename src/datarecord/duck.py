@@ -57,7 +57,7 @@ Notes
 
 
 def enum_type(labels: Iterable[str]) -> DuckDBPyType:
-    """Return the `ENUM` type of `labels`, in their order: the type of an enum-dtype dim."""
+    """Return the `ENUM` type of `labels`, in their order: the type of a dim that lists its labels."""
     quoted = ", ".join("'" + label.replace("'", "''") + "'" for label in labels)
     return DuckDBPyType(f"ENUM({quoted})")
 

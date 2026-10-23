@@ -25,7 +25,7 @@ duckdb = ">=1.5.4,<2"
 pydantic = ">=2.12"
 
 [pypi-dependencies]
-mathspec = { git = "https://github.com/energy-models/mathspec.git", rev = "04911f1bc6bc6bb2fe03e3d7c24db063b8d6ed52" }
+mathspec = { git = "https://github.com/energy-models/mathspec.git", rev = "9f180255a180ce7cc1f046fdc75020cdbfc9d90e" }
 
 [feature.test.dependencies]
 pytest = "*"

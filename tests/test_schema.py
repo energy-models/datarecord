@@ -38,9 +38,9 @@ def _schema(**overrides) -> Schema:
             "period": Dimension(dtype="int"),
             "timestep": Dimension(dtype="datetime"),
             "scenario": Dimension(dtype="str"),
-            "ctype": Dimension(dtype={"one_of": ["Generator", "Link"]}),
+            "ctype": Dimension(one_of=["Generator", "Link"]),
         },
-        "properties": {"entity": {"ctype": PropertySpec(dtype={"one_of": "ctype"})}},
+        "properties": {"entity": {"ctype": PropertySpec(one_of="ctype")}},
         "groups": {"connection": Group(over={"entity": "entity", "bus": "bus"})},
         "attributes": {
             "p_nom": AttributeSpec(dtype="float", dims={"entity"}),
@@ -63,11 +63,11 @@ def _schema(**overrides) -> Schema:
     return Schema(**kwargs)
 
 
-def _enum_dtype_dims(**labels: list[str]) -> dict[str, Dimension]:
-    """`_schema`'s dims with an enum-dtype dim per keyword, listing its labels."""
+def _listing_dims(**labels: list[str]) -> dict[str, Dimension]:
+    """`_schema`'s dims with a dim per keyword that lists its labels."""
     return {
         **_schema().dimensions,
-        **{d: Dimension(dtype={"one_of": ls}) for d, ls in labels.items()},
+        **{d: Dimension(one_of=ls) for d, ls in labels.items()},
     }
 
 
@@ -146,7 +146,7 @@ def test_the_section_decides_where_a_value_lives():
     assert s.column_type("p_nom") is None, "a single-dim attribute is no axis column"
     assert s.column_type("ctype", "entity") == DuckDBPyType("ENUM('Generator', 'Link')")
     assert s.column_type("ctype", "entity") == s.column_type("ctype"), (
-        "a property naming a dim takes its type"
+        "a property that takes its labels from a dim takes its type"
     )
     assert s.categorizing("entity") == ("ctype",)
     assert "ctype" not in s.partial_dims
@@ -155,10 +155,10 @@ def test_the_section_decides_where_a_value_lives():
 def test_a_group_may_have_properties():
     """A column of `groups/<group>.parquet`, typed like a dim's property."""
     s = _schema(
-        dimensions=_enum_dtype_dims(role=["in", "out"]),
+        dimensions=_listing_dims(role=["in", "out"]),
         properties={
             **_schema().properties,
-            "connection": {"role": PropertySpec(dtype={"one_of": "role"})},
+            "connection": {"role": PropertySpec(one_of="role")},
         },
         partial=frozenset({"entity", "scenario", "connection"}),
     )
@@ -168,31 +168,31 @@ def test_a_group_may_have_properties():
     )
     assert s.column_type("role", "connection") == DuckDBPyType("ENUM('in', 'out')")
     assert s.categorizing("connection") == (), (
-        "a group is never categorized, even by a property naming an enum-dtype dim"
+        "a group is never categorized, even by a property taking its labels from a dim that lists them"
     )
 
 
-def test_a_property_naming_an_enum_dtype_dim_categorizes_only_a_partial_dim():
-    """No flag: the dtype and `partial` decide; a `str` property or one naming an open dim never.
+def test_a_property_taking_listed_labels_categorizes_only_a_partial_dim():
+    """No flag: `one_of` and `partial` decide; a `str` property or one over a dim listing no labels never.
 
     Notes
     -----
-    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-an-enum-dtype-dim)
+    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
     """
     s = _schema(
-        dimensions=_enum_dtype_dims(carrier_kind=["wind", "solar"], era=["old", "new"]),
+        dimensions=_listing_dims(carrier_kind=["wind", "solar"], era=["old", "new"]),
         properties={
             "entity": {
                 **_schema().properties["entity"],
-                "carrier_kind": PropertySpec(dtype={"one_of": "carrier_kind"}),
+                "carrier_kind": PropertySpec(one_of="carrier_kind"),
                 "label": PropertySpec(dtype="str"),
-                "home": PropertySpec(dtype={"one_of": "bus"}),
+                "home": PropertySpec(one_of="bus"),
             },
-            "period": {"era": PropertySpec(dtype={"one_of": "era"})},
+            "period": {"era": PropertySpec(one_of="era")},
         },
     )
     assert s.categorizing("entity") == ("ctype", "carrier_kind"), (
-        "every property naming an enum-dtype dim, in declaration order"
+        "every property taking its labels from a dim that lists them, in declaration order"
     )
     assert s.categorizing("period") == (), "`period` is not partial"
     assert s.categorizing("scenario") == (), "no properties"
@@ -357,9 +357,7 @@ def test_default_for_reads_a_labels_default_over_the_plain_one():
 
     plain = _schema(
         properties={
-            "entity": {
-                "ctype": PropertySpec(dtype={"one_of": "ctype"}, default="Generator")
-            }
+            "entity": {"ctype": PropertySpec(one_of="ctype", default="Generator")}
         }
     )
     assert plain.default_for("entity.ctype") == "Generator", (
@@ -428,7 +426,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                 properties={
                     "entity": {
                         "ctype": PropertySpec(
-                            dtype={"one_of": "ctype"},
+                            one_of="ctype",
                             default="Generator",
                             default_by={"entity.ctype": {"Link": "Generator"}},
                         )
@@ -450,7 +448,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     **kw,
                 ),
             ),
-            'is no `\\{"one_of": <dim>\\}` property',
+            "takes its labels from no dim",
             id="a-string-property",
         ),
         pytest.param(
@@ -461,10 +459,10 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     default_by={"period.era": {"old": 1.0}},
                 ),
                 base=lambda **kw: _schema(
-                    dimensions=_enum_dtype_dims(era=["old", "new"]),
+                    dimensions=_listing_dims(era=["old", "new"]),
                     properties={
                         **_schema().properties,
-                        "period": {"era": PropertySpec(dtype={"one_of": "era"})},
+                        "period": {"era": PropertySpec(one_of="era")},
                     },
                     **kw,
                 ),
@@ -480,10 +478,10 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     default_by={"connection.role": {"in": 1.0}},
                 ),
                 base=lambda **kw: _schema(
-                    dimensions=_enum_dtype_dims(role=["in", "out"]),
+                    dimensions=_listing_dims(role=["in", "out"]),
                     properties={
                         **_schema().properties,
-                        "connection": {"role": PropertySpec(dtype={"one_of": "role"})},
+                        "connection": {"role": PropertySpec(one_of="role")},
                     },
                     partial=frozenset({"entity", "scenario", "connection"}),
                     **kw,
@@ -502,10 +500,10 @@ def test_default_by_is_validated_against_the_categories(build, match):
 def _two_subjects(**overrides) -> Schema:
     """`_schema` with `bus` categorized by `bus_type` beside `ctype`."""
     kwargs: dict[str, Any] = {
-        "dimensions": _enum_dtype_dims(bus_type=["AC", "DC"]),
+        "dimensions": _listing_dims(bus_type=["AC", "DC"]),
         "properties": {
             **_schema().properties,
-            "bus": {"bus_type": PropertySpec(dtype={"one_of": "bus_type"})},
+            "bus": {"bus_type": PropertySpec(one_of="bus_type")},
         },
         "attributes": {
             **_schema().attributes,
@@ -873,49 +871,49 @@ def test_a_name_duckdb_quotes_is_accepted(name, position):
     ("build", "match"),
     [
         pytest.param(
-            lambda: AttributeSpec(dtype={"one_of": ["a"]}),
-            "takes no `one_of`",
-            id="attribute-list",
-        ),
-        pytest.param(
-            lambda: AttributeSpec(dtype={"one_of": "ctype"}),
-            "takes no `one_of`",
-            id="attribute-dim",
-        ),
-        pytest.param(
-            lambda: Dimension(dtype={"one_of": "ctype"}),
-            'as \\{"one_of": \\[...\\]\\}',
-            id="dim-naming-a-dim",
-        ),
-        pytest.param(
-            lambda: PropertySpec(dtype={"one_of": ["a"]}),
-            'as \\{"one_of": "<dim>"\\}',
-            id="property-listing-labels",
-        ),
-        pytest.param(
             lambda: PropertySpec(dtype="datetime"),
-            "none of float, int, bool, str",
+            "Input should be 'float', 'int', 'bool' or 'str'",
             id="datetime-property",
         ),
         pytest.param(
             lambda: Dimension(dtype="bool"),
-            "none of float, int, str, datetime",
+            "Input should be 'float', 'int', 'str' or 'datetime'",
             id="bool-dim",
         ),
         pytest.param(
-            lambda: Dimension(dtype={"one_of": []}),
+            lambda: Dimension(one_of=[]),
             "at least 1 item",
-            id="dim-listing-nothing",
+            id="one-of-empty",
         ),
         pytest.param(
-            lambda: Dimension(dtype={"one_of": ["a", "b", "a"]}),
+            lambda: Dimension(one_of=["a", "b", "a"]),
             r"lists \['a'\] more than once",
-            id="dim-listing-a-label-twice",
+            id="one-of-duplicate",
+        ),
+        pytest.param(
+            lambda: Dimension(one_of=["a", 2030]),
+            r"lists \[2030\], which are no strings",
+            id="one-of-non-str-label",
+        ),
+        pytest.param(
+            lambda: Dimension(dtype="int", one_of=[1, 2]),
+            "dtype 'int' takes no `one_of`",
+            id="one-of-on-int-dim",
+        ),
+        pytest.param(
+            lambda: PropertySpec(dtype="str", one_of="ctype"),
+            "exactly one of `dtype` and `one_of`, not both",
+            id="property-both",
+        ),
+        pytest.param(
+            lambda: PropertySpec(),
+            "exactly one of `dtype` and `one_of`, not neither",
+            id="property-neither",
         ),
     ],
 )
 def test_a_dtype_takes_its_kinds_mathspec_forms(build, match):
-    """A dim lists labels, a property names a dim, an attribute does neither.
+    """A dim may list its labels, a property may take its labels from a dim, an attribute does neither.
 
     Notes
     -----

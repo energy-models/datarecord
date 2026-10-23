@@ -119,7 +119,7 @@ Changing a category is such a patch: `set("entity.ctype", "Load", entity="g1")`.
 | frame    | supplies its own keys              | single labels completing it                                    |
 
 **A frame is a DuckDB relation, or a pandas, polars or arrow frame.** It reaches DuckDB through DuckDB's own scanner, without collecting it into a relation first, and no scanner package is a dependency: a frame of a library never imported is no frame. A relation on another connection is [refused](read-path.md#a-relation-from-another-connection-is-rejected).
-**A column is checked against the DuckDB type its dtype maps to** ([dtypes](schema.md#dtypes)). A widening is cast — a smaller integer to `BIGINT`, a number to `DOUBLE`, a timestamp of any precision to `TIMESTAMP`, text to an enum-dtype dim's `ENUM` and back — which keeps the kind of value, not every digit: an integer past 2^53 rounds, a nanosecond truncates to the microsecond. Anything else is refused, naming the declared type, unless the column holds only NULLs; a column of timestamps with a time zone is refused rather than converted to naive time.
+**A column is checked against the DuckDB type its dtype maps to** ([dtypes](schema.md#dtypes)). A widening is cast — a smaller integer to `BIGINT`, a number to `DOUBLE`, a timestamp of any precision to `TIMESTAMP`, text to the `ENUM` of a dim that lists its labels and back — which keeps the kind of value, not every digit: an integer past 2^53 rounds, a nanosecond truncates to the microsecond. Anything else is refused, naming the declared type, unless the column holds only NULLs; a column of timestamps with a time zone is refused rather than converted to naive time.
 
 A mapping's keys or a series' index are ambiguous: they may hold labels of any of the attribute's coordinates, an axis label being a string like any other.
 **The caller says which** by naming the series' index after a coordinate, or by naming every other coordinate as a keyword; where neither settles it, the call is refused.
@@ -142,12 +142,12 @@ w.add("bus", ["north", "south"])
 w.add("bus", ["north H2"], carrier="H2", x=10.1)  # bare: the dim's own
 w.add("entity", ["g1", "g2"], ctype="Generator", carrier="wind")
 w.remove("entity", ["old_coal"])
-w.remove("carrier", ["gas"])  # refused while a property naming carrier names it
+w.remove("carrier", ["gas"])  # refused while entity.carrier holds it
 ```
 
 `add(dim, labels, **columns)` stages whole axis rows: `columns` are the other columns of `dims/<dim>.parquet` — the dim's properties, bare since the subject is `dim` — each a scalar for every label or a sequence aligned to `labels`.
 A column no keyword names is NULL on these rows, since `add` restates a label's row whole.
-A label of an [enum-dtype dim](schema.md#dtypes) must be one it lists: the dim's own in `add(dim, ...)`, a property's naming one. The axis of an enum-dtype dim holds only the labels added, so a property naming a listed label not on the axis is refused as any unknown label is, and `remove` takes a label of an enum-dtype dim as any dim's.
+A label of a [dim that lists its labels](schema.md#dtypes) must be one it lists: the dim's own in `add(dim, ...)`, and the value of a property that takes its labels from the dim. The axis of such a dim holds only the labels added, so a property holding a listed label not on the axis is refused as any unknown label is, and `remove` takes a label of such a dim as any dim's.
 An attribute keyword is refused with a pointer to `set`: an attribute's values are long rows whatever its `dims`, never a column of the axis.
 A column the schema does not declare is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column. A tool that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
 
@@ -161,7 +161,7 @@ Adding a component with its connections and varying values is `add`, then [`add_
 It need not enumerate what it deletes: [the fold](layers.md#deletion) drops every value keyed by the label where `dim` is `partial`, a group attribute's by the label inside its struct ([the owner map](read-path.md#owner-map)).
 It also tombstones every tuple, of any group, with a field over `dim` naming one of `labels`, read from the record as it resolves with pending edits, so the [writer](layers.md#deletion) never meets a dangling tuple.
 An `add` of the same label revives the label alone: its tuples are re-added through [`add_group`](#add_group-remove_group).
-`remove` is **refused while a [property naming](schema.md#properties) `dim` stores one of the labels**, read from the record as staged: a tuple goes with its label, but a property's row is its subject's and outlives it, so the caller `set`s it to another label or None first.
+`remove` is **refused while a [property that takes its labels from](schema.md#properties) `dim` stores one of the labels**, read from the record as staged: a tuple goes with its label, but a property's row is its subject's and outlives it, so the caller `set`s it to another label or None first.
 
 ## `add_group` / `remove_group`
 
@@ -243,9 +243,9 @@ What editing adds is edit-level, caught when the edit is **staged**, not at writ
 
 - an undeclared attribute, property or keyword, or a keyword the attribute does not vary over; a plain name only properties are called is refused naming their dotted forms, `set("carrier", …)` suggesting `bus.carrier` and `entity.carrier`;
 - a label of a `partial` dim the record does not resolve, `add` them first;
-- a label an [enum-dtype dim](schema.md#dtypes) does not list, in `add` or `set`;
-- a frame column of a type that does not fit its dtype, timestamps with a time zone among them, and by the same rule a label given to `set`, `add` or `remove`, or a value of a property naming a dim — a string is not parsed into a `datetime` dim's label;
-- a value of a [property naming a dim](schema.md#properties) naming no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
+- a label a [dim that lists its labels](schema.md#dtypes) does not list, in `add` or `set`;
+- a frame column of a type that does not fit its dtype, timestamps with a time zone among them, and by the same rule a label given to `set`, `add` or `remove`, or a value of a property that takes its labels from a dim — a string is not parsed into a `datetime` dim's label;
+- a value of a [property that takes its labels from a dim](schema.md#properties) that is no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
 - an `add` naming an attribute.
 
 A label's categories are not checked against the attribute: every label carries [every attribute it addresses](schema.md#an-attribute-reaches-every-label-it-addresses), so a misplaced value is stored, and a tool not taking it leaves it out.

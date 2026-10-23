@@ -37,7 +37,7 @@ record.attributes["v_nom"]  # bus | attribute | breakpoint | value
 record.attributes["marginal_price"]  # bus | snapshot | scenario | ..., a result
 ```
 
-A property is named by its subject, so `x` is a line's reactance and `bus.x` a bus's coordinate. `entity.carrier` and `bus.carrier` are `{"one_of": "carrier"}`, naming its labels:
+A property is named by its subject, so `x` is a line's reactance and `bus.x` a bus's coordinate. `entity.carrier` and `bus.carrier` are `{"one_of": "carrier"}`, so their values are its labels:
 
 ```python
 w.add("carrier", ["H2"], color="#f0f")

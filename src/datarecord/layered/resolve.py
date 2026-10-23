@@ -139,8 +139,8 @@ def mortal(schema: Schema) -> tuple[str, ...]:
     """The coordinates a fold keeps the dead labels of.
 
     One the owner map does not key, whose values naming a dead label only the
-    read can drop (`_living`), and a dim a group's tuples or a property
-    `{"one_of": <dim>}` name, which the writer checks them against
+    read can drop (`_living`), and a dim a group's tuples range over or a
+    property takes its labels from, which the writer checks them against
     (`write._require_living_references`). A keyed coordinate's values the fold
     drops itself (`fold_inputs`).
 

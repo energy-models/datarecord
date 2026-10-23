@@ -42,11 +42,13 @@ SPDX-License-Identifier: CC-BY-4.0
   What is open is the granularity: those are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
   Whatever is chosen, it has to be answerable off the fold, which is where a record's membership already lives.
 
-- **Whether a property naming an open dim may categorize a `partial` dim.** `entity.carrier` names labels of `carrier`, and a `default_by` keyed on it would make a vocabulary that is data: a category a layer adds and removes rather than one an [enum-dtype dim](schema.md#categories-labels-of-an-enum-dtype-dim) lists.
+- **Whether a property taking its labels from a dim that lists none may categorize a `partial` dim.** `entity.carrier` takes its labels from `carrier`, and a `default_by` keyed on it would make a vocabulary that is data: a category a layer adds and removes rather than one a [dim lists](schema.md#categories-labels-a-dim-lists).
 
-- **Recovering single-valuedness for a classifying group.** A group's property naming a dim may be NULL, so a tuple of [a group that classifies](schema.md#a-group-that-classifies) may carry no label, where the `into` it replaced promised exactly one. Nothing is recommended until a consumer needs it; a later `required` flag on a property would cover it, refusing a NULL where a row is written.
+- **Recovering single-valuedness for a classifying group.** A group's property that takes its labels from a dim may be NULL, so a tuple of [a group that classifies](schema.md#a-group-that-classifies) may carry no label, where the `into` it replaced promised exactly one. Nothing is recommended until a consumer needs it; a later `required` flag on a property would cover it, refusing a NULL where a row is written.
 
 - **How the published package depends on mathspec.** Core reads its dtypes from `mathspec.program`, and the environment pins mathspec at a commit of a pull request branch, which lasts only while the commit exists on GitHub; before a release the pin moves to the merged commit. A git pin is no dependency a PyPI release may declare, so the package metadata names none until mathspec is published.
+
+- **How a property that takes its labels from a dim maps onto mathspec.** mathspec spells it as a relation, `carrier_of: { key: generator, values: carrier }`, a declaration of its own beside the dims, where datarecord declares `one_of: carrier` on a property of `generator`. Unifying the two is left for later.
 
 - **Whether a default must name a live label.** `bus.carrier` defaults to `AC` in PyPSA's schema, and a default is [never stored](schema.md#default_by-a-default-per-category), so nothing checks that `AC` is a label of `carrier`.
 
@@ -56,7 +58,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 - **Whether selector keywords need a qualified form.** A bare [selector](working-record.md#set) naming a property of two dims one attribute reaches is refused, with no way to say which is meant short of setting per dim.
 
-- **Whether `Schema` should declare a dim with its parent property in one call.** A label scoped per parent is [a flat label and a property naming the parent](schema.md#a-dim-is-flat), two declarations a helper could make one.
+- **Whether `Schema` should declare a dim with its parent property in one call.** A label scoped per parent is [a flat label and a property that takes its labels from the parent](schema.md#a-dim-is-flat), two declarations a helper could make one.
 
 - **A pointwise `set` leaving one of two whole-owned dims NULL drops the rest of the series.** It is a fold bug with any two whole-owned dims on one series; [a dim being flat](schema.md#a-dim-is-flat) removed the routine case, `period` beside `snapshot`.
 
@@ -70,7 +72,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 - **What `build` does with a value its type does not take** — leaves it out and reports it in `Requirements.ignored`, as an unknown type is reported, without raising ([tools](tools.md#a-value-its-type-does-not-take)).
 
-- **Whether a category still needs `partial`** — it does: `default_by` per label needs a dim owned per label ([categories](schema.md#categories-labels-of-an-enum-dtype-dim)).
+- **Whether a category still needs `partial`** — it does: `default_by` per label needs a dim owned per label ([categories](schema.md#categories-labels-a-dim-lists)).
 
 - **Whether an attribute reaching every label grows the owner map** — only by what a broadcast is asked to reach. An exported PyPSA network stores no broadcast, so `ac_dc_meshed`'s map is unchanged; `set("p_max_pu", 0.9)` on it grows the map by one row per label it now reaches, loads and lines included, where it reached the types carrying it before — 14 more rows on `ac_dc_meshed`. A value meant for generators is `set(..., ctype="Generator")` ([the schema](schema.md#an-attribute-reaches-every-label-it-addresses)).
 

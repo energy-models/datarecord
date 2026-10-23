@@ -325,7 +325,7 @@ def empty_root(store: Store) -> Revision:
     """A new root revision, for a test to hand-write its layer into.
 
     No public API makes an empty revision; this is the store's private
-    revision-file write. Its layer holds nothing, the axis of an enum-dtype dim
+    revision-file write. Its layer holds nothing, the axis of a dim that lists its labels
     included: a label a property names is one a test adds.
 
     Write every file of a layer before its first read: a read freezes the
@@ -463,10 +463,11 @@ def schema(
     """A schema shaped like the PyPSA records most tests build on.
 
     Defaults match `PyPSA.to_datarecord`: the `entity` axis carrying the
-    `ctype` property, one of the enum-dtype dim `ctype` listing `TYPES`, a
+    `ctype` property, which takes its labels from the dim `ctype` listing `TYPES`, a
     `connection` group over
     `(entity, bus)`, and three declared dims. Override `partial` to pin a
-    different layering granularity, `dims` to declare another axis, `groups` to
+    different layering granularity, `dims` to declare another axis by its
+    dtype or as a `Dimension`, `groups` to
     declare a different sparse relation.
 
     A group's coordinates are declared dims. `entity` is always `partial`, so
@@ -502,10 +503,13 @@ def schema(
     return Schema(
         groups={g: Group(over=over) for g, over in groups.items()},
         dimensions={
-            **{d: Dimension(dtype=t) for d, t in declared.items()},
-            "ctype": Dimension(dtype={"one_of": TYPES}),
+            **{
+                d: t if isinstance(t, Dimension) else Dimension(dtype=t)
+                for d, t in declared.items()
+            },
+            "ctype": Dimension(one_of=TYPES),
         },
-        properties={"entity": {"ctype": PropertySpec(dtype={"one_of": "ctype"})}},
+        properties={"entity": {"ctype": PropertySpec(one_of="ctype")}},
         attributes=flat,
         # The default names `connection`, which a caller's own `groups` may drop.
         partial=frozenset(

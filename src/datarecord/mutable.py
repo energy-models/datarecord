@@ -714,12 +714,12 @@ class WorkingRecord(Record):
         KeyError
             On an undeclared attribute or keyword, a `partial` dim's
             label the record does not resolve, a property's label no layer
-            wrote, or a value of a `one_of` property that is no label of its
-            dim.
+            wrote, or a value of a property that takes its labels from a dim and is no
+            label of it.
         ValueError
             On a keyword the attribute does not vary over, a sequence with no single list keyword to align to,
-            keys whose coordinate is ambiguous, a label its enum-dtype dim does
-            not list, a property keyword whose dim the attribute does not reach
+            keys whose coordinate is ambiguous, a label its dim does not
+            list, a property keyword whose dim the attribute does not reach
             through exactly one coordinate, or that is given beside that
             coordinate's own keyword, a frame column the schema does not
             declare for `attribute`, or a frame column or label whose type
@@ -831,11 +831,11 @@ class WorkingRecord(Record):
         Raises
         ------
         KeyError
-            On a label the record does not resolve, or a value of a `one_of`
-            property that is no label of its dim.
+            On a label the record does not resolve, or a value of a property
+            that takes its labels from a dim and is no label of it.
         ValueError
-            On a label its enum-dtype dim does not list or whose type does not
-            fit its dtype, and as `_axis_values` does.
+            On a label its dim does not list or whose type does not fit
+            its dtype, and as `_axis_values` does.
         """
         call = f"`set({f'{dim}.{name}'!r}, ...)`"
         values = self._axis_values(dim, name, value, coords)
@@ -858,11 +858,11 @@ class WorkingRecord(Record):
         ------
         KeyError
             Where keywords are given and select no tuple, or on a value of a
-            `one_of` property that is no label of its dim.
+            property that takes its labels from a dim and is no label of it.
         ValueError
             On a keyword naming no field of `group`, a value that is not a
-            scalar, or a label its enum-dtype dim does not list or whose type
-            does not fit its dtype.
+            scalar, or a label its dim does not list or whose type does
+            not fit its dtype.
         """
         call = f"set({f'{group}.{name}'!r}, ...)"
         key = self.schema.group_key(group)
@@ -940,7 +940,7 @@ class WorkingRecord(Record):
     def _require_live(
         self, subject: str, data: Mapping[str, Sequence[Any]], call: str
     ) -> None:
-        """Refuse a value of a `one_of` property of `subject` that is no label of its dim.
+        """Refuse a value of a property of `subject` that is no label of the dim it takes its labels from.
 
         The labels are those of the record as staged. NULL is no label and
         passes.
@@ -982,7 +982,7 @@ class WorkingRecord(Record):
             Where the keyword is a property of several dims `name` reaches,
             `name` reaches the dim through no coordinate or several, the
             coordinate is also given as a keyword, a keyword is dotted, or a
-            value is a label its enum-dtype dim does not list.
+            value is a label its dim does not list.
 
         Notes
         -----
@@ -1157,8 +1157,9 @@ class WorkingRecord(Record):
         try:
             projected.insert_into(table)
         except duckdb.ConversionException as exc:
-            # An enum-dtype dim's column reaches DuckDB as an `ENUM`, so this is what
-            # rejects a label it does not list - as a conversion to `UINT8`,
+            # The column of a dim listing its labels reaches DuckDB as an
+            # `ENUM`, so this is what rejects a label it does not list - as a
+            # conversion to `UINT8`,
             # the enum's storage type, naming neither the dim nor its labels.
             # The source column is in the message, which is what makes it
             # restatable.
@@ -1179,7 +1180,7 @@ class WorkingRecord(Record):
             if listed is None:
                 raise
             msg = (
-                f"{source!r} names a label its enum-dtype dim does not list; "
+                f"{source!r} names a label its dim does not list; "
                 f"that dim lists {list(listed)}"
             )
             raise ValueError(msg) from exc
@@ -1385,13 +1386,13 @@ class WorkingRecord(Record):
         Raises
         ------
         KeyError
-            If the schema declares no `dim`, or on a value of a `one_of`
-            property that is no label of its dim.
+            If the schema declares no `dim`, or on a value of a property
+            that takes its labels from a dim and is no label of it.
         ValueError
             On an attribute, a column the axis file has no place for, a
-            sequence of the wrong length, a label its enum-dtype dim does not
-            list, `dim`'s own included, or a label whose type does not fit the
-            dtype of `dim`.
+            sequence of the wrong length, a label its dim does not list,
+            `dim`'s own included, or a label whose type does not fit the dtype
+            of `dim`.
 
         Notes
         -----
@@ -1439,8 +1440,8 @@ class WorkingRecord(Record):
         ------
         ValueError
             On a label whose type does not fit the dtype of `dim`, or while a
-            property `{"one_of": dim}` stores one of `labels` in the record as
-            staged.
+            property that takes its labels from `dim` stores one of `labels` in the record
+            as staged.
 
         Notes
         -----
@@ -1478,7 +1479,7 @@ class WorkingRecord(Record):
             )
 
     def _require_unnamed(self, dim: str, labels: Sequence[Any]) -> None:
-        """Refuse removing `labels` of `dim` while a property naming `dim` stores one of them.
+        """Refuse removing `labels` of `dim` while a property that takes its labels from `dim` stores one of them.
 
         A tuple naming a label goes with it, but a property's row is its
         subject's, which outlives the label; clearing it is the caller's edit.

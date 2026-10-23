@@ -2,12 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Classifications: a property naming the dim its values are labels of.
+"""Classifications: a property that takes its labels from a dim.
 
-`bus.state` `{"one_of": "state"}` says every bus is in at most one state: a
+`bus.state` `one_of: state` says every bus is in at most one state: a
 column of the bus axis whose values are labels of `state`, which keeps an axis
-file for its order and for its properties. A group's property names a dim the
-same way.
+file for its order and for its properties. A group's property takes its labels
+from a dim the same way.
 
 Notes
 -----
@@ -51,9 +51,9 @@ def _schema(**overrides) -> Schema:
         },
         "groups": {"bus_state": Group(over=["bus", "state"])},
         "properties": {
-            "bus": {"state": PropertySpec(dtype={"one_of": "state"})},
-            "state": {"country": PropertySpec(dtype={"one_of": "country"})},
-            "bus_state": {"country": PropertySpec(dtype={"one_of": "country"})},
+            "bus": {"state": PropertySpec(one_of="state")},
+            "state": {"country": PropertySpec(one_of="country")},
+            "bus_state": {"country": PropertySpec(one_of="country")},
         },
         "partial": frozenset(),
     }
@@ -65,23 +65,23 @@ def _schema(**overrides) -> Schema:
 
 
 @pytest.mark.parametrize(
-    ("state", "duck", "categorizing"),
+    ("one_of", "duck", "categorizing"),
     [
-        pytest.param("str", sqltypes.VARCHAR, (), id="open"),
+        pytest.param(None, sqltypes.VARCHAR, (), id="open"),
         pytest.param(
-            {"one_of": ["lower", "upper"]},
+            ("lower", "upper"),
             duckdb.sqltypes.DuckDBPyType("ENUM('lower', 'upper')"),
             ("state",),
-            id="enum-dtype",
+            id="listed",
         ),
     ],
 )
-def test_a_property_naming_a_dim_takes_its_type_and_categorizes_if_its_dtype_is_an_enum(
-    state, duck, categorizing
+def test_a_property_takes_its_dims_type_and_categorizes_if_the_dim_lists_labels(
+    one_of, duck, categorizing
 ):
     """Its values are the dim's labels, typed as them; categories only where the dim lists them."""
     s = _schema(
-        dimensions={**_schema().dimensions, "state": Dimension(dtype=state)},
+        dimensions={**_schema().dimensions, "state": Dimension(one_of=one_of)},
         partial=frozenset({"bus"}),
     )
     assert s.column_type("state", "bus") == duck
@@ -122,6 +122,34 @@ def test_the_over_list_form_is_sugar_for_the_dict():
 
 
 @pytest.mark.parametrize(
+    ("manifest", "match"),
+    [
+        pytest.param(
+            {"properties": {"bus": {"state": {"one_of": ["lower", "upper"]}}}},
+            "Input should be a valid string",
+            id="a-list-on-a-property",
+        ),
+        pytest.param(
+            {"dimensions": {"state": {"one_of": "country"}}},
+            "Input should be a valid tuple",
+            id="a-dim-name-on-a-dim",
+        ),
+    ],
+)
+def test_a_misplaced_one_of_fails_to_load(manifest, match):
+    """`one_of` is a list on a dim and a dim name on a property.
+
+    Notes
+    -----
+    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    """
+    dimensions = {d: {"dtype": "str"} for d in ("bus", "state", "country", "scenario")}
+    manifest = {**manifest, "dimensions": dimensions | manifest.get("dimensions", {})}
+    with pytest.raises(ValidationError, match=match):
+        Schema.model_validate(manifest)
+
+
+@pytest.mark.parametrize(
     ("groups", "match"),
     [
         pytest.param(
@@ -145,12 +173,9 @@ def test_a_malformed_group_is_refused(groups, match):
 @pytest.mark.parametrize(
     ("spec", "extra", "match"),
     [
+        pytest.param({"one_of": "nope"}, {}, "an undeclared dim", id="undeclared"),
         pytest.param(
-            {"dtype": {"one_of": "nope"}}, {}, "an undeclared dim", id="undeclared"
-        ),
-        pytest.param({}, {}, "dtype\n  Field required", id="no-dtype"),
-        pytest.param(
-            {"dtype": {"one_of": "state"}},
+            {"one_of": "state"},
             {
                 "attributes": {
                     "v": AttributeSpec(
@@ -165,8 +190,8 @@ def test_a_malformed_group_is_refused(groups, match):
         ),
     ],
 )
-def test_a_malformed_property_naming_a_dim_is_refused(spec, extra, match):
-    """`one_of` names a declared dim, and an open one categorizes nothing."""
+def test_a_malformed_property_taking_labels_from_a_dim_is_refused(spec, extra, match):
+    """A property takes its labels from a declared dim, and from one that lists none categorizes nothing."""
     with pytest.raises(ValidationError, match=match):
         _schema(
             properties={"bus": {"state": spec}},
@@ -188,7 +213,7 @@ def _budget_schema() -> Schema:
 
 
 def test_a_classified_axis_folds_as_an_ordinary_axis(store):
-    """The fold learns nothing new: a dim a property names has an axis file like any dim.
+    """The fold learns nothing new: a dim a property takes its labels from has an axis file like any dim.
 
     Its own file is what gives it order and a place for `co2_budget`, which no
     bus column could hold.
@@ -476,7 +501,7 @@ def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
 
 
-# -- a property naming a dim names a live label -------------------------------
+# -- a property that takes its labels from a dim holds a live label --------
 
 
 @pytest.fixture

@@ -24,7 +24,7 @@ import warnings
 from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache, cached_property
-from typing import TYPE_CHECKING, Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import uuid4
 
 import numpy as np
@@ -48,7 +48,6 @@ from datarecord.schema import (
     AttributeSpec,
     Dimension,
     Group,
-    OneOf,
     PropertySpec,
 )
 from datarecord.schema import Schema as RecordSchema
@@ -68,8 +67,8 @@ if TYPE_CHECKING:
 # single-period network.
 SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
 #: PyPSA's name for a multi-period snapshot's inner level: the dim of those
-#: timesteps, and the property of `snapshot` naming one where the labels are
-#: positions (`_snapshot_frame`).
+#: timesteps, and the property of `snapshot` that takes its labels from it where the
+#: labels are positions (`_snapshot_frame`).
 TIMESTEP = "timestep"
 # Not PyPSA's own `weight` - that name is a Generator attribute (its clustering
 # weight), and a record has one attribute per name record-wide - so the scenario
@@ -89,7 +88,7 @@ _PROPERTIES = {
     BUS: ("carrier", "type", "x", "y", "unit", "location"),
     CARRIER: ("color", "nice_name"),
 }
-#: A property of the `connection` group, and the enum-dtype dim listing its
+#: A property of the `connection` group, and the dim listing its
 #: labels. The port vocabulary is this tool's.
 ROLE = "role"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
@@ -321,13 +320,13 @@ def _snapshot_properties(snapshots: pd.DataFrame) -> dict[str, PropertySpec]:
     """
     properties = {
         PERIOD: PropertySpec(
-            dtype={"one_of": PERIOD},
+            one_of=PERIOD,
             description="The investment period a snapshot falls in.",
         )
     }
     if TIMESTEP in snapshots:
         properties[TIMESTEP] = PropertySpec(
-            dtype={"one_of": TIMESTEP},
+            one_of=TIMESTEP,
             description="PyPSA's timestep of a snapshot labelled by its position.",
         )
     return properties
@@ -1056,7 +1055,7 @@ def _result_attributes(c: pypsa.Components, inputs: Container[str]) -> dict[str,
 # onward are additional sinks.
 _INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT = "input", "output", "attached"
 # Every value `_port_role` can return - the whole vocabulary of `role`, so the
-# schema declares it as an enum rather than a bare string.
+# schema lists them on the dim rather than declaring a bare string.
 _ROLES = (_INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT)
 
 _PORT_SUFFIX = re.compile(r"(.+?)(\d+)")
@@ -1730,7 +1729,11 @@ def _property(name: str, spec: AttributeSpec) -> PropertySpec:
     """
     fields = spec.model_dump(exclude={"dims", "breakpoints"})
     if name == CARRIER:
-        fields |= {"dtype": {"one_of": CARRIER}, "default": fields["default"] or None}
+        fields |= {
+            "dtype": None,
+            "one_of": CARRIER,
+            "default": fields["default"] or None,
+        }
     return PropertySpec(**fields)
 
 
@@ -1756,7 +1759,7 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
     Every network exports against this one schema: its dims, groups and
     attributes describe every PyPSA component type and attribute, not
     only the ones a given network holds. Declaring a type or attribute a network
-    lacks writes no file and is rejected by nothing - the enum only rejects an
+    lacks writes no file and is rejected by nothing - `ctype` only rejects an
     *unknown* type - so a network-independent schema is both correct and the
     stabler contract (two networks with different component sets no longer
     produce mutually incompatible schemas). Derived once, cached: the registry
@@ -1781,9 +1784,9 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
     `Bus` and `Carrier` are no entity types (`_AXIS_TYPES`): their members are
     the labels of `bus` and `carrier`, and their inputs and results are over
     that dim. The properties of each subject are `_PROPERTIES`. `entity` also
-    has `ctype`, naming the enum-dtype dim `ctype` that lists the entity
-    types, so a type outside it is refused; `role` is a property of
-    `connection` naming the enum-dtype dim `role`. Every other input,
+    has `ctype`, which takes its labels from the dim `ctype` that lists the
+    entity types, so a type outside it is refused; `role` is a property of
+    `connection` that takes its labels from the dim `role`. Every other input,
     each axis weighting (`_WEIGHTINGS`) over its axis included, is an
     attribute.
 
@@ -1840,7 +1843,7 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
     properties = {
         ENTITY: {
             CTYPE: PropertySpec(
-                dtype={"one_of": CTYPE}, description="What kind of entity an entity is."
+                one_of=CTYPE, description="What kind of entity an entity is."
             ),
             **{
                 name: _property(name, attributes.pop(name))
@@ -1874,7 +1877,7 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
             carries[ctype] = carries.get(ctype, frozenset()) | set(named.values())
     properties[CONNECTION] = {
         ROLE: PropertySpec(
-            dtype={"one_of": ROLE},
+            one_of=ROLE,
             description="Which end of the component this attachment is.",
         )
     }
@@ -1898,13 +1901,13 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
                 description="One realisation of a stochastic problem.",
             ),
             ENTITY: Dimension(dtype="str", description="An entity."),
-            CTYPE: Dimension(dtype={"one_of": ctypes}, description="A kind of entity."),
+            CTYPE: Dimension(one_of=ctypes, description="A kind of entity."),
             BUS: Dimension(dtype="str", description="A node of the network."),
             CARRIER: Dimension(
                 dtype="str", description="An energy carrier or technology."
             ),
             ROLE: Dimension(
-                dtype={"one_of": _ROLES},
+                one_of=_ROLES,
                 description="An end of a component an attachment can be.",
             ),
         },
@@ -1922,8 +1925,8 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
 
 
 def _listed_axis(schema: RecordSchema, dim: str) -> pd.DataFrame:
-    """Return the axis of the enum-dtype dim `dim`: every label it lists, in order."""
-    return pd.DataFrame({dim: cast("OneOf", schema.dimensions[dim].dtype).one_of})
+    """Return the axis of `dim`, a dim that lists its labels: every label, in order."""
+    return pd.DataFrame({dim: schema.dimensions[dim].one_of})
 
 
 def _taken(schema: RecordSchema, ctype: str, names: Iterable[str]) -> list[str]:
@@ -2032,7 +2035,7 @@ class _NetworkSource:
         """Every axis this network holds, `entity`, `bus` and `carrier` among them, as keys.
 
         Each labelled axis carries its tombstone column beside the key; its
-        properties are in `properties`. The enum-dtype dims `ctype` and `role` carry
+        properties are in `properties`. The dims `ctype` and `role`, which list their labels, carry
         every label they list, and `timestep` the timesteps a multi-period
         network's positional snapshots name.
 
@@ -2083,8 +2086,8 @@ class _NetworkSource:
         """`n.carriers` as the `carrier` axis, then every carrier named but not listed.
 
         A component or bus may name a carrier `n.carriers` lacks, which PyPSA
-        tolerates; a property one of `carrier` names a label, so it is added,
-        in the order first named, its properties NULL.
+        tolerates; a property that takes its labels from `carrier` holds a live label, so
+        it is added, in the order first named, its properties NULL.
 
         Notes
         -----
@@ -2822,9 +2825,7 @@ class _ResultsSource(_NetworkSource):
                 )
             if dead and ENTITY in keys:
                 stale = stale.filter(~col(ENTITY).isin(*map(lit, dead)))
-            null = lit(None).cast(
-                self.schema.duck_type(self.schema.attributes[attr].dtype)
-            )
+            null = lit(None).cast(self.schema.duck_type(self.schema.attributes[attr]))
             rows = stale.project(*map(col, keys), null.alias("value"))
             restated[attr] = rows if attr not in written else written[attr].union(rows)
         return restated

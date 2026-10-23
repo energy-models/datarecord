@@ -21,7 +21,6 @@ from duckdb import DuckDBPyRelation
 
 from datarecord import Workspace
 from datarecord.layered.resolve import read_schema, write_schema
-from datarecord.schema import OneOf, OneOfDim
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
     CTYPE,
@@ -129,16 +128,16 @@ def test_verify_accepts_a_complete_record(single_revision):
 
 @pytest.mark.parametrize("dim", ["ctype", "role"])
 def test_the_tool_writes_every_type_and_role_it_lists(single_revision, dim):
-    """A tool convention, not a rule of enum-dtype dims: the axis is the whole list.
+    """A tool convention, not a rule of dims that list labels: the axis is the whole list.
 
     Notes
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     record = single_revision.record
-    listed = record.schema.dimensions[dim].dtype
-    assert isinstance(listed, OneOf)
-    assert record.dims[dim].df()[dim].tolist() == list(listed.one_of), (
+    listed = record.schema.dimensions[dim].one_of
+    assert listed is not None
+    assert record.dims[dim].df()[dim].tolist() == list(listed), (
         "every label listed, those the network leaves unused included"
     )
 
@@ -151,9 +150,7 @@ def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
     - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
     """
     record = single_revision.record
-    ctype = record.schema.dimensions["ctype"].dtype
-    assert isinstance(ctype, OneOf)
-    assert not {"Bus", "Carrier"} & set(ctype.one_of)
+    assert not {"Bus", "Carrier"} & set(record.schema.dimensions["ctype"].one_of or ())
     assert record.properties["bus"].columns == [
         "bus",
         "carrier",
@@ -317,7 +314,7 @@ def test_verify_reports_a_missing_dim(exported):
 def test_verify_reports_a_type_the_tool_does_not_know(exported):
     """A type outside PyPSA's registry is reported by `verify`, not raised in the fold.
 
-    The type must be one the *schema* declares - `ctype` is an enum-dtype dim and
+    The type must be one the *schema* declares - `ctype` lists its labels and
     its list is upheld everywhere, so a record cannot hold a type its own
     schema excludes. What it can hold is a type this tool has no
     registry entry for, which reads back fine and is this tool's business rather
@@ -325,23 +322,22 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
 
     Notes
     -----
-    - [entity types](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-an-enum-dtype-dim)
+    - [entity types](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision, store = exported, exported.store
-    # Declared alongside PyPSA's own types, since the enum-dtype dim pins the
+    # Declared alongside PyPSA's own types, since the listed labels pin the
     # vocabulary.
     declared = read_schema(store)
     assert declared.categorizing("entity") == (CTYPE,)
     dim = declared.dimensions[CTYPE]
-    assert isinstance(dim.dtype, OneOf), "PyPSA lists its types on an enum-dtype dim"
-    listed = OneOf(one_of=(*dim.dtype.one_of, "Widget"))
+    assert dim.one_of is not None, "PyPSA lists its types on the dim"
     write_schema(
         declared.model_copy(
             update={
                 "dimensions": {
                     **declared.dimensions,
-                    CTYPE: dim.model_copy(update={"dtype": listed}),
+                    CTYPE: dim.model_copy(update={"one_of": (*dim.one_of, "Widget")}),
                 }
             }
         ),
@@ -1415,11 +1411,11 @@ def test_a_multi_period_snapshot_is_one_flat_axis(multiperiod, multiperiod_revis
     assert set(schema.properties["snapshot"]) == (
         {"period", "timestep"} if repeated else {"period"}
     ), "a timestep property only where the label is a position"
-    assert schema.properties["snapshot"]["period"].dtype == OneOfDim(one_of="period")
+    assert schema.properties["snapshot"]["period"].one_of == "period"
     if repeated:
-        assert schema.properties["snapshot"]["timestep"].dtype == OneOfDim(
-            one_of="timestep"
-        ), "a timestep names a label of the `timestep` dim"
+        assert schema.properties["snapshot"]["timestep"].one_of == "timestep", (
+            "a timestep is a label of the `timestep` dim"
+        )
         steps = multiperiod_revision.record.dims["timestep"].df()["timestep"]
         assert steps.tolist() == list(timesteps.unique()), "each timestep once"
     assert schema.attributes["p_max_pu"].dims == {

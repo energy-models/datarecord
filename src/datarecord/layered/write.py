@@ -113,8 +113,8 @@ def write_layer(
     ValueError
         If a long frame is missing a long-schema column, or the schema declares a key
         dim no frame carries - either would make the fold misresolve the layer.
-        If a group tuple or a property `{"one_of": <dim>}` alive after the layer names
-        a label dead after it.
+        If a group tuple or a property that takes its labels from a dim, alive after the
+        layer, names a label dead after it.
         If a column's type does not fit its dtype, naming the attribute,
         property or dim that declares the column, and the dtype.
         If two rows of one attribute cover one coordinate and both name the
@@ -376,10 +376,10 @@ def _require_living_references(
 ) -> None:
     """Reject a layer storing a reference to a dead label, or killing a label one names.
 
-    A reference is a group tuple's field over a dim, or a property
-    `{"one_of": <dim>}`.
+    A reference is a group tuple's field over a dim, or a property that
+    takes its labels from a dim.
     Removing a label tombstones the tuples naming it in the same layer, which
-    `WorkingRecord.remove` writes, and a property naming it must be cleared
+    `WorkingRecord.remove` writes, and a property holding it must be cleared
     first; a layer written otherwise carries both itself. Only what `layer`
     does is checked - the rows it writes, and the rows still naming a label it
     tombstones - so a reference an ancestor left dangling fails no later write.
@@ -456,7 +456,7 @@ def _require_living_references(
     if problems:
         msg = (
             f"{'; '.join(problems)}; removing a label removes the tuples naming "
-            f"it and leaves no property naming it, so tombstone those tuples and "
+            f"it and leaves no property holding it, so tombstone those tuples and "
             f"clear those properties in the same layer (https://energy-models.github.io/datarecord/design/layers/#deletion)"
         )
         raise ValueError(msg)

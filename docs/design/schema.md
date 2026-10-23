@@ -12,7 +12,8 @@ One schema per record, and `manifest.json` is how it is written down — the two
 class Dimension(BaseModel):
     """One axis attribute data may vary over."""
 
-    dtype: DimensionDtype | OneOf  # float, int, str, datetime, or {"one_of": [...]}
+    dtype: DimensionDtype = "str"  # float, int, str or datetime
+    one_of: tuple[str, ...] | None = None  # the labels a str dim lists
     unit: str | None = None  # what the labels measure, if anything
     description: str | None = None  # what the axis is, in prose
 
@@ -34,7 +35,8 @@ class AttributeSpec(BaseModel):
 class PropertySpec(BaseModel):
     """One value per label of its subject, describing the label."""
 
-    dtype: ParameterDtype | OneOfDim  # or {"one_of": <dim>}, labels of that dim
+    dtype: ParameterDtype | None = None  # float, int, bool or str
+    one_of: str | None = None  # or the dim it takes its labels from
     default: Any | None = None
     default_by: dict[str, dict[str, Any]] = {}
     unit: str | None = None
@@ -69,7 +71,7 @@ class Schema(BaseModel):
 Everything else describes the data and is always present.
 
 `attribute` is `VARCHAR`, and no dim or property name means anything to this package: those vocabularies belong to a modelling framework, and this package knows none.
-A [category](#categories-labels-of-an-enum-dtype-dim) is typed as the schema declares it, which is a record's own statement rather than a framework's — so a category _the schema declares_ but no tool recognises reads back fine and is reported by the tool that cannot build it, not rejected inside the fold.
+A [category](#categories-labels-a-dim-lists) is typed as the schema declares it, which is a record's own statement rather than a framework's — so a category _the schema declares_ but no tool recognises reads back fine and is reported by the tool that cannot build it, not rejected inside the fold.
 
 `meta` is where a framework's own top-level data goes — network attributes, coordinate reference system, free-form metadata.
 It is stored and never interpreted, since none of it describes the dimensioned data.
@@ -85,25 +87,25 @@ It does not declare which dims an _attribute_ varies over (that is [per attribut
 
 A dtype is mathspec's: `DimensionDtype` and `ParameterDtype` from `mathspec.program`, stored as the plain string a mathspec model declares, so the manifest and the model a record feeds speak one language. Each maps to one DuckDB type, one constant in `duck.py` read wherever a column is typed:
 
-| declares                 | dtype                | DuckDB type                |
-| ------------------------ | -------------------- | -------------------------- |
-| dim, attribute, property | `float`              | `DOUBLE`                   |
-| dim, attribute, property | `int`                | `BIGINT`                   |
-| attribute, property      | `bool`               | `BOOLEAN`                  |
-| dim, attribute, property | `str`                | `VARCHAR`                  |
-| dim                      | `datetime`           | `TIMESTAMP` (no time zone) |
-| dim                      | `{one_of: [labels]}` | `ENUM` of the labels       |
-| property                 | `{one_of: <dim>}`    | that dim's type            |
+| declares                 | declaration        | DuckDB type                |
+| ------------------------ | ------------------ | -------------------------- |
+| dim, attribute, property | `dtype: float`     | `DOUBLE`                   |
+| dim, attribute, property | `dtype: int`       | `BIGINT`                   |
+| attribute, property      | `dtype: bool`      | `BOOLEAN`                  |
+| dim, attribute, property | `dtype: str`       | `VARCHAR`                  |
+| dim                      | `dtype: datetime`  | `TIMESTAMP` (no time zone) |
+| dim                      | `one_of: [labels]` | `ENUM` of the labels       |
+| property                 | `one_of: <dim>`    | that dim's type            |
 
-**A dim whose dtype `{one_of: [labels]}` lists its labels is an enum-dtype dim.** The list is the labels it allows, not its axis, as a mathspec dimension's `members` only constrain which coordinates may appear. Its column is an `ENUM`, and [`add`](working-record.md#add-remove) refuses a label outside the list, naming the list. Its axis file holds the labels added and not removed, as any dim's does, which gives them an [order](record.md#axis-order): a listed label never added is absent, [`remove`](working-record.md#add-remove) works as on any dim, and a property naming one names a live label like any other. A tool may write the whole list, as [PyPSA's](tools.md) does for `ctype` and `role`; that is its convention.
+**A dim may list its labels under `one_of: [labels]`**, as a mathspec dimension does. Its `dtype` is `str`, the default; a `one_of` on any other dtype is refused at load, as is an empty list, a label listed twice, a label that is no string, or a dim name in place of the list. The list is the labels the dim allows, not its axis. Its column is an `ENUM`, and [`add`](working-record.md#add-remove) refuses a label outside the list, naming the list. Its axis file holds the labels added and not removed, as any dim's does, which gives them an [order](record.md#axis-order): a listed label never added is absent, [`remove`](working-record.md#add-remove) works as on any dim, and a property that takes its labels from the dim holds a live label like any other. A tool may write the whole list, as [PyPSA's](tools.md) does for `ctype` and `role`; that is its convention.
 
-**A property `{one_of: <dim>}` names labels of that dim**, of a dim or of a group, and takes the dim's type: an `ENUM` where the dim lists its labels, `TIMESTAMP` for a `datetime` dim ([properties](#properties)).
+**A property declares exactly one of `dtype` and `one_of`.** A property that declares `one_of: <dim>` takes its labels from that dim, whether it is a property of a dim or of a group, and takes the dim's type: an `ENUM` where the dim lists its labels, `TIMESTAMP` for a `datetime` dim ([properties](#properties)). Declaring both or neither is refused at load, as is a list of labels in place of the dim.
 
-**An attribute takes no `one_of`**, as a mathspec parameter has none, and **no property is `datetime`**: a timestep a property describes is a label of a `datetime` dim it names.
+**An attribute declares no `one_of`**, as a mathspec parameter has none, and **no property is `datetime`**: a timestep a property describes is a label of a `datetime` dim it takes its labels from.
 
 **Struct columns are derived, never declared.** A group's column is a `STRUCT` with a field per key coordinate, each typed as its dim, and an owner flag a `STRUCT` of `BOOLEAN`. The fixed columns stay fixed: `attribute VARCHAR`, `breakpoint DOUBLE`, `deleted BOOLEAN`, `breakpoints BOOLEAN`.
 
-The manifest writes a dtype as its string — `"dtype": "float"`, `{"one_of": [...]}` on a dim, `{"one_of": "<dim>"}` on a property.
+The manifest writes a dtype as its string — `"dtype": "float"` — beside `"one_of": [...]` on a dim that lists its labels, and a property that takes its labels from a dim as `"one_of": "<dim>"` in place of `dtype`.
 
 ## `AttributeSpec`
 
@@ -161,23 +163,23 @@ What describes one label of a dim — its type, its carrier, a coordinate on a m
 
 ```python
 dimensions = {
-    "ctype": Dimension(dtype={"one_of": ["Generator", "Line", "Load"]}),
+    "ctype": Dimension(one_of=["Generator", "Line", "Load"]),
     "carrier": Dimension(dtype="str"),
     "country": Dimension(dtype="str"),
     ...,
 }
 properties = {
     "entity": {
-        "ctype": PropertySpec(dtype={"one_of": "ctype"}),
-        "carrier": PropertySpec(dtype={"one_of": "carrier"}),
+        "ctype": PropertySpec(one_of="ctype"),
+        "carrier": PropertySpec(one_of="carrier"),
         "sign": PropertySpec(
             dtype="float", default=1, default_by={"entity.ctype": {"Load": -1}}
         ),
     },
     "bus": {
-        "carrier": PropertySpec(dtype={"one_of": "carrier"}, default="AC"),
+        "carrier": PropertySpec(one_of="carrier", default="AC"),
         "x": PropertySpec(dtype="float", unit="°"),
-        "country": PropertySpec(dtype={"one_of": "country"}),
+        "country": PropertySpec(one_of="country"),
     },
     "carrier": {"color": PropertySpec(dtype="str", default="")},
     "connection": {"role": PropertySpec(dtype="str")},
@@ -192,7 +194,7 @@ properties = {
 
 **A property is addressed as `subject.name`** — `entity.ctype`, `bus.x`, `connection.role` — wherever a caller names one: [`set`](working-record.md#set), a [`default_by`](#default_by-a-default-per-category) key, `default_for`. A plain name is an attribute, never a property, however few subjects declare it, so its meaning does not change when another subject declares it later. `Schema.resolve(name)` returns the `AttributeSpec`, or the subject and the `PropertySpec`, and refuses an unknown plain name naming the dotted forms of the properties so called. A column keeps its plain name: the frames of `properties[subject]` and the categories [`flags`](record.md#flags) and `default_for` take are each read against one subject already, and a [selector keyword](working-record.md#set) is bare — a coordinate of the attribute first, else any property of a dim the attribute reaches.
 
-**A property may name a dim**, `dtype: {"one_of": <dim>}`: its values are that dim's labels, typed as the dim ([dtypes](#dtypes)), so `entity.carrier` and `bus.carrier` above name labels of `carrier`, `bus.country` one of `country`, and any subject, a dim or a group, may declare one. A stored value that is not NULL must name a live label, checked where a group's field is: [`set` and `add`](working-record.md#validation) refuse one the record as staged lacks, the [writer](layers.md#deletion) a layer storing one it removed, and [`remove`](working-record.md#add-remove) a label one still names. NULL names none. Refused at load is one naming an undeclared dim. It [categorizes](#categories-labels-of-an-enum-dtype-dim) only where the dim it names lists its labels: an open dim's labels are data a layer adds and removes.
+**A property may take its labels from a dim**, `one_of: <dim>` in place of `dtype`: its values are that dim's labels, typed as the dim ([dtypes](#dtypes)), so `entity.carrier` and `bus.carrier` above take their labels from `carrier`, `bus.country` from `country`, and any subject, a dim or a group, may declare one. A stored value that is not NULL must be a live label, checked where a group's field is: [`set` and `add`](working-record.md#validation) refuse one the record as staged lacks, the [writer](layers.md#deletion) a layer storing one it removed, and [`remove`](working-record.md#add-remove) a label one still holds. NULL is no label. Refused at load is one that takes its labels from an undeclared dim. It [categorizes](#categories-labels-a-dim-lists) only where the dim it takes its labels from lists them: the labels of any other dim are data a layer adds and removes.
 
 A classification of a dim's label is **single-valued by construction**, one column of the label's row — a many-to-many classification is an ordinary group, and expressible as one. A group's property is one column of its tuple's row the same way, but it may be NULL, so a tuple may carry no label ([open questions](open-questions.md)).
 
@@ -204,11 +206,11 @@ Membership could not vary along a classification either, if it varied along anyt
 
 **Why the split.** Without it, where a value is stored follows how many coordinates address it rather than what it is: `p_nom`, data a model optimises against, and `carrier`, a label describing a generator, would both be columns of the entity axis, and widening `p_nom` to `dims: [entity, scenario]` — a [compatible](#versioning) change — would move it to `attributes/p_nom.parquet`, away from the rows earlier layers wrote.
 
-### Categories — labels of an enum-dtype dim
+### Categories — labels a dim lists
 
-**Any property of a dim listed in [`partial`](#partial-the-granularity-of-an-override) naming a dim that lists its labels categorizes it** — `entity.ctype: {one_of: ctype}` where `ctype` is `{one_of: [Generator, Line, ...]}`: its values are that dim's **categories** along it, which a [`default_by`](#default_by-a-default-per-category) keys on and a [selector keyword](working-record.md#set) selects by. `Schema.categorizing(dim)` lists them in declaration order. There is no flag declaring the role and no limit of one per dim — a `technology` property naming an enum-dtype `technology` dim would categorize `entity` beside `ctype`. Keying on any other property — a `str` one, one naming an open dim, one of a dim outside `partial`, or one of a group — is refused, naming the property and why.
+**Any property of a dim listed in [`partial`](#partial-the-granularity-of-an-override) that takes its labels from a dim listing them categorizes it** — `entity.ctype: {one_of: ctype}` where `ctype` is `{one_of: [Generator, Line, ...]}`: its values are that dim's **categories** along it, which a [`default_by`](#default_by-a-default-per-category) keys on and a [selector keyword](working-record.md#set) selects by. `Schema.categorizing(dim)` lists them in declaration order. There is no flag declaring the role and no limit of one per dim — a `technology` property that takes its labels from a dim `technology` listing them would categorize `entity` beside `ctype`. Keying on any other property — a `str` one, one that takes its labels from a dim listing none, one of a dim outside `partial`, or one of a group — is refused, naming the property and why.
 
-The two conditions are what a category needs: an enum-dtype dim, so a category a default or a selection names is checked against a declared list — a listed category no label has selects none, whether or not its axis holds it — and a category a label stores is a label with an axis file and an order like any other; and the dim in `partial`, because only there is a dim owned per label, which a default per label needs. A schema whose entities have no kinds declares no such property of `entity`, and nothing else about it differs.
+The two conditions are what a category needs: a dim that lists its labels, so a category a default or a selection names is checked against a declared list — a listed category no label has selects none, whether or not its axis holds it — and a category a label stores is a label with an axis file and an order like any other; and the dim in `partial`, because only there is a dim owned per label, which a default per label needs. A schema whose entities have no kinds declares no such property of `entity`, and nothing else about it differs.
 
 **Category**, because **label** already names an axis value — what `add(dim, labels)` takes. A label's categories, its value of each categorizing property, are asked two things: which labels a category selects — [`flags(**categories)`](record.md#flags), a consumer's per-category frame, a [selector keyword](working-record.md#set) — and `default_for(name, **categories)`, the default of an attribute or property for such a label, each category keyed by its property's plain name.
 
@@ -229,7 +231,7 @@ The two conditions are what a category needs: an enum-dtype dim, so a category a
 
 A value read unset takes the first `default_by` key, in declaration order, whose map lists the label's category; else `default`.
 
-- **Each key reachable from the value's address.** A key must categorize a dim the value reaches — `entity` directly, or through `connection`'s `entity` field for a value over the group — and a category its enum-dtype dim does not list is refused.
+- **Each key reachable from the value's address.** A key must categorize a dim the value reaches — `entity` directly, or through `connection`'s `entity` field for a value over the group — and a category its dim does not list is refused.
 - **Never on a categorizing property.** A category defaulted by a category is circular; such a property takes a plain `default`.
 - **Only the default varies.** `dtype`, `unit` and `description` are the spec's own, which is what keeps one name one column and one `attributes/` file.
 
@@ -295,7 +297,7 @@ Every group is such a coordinate (`Schema.group_columns`).
 
 ### A group that classifies
 
-A group classifies its tuples through a property naming a dim: `bus_country` over `[bus, scenario]` with `bus_country.country: {"one_of": "country"}` says which country a bus is in per scenario, `groups/bus_country.parquet` being `bus_country STRUCT(bus, scenario) | country`, keyed by its struct exactly as `connection` is. The dim keeps its axis file, which gives `country` its [order](record.md#axis-order) and somewhere for a per-country CO2 budget to live. One coordinate needs no group: a bus in one country is [`bus.country`](#properties), a column of the bus axis.
+A group classifies its tuples through a property that takes its labels from a dim: `bus_country` over `[bus, scenario]` with `bus_country.country: {"one_of": "country"}` says which country a bus is in per scenario, `groups/bus_country.parquet` being `bus_country STRUCT(bus, scenario) | country`, keyed by its struct exactly as `connection` is. The dim keeps its axis file, which gives `country` its [order](record.md#axis-order) and somewhere for a per-country CO2 budget to live. One coordinate needs no group: a bus in one country is [`bus.country`](#properties), a column of the bus axis.
 
 The property may be NULL, so the schema does not promise one label per tuple, and its name is free — `country` is a convention, not a rule ([open questions](open-questions.md)).
 
@@ -313,7 +315,7 @@ An attribute names a group in its `dims` exactly as it names a dim, and one rule
 A group with no dim of its name has no other spelling, so naming it is the only way to declare an attribute over it; `coordinates_of` lists the attribute's groups first, then its dims in declaration order.
 
 **A group may not share a dim's name**: a group is carried as a column named for it, so sharing a dim's name makes two columns one name.
-A classifying group is named for the relation rather than the axis it classifies by — `bus_country`, its property naming `country` — and the schema's error says so.
+A classifying group is named for the relation rather than the axis it classifies by — `bus_country`, its property taking its labels from `country` — and the schema's error says so.
 
 ## Existence does not vary along a dim
 
@@ -327,7 +329,7 @@ What remains is the distinction that was doing the useful work: a **value** may 
 
 Every dim is one label set, keyed by its label alone: `dims/<dim>.parquet` is keyed by the one column `<dim>`, `record.dims[dim]` is that column, and its labels are unique across the dim.
 
-**A label scoped per parent is a flat label and a property [naming](#properties) the parent.** The source picks the labels; they need only be unique across the dim. What the source called the point inside its parent, if it matters, is a further property. A chain is a chain of such properties, [not denormalised](#properties); several parents are several.
+**A label scoped per parent is a flat label and a property that [takes its labels from](#properties) the parent.** The source picks the labels; they need only be unique across the dim. What the source called the point inside its parent, if it matters, is a further property. A chain is a chain of such properties, [not denormalised](#properties); several parents are several.
 
 | scoped per parent                     | declared flat                                                            |
 | ------------------------------------- | ------------------------------------------------------------------------ |
@@ -345,8 +347,8 @@ schema = Schema(
     },
     properties={
         "snapshot": {
-            "period": PropertySpec(dtype={"one_of": "period"}),
-            "timestep": PropertySpec(dtype={"one_of": "timestep"}),
+            "period": PropertySpec(one_of="period"),
+            "timestep": PropertySpec(one_of="timestep"),
         }
     },
     attributes={"p_max_pu": AttributeSpec(dtype="float", dims={"entity", "snapshot"})},
@@ -394,7 +396,7 @@ And a `p_nom` row carrying a non-NULL `scenario` becomes a write-time violation 
 What the fold does with this is unchanged: the inputs key is one fixed tuple over all attributes, and an attribute not varying over a dim writes NULL there.
 So the declarations constrain and validate; they do not make the key vary per row.
 
-**An axis file is owned the same way**, and the [properties it carries](format.md#where-a-value-lives) do not argue for adding it — save one: a dim with a [category](#categories-labels-of-an-enum-dtype-dim) must be in `partial`, since only there is it checked per label.
+**An axis file is owned the same way**, and the [properties it carries](format.md#where-a-value-lives) do not argue for adding it — save one: a dim with a [category](#categories-labels-a-dim-lists) must be in `partial`, since only there is it checked per label.
 Outside `partial`, a layer touching an axis restates it whole — every label, with the properties attached to them — because a layer holding one label is not saying the others are unchanged but that they are not there: the fold keys by the axis key, so what this layer carries is what the axis has here.
 That is the same "no half-owned extent" rule a series obeys, applied to a set of labels rather than a curve.
 
@@ -456,7 +458,7 @@ One schema outlives many layers ([above](#one-schema-per-record)), so a change t
 **Incompatible** — existing rows would decode differently, or not at all:
 
 - narrowing `dims`, since a row setting a now-undeclared dim has no valid reading
-- changing a `dtype`, which includes dropping a label from the list of an enum-dtype dim
+- changing a `dtype` or `one_of`, which includes dropping a label a dim lists
 - moving a name between `properties` and `attributes`, or between subjects: it moves the [file](format.md#where-a-value-lives) the value is read from
 - removing from `partial`: a layer that patched one value along that axis is now a partial override of an axis owned whole, which is exactly the hole [`partial`](#partial-the-granularity-of-an-override) forbids
 

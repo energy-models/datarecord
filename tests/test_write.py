@@ -208,7 +208,7 @@ def test_no_layer_file_carries_order_key(store, tmp_path):
         assert "order_key" not in columns, f"{path.relative_to(out)} carries order_key"
 
 
-def test_a_write_rejects_a_category_the_enum_does_not_declare(store):
+def test_a_write_rejects_a_category_its_dim_does_not_list(store):
     entities = pd.DataFrame({"entity": ["a"], "ctype": ["Nope"]})
     with pytest.raises(Exception, match="Nope"):
         store.root(
@@ -1086,12 +1086,10 @@ def _plant(p_nom: frozenset[str], *, categorized: bool = False) -> Schema:
         dimensions={
             "entity": Dimension(dtype="str"),
             "scenario": Dimension(dtype="str"),
-            "ctype": Dimension(dtype={"one_of": ["Gen", "Load"]}),
+            "ctype": Dimension(one_of=["Gen", "Load"]),
         },
         properties=(
-            {"entity": {"ctype": PropertySpec(dtype={"one_of": "ctype"})}}
-            if categorized
-            else {}
+            {"entity": {"ctype": PropertySpec(one_of="ctype")}} if categorized else {}
         ),
         attributes={"p_nom": AttributeSpec(dtype="float", dims=p_nom)},
         partial=frozenset({"entity", "scenario"}),

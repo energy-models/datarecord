@@ -7,7 +7,7 @@
 Notes
 -----
 - [owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-an-enum-dtype-dim)
+- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
 """
 
 import pytest
@@ -26,13 +26,13 @@ def categorized():
             "entity": Dimension(dtype="str"),
             "bus": Dimension(dtype="str"),
             "snapshot": Dimension(dtype="int"),
-            "ctype": Dimension(dtype={"one_of": ["Bus", "Generator", "Link", "Load"]}),
-            "carrier": Dimension(dtype={"one_of": ["gas", "wind"]}),
+            "ctype": Dimension(one_of=["Bus", "Generator", "Link", "Load"]),
+            "carrier": Dimension(one_of=["gas", "wind"]),
         },
         properties={
             "entity": {
-                "ctype": PropertySpec(dtype={"one_of": "ctype"}),
-                "carrier": PropertySpec(dtype={"one_of": "carrier"}),
+                "ctype": PropertySpec(one_of="ctype"),
+                "carrier": PropertySpec(one_of="carrier"),
             }
         },
         attributes={
@@ -95,11 +95,9 @@ def buses(store):
         Schema(
             dimensions={
                 "bus": Dimension(dtype="str"),
-                "bus_type": Dimension(dtype={"one_of": ["AC", "DC"]}),
+                "bus_type": Dimension(one_of=["AC", "DC"]),
             },
-            properties={
-                "bus": {"bus_type": PropertySpec(dtype={"one_of": "bus_type"})}
-            },
+            properties={"bus": {"bus_type": PropertySpec(one_of="bus_type")}},
             attributes={
                 "v_nom": AttributeSpec(dtype="float", dims={"bus"}),
                 "frequency": AttributeSpec(

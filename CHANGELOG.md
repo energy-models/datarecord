@@ -224,11 +224,13 @@ All notable changes to datarecord are documented here. The format follows
   pandas, polars or arrow frame, read by DuckDB's own scanner, and refuse
   timestamps with a time zone, casting a column only to a wider type of its
   kind and refusing any other. A dtype is mathspec's (`float`, `int`, `bool`, `str`, `datetime`);
-  a dim may list the labels it allows, `{"one_of": [...]}`, which makes it an enum-dtype dim: its
-  column is an `ENUM`, `add` refuses an unlisted label, and its axis holds only the labels added, and
-  a property may name a dim, `{"one_of": "<dim>"}`, which replaces `into` on
-  properties and groups. The PyPSA tool declares enum-dtype `ctype` and
-  `role` dims, writing every label they list, and a `timestep` dim. Every record is
+  a `str` dim may list its labels, `one_of: [...]` beside its `dtype` as in
+  mathspec: its column is an `ENUM` of them, `add` refuses an unlisted label,
+  and its axis holds only the labels added. A property declares exactly one
+  of `dtype` and `one_of: <dim>`, and one that declares `one_of` takes its
+  labels from that dim, which replaces `into` on properties and groups. The
+  PyPSA tool declares the dims `ctype` and `role`, which list their labels,
+  writing every label they list, and a `timestep` dim. Every record is
   re-exported.
 
 ### Fixed
@@ -264,7 +266,7 @@ All notable changes to datarecord are documented here. The format follows
   tool's static rows no longer widen an integer `snapshot` to `DOUBLE`.
 - A label of a type that does not fit its dim's dtype - a series index, mapping
   keys or a keyword of `set`, a group property's field keyword, the labels of
-  `add` and `remove`, or a value of a property naming a dim - is refused with
+  `add` and `remove`, or a value of a property that takes its labels from a dim - is refused with
   the dim and its dtype named, by the rule a frame's column is held to, rather
   than failing deep in DuckDB or being parsed: `snapshot="2030-01-01"` on a
   `datetime` dim was read as a timestamp, and is now refused.

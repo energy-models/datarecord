@@ -353,12 +353,12 @@ _ENTITY = "does not fit 'entity' of dtype str"
         pytest.param(
             lambda s: s.add("entity", ["zz"], carrier=5),
             "does not fit 'carrier' of dtype str",
-            id="add-one-of-property",
+            id="add-a-property-taking-labels-from-a-dim",
         ),
         pytest.param(
             lambda s: s.add("ctype", [5]),
-            """does not fit 'ctype' of dtype {"one_of":""",
-            id="add-enum-dtype",
+            """does not fit 'ctype' of dtype {"dtype": "str", "one_of":""",
+            id="add-to-a-dim-listing-labels",
         ),
         pytest.param(
             lambda s: s.remove("entity", [1]),
@@ -654,11 +654,11 @@ def units(store):
             dimensions={
                 "unit": Dimension(dtype="str"),
                 "hour": Dimension(dtype="int"),
-                "tech": Dimension(dtype={"one_of": ["plant", "node"]}),
+                "tech": Dimension(one_of=["plant", "node"]),
             },
             properties={
                 "unit": {
-                    "tech": PropertySpec(dtype={"one_of": "tech"}),
+                    "tech": PropertySpec(one_of="tech"),
                     "site": PropertySpec(dtype="str"),
                 }
             },
@@ -765,7 +765,7 @@ def test_set_may_change_a_category(units):
 def test_an_edit_refuses_an_unknown_label_category_or_keyword(
     units, op, args, kwargs, error, match
 ):
-    """A category is checked against the list of its enum-dtype dim, a label against the axis.
+    """A category is checked against the labels its dim lists, a label against the axis.
 
     Notes
     -----
@@ -775,7 +775,7 @@ def test_an_edit_refuses_an_unknown_label_category_or_keyword(
         getattr(units, op)(*args, **kwargs)
 
 
-def test_an_enum_dtype_dim_holds_the_labels_added_and_removes_like_any_dim(units):
+def test_a_dim_listing_labels_holds_the_labels_added_and_removes_like_any_dim(units):
     """Its list bounds what may be added; its axis is what was.
 
     Notes

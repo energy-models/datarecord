@@ -23,6 +23,7 @@ from datarecord.files import Absent, PreconditionFailedError
 from datarecord.layered import write
 from datarecord.layered.resolve import read_schema
 from datarecord.mutable import WorkingRecord
+from datarecord.schema import Dimension
 from tests.fixtures import (
     RivalWrite,
     empty_child,
@@ -368,7 +369,7 @@ def test_a_staged_tail_folds_onto_a_fold_table_from_before_a_widening(store):
     assert "scenario" not in flags.broadcast, "the frozen row's missing field is unset"
 
 
-def test_an_enum_dim_resolves_from_fold_tables_after_a_widening(store):
+def test_a_dim_listing_labels_resolves_from_fold_tables_after_a_widening(store):
     """The axis table holds `scenario` as its file did, a layer row as declared.
 
     A broadcast row expands against the axis, so the two types meet in one
@@ -379,7 +380,7 @@ def test_an_enum_dim_resolves_from_fold_tables_after_a_widening(store):
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
-    dims = {**_NARROW, "scenario": {"one_of": ["low", "high"]}}
+    dims = {**_NARROW, "scenario": Dimension(one_of=["low", "high"])}
     write_schema(schema(dims=dims), store)
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
