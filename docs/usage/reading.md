@@ -17,14 +17,14 @@ record.properties["entity"]  # stored property values, keyed by dim or group
 record.groups["connection"]  # group rows, keyed by group — one frame each
 record.attributes["p_max_pu"]  # long input frames, keyed by attribute
 record.outputs["p"]  # long result frames, keyed by attribute
-record.flags(component="Generator")  # which axes each attribute actually uses
+record.flags(ctype="Generator")  # which axes each attribute actually uses
 ```
 
 Every frame is a `narwhals.LazyFrame` — a plan, not data. Nothing is read until you `.collect()`, and listing the keys reads nothing at all ([design](../design/record.md#frames)).
 
 ```python
 entities = record.properties["entity"]
-gens = entities.filter(nw.col("component") == "Generator").collect().to_pandas()
+gens = entities.filter(nw.col("ctype") == "Generator").collect().to_pandas()
 ```
 
 ## Labels and properties
@@ -38,7 +38,7 @@ record.properties["snapshot"]  # snapshot | period | timestep
 
 `properties[subject]` is a dim's or a group's key with every property declared for it, **as stored**: a NULL is a value no layer wrote.
 
-One category's labels are `properties[dim]` filtered on a categorizing property — an `Enum` property of a `partial` dim. Which properties they carry is `Schema.properties_for(dim, **categories)`, and an unset one's default, `default_by` per category included, is `Schema.default_for("entity.sign", **categories)` — a property named by its subject, the categories by their plain names, as the frame's columns are ([design](../design/record.md#properties-and-categories)).
+One category's labels are `properties[dim]` filtered on a categorizing property — an `Enum` property of a `partial` dim. They carry every property of the dim, and an unset one's default, `default_by` per category included, is `Schema.default_for("entity.sign", **categories)` — a property named by its subject, the categories by their plain names, as the frame's columns are ([design](../design/record.md#properties-and-categories)).
 
 ## Wide and long
 
@@ -61,7 +61,7 @@ No property is a column of an attribute row — `attributes["p_max_pu"]` holds e
 `flags()` answers which axes each attribute's rows actually use, across the record in one query, so a consumer can plan its reads without opening a file. `flags(**categories)` answers for one category of one dim, counting only rows reaching a matching label and only attributes those labels carry:
 
 ```python
-flags = record.flags(component="Generator")
+flags = record.flags(ctype="Generator")
 set(flags)  # which attributes generators have at all
 "timestep" in flags["p_max_pu"].varies  # some row sets it
 "timestep" in flags["p_max_pu"].broadcast  # some row leaves it NULL

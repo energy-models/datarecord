@@ -62,6 +62,10 @@ class Requirements:
         `(category, column)` pairs of a framework's own column whose name the
         record declares with another shape, so it has nowhere to be stored:
         one name is one spec record-wide.
+    ignored : frozenset of tuple of (str, str)
+        `(category, attribute)` pairs the record stores a value for that the
+        tool's category does not take, so the build leaves it out. A report,
+        not a failure: it leaves the result falsy and `describe` silent.
 
     Notes
     -----
@@ -77,9 +81,10 @@ class Requirements:
     unsupported_values: frozenset[tuple[str, str]] = frozenset()
     names: frozenset[str] = frozenset()
     columns: frozenset[tuple[str, str]] = frozenset()
+    ignored: frozenset[tuple[str, str]] = frozenset()
 
     def __bool__(self) -> bool:
-        """Whether anything is required (or, for a `verify` result, missing)."""
+        """Whether anything is required (or, for a `verify` result, missing); `ignored` aside."""
         return bool(
             self.dims
             or self.categories

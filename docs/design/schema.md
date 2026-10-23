@@ -50,15 +50,6 @@ class Group(BaseModel):
     description: str | None = None
 
 
-class Trait(BaseModel):
-    """A bundle of attributes, and which categories and labels carry it."""
-
-    attributes: frozenset[str] = frozenset()
-    on: dict[str, frozenset[str]] = {}  # one categorizing subject.name -> categories
-    switch: str | None = None  # attribute deciding it per label; joins `attributes`
-    description: str | None = None
-
-
 class Schema(BaseModel):
     version: int  # bumped by any change to the declarations
 
@@ -69,7 +60,6 @@ class Schema(BaseModel):
         str, dict[str, PropertySpec]
     ]  # subject dim or group -> name -> spec
     groups: dict[str, Group]
-    traits: dict[str, Trait]  # the only thing that narrows a name to some categories
 
     # Which dims a layer may patch value by value; absent for a record with no
     # layers, since nothing overrides anything.
@@ -114,7 +104,7 @@ attributes = {
 }
 ```
 
-**Flat, one spec per attribute**, with [categories subscribing](#traits) rather than owning.
+**Flat, one spec per attribute**, [reaching every label it addresses](#an-attribute-reaches-every-label-it-addresses) rather than owned by a category.
 The nesting this replaces said an attribute _belongs to_ an entity type, which is false in both directions: `objective_weighting` has no type, and `p_max_pu` was three identical specs under Generator, Link and StorageUnit.
 
 The storage already disagreed with the nesting. `inputs/p_max_pu.parquet` holds every type's rows in one file with one `value` dtype, so two types declaring one attribute with **different dtypes** was expressible in the schema and unrepresentable on disk — a silent wrong read that nothing rejected.
@@ -141,7 +131,7 @@ What a solve computes is declared, not discovered: a result has a dtype, coordin
 
 It is a **separate mapping rather than a flag** because the two are governed differently at every point a caller touches them.
 A result is written to `outputs/<attr>.parquet`, never [overlays](read-path.md#outputs) a parent's, and may name an entity the record does not declare.
-An input meets [`attributes_for`](#traits), which is the per-category vocabulary that validates a `set`; a result meets none of that, and keeping it out of `attributes` is what makes that structural rather than a condition repeated at each site.
+An input meets the [validation of `set`](working-record.md#validation) and `add`'s wide-frame split; a result meets none of that, and keeping it out of `attributes` is what makes that structural rather than a condition repeated at each site.
 A name in both is rejected: one name is one file with one `value` column, so it is an input or a result and not both.
 
 The questions the long schema asks of a _stored_ attribute — its dtype, its coordinates — span both, since `outputs/` and `inputs/` share a layout.
@@ -160,10 +150,10 @@ What describes one label of a dim — its type, its carrier, a coordinate on a m
 ```python
 properties = {
     "entity": {
-        "component": PropertySpec(dtype=Enum(["Generator", "Line", "Load"])),
+        "ctype": PropertySpec(dtype=Enum(["Generator", "Line", "Load"])),
         "carrier": PropertySpec(into="carrier"),
         "sign": PropertySpec(
-            dtype="float64", default=1, default_by={"entity.component": {"Load": -1}}
+            dtype="float64", default=1, default_by={"entity.ctype": {"Load": -1}}
         ),
     },
     "bus": {
@@ -176,13 +166,13 @@ properties = {
 }
 ```
 
-**A property is one value per label of its subject**, a dim or a group, and so has no `dims`: it never varies along another axis. It is a column of the subject's own file — `dims/<dim>.parquet`, or `groups/<group>.parquet` for a group ([where a value lives](format.md#where-a-value-lives)) — so `component` is a column of `dims/entity.parquet` because every property of `entity` is, and the schema attaches no meaning to the name.
+**A property is one value per label of its subject**, a dim or a group, and so has no `dims`: it never varies along another axis. It is a column of the subject's own file — `dims/<dim>.parquet`, or `groups/<group>.parquet` for a group ([where a value lives](format.md#where-a-value-lives)) — so `ctype` is a column of `dims/entity.parquet` because every property of `entity` is, and the schema attaches no meaning to the name.
 
 **An attribute is data**: what a model reads as part of its problem and what a layer would vary. Which a name is, is the author's declaration rather than derived from its shape; a tool reads it from its registry where it can ([PyPSA](tools.md)).
 
 **A property's name is its subject's.** One name is one spec for attributes and results, each one file with one `value` dtype ([flat attributes](#attributespec)). A property is a column of its subject's file, so its name is unique there only: `x` on `bus` beside an attribute `x` — a line's reactance — and `carrier` on `entity`, on `bus` and as a dim. Refused at load are a property named like a column of its subject's key — the dim, a group's struct column or its [`into`](#into-a-group-that-classifies) — and a group's property named like one of its coordinates, the keywords a tuple is addressed by. Two spellings differing only in case stay refused record-wide ([names](#names)).
 
-**A property is addressed as `subject.name`** — `entity.component`, `bus.x`, `connection.role` — wherever a caller names one: [`set`](working-record.md#set), a [trait](#traits)'s `on` and bundle, a [`default_by`](#default_by-a-default-per-category) key, `default_for`. A plain name is an attribute or result, never a property, however few subjects declare it, so its meaning does not change when another subject declares it later. `Schema.resolve(name)` returns the `AttributeSpec`, or the subject and the `PropertySpec`, and refuses an unknown plain name naming the dotted forms of the properties so called. A column keeps its plain name: the frames of `properties[subject]` and the categories [`flags`](record.md#flags) and `attributes_for` take are each read against one subject already, and a [selector keyword](working-record.md#set) is bare — a coordinate of the attribute first, else any property of a dim the attribute reaches.
+**A property is addressed as `subject.name`** — `entity.ctype`, `bus.x`, `connection.role` — wherever a caller names one: [`set`](working-record.md#set), a [`default_by`](#default_by-a-default-per-category) key, `default_for`. A plain name is an attribute or result, never a property, however few subjects declare it, so its meaning does not change when another subject declares it later. `Schema.resolve(name)` returns the `AttributeSpec`, or the subject and the `PropertySpec`, and refuses an unknown plain name naming the dotted forms of the properties so called. A column keeps its plain name: the frames of `properties[subject]` and the categories [`flags`](record.md#flags) and `default_for` take are each read against one subject already, and a [selector keyword](working-record.md#set) is bare — a coordinate of the attribute first, else any property of a dim the attribute reaches.
 
 **A property may be `into` a dim**: its values are that dim's labels and its `dtype` is the dim's, so `entity.carrier` and `bus.carrier` above name labels of `carrier`, `bus.country` one of `country`, and any subject may declare one. A stored value that is not NULL must name a live label, checked where a group's field is: [`set` and `add`](working-record.md#validation) refuse one the record as staged lacks, the [writer](layers.md#deletion) a layer storing one it removed, and [`remove`](working-record.md#add-remove) a label one still names. NULL names none. Refused at load are `into` an undeclared dim and a `dtype` other than the dim's. It does not [categorize](#categories-an-enum-property-of-a-partial-dim): a category is a declared `Enum`, a label is data a layer adds and removes. One coordinate classified [`into`](#into-a-group-that-classifies) a dim is such a property, never a group.
 
@@ -198,17 +188,15 @@ Membership could not vary along a classification either, if it varied along anyt
 
 ### Categories — an `Enum` property of a `partial` dim
 
-**Any `Enum`-typed property of a dim listed in [`partial`](#partial-the-granularity-of-an-override) categorizes it**: its values are that dim's **categories** along it, which a [trait's `on`](#traits) and a [`default_by`](#default_by-a-default-per-category) key on. `Schema.categorizing(dim)` lists them in declaration order. There is no flag declaring the role and no limit of one per dim — an `Enum` `technology` would categorize `entity` beside `component`. Keying on any other property — a `str` one, one [`into`](#properties) a dim, one of a dim outside `partial`, or one of a group — is refused, naming the property and why.
+**Any `Enum`-typed property of a dim listed in [`partial`](#partial-the-granularity-of-an-override) categorizes it**: its values are that dim's **categories** along it, which a [`default_by`](#default_by-a-default-per-category) keys on and a [selector keyword](working-record.md#set) selects by. `Schema.categorizing(dim)` lists them in declaration order. There is no flag declaring the role and no limit of one per dim — an `Enum` `technology` would categorize `entity` beside `ctype`. Keying on any other property — a `str` one, one [`into`](#properties) a dim, one of a dim outside `partial`, or one of a group — is refused, naming the property and why.
 
-The two conditions are what a category needs: an `Enum`, so a category a trait or a default names is checked against a declared vocabulary; and the dim in `partial`, because only there is a dim owned and checked per label. A schema whose entities have no kinds declares no `Enum` property of `entity`, and nothing else about it differs.
+The two conditions are what a category needs: an `Enum`, so a category a default or a selection names is checked against a declared vocabulary; and the dim in `partial`, because only there is a dim owned per label, which a default per label needs. A schema whose entities have no kinds declares no `Enum` property of `entity`, and nothing else about it differs.
 
-**Category**, because **label** already names an axis value — what `add(dim, labels)` takes. What a label carries is asked by its categories, the label's value of each categorizing property:
+**Category**, because **label** already names an axis value — what `add(dim, labels)` takes. A label's categories, its value of each categorizing property, are asked two things: which labels a category selects — [`flags(**categories)`](record.md#flags), a consumer's per-category frame, a [selector keyword](working-record.md#set) — and `default_for(name, **categories)`, the default of an attribute, result or property for such a label, each category keyed by its property's plain name.
 
-- `attributes_for(dim, **categories)` — the attributes reaching `dim` such a label carries, narrowed by [traits](#traits), each category keyed by its property's plain name;
-- `properties_for(subject, **categories)` — the same for its properties, narrowed by the same traits; every tuple of a group carries all of its group's;
-- `default_for(name, **categories)` — the default of an attribute, result or property for such a label.
+**A category selects; it never narrows.** It says which labels a question is about, never which attributes or properties a label may hold: every label carries [every name it addresses](#an-attribute-reaches-every-label-it-addresses), whatever its categories.
 
-**A category may change.** It is a property like any other, patched by `set`. Values a label holds for attributes its new category does not carry stay stored, but fall outside every per-category read and every [broadcast](record.md#the-broadcast-rule), which are judged against its current categories.
+**A category may change.** It is a property like any other, patched by `set`. A label keeps the values it holds, and a per-category read judges it by its current categories.
 
 ### `default_by` — a default per category
 
@@ -217,7 +205,7 @@ The two conditions are what a category needs: an `Enum`, so a category a trait o
 ```python
 "p_min_pu": AttributeSpec(
     dtype="float64", dims={"entity", "snapshot"}, default=0,
-    default_by={"entity.component": {"StorageUnit": -1}},
+    default_by={"entity.ctype": {"StorageUnit": -1}},
 )
 ```
 
@@ -229,74 +217,15 @@ A value read unset takes the first `default_by` key, in declaration order, whose
 
 A default is never stored. `record.properties` and `record.attributes` hand over stored rows, so a consumer applies a default through `default_for` — the PyPSA tool does, building a component's static frame.
 
-## Traits
+## An attribute reaches every label it addresses
 
-A trait is a named bundle of attributes, and which categories carry them:
+An attribute is carried by every label its `dims` address, and a property by every label of its subject; nothing in the schema cuts that down. Writing `entity` in an attribute's `dims` says it is per entity, for every category — the same thing `dims={"scenario"}` means along the scenario axis. An attribute addressed by an axis alone — a snapshot weighting — reaches no entity, and belongs to the record.
 
-```python
-traits = {
-    "investable": Trait(
-        attributes={"capital_cost", "build_year", "lifetime", "capacity"},
-        on={"entity.component": {"Generator", "Line", "Link", "Store"}},
-    ),
-    "dispatchable": Trait(
-        attributes={"p_min_pu", "p_max_pu", "p_set"},
-        on={"entity.component": {"Generator", "Link"}},
-    ),
-}
-```
+So a value scoped to some kinds of label is scoped by the write, not the schema: `set("p_max_pu", 0.9, ctype="Generator")` writes one row per generator, where `set("p_max_pu", 0.9)` is [one row reaching every entity](record.md#the-broadcast-rule), loads included.
 
-**A trait narrows; it does not grant.** An attribute the schema declares is carried by every label it can address, and a trait is the only thing that cuts that down.
-Writing `entity` in an attribute's `dims` is what says it is per entity; declining to bundle it says it is so for every category — the same thing `dims={"scenario"}` already means along the scenario axis, where no subscription mechanism exists and nobody finds it surprising.
+**Which attributes a kind of label takes is the tool's knowledge.** PyPSA's registry already says a `Load` takes no `p_max_pu`; copying that into the schema would have the record layer store, fold by and validate against a framework's vocabulary it never defines, which [the module layout](module-layout.md) keeps out of core. A tool needing a per-type vocabulary keeps it itself, as [the PyPSA tool](tools.md#a-value-its-type-does-not-take) does. A category is the record's — it selects labels and keys [`default_by`](#default_by-a-default-per-category), which picks a value per category, never whether one exists.
 
-That direction is why an attribute belonging to no type has somewhere to live at all.
-Under the previous shape a type _subscribed_ and an attribute reached nothing until one did, which is what forced `attributes` to be nested under types and left snapshot weightings homeless.
-
-**Whichever property each trait keys on.** An attribute no trait claims is carried by every label; a claimed one by every label some claiming trait matches. A trait `on` `entity.component: [Generator]` and one `on` `entity.technology: [wind]`, both claiming `p_max_pu`, give it to every generator and every wind entity.
-
-`Schema.attributes_for(dim, **categories)` and `Schema.properties_for(subject, **categories)` ([categories](#categories-an-enum-property-of-a-partial-dim)) are what [`flags`](record.md#flags), a consumer's per-category frame and the [validation of `set`](working-record.md#validation) read, so everything downstream asks one question and gets a resolved answer. A trait may bundle properties of the dim its `on` categorizes beside attributes, each as `subject.name`, and both are narrowed alike.
-An attribute addressed by an axis alone is carried by no category however few traits mention it: a snapshot weighting belongs to the record.
-
-A trait rather than a bare list of attribute names, for two reasons.
-The deduplication is real: the boundaries are measured from a framework's registry rather than invented, and `investable` covers six types.
-And a trait is **queryable** — a consumer dispatching on "everything investable" asks the schema rather than enumerating types, which is what makes the vocabulary worth declaring at all.
-
-**Declared, not inferred.** No framework ships a trait registry to read, so the mapping from its component registry to traits is authored and maintained. That cost is the price of the vocabulary being useful to something other than this schema.
-
-**Only a categorizing property may scope a trait, and one per trait.** `on` names one [categorizing property](#categories-an-enum-property-of-a-partial-dim) and categories of it; the schema rejects any other key, because a trait scoped to, say, `country` would make an attribute's vocabulary depend on a relation — which attributes an entity carries would follow from what its bus maps to, a join every caller of `attributes_for` treats as answerable from a label's own categories. A trait spanning two properties is two traits.
-
-A trait with an empty `on` narrows nothing: it is a bundle for a consumer to dispatch on, and its attributes stay carried by every label.
-
-A trait may only name an attribute or property the schema declares: it says which apply, never what they are, so a name with no spec is a typo rather than a shorthand declaration.
-Two traits bundling one attribute is fine — they resolve to a set — since [one attribute has one spec](#attributespec) and there is nothing left to conflict.
-
-### `switch` — a trait an entity opts into
-
-A trait narrows two ways: `on` says which categories carry it, `switch` names an attribute deciding it per label.
-
-```python
-traits = {
-    "committable": Trait(
-        attributes={"start_up_cost", "min_up_time", "ramp_limit_start_up"},
-        on={"entity.component": {"Generator", "Link"}},
-        switch="committable",
-    ),
-}
-attributes = {
-    "committable": AttributeSpec(dtype="bool", dims={"entity"}, default=False),
-}
-```
-
-The two never interact: `on` first, then `switch`. A trait with neither reaches every label; **a switch needs an `on`**, and is addressed by exactly the dim its `on` property categorizes — the dim it decides the trait per label of.
-
-**The switch is an ordinary attribute**, with a `dtype`, a `default` and long rows in `inputs/` like any other ([where a value lives](format.md#where-a-value-lives)). `bool` is the only dtype admitted; an `Enum` switch selecting among several traits is deferred.
-Its default decides the unset case, and `false` keeps the bundle off every entity that predates the trait.
-
-**It joins the trait's `attributes` on its own**, folded in at parse rather than listed by the author, so a consumer asking what `committable` bundles gets the switch with the rest.
-Being in the bundle it would otherwise be narrowed by its own trait, which nothing could then turn on — so it is in `attributes` for discovery and out of the narrowing.
-
-**`attributes_for` is unchanged by it.** A switched trait's attributes are carried by the category, because the question it answers is which attributes a generator _may_ have; the switch narrows which entities carry a _value_, which is a question about data.
-So the switch is a validation and query mechanism rather than a change to the vocabulary. What it is declared for — rejecting a value set on an entity whose switch is false, and asking which entities a trait reaches — reads the switch column, and neither is wired up yet: the declaration lands first, the checks that read data after. Whether `attributes_for` grows a per-label counterpart is [open](open-questions.md).
+The cost is accepted: a misplaced value is no longer refused on write, and a NULL row expands over every label in [the owner map](read-path.md#owner-map) rather than some.
 
 ## Groups
 
@@ -475,7 +404,7 @@ A declared dim, group, group coordinate, attribute, result or property name beco
 
 Entity names and labels are data, never identifiers, so none of this constrains them.
 
-No dim or property name is reserved — not `entity`, not `component`: a schema declares them like any other, so neither can be taken by surprise. What one name may not be twice over is [a section's rule](#properties), not this list's.
+No dim or property name is reserved — not `entity`, not `ctype`: a schema declares them like any other, so neither can be taken by surprise. What one name may not be twice over is [a section's rule](#properties), not this list's.
 
 ## One schema per record
 
@@ -509,9 +438,8 @@ One schema outlives many layers ([above](#one-schema-per-record)), so a change t
 
 **Compatible** — old layers stay readable, `version` bumps and nothing else happens:
 
-- adding an attribute, a property, a category, a trait, or a group — none changes [the owner map](read-path.md#owner-map)'s key, which only `partial` widens
+- adding an attribute, a property, a category, or a group — none changes [the owner map](read-path.md#owner-map)'s key, which only `partial` widens
 - adding a dim no existing attribute varies over
-- a category carrying a further attribute, whether by a trait claiming it for that category or by no trait claiming it
 - widening an `AttributeSpec.dims`: rows that set fewer dims still decode, since an unset dim is NULL and NULL means "all values" ([the broadcast rule](record.md#the-broadcast-rule))
 - adding to `partial`: ownership becomes finer, and an existing layer's rows are simply owned at the coarser granularity they were written with
 - changing a [`unit` or `description`](#unit-and-description), which describe the data without deciding how any row decodes
@@ -522,7 +450,6 @@ One schema outlives many layers ([above](#one-schema-per-record)), so a change t
 - changing a `dtype`, which includes dropping a category from an `Enum`
 - moving a name between `properties` and `attributes`, or between subjects: it moves the [file](format.md#where-a-value-lives) the value is read from
 - removing from `partial`: a layer that patched one value along that axis is now a partial override of an axis owned whole, which is exactly the hole [`partial`](#partial-the-granularity-of-an-override) forbids
-- a category ceasing to carry an attribute, whether by dropping it or by a trait no longer claiming it for that category: its rows are still in the file, now with no valid reading for that category
 
 Adding a functional group is compatible in the same sense adding any group is: the record gains a file, and until some layer writes it every coordinate reads as unclassified — no row, which is what "no country assigned" means anyway.
 

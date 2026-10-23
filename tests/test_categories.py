@@ -2,11 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""A NULL on a categorized dim reaches only the labels carrying the attribute.
+"""A NULL on a categorized dim reaches every label, whatever its category.
 
 Notes
 -----
 - [owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
 """
 
 import narwhals as nw
@@ -14,20 +15,13 @@ import pytest
 
 from datarecord.layered.resolve import write_schema
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import (
-    AttributeSpec,
-    Dimension,
-    Group,
-    PropertySpec,
-    Schema,
-    Trait,
-)
+from datarecord.schema import AttributeSpec, Dimension, PropertySpec, Schema
 from tests.fixtures import empty_root
 
 
 @pytest.fixture
 def categorized():
-    """`p_max_pu` narrowed to generators and to wind entities."""
+    """`entity` categorized by `ctype` and `carrier`."""
     return Schema(
         dimensions={
             "entity": Dimension(dtype=nw.String()),
@@ -36,7 +30,7 @@ def categorized():
         },
         properties={
             "entity": {
-                "component": PropertySpec(
+                "ctype": PropertySpec(
                     dtype=nw.Enum(["Bus", "Generator", "Link", "Load"])
                 ),
                 "carrier": PropertySpec(dtype=nw.Enum(["gas", "wind"])),
@@ -44,26 +38,8 @@ def categorized():
         },
         attributes={
             "p_max_pu": AttributeSpec(dtype=nw.Float64(), dims={"entity", "snapshot"}),
-            "efficiency": AttributeSpec(
-                dtype=nw.Float64(), dims={"connection", "snapshot"}
-            ),
         },
-        groups={"connection": Group(over={"entity": "entity", "bus": "bus"})},
-        traits={
-            "generator": Trait(
-                attributes=frozenset({"p_max_pu"}),
-                on={"entity.component": frozenset({"Generator"})},
-            ),
-            "wind": Trait(
-                attributes=frozenset({"p_max_pu"}),
-                on={"entity.carrier": frozenset({"wind"})},
-            ),
-            "link": Trait(
-                attributes=frozenset({"efficiency"}),
-                on={"entity.component": frozenset({"Link"})},
-            ),
-        },
-        partial=frozenset({"entity", "bus", "connection"}),
+        partial=frozenset({"entity", "bus"}),
     )
 
 
@@ -73,11 +49,14 @@ def root(store, categorized):
     write_schema(categorized, store)
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
-    staged.add("entity", ["g1"], component="Generator", carrier="gas")
-    staged.add("entity", ["w1"], component="Load", carrier="wind")
-    staged.add("entity", ["l1"], component="Load", carrier="gas")
-    staged.add("entity", ["b1"], component="Bus")
+    staged.add("entity", ["g1"], ctype="Generator", carrier="gas")
+    staged.add("entity", ["w1"], ctype="Load", carrier="wind")
+    staged.add("entity", ["l1"], ctype="Load", carrier="gas")
+    staged.add("entity", ["b1"], ctype="Bus")
     return revision.child(staged.edits)
+
+
+EVERY = {"g1", "w1", "l1", "b1"}
 
 
 def _values(record, attribute: str) -> dict:
@@ -90,9 +69,9 @@ def _values(record, attribute: str) -> dict:
 def test_a_null_reaches_a_label_added_in_the_same_staged_record(root):
     staged = WorkingRecord(root.record)
     staged.set("p_max_pu", 0.9)
-    staged.add("entity", ["g2"], component="Generator")
-    assert _values(staged, "p_max_pu") == {"g1": 0.9, "w1": 0.9, "g2": 0.9}, (
-        "every generator and every wind entity, never the bus or the gas load"
+    staged.add("entity", ["g2"], ctype="Generator")
+    assert _values(staged, "p_max_pu") == dict.fromkeys(EVERY | {"g2"}, 0.9), (
+        "every label, a load and the bus included"
     )
 
 
@@ -101,69 +80,16 @@ def test_a_null_reaches_a_label_added_in_an_unmaterialised_child(root):
     staged.set("p_max_pu", 0.9)
     layer = root.child(staged.edits)
     later = WorkingRecord(layer.record)
-    later.add("entity", ["g2"], component="Generator", carrier="gas")
+    later.add("entity", ["g2"], ctype="Generator", carrier="gas")
     child = layer.child(later.edits)
-    assert _values(child.record, "p_max_pu") == {"g1": 0.9, "w1": 0.9, "g2": 0.9}, (
+    assert _values(child.record, "p_max_pu") == dict.fromkeys(EVERY | {"g2"}, 0.9), (
         "a generator added below the broadcast is reached by it"
     )
 
 
-def test_a_null_no_label_carries_reaches_nothing(store, categorized):
-    write_schema(categorized, store)
-    staged = WorkingRecord(empty_root(store).record)
-    staged.add("entity", ["l1"], component="Load", carrier="gas")
-    staged.set("p_max_pu", 0.9)
-    assert "p_max_pu" not in staged.attributes, "no generator and no wind entity"
-
-
-def test_a_re_categorized_label_drops_out_of_the_broadcast(root):
-    staged = WorkingRecord(root.record)
-    staged.set("p_max_pu", 0.5, entity="g1")
-    explicit = root.child(staged.edits)
-    staged = WorkingRecord(explicit.record)
-    staged.add("entity", ["g2"], component="Generator", carrier="gas")
-    staged.set("p_max_pu", 0.9)
-    broadcast = explicit.child(staged.edits)
-    assert _values(broadcast.record, "p_max_pu") == {"g1": 0.9, "g2": 0.9, "w1": 0.9}
-
-    staged = WorkingRecord(broadcast.record)
-    staged.add("entity", ["g1", "g2"], component="Load", carrier="gas")
-    re_categorized = broadcast.child(staged.edits)
-    assert _values(re_categorized.record, "p_max_pu") == {"g1": 0.5, "w1": 0.9}, (
-        "g2 is out of the broadcast's reach, g1's explicit row stays"
-    )
-
-
-def test_a_null_over_a_group_reaches_the_tuples_carrying_it(store, categorized):
-    write_schema(categorized, store)
-    staged = WorkingRecord(empty_root(store).record)
-    staged.add("entity", ["k1"], component="Link")
-    staged.add("entity", ["g1"], component="Generator")
-    staged.add("bus", ["b0", "b1"])
-    staged.add_group(
-        "connection",
-        nw.from_dict(
-            {
-                "connection": [
-                    {"entity": "k1", "bus": "b0"},
-                    {"entity": "k1", "bus": "b1"},
-                    {"entity": "g1", "bus": "b0"},
-                ]
-            },
-            backend="pandas",
-        ),
-    )
-    staged.set("efficiency", 0.7)
-    frame = staged.attributes["efficiency"].collect().to_native().to_pandas()
-    assert sorted(c["entity"] + c["bus"] for c in frame["connection"]) == [
-        "k1b0",
-        "k1b1",
-    ], "the link's connections, not the generator's"
-
-
 @pytest.fixture
 def buses(store):
-    """Two AC buses and a DC one; `frequency` is an AC bus's only, defaulting by type."""
+    """Two AC buses and a DC one; `frequency` defaults by type."""
     write_schema(
         Schema(
             dimensions={"bus": Dimension(dtype=nw.String())},
@@ -176,12 +102,6 @@ def buses(store):
                     default=0.0,
                     default_by={"bus.bus_type": {"AC": 50.0}},
                 ),
-            },
-            traits={
-                "alternating": Trait(
-                    attributes=frozenset({"frequency"}),
-                    on={"bus.bus_type": frozenset({"AC"})},
-                )
             },
             partial=frozenset({"bus"}),
         ),
@@ -200,20 +120,16 @@ def _by_bus(record, attribute: str) -> dict:
     return dict(zip(frame["bus"], frame["value"], strict=True))
 
 
-def test_a_category_on_another_dim_than_entity_narrows_the_record(buses):
+def test_a_category_keyword_scopes_a_value_on_another_dim_than_entity(buses):
     staged = WorkingRecord(buses.record)
-    staged.set("frequency", 60.0)
+    staged.set("frequency", 60.0, bus_type="AC")
     staged.set("v_nom", 380.0)
     record = buses.child(staged.edits).record
 
-    assert _by_bus(record, "frequency") == {"ac1": 60.0, "ac2": 60.0}, (
-        "the NULL reaches the AC buses alone"
-    )
-    assert set(_by_bus(record, "v_nom")) == {"ac1", "ac2", "dc1"}, "untraited"
-    dc = record.properties["bus"].filter(nw.col("bus_type") == "DC").select("bus")
-    assert dc.collect().to_native().to_pylist() == [{"bus": "dc1"}]
+    assert _by_bus(record, "frequency") == {"ac1": 60.0, "ac2": 60.0}
+    assert set(_by_bus(record, "v_nom")) == {"ac1", "ac2", "dc1"}, "a NULL reaches all"
     assert set(record.flags(bus_type="AC")) == {"frequency", "v_nom"}
-    assert set(record.flags(bus_type="DC")) == {"v_nom"}, "frequency is an AC bus's"
+    assert set(record.flags(bus_type="DC")) == {"v_nom"}, "no DC bus has a frequency"
 
 
 def test_attributes_leave_a_default_by_unapplied(buses):

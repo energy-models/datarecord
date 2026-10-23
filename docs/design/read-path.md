@@ -47,19 +47,19 @@ A layer's tombstones apply to its parents' keys, not to its own rows.
 A dim's anti-join matches its top-level column only. A label inside a struct is reached through its tuple: [removing a label](layers.md#deletion) tombstones the live tuples naming it in the same layer, and each group honours its _own_ tombstones.
 A row leaving a key column NULL is not addressed by it, and its NULL-safe anti-join never takes it; only a row naming a dead entity, tuple or label is dropped.
 
-**On a categorized dim a NULL reaches the labels carrying the attribute.** Where the fold expands a NULL against the axis, an attribute some trait narrows on that dim joins a carriers relation — `(label, attribute)`, built through [`attributes_for`](schema.md#traits) once per category combination the resolved axis holds — so `set("p_max_pu", 0.9)` reaches every generator and never a bus; a label with a NULL category carries none of the narrowed attributes. An attribute no trait narrows expands over every label, as before. A materialised ancestor's map is seeded already expanded, so its NULL rows do not reach labels a descendant adds or re-categorizes ([open](open-questions.md)).
+**On a categorized dim a NULL reaches every label too.** The fold expands a NULL against the axis whatever the labels' categories, so `set("p_max_pu", 0.9)` reaches every entity, loads included ([an attribute reaches every label it addresses](schema.md#an-attribute-reaches-every-label-it-addresses)); one scoped to generators is written per label, `set("p_max_pu", 0.9, ctype="Generator")`. A materialised ancestor's map is seeded already expanded, so its NULL rows do not reach labels a descendant adds ([open](open-questions.md)).
 
 ## One fold for every axis
 
 A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer patches per key — a group's key being its one struct column, as a dim's is the column named for it.
-They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), its other columns carried on the winning row (`component` on the entity axis, `role` and `into` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
+They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), its other columns carried on the winning row (`ctype` on the entity axis, `role` and `into` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
 
 The resolved relation is returned **in first-introduced member order** — root first, then file order within a layer — and a node's caches persist it _in that order_, so a reader recovers member order from the resolved file's own row number.
 There is no persisted `order_key` column: member order is the file's row order.
 A consumer wanting positional ports numbers an entity's connections by this order, so a patch layer adding a connection appends rather than renumbering — the [positional-keying failure](record.md#connections) that order exists to prevent.
 Across a materialised parent it still holds: the resolved seed is read in its own row order and a descendant's new rows number after it.
 
-Every property is a column of its subject's file, so the resolved axis or group is the whole of what a per-category read needs: `properties[dim]` filtered on categorizing columns and projected to `properties_for`, with no second file to gate against.
+Every property is a column of its subject's file, so the resolved axis or group is the whole of what a per-category read needs: `properties[dim]` filtered on categorizing columns, with no second file to gate against.
 
 The fold runs live over an unmaterialised tail, cached in the workspace's database as [shared tables](#a-cursor-per-thread); since [layers are write-once](layers.md#a-layers-data-is-write-once), such a cache never needs invalidating.
 

@@ -22,7 +22,7 @@ from datarecord import Workspace
 from datarecord.layered.resolve import read_schema, write_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
-    COMPONENT,
+    CTYPE,
     PyPSA,
     _colliding_names,
     _registry_schema,
@@ -121,8 +121,8 @@ def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
     - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
     """
     record = single_revision.record
-    component = record.schema.properties["entity"]["component"].dtype
-    assert not {"Bus", "Carrier"} & set(component.categories)
+    ctype = record.schema.properties["entity"]["ctype"].dtype
+    assert not {"Bus", "Carrier"} & set(ctype.categories)
     assert record.properties["bus"].collect_schema().names() == [
         "bus",
         "carrier",
@@ -214,6 +214,28 @@ def test_a_carrier_is_a_live_label(single_revision):
         w.remove("carrier", ["gas"])
 
 
+def test_a_value_its_type_does_not_take_is_reported_and_left_out(single_revision):
+    """A broadcast reaches every entity; the build keeps it to the types taking it.
+
+    Notes
+    -----
+    - [a value its type does not take](https://energy-models.github.io/datarecord/design/tools/#a-value-its-type-does-not-take)
+    """
+    from datarecord.mutable import WorkingRecord
+
+    w = WorkingRecord(single_revision.record)
+    w.set("p_max_pu", 0.9)
+
+    report = PyPSA.verify(w)
+    assert not report, "a value its type does not take fails no build"
+    assert {("Load", "p_max_pu"), ("Line", "p_max_pu")} <= report.ignored
+    assert ("Link", "p_max_pu") not in report.ignored, "a link takes p_max_pu"
+    n = PyPSA.build(w)
+    assert (n.c.Link.static["p_max_pu"] == 0.9).all()
+    assert "p_max_pu" not in n.c.Load.static
+    assert "p_max_pu" not in n.c.Load.dynamic
+
+
 def test_verify_reports_an_entity_attached_to_no_bus(single_revision):
     """Removing a bus removes its connections; what was attached to it is unbuildable.
 
@@ -279,8 +301,8 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
     # Declared alongside PyPSA's own types, since the `Enum` pins the
     # vocabulary.
     declared = read_schema(store)
-    assert declared.categorizing("entity") == (COMPONENT,)
-    prop = declared.properties["entity"][COMPONENT]
+    assert declared.categorizing("entity") == (CTYPE,)
+    prop = declared.properties["entity"][CTYPE]
     assert isinstance(prop.dtype, nw.Enum), "PyPSA declares its types as an enum"
     write_schema(
         declared.model_copy(
@@ -289,7 +311,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
                     **declared.properties,
                     "entity": {
                         **declared.properties["entity"],
-                        COMPONENT: prop.model_copy(
+                        CTYPE: prop.model_copy(
                             update={
                                 "dtype": nw.Enum([*prop.dtype.categories, "Widget"])
                             }
@@ -342,18 +364,11 @@ def _with_schema(revision, **kwargs) -> None:
         for name, spec in was.attributes.items()
         if (pruned := spec.model_copy(update={"dims": spec.dims & addressable})).dims
     }
-    traits = {
-        ctype: trait.model_copy(
-            update={"attributes": trait.attributes & attributes.keys()}
-        )
-        for ctype, trait in was.traits.items()
-    }
     now = now.model_copy(
         update={
             "attributes": attributes,
             "groups": was.groups,
             "properties": was.properties,
-            "traits": traits,
             "meta": was.meta,
         }
     )
@@ -524,18 +539,24 @@ def test_to_datarecord_rejects_a_custom_column_declared_over_another_dim(
 
 
 @pytest.mark.parametrize(
-    ("ctype", "column", "dim"),
-    [("Bus", "country", "bus"), ("Generator", "location", "entity")],
-    ids=["bus", "beside-a-bus-property"],
+    ("ctype", "column", "value", "dim"),
+    [
+        ("Bus", "country", "site", "bus"),
+        ("Generator", "location", "site", "entity"),
+        ("Generator", "e_nom", 5.0, "entity"),
+    ],
+    ids=["bus", "beside-a-bus-property", "named-like-another-types-input"],
 )
-def test_a_custom_column_round_trips_on_its_own_type(store, ctype, column, dim):
+def test_a_custom_column_round_trips_on_its_own_type(store, ctype, column, value, dim):
     """A column PyPSA's registry lacks is an attribute over its type's dim.
 
-    A generator's own `location` is no clash with `bus.location`, a property.
+    A generator's own `location` is no clash with `bus.location`, a property,
+    and its own `e_nom` is built onto it though the registry gives `e_nom` to
+    a store alone.
     """
     n = _north()
     n.c.Bus.static["location"] = "DE1"
-    n.c[ctype].static[column] = "site"
+    n.c[ctype].static[column] = value
 
     record = export_network(n, store).record
     assert record.schema.attributes[column].dims == {dim}
@@ -590,7 +611,7 @@ def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
 
     record = export_network(n, store).record
     entities = record.properties["entity"]
-    sub_networks = entities.filter(nw.col("component") == "SubNetwork")
+    sub_networks = entities.filter(nw.col("ctype") == "SubNetwork")
     names = sub_networks.collect().to_pandas()["entity"]
     assert sorted(names) == [f"{i} SubNetwork" for i in range(4)]
     results = PyPSA.results(n, store.workspace.con)
@@ -704,9 +725,9 @@ def test_results_extracts_long_form_outputs(single_revision, solved):
     assert isinstance(results["p"], nw.LazyFrame)
     p = results["p"].collect()
     # The long schema's columns (https://energy-models.github.io/datarecord/design/record/), so the write path can persist it as-is -
-    # and no `component`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
+    # and no `ctype`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
     assert {"connection", "snapshot", "scenario", "value"} <= set(p.columns)
-    assert "component" not in p.columns
+    assert "ctype" not in p.columns
     assert "period" not in p.columns, "a series over `snapshot` reaches its period"
     assert set(p["attribute"].to_list()) == {"p"}
     # Series output: one row per (name, snapshot), for the Generator rows -
@@ -1045,7 +1066,7 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
     from datarecord.mutable import WorkingRecord
 
     sign = _registry_schema().properties["entity"]["sign"]
-    assert sign.default_by["entity.component"]["Load"] == -1.0, (
+    assert sign.default_by["entity.ctype"]["Load"] == -1.0, (
         "PyPSA declares a load's sign through `default_by`"
     )
 
@@ -1055,8 +1076,8 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
     root = export_network(n, store)
 
     staged = WorkingRecord(root.record)
-    staged.add("entity", ["l1"], component="Load")
-    staged.add("entity", ["su1"], component="StorageUnit")
+    staged.add("entity", ["l1"], ctype="Load")
+    staged.add("entity", ["su1"], ctype="StorageUnit")
     staged.add_group(
         "connection",
         pd.DataFrame(

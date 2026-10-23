@@ -17,7 +17,7 @@ All notable changes to datarecord are documented here. The format follows
   changes:
   - **A property's name is its subject's**, addressed as `subject.name`:
     `set("bus.x", ...)`, a trait's `on` and bundled properties, and
-    `default_by` keys (`{"entity.component": {...}}`). One name, one spec
+    `default_by` keys (`{"entity.ctype": {...}}`). One name, one spec
     now holds across attributes and results only, so a property may share
     its name with an attribute, a dim or another subject's property; one
     named like its subject's key (the dim, a group's struct column or
@@ -49,7 +49,7 @@ All notable changes to datarecord are documented here. The format follows
     nor the `Line.v_nom` and `ShuntImpedance.v_nom` PyPSA copies from the
     bus, so a solved network exports. `entity.carrier` and `bus.carrier`
     are `into` `carrier`: `to_datarecord` adds every carrier named but not
-    listed and stores `""` as NULL. `entity_type` is `entity.component`,
+    listed and stores `""` as NULL. `entity_type` is `entity.ctype`,
     and `bus` joins `partial`. A bus and a load may share a name; a custom
     column clashes only with an attribute over another dim. `verify`
     reports an entity attached to no bus. Every PyPSA record is
@@ -68,11 +68,11 @@ All notable changes to datarecord are documented here. The format follows
   whatever its `dims`, is stored in `inputs/`. On reading, `dims[dim]` holds
   key columns only, `properties[subject]` the stored property values, and
   `attributes` every attribute; `entity_types` is gone and `flags` takes
-  categories (`flags(component="Generator")`). `WorkingRecord` edits any
+  categories (`flags(ctype="Generator")`). `WorkingRecord` edits any
   dim: `add(dim, labels, **properties)`, `remove(dim, labels)` (cascading to
   group tuples), and `set(name, value, **coords)` writing attributes and
   properties alike, a property keyword selecting labels at call
-  time; `set` loses `indexed_by`. The PyPSA tool declares `component`,
+  time; `set` loses `indexed_by`. The PyPSA tool declares `ctype`,
   `carrier`, `sign` and `type` as properties of `entity` and `role` of
   `connection`, with `partial={"entity", "scenario", "connection"}`. Every
   manifest and record is rewritten.
@@ -194,6 +194,19 @@ All notable changes to datarecord are documented here. The format follows
   group cascade, the writer's live-label check and the label and trait check
   of `set` now cover every dim. `Schema.axis_key` is gone. `PyPSA.results`
   no longer carries an always-NULL `period` column.
+- **Traits are gone** (breaking): `Trait`, `Schema.traits`,
+  `Schema.attributes_for` and `Schema.properties_for` are removed. An
+  attribute reaches every label its `dims` address and a property every
+  label of its subject, whatever their categories: a NULL on a categorized
+  dim reaches every label, `flags(**categories)` holds every attribute with
+  a row reaching a matching label, and `set` no longer refuses a label whose
+  category lacked the attribute. Scope a value with a category keyword,
+  `set("p_max_pu", 0.9, ctype="Generator")`. The PyPSA tool keeps the
+  per-type vocabulary itself: `build` leaves out a value its type does not
+  take, reported in the new `Requirements.ignored` without failing
+  `verify`, and `to_datarecord` records a network's custom entity columns
+  per type in the schema's `meta`. Every record declaring traits is
+  re-exported.
 
 ### Fixed
 

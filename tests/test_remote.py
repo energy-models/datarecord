@@ -149,9 +149,7 @@ def test_a_write_failing_part_way_leaves_no_revision(workspace, bucket):
     short = _long().drop(columns=["breakpoint"])
     source = _Source(
         _SCHEMA,
-        dims={
-            "entity": pd.DataFrame({"entity": ["steel_dri"], "component": ["Process"]})
-        },
+        dims={"entity": pd.DataFrame({"entity": ["steel_dri"], "ctype": ["Process"]})},
         attributes={"p_nom": short},
     )
     with pytest.raises(ValueError, match="missing long-schema columns"):

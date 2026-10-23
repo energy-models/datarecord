@@ -6,15 +6,16 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 1: dims, mappings, groups and traits
 
-| DEP     | 1                                 |
-| ------- | --------------------------------- |
-| Title   | dims, mappings, groups and traits |
-| Author  | Jonas Hörsch                      |
-| Status  | Implemented 2026-08-16            |
-| Created | 2026-08-15                        |
-| Version | v0.1.0a1                          |
+| DEP           | 1                                                     |
+| ------------- | ----------------------------------------------------- |
+| Title         | dims, mappings, groups and traits                     |
+| Author        | Jonas Hörsch                                          |
+| Status        | Implemented 2026-08-16                                |
+| Created       | 2026-08-15                                            |
+| Version       | v0.1.0a1                                              |
+| Superseded-By | [DEP 16](dep-0016-remove-traits.md) (its traits part) |
 
-**This page is the argument, not the design.** What shipped is described by [the schema](../schema.md) — [groups](../schema.md#groups), [traits](../schema.md#traits) — together with [the record format](../format.md) and [the read path](../read-path.md), and those pages are authoritative where the two disagree.
+**This page is the argument, not the design.** What shipped is described by [the schema](../schema.md) — [groups](../schema.md#groups), traits, since removed by [DEP 16](dep-0016-remove-traits.md) — together with [the record format](../format.md) and [the read path](../read-path.md), and those pages are authoritative where the two disagree.
 The `on` mapping this page landed has since been [absorbed into groups as `into`](dep-0002-groups.md), so its half of the argument describes a construct that no longer exists.
 
 It is kept because the reasoning is not reproduced there: why `keys` was deleted rather than replaced, why `bus` stopped being structural, and what the [worked example](#a-pypsa-network-in-full) exposed about vocabulary collisions.

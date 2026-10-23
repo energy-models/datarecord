@@ -130,7 +130,7 @@ def test_a_write_builds_each_key_once(store):
         attributes={"p_nom": _long(), "e_nom": _long(attribute="e_nom")},
         dims={"entity": pd.DataFrame({"entity": ["steel_dri"]})},
         properties={
-            "entity": pd.DataFrame({"entity": ["steel_dri"], "component": ["Process"]})
+            "entity": pd.DataFrame({"entity": ["steel_dri"], "ctype": ["Process"]})
         },
     )
     store.root(source)
@@ -190,7 +190,7 @@ def test_no_layer_file_carries_order_key(store, tmp_path):
             dims={"entity": pd.DataFrame({"entity": entities})},
             properties={
                 "entity": pd.DataFrame(
-                    {"entity": entities, "component": ["Process", "Bus"]}
+                    {"entity": entities, "ctype": ["Process", "Bus"]}
                 )
             },
             connections={"connection": pd.DataFrame({"connection": [connection]})},
@@ -214,7 +214,7 @@ def test_no_layer_file_carries_order_key(store, tmp_path):
 
 
 def test_a_write_rejects_a_category_the_enum_does_not_declare(store):
-    entities = pd.DataFrame({"entity": ["a"], "component": ["Nope"]})
+    entities = pd.DataFrame({"entity": ["a"], "ctype": ["Nope"]})
     with pytest.raises(Exception, match="Nope"):
         store.root(
             _Source(
@@ -613,14 +613,14 @@ def test_an_attribute_column_in_a_dims_frame_is_refused(store):
 
 
 def _plant(p_nom: frozenset[str], *, categorized: bool = False) -> Schema:
-    """Entities and scenarios, `p_nom` over `p_nom`, `component` if `categorized`."""
+    """Entities and scenarios, `p_nom` over `p_nom`, `ctype` if `categorized`."""
     return Schema(
         dimensions={
             "entity": Dimension(dtype=nw.String()),
             "scenario": Dimension(dtype=nw.String()),
         },
         properties=(
-            {"entity": {"component": PropertySpec(dtype=nw.Enum(["Gen", "Load"]))}}
+            {"entity": {"ctype": PropertySpec(dtype=nw.Enum(["Gen", "Load"]))}}
             if categorized
             else {}
         ),
@@ -699,7 +699,7 @@ def test_categories_add_one_column_to_the_entity_axis_and_nothing_else(tmp_path)
         ws = Workspace()
         try:
             store = ws.store(str(tmp_path / str(categorized)))
-            columns = {"component": "Gen"} if categorized else {}
+            columns = {"ctype": "Gen"} if categorized else {}
             layer = _plant_layer(
                 store, _plant(frozenset({"entity"}), categorized=categorized), **columns
             )
@@ -714,14 +714,12 @@ def test_categories_add_one_column_to_the_entity_axis_and_nothing_else(tmp_path)
 
     (plain_files, plain_axis), (typed_files, typed_axis) = layouts[False], layouts[True]
     assert plain_files == typed_files, "the same files"
-    assert not any(f.startswith("dims/component") for f in typed_files), (
-        "no per-label file"
-    )
-    assert set(typed_axis.columns) - set(plain_axis.columns) == {"component"}
+    assert not any(f.startswith("dims/ctype") for f in typed_files), "no per-label file"
+    assert set(typed_axis.columns) - set(plain_axis.columns) == {"ctype"}
     assert set(plain_axis.columns) <= set(typed_axis.columns), (
         "differing by exactly one column"
     )
-    assert dict(zip(typed_axis["entity"], typed_axis["component"].astype(str))) == {
+    assert dict(zip(typed_axis["entity"], typed_axis["ctype"].astype(str))) == {
         "g1": "Gen",
         "g2": "Gen",
     }, "the category is read back from the axis file"
