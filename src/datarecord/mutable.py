@@ -712,15 +712,15 @@ class WorkingRecord(Record):
         KeyError
             On an undeclared attribute or keyword, a `partial` dim's
             label the record does not resolve, a property's label no layer
-            wrote, or a value of a property `{"one_of": <dim>}` naming no label
-            of it.
+            wrote, or a value of a `one_of` property that is no label of its
+            dim.
         ValueError
             On a keyword the attribute does not vary over, a sequence with no single list keyword to align to,
-            keys whose coordinate is ambiguous, a label a closed dim does not
-            list, a property keyword whose dim the attribute does not reach
+            keys whose coordinate is ambiguous, a label its enum-dtype dim does
+            not list, a property keyword whose dim the attribute does not reach
             through exactly one coordinate, or that is given beside that
-            coordinate's own keyword, or a frame column or label of a type its
-            dtype does not take, timestamps with a time zone among them.
+            coordinate's own keyword, or a frame column or label whose type
+            does not fit its dtype, timestamps with a time zone among them.
 
         Notes
         -----
@@ -816,11 +816,11 @@ class WorkingRecord(Record):
         Raises
         ------
         KeyError
-            On a label the record does not resolve, or a value of a property
-            `{"one_of": <dim>}` naming no label of it.
+            On a label the record does not resolve, or a value of a `one_of`
+            property that is no label of its dim.
         ValueError
-            On a label a closed dim does not list or of a type its dtype does
-            not take, and as `_axis_values` does.
+            On a label its enum-dtype dim does not list or whose type does not
+            fit its dtype, and as `_axis_values` does.
         """
         call = f"`set({f'{dim}.{name}'!r}, ...)`"
         values = self._axis_values(dim, name, value, coords)
@@ -843,11 +843,11 @@ class WorkingRecord(Record):
         ------
         KeyError
             Where keywords are given and select no tuple, or on a value of a
-            property `{"one_of": <dim>}` naming no label of it.
+            `one_of` property that is no label of its dim.
         ValueError
             On a keyword naming no field of `group`, a value that is not a
-            scalar, or a label a closed dim does not list or of a type its
-            dtype does not take.
+            scalar, or a label its enum-dtype dim does not list or whose type
+            does not fit its dtype.
         """
         call = f"set({f'{group}.{name}'!r}, ...)"
         key = self.schema.group_key(group)
@@ -925,16 +925,17 @@ class WorkingRecord(Record):
     def _require_live(
         self, subject: str, data: Mapping[str, Sequence[Any]], call: str
     ) -> None:
-        """Reject a value of a property `{"one_of": <dim>}` of `subject` naming no label of it, as staged.
+        """Refuse a value of a `one_of` property of `subject` that is no label of its dim.
 
-        NULL names none and passes.
+        The labels are those of the record as staged. NULL is no label and
+        passes.
 
         Raises
         ------
         KeyError
             Naming the unknown labels.
         ValueError
-            On a value of a type `<dim>`'s dtype does not take.
+            On a value whose type does not fit the dtype of the dim.
 
         Notes
         -----
@@ -948,7 +949,7 @@ class WorkingRecord(Record):
                 self._require_existing(
                     dim,
                     values,
-                    why=f"`{subject}.{name}` is one of {dim!r}, so names its labels",
+                    why=f"each value of `{subject}.{name}` must be a label of {dim!r}",
                 )
 
     def _select(self, name: str, coords: Mapping[str, Any]) -> dict[str, Any]:
@@ -966,7 +967,7 @@ class WorkingRecord(Record):
             Where the keyword is a property of several dims `name` reaches,
             `name` reaches the dim through no coordinate or several, the
             coordinate is also given as a keyword, a keyword is dotted, or a
-            value is a label a closed dim does not list.
+            value is a label its enum-dtype dim does not list.
 
         Notes
         -----
@@ -1064,11 +1065,11 @@ class WorkingRecord(Record):
             self._require_labels(dim, labels)
 
     def _require_typed(self, dim: str, labels: Sequence[Any], call: str) -> None:
-        """Refuse a label of `dim` of a type its dtype does not take (`takes`).
+        """Refuse a label whose type does not fit the dtype of `dim` (`takes`).
 
-        A label's type is the one DuckDB binds it as, so a string never reaches
-        a `datetime` dim's cast, which would parse it. One label per Python
-        type is bound, a list mixing types being checked per type.
+        A label has the type DuckDB binds it as, so a string is refused for a
+        `datetime` dim rather than parsed by the cast. One label per Python
+        type is bound, so a list mixing types is checked once per type.
 
         Raises
         ------
@@ -1086,8 +1087,8 @@ class WorkingRecord(Record):
             given = self._values_relation({dim: [label]}, {dim: None}).types[0]
             if not takes(declared, given):
                 msg = (
-                    f"{call}: label {label!r} is {given}, which {dim!r} does "
-                    f"not take, its dtype being {shown}"
+                    f"{call}: label {label!r} has type {given}, which does not "
+                    f"fit {dim!r} of dtype {shown}"
                 )
                 raise ValueError(msg)
 
@@ -1143,7 +1144,7 @@ class WorkingRecord(Record):
         try:
             projected.insert_into(table)
         except duckdb.ConversionException as exc:
-            # A closed dim's column reaches DuckDB as an `ENUM`, so this is what
+            # An enum-dtype dim's column reaches DuckDB as an `ENUM`, so this is what
             # rejects a label it does not list - as a conversion to `UINT8`,
             # the enum's storage type, naming neither the dim nor its labels.
             # The source column is in the message, which is what makes it
@@ -1165,8 +1166,8 @@ class WorkingRecord(Record):
             if listed is None:
                 raise
             msg = (
-                f"{source!r} names a label its closed dim does not list; it "
-                f"lists {list(listed)}"
+                f"{source!r} names a label its enum-dtype dim does not list; "
+                f"that dim lists {list(listed)}"
             )
             raise ValueError(msg) from exc
 
@@ -1329,13 +1330,13 @@ class WorkingRecord(Record):
         Raises
         ------
         KeyError
-            If the schema declares no `dim`, or on a value of a property
-            `{"one_of": <dim>}` naming no label of it.
+            If the schema declares no `dim`, or on a value of a `one_of`
+            property that is no label of its dim.
         ValueError
             On an attribute, a column the axis file has no place for, a
-            sequence of the wrong length, a label a closed dim does not
-            list, `dim`'s own included, or a label of a type `dim`'s dtype
-            does not take.
+            sequence of the wrong length, a label its enum-dtype dim does not
+            list, `dim`'s own included, or a label whose type does not fit the
+            dtype of `dim`.
 
         Notes
         -----
@@ -1382,9 +1383,9 @@ class WorkingRecord(Record):
         Raises
         ------
         ValueError
-            On a label of a type `dim`'s dtype does not take, or while a
-            property `{"one_of": dim}` stores one of `labels`, the record as
-            staged read.
+            On a label whose type does not fit the dtype of `dim`, or while a
+            property `{"one_of": dim}` stores one of `labels` in the record as
+            staged.
 
         Notes
         -----
@@ -1422,7 +1423,7 @@ class WorkingRecord(Record):
             )
 
     def _require_unnamed(self, dim: str, labels: Sequence[Any]) -> None:
-        """Refuse removing `labels` of `dim` while a property naming it stores one.
+        """Refuse removing `labels` of `dim` while a property naming `dim` stores one of them.
 
         A tuple naming a label goes with it, but a property's row is its
         subject's, which outlives the label; clearing it is the caller's edit.
@@ -1528,8 +1529,8 @@ class WorkingRecord(Record):
         Raises
         ------
         ValueError
-            On a missing group column, an attribute column, a column of a type
-            its dtype does not take, and as `Schema.check_group_columns` does.
+            On a missing group column, an attribute column, a column whose type
+            does not fit its dtype, and as `Schema.check_group_columns` does.
 
         Notes
         -----
@@ -1717,11 +1718,10 @@ class WorkingRecord(Record):
         return union_all_by_name([staged, untouched], self.con)
 
     def _staged_groups(self) -> Relations:
-        """The staged group rows, keyed by group - one relation each.
+        """Return the staged rows of each group, one relation per group.
 
-        A `Relations` for `StagedSource.groups()`'s key set, not a builder of
-        the rows themselves - `StagedSource.group` reads those directly off
-        `_collapsed_group`.
+        `StagedSource.groups()` reads only its keys; `StagedSource.group` reads
+        the rows directly from `_collapsed_group`.
         """
         staged = {
             g: rel
@@ -1800,7 +1800,7 @@ def _column_type(
 
 
 def _group_columns(schema: Schema, group: str) -> dict[str, DuckDBPyType]:
-    """One group's staged columns: its struct column, its tombstone and its properties.
+    """Return the staged columns of `group`: its struct column, its tombstone and its properties.
 
     Notes
     -----
@@ -1891,10 +1891,10 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, DuckDBPyType]:
 
 
 def _scalar(value: Any) -> Any:
-    """`value` as DuckDB binds a parameter: a numpy scalar as its Python one.
+    """Return `value` as DuckDB binds a parameter, turning a numpy scalar into a Python one.
 
-    numpy is looked up among the imported modules, a numpy scalar being
-    impossible without it.
+    numpy is only looked up among the imported modules, since a numpy scalar
+    cannot exist without it.
     """
     numpy = sys.modules.get("numpy")
     if numpy is not None and isinstance(value, numpy.generic):

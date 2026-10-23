@@ -893,30 +893,30 @@ def test_a_write_stores_the_declared_type_widening_a_column(
             "attributes/p_nom.parquet",
             "value",
             ["high"],
-            "'p_nom' does not take, its dtype being float \\(DOUBLE\\)",
+            "does not fit 'p_nom' of dtype float \\(DOUBLE\\)",
         ),
         (
             "attributes/units.parquet",
             "value",
             [1.5],
-            "'units' does not take, its dtype being int \\(BIGINT\\)",
+            "does not fit 'units' of dtype int \\(BIGINT\\)",
         ),
         (
             "dims/entity.parquet",
             "x",
             ["high"],
-            "'entity.x' does not take, its dtype being float \\(DOUBLE\\)",
+            "does not fit 'entity.x' of dtype float \\(DOUBLE\\)",
         ),
         (
             "dims/snapshot.parquet",
             "snapshot",
             ["2030-01-01"],
-            "'snapshot' does not take, its dtype being datetime \\(TIMESTAMP\\)",
+            "does not fit 'snapshot' of dtype datetime \\(TIMESTAMP\\)",
         ),
     ],
     ids=["attribute", "attribute-int", "property", "axis"],
 )
-def test_a_write_refuses_a_column_its_dtype_does_not_take(
+def test_a_write_refuses_a_column_that_does_not_fit_its_dtype(
     store, file, column, values, match
 ):
     """A column of another kind is refused, naming what declares it and its dtype.
@@ -928,7 +928,9 @@ def test_a_write_refuses_a_column_its_dtype_does_not_take(
     -----
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     """
-    with pytest.raises(ValueError, match=f"{file}: column '{column}' is .*{match}"):
+    with pytest.raises(
+        ValueError, match=f"{file}: column '{column}' has type .*{match}"
+    ):
         store.root(_typed(file, column, values))
     _nothing_reachable(store)
 

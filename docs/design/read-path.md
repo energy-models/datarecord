@@ -37,7 +37,7 @@ A group is one column, so which columns name a connection is legible from the ma
 An attribute over such a group and no other `partial` coordinate has the key `(attribute)` alone, the grain of a record-level weighting.
 
 No category is on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the resolved entity axis is what says which categories an entity has.
-That axis is what every category-scoped question goes through — [per-category `flags`](record.md#flags) join it, as does a consumer wanting one type's frame — and it carries each [categorizing property](schema.md#categories-labels-of-a-closed-dim) as a column, functionally determined by the label rather than keyed alongside it, so a re-categorized label is one row with a new value.
+That axis is what every category-scoped question goes through — [per-category `flags`](record.md#flags) join it, as does a consumer wanting one type's frame — and it carries each [categorizing property](schema.md#categories-labels-of-an-enum-dtype-dim) as a column, functionally determined by the label rather than keyed alongside it, so a re-categorized label is one row with a new value.
 
 The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.

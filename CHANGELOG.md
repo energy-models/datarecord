@@ -224,11 +224,11 @@ All notable changes to datarecord are documented here. The format follows
   pandas, polars or arrow frame, read by DuckDB's own scanner, and refuse
   timestamps with a time zone, casting a column only to a wider type of its
   kind and refusing any other. A dtype is mathspec's (`float`, `int`, `bool`, `str`, `datetime`);
-  a dim may list its labels, `{"one_of": [...]}`, an `ENUM` `add` checks:
-  the labels it allows, its axis holding only those added, and
+  a dim may list the labels it allows, `{"one_of": [...]}`, which makes it an enum-dtype dim: its
+  column is an `ENUM`, `add` refuses an unlisted label, and its axis holds only the labels added, and
   a property may name a dim, `{"one_of": "<dim>"}`, which replaces `into` on
-  properties and groups. The PyPSA tool declares closed `ctype` and `role`
-  dims, writing every label they list, and a `timestep` dim. Every record is
+  properties and groups. The PyPSA tool declares enum-dtype `ctype` and
+  `role` dims, writing every label they list, and a `timestep` dim. Every record is
   re-exported.
 
 ### Fixed
@@ -243,13 +243,13 @@ All notable changes to datarecord are documented here. The format follows
 - The writer holds a column to its declared dtype as `set` does: an
   attribute's `value` is stored as its dtype, an integer column under a
   `float` attribute as `DOUBLE` rather than `BIGINT`, and a column of a type
-  its dtype does not take - a string for a `datetime` dim or a `float`
+  that does not fit its dtype - a string for a `datetime` dim or a `float`
   property - is refused naming the attribute, property or dim and its dtype,
   rather than parsed or cast. A column holding only NULLs passes as its
   declared type's NULL, in `set` and `add_group` too, whatever type its
   dataframe library gave it. The PyPSA
   tool's static rows no longer widen an integer `snapshot` to `DOUBLE`.
-- A label of a type its dim's dtype does not take - a series index, mapping
+- A label of a type that does not fit its dim's dtype - a series index, mapping
   keys or a keyword of `set`, a group property's field keyword, the labels of
   `add` and `remove`, or a value of a property naming a dim - is refused with
   the dim and its dtype named, by the rule a frame's column is held to, rather

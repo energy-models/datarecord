@@ -129,7 +129,7 @@ def test_verify_accepts_a_complete_record(single_revision):
 
 @pytest.mark.parametrize("dim", ["ctype", "role"])
 def test_the_tool_writes_every_type_and_role_it_lists(single_revision, dim):
-    """A tool convention, not a rule of closed dims: the axis is the whole list.
+    """A tool convention, not a rule of enum-dtype dims: the axis is the whole list.
 
     Notes
     -----
@@ -317,7 +317,7 @@ def test_verify_reports_a_missing_dim(exported):
 def test_verify_reports_a_type_the_tool_does_not_know(exported):
     """A type outside PyPSA's registry is reported by `verify`, not raised in the fold.
 
-    The type must be one the *schema* declares - `ctype` is a closed dim and
+    The type must be one the *schema* declares - `ctype` is an enum-dtype dim and
     its list is upheld everywhere, so a record cannot hold a type its own
     schema excludes. What it can hold is a type this tool has no
     registry entry for, which reads back fine and is this tool's business rather
@@ -325,16 +325,16 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
 
     Notes
     -----
-    - [entity types](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
+    - [entity types](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-an-enum-dtype-dim)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision, store = exported, exported.store
-    # Declared alongside PyPSA's own types, since the closed dim pins the
+    # Declared alongside PyPSA's own types, since the enum-dtype dim pins the
     # vocabulary.
     declared = read_schema(store)
     assert declared.categorizing("entity") == (CTYPE,)
     dim = declared.dimensions[CTYPE]
-    assert isinstance(dim.dtype, OneOf), "PyPSA lists its types on a closed dim"
+    assert isinstance(dim.dtype, OneOf), "PyPSA lists its types on an enum-dtype dim"
     listed = OneOf(one_of=(*dim.dtype.one_of, "Widget"))
     write_schema(
         declared.model_copy(

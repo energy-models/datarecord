@@ -153,7 +153,7 @@ class RecordLike(Protocol):
 
     @property
     def dims(self) -> Relations:
-        """Axis relations, keyed by dim: each one's label column, nothing else.
+        """Axis relations keyed by dim, each holding only the dim's label column.
 
         Properties are in `properties`, attributes in `attributes`.
 
@@ -319,7 +319,7 @@ class Record:
 
     @property
     def con(self) -> DuckDBPyConnection:
-        """The calling thread's cursor, which a relation from this record is planned on."""
+        """The cursor of the calling thread, which the relations of this record are planned on."""
         return self.resolver.con
 
     @_stable_cache
@@ -387,7 +387,7 @@ class Record:
 
     @staticmethod
     def _rel(rel: DuckDBPyRelation | None, key: str) -> DuckDBPyRelation:
-        """`rel`, which carries member order as its row order; a miss raises `KeyError(key)`.
+        """Return `rel`, whose row order is member order, or raise `KeyError(key)` if it is None.
 
         The resolved relation is folded in first-introduced member order and read
         back order-preserving (`fold_axis`), so a `Record` promises that order

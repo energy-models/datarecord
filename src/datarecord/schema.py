@@ -45,22 +45,31 @@ from pydantic import (
 from datarecord.duck import DUCK_TYPES, enum_type, fn, takes
 
 
-def _parse_dtype(value: Any, plain: tuple[str, ...], one_of: str | None) -> Any:
-    """`value` as a dtype allows it, refusing a malformed `one_of`.
+def _parse_dtype(
+    value: Any, plain: tuple[str, ...], one_of: type[OneOf | OneOfDim] | None
+) -> Any:
+    """Check a declared dtype and return it unchanged.
 
     Parameters
     ----------
     plain
-        The mathspec dtypes a declaration of this kind takes.
+        The mathspec dtypes this declaration accepts.
     one_of
-        How its `one_of` is written, `[...]` for a dim and `"<dim>"` for a
-        property, or None where it takes none.
+        The model a `{"one_of": ...}` dtype is parsed into: `OneOf` for a dim,
+        `OneOfDim` for a property, or None where `one_of` is not accepted.
+
+    Raises
+    ------
+    ValueError
+        On a dtype that is none of the accepted ones, or a `one_of` that is
+        not accepted or not written as `one_of` expects.
 
     Notes
     -----
     - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
     """
-    forms = ", ".join(plain) + (f', or {{"one_of": {one_of}}}' if one_of else "")
+    written = None if one_of is None else "[...]" if one_of is OneOf else '"<dim>"'
+    forms = ", ".join(plain) + (f', or {{"one_of": {written}}}' if written else "")
     if isinstance(value, str) and value not in plain:
         msg = f"dtype {value!r} is none of {forms}"
         raise ValueError(msg)
@@ -72,22 +81,25 @@ def _parse_dtype(value: Any, plain: tuple[str, ...], one_of: str | None) -> Any:
                 f"parameter has none; write one of {forms}"
             )
             raise ValueError(msg)
-        if isinstance(labels, str) == (one_of == "[...]"):
-            msg = f'dtype {json.dumps(value)} writes `one_of` as {{"one_of": {one_of}}}'
+        if isinstance(labels, str) == (one_of is OneOf):
+            msg = (
+                f'dtype {json.dumps(value)} writes `one_of` as {{"one_of": {written}}}'
+            )
             raise ValueError(msg)
     return value
 
 
 class _Declared(BaseModel):
-    """A model `manifest.json` is parsed into, refusing a key it does not declare."""
+    """Base of the models `manifest.json` is parsed into, which refuse undeclared keys."""
 
     model_config = ConfigDict(extra="forbid")
 
 
 class OneOf(_Declared):
-    """A dim's dtype listing its labels, `{"one_of": [...]}`: a closed dim.
+    """The dtype `{"one_of": [...]}` of a dim, listing the labels the dim allows.
 
-    Its column is an `ENUM` of the labels, in their order.
+    A dim with this dtype is an enum-dtype dim. Its column is an `ENUM` of the
+    labels, in their order.
 
     Notes
     -----
@@ -107,9 +119,9 @@ class OneOf(_Declared):
 
 
 class OneOfDim(_Declared):
-    """A property's dtype naming the dim its values are labels of, `{"one_of": "<dim>"}`.
+    """The dtype `{"one_of": "<dim>"}` of a property whose values are labels of that dim.
 
-    Its column has that dim's type.
+    The property's column has the dim's type.
 
     Notes
     -----
@@ -122,7 +134,7 @@ class OneOfDim(_Declared):
 
 # Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Not the
 # dims or properties: each is declared and typed from that declaration, which is
-# what lets a closed dim's `ENUM` pin its vocabulary. These are the ones no schema
+# what lets the `ENUM` of an enum-dtype dim pin its labels. These are the ones no schema
 # names - `breakpoint` is NULL for an ordinary scalar, so one column set serves
 # every row.
 STRUCTURAL_TYPES = {
@@ -228,7 +240,8 @@ class Dimension(_Declared):
     ----------
     dtype
         The axis labels' type: a mathspec `DimensionDtype`, or
-        `{"one_of": [...]}` listing them, which closes the dim.
+        `{"one_of": [...]}` listing the labels the dim allows, which makes it
+        an enum-dtype dim.
     unit
         What this axis's *labels* measure, if anything - `None` is undeclared,
         `""` genuinely dimensionless.
@@ -250,7 +263,7 @@ class Dimension(_Declared):
     @field_validator("dtype", mode="before")
     @classmethod
     def _parse_dtype(cls, value: Any) -> Any:
-        return _parse_dtype(value, get_args(DimensionDtype), "[...]")
+        return _parse_dtype(value, get_args(DimensionDtype), OneOf)
 
 
 class _ValueSpec(_Declared):
@@ -373,15 +386,17 @@ class PropertySpec(_ValueSpec):
     column of `dims/{dim}.parquet`, or of `groups/{group}.parquet` for a group.
     Its name is its subject's alone, so it is addressed as `subject.name`
     (`Schema.resolve`).
-    A property of a dim in `partial` naming a closed dim categorizes it
-    (`Schema.categorizing`); a group's never does.
+    A property of a dim in `partial` whose dtype names an enum-dtype dim
+    categorizes its subject (`Schema.categorizing`). A property of a group
+    never does.
 
     Attributes
     ----------
     dtype
         The column's type: a mathspec `ParameterDtype`, or `{"one_of": "<dim>"}`
-        naming the dim whose labels its values are, typed as that dim. A
-        stored non-NULL value of the latter names a live label of it.
+        naming a dim. With `one_of`, the values are labels of that dim and
+        have its type, and a stored value that is not NULL must be a live
+        label of the dim.
     default
         The value a label no row sets takes.
     default_by
@@ -407,7 +422,7 @@ class PropertySpec(_ValueSpec):
     @field_validator("dtype", mode="before")
     @classmethod
     def _parse_dtype(cls, value: Any) -> Any:
-        return _parse_dtype(value, get_args(ParameterDtype), '"<dim>"')
+        return _parse_dtype(value, get_args(ParameterDtype), OneOfDim)
 
 
 class Group(_Declared):
@@ -481,8 +496,8 @@ class Schema(_Declared):
         Subject dim or group -> property name -> spec: the columns of
         `dims/{dim}.parquet` or `groups/{group}.parquet` that describe its
         labels. A name is unique within its subject only, addressed as
-        `subject.name`. A dim's properties naming a closed dim categorize it
-        where it is in `partial`.
+        `subject.name`. A property of a dim in `partial` whose dtype names an
+        enum-dtype dim categorizes its subject.
     groups
         Group name -> which tuples over several dims exist.
     partial
@@ -579,7 +594,15 @@ class Schema(_Declared):
         return self
 
     def _categorized_by(self, name: str, what: str) -> tuple[str, str]:
-        """The dim and property dotted `name` categorizes, for a `default_by` key `what` names."""
+        """Split the `default_by` key `name` into a dim and one of its categorizing properties.
+
+        `what` names the declaration holding the key, for the error.
+
+        Raises
+        ------
+        ValueError
+            If `name` is not `subject.name` of a categorizing property.
+        """
         subject, _, prop = name.partition(".")
         if prop not in self.properties.get(subject, {}):
             reason = "is no property, named `subject.name`"
@@ -602,7 +625,7 @@ class Schema(_Declared):
         raise ValueError(msg)
 
     def _check_properties(self) -> None:
-        """Refuse a property on an undeclared subject or naming an undeclared dim, or a malformed `default_by`."""
+        """Refuse a property of an undeclared subject, a `one_of` naming an undeclared dim, and a malformed `default_by`."""
         unknown = sorted(set(self.properties) - set(self.dimensions) - set(self.groups))
         if unknown:
             msg = (
@@ -614,8 +637,8 @@ class Schema(_Declared):
             if dim not in self.dimensions:
                 msg = (
                     f'property {subject}.{name} is `{{"one_of": {dim!r}}}`, an '
-                    f"undeclared dim; `one_of` names the dim whose labels its "
-                    f"values are (https://energy-models.github.io/datarecord/design/schema/#properties)"
+                    f"undeclared dim; `one_of` names a dim, and the "
+                    f"property's values are labels of that dim (https://energy-models.github.io/datarecord/design/schema/#properties)"
                 )
                 raise ValueError(msg)
         for subject, by_name in self.properties.items():
@@ -661,7 +684,7 @@ class Schema(_Declared):
                     raise ValueError(msg)
 
     def one_of_properties(self) -> dict[tuple[str, str], str]:
-        """Each property `{"one_of": <dim>}`, as `(subject, name)` -> that dim.
+        """Map each property with dtype `{"one_of": <dim>}`, as `(subject, name)`, to its dim.
 
         Notes
         -----
@@ -750,7 +773,10 @@ class Schema(_Declared):
             raise ValueError(msg)
 
     def _key_of(self, subject: str) -> set[str]:
-        """The columns of `subject`'s file a property cannot be named: the dim, or the group's struct column."""
+        """Return the key column of the file of `subject`, a name no property of it may take.
+
+        That is the dim's own column, or the group's struct column.
+        """
         return {subject}
 
     # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
@@ -832,10 +858,10 @@ class Schema(_Declared):
     def duck_type(
         self, dtype: DimensionDtype | ParameterDtype | OneOf | OneOfDim
     ) -> DuckDBPyType:
-        """The DuckDB type a declared `dtype` maps to.
+        """Return the DuckDB type of a declared `dtype`.
 
-        A closed dim's is the `ENUM` of its labels, and a property naming a dim
-        takes that dim's.
+        An enum-dtype dim has the `ENUM` of its labels. A property naming a dim
+        has the type of that dim.
 
         Notes
         -----
@@ -926,11 +952,14 @@ class Schema(_Declared):
         return (*self.coordinates_of(attribute), *LONG_TAIL)
 
     def categorizing(self, dim: str) -> tuple[str, ...]:
-        """The properties of `dim` naming a closed dim, if `partial` lists it: what `default_by` keys on.
+        """Return the categorizing properties of `dim`, the ones `default_by` keys on.
+
+        A categorizing property is a property of `dim` whose dtype names an
+        enum-dtype dim. Only a dim in `partial` has any.
 
         Notes
         -----
-        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
+        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-an-enum-dtype-dim)
         """
         if dim not in self.dimensions or dim not in (self.partial or set()):
             return ()
@@ -942,11 +971,18 @@ class Schema(_Declared):
         )
 
     def _categories(self, dim: str, name: str) -> tuple[str, ...]:
-        """The labels the closed dim property `name` of `dim` names lists; empty for any other property."""
+        """Return the categories property `name` of `dim` can hold.
+
+        These are the labels of the enum-dtype dim the property names; there
+        are none if it names no enum-dtype dim.
+        """
         return self._listed(self.properties[dim][name].dtype) or ()
 
     def _listed(self, dtype: Any) -> tuple[str, ...] | None:
-        """The labels a closed dim lists, for its own dtype or a property's naming it; else None."""
+        """Return the labels an enum-dtype dim allows, or None for any other dtype.
+
+        `dtype` is the dim's own, or that of a property naming the dim.
+        """
         if isinstance(dtype, OneOfDim):
             dtype = self.dimensions[dtype.one_of].dtype
         return dtype.one_of if isinstance(dtype, OneOf) else None
@@ -961,7 +997,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
+        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-an-enum-dtype-dim)
         """
         allowed = self.categorizing(subject)
         unknown = sorted(set(keys) - set(allowed))
@@ -975,16 +1011,18 @@ class Schema(_Declared):
     def require_listed(
         self, subject: str, data: Mapping[str, Iterable[Any]], what: str
     ) -> None:
-        """Refuse a label of a closed dim it does not list.
+        """Refuse a label its enum-dtype dim does not list.
 
-        `data` maps names to values: `subject` itself where it is a closed dim,
-        or a property of `subject` naming one. Any other name is skipped, as
-        is a NULL.
+        `data` maps column names to values. A name is checked where it is
+        `subject` and `subject` is an enum-dtype dim, or where it is a
+        property of `subject` naming an enum-dtype dim. Other names and NULL
+        values are skipped.
 
         Raises
         ------
         ValueError
-            Naming `what`, the column, the unlisted values and the labels listed.
+            Naming `what`, the column, the unlisted labels and the labels the
+            dim lists.
 
         Notes
         -----
@@ -1003,8 +1041,8 @@ class Schema(_Declared):
             unknown = sorted({str(v) for v in values if v is not None} - {*listed})
             if unknown:
                 msg = (
-                    f"{what} gives {name!r} labels {unknown}, which its closed dim "
-                    f"does not list; it lists {list(listed)}"
+                    f"{what} gives {name!r} labels {unknown}, which its enum-dtype "
+                    f"dim does not list; that dim lists {list(listed)}"
                 )
                 raise ValueError(msg)
 
@@ -1220,7 +1258,7 @@ class Schema(_Declared):
     def column_type(
         self, column: str, subject: str | None = None
     ) -> DuckDBPyType | None:
-        """The declared DuckDB type for one column, or None if the schema declares none.
+        """Return the declared DuckDB type of `column`, or None if the schema declares none.
 
         Covers the structural columns the format fixes, the declared dims and
         groups, the properties of `subject` - columns of its axis or group
@@ -1228,8 +1266,8 @@ class Schema(_Declared):
         follow the schema's dims.
 
         No dim is structural: each is declared, and typed from that
-        declaration. So a closed dim's `ENUM` pins its vocabulary everywhere
-        the column is built. An attribute is no column but a long row's value,
+        declaration. So the `ENUM` of an enum-dtype dim pins its labels
+        everywhere the column is built. An attribute is no column but a long row's value,
         typed by `value_type`.
 
         A schema declaring no dims at all is "no manifest yet" rather
@@ -1258,18 +1296,23 @@ class Schema(_Declared):
     def declared(
         self, column: str, subject: str | None = None, attribute: str | None = None
     ) -> tuple[str, DuckDBPyType, str] | None:
-        """Return what declares `column`, its DuckDB type, and its dtype as an error shows it.
-
-        None where the schema declares no type for `column`.
+        """Look up the declaration of `column`.
 
         Parameters
         ----------
         subject
-            The dim or group whose file the column is in, typing its
-            properties, named `subject.name`.
+            The dim or group whose file holds the column. A column named like
+            one of its properties is that property, named `subject.name`.
         attribute
-            The attribute whose long rows the column is in, typing `value`,
-            named for the attribute.
+            The attribute whose long rows hold the column. Its `value` column
+            is the attribute, named as it is.
+
+        Returns
+        -------
+        tuple of str, DuckDBPyType and str, or None
+            The declared name, the DuckDB type, and the dtype as an error
+            message shows it; None where the schema declares no type for
+            `column`.
 
         Notes
         -----
@@ -1301,18 +1344,19 @@ class Schema(_Declared):
         subject: str | None = None,
         attribute: str | None = None,
     ) -> DuckDBPyRelation:
-        """Return `rel`, refusing a column of a type its declared type does not `take`.
+        """Check that each column of `rel` has a type that fits its declaration, and return `rel`, with its all-NULL columns cast to their declared types.
 
-        Reads `rel`'s types, and the rows only of a column so refused: one
-        holding no value but NULL passes, cast to its declared type, since a
-        dataframe library types an empty or all-None column by guesswork.
-        `subject` and `attribute` are as `declared` takes them.
+        A column type fits where `takes` says so. A column
+        that fails this but holds only NULLs passes and is cast to its declared
+        type, because dataframe libraries guess the type of an empty or
+        all-None column. Only such columns have their rows read. `subject` and
+        `attribute` are as in `declared`.
 
         Raises
         ------
         ValueError
-            Naming `what`, each such column, its type, what declares it and
-            its dtype.
+            Naming `what`, and for each refused column its type, its
+            declared name and its dtype.
 
         Notes
         -----
@@ -1330,8 +1374,8 @@ class Schema(_Declared):
                 continue
             name, _, shown = found
             wrong.append(
-                f"column {c!r} is {given}, which {name!r} does not take, its "
-                f"dtype being {shown}"
+                f"column {c!r} has type {given}, which does not fit {name!r} "
+                f"of dtype {shown}"
             )
         if wrong:
             msg = f"{what}: {'; '.join(wrong)}"
@@ -1346,7 +1390,7 @@ class Schema(_Declared):
         )
 
     def value_type(self, attribute: str) -> DuckDBPyType | None:
-        """The `value` column's DuckDB type for one attribute.
+        """Return the DuckDB type of the `value` column of `attribute`.
 
         No `ctype`: one attribute is one `attributes/<attr>.parquet` with one
         `value` column, so the dtype is the attribute's alone.

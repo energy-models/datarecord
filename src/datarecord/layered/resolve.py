@@ -506,9 +506,10 @@ def cast_declared(
     subject: str | None = None,
     attribute: str | None = None,
 ) -> DuckDBPyRelation:
-    """`rel`, with its columns of a declared type cast, others as-is.
+    """Return `rel` with each column the schema declares a type for cast to that type.
 
-    `subject` and `attribute` are as `Schema.declared` takes them.
+    Other columns are left as they are. `subject` and `attribute` are as in
+    `Schema.declared`.
 
     Notes
     -----
@@ -599,7 +600,7 @@ def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
 
 
 def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID], bool]]:
-    """Return, per attribute in `om`, its owning layers and whether a key is owned both ways.
+    """Return the owning layers of each attribute in `om`, and whether one of its keys is owned both ways.
 
     A key is owned both ways where its `varies` and `broadcast` flags are both
     set for one `partial` dim. A flag field missing from a map folded before
@@ -619,7 +620,7 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
 
 
 def _named_mask(alias: str, dims: Sequence[str]) -> Expression:
-    """Return a bit per one of `dims`, set where the row under `alias` names a label there."""
+    """Return a bitmask with one bit per dim in `dims`, set where the row under `alias` names a label of that dim."""
     return reduce(
         operator.add,
         (
@@ -633,15 +634,16 @@ def _named_mask(alias: str, dims: Sequence[str]) -> Expression:
 def _most_specific(
     rel: DuckDBPyRelation, coordinates: Sequence[str], attribute: str
 ) -> DuckDBPyRelation:
-    """Keep the row of `rel` at each coordinate naming every dim another row there names.
+    """Keep, at each coordinate, the row of `rel` that names every dim the other rows there name.
 
-    One layer may hold a row naming a `partial` label beside one leaving that
-    dim NULL, and both join the key the label names. `_named` is the
-    `_named_mask` of the `partial` dims, so the row kept is the one whose mask
-    is the union of the masks at its coordinate. Where no row has it, two rows
-    each name a dim the other leaves NULL, which `write_layer` refuses, so the
-    layer was written another way, and the read fails on that coordinate.
-    `breakpoint` is no coordinate, so a curve is kept or dropped whole.
+    One layer may hold a row naming a label of a `partial` dim beside a row
+    leaving that dim NULL, and both join the key that label names. The column
+    `_named` holds the `_named_mask` of the `partial` dims, so the row kept is
+    the one whose mask is the union of all masks at its coordinate. Where no
+    row has that mask, two rows each name a dim the other leaves NULL.
+    `write_layer` refuses such a layer, so it was written another way, and the
+    read fails at that coordinate. `breakpoint` is no coordinate, so a curve
+    is kept or dropped whole.
 
     Notes
     -----
@@ -1394,9 +1396,9 @@ class Resolver:
     def _owners(self, attribute: str) -> tuple[list[UUID], bool]:
         """Return the layers owning a key of `attribute`, and whether one key is owned both ways.
 
-        A key is owned both ways where its layer holds one row naming a
-        `partial` label there and another leaving that dim NULL, which is when
-        `_relation` has to pick the more specific of them.
+        A key is owned both ways where one layer holds a row naming a label of
+        a `partial` dim there and another row leaving that dim NULL. Only then
+        does `_relation` have to pick the more specific row.
 
         Where every source is frozen, one scan of the map answers every
         attribute and is kept; otherwise the map may change under the reader,

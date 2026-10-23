@@ -142,7 +142,7 @@ def test_categories_read_off_the_list_when_the_axis_lacks_one(record):
 
     Notes
     -----
-    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
+    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-an-enum-dtype-dim)
     """
     assert record.dims["ctype"].df()["ctype"].tolist() == ["Generator", "Load"]
     assert record.schema.categorizing("entity") == ("ctype",)

@@ -282,8 +282,8 @@ def test_set_rejects_an_unknown_name(staged, value, kwargs):
         staged.set("p_max_pu", value, **kwargs)
 
 
-_SNAPSHOT = "'snapshot' does not take, its dtype being datetime"
-_ENTITY = "'entity' does not take, its dtype being str"
+_SNAPSHOT = "does not fit 'snapshot' of dtype datetime"
+_ENTITY = "does not fit 'entity' of dtype str"
 
 
 @pytest.mark.parametrize(
@@ -327,7 +327,7 @@ _ENTITY = "'entity' does not take, its dtype being str"
         ),
         pytest.param(
             lambda s: s.set("connection.role", "input", bus=5),
-            "'bus' does not take, its dtype being str",
+            "does not fit 'bus' of dtype str",
             id="group-keyword",
         ),
         pytest.param(
@@ -347,18 +347,18 @@ _ENTITY = "'entity' does not take, its dtype being str"
         ),
         pytest.param(
             lambda s: s.add("carrier", [1, "x"]),
-            "'carrier' does not take, its dtype being str",
+            "does not fit 'carrier' of dtype str",
             id="add-mixed-str",
         ),
         pytest.param(
             lambda s: s.add("entity", ["zz"], carrier=5),
-            "'carrier' does not take, its dtype being str",
+            "does not fit 'carrier' of dtype str",
             id="add-one-of-property",
         ),
         pytest.param(
             lambda s: s.add("ctype", [5]),
-            """'ctype' does not take, its dtype being {"one_of":""",
-            id="add-closed",
+            """does not fit 'ctype' of dtype {"one_of":""",
+            id="add-enum-dtype",
         ),
         pytest.param(
             lambda s: s.remove("entity", [1]),
@@ -367,7 +367,7 @@ _ENTITY = "'entity' does not take, its dtype being str"
         ),
     ],
 )
-def test_a_label_of_a_type_its_dim_does_not_take_is_refused(staged, edit, match):
+def test_a_label_of_a_type_that_does_not_fit_its_dim_is_refused(staged, edit, match):
     """A label is held to its dim's dtype as a frame's column is, never parsed into it.
 
     Notes
@@ -765,7 +765,7 @@ def test_set_may_change_a_category(units):
 def test_an_edit_refuses_an_unknown_label_category_or_keyword(
     units, op, args, kwargs, error, match
 ):
-    """A category is checked against its closed dim's list, a label against the axis.
+    """A category is checked against the list of its enum-dtype dim, a label against the axis.
 
     Notes
     -----
@@ -775,7 +775,7 @@ def test_an_edit_refuses_an_unknown_label_category_or_keyword(
         getattr(units, op)(*args, **kwargs)
 
 
-def test_a_closed_dim_holds_the_labels_added_and_removes_like_any_dim(units):
+def test_an_enum_dtype_dim_holds_the_labels_added_and_removes_like_any_dim(units):
     """Its list bounds what may be added; its axis is what was.
 
     Notes
@@ -1041,8 +1041,8 @@ def test_set_takes_an_all_none_column_as_a_broadcast(staged):
         pytest.param(
             "p_nom",
             pd.DataFrame({"entity": ["Manchester Wind"], "value": ["high"]}),
-            "column 'value' is VARCHAR, which 'p_nom' does not take, its dtype "
-            "being float",
+            "column 'value' has type VARCHAR, which does not fit 'p_nom' of dtype "
+            "float",
             id="mistyped",
         ),
         pytest.param(
@@ -1059,7 +1059,7 @@ def test_set_takes_an_all_none_column_as_a_broadcast(staged):
         ),
     ],
 )
-def test_set_refuses_a_frame_column_its_dtype_does_not_take(
+def test_set_refuses_a_frame_column_that_does_not_fit_its_dtype(
     staged, attribute, frame, match
 ):
     """A column is cast only to a wider type of its kind; a time zone is not dropped.
@@ -1151,7 +1151,7 @@ def _connections(record):
         (pd.DataFrame([{"role": "attached"}]), "needs a 'connection' column"),
         (
             pd.DataFrame([{"connection": {"entity": 1, "bus": "Norway"}}]),
-            "'connection' is STRUCT",
+            "'connection' has type STRUCT",
         ),
     ],
     ids=["flat-coordinates", "no-struct-column", "mistyped-field"],

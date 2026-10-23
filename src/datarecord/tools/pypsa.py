@@ -89,8 +89,8 @@ _PROPERTIES = {
     BUS: ("carrier", "type", "x", "y", "unit", "location"),
     CARRIER: ("color", "nice_name"),
 }
-#: A property of the `connection` group, and the closed dim of its labels, its
-#: port vocabulary being this tool's.
+#: A property of the `connection` group, and the enum-dtype dim listing its
+#: labels. The port vocabulary is this tool's.
 ROLE = "role"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
 #: The `meta` key naming, per entity type, the custom static columns it was
@@ -263,7 +263,7 @@ class NetworkShape:
 
 
 def _connection(record: RecordLike) -> DuckDBPyConnection:
-    """The DuckDB connection `record`'s relations belong to.
+    """Return the DuckDB connection the relations of `record` belong to.
 
     Off the concrete backing, since the protocol names no connection. Needed
     because a relation exposes no reachable reference to its connection, and
@@ -752,7 +752,7 @@ def _clashing_columns(n: pypsa.Network) -> frozenset[tuple[str, str]]:
 
 
 def _column_dtype(values: pd.Series) -> str:
-    """The mathspec dtype a custom static column is declared with, `str` for anything unlisted."""
+    """Return the mathspec dtype to declare a custom static column with: `str` unless it is bool, int or float."""
     if pd.api.types.is_bool_dtype(values):
         return "bool"
     if pd.api.types.is_integer_dtype(values):
@@ -1055,7 +1055,7 @@ def _result_attributes(c: pypsa.Components, inputs: Container[str]) -> dict[str,
 # (https://energy-models.github.io/datarecord/design/record/#connections). Ports beyond the first two are outputs: a multi-port Link's `bus2`
 # onward are additional sinks.
 _INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT = "input", "output", "attached"
-# Every value `_port_role` can return - the closed vocabulary of `role`, so the
+# Every value `_port_role` can return - the whole vocabulary of `role`, so the
 # schema declares it as an enum rather than a bare string.
 _ROLES = (_INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT)
 
@@ -1720,7 +1720,7 @@ def _with_default_by(
 
 
 def _property(name: str, spec: AttributeSpec) -> PropertySpec:
-    """A registry input read as a property: a `carrier` is one of the `carrier` dim.
+    """Return the property spec of registry input `name`; a `carrier` names a label of the `carrier` dim.
 
     PyPSA's `""` carrier names none, so it is no such property's default.
 
@@ -1780,10 +1780,10 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
 
     `Bus` and `Carrier` are no entity types (`_AXIS_TYPES`): their members are
     the labels of `bus` and `carrier`, and their inputs and results are over
-    that dim. The properties of each subject are `_PROPERTIES`, `entity`'s
-    beside `ctype`, one of the closed `ctype` dim listing the entity types so
-    a type outside it is refused; `role` is a property of `connection`, one of
-    the closed `role` dim. Every other input,
+    that dim. The properties of each subject are `_PROPERTIES`. `entity` also
+    has `ctype`, naming the enum-dtype dim `ctype` that lists the entity
+    types, so a type outside it is refused; `role` is a property of
+    `connection` naming the enum-dtype dim `role`. Every other input,
     each axis weighting (`_WEIGHTINGS`) over its axis included, is an
     attribute.
 
@@ -1922,7 +1922,7 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
 
 
 def _listed_axis(schema: RecordSchema, dim: str) -> pd.DataFrame:
-    """The axis of closed `dim`: every label it lists, in order."""
+    """Return the axis of the enum-dtype dim `dim`: every label it lists, in order."""
     return pd.DataFrame({dim: cast("OneOf", schema.dimensions[dim].dtype).one_of})
 
 
@@ -2032,7 +2032,7 @@ class _NetworkSource:
         """Every axis this network holds, `entity`, `bus` and `carrier` among them, as keys.
 
         Each labelled axis carries its tombstone column beside the key; its
-        properties are in `properties`. The closed `ctype` and `role` carry
+        properties are in `properties`. The enum-dtype dims `ctype` and `role` carry
         every label they list, and `timestep` the timesteps a multi-period
         network's positional snapshots name.
 
@@ -2711,7 +2711,7 @@ class _NetworkSource:
     def _union_select(
         self, rels: list[DuckDBPyRelation], columns: list[str]
     ) -> DuckDBPyRelation:
-        """Union `rels`, project `columns`.
+        """Union `rels` and project them to `columns`.
 
         An empty list is an empty relation with the right columns, each of its
         declared type: `write_layer` checks a group column is a struct before it

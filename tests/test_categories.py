@@ -7,7 +7,7 @@
 Notes
 -----
 - [owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
+- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-an-enum-dtype-dim)
 """
 
 import pytest

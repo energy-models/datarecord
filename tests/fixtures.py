@@ -325,7 +325,7 @@ def empty_root(store: Store) -> Revision:
     """A new root revision, for a test to hand-write its layer into.
 
     No public API makes an empty revision; this is the store's private
-    revision-file write. Its layer holds nothing, a closed dim's axis
+    revision-file write. Its layer holds nothing, the axis of an enum-dtype dim
     included: a label a property names is one a test adds.
 
     Write every file of a layer before its first read: a read freezes the
@@ -463,7 +463,7 @@ def schema(
     """A schema shaped like the PyPSA records most tests build on.
 
     Defaults match `PyPSA.to_datarecord`: the `entity` axis carrying the
-    `ctype` property, one of the closed `ctype` dim listing `TYPES`, a
+    `ctype` property, one of the enum-dtype dim `ctype` listing `TYPES`, a
     `connection` group over
     `(entity, bus)`, and three declared dims. Override `partial` to pin a
     different layering granularity, `dims` to declare another axis, `groups` to

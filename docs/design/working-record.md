@@ -143,7 +143,7 @@ w.remove("carrier", ["gas"])  # refused while a property naming carrier names it
 
 `add(dim, labels, **columns)` stages whole axis rows: `columns` are the other columns of `dims/<dim>.parquet` — the dim's properties, bare since the subject is `dim` — each a scalar for every label or a sequence aligned to `labels`.
 A column no keyword names is NULL on these rows, since `add` restates a label's row whole.
-A label of a [closed dim](schema.md#dtypes) must be one it lists: the dim's own in `add(dim, ...)`, a property's naming one. A closed dim's axis holds only the labels added, so a property naming a listed label not on the axis is refused as any unknown label is, and `remove` takes a closed dim's label as any dim's.
+A label of an [enum-dtype dim](schema.md#dtypes) must be one it lists: the dim's own in `add(dim, ...)`, a property's naming one. The axis of an enum-dtype dim holds only the labels added, so a property naming a listed label not on the axis is refused as any unknown label is, and `remove` takes a label of an enum-dtype dim as any dim's.
 An attribute keyword is refused with a pointer to `set`: an attribute's values are long rows whatever its `dims`, never a column of the axis.
 A column the schema does not declare is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column. A tool that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
 
@@ -238,8 +238,8 @@ What editing adds is edit-level, caught when the edit is **staged**, not at writ
 
 - an undeclared attribute, property or keyword, or a keyword the attribute does not vary over; a plain name only properties are called is refused naming their dotted forms, `set("carrier", …)` suggesting `bus.carrier` and `entity.carrier`;
 - a label of a `partial` dim the record does not resolve, `add` them first;
-- a label a [closed dim](schema.md#dtypes) does not list, in `add` or `set`;
-- a frame column of a type its dtype does not take, timestamps with a time zone among them, and by the same rule a label given to `set`, `add` or `remove`, or a value of a property naming a dim — a string is not parsed into a `datetime` dim's label;
+- a label an [enum-dtype dim](schema.md#dtypes) does not list, in `add` or `set`;
+- a frame column of a type that does not fit its dtype, timestamps with a time zone among them, and by the same rule a label given to `set`, `add` or `remove`, or a value of a property naming a dim — a string is not parsed into a `datetime` dim's label;
 - a value of a [property naming a dim](schema.md#properties) naming no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
 - an `add` naming an attribute.
 

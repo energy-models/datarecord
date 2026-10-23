@@ -48,7 +48,7 @@ DUCK_TYPES: Mapping[str, DuckDBPyType] = {
     "str": sqltypes.VARCHAR,
     "datetime": sqltypes.TIMESTAMP,
 }
-"""Each mathspec dtype's DuckDB type, the one map a declared column is typed by.
+"""The DuckDB type of each mathspec dtype; every declared column is typed through this map.
 
 Notes
 -----
@@ -57,13 +57,13 @@ Notes
 
 
 def enum_type(labels: Iterable[str]) -> DuckDBPyType:
-    """The `ENUM` of `labels`, in their order: a closed dim's type."""
+    """Return the `ENUM` type of `labels`, in their order: the type of an enum-dtype dim."""
     quoted = ", ".join("'" + label.replace("'", "''") + "'" for label in labels)
     return DuckDBPyType(f"ENUM({quoted})")
 
 
 def enum_labels(dtype: DuckDBPyType) -> tuple[str, ...] | None:
-    """The labels `dtype` lists if it is an `ENUM`, else None."""
+    """Return the labels of `dtype` if it is an `ENUM`, else None."""
     if dtype.id != "enum":
         return None
     return tuple(cast("list[str]", dict(dtype.children)["values"]))
@@ -78,16 +78,18 @@ _WIDENS = {
     "varchar": {"enum"},
     "enum": {"varchar"},
 }
-"""Per declared type id, the type ids a caller's column is cast from to it."""
+"""For each declared type id, the type ids of a caller's column that are cast to it."""
 
 
 def takes(declared: DuckDBPyType, given: DuckDBPyType) -> bool:
-    """Return whether a column of `given` type is cast to `declared`.
+    """Return whether type `given` fits type `declared`, that is, a column of it is cast to it.
 
-    The same type, a NULL, a widening `_WIDENS` lists - an `ENUM` both ways
-    with text, its labels checked by the cast - or a struct whose fields each
-    are. A widening keeps the kind of value, not every digit: an integer past
-    2^53 rounds as `DOUBLE`, a nanosecond timestamp truncates to microseconds.
+    It is where the types are equal, `given` is NULL, `_WIDENS` lists the
+    widening, or both are structs and each field of `declared` fits the
+    field of `given` of the same name. An `ENUM` and text are cast both ways,
+    and the cast checks the labels. A widening keeps the kind of value, not
+    every digit: an integer past 2^53 rounds as `DOUBLE`, and a nanosecond
+    timestamp truncates to microseconds.
     """
     if given.id == "null" or given == declared:
         return True
@@ -242,11 +244,10 @@ def distinct_values(
 
 
 def is_frame(value: Any) -> bool:
-    """Whether `value` is a relation, or a pandas, polars or arrow frame DuckDB scans.
+    """Return whether `value` is a relation, or a pandas, polars or arrow frame DuckDB scans.
 
-    A frame's module is looked up among those already imported, so none of
-    them becomes a dependency: a value of a module never imported is no frame
-    of it.
+    Only modules already imported are checked, so none of them becomes a
+    dependency: a value from a module never imported cannot be its frame.
     """
     scanned: list[type] = [DuckDBPyRelation]
     if (pandas := sys.modules.get("pandas")) is not None:
@@ -259,7 +260,7 @@ def is_frame(value: Any) -> bool:
 
 
 def as_relation(frame: Any, con: DuckDBPyConnection) -> DuckDBPyRelation:
-    """A relation, or a pandas, polars or arrow frame, as a relation on `con`.
+    """Return a relation, or a pandas, polars or arrow frame, as a relation on `con`.
 
     A relation passes straight through; a frame is read by DuckDB's own
     scanner, without collecting it first. The one boundary where a caller's
@@ -369,7 +370,7 @@ def struct_field(
 def empty_relation(
     con: DuckDBPyConnection, **columns: DuckDBPyType
 ) -> DuckDBPyRelation:
-    """A row-less relation with `columns`' names and types.
+    """Return a relation with no rows and the names and types given in `columns`.
 
     What a staging table is created from: `create` takes the table's shape
     from the relation, so a shape is built as expressions rather than

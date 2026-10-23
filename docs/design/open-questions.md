@@ -42,7 +42,7 @@ SPDX-License-Identifier: CC-BY-4.0
   What is open is the granularity: those are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
   Whatever is chosen, it has to be answerable off the fold, which is where a record's membership already lives.
 
-- **Whether a property naming an open dim may categorize a `partial` dim.** `entity.carrier` names labels of `carrier`, and a `default_by` keyed on it would make a vocabulary that is data: a category a layer adds and removes rather than one a [closed dim](schema.md#categories-labels-of-a-closed-dim) lists.
+- **Whether a property naming an open dim may categorize a `partial` dim.** `entity.carrier` names labels of `carrier`, and a `default_by` keyed on it would make a vocabulary that is data: a category a layer adds and removes rather than one an [enum-dtype dim](schema.md#categories-labels-of-an-enum-dtype-dim) lists.
 
 - **Recovering single-valuedness for a classifying group.** A group's property naming a dim may be NULL, so a tuple of [a group that classifies](schema.md#a-group-that-classifies) may carry no label, where the `into` it replaced promised exactly one. Nothing is recommended until a consumer needs it; a later `required` flag on a property would cover it, refusing a NULL where a row is written.
 
@@ -70,7 +70,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 - **What `build` does with a value its type does not take** — leaves it out and reports it in `Requirements.ignored`, as an unknown type is reported, without raising ([tools](tools.md#a-value-its-type-does-not-take)).
 
-- **Whether a category still needs `partial`** — it does: `default_by` per label needs a dim owned per label ([categories](schema.md#categories-labels-of-a-closed-dim)).
+- **Whether a category still needs `partial`** — it does: `default_by` per label needs a dim owned per label ([categories](schema.md#categories-labels-of-an-enum-dtype-dim)).
 
 - **Whether an attribute reaching every label grows the owner map** — only by what a broadcast is asked to reach. An exported PyPSA network stores no broadcast, so `ac_dc_meshed`'s map is unchanged; `set("p_max_pu", 0.9)` on it grows the map by one row per label it now reaches, loads and lines included, where it reached the types carrying it before — 14 more rows on `ac_dc_meshed`. A value meant for generators is `set(..., ctype="Generator")` ([the schema](schema.md#an-attribute-reaches-every-label-it-addresses)).
 

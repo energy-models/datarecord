@@ -72,11 +72,11 @@ def _schema(**overrides) -> Schema:
             {"one_of": ["lower", "upper"]},
             duckdb.sqltypes.DuckDBPyType("ENUM('lower', 'upper')"),
             ("state",),
-            id="closed",
+            id="enum-dtype",
         ),
     ],
 )
-def test_a_property_naming_a_dim_takes_its_type_and_categorizes_if_it_is_closed(
+def test_a_property_naming_a_dim_takes_its_type_and_categorizes_if_its_dtype_is_an_enum(
     state, duck, categorizing
 ):
     """Its values are the dim's labels, typed as them; categories only where the dim lists them."""

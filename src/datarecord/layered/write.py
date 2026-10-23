@@ -115,8 +115,8 @@ def write_layer(
         dim no frame carries - either would make the fold misresolve the layer.
         If a group tuple or a property `{"one_of": <dim>}` alive after the layer names
         a label dead after it.
-        If a column is of a type its dtype does not take, naming the attribute,
-        property or dim declaring it and its dtype.
+        If a column's type does not fit its dtype, naming the attribute,
+        property or dim that declares the column, and the dtype.
         If two rows of one attribute cover one coordinate and each names a dim
         the other leaves NULL, naming the attribute and the coordinate.
 
@@ -245,8 +245,8 @@ def _write_frame(
     """Write `rel` as `{kind}/{key}.parquet` under `staging`, unmaterialised; return its URI.
 
     Columns are cast to their declared types on the way out, so a reader can
-    trust them. A column of a type its declared type does not `take` is
-    refused first, from the relation's types rather than its rows.
+    trust them. Before that, a column whose type does not fit its declared
+    type (`takes`) is refused, judged by the relation's types, not its rows.
 
     `DERIVED` is dropped here rather than in the callers, so a column a source
     happens to carry cannot reach a file by a path that forgot to strip it.
@@ -278,13 +278,16 @@ def _write_frame(
 def _refuse_incomparable(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
     """Refuse two rows of `attribute` covering one coordinate where neither is more specific.
 
-    A read keeps, of two rows of one layer covering a coordinate, the one naming
-    every dim the other names and more; two rows where each names a dim the
-    other leaves NULL leave it nothing to keep. Two rows cover one coordinate
-    where they agree on every dim both name. Only distinct NULL patterns are
-    paired, which are few, and a pair is joined on its rows' distinct named
-    coordinates, so one series is not multiplied against another. `rel` is the
-    file as written, reading only its dims, since the source builds once.
+    Two rows cover one coordinate where they agree on every dim both name. A
+    row is more specific than another where it names every dim the other
+    names, and more. Of two rows of one layer covering a coordinate, a read
+    keeps the more specific one, so where each names a dim the other leaves
+    NULL, it has none to keep.
+
+    Only the distinct NULL patterns are paired, and they are few. Each pair is
+    joined on the distinct coordinates its rows name, so one series is not
+    multiplied against another. `rel` is the file as written, so the source
+    is built only once, and only its dims are read.
 
     Raises
     ------
@@ -335,7 +338,7 @@ def _refuse_incomparable(rel: DuckDBPyRelation, attribute: str, schema: Schema) 
 def _named_rows(
     rel: DuckDBPyRelation, dims: Sequence[str], named: Sequence[str], alias: str
 ) -> DuckDBPyRelation:
-    """Return the distinct `named` coordinates of the rows naming exactly `named` of `dims`."""
+    """Return the distinct values of `named` in the rows of `rel` that name exactly those of `dims`."""
     exact = ex_all(col(d).isnotnull() if d in named else col(d).isnull() for d in dims)
     return (
         rel.filter(exact).project(*(col(d) for d in named)).distinct().set_alias(alias)
@@ -606,7 +609,7 @@ class _RecordLikeAsLayerData:
             self._source.resolver.release()
 
     def _frames(self, kind: str) -> Relations:
-        """The source's `Relations` mapping named `kind`, enumerated once per adapter.
+        """Return the `Relations` of the source named `kind`, enumerated once per adapter.
 
         A `RecordLike`'s mappings may be properties that re-enumerate the whole
         source on each access, which per key would be quadratic in the keys.

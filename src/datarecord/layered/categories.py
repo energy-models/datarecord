@@ -9,7 +9,7 @@ combination a relation holds.
 
 Notes
 -----
-- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
+- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-an-enum-dtype-dim)
 - [default_by](https://energy-models.github.io/datarecord/design/schema/#default_by-a-default-per-category)
 """
 
@@ -45,7 +45,7 @@ def categorized_dim(schema: Schema, categories: Categories) -> str:
         k for k in categories if not any(k in schema.categorizing(d) for d in dims)
     )
     if unknown:
-        msg = f"{unknown} categorize no dim; a category is a property of a partial dim naming a closed dim"
+        msg = f"{unknown} categorize no dim; a categorizing property is a property of a `partial` dim naming an enum-dtype dim"
         raise ValueError(msg)
     if len(dims) != 1:
         msg = f"{sorted(categories)} categorize several dims {sorted(dims)}; name one dim's"

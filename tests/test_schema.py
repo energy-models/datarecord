@@ -63,8 +63,8 @@ def _schema(**overrides) -> Schema:
     return Schema(**kwargs)
 
 
-def _closed(**labels: list[str]) -> dict[str, Dimension]:
-    """`_schema`'s dims with a closed dim per keyword, listing its labels."""
+def _enum_dtype_dims(**labels: list[str]) -> dict[str, Dimension]:
+    """`_schema`'s dims with an enum-dtype dim per keyword, listing its labels."""
     return {
         **_schema().dimensions,
         **{d: Dimension(dtype={"one_of": ls}) for d, ls in labels.items()},
@@ -155,7 +155,7 @@ def test_the_section_decides_where_a_value_lives():
 def test_a_group_may_have_properties():
     """A column of `groups/<group>.parquet`, typed like a dim's property."""
     s = _schema(
-        dimensions=_closed(role=["in", "out"]),
+        dimensions=_enum_dtype_dims(role=["in", "out"]),
         properties={
             **_schema().properties,
             "connection": {"role": PropertySpec(dtype={"one_of": "role"})},
@@ -168,19 +168,19 @@ def test_a_group_may_have_properties():
     )
     assert s.column_type("role", "connection") == DuckDBPyType("ENUM('in', 'out')")
     assert s.categorizing("connection") == (), (
-        "a group is never categorized, even by a property naming a closed dim"
+        "a group is never categorized, even by a property naming an enum-dtype dim"
     )
 
 
-def test_a_property_naming_a_closed_dim_categorizes_only_a_partial_dim():
+def test_a_property_naming_an_enum_dtype_dim_categorizes_only_a_partial_dim():
     """No flag: the dtype and `partial` decide; a `str` property or one naming an open dim never.
 
     Notes
     -----
-    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
+    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-an-enum-dtype-dim)
     """
     s = _schema(
-        dimensions=_closed(carrier_kind=["wind", "solar"], era=["old", "new"]),
+        dimensions=_enum_dtype_dims(carrier_kind=["wind", "solar"], era=["old", "new"]),
         properties={
             "entity": {
                 **_schema().properties["entity"],
@@ -192,7 +192,7 @@ def test_a_property_naming_a_closed_dim_categorizes_only_a_partial_dim():
         },
     )
     assert s.categorizing("entity") == ("ctype", "carrier_kind"), (
-        "every property naming a closed dim, in declaration order"
+        "every property naming an enum-dtype dim, in declaration order"
     )
     assert s.categorizing("period") == (), "`period` is not partial"
     assert s.categorizing("scenario") == (), "no properties"
@@ -461,7 +461,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     default_by={"period.era": {"old": 1.0}},
                 ),
                 base=lambda **kw: _schema(
-                    dimensions=_closed(era=["old", "new"]),
+                    dimensions=_enum_dtype_dims(era=["old", "new"]),
                     properties={
                         **_schema().properties,
                         "period": {"era": PropertySpec(dtype={"one_of": "era"})},
@@ -480,7 +480,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     default_by={"connection.role": {"in": 1.0}},
                 ),
                 base=lambda **kw: _schema(
-                    dimensions=_closed(role=["in", "out"]),
+                    dimensions=_enum_dtype_dims(role=["in", "out"]),
                     properties={
                         **_schema().properties,
                         "connection": {"role": PropertySpec(dtype={"one_of": "role"})},
@@ -502,7 +502,7 @@ def test_default_by_is_validated_against_the_categories(build, match):
 def _two_subjects(**overrides) -> Schema:
     """`_schema` with `bus` categorized by `bus_type` beside `ctype`."""
     kwargs: dict[str, Any] = {
-        "dimensions": _closed(bus_type=["AC", "DC"]),
+        "dimensions": _enum_dtype_dims(bus_type=["AC", "DC"]),
         "properties": {
             **_schema().properties,
             "bus": {"bus_type": PropertySpec(dtype={"one_of": "bus_type"})},
