@@ -1331,7 +1331,7 @@ A record that is never written has no directory, and answers <a href="../record/
 </code></pre></div>
 <p>Every file under <code>dims/</code> and <code>groups/</code> is named for what it holds, singular: <code>dims/scenario.parquet</code> for the <code>scenario</code> axis, as <code>attributes/p_nom.parquet</code> is for <code>p_nom</code>.
 A dim's file is its name and nothing else — no pluralisation, which would be English grammar applied to a declared identifier and would spell a dim named <code>bus</code> as <code>buss.parquet</code>.</p>
-<p>A solve's results are <a href="../schema/#a-result-is-an-attribute">attributes</a> like any other, in the one <code>attributes/</code> directory. A layer holding an <code>inputs/</code> or <code>outputs/</code> directory, the layout that kept them apart, is refused when read, the error naming <code>attributes/</code>: the record is re-exported.</p>
+<p>A solve's results are <a href="../schema/#a-result-is-an-attribute">attributes</a> like any other, in the one <code>attributes/</code> directory.</p>
 <h2 id="the-entity-axis">The entity axis<a class="headerlink" href="#the-entity-axis" title="Permanent link">&para;</a></h2>
 <p><code>dims/entity.parquet</code> is what an entity's identity <strong>is</strong>: which entities the layer names, what describes each, and which are tombstoned.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>entity | &lt;entity key dims&gt; | deleted | &lt;property&gt; ...
