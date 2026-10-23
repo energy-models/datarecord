@@ -7,10 +7,9 @@
 Notes
 -----
 - [owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
+- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
 """
 
-import narwhals as nw
 import pytest
 
 from datarecord.layered.resolve import write_schema
@@ -24,20 +23,20 @@ def categorized():
     """`entity` categorized by `ctype` and `carrier`."""
     return Schema(
         dimensions={
-            "entity": Dimension(dtype=nw.String()),
-            "bus": Dimension(dtype=nw.String()),
-            "snapshot": Dimension(dtype=nw.Int64()),
+            "entity": Dimension(dtype="str"),
+            "bus": Dimension(dtype="str"),
+            "snapshot": Dimension(dtype="int"),
+            "ctype": Dimension(dtype={"one_of": ["Bus", "Generator", "Link", "Load"]}),
+            "carrier": Dimension(dtype={"one_of": ["gas", "wind"]}),
         },
         properties={
             "entity": {
-                "ctype": PropertySpec(
-                    dtype=nw.Enum(["Bus", "Generator", "Link", "Load"])
-                ),
-                "carrier": PropertySpec(dtype=nw.Enum(["gas", "wind"])),
+                "ctype": PropertySpec(dtype={"one_of": "ctype"}),
+                "carrier": PropertySpec(dtype={"one_of": "carrier"}),
             }
         },
         attributes={
-            "p_max_pu": AttributeSpec(dtype=nw.Float64(), dims={"entity", "snapshot"}),
+            "p_max_pu": AttributeSpec(dtype="float", dims={"entity", "snapshot"}),
         },
         partial=frozenset({"entity", "bus"}),
     )
@@ -49,6 +48,8 @@ def root(store, categorized):
     write_schema(categorized, store)
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
+    staged.add("ctype", ["Bus", "Generator", "Link", "Load"])
+    staged.add("carrier", ["gas", "wind"])
     staged.add("entity", ["g1"], ctype="Generator", carrier="gas")
     staged.add("entity", ["w1"], ctype="Load", carrier="wind")
     staged.add("entity", ["l1"], ctype="Load", carrier="gas")
@@ -61,7 +62,7 @@ EVERY = {"g1", "w1", "l1", "b1"}
 
 def _values(record, attribute: str) -> dict:
     """`record.attributes[attribute]` as `entity -> value`."""
-    frame = record.attributes[attribute].collect().to_native().to_pandas()
+    frame = record.attributes[attribute].df()
     assert frame["entity"].is_unique, f"one row per entity, got {frame}"
     return dict(zip(frame["entity"], frame["value"], strict=True))
 
@@ -92,12 +93,17 @@ def buses(store):
     """Two AC buses and a DC one; `frequency` defaults by type."""
     write_schema(
         Schema(
-            dimensions={"bus": Dimension(dtype=nw.String())},
-            properties={"bus": {"bus_type": PropertySpec(dtype=nw.Enum(["AC", "DC"]))}},
+            dimensions={
+                "bus": Dimension(dtype="str"),
+                "bus_type": Dimension(dtype={"one_of": ["AC", "DC"]}),
+            },
+            properties={
+                "bus": {"bus_type": PropertySpec(dtype={"one_of": "bus_type"})}
+            },
             attributes={
-                "v_nom": AttributeSpec(dtype=nw.Float64(), dims={"bus"}),
+                "v_nom": AttributeSpec(dtype="float", dims={"bus"}),
                 "frequency": AttributeSpec(
-                    dtype=nw.Float64(),
+                    dtype="float",
                     dims={"bus"},
                     default=0.0,
                     default_by={"bus.bus_type": {"AC": 50.0}},
@@ -109,6 +115,7 @@ def buses(store):
     )
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
+    staged.add("bus_type", ["AC", "DC"])
     staged.add("bus", ["ac1", "ac2"], bus_type="AC")
     staged.add("bus", ["dc1"], bus_type="DC")
     return revision.child(staged.edits)
@@ -116,7 +123,7 @@ def buses(store):
 
 def _by_bus(record, attribute: str) -> dict:
     """`record.attributes[attribute]` as `bus -> value`."""
-    frame = record.attributes[attribute].collect().to_native().to_pandas()
+    frame = record.attributes[attribute].df()
     return dict(zip(frame["bus"], frame["value"], strict=True))
 
 

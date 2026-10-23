@@ -24,8 +24,6 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    import narwhals as nw
-
     from datarecord.record import RecordLike
 
 
@@ -126,32 +124,6 @@ class Requirements:
         return ", ".join(parts) if parts else "nothing"
 
 
-def to_relation(frame: nw.LazyFrame) -> DuckDBPyRelation:
-    """A `Record` frame as the DuckDB relation this tool builds against.
-
-    Unwrapping costs nothing and the plan stays lazy. For a tool needing
-    DuckDB's own SQL - `PIVOT`, which narwhals has no expression for - rather
-    than reaching past the record to a `Resolver`.
-
-    Raises
-    ------
-    TypeError
-        If `frame` is not DuckDB-backed.
-
-    Notes
-    -----
-    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
-    """
-    native = frame.to_native()
-    if not isinstance(native, DuckDBPyRelation):
-        msg = (
-            f"expected a DuckDB-backed record frame, got {type(native).__name__}; "
-            "the PyPSA tool builds with DuckDB SQL"
-        )
-        raise TypeError(msg)
-    return native
-
-
 # -- record -> tool attribute mapping ---------------------------------------
 
 
@@ -200,7 +172,7 @@ class Attr:
         -----
         - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)
         """
-        rels = [to_relation(record.attributes[s]) for s in self.source]
+        rels = [record.attributes[s] for s in self.source]
         if self.compute is None:
             return rels[0]
         return self.compute(*rels)
@@ -311,7 +283,7 @@ class Tool(Protocol):
         Parameters
         ----------
         con
-            The connection the frames are planned on - in practice `ws.con` of
+            The connection the relations are planned on - in practice `ws.con` of
             the workspace that will write them.
         results_only
             Present only what a solve produced - its result attributes and the

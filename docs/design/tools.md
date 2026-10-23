@@ -27,32 +27,32 @@ class Tool(Protocol):
     ) -> Record: ...
 ```
 
-`to_datarecord` is the inverse of `build`. It takes the connection its frames are planned on, required; in practice `ws.con` of the [workspace](layers.md#the-store) that writes them.
+`to_datarecord` is the inverse of `build`. It takes the connection its relations are planned on, required; in practice `ws.con` of the [workspace](layers.md#the-store) that writes them.
 A tool is handed a connection, not a workspace or a store: it plans relations and has no business with directories, locations or the tree.
-A frame planned on another connection is [rejected at the boundary](read-path.md#a-relation-from-another-connection-is-rejected), so a tool that picked its own would fail on the first write.
+A relation planned on another connection is [rejected at the boundary](read-path.md#a-relation-from-another-connection-is-rejected), so a tool that picked its own would fail on the first write.
 `build` takes none: it reads `record.con`.
 
 ```python
 root = store.root(PyPSA.to_datarecord(n, ws.con))
 ```
 
-It presents [`Frames`](record.md#frames) keyed by attribute, each frame in [the long schema](format.md#the-long-schema), so they go straight to [a write](writing.md).
+It presents [`Relations`](record.md#relations) keyed by attribute, each in [the long schema](format.md#the-long-schema), so they go straight to [a write](writing.md). The PyPSA tool scans its pandas frames on `con` with `con.from_df`.
 
-A framework holds its values per entity type, so reaching this shape means concatenating each attribute's types into one frame.
-That is free: the frames are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller collects.
+A framework holds its values per entity type, so reaching this shape means concatenating each attribute's types into one relation.
+That is free: the relations are lazy, so the union is a plan rather than a copy, and nothing materialises until a caller fetches.
 The concatenation needs no category column to distinguish the arms, since [`entity` is unique across them](format.md#entity-is-unique-across-types) — which is what makes the union a plain one rather than a tagged one.
 
 A framework's per-port results are [stored on connections](#results-on-connections), like its per-port inputs, and its results are written as a [thin layer](#writing-results).
 
 Lazy is what the protocol asks for rather than what any implementation must do.
-A tool reshaping a solved model's in-memory containers has nothing to defer and wraps its eager frames with `.lazy()`; one that could fetch an attribute from a solver on demand is free to, and a caller wanting three of forty then pays for three.
-That is [the `Frames` argument](record.md#frames), on the write side.
+A tool reshaping a solved model's in-memory containers has nothing to defer and scans its eager frames; one that could fetch an attribute from a solver on demand is free to, and a caller wanting three of forty then pays for three.
+That is [the `Relations` argument](record.md#relations), on the write side.
 
 A record is the input to a translation, not the owner of one, so there is no registry and no name dispatch: a tool is a module-level singleton reached by importing it, `build` returns the framework's own type, and nothing in the record layer imports a tool.
 
 `build` takes a [`Record`](record.md) rather than a record, so a tool builds from a directory as readily as from an overlay and has no reason to know layering exists.
 
-A tool's `verify` catches what the record layer cannot: an entity type the framework has no registry entry for — the record checks a category against its `Enum`, not against the framework — a connection `role` it cannot place, a `partial` set that breaks the framework's constant-versus-varying split.
+A tool's `verify` catches what the record layer cannot: an entity type the framework has no registry entry for — the record checks a category against its closed dim's list, not against the framework — a connection `role` it cannot place, a `partial` set that breaks the framework's constant-versus-varying split.
 It is also where a framework scoping names **per type** meets [a record scoping them record-wide](format.md#entity-is-unique-across-types).
 PyPSA permits a `Generator` and a `Load` both called `north`, so `to_datarecord` reports such a network as unbuildable rather than writing a record whose two entities share one key.
 Collisions are within a dim: a bus is a label of `bus`, not an entity, so a `Bus` and a `Load` called `north` — every clustered pypsa-eur network — are no collision.
@@ -61,7 +61,7 @@ PyPSA is itself moving to record-wide unique names, so this is a constraint that
 SubNetworks are the exception: PyPSA names them `0`, `1`, … on every topology pass, as it numbers Lines, so there is no caller to report to. The record keys them `0 SubNetwork`, …, as a caller suffixes a clashing `Load`, the `sub_network` results pointing at them likewise, and `build` takes the suffix off, so the framework finds them by their own names again.
 It is also where bus-keyed connections are collapsed back to a framework's positional encoding, ordered by [`order_key`](read-path.md#owner-map), and where a curve is either translated or reported unbuildable.
 A per-connection input follows its connection's position: `efficiency` on a Link's `bus2` connection is PyPSA's `efficiency2`, static or per snapshot.
-The PyPSA schema declares `partial={"entity", "bus", "scenario", "connection"}`, so a layer patches one link's `efficiency` series, or one bus's `v_nom`, without restating every other's ([`partial`](schema.md#partial-the-granularity-of-an-override)); `entity` is there also because `ctype` [categorizes it](schema.md#categories-an-enum-property-of-a-partial-dim).
+The PyPSA schema declares `partial={"entity", "bus", "scenario", "connection"}`, so a layer patches one link's `efficiency` series, or one bus's `v_nom`, without restating every other's ([`partial`](schema.md#partial-the-granularity-of-an-override)); `entity` is there also because `ctype` [categorizes it](schema.md#categories-labels-of-a-closed-dim).
 `carrier` is not: a layer restates every carrier's `co2_emissions`, a few dozen rows.
 `remove("bus", …)` is [the cascade every dim has](layers.md#deletion), and an entity it leaves attached to no bus is `verify`'s to report, as its type's missing `bus`; `remove("carrier", …)` is refused while a stored `carrier` names the label.
 A Process's `rate0`, `rate1`, `rate2`, … are likewise the one input `rate`, numbered from `0` because PyPSA registers `rate0` where it leaves port `1`'s `efficiency` unsuffixed.
@@ -69,7 +69,7 @@ Its ports default differently, `-1` at the input end and `1` at the others, so `
 Which stems are per-port is read off PyPSA's registry, a name ending in a port index plus a Link's unsuffixed `efficiency`, `delay` and `cyclic_delay`.
 Every per-port input, `delay` and `cyclic_delay` included, is long rows of `attributes/` over `connection`: a number is an attribute whatever its `dims`.
 
-**Properties and attributes are read off the registry.** The properties of `entity` are exactly `ctype`, `carrier`, `sign` and `type`, and `role` is a property of `connection`; every other input, every number among them, is an attribute, so `p_nom` is long rows of `attributes/p_nom.parquet` ([where a value lives](format.md#where-a-value-lives)). `ctype`'s `Enum` is the types exported as entities. A default that differs per component — `sign`, `p_min_pu`, `p_set` — is a [`default_by`](schema.md#default_by-a-default-per-category) on `entity.ctype`, and `build` applies it when it builds a component's static frame from `members` and the entity-only rows of its attributes.
+**Properties and attributes are read off the registry.** The properties of `entity` are exactly `ctype`, `carrier`, `sign` and `type`, and `role` is a property of `connection`; every other input, every number among them, is an attribute, so `p_nom` is long rows of `attributes/p_nom.parquet` ([where a value lives](format.md#where-a-value-lives)). `entity.ctype` is `{one_of: ctype}`, on a closed dim `ctype` listing the types exported as entities, and `connection.role` `{one_of: role}` on a closed dim `role` listing `input`, `output` and `attached`; `to_datarecord` writes both axes, every label they list. A default that differs per component — `sign`, `p_min_pu`, `p_set` — is a [`default_by`](schema.md#default_by-a-default-per-category) on `entity.ctype`, and `build` applies it when it builds a component's static frame from `members` and the entity-only rows of its attributes.
 
 **Buses and carriers are dims.** `Bus` and `Carrier` are no entity types: a bus is a label of `bus`, a carrier a label of `carrier`, and what PyPSA stores on either is placed by [the properties rule](schema.md#properties), every name PyPSA's:
 
@@ -83,17 +83,17 @@ Every per-port input, `delay` and `cyclic_delay` included, is long rows of `attr
 | a custom Bus or Carrier column                                          | attribute over its dim, as a custom entity column is |
 | `Carrier.color`, `Carrier.nice_name`                                    | properties of `carrier`                              |
 | `Carrier.co2_emissions`, `max_growth`, `max_relative_growth`            | attributes over `carrier`                            |
-| a component's `carrier`                                                 | `entity.carrier`, `into` `carrier`                   |
+| a component's `carrier`                                                 | `entity.carrier`, `{one_of: carrier}`                |
 
 So `x` is a line's reactance and `bus.x` a bus's coordinate, each addressed by its own name.
-`entity.carrier` and `bus.carrier` are [`into`](schema.md#properties) `carrier`, `bus.carrier` defaulting to `AC`.
+`entity.carrier` and `bus.carrier` [name labels](schema.md#properties) of `carrier`, `bus.carrier` defaulting to `AC`.
 `to_datarecord` writes both axes in PyPSA's order, adds every carrier a component or bus names but `n.carriers` does not list, and stores PyPSA's `""` carrier as NULL, naming none; `build` rebuilds `n.buses` and `n.carriers` from the axis, the properties with their defaults and the attribute rows, a series by its [flags](record.md#flags), the bus results among them.
 
 **A custom column clashes only with an attribute.** A static column PyPSA's registry lacks is an attribute over its type's dim, built onto that type alone where the dim is `entity` ([below](#a-value-its-type-does-not-take)). One name being one spec, custom `Bus.country` beside custom `Generator.country` would be `country` with two `dims`, and `Carrier.efficiency` meets the per-port `efficiency`: `to_datarecord` reports either via `Requirements.columns`. A name a property has does not clash, so a custom `Generator.location` is an attribute beside `bus.location`.
 `Line.v_nom` and `ShuntImpedance.v_nom`, which PyPSA's `calculate_dependent_values` copies from the bus, are no custom column: they are not written, and `build` gets them back as PyPSA recomputes them.
 
-**A multi-period network's snapshots are one flat axis.** PyPSA's `(period, timestep)` snapshots are the `snapshot` axis, each with its period as `snapshot.period`, a property [`into`](schema.md#properties) `period`; `period` is an axis of its own beside it.
-A snapshot is labelled by its timestep where no timestep repeats across periods, and otherwise by its position, `0` to `n-1` across every period in the network's order, its timestep then the property `snapshot.timestep`; the `pd.MultiIndex.from_product` of `set_investment_periods` repeats every timestep, so its snapshots are positions.
+**A multi-period network's snapshots are one flat axis.** PyPSA's `(period, timestep)` snapshots are the `snapshot` axis, each with its period as `snapshot.period`, a property [naming](schema.md#properties) `period`; `period` is an axis of its own beside it.
+A snapshot is labelled by its timestep where no timestep repeats across periods, and otherwise by its position, `0` to `n-1` across every period in the network's order, its timestep then the property `snapshot.timestep`, naming a label of the `datetime` dim `timestep`, PyPSA's own index level name, whose axis holds each timestep once; the `pd.MultiIndex.from_product` of `set_investment_periods` repeats every timestep, so its snapshots are positions.
 Every attribute over `snapshot` has the dims it has in a single-period network, and a single-period network's schema declares no property of `snapshot`.
 `build` rebuilds the `(period, timestep)` index from the axis order, `snapshot.period` and the label or `snapshot.timestep`.
 A period is selected like any property of a dim an attribute reaches, `set("p_max_pu", 0.5, entity="wind", period=2030)` staging the snapshots of 2030 alone ([`set`](working-record.md#set)).
@@ -104,7 +104,7 @@ A period is selected like any property of a dim an attribute reaches, `set("p_ma
 The tool's own `Schema` reconciles vocabularies: per entity type, which record attribute a tool's attribute is renamed from, or which several it is computed from.
 Since [the schema](schema.md) makes a record's attribute names _declared_ rather than conventional, this maps one declared vocabulary to another.
 
-Frames are built and handed over one entity type at a time, so peak memory is one type's frames rather than the whole model.
+Relations are built and handed over one entity type at a time, so peak memory is one type's frames rather than the whole model.
 
 ## A value its type does not take
 

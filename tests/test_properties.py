@@ -9,8 +9,9 @@ Notes
 - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
 """
 
-import narwhals as nw
+import pandas as pd
 import pytest
+from duckdb import DuckDBPyRelation
 
 from datarecord.layered.resolve import write_schema
 from datarecord.mutable import WorkingRecord
@@ -27,30 +28,31 @@ def schema():
     """
     return Schema(
         dimensions={
-            "entity": Dimension(dtype=nw.String()),
-            "bus": Dimension(dtype=nw.String()),
-            "snapshot": Dimension(dtype=nw.Int64()),
+            "entity": Dimension(dtype="str"),
+            "bus": Dimension(dtype="str"),
+            "snapshot": Dimension(dtype="int"),
+            "ctype": Dimension(dtype={"one_of": ["Generator", "Load"]}),
         },
         properties={
             "entity": {
-                "ctype": PropertySpec(dtype=nw.Enum(["Generator", "Load"])),
-                "carrier": PropertySpec(dtype=nw.String(), default=""),
+                "ctype": PropertySpec(dtype={"one_of": "ctype"}),
+                "carrier": PropertySpec(dtype="str", default=""),
                 "sign": PropertySpec(
-                    dtype=nw.Float64(),
+                    dtype="float",
                     default=1.0,
                     default_by={"entity.ctype": {"Load": -1.0}},
                 ),
-                "control": PropertySpec(dtype=nw.String(), default="PQ"),
-                "bus": PropertySpec(dtype=nw.String()),
+                "control": PropertySpec(dtype="str", default="PQ"),
+                "bus": PropertySpec(dtype="str"),
             },
-            "bus": {"x": PropertySpec(dtype=nw.Float64())},
-            "connection": {"role": PropertySpec(dtype=nw.String())},
+            "bus": {"x": PropertySpec(dtype="float")},
+            "connection": {"role": PropertySpec(dtype="str")},
         },
         attributes={
-            "p_max_pu": AttributeSpec(dtype=nw.Float64(), dims={"entity", "snapshot"}),
-            "p_set": AttributeSpec(dtype=nw.Float64(), dims={"entity", "snapshot"}),
-            "efficiency": AttributeSpec(dtype=nw.Float64(), dims={"connection"}),
-            "x": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+            "p_max_pu": AttributeSpec(dtype="float", dims={"entity", "snapshot"}),
+            "p_set": AttributeSpec(dtype="float", dims={"entity", "snapshot"}),
+            "efficiency": AttributeSpec(dtype="float", dims={"connection"}),
+            "x": AttributeSpec(dtype="float", dims={"entity"}),
         },
         groups={"connection": Group(over={"entity": "entity", "bus": "bus"})},
         partial=frozenset({"entity", "connection"}),
@@ -63,20 +65,20 @@ def revision(store, schema):
     write_schema(schema, store)
     root = empty_root(store)
     staged = WorkingRecord(root.record)
+    staged.add("ctype", ["Generator", "Load"])
     staged.add("entity", ["g1"], ctype="Generator", carrier="wind")
     staged.add("entity", ["l1"], ctype="Load")
     staged.add("bus", ["b0"])
     staged.add_group(
         "connection",
-        nw.from_dict(
+        pd.DataFrame(
             {
                 "connection": [
                     {"entity": "g1", "bus": "b0"},
                     {"entity": "l1", "bus": "b0"},
                 ],
                 "role": ["bus", "bus"],
-            },
-            backend="pandas",
+            }
         ),
     )
     staged.set("p_max_pu", 0.9, ctype="Generator")
@@ -90,24 +92,24 @@ def record(revision):
     return revision.record
 
 
-def _rows(frame: nw.LazyFrame) -> dict:
-    """`frame` as `entity -> {column: value}`."""
-    rows = frame.collect().to_native().to_pylist()
+def _rows(rel: DuckDBPyRelation) -> dict:
+    """`rel` as `entity -> {column: value}`."""
+    rows = rel.to_arrow_table().to_pylist()
     return {r.pop("entity"): r for r in rows}
 
 
 def test_an_axis_frame_is_its_key_only(record):
-    assert record.dims["entity"].collect_schema().names() == ["entity"]
+    assert record.dims["entity"].columns == ["entity"]
 
 
 def test_properties_hold_stored_values_without_defaults(record):
     rows = _rows(record.properties["entity"])
     assert rows["g1"]["carrier"] == "wind"
     assert rows["l1"]["sign"] is None, "a stored-only read applies no default_by"
-    assert "role" in record.properties["connection"].collect_schema().names(), (
+    assert "role" in record.properties["connection"].columns, (
         "a group's property is read off the group"
     )
-    assert "role" not in record.properties["entity"].collect_schema().names()
+    assert "role" not in record.properties["entity"].columns
 
 
 def test_flags_refuse_a_plain_property(record):
@@ -147,7 +149,7 @@ def test_a_property_keyword_matches_a_label_by_its_stored_value(record):
     staged = WorkingRecord(record)
     staged.set("p_set", 2.0, carrier="wind")
     staged.set("p_set", 3.0, control="PQ")
-    rows = staged.attributes["p_set"].collect().to_native().to_pylist()
+    rows = staged.attributes["p_set"].to_arrow_table().to_pylist()
     values = {r["entity"]: r["value"] for r in rows}
     assert values == {"g1": 2.0, "l1": 1.0}, (
         "carrier is stored on g1 alone; control's default PQ is stored nowhere, "
@@ -173,11 +175,11 @@ def test_a_name_shared_by_attribute_property_and_dim_reaches_its_own(record):
     staged.set("x", 0.3, entity="l1")
     staged.set("bus.x", 10.2, bus="b0")
     staged.set("efficiency", 0.7, entity="l1", bus="b0")
-    rows = staged.attributes["x"].collect().to_native().to_pylist()
+    rows = staged.attributes["x"].to_arrow_table().to_pylist()
     assert [(r["entity"], r["value"]) for r in rows] == [("l1", 0.3)]
-    bus = staged.properties["bus"].collect().to_native().to_pylist()
+    bus = staged.properties["bus"].to_arrow_table().to_pylist()
     assert bus == [{"bus": "b0", "x": 10.2}], "`bus.x` is a column of the bus axis"
-    efficiency = staged.attributes["efficiency"].collect().to_native().to_pylist()
+    efficiency = staged.attributes["efficiency"].to_arrow_table().to_pylist()
     assert [r["value"] for r in efficiency] == [0.7], (
         "`bus=` is the connection's coordinate, not `entity.bus`"
     )

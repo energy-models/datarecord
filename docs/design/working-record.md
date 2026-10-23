@@ -18,14 +18,14 @@ class WorkingRecord:
     def set(
         self,
         attribute: str,  # an attribute or a property
-        value: Any,  # scalar | sequence | mapping | series | frame
+        value: Any,  # scalar | sequence | mapping | series | relation or frame
         **coords: Any,  # coordinates, a group's fields, properties of a dim reached
     ) -> None: ...
 
     def add(self, dim: str, labels: Sequence[Any], **columns: Any) -> None: ...
     def remove(self, dim: str, labels: Sequence[Any]) -> None: ...
 
-    def add_group(self, group: str, frame: IntoFrame) -> None: ...
+    def add_group(self, group: str, frame: Any) -> None: ...  # a relation or frame
     def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None: ...
 
     @property
@@ -114,6 +114,9 @@ Changing a category is such a patch: `set("entity.ctype", "Load", entity="g1")`.
 | series   | index is labels of one coordinate  | the index's own name, else the one coordinate no keyword names |
 | frame    | supplies its own keys              | single labels completing it                                    |
 
+**A frame is a DuckDB relation, or a pandas, polars or arrow frame.** It reaches DuckDB through DuckDB's own scanner, without collecting it into a relation first, and no scanner package is a dependency: a frame of a library never imported is no frame. A relation on another connection is [refused](read-path.md#a-relation-from-another-connection-is-rejected).
+**A column is checked against the DuckDB type its dtype maps to** ([dtypes](schema.md#dtypes)). A widening is cast — a smaller integer to `BIGINT`, a number to `DOUBLE`, a timestamp of any precision to `TIMESTAMP`, text to a closed dim's `ENUM` and back — which keeps the kind of value, not every digit: an integer past 2^53 rounds, a nanosecond truncates to the microsecond. Anything else is refused, naming the declared type; a column of timestamps with a time zone is refused rather than converted to naive time.
+
 A mapping's keys or a series' index are ambiguous: they may hold labels of any of the attribute's coordinates, an axis label being a string like any other.
 **The caller says which** by naming the series' index after a coordinate, or by naming every other coordinate as a keyword; where neither settles it, the call is refused.
 Never inferred from the labels themselves: testing them against the axis would make one call mean different things in two records — a scenario labelled `wind1` would silently capture a series meant per entity — and a partial overlap would pick a reading without saying so.
@@ -135,12 +138,12 @@ w.add("bus", ["north", "south"])
 w.add("bus", ["north H2"], carrier="H2", x=10.1)  # bare: the dim's own
 w.add("entity", ["g1", "g2"], ctype="Generator", carrier="wind")
 w.remove("entity", ["old_coal"])
-w.remove("carrier", ["gas"])  # refused while a property `into` carrier names it
+w.remove("carrier", ["gas"])  # refused while a property naming carrier names it
 ```
 
 `add(dim, labels, **columns)` stages whole axis rows: `columns` are the other columns of `dims/<dim>.parquet` — the dim's properties, bare since the subject is `dim` — each a scalar for every label or a sequence aligned to `labels`.
 A column no keyword names is NULL on these rows, since `add` restates a label's row whole.
-An `Enum` property's value must be one of its categories.
+A label of a [closed dim](schema.md#dtypes) must be one it lists: the dim's own in `add(dim, ...)`, a property's naming one.
 An attribute keyword is refused with a pointer to `set`: an attribute's values are long rows whatever its `dims`, never a column of the axis.
 A column the schema does not declare is **rejected**: a [staging table is shaped like the file it becomes](#staging), so there is no dtype to give such a column. A tool that grows a column declares it first, which [schema versioning](schema.md#versioning) accepts as a widening.
 
@@ -154,7 +157,7 @@ Adding a component with its connections and varying values is `add`, then [`add_
 It need not enumerate what it deletes: [the fold](layers.md#deletion) drops every value keyed by the label where `dim` is `partial`, a group attribute's by the label inside its struct ([the owner map](read-path.md#owner-map)).
 It also tombstones every tuple, of any group, with a field over `dim` naming one of `labels`, read from the record as it resolves with pending edits, so the [writer](layers.md#deletion) never meets a dangling tuple.
 An `add` of the same label revives the label alone: its tuples are re-added through [`add_group`](#add_group-remove_group).
-`remove` is **refused while a [property `into`](schema.md#properties) `dim` names one of the labels**, read from the record as staged: a tuple goes with its label, but a property's row is its subject's and outlives it, so the caller `set`s it to another label or None first.
+`remove` is **refused while a [property naming](schema.md#properties) `dim` stores one of the labels**, read from the record as staged: a tuple goes with its label, but a property's row is its subject's and outlives it, so the caller `set`s it to another label or None first.
 
 ## `add_group` / `remove_group`
 
@@ -165,9 +168,9 @@ w.remove_group("connection", [("dc", "north")])
 
 The one staging path every declared [group](schema.md#groups) writes through.
 
-`frame` is shaped like the group's file: one struct column named for the group (`connection STRUCT(entity, bus)`, `corridor STRUCT("from", "to")`), its `into` label where it declares one, and the group's properties, such as PyPSA's `role`.
+`frame` is shaped like the group's file: one struct column named for the group (`connection STRUCT(entity, bus)`, `corridor STRUCT("from", "to")`) and the group's properties, such as PyPSA's `role`; its columns are checked as [`set`](#set) checks a frame's.
 A field as a column of its own is rejected with the struct to pass instead, as [`set`](#set) rejects it.
-`keys` is a tuple per row in the group's [key](schema.md#into-a-group-that-classifies) order, packed into the struct for the caller.
+`keys` is a tuple per row in the group's [key](schema.md#groups) order, packed into the struct for the caller.
 
 A group's attributes are not columns of its file but long rows, set through [`set`](#set) with the group's fields as keywords.
 
@@ -235,8 +238,9 @@ What editing adds is edit-level, caught when the edit is **staged**, not at writ
 
 - an undeclared attribute, property or keyword, or a keyword the attribute does not vary over; a plain name only properties are called is refused naming their dotted forms, `set("carrier", …)` suggesting `bus.carrier` and `entity.carrier`;
 - a label of a `partial` dim the record does not resolve, `add` them first;
-- a value an `Enum` property does not list, in `add` or `set`;
-- a value of a [property `into` a dim](schema.md#properties) naming no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
+- a label a [closed dim](schema.md#dtypes) does not list, in `add` or `set`;
+- a frame column of a type its dtype does not take, timestamps with a time zone among them;
+- a value of a [property naming a dim](schema.md#properties) naming no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
 - an `add` naming an attribute.
 
 A label's categories are not checked against the attribute: every label carries [every attribute it addresses](schema.md#an-attribute-reaches-every-label-it-addresses), so a misplaced value is stored, and a tool not taking it leaves it out.
@@ -248,7 +252,7 @@ Staged rows live in DuckDB tables on the record's own connection:
 ```sql
 CREATE TABLE staged_attributes_<attr>_<id> (<that attribute's long columns>);
 CREATE TABLE staged_axis_<dim>_<id>      (<the axis key>, <the dim's properties>, deleted BOOLEAN);
-CREATE TABLE staged_<group>_<id>         (<group struct>, <into>, <the group's properties>, deleted BOOLEAN);
+CREATE TABLE staged_<group>_<id>         (<group struct>, <the group's properties>, deleted BOOLEAN);
 ```
 
 **Every table is shaped like the file it becomes**, which is the rule the rest of this section is consequences of. So there is no table whose columns are a union over things the format keeps apart, and a column the schema does not declare has nowhere to go — [`add`](#add-remove) rejects one rather than widening a table to fit it, there being no declared dtype to give it.

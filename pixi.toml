@@ -22,11 +22,10 @@ uv = "*"
 [dependencies]
 datarecord = { path = "." }
 duckdb = ">=1.5.4,<2"
-narwhals = ">=2,<3,!=2.21.0"
 pydantic = ">=2.12"
 
 [pypi-dependencies]
-mathspec = { git = "https://github.com/energy-models/mathspec.git", rev = "70aebbff6c7f49ad789b89201d45d5164d90599e" }
+mathspec = { git = "https://github.com/energy-models/mathspec.git", rev = "04911f1bc6bc6bb2fe03e3d7c24db063b8d6ed52" }
 
 [feature.test.dependencies]
 pytest = "*"

@@ -36,7 +36,7 @@ That is the [`Record` protocol](record.md), and [The Record protocol](record.md)
 An entity's `entity` identifies it **across every category**: names are unique record-wide, not per type ([entity is unique across types](format.md#entity-is-unique-across-types)).
 That is why the values are keyed by attribute and not by type — an attribute row names an entity and nothing more, and an entity's type is a [property](schema.md#properties) the record knows about it rather than part of its address.
 
-`Record` is the one class that answers all of this, and it is the narwhals interface over a fold across layers:
+`Record` is the one class that answers all of this, and it is the interface over a fold across layers, handing back DuckDB relations:
 
 - **A tree of layers**, each adding a partial record on top of its parent, resolved last-writer-wins. No single directory is the record; the answer is the fold across them. `Revision.record` gives one.
 - **One parquet directory**, via `Workspace.at(uri)` — folded over the single layer it is, which [degenerates to a scan of it](read-path.md#one-record-over-one-fold). Not a second implementation.
@@ -48,12 +48,12 @@ A consumer cannot tell which it holds, so a framework reads a hundred-layer over
 
 Neither the concept nor this package names a modelling framework.
 A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
-`datarecord` depends only on `duckdb`, `narwhals` and `pydantic`; its one optional dependency, `datarecord[remote]`, adds boto3 for a location on S3 ([files, local and remote](layers.md#files-local-and-remote)).
+`datarecord` depends only on `duckdb`, `pydantic` and `mathspec`, whose dtypes a schema declares; its one optional dependency, `datarecord[remote]`, adds boto3 for a location on S3 ([files, local and remote](layers.md#files-local-and-remote)).
 
 ## Scope
 
 - **In scope:** the [`Record` protocol](record.md) (the definition) and [`WorkingRecord`](working-record.md); the [parquet format](format.md) that stores it; [the schema](schema.md); [overlay resolution](layers.md) and its [owner map](read-path.md#owner-map); [the write path](writing.md); [why one directory needs no second implementation](read-path.md#one-record-over-one-fold).
-- **Out of scope:** a non-DuckDB implementation (the protocol permits one, see [the protocol names no engine](record.md#the-protocol-names-no-engine), but only DuckDB-backed ones are provided); concurrent writers to one record; unmaterialised/meta layers.
+- **Out of scope:** a non-DuckDB implementation ([one engine](record.md#one-engine)); concurrent writers to one record; unmaterialised/meta layers.
 
 ## The pages
 

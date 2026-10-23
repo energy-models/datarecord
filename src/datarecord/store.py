@@ -29,11 +29,10 @@ import duckdb
 from duckdb import DuckDBPyConnection
 
 from datarecord.files import Absent, Files, LocalFiles, RemoteFiles
-from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver, read_schema
 from datarecord.layered.sources import DirectorySource, LayerSource
 from datarecord.layered.write import layer_data, reconcile_schema, write_layer
-from datarecord.record import LayerData, RecordLike
+from datarecord.record import LayerData, Record, RecordLike
 from datarecord.schema import Schema
 
 if TYPE_CHECKING:

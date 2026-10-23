@@ -28,16 +28,15 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import duckdb
-import narwhals as nw
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
+from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
-    DuckTypes,
     dead_keys,
+    empty_relation,
     ensure_local_dir,
     fn,
     fold_axis,
@@ -138,8 +137,8 @@ def mortal(schema: Schema) -> tuple[str, ...]:
     """The coordinates a fold keeps the dead labels of.
 
     One the owner map does not key, whose values naming a dead label only the
-    read can drop (`_living`), and a dim a group's tuples or a property `into`
-    it name, which the writer checks them against
+    read can drop (`_living`), and a dim a group's tuples or a property
+    `{"one_of": <dim>}` name, which the writer checks them against
     (`write._require_living_references`). A keyed coordinate's values the fold
     drops itself (`fold_inputs`).
 
@@ -149,7 +148,7 @@ def mortal(schema: Schema) -> tuple[str, ...]:
     """
     drawn = {
         *(d for g in schema.group_columns for d in schema.groups[g].over.values()),
-        *schema.into_properties().values(),
+        *schema.one_of_properties().values(),
     }
     unkeyed = set(schema.broadcast_dims) - set(schema.partial_dims)
     return tuple(
@@ -198,8 +197,8 @@ def resolve_groups(
     """Fold every declared group to its resolved relation, keyed by its struct column.
 
     A group folds through `fold_axis` like any axis, keyed by the one column
-    named for it: last-writer-wins per tuple, static columns (`into`,
-    group properties) on the winning row, its own tombstones honoured, member
+    named for it: last-writer-wins per tuple, its properties on the winning
+    row, its own tombstones honoured, member
     order the file's row order.
     The base `Fold`'s resolved group seeds depth 0. Absent from the result where
     no layer wrote a row.
@@ -510,11 +509,8 @@ def cast_declared(
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    duck_types = DuckTypes(rel)
     cols = [
-        col(c).cast(duck_types(t)).alias(c)
-        if (t := schema.column_type(c, subject))
-        else col(c)
+        col(c).cast(t).alias(c) if (t := schema.column_type(c, subject)) else col(c)
         for c in rel.columns
     ]
     return rel.project(*cols)
@@ -529,8 +525,8 @@ def _empty_relation(
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
-    return DuckTypes(con).empty_relation(
-        **{c: schema.column_type(c) or nw.String() for c in columns}
+    return empty_relation(
+        con, **{c: schema.column_type(c) or sqltypes.VARCHAR for c in columns}
     )
 
 
@@ -553,9 +549,9 @@ def with_columns(
     missing = [c for c in columns if c not in rel.columns]
     if not missing:
         return rel
-    duck_types = DuckTypes(rel)
     added = [
-        duck_types.null(schema.column_type(c) or nw.String()).alias(c) for c in missing
+        lit(None).cast(schema.column_type(c) or sqltypes.VARCHAR).alias(c)
+        for c in missing
     ]
     return rel.project(star(), *added)
 
@@ -1336,7 +1332,7 @@ class Resolver:
 
         The folded relation is
         already the winning row per tuple, carrying every non-key column -
-        a group property, an `into` label - in member order, read
+        its properties - in member order, read
         inline with no owner map. `None` where no layer wrote a row; empty, not
         `None`, where every row written is tombstoned.
 

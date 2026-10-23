@@ -20,7 +20,9 @@ w = WorkingRecord(root.record)
 w.set("p_nom", 150.0, entity=["wind1", "wind2"])  # broadcast
 w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per label, positional
 w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per label, keyed
-w.set("p_max_pu", frame, entity=["wind1"])  # a long frame
+w.set(
+    "p_max_pu", frame, entity=["wind1"]
+)  # a long frame: pandas, polars, arrow, a relation
 w.set("p_max_pu", series.rename_axis("snapshot"), entity="wind1")  # a series
 w.set("p_max_pu", 0.9)  # every entity, loads included, now and later
 w.set("p_max_pu", 0.9, ctype="Generator")  # every generator there is now
@@ -35,10 +37,11 @@ w.set("bus.x", 10.2, bus="north")  # not `x`, an attribute of its own
 
 **A property as a keyword selects labels at call time**: a keyword is bare, a coordinate of the attribute first, else any property of a dim it reaches, so `ctype="Generator", carrier="wind"` stages one row per label matching both on the record as staged. A label added later is not reached; a plain NULL is how a value reaches those. A name several reached dims declare a property of is refused: set it per dim.
 
-A parent is such a property: a dim is flat, so a multi-period snapshot carries its period as `snapshot.period`, `into` `period` ([design](../design/schema.md#a-dim-is-flat)).
+A parent is such a property: a dim is flat, so a multi-period snapshot carries its period as `snapshot.period`, naming a label of `period`, and its timestep as `snapshot.timestep`, naming one of the `datetime` dim `timestep` ([design](../design/schema.md#a-dim-is-flat)).
 
 ```python
 w.add("period", [2030, 2040])
+w.add("timestep", [t0, t1])
 w.add(
     "snapshot", [0, 1, 2, 3], period=[2030, 2030, 2040, 2040], timestep=[t0, t1, t0, t1]
 )
@@ -82,7 +85,7 @@ w.remove_group("connection", [("dc", "south")])
 
 `add(dim, labels, **columns)` works on any dim. The keywords are the axis file's other columns — the dim's properties, bare — each a scalar or a sequence aligned to `labels`. An attribute keyword is refused: attributes go through `set`, whatever their `dims` ([design](../design/working-record.md#add-remove)). A label exists by virtue of its axis row, so `add` is not a sequence of `set` calls: adding a bus with no properties makes the point.
 
-`remove(dim, labels)` stages a tombstone per label, with no dim scope — a label [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every value keyed by the label, and `remove` also tombstones every group tuple naming one ([design](../design/layers.md#deletion)). It is refused while a property `into` the dim still names one of the labels — `entity.carrier` naming `gas` — since that row is its subject's and outlives the label: `set` it to another label or None first ([design](../design/working-record.md#add-remove)).
+`remove(dim, labels)` stages a tombstone per label, with no dim scope — a label [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every value keyed by the label, and `remove` also tombstones every group tuple naming one ([design](../design/layers.md#deletion)). It is refused while a property naming the dim still stores one of the labels — `entity.carrier` naming `gas` — since that row is its subject's and outlives the label: `set` it to another label or None first ([design](../design/working-record.md#add-remove)).
 
 `add_group`/`remove_group` stage a group's tuples, as one struct column named for the group with the group's properties beside it. Every group is reached the same way — `connection` has no call of its own, being one group among however many the schema declares.
 
@@ -111,7 +114,7 @@ w.rollback()  # clear the staging area, if you are done
 The edits are a delta against the revision `w` was built over, so `child` raises if you write them under another one. The layer lands in the **child**, never in the node you branched from — layers are write-once ([design](../design/layers.md#a-layers-data-is-write-once)) — so it is the returned node that reads the edits back:
 
 ```python
-new.record.attributes["p_nom"].collect()
+new.record.attributes["p_nom"].df()
 ```
 
 Writing clears nothing: a `WorkingRecord` still holding its edits reads exactly what it did before, until `rollback()`.

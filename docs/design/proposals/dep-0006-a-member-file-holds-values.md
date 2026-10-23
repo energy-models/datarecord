@@ -20,7 +20,7 @@ SPDX-License-Identifier: CC-BY-4.0
 > and one without categories share one entity-axis layout with no member files.
 > The authoritative account is [the entity axis](../format.md#the-entity-axis),
 > [where a value lives](../format.md#where-a-value-lives) and
-> [categories](../schema.md#categories-an-enum-property-of-a-partial-dim); this
+> [categories](../schema.md); this
 > page is kept as the argument that led to the intermediate layout. It keys on `entity_type_dim is None` (no group over
 > `entity` alone), leaving a `String`-typed **declared** axis on today's per-type
 > layout — the [open question](#what-it-opens-rather-than-settles) below was

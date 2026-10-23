@@ -2,24 +2,24 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Classifications: a property `into` a dim, and a group `into` one over several coordinates.
+"""Classifications: a property naming the dim its values are labels of.
 
-`bus.state` `into` `state` says every bus is in at most one state: a column of
-the bus axis whose values are labels of `state`, which keeps an axis file for
-its order and for its properties. A group needs `into` only for a tuple of two
-coordinates or more.
+`bus.state` `{"one_of": "state"}` says every bus is in at most one state: a
+column of the bus axis whose values are labels of `state`, which keeps an axis
+file for its order and for its properties. A group's property names a dim the
+same way.
 
 Notes
 -----
 - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
 - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-- [why `into` is the right field](https://energy-models.github.io/datarecord/design/schema/#why-into-is-the-right-field)
 """
 
 from typing import Any
 
-import narwhals as nw
+import duckdb
 import pytest
+from duckdb import sqltypes
 from pydantic import ValidationError
 
 from datarecord.layered.revision import Revision
@@ -44,16 +44,16 @@ def _schema(**overrides) -> Schema:
     """A record classified twice over, bus -> state -> country, and a pair classified into a country."""
     kwargs: dict[str, Any] = {
         "dimensions": {
-            "bus": Dimension(dtype=nw.String()),
-            "state": Dimension(dtype=nw.String()),
-            "country": Dimension(dtype=nw.String()),
-            "scenario": Dimension(dtype=nw.String()),
+            "bus": Dimension(dtype="str"),
+            "state": Dimension(dtype="str"),
+            "country": Dimension(dtype="str"),
+            "scenario": Dimension(dtype="str"),
         },
         "groups": {"bus_state": Group(over=["bus", "state"])},
         "properties": {
-            "bus": {"state": PropertySpec(into="state")},
-            "state": {"country": PropertySpec(into="country")},
-            "bus_state": {"country": PropertySpec(into="country")},
+            "bus": {"state": PropertySpec(dtype={"one_of": "state"})},
+            "state": {"country": PropertySpec(dtype={"one_of": "country"})},
+            "bus_state": {"country": PropertySpec(dtype={"one_of": "country"})},
         },
         "partial": frozenset(),
     }
@@ -64,39 +64,40 @@ def _schema(**overrides) -> Schema:
 # -- the declaration --------------------------------------------------------
 
 
-def test_the_key_is_over_without_into():
-    """What the uniqueness constraint is on: each `over` tuple carries one label.
-
-    So `groups/bus_state.parquet` is keyed by a `bus_state` struct over `bus`
-    and `scenario`, `state` a plain column beside it.
-    """
-    s = _schema(groups={"bus_state": Group(over=["bus", "scenario"], into="state")})
-    assert s.group_key("bus_state") == ("bus", "scenario")
-
-
-def test_a_property_into_a_dim_takes_its_dtype_and_does_not_categorize():
-    """Its values are the dim's labels, typed as them, and data rather than categories."""
+@pytest.mark.parametrize(
+    ("state", "duck", "categorizing"),
+    [
+        pytest.param("str", sqltypes.VARCHAR, (), id="open"),
+        pytest.param(
+            {"one_of": ["lower", "upper"]},
+            duckdb.sqltypes.DuckDBPyType("ENUM('lower', 'upper')"),
+            ("state",),
+            id="closed",
+        ),
+    ],
+)
+def test_a_property_naming_a_dim_takes_its_type_and_categorizes_if_it_is_closed(
+    state, duck, categorizing
+):
+    """Its values are the dim's labels, typed as them; categories only where the dim lists them."""
     s = _schema(
-        dimensions={
-            **_schema().dimensions,
-            "state": Dimension(dtype=nw.Enum(["lower", "upper"])),
-        },
+        dimensions={**_schema().dimensions, "state": Dimension(dtype=state)},
         partial=frozenset({"bus"}),
     )
-    assert s.properties["bus"]["state"].dtype == nw.Enum(["lower", "upper"])
-    assert s.categorizing("bus") == (), "an `Enum` dim's labels are still data"
+    assert s.column_type("state", "bus") == duck
+    assert s.categorizing("bus") == categorizing, "an open dim's labels are data"
     assert Schema.model_validate_json(s.model_dump_json()) == s, "the dtype round-trips"
 
 
-def test_an_into_less_group_in_dims_is_one_struct_column():
+def test_a_group_in_dims_is_one_struct_column():
     """A group in `dims` is carried as itself, a struct over its coordinates."""
     s = _schema(
         groups={**_schema().groups, "connection": Group(over=["bus", "state"])},
-        attributes={"capacity": AttributeSpec(dtype=nw.Float64(), dims={"connection"})},
+        attributes={"capacity": AttributeSpec(dtype="float", dims={"connection"})},
     )
     assert s.coordinates_of("capacity") == ("connection",), "the group, not expanded"
-    assert s.column_type("connection") == nw.Struct(
-        {"bus": nw.String(), "state": nw.String()}
+    assert s.column_type("connection") == duckdb.struct_type(
+        {"bus": sqltypes.VARCHAR, "state": sqltypes.VARCHAR}
     )
     assert s.groups_of("capacity") == ("connection",)
 
@@ -114,7 +115,7 @@ def test_the_over_list_form_is_sugar_for_the_dict():
             "corridor": Group(over={"from": "bus", "to": "bus"}),
         }
     )
-    assert s.group_key("corridor") == ("from", "to"), "no `into`, so all of them"
+    assert s.group_key("corridor") == ("from", "to"), "every coordinate"
 
 
 # -- what the declaration rejects -------------------------------------------
@@ -133,25 +134,10 @@ def test_the_over_list_form_is_sugar_for_the_dict():
             "over undeclared dims",
             id="over-undeclared-dim",
         ),
-        pytest.param(
-            {"c": Group(over=["bus", "state"], into="nope")},
-            "`into` undeclared dim",
-            id="into-undeclared-dim",
-        ),
-        pytest.param(
-            {"c": Group(over=["bus", "state"], into="bus")},
-            "also one of its `over` coordinates",
-            id="into-one-of-over",
-        ),
-        pytest.param(
-            {"c": Group(over=["bus"], into="state")},
-            "declare the property `bus.state`",
-            id="into-over-one-coordinate",
-        ),
     ],
 )
 def test_a_malformed_group_is_refused(groups, match):
-    """A group is a column named for it, over declared dims, `into` another one."""
+    """A group is a column named for it, over declared dims."""
     with pytest.raises(ValidationError, match=match):
         _schema(groups=groups, properties={})
 
@@ -159,38 +145,30 @@ def test_a_malformed_group_is_refused(groups, match):
 @pytest.mark.parametrize(
     ("spec", "extra", "match"),
     [
-        pytest.param({"into": "nope"}, {}, "`into` undeclared dim", id="undeclared"),
         pytest.param(
-            {"into": "state", "dtype": "Int64"},
-            {},
-            "its dtype is the dim's",
-            id="dtype",
+            {"dtype": {"one_of": "nope"}}, {}, "an undeclared dim", id="undeclared"
         ),
-        pytest.param({}, {}, "declares its `dtype`, or the dim", id="neither"),
+        pytest.param({}, {}, "dtype\n  Field required", id="no-dtype"),
         pytest.param(
-            {"into": "state"},
+            {"dtype": {"one_of": "state"}},
             {
                 "attributes": {
                     "v": AttributeSpec(
-                        dtype=nw.Float64(),
+                        dtype="float",
                         dims={"bus"},
                         default_by={"bus.state": {"lower": 1.0}},
                     )
                 }
             },
-            "whose labels are data, not categories",
-            id="a-default-by-on-it",
+            "which lists no labels, so they are data, not categories",
+            id="a-default-by-on-an-open-dim",
         ),
     ],
 )
-def test_a_malformed_property_into_a_dim_is_refused(spec, extra, match):
-    """`into` names a declared dim, whose dtype the property takes, and categorizes nothing."""
+def test_a_malformed_property_naming_a_dim_is_refused(spec, extra, match):
+    """`one_of` names a declared dim, and an open one categorizes nothing."""
     with pytest.raises(ValidationError, match=match):
         _schema(
-            dimensions={
-                **_schema().dimensions,
-                "state": Dimension(dtype=nw.Enum(["lower", "upper"])),
-            },
             properties={"bus": {"state": spec}},
             partial=frozenset({"bus"}),
             **extra,
@@ -203,14 +181,14 @@ def test_a_malformed_property_into_a_dim_is_refused(spec, extra, match):
 def _budget_schema() -> Schema:
     """The mapping chain, with a property of `country` and an attribute over it alone."""
     return _schema(
-        properties={"country": {"co2_budget": PropertySpec(dtype=nw.Float64())}},
-        attributes={"target": AttributeSpec(dtype=nw.Float64(), dims={"country"})},
+        properties={"country": {"co2_budget": PropertySpec(dtype="float")}},
+        attributes={"target": AttributeSpec(dtype="float", dims={"country"})},
         partial=frozenset({"country"}),
     )
 
 
 def test_a_classified_axis_folds_as_an_ordinary_axis(store):
-    """The fold learns nothing new: the `into` dim has an axis file like any dim.
+    """The fold learns nothing new: a dim a property names has an axis file like any dim.
 
     Its own file is what gives it order and a place for `co2_budget`, which no
     bus column could hold.
@@ -264,7 +242,7 @@ def test_removing_a_label_of_a_dim_outside_partial_tombstones_its_tuples(store):
 
 
 def _tuples(record) -> list[dict]:
-    return record.groups["bus_state"].collect()["bus_state"].to_list()
+    return record.groups["bus_state"].df()["bus_state"].tolist()
 
 
 def test_member_order_survives_a_restate_through_a_materialised_parent(store):
@@ -300,14 +278,14 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
         [{"bus_state": {"bus": "east", "state": "lower"}}],
     )
 
-    rows = grandchild.record.groups["bus_state"].collect().to_native().to_pydict()
+    rows = grandchild.record.groups["bus_state"].to_arrow_table().to_pydict()
     assert [r["bus"] for r in rows["bus_state"]] == ["north", "south", "east"], (
         "member order, seed first"
     )
     assert "order_key" not in rows
 
 
-def test_a_property_of_the_into_dim_is_a_column_of_its_axis(store):
+def test_a_property_of_a_named_dim_is_a_column_of_its_axis(store):
     """`co2_budget` is a property of the country, so it rides on the axis file.
 
     An attribute addressed by `country` alone, `target`, is long rows of
@@ -332,7 +310,7 @@ def test_a_property_of_the_into_dim_is_a_column_of_its_axis(store):
     staged.set("target", {"DE": 30.0})
     child = revision.child(staged.edits)
     assert "target" not in child.resolver.dims.axes["country"].columns
-    rows = child.record.attributes["target"].collect().to_native().to_pydict()
+    rows = child.record.attributes["target"].to_arrow_table().to_pydict()
     assert rows["country"] == ["DE"]
     assert rows["value"] == [30.0]
 
@@ -351,8 +329,8 @@ def test_setting_one_property_keeps_its_siblings_value(store):
         _schema(
             properties={
                 "country": {
-                    "co2_budget": PropertySpec(dtype=nw.Float64()),
-                    "population": PropertySpec(dtype=nw.Float64()),
+                    "co2_budget": PropertySpec(dtype="float"),
+                    "population": PropertySpec(dtype="float"),
                 }
             },
             partial=frozenset({"country"}),
@@ -368,7 +346,7 @@ def test_setting_one_property_keeps_its_siblings_value(store):
     staged = WorkingRecord(revision.record)
     staged.set("country.co2_budget", {"DE": 12.0})
 
-    frame = staged.properties["country"].collect().to_native()
+    frame = staged.properties["country"].to_arrow_table()
     assert frame["co2_budget"].to_pylist() == [12.0], "the edited column takes the edit"
     assert frame["population"].to_pylist() == [83.0], (
         "an axis column no edit named keeps the base's value"
@@ -377,7 +355,7 @@ def test_setting_one_property_keeps_its_siblings_value(store):
     # And a second `set` on the sibling composes with the first rather than
     # displacing it, which is the same rule one step further.
     staged.set("country.population", {"DE": 84.0})
-    frame = staged.properties["country"].collect().to_native()
+    frame = staged.properties["country"].to_arrow_table()
     assert frame["co2_budget"].to_pylist() == [12.0], "the earlier edit survives"
     assert frame["population"].to_pylist() == [84.0]
 
@@ -405,7 +383,7 @@ def test_a_child_layer_holds_only_the_axis_labels_it_touched(store):
     assert country is not None
     patch = country.df()
     assert patch["country"].tolist() == ["DE"], "only the touched label"
-    frame = staged.properties["country"].collect().to_native()
+    frame = staged.properties["country"].to_arrow_table()
     got = dict(zip(frame["country"].to_pylist(), frame["co2_budget"].to_pylist()))
     assert got == {"DE": 12.0, "FR": 55.0}, (
         "a read with pending edits answers the new value; FR keeps the base's"
@@ -431,9 +409,7 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(store):
     revision = empty_root(store)
     # `partial` left empty, unlike `_budget_schema`.
     write_schema(
-        _schema(
-            properties={"country": {"co2_budget": PropertySpec(dtype=nw.Float64())}}
-        ),
+        _schema(properties={"country": {"co2_budget": PropertySpec(dtype="float")}}),
         store,
     )
     write_axis(
@@ -500,7 +476,7 @@ def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
 
 
-# -- a property `into` a dim names a live label --------------------------------
+# -- a property naming a dim names a live label -------------------------------
 
 
 @pytest.fixture
@@ -537,7 +513,7 @@ EDITS = [
 
 
 @pytest.mark.parametrize("edit", EDITS)
-def test_a_property_into_a_dim_refuses_a_label_it_lacks(classified, edit):
+def test_a_property_naming_a_dim_refuses_a_label_it_lacks(classified, edit):
     """`set` and `add` refuse a value naming no label of the dim, as staged.
 
     Notes
@@ -551,7 +527,7 @@ def test_a_property_into_a_dim_refuses_a_label_it_lacks(classified, edit):
 
 @pytest.mark.parametrize("edit", EDITS)
 @pytest.mark.parametrize("value", [None, "added"])
-def test_a_property_into_a_dim_takes_null_or_a_label_added_first(
+def test_a_property_naming_a_dim_takes_null_or_a_label_added_first(
     classified, edit, value
 ):
     """NULL names no label; a label staged by `add` is live."""
@@ -580,7 +556,7 @@ def test_remove_is_refused_while_a_property_names_the_label(classified):
     with pytest.raises(KeyError, match=r"no 'state' label \['lower'\]"):
         staged.set("bus.state", "lower", bus="south")
     child = classified.child(staged.edits)
-    assert child.record.dims["state"].collect()["state"].to_list() == ["upper"]
+    assert child.record.dims["state"].df()["state"].tolist() == ["upper"]
 
 
 def test_the_writer_refuses_a_property_naming_a_removed_label(classified):

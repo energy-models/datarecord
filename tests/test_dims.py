@@ -14,7 +14,6 @@ Notes
 
 from pathlib import Path
 
-import narwhals as nw
 import pandas as pd
 
 from tests.fixtures import (
@@ -134,7 +133,7 @@ def test_a_dim_names_its_own_file(store):
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
     revision = empty_root(store)
-    write_schema(schema(dims={"bus": nw.String()}, partial=set()), store)
+    write_schema(schema(dims={"bus": "str"}, partial=set()), store)
     target = Path(store.layer_dir(revision.id), "dims")
     target.mkdir(parents=True, exist_ok=True)
     pd.DataFrame([{"bus": "north"}, {"bus": "south"}]).to_parquet(

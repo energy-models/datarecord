@@ -11,12 +11,11 @@ Notes
 
 from dataclasses import dataclass
 
-import narwhals as nw
 import pytest
+from duckdb import DuckDBPyRelation
 
-from datarecord.layered.record import Record
 from datarecord.mutable import WorkingRecord
-from datarecord.record import Flags, Frames, RecordLike
+from datarecord.record import Flags, Record, RecordLike, Relations
 from datarecord.schema import AttributeSpec, Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
@@ -103,59 +102,71 @@ def test_a_network_source_is_a_record(store, ac_dc):
     assert isinstance(PyPSA.to_datarecord(ac_dc, store.workspace.con), RecordLike)
 
 
-def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
-    """`Frames` is the `Mapping` ABC, so eager `dict` values are a valid backing.
+@dataclass(frozen=True)
+class DictRecord:
+    schema: Schema
+    dims: Relations
+    properties: Relations
+    groups: dict[str, Relations]
+    attributes: Relations
 
-    The protocol asks for named lazy frames, not for a mapping that defers
-    building them - so whether an implementation is lazy like `LazyFrames` or
-    eager like this stays its own business.
+    def flags(self, **categories: object) -> dict[str, Flags]:
+        return {}
 
-    Notes
-    -----
-    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
-    """
-    entity_axis = nw.from_native(
-        store.workspace.con.sql(
-            "SELECT 'wind' AS entity, 'Generator' AS ctype, FALSE AS deleted"
-        )
+
+def _dict_record(store, snapshot: str = "NULL::VARCHAR") -> DictRecord:
+    """One `wind` entity with a `p_nom`, as eager relations, `snapshot` the SQL of its column."""
+    entity_axis = store.workspace.con.sql(
+        "SELECT 'wind' AS entity, 'Generator' AS ctype, FALSE AS deleted"
     )
     # `p_nom`'s own coordinates and no others: no `ctype` in a long
     # row, and no `bus`, which is the connection group's coordinate rather than
     # a column every attribute carries.
-    long = nw.from_native(
-        store.workspace.con.sql(
-            "SELECT 'wind' AS entity, 'p_nom' AS attribute,"
-            " NULL::DOUBLE AS breakpoint, 100.0 AS value,"
-            " NULL::VARCHAR AS snapshot, NULL::VARCHAR AS scenario,"
-            " NULL::BIGINT AS period"
-        )
+    long = store.workspace.con.sql(
+        "SELECT 'wind' AS entity, 'p_nom' AS attribute,"
+        " NULL::DOUBLE AS breakpoint, 100.0 AS value,"
+        f" {snapshot} AS snapshot, NULL::VARCHAR AS scenario,"
+        " NULL::BIGINT AS period"
     )
-
-    @dataclass(frozen=True)
-    class DictRecord:
-        schema: Schema
-        dims: Frames
-        properties: Frames
-        groups: dict[str, Frames]
-        attributes: Frames
-
-        def flags(self, **categories: object) -> dict[str, Flags]:
-            return {}
-
-    record = DictRecord(
+    return DictRecord(
         schema(),
-        {"entity": entity_axis.select("entity")},
+        {"entity": entity_axis.project("entity")},
         {"entity": entity_axis},
         {},
         {"p_nom": long},
     )
+
+
+def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
+    """`Relations` is the `Mapping` ABC, so eager `dict` values are a valid backing.
+
+    The protocol asks for named relations, not for a mapping that defers
+    building them - so whether an implementation is lazy like `LazyRelations`
+    or eager like this stays its own business.
+
+    Notes
+    -----
+    - [relations](https://energy-models.github.io/datarecord/design/record/#relations)
+    """
+    record = _dict_record(store)
     assert isinstance(record, RecordLike)
-    assert record.attributes["p_nom"].implementation == nw.Implementation.DUCKDB
 
     # And the writer consumes it, which is the point of widening the type:
     # it iterates and looks up, both of which a `dict` answers.
     revision = store.root(record)
     assert "p_nom" in store.layer(revision.id).attributes
+
+
+def test_the_writer_refuses_timestamps_with_a_time_zone(store):
+    """Written as `set` takes them: a zone is refused, not converted to naive time.
+
+    Notes
+    -----
+    - [the write API](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    record = _dict_record(store, "TIMESTAMPTZ '2020-01-01 00:00:00+00'")
+    with pytest.raises(ValueError, match="carry timestamps with a time zone"):
+        store.root(record)
 
 
 def test_constructions_agree_on_every_key_set(both):
@@ -189,8 +200,8 @@ def test_constructions_agree_on_rows(both):
     node, *rest = both
     for other in rest:
         for attribute in node.attributes:
-            left = node.attributes[attribute].collect().to_native().to_pandas()
-            right = other.attributes[attribute].collect().to_native().to_pandas()
+            left = node.attributes[attribute].df()
+            right = other.attributes[attribute].df()
             columns = sorted(set(left.columns) & set(right.columns))
             assert set(left.columns) == set(right.columns), attribute
             # A group's struct column arrives as dicts, which pandas cannot sort.
@@ -200,18 +211,24 @@ def test_constructions_agree_on_rows(both):
             assert left.equals(right), attribute
 
 
-# -- laziness (https://energy-models.github.io/datarecord/design/record/#frames, https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) ---------------------------------------------------
+# -- laziness (https://energy-models.github.io/datarecord/design/record/#relations, https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) ---------------------------------------------------
 
 
-def test_frames_stay_unmaterialised(both):
-    """An overlay-backed frame is a DuckDB plan, not a materialised table."""
+@pytest.mark.parametrize("member", ["dims", "properties", "groups", "attributes"])
+def test_every_value_is_a_relation(both, member):
+    """Each member's values are bare DuckDB relations, whatever the backing."""
+    for record in both:
+        values = getattr(record, member)
+        assert values, f"the fixture has {member}"
+        for key in values:
+            assert isinstance(values[key], DuckDBPyRelation), (member, key)
+
+
+def test_relations_stay_unmaterialised(both):
+    """An overlay-backed relation is a DuckDB plan, not a materialised table."""
     node, *_ = both
-    frame = node.attributes["p_max_pu"]
-    assert isinstance(frame, nw.LazyFrame)
-    assert frame.implementation == nw.Implementation.DUCKDB
-    # A narwhals operation pushes into the plan rather than executing it.
-    filtered = frame.filter(~nw.col("snapshot").is_null())
-    assert "FILTER" in filtered.to_native().explain().upper()
+    filtered = node.attributes["p_max_pu"].filter("snapshot IS NOT NULL")
+    assert "FILTER" in filtered.explain().upper(), "a filter pushes into the plan"
 
 
 # -- flags, the one non-frame member (https://energy-models.github.io/datarecord/design/read-path/#one-record-over-one-fold) ----------------------------------
@@ -271,9 +288,9 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
             attributes={
                 "Generator": {
                     # Addressed by the entity axis and nothing else.
-                    "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+                    "p_nom": AttributeSpec(dtype="float", dims={"entity"}),
                     "p_max_pu": AttributeSpec(
-                        dtype=nw.Float64(), dims={"entity", "snapshot"}
+                        dtype="float", dims={"entity", "snapshot"}
                     ),
                 }
             }
@@ -324,7 +341,7 @@ def test_node_record_orders_members(store):
     child = empty_child(middle)
     write_component(store.layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
-    axis = Record(child.resolver).properties["entity"].collect().to_native().to_pandas()
+    axis = Record(child.resolver).properties["entity"].df()
     names = list(axis[axis["ctype"] == "Generator"]["entity"])
     assert names == ["wind", "gas", "coal", "New Solar"], (
         "first-introduced order: the root's members, then the child's addition"
@@ -356,7 +373,7 @@ def test_missing_key_raises(both):
 
     Notes
     -----
-    - [Frames](https://energy-models.github.io/datarecord/design/record/#frames)
+    - [relations](https://energy-models.github.io/datarecord/design/record/#relations)
     """
     for record in both:
         assert "p_max_pu" in record.attributes
@@ -387,9 +404,9 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
     being wrong, while sharing one workspace.
     """
     stores = {}
-    cases: list[tuple[str, dict[str, nw.dtypes.DType]]] = [
-        ("a", {"scenario": nw.String()}),
-        ("b", {"vintage": nw.Int64()}),
+    cases: list[tuple[str, dict[str, str]]] = [
+        ("a", {"scenario": "str"}),
+        ("b", {"vintage": "int"}),
     ]
     for name, dims in cases:
         store = workspace.store(str(tmp_path / name))
@@ -403,8 +420,8 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
     (_, revision_a), (store_b, revision_b) = stores["a"], stores["b"]
     # Beyond `entity` and `bus`, which every schema here declares, the group.
     a, b = revision_a.record.schema, revision_b.record.schema
-    assert a.broadcast_dims == ("entity", "bus", "scenario", "connection")
-    assert b.broadcast_dims == ("entity", "bus", "vintage", "connection")
+    assert a.broadcast_dims == ("entity", "bus", "scenario", "ctype", "connection")
+    assert b.broadcast_dims == ("entity", "bus", "vintage", "ctype", "connection")
 
     # A layer read directly needs no schema supplied either: its own directory
     # carries none (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record), so its store's answers.
@@ -412,6 +429,7 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
         "entity",
         "bus",
         "vintage",
+        "ctype",
         "connection",
     )
 

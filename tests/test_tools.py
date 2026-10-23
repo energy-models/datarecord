@@ -13,13 +13,15 @@ import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
-import narwhals as nw
+import duckdb
 import numpy as np
 import pandas as pd
 import pytest
+from duckdb import DuckDBPyRelation
 
 from datarecord import Workspace
 from datarecord.layered.resolve import read_schema, write_schema
+from datarecord.schema import OneOf, OneOfDim
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
     CTYPE,
@@ -76,25 +78,18 @@ def _results_over(revision, n):
 
 def _sub_networks(revision) -> list[str]:
     entities = revision.record.properties["entity"]
-    sub_networks = entities.filter(nw.col("ctype") == "SubNetwork")
-    return sorted(sub_networks.collect().to_pandas()["entity"])
+    sub_networks = entities.filter("ctype = 'SubNetwork'")
+    return sorted(sub_networks.df()["entity"])
 
 
 def _prices(revision) -> pd.DataFrame:
-    price = revision.record.attributes["marginal_price"].collect().to_pandas()
+    price = revision.record.attributes["marginal_price"].df()
     return price.pivot(index="snapshot", columns="bus", values="value")
 
 
-def _flat(frame) -> pd.DataFrame:
+def _flat(rel: DuckDBPyRelation) -> pd.DataFrame:
     """A connection attribute's rows with the `connection` struct spread to `entity` and `bus`."""
-    connection = nw.col("connection").struct
-    return (
-        nw.from_native(frame)
-        .with_columns(entity=connection.field("entity"), bus=connection.field("bus"))
-        .lazy()
-        .collect(backend="pandas")
-        .to_native()
-    )
+    return rel.project("*, connection.entity AS entity, connection.bus AS bus").df()
 
 
 def test_requirements_falsy_when_empty():
@@ -140,9 +135,10 @@ def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
     - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
     """
     record = single_revision.record
-    ctype = record.schema.properties["entity"]["ctype"].dtype
-    assert not {"Bus", "Carrier"} & set(ctype.categories)
-    assert record.properties["bus"].collect_schema().names() == [
+    ctype = record.schema.dimensions["ctype"].dtype
+    assert isinstance(ctype, OneOf)
+    assert not {"Bus", "Carrier"} & set(ctype.one_of)
+    assert record.properties["bus"].columns == [
         "bus",
         "carrier",
         "type",
@@ -151,7 +147,7 @@ def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
         "unit",
         "location",
     ]
-    assert record.properties["carrier"].collect_schema().names() == [
+    assert record.properties["carrier"].columns == [
         "carrier",
         "color",
         "nice_name",
@@ -182,8 +178,8 @@ def test_an_unlisted_carrier_is_added_and_an_empty_one_is_none(store):
     n.add("Generator", "wind", bus="north", carrier="wind")
 
     record = export_network(n, store).record
-    assert record.dims["carrier"].collect()["carrier"].to_list() == ["AC", "wind"]
-    carriers = record.properties["entity"].collect().to_pandas()
+    assert record.dims["carrier"].df()["carrier"].tolist() == ["AC", "wind"]
+    carriers = record.properties["entity"].df()
     assert carriers.set_index("entity")["carrier"].isna().to_dict() == {
         "gen": True,
         "wind": False,
@@ -208,10 +204,10 @@ def test_a_property_is_addressed_by_its_subject(single_revision):
     w.set("x", 0.5, entity="0")
     w.set("bus.x", 10.2, bus="London")
 
-    x = w.attributes["x"].collect().to_pandas().set_index("entity")["value"]
+    x = w.attributes["x"].df().set_index("entity")["value"]
     assert x["0"] == 0.5
     assert "London" not in x.index, "`x` reaches no bus"
-    buses = w.properties["bus"].collect().to_pandas().set_index("bus")
+    buses = w.properties["bus"].df().set_index("bus")
     assert buses.at["London", "x"] == 10.2
     with pytest.raises(KeyError, match=r"`bus\.carrier` or `entity\.carrier`"):
         w.set("carrier", "AC")
@@ -292,7 +288,7 @@ def test_verify_reports_a_missing_dim(exported):
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = exported
-    _with_schema(revision, dims={"snapshot": nw.Datetime()}, partial=set())
+    _with_schema(revision, dims={"snapshot": "datetime"}, partial=set())
 
     missing = PyPSA.verify(revision.record)
     assert missing
@@ -305,37 +301,31 @@ def test_verify_reports_a_missing_dim(exported):
 def test_verify_reports_a_type_the_tool_does_not_know(exported):
     """A type outside PyPSA's registry is reported by `verify`, not raised in the fold.
 
-    The type must be one the *schema* declares - the entity-type axis is an
-    `Enum` and that vocabulary is upheld everywhere, so a record cannot hold a
-    type its own schema excludes. What it can hold is a type this tool has no
+    The type must be one the *schema* declares - `ctype` is a closed dim and
+    its list is upheld everywhere, so a record cannot hold a type its own
+    schema excludes. What it can hold is a type this tool has no
     registry entry for, which reads back fine and is this tool's business rather
     than the record layer's. `Requirements.categories` is what carries it.
 
     Notes
     -----
-    - [entity types](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
+    - [entity types](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision, store = exported, exported.store
-    # Declared alongside PyPSA's own types, since the `Enum` pins the
+    # Declared alongside PyPSA's own types, since the closed dim pins the
     # vocabulary.
     declared = read_schema(store)
     assert declared.categorizing("entity") == (CTYPE,)
-    prop = declared.properties["entity"][CTYPE]
-    assert isinstance(prop.dtype, nw.Enum), "PyPSA declares its types as an enum"
+    dim = declared.dimensions[CTYPE]
+    assert isinstance(dim.dtype, OneOf), "PyPSA lists its types on a closed dim"
+    listed = OneOf(one_of=(*dim.dtype.one_of, "Widget"))
     write_schema(
         declared.model_copy(
             update={
-                "properties": {
-                    **declared.properties,
-                    "entity": {
-                        **declared.properties["entity"],
-                        CTYPE: prop.model_copy(
-                            update={
-                                "dtype": nw.Enum([*prop.dtype.categories, "Widget"])
-                            }
-                        ),
-                    },
+                "dimensions": {
+                    **declared.dimensions,
+                    CTYPE: dim.model_copy(update={"dtype": listed}),
                 }
             }
         ),
@@ -352,9 +342,9 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
 
 
 _DIMS = {
-    "snapshot": nw.Datetime(),
-    "period": nw.Int64(),
-    "scenario": nw.String(),
+    "snapshot": "datetime",
+    "period": "int",
+    "scenario": "str",
 }
 
 
@@ -372,7 +362,8 @@ def _with_schema(revision, **kwargs) -> None:
     was = read_schema(revision.store)
     now = schema(**kwargs)
     labelled = {d: spec for d, spec in was.dimensions.items() if d not in _DIMS}
-    now = now.model_copy(update={"dimensions": {**labelled, **now.dimensions}})
+    redeclared = {d: s for d, s in now.dimensions.items() if d not in labelled}
+    now = now.model_copy(update={"dimensions": {**labelled, **redeclared}})
     # Keep the old attributes, but drop any dim a redeclaration removed from
     # their address - an attribute over a dim the schema no longer declares is
     # rejected at construction, and the point here is the redeclared dims, not a
@@ -523,8 +514,8 @@ def test_a_bus_and_a_generator_may_share_a_name(store):
     n.add("Generator", "north", bus="north")
 
     record = export_network(n, store).record
-    assert record.dims["bus"].collect()["bus"].to_list() == ["north"]
-    assert "north" in record.dims["entity"].collect()["entity"].to_list()
+    assert record.dims["bus"].df()["bus"].tolist() == ["north"]
+    assert "north" in record.dims["entity"].df()["entity"].tolist()
     assert_networks_equal(PyPSA.build(record), n)
 
 
@@ -608,7 +599,7 @@ def test_shapes_round_trip_in_their_crs(store):
 
     record = export_network(n, store).record
     assert record.schema.meta["crs"] == "EPSG:3035"
-    stored = record.attributes["geometry"].collect().to_pandas()
+    stored = record.attributes["geometry"].df()
     assert sorted(stored["value"]) == [
         "POINT (2 3)",
         "POLYGON ((1 0, 1 1, 0 1, 0 0, 1 0))",
@@ -632,7 +623,7 @@ def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
     record = revision.record
     names = _sub_networks(revision)
     assert names == [f"{i} SubNetwork" for i in range(4)]
-    pointed = set(record.attributes["sub_network"].collect().to_pandas()["value"])
+    pointed = set(record.attributes["sub_network"].df()["value"])
     assert pointed <= set(names), "a `sub_network` value names a SubNetwork entity"
 
     built = PyPSA.build(record)
@@ -737,29 +728,28 @@ def test_a_solved_network_exports_its_results_long_form(single_revision, solved)
     assert "p" in results
     assert "p_nom_opt" in results
 
-    # Narwhals frames, so the seam names no one dataframe library, and lazy so a
-    # tool may fetch on demand (https://energy-models.github.io/datarecord/design/tools/).
-    assert isinstance(results["p"], nw.LazyFrame)
-    p = results["p"].collect()
+    # Relations, lazy so a tool may fetch on demand (https://energy-models.github.io/datarecord/design/tools/).
+    assert isinstance(results["p"], DuckDBPyRelation)
+    p = results["p"].df()
     # The long schema's columns (https://energy-models.github.io/datarecord/design/record/), so the write path can persist it as-is -
     # and no `ctype`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
     assert {"connection", "snapshot", "scenario", "value"} <= set(p.columns)
     assert "ctype" not in p.columns
     assert "period" not in p.columns, "a series over `snapshot` reaches its period"
-    assert set(p["attribute"].to_list()) == {"p"}
+    assert set(p["attribute"].tolist()) == {"p"}
     # Series output: one row per (name, snapshot), for the Generator rows -
     # selected by name, since the frame no longer carries the type.
     gens = set(n.c["Generator"].static.index)
-    gen = _flat(p).query("entity in @gens")
+    gen = _flat(results["p"]).query("entity in @gens")
     assert len(gen) == len(n.snapshots) * len(gens)
 
     # A static output has no snapshot, and only the components whose value
     # differs from the default appear (some generators solve to p_nom_opt=0).
-    nom = results["p_nom_opt"].collect()
-    nom = nom.filter(nw.col("entity").is_in(list(gens)))
+    nom = results["p_nom_opt"].df()
+    nom = nom[nom["entity"].isin(gens)]
     assert "snapshot" not in nom.columns
     nonzero = n.c["Generator"].static["p_nom_opt"] != 0.0
-    assert set(nom["entity"].to_list()) == set(n.c["Generator"].static.index[nonzero])
+    assert set(nom["entity"]) == set(n.c["Generator"].static.index[nonzero])
 
 
 def test_an_export_skips_results_still_at_their_default(single_revision):
@@ -868,7 +858,7 @@ def test_a_re_solve_leaves_no_stale_sub_network(exported, solved):
     n.remove("SubNetwork", dropped)
     resolved = _results_over(revision, n)
     assert _sub_networks(resolved) == [f"{i} SubNetwork" for i in kept]
-    slack = resolved.record.attributes["slack_bus"].collect().to_pandas()
+    slack = resolved.record.attributes["slack_bus"].df()
     assert f"{dropped} SubNetwork" not in set(slack["entity"]), (
         "its results went with it"
     )
@@ -896,7 +886,7 @@ def test_a_result_a_re_solve_leaves_out_reads_as_null(exported, solved, ctype, a
     resolved = _results_over(base, n)
 
     def read(revision, name):
-        return revision.record.attributes[name].collect().to_pandas()
+        return revision.record.attributes[name].df()
 
     stale = read(base, attr)
     keys = [c for c in stale.columns if c not in ("breakpoint", "value")]
@@ -936,10 +926,10 @@ def test_link_internal_power_is_p_internal(single_revision, solved):
     n = solved
 
     results = PyPSA.to_datarecord(n, single_revision.record.con).attributes
-    internal = results["p_internal"].collect()
+    internal = results["p_internal"].df()
     links = list(n.c["Link"].static.index)
     assert "bus" not in internal.columns
-    assert set(internal["entity"].to_list()) == set(links)
+    assert set(internal["entity"]) == set(links)
     assert len(internal) == len(n.snapshots) * len(links)
     assert "p_internal" in _registry_schema().attributes
 
@@ -1191,11 +1181,11 @@ def test_delays_are_rows_keyed_by_their_connections(workspace, store):
     n.add("Link", "split", bus0="a", bus1="b", bus2="c", delay=3, delay2=4)
 
     record = PyPSA.to_datarecord(n, workspace.con)
-    members = set(record.dims["entity"].collect_schema())
+    members = set(record.dims["entity"].columns)
     assert not {"delay", "delay0", "delay2", "cyclic_delay1"} & members, (
         "no positional names on the members"
     )
-    assert set(record.groups["connection"].collect_schema()) == {
+    assert set(record.groups["connection"].columns) == {
         "connection",
         "role",
         "deleted",
@@ -1226,8 +1216,8 @@ def test_a_nan_in_a_series_survives_the_melt(workspace):
         {"split": [1.0, np.nan]}, index=n.snapshots
     )
 
-    rows = PyPSA.to_datarecord(n, workspace.con).attributes["p_max_pu"].collect()
-    split = rows.filter(nw.col("entity") == "split")
+    rows = PyPSA.to_datarecord(n, workspace.con).attributes["p_max_pu"]
+    split = rows.filter("entity = 'split'")
     assert len(split) == 2, "one row per snapshot, NaN included"
 
 
@@ -1255,8 +1245,8 @@ def test_a_name_is_never_an_identifier_in_the_melt_or_pivot(store):
     n.c["Generator"].dynamic["p_max_pu"] = series
 
     revision = store.root(PyPSA.to_datarecord(n, store.workspace.con))
-    rows = revision.record.attributes["p_max_pu"].collect()
-    assert sorted(rows.select("entity", "value").rows()) == sorted(
+    rows = revision.record.attributes["p_max_pu"]
+    assert sorted(rows.project("entity, value").fetchall()) == sorted(
         (name, value) for name in names for value in series[name]
     ), "the melt stores each name's own series"
     built = PyPSA.build(revision.record).c["Generator"].dynamic["p_max_pu"]
@@ -1309,11 +1299,11 @@ def test_schema_dims_stay_generic(exported):
     real record - see `test_verify_reports_a_snapshot_key`.
     """
     revision = exported
-    _with_schema(revision, dims={**_DIMS, "vintage": nw.String()})
+    _with_schema(revision, dims={**_DIMS, "vintage": "str"})
     dims = revision.resolver.dims
     assert "vintage" in dims.schema.dims
     # No axis rows anywhere, so the dim is absent from the mapping rather than
-    # present-and-empty (https://energy-models.github.io/datarecord/design/record/#frames).
+    # present-and-empty (https://energy-models.github.io/datarecord/design/record/#relations).
     assert "vintage" not in dims.axes
     # PyPSA's own required dims are still satisfied, and the extra dim is
     # simply not something the tool looks at.
@@ -1324,7 +1314,7 @@ def test_schema_dims_stay_generic(exported):
 def test_a_null_scenario_weight_reaches_every_scenario_its_own_row_does_not():
     rows = pd.DataFrame({"scenario": [None, "high"], "value": [0.25, 0.5]})
     record = SimpleNamespace(
-        attributes={"scenario_weight": nw.from_native(rows).lazy()}
+        attributes={"scenario_weight": duckdb.connect().from_df(rows)}
     )
     index = pd.Index(["low", "mid", "high"], name="scenario")
     equal = pd.DataFrame({"weight": 1 / 3}, index=index)
@@ -1402,16 +1392,20 @@ def test_a_multi_period_snapshot_is_one_flat_axis(multiperiod, multiperiod_revis
     schema = multiperiod_revision.record.schema
     timesteps = multiperiod.snapshots.get_level_values("timestep")
     repeated = not timesteps.is_unique
-    labels = multiperiod_revision.record.dims["snapshot"].collect()["snapshot"]
+    labels = multiperiod_revision.record.dims["snapshot"].df()["snapshot"]
     expected = list(range(len(timesteps))) if repeated else list(timesteps)
-    assert labels.to_list() == expected
-    assert schema.dimensions["snapshot"].dtype == (
-        nw.Int64() if repeated else nw.Datetime()
-    )
+    assert labels.tolist() == expected
+    assert schema.dimensions["snapshot"].dtype == ("int" if repeated else "datetime")
     assert set(schema.properties["snapshot"]) == (
         {"period", "timestep"} if repeated else {"period"}
     ), "a timestep property only where the label is a position"
-    assert schema.properties["snapshot"]["period"].into == "period"
+    assert schema.properties["snapshot"]["period"].dtype == OneOfDim(one_of="period")
+    if repeated:
+        assert schema.properties["snapshot"]["timestep"].dtype == OneOfDim(
+            one_of="timestep"
+        ), "a timestep names a label of the `timestep` dim"
+        steps = multiperiod_revision.record.dims["timestep"].df()["timestep"]
+        assert steps.tolist() == list(timesteps.unique()), "each timestep once"
     assert schema.attributes["p_max_pu"].dims == {
         "entity",
         "snapshot",
@@ -1453,7 +1447,7 @@ def test_a_set_on_some_snapshots_keeps_the_rest_of_the_series(
     from datarecord.mutable import WorkingRecord
 
     record = multiperiod_revision.record
-    first = record.dims["snapshot"].collect().item(0, "snapshot")
+    first = record.dims["snapshot"].fetchone()[0]
     periods = multiperiod.snapshots.get_level_values("period")
     selector, changed = {
         "period": ({"period": 2040}, periods == 2040),

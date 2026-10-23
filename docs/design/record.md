@@ -9,7 +9,7 @@ SPDX-License-Identifier: CC-BY-4.0
 The definition sketched in [what a data record is](index.md#what-a-data-record-is), in full. This is the contract a consumer codes against; [the record format](format.md) is how it is stored.
 It is read-only: writing is [`store.root(source)`, `rev.child(source)` or `ws.write(source, uri)`](writing.md).
 
-Two names, one shape. **`RecordLike`** is the protocol below — what a signature annotates against, and what a framework object satisfies structurally without depending on this package. **`Record`** is the class this package provides: the narwhals interface over [one fold](read-path.md#one-record-over-one-fold), which is what `Revision.record` and `Workspace.at(uri)` both give you. The concrete thing gets the short name because it is what a caller constructs and holds.
+Two names, one shape. **`RecordLike`** is the protocol below — what a signature annotates against, and what a framework object satisfies structurally without depending on this package. **`Record`** is the class this package provides: the interface over [one fold](read-path.md#one-record-over-one-fold), handing back its relations bare, which is what `Revision.record` and `Workspace.at(uri)` both give you. The concrete thing gets the short name because it is what a caller constructs and holds.
 
 ```python
 @runtime_checkable
@@ -20,13 +20,13 @@ class RecordLike(Protocol):
     def schema(self) -> Schema: ...  # dims, properties, attributes, partial
 
     @property
-    def dims(self) -> Frames: ...  # axis key columns, keyed by dim
+    def dims(self) -> Relations: ...  # axis key columns, keyed by dim
     @property
-    def properties(self) -> Frames: ...  # stored property values, keyed by subject
+    def properties(self) -> Relations: ...  # stored property values, keyed by subject
     @property
-    def groups(self) -> Frames: ...  # each group's rows, keyed by group
+    def groups(self) -> Relations: ...  # each group's rows, keyed by group
     @property
-    def attributes(self) -> Frames: ...  # long frames, keyed by attribute
+    def attributes(self) -> Relations: ...  # long relations, keyed by attribute
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]: ...
 ```
@@ -56,7 +56,7 @@ class LayerData(Protocol):
 Each pair is an enumerator — the keys of that kind — and a read for one key.
 The enumerators return `Iterable[str]` rather than `set[str]` so a `Resolver`, whose keys carry a stable order a `Record` over it relies on, can return a `list` where a source returns a `set`; the meaning is the same set of keys either way.
 
-An `axis` is the rows of its file: the labels, their tombstones and the dim's properties. A `group` is its tuples, its `into` label and the group's properties.
+An `axis` is the rows of its file: the labels, their tombstones and the dim's properties. A `group` is its tuples and the group's properties.
 
 One object, two meanings: a [`LayerSource`](read-path.md#owner-map) answers `axis`/`group`/`attribute` for its own layer's rows; a `Resolver` answers the same names for everything folded into it.
 The writer cannot tell which it holds and does not need to — a staged layer's own rows (`w.edits`) and a resolved whole record are both a `LayerData`, so a [`WorkingRecord`](working-record.md#edits) hands over either without a third shape adapting one to the other.
@@ -64,8 +64,8 @@ The writer cannot tell which it holds and does not need to — a staged layer's 
 `schema` governs which of the other pairs are populated, rather than standing beside them as a peer: `groups`/`group` answer only for the groups it declares.
 An enumerator answers the **empty set**, never a phantom key, where the schema declares nothing of that kind.
 
-Rows are raw `DuckDBPyRelation`s, not narwhals frames — the write path stays one engine throughout.
-A framework object satisfying `RecordLike` instead (narwhals `Frames`, as [`Tool.to_datarecord`](tools.md) returns) is not itself a `LayerData`; the writer wraps it in a thin adapter that reads its `Frames` mappings through the same enumerate-and-read pairs, so a tool stays narwhals-facing without the writer growing a second code path.
+Rows are `DuckDBPyRelation`s, as a `RecordLike`'s are — the write path stays one engine throughout.
+A framework object satisfying `RecordLike` instead (as [`Tool.to_datarecord`](tools.md) returns) is not itself a `LayerData`; the writer wraps it in a thin adapter that reads its `Relations` mappings through the same enumerate-and-read pairs, so the writer grows no second code path.
 
 ## Wide and long rows
 
@@ -82,8 +82,8 @@ groups["connection"]               connection STRUCT(entity, bus) | role | ...
 
 `dims[dim]` is the axis's key — the label — in [axis order](#axis-order), and nothing else. Properties and categories are covered [below](#properties-and-categories).
 
-`groups` is keyed by the group alone, one frame each: `groups/connection.parquet` holds every attachment whatever the categories of its entities ([where the rows live](format.md#where-a-value-lives)).
-A group's own frame is keyed by the one struct column named for it, as an axis's is by the column named for the dim, its `into` label and its properties beside it.
+`groups` is keyed by the group alone, one relation each: `groups/connection.parquet` holds every attachment whatever the categories of its entities ([where the rows live](format.md#where-a-value-lives)).
+A group's own relation is keyed by the one struct column named for it, as an axis's is by the column named for the dim, its properties beside it.
 
 `attributes` are **long** — one row per value, keyed by the attribute's name:
 
@@ -93,12 +93,12 @@ attributes["p_max_pu"]     entity | <one column per coordinate> | attribute | br
 attributes["efficiency"]   connection STRUCT(entity, bus) | <...> | attribute | breakpoint | value
 ```
 
-`attributes` holds **every** attribute, whatever its `dims`: `p_nom` over `entity` alone is long rows like `p_max_pu`, so widening it over `scenario` adds a column to the same frame rather than moving it.
+`attributes` holds **every** attribute, whatever its `dims`: `p_nom` over `entity` alone is long rows like `p_max_pu`, so widening it over `scenario` adds a column to the same relation rather than moving it.
 A row names what the value belongs to, the coordinate it sits at, and the value there.
 
 **The columns are the attribute's own**, not a fixed set every file carries: an attribute's coordinates are what its [`dims`](schema.md#attributespec) declare, with a [group](schema.md#groups) carried as one struct column named for it.
 So `efficiency` over the `connection` group carries `connection`, `flow` over a `corridor` carries `corridor`, and `objective_weighting` over `snapshot` alone carries no entity column at all — an all-NULL `entity` would be a column claiming an entity the value has none of.
-A consumer wanting a group's coordinates flat takes `nw.col("connection").struct.field("bus")`, or unnests; a numpy-backed pandas frame has no struct dtype, so a pandas consumer unnests on the DuckDB side first.
+A consumer wanting a group's coordinates flat takes `connection.bus` in SQL, or unnests; a numpy-backed pandas frame has no struct dtype, so a pandas consumer unnests on the DuckDB side first.
 `union_by_name` is what lets the fold union files of differing shape, supplying NULL for a coordinate a given file does not carry.
 
 **No property is a column of an attribute row**: `attributes["p_max_pu"]` holds every entity's `p_max_pu` together, whatever its category, since an `entity` identifies one label on its own.
@@ -112,9 +112,9 @@ A consumer wanting one category's rows joins `properties["entity"]`, filtered on
 
 A [property](schema.md#properties) is one value per label of its subject — a dim or a group — and is stored as a column of that subject's file.
 
-**`properties[subject]`** is the subject's key with every property declared for it, as stored: a record-wide view, NULL wherever no layer wrote a value. It is keyed by each subject declaring properties, and its columns are the properties' plain names — the frame already names the subject.
+**`properties[subject]`** is the subject's key with every property declared for it, as stored: a record-wide view, NULL wherever no layer wrote a value. It is keyed by each subject declaring properties, and its columns are the properties' plain names — the relation already names the subject.
 
-An `Enum` property of a dim in [`partial`](schema.md#partial-the-granularity-of-an-override) [categorizes](schema.md#categories-an-enum-property-of-a-partial-dim) that dim. One category's labels are `properties[dim]` filtered on it, carrying every property of the dim, and a property's [default](schema.md#default_by-a-default-per-category) — `default_by` per category, else `default` — is `Schema.default_for`. A framework's static frame, PyPSA's `n.generators`, is that frame, defaulted, joined with the entity-only rows of its attributes. A per-category read applying the defaults itself is deferred until a caller needs it.
+A property of a dim in [`partial`](schema.md#partial-the-granularity-of-an-override) naming a closed dim [categorizes](schema.md#categories-labels-of-a-closed-dim) that dim. One category's labels are `properties[dim]` filtered on it, carrying every property of the dim, and a property's [default](schema.md#default_by-a-default-per-category) — `default_by` per category, else `default` — is `Schema.default_for`. A framework's static frame, PyPSA's `n.generators`, is that frame, defaulted, joined with the entity-only rows of its attributes. A per-category read applying the defaults itself is deferred until a caller needs it.
 
 A category selects labels; it never decides which attributes or properties a label carries, which is every one [it addresses](schema.md#an-attribute-reaches-every-label-it-addresses). A label whose category changes keeps what it held, and a per-category read judges it by its current categories.
 
@@ -158,19 +158,19 @@ An axis's order is the row order of its frame in `dims`.
 Labels and a group's rows are in the order they were first introduced across layers ([the owner map](read-path.md#owner-map)).
 Order is never a stored column: a file's row order is the input, and the fold derives first-introduced order from it.
 
-## `Frames`
+## Relations
 
 ```python
-Frames = Mapping[str, nw.LazyFrame]
+Relations = Mapping[str, DuckDBPyRelation]
 ```
 
-narwhals is the boundary type because it is a _protocol over dataframes_ rather than a dataframe: a record may hand back a DuckDB relation, a polars plan or a pandas frame and the consumer's code is the same.
+A `Record` hands back bare DuckDB relations, each a plan on the record's connection. DuckDB is the one query engine: every record is DuckDB underneath, so a value handed over as itself costs no wrap per read, and a caller wanting SQL needs no unwrap. A consumer filters, joins and aggregates with relation calls or SQL, and fetches with `.df()`, `.pl()` or `.to_arrow_table()`.
 
-`LazyFrames` is the lazily-building implementation, used where constructing a frame is itself I/O: `read_parquet` reads the parquet footer to bind the schema, so it opens the file.
+`LazyRelations` is the lazily-building implementation, used where constructing a relation is itself I/O: `read_parquet` reads the parquet footer to bind the schema, so it opens the file.
 Locally that is a page-cache hit; against a remote record it is a round trip per attribute, so a consumer wanting three of forty attributes pays three rather than forty, and listing the keys pays none.
 
-Laziness here saves I/O, not memory: an unmaterialised relation is a query plan, so holding every attribute's frame at once costs little.
-The expense is `collect`, which is the consumer's call either way.
+Laziness here saves I/O, not memory: an unmaterialised relation is a query plan, so holding every attribute's relation at once costs little.
+The expense is fetching, which is the consumer's call either way.
 
 ## `Flags`
 
@@ -210,10 +210,9 @@ Reporting it as broadcast would answer the question above wrongly for every attr
 
 `flags` says nothing about properties, which are columns of their subject's file and read from `properties`.
 
-## The protocol names no engine
+## One engine
 
-The protocol names no engine — `nw.LazyFrame` is all a consumer sees, so a pure-Python, polars or Ibis-backed record would satisfy it without change.
+The protocol names DuckDB: a `RecordLike` answers `DuckDBPyRelation`s, and a tool's record builds them on the caller's connection — the PyPSA tool scans its pandas frames with `con.from_df`. A non-DuckDB backend for `RecordLike` is not possible, and that is the cost accepted for one representation from fold to consumer.
 
-The implementations provided are DuckDB-backed, both of them, and the resolution engine is not abstracted behind an interface.
+The resolution engine is not abstracted behind an interface either.
 The [owner-map fold](read-path.md#owner-map) is relational algebra of real complexity, and an engine abstraction with one implementation behind it is a cost paid for a second that does not exist.
-Adding one later means writing a second `Record`, which the protocol already permits.

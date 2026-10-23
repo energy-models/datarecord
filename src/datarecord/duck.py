@@ -19,22 +19,54 @@ Notes
 """
 
 import os
+import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from functools import partial, reduce
 from glob import glob
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import duckdb
-import narwhals as nw
-import narwhals._duckdb.utils as _nw_duckdb
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, FunctionExpression
+from duckdb import (
+    DuckDBPyConnection,
+    DuckDBPyRelation,
+    Expression,
+    FunctionExpression,
+    sqltypes,
+)
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
-from narwhals._utils import Version
+from duckdb.sqltypes import DuckDBPyType
+
+DUCK_TYPES: Mapping[str, DuckDBPyType] = {
+    "float": sqltypes.DOUBLE,
+    "int": sqltypes.BIGINT,
+    "bool": sqltypes.BOOLEAN,
+    "str": sqltypes.VARCHAR,
+    "datetime": sqltypes.TIMESTAMP,
+}
+"""Each mathspec dtype's DuckDB type, the one map a declared column is typed by.
+
+Notes
+-----
+- [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+"""
+
+
+def enum_type(labels: Iterable[str]) -> DuckDBPyType:
+    """The `ENUM` of `labels`, in their order: a closed dim's type."""
+    quoted = ", ".join("'" + label.replace("'", "''") + "'" for label in labels)
+    return DuckDBPyType(f"ENUM({quoted})")
+
+
+def enum_labels(dtype: DuckDBPyType) -> tuple[str, ...] | None:
+    """The labels `dtype` lists if it is an `ENUM`, else None."""
+    if dtype.id != "enum":
+        return None
+    return tuple(cast("list[str]", dict(dtype.children)["values"]))
 
 
 class _Functions:
@@ -167,7 +199,7 @@ def distinct_values(
 ) -> tuple[Any, ...]:
     """`rel`'s distinct values of `column`, as a tuple.
 
-    What keys a `LazyFrames` built over a relation: the values are read from a
+    What keys a `LazyRelations` built over a relation: the values are read from a
     column rather than from a directory listing, so one code path serves a local
     directory and a remote prefix alike.
     """
@@ -177,38 +209,77 @@ def distinct_values(
     return tuple(r[0] for r in projected.fetchall())
 
 
-def as_relation(frame: nw.LazyFrame, con: DuckDBPyConnection) -> DuckDBPyRelation:
-    """One narwhals frame as a DuckDB relation, without collecting where possible.
+def is_frame(value: Any) -> bool:
+    """Whether `value` is a relation, or a pandas, polars or arrow frame DuckDB scans.
 
-    A DuckDB-backed frame is already a plan, so it passes straight through; any
-    other backend is collected to arrow and re-registered. The one boundary where
-    a native representation is reached, shared by the write and edit paths.
+    A frame's module is looked up among those already imported, so none of
+    them becomes a dependency: a value of a module never imported is no frame
+    of it.
+    """
+    scanned: list[type] = [DuckDBPyRelation]
+    if (pandas := sys.modules.get("pandas")) is not None:
+        scanned.append(pandas.DataFrame)
+    if (polars := sys.modules.get("polars")) is not None:
+        scanned += [polars.DataFrame, polars.LazyFrame]
+    if (pyarrow := sys.modules.get("pyarrow")) is not None:
+        scanned += [pyarrow.Table, pyarrow.RecordBatch]
+    return isinstance(value, tuple(scanned))
+
+
+def as_relation(frame: Any, con: DuckDBPyConnection) -> DuckDBPyRelation:
+    """A relation, or a pandas, polars or arrow frame, as a relation on `con`.
+
+    A relation passes straight through; a frame is read by DuckDB's own
+    scanner, without collecting it first. The one boundary where a caller's
+    frame becomes a relation, shared by the write and edit paths.
 
     Raises
     ------
     ValueError
         For a relation on another connection, or another thread's cursor:
         copying it over would collect it on a connection the caller never
-        asked to read.
+        asked to read. On a column of timestamps with a time zone: a record's
+        are naive, and converting them would pick a zone for the caller.
+    TypeError
+        For anything that is no relation or frame DuckDB scans.
 
     Notes
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    - [the write API](https://energy-models.github.io/datarecord/design/working-record/#set)
     """
-    native = frame.to_native()
-    if isinstance(native, DuckDBPyRelation):
+    # `FROM frame` is a replacement scan, binding the local `frame` by name.
+    if isinstance(frame, DuckDBPyRelation):
         try:
-            con.sql("FROM native")
+            con.sql("FROM frame")
         except duckdb.InvalidInputException as e:
             msg = (
                 "this relation was built on another connection or thread; build "
-                "the frame on `record.con` in this thread, or hand over a "
-                "non-DuckDB frame to land"
+                "it on `record.con` in this thread, or hand over a pandas, "
+                "polars or arrow frame to land"
             )
             raise ValueError(msg) from e
-        return native
-    arrow = frame.collect(backend="pyarrow").to_native()  # noqa: F841 - bound by name
-    return con.sql("FROM arrow")
+        rel = frame
+    elif is_frame(frame):
+        rel = con.sql("FROM frame")
+    else:
+        msg = (
+            f"a {type(frame).__name__} is no frame; hand over a DuckDB relation, "
+            f"or a pandas, polars or arrow frame"
+        )
+        raise TypeError(msg)
+    zoned = [
+        c
+        for c, t in zip(rel.columns, rel.types, strict=True)
+        if t.id == "timestamp with time zone"
+    ]
+    if zoned:
+        msg = (
+            f"{zoned} carry timestamps with a time zone, which a record does not "
+            f"store; convert them to naive time first (e.g. `tz_convert(None)`)"
+        )
+        raise ValueError(msg)
+    return rel
 
 
 def ensure_local_dir(uri: str, *, parent: bool = False) -> None:
@@ -263,68 +334,22 @@ def struct_field(
     return coalesce(fn.struct_extract(col(column), lit(name)), default)
 
 
-class DuckTypes:
-    """Builds DuckDB types and typed shapes from narwhals dtypes, just in time.
+def empty_relation(
+    con: DuckDBPyConnection, **columns: DuckDBPyType
+) -> DuckDBPyRelation:
+    """A row-less relation with `columns`' names and types.
 
-    Built once per connection and called per dtype - the constructor's
-    relation is where a timezone-aware `Datetime` resolves its zone (DuckDB
-    keeps timezone on the connection, not the dtype), and is fetched at most
-    once no matter how many dtypes this instance translates.
+    What a staging table is created from: `create` takes the table's shape
+    from the relation, so a shape is built as expressions rather than
+    assembled as DDL text. One row of typed NULLs, kept for its types and
+    dropped for its rows.
 
-    Reaches into narwhals' private DuckDB backend
-    (`narwhals._duckdb.utils.narwhals_to_native_dtype`) rather than a local
-    translation table - unversioned within the `narwhals>=2,<3` pin, so
-    `pixi run test` is what catches a break, not a type error here.
-
-    Parameters
-    ----------
-    rel_or_con
-        A connection is queried for the throwaway relation
-        `DeferredTimeZone` needs; a relation already in hand is used as-is,
-        skipping that query.
+    A tuple rather than a list is what routes `values` to its expression
+    overload; the stub types only the scalar one.
     """
-
-    deferred_tz: _nw_duckdb.DeferredTimeZone
-    con: DuckDBPyConnection | None
-
-    def __init__(self, rel_or_con: DuckDBPyRelation | DuckDBPyConnection):
-        if isinstance(rel_or_con, DuckDBPyConnection):
-            self.con = rel_or_con
-            rel = rel_or_con.sql("SELECT 1")
-        else:
-            self.con = None
-            rel = rel_or_con
-        self.deferred_tz = _nw_duckdb.DeferredTimeZone(rel)
-
-    def __call__(self, dtype: nw.dtypes.DType) -> duckdb.sqltypes.DuckDBPyType:
-        """`dtype`'s DuckDB type."""
-        return _nw_duckdb.narwhals_to_native_dtype(
-            dtype, Version.MAIN, self.deferred_tz
-        )
-
-    def lit(self, value: Any, dtype: nw.dtypes.DType) -> Expression:
-        """`value`, cast to `dtype`'s DuckDB type - a typed literal."""
-        return lit(value).cast(self(dtype))
-
-    def null(self, dtype: nw.dtypes.DType) -> Expression:
-        """A typed NULL, which is one column of a shape-only relation."""
-        return self.lit(None, dtype)
-
-    def empty_relation(self, **columns: nw.dtypes.DType) -> DuckDBPyRelation:
-        """A row-less relation with `columns`' names and types.
-
-        What a staging table is created from: `create` takes the table's
-        shape from the relation, so a shape is built as expressions rather
-        than assembled as DDL text. One row of typed NULLs, kept for its
-        types and dropped for its rows.
-
-        A tuple rather than a list is what routes `values` to its expression
-        overload; the stub types only the scalar one.
-        """
-        assert self.con is not None
-        return self.con.values(
-            tuple(self.null(t).alias(n) for n, t in columns.items())
-        ).limit(0)  # type: ignore[arg-type]
+    return con.values(
+        tuple(lit(None).cast(t).alias(n) for n, t in columns.items())
+    ).limit(0)  # type: ignore[arg-type]
 
 
 def fold_axis(

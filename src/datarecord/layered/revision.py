@@ -31,9 +31,8 @@ from pydantic import (
 )
 
 from datarecord.layered import resolve
-from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver
-from datarecord.record import LayerData, RecordLike
+from datarecord.record import LayerData, Record, RecordLike
 from datarecord.store import Store, Workspace
 
 _ANCESTRY = """

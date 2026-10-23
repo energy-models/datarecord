@@ -37,7 +37,7 @@ A group is one column, so which columns name a connection is legible from the ma
 An attribute over such a group and no other `partial` coordinate has the key `(attribute)` alone, the grain of a record-level weighting.
 
 No category is on `inputs`: an attribute row is addressed by `entity` alone ([entity is unique across types](format.md#entity-is-unique-across-types)), and the resolved entity axis is what says which categories an entity has.
-That axis is what every category-scoped question goes through — [per-category `flags`](record.md#flags) join it, as does a consumer wanting one type's frame — and it carries each [categorizing property](schema.md#categories-an-enum-property-of-a-partial-dim) as a column, functionally determined by the label rather than keyed alongside it, so a re-categorized label is one row with a new value.
+That axis is what every category-scoped question goes through — [per-category `flags`](record.md#flags) join it, as does a consumer wanting one type's frame — and it carries each [categorizing property](schema.md#categories-labels-of-a-closed-dim) as a column, functionally determined by the label rather than keyed alongside it, so a re-categorized label is one row with a new value.
 
 The map is built by folding along the root→node path: parent map minus deletions and overrides, union the layer's own keys.
 A node whose caches are [materialised](layers.md#materialised-node-caches) persists it (and the resolved axes beside it), so a read needs only the ancestry **back to the nearest materialised node** — the key scalability property.
@@ -52,7 +52,7 @@ A row leaving a key column NULL is not addressed by it, and its NULL-safe anti-j
 ## One fold for every axis
 
 A dim's coordinates, the entity axis, and a group are one construct: a keyed relation a layer patches per key — a group's key being its one struct column, as a dim's is the column named for it.
-They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), its other columns carried on the winning row (`ctype` on the entity axis, `role` and `into` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
+They fold by one path — last-writer-wins per key, [`deleted` honoured](layers.md#deletion), its other columns carried on the winning row (`ctype` on the entity axis, `role` on a group) — producing one **resolved relation** with no `deleted` column and no `layer_uuid`.
 
 The resolved relation is returned **in first-introduced member order** — root first, then file order within a layer — and a node's caches persist it _in that order_, so a reader recovers member order from the resolved file's own row number.
 There is no persisted `order_key` column: member order is the file's row order.
@@ -138,7 +138,7 @@ The set is usually empty, and the join against it cheap.
 
 ## One record over one fold
 
-There is one `Record`, and it is the narwhals interface over a [`Resolver`](#owner-map). A plain parquet directory is not a second implementation of it: `Workspace.at(uri)` folds over a single [`DirectorySource`](format.md), and over one source the fold degenerates to a scan of it — there is one layer, so every key is owned by it and the anti-join has nothing to evict.
+There is one `Record`, and it hands a [`Resolver`](#owner-map)'s relations over bare. A plain parquet directory is not a second implementation of it: `Workspace.at(uri)` folds over a single [`DirectorySource`](format.md), and over one source the fold degenerates to a scan of it — there is one layer, so every key is owned by it and the anti-join has nothing to evict.
 
 So a directory takes the same properties as a tree node, rather than its own column of exceptions:
 
@@ -155,7 +155,7 @@ A DuckDB connection is not safe to use from two threads at once. DuckDB's answer
 Tables are shared between cursors — the `revisions` cache, the staging tables, the folded caches. A `DuckDBPyRelation` is not: it is bound to the cursor that built it. So the line runs around relations alone:
 
 - **Nothing but a relation holds a cursor.** A store, a revision, a `Resolver` and a layer source hold their workspace and look up `workspace.con` per call, so every relation they build lands on the calling thread's cursor, and a `Record` is usable from any thread. What they cache besides is plain data any thread computes the same.
-- **A relation, a narwhals frame over one, and a `WorkingRecord` belong to the thread that built them.** One reaching another thread's write path is rejected as [a relation from another connection](#a-relation-from-another-connection-is-rejected) is.
+- **A relation and a `WorkingRecord` belong to the thread that built them.** One reaching another thread's write path is rejected as [a relation from another connection](#a-relation-from-another-connection-is-rejected) is.
 
 **What a fold caches is shared, not held.** The frozen prefix's folded axes and groups are tables, `dims_<dim>_<id>` and `group_<name>_<id>`, beside the `owner_map_<id>` [owner map](#owner-map); a last `coords_<id>` table lists them and is created after them, so a reader finding it finds them all. A dim or group name is hashed into the table name, being a caller's string. `<id>` is the node whose frozen layers were folded: a revision's id, the base's for a `WorkingRecord`, the [id its manifest carries](schema.md#one-schema-per-record) for a standalone directory. The schema is not in the key, so a fold made before the manifest widened is read as it is under the wider one. A [compatible widening](schema.md#versioning) changes no column a table already has and only adds; the one addition a table can lack is the new dim's field in the [flag structs](#owner-map), and each reader of a flag takes a missing field as unset, decided from the struct's type when the query is built rather than per row. Nor are they cast to the declared types as a materialised map is: each holds what the same fold would return uncached.
 

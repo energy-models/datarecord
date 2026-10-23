@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | -------------------------------------------- |
 | Title    | drop narwhals                                |
 | Author   | Jonas Hoersch                                |
-| Status   | Draft (2026-10-20)                           |
+| Status   | Implemented (2026-10-20)                     |
 | Requires | [DEP 17](dep-0017-results-are-attributes.md) |
 | Created  | 2026-10-20                                   |
 | Version  | Unreleased                                   |

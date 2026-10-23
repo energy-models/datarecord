@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-import narwhals as nw
 import pytest
 
 from datarecord.layered.revision import Revision
@@ -51,9 +50,9 @@ def _connections(revision):
 
 def _root(store) -> Revision:
     """A record whose layer has one Process with three connections."""
+    write_schema(schema(), store)
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
     write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer,
@@ -199,9 +198,9 @@ def test_per_connection_attribute_varies_by_snapshot(store):
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
+    write_schema(schema(), store)
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
     write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer, [{"entity": "steel_dri", "bus": "h2_north", "role": "input"}]
@@ -293,7 +292,7 @@ def test_a_dim_a_group_draws_on_still_broadcasts(store):
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
-    price = AttributeSpec(dtype=nw.Float64(), dims={"bus", "snapshot"})
+    price = AttributeSpec(dtype="float", dims={"bus", "snapshot"})
     write_schema(
         schema(attributes={"Bus": {"marginal_price": price}}, partial={"bus"}), store
     )
@@ -443,7 +442,7 @@ def test_a_tuple_an_ancestor_left_dangling_fails_no_later_write(store):
     staged = WorkingRecord(dangling.record)
     staged.add("entity", ["blast_furnace"], ctype=PROCESS)
     child = dangling.child(staged.edits)
-    entities = child.record.dims["entity"].collect()["entity"].to_list()
+    entities = child.record.dims["entity"].df()["entity"].tolist()
     assert "blast_furnace" in entities
 
 
@@ -514,7 +513,7 @@ def _contract_root(store) -> Revision:
     `price` is over `{contract, snapshot}`, so no top-level `entity` names
     either party: both ride inside the `contract` struct.
     """
-    price = AttributeSpec(dtype=nw.Float64(), dims={"contract", "snapshot"})
+    price = AttributeSpec(dtype="float", dims={"contract", "snapshot"})
     write_schema(
         schema(
             attributes={SELLER: {"price": price}},
@@ -551,7 +550,7 @@ def _contract_root(store) -> Revision:
 
 
 def _prices(record) -> dict[str, float]:
-    df = record.attributes["price"].collect().to_native().to_pandas()
+    df = record.attributes["price"].df()
     return {c["to"]: v for c, v in zip(df["contract"], df["value"], strict=True)}
 
 
@@ -576,7 +575,7 @@ def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
 
     child = root.child(staged.edits)
     assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
-    contracts = child.record.groups["contract"].collect().to_native()
+    contracts = child.record.groups["contract"]
     assert len(contracts) == 1, "its tuple went with it"
 
 
@@ -590,7 +589,7 @@ def test_set_addresses_a_groups_fields_by_keyword(store):
     staged = WorkingRecord(_contract_root(store).record)
     contract: dict[str, Any] = {"from": "plant", "to": "mill"}
     staged.set("price", 30.0, **contract)
-    assert len(staged.attributes["price"].collect()) == 2, "one row per contract"
+    assert len(staged.attributes["price"]) == 2, "one row per contract"
     assert _prices(staged) == {"mill": 30.0, "smelter": 20.0}
 
     plant: dict[str, Any] = {"from": "plant"}

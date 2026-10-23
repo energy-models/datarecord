@@ -98,7 +98,7 @@ partial: [entity, bus, scenario, connection]
 
 ### A property `into` a dim
 
-`PropertySpec.into` names a declared dim; the property's values are its labels and its `dtype` is the dim's. A stored value must name a live label, checked where a group field is — [`set`, `add`](../working-record.md#validation), [the writer](../layers.md#deletion); NULL means none. It does not [categorize](../schema.md#categories-an-enum-property-of-a-partial-dim): a category is a schema `Enum`, labels are data. Any subject may declare one. A group `over` one coordinate `into` a dim is refused; [`into` on a group](../schema.md#into-a-group-that-classifies) stays for two or more coordinates, and [a chain is still not denormalised](../schema.md#properties).
+`PropertySpec.into` names a declared dim; the property's values are its labels and its `dtype` is the dim's. A stored value must name a live label, checked where a group field is — [`set`, `add`](../working-record.md#validation), [the writer](../layers.md#deletion); NULL means none. It does not [categorize](../schema.md): a category is a schema `Enum`, labels are data. Any subject may declare one. A group `over` one coordinate `into` a dim is refused; [`into` on a group](../schema.md) stays for two or more coordinates, and [a chain is still not denormalised](../schema.md#properties).
 
 ### A property's name is its subject's
 
@@ -116,7 +116,7 @@ A **selector keyword** is bare and names a coordinate of the attribute or a cate
 
 - [tools](../tools.md) → collision example Generator/Load; `partial` sentence; properties list; the table above; the five derived bus results; custom-column clash narrowed.
 - [format](../format.md#entity-is-unique-across-types) → collision example; [where a value lives](../format.md#where-a-value-lives) loses "no column on the classified axis"; "one name, one spec" scoped to attributes.
-- [schema](../schema.md#properties) → `into` on a property, per-subject rule, dotted addressing, the example; [`into`](../schema.md#into-a-group-that-classifies) one-coordinate rule; [names](../schema.md#names); [`partial`](../schema.md#partial-the-granularity-of-an-override) "not `timestep` or `carrier`".
+- [schema](../schema.md#properties) → `into` on a property, per-subject rule, dotted addressing, the example; [`into`](../schema.md) one-coordinate rule; [names](../schema.md#names); [`partial`](../schema.md#partial-the-granularity-of-an-override) "not `timestep` or `carrier`".
 - [record](../record.md#the-broadcast-rule) → "never a load"; [`flags`](../record.md#flags) plain names.
 - [working record](../working-record.md#set) → dotted `set`, selector rule; [validation](../working-record.md#validation) unknown-name error; [`add` / `remove`](../working-record.md#add-remove) referenced-label refusal.
 - usage [schema](../../usage/schema.md), [reading](../../usage/reading.md), [editing](../../usage/editing.md), `CHANGELOG.md`; `entity_type` → `component` in the tool, the pages and ~20 test files (core: two docstrings).

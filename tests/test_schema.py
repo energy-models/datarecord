@@ -13,12 +13,11 @@ import json
 from functools import reduce
 from typing import Any
 
-import duckdb
-import narwhals as nw
 import pytest
+from duckdb import sqltypes
+from duckdb.sqltypes import DuckDBPyType
 from pydantic import ValidationError
 
-from datarecord.duck import DuckTypes
 from datarecord.schema import (
     AttributeSpec,
     Dimension,
@@ -34,35 +33,42 @@ def _schema(**overrides) -> Schema:
     """A schema shaped like a stochastic multi-period record."""
     kwargs: dict[str, Any] = {
         "dimensions": {
-            "entity": Dimension(dtype=nw.String()),
-            "bus": Dimension(dtype=nw.String()),
-            "period": Dimension(dtype=nw.Int64()),
-            "timestep": Dimension(dtype=nw.Datetime()),
-            "scenario": Dimension(dtype=nw.String()),
+            "entity": Dimension(dtype="str"),
+            "bus": Dimension(dtype="str"),
+            "period": Dimension(dtype="int"),
+            "timestep": Dimension(dtype="datetime"),
+            "scenario": Dimension(dtype="str"),
+            "ctype": Dimension(dtype={"one_of": ["Generator", "Link"]}),
         },
-        "properties": {
-            "entity": {"ctype": PropertySpec(dtype=nw.Enum(["Generator", "Link"]))}
-        },
+        "properties": {"entity": {"ctype": PropertySpec(dtype={"one_of": "ctype"})}},
         "groups": {"connection": Group(over={"entity": "entity", "bus": "bus"})},
         "attributes": {
-            "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
+            "p_nom": AttributeSpec(dtype="float", dims={"entity"}),
             "p_max_pu": AttributeSpec(
-                dtype=nw.Float64(), dims={"entity", "scenario", "timestep"}
+                dtype="float", dims={"entity", "scenario", "timestep"}
             ),
             "marginal_cost": AttributeSpec(
-                dtype=nw.Float64(), dims={"entity", "scenario"}, breakpoints=True
+                dtype="float", dims={"entity", "scenario"}, breakpoints=True
             ),
-            "carrier": AttributeSpec(dtype=nw.String(), dims={"entity"}),
+            "carrier": AttributeSpec(dtype="str", dims={"entity"}),
             # A connection attribute says so by naming the group among its
             # dims, rather than by a field of its own.
             "efficiency": AttributeSpec(
-                dtype=nw.Float64(), dims={"connection", "scenario", "timestep"}
+                dtype="float", dims={"connection", "scenario", "timestep"}
             ),
         },
         "partial": frozenset({"entity", "scenario"}),
     }
     kwargs.update(overrides)
     return Schema(**kwargs)
+
+
+def _closed(**labels: list[str]) -> dict[str, Dimension]:
+    """`_schema`'s dims with a closed dim per keyword, listing its labels."""
+    return {
+        **_schema().dimensions,
+        **{d: Dimension(dtype={"one_of": ls}) for d, ls in labels.items()},
+    }
 
 
 # -- derived keys (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) -----------------------------------------------------
@@ -93,8 +99,8 @@ def test_partial_dims_is_the_union_over_attributes():
     )
 
     dims = {
-        "entity": Dimension(dtype=nw.String()),
-        "scenario": Dimension(dtype=nw.String()),
+        "entity": Dimension(dtype="str"),
+        "scenario": Dimension(dtype="str"),
     }
     unlisted = Schema(dimensions=dims, partial=frozenset({"scenario"}))
     assert unlisted.partial_dims == ("scenario",), (
@@ -117,7 +123,7 @@ def test_an_attribute_addresses_entity_through_its_dims_or_a_group(
     s = _schema(
         attributes={
             **_schema().attributes,
-            "weighting": AttributeSpec(dtype=nw.Float64(), dims={"timestep"}),
+            "weighting": AttributeSpec(dtype="float", dims={"timestep"}),
         }
     )
     assert s.addresses(attribute, "entity") is addresses
@@ -126,23 +132,6 @@ def test_an_attribute_addresses_entity_through_its_dims_or_a_group(
 def _with_entity_property(name: str, spec: PropertySpec) -> dict:
     """`_schema`'s properties with `name` added to `entity`'s."""
     return {"entity": {**_schema().properties["entity"], name: spec}}
-
-
-def test_a_functional_group_may_not_key_an_attribute_with_what_it_maps_from():
-    """`into` says the label follows from the key, so the row is keyed twice."""
-    with pytest.raises(ValidationError, match="keys a row twice over"):
-        Schema(
-            dimensions={
-                "bus": Dimension(dtype=nw.String()),
-                "scenario": Dimension(dtype=nw.String()),
-                "country": Dimension(dtype=nw.String()),
-            },
-            groups={"in_country": Group(over=["bus", "scenario"], into="country")},
-            attributes={
-                "x": AttributeSpec(dtype=nw.Float64(), dims={"bus", "country"})
-            },
-            partial=frozenset(),
-        )
 
 
 def test_the_section_decides_where_a_value_lives():
@@ -155,20 +144,21 @@ def test_the_section_decides_where_a_value_lives():
     s = _schema()
     assert s.long_columns_for("p_nom") == ("entity", "attribute", "breakpoint", "value")
     assert s.column_type("p_nom") is None, "a single-dim attribute is no axis column"
-    assert s.column_type("ctype", "entity") == nw.Enum(["Generator", "Link"])
-    assert s.column_type("ctype") is None, "a column of its subject's file only"
+    assert s.column_type("ctype", "entity") == DuckDBPyType("ENUM('Generator', 'Link')")
+    assert s.column_type("ctype", "entity") == s.column_type("ctype"), (
+        "a property naming a dim takes its type"
+    )
     assert s.categorizing("entity") == ("ctype",)
-    assert "ctype" not in s.long_columns
-    assert "ctype" not in s.broadcast_dims
     assert "ctype" not in s.partial_dims
 
 
 def test_a_group_may_have_properties():
     """A column of `groups/<group>.parquet`, typed like a dim's property."""
     s = _schema(
+        dimensions=_closed(role=["in", "out"]),
         properties={
-            "entity": {"ctype": PropertySpec(dtype=nw.Enum(["Generator", "Link"]))},
-            "connection": {"role": PropertySpec(dtype=nw.Enum(["in", "out"]))},
+            **_schema().properties,
+            "connection": {"role": PropertySpec(dtype={"one_of": "role"})},
         },
         partial=frozenset({"entity", "scenario", "connection"}),
     )
@@ -176,26 +166,33 @@ def test_a_group_may_have_properties():
         "connection",
         s.properties["connection"]["role"],
     )
-    assert s.column_type("role", "connection") == nw.Enum(["in", "out"])
+    assert s.column_type("role", "connection") == DuckDBPyType("ENUM('in', 'out')")
     assert s.categorizing("connection") == (), (
-        "a group is never categorized, even by an `Enum` property of a `partial` group"
+        "a group is never categorized, even by a property naming a closed dim"
     )
 
 
-def test_an_enum_property_categorizes_only_a_partial_dim():
-    """No flag: the dtype and `partial` decide, a `String` property never."""
+def test_a_property_naming_a_closed_dim_categorizes_only_a_partial_dim():
+    """No flag: the dtype and `partial` decide; a `str` property or one naming an open dim never.
+
+    Notes
+    -----
+    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
+    """
     s = _schema(
+        dimensions=_closed(carrier_kind=["wind", "solar"], era=["old", "new"]),
         properties={
             "entity": {
                 **_schema().properties["entity"],
-                "carrier_kind": PropertySpec(dtype=nw.Enum(["wind", "solar"])),
-                "label": PropertySpec(dtype=nw.String()),
+                "carrier_kind": PropertySpec(dtype={"one_of": "carrier_kind"}),
+                "label": PropertySpec(dtype="str"),
+                "home": PropertySpec(dtype={"one_of": "bus"}),
             },
-            "period": {"era": PropertySpec(dtype=nw.Enum(["old", "new"]))},
-        }
+            "period": {"era": PropertySpec(dtype={"one_of": "era"})},
+        },
     )
     assert s.categorizing("entity") == ("ctype", "carrier_kind"), (
-        "every `Enum` property, in declaration order"
+        "every property naming a closed dim, in declaration order"
     )
     assert s.categorizing("period") == (), "`period` is not partial"
     assert s.categorizing("scenario") == (), "no properties"
@@ -206,68 +203,43 @@ def test_an_enum_property_categorizes_only_a_partial_dim():
     [
         pytest.param(
             lambda: _schema(
-                properties=_with_entity_property(
-                    "entity", PropertySpec(dtype=nw.String())
-                )
+                properties=_with_entity_property("entity", PropertySpec(dtype="str"))
             ),
             "named like a column of its key",
             id="its-dims-name",
         ),
         pytest.param(
             lambda: _schema(
-                properties={
-                    "connection": {"connection": PropertySpec(dtype=nw.String())}
-                }
+                properties={"connection": {"connection": PropertySpec(dtype="str")}}
             ),
             "named like a column of its key",
             id="its-groups-name",
         ),
         pytest.param(
-            lambda: Schema(
-                dimensions={
-                    "bus": Dimension(dtype=nw.String()),
-                    "scenario": Dimension(dtype=nw.String()),
-                    "country": Dimension(dtype=nw.String()),
-                },
-                groups={"bus_country": Group(over=["bus", "scenario"], into="country")},
-                properties={
-                    "bus_country": {"country": PropertySpec(dtype=nw.String())}
-                },
-            ),
-            "named like a column of its key",
-            id="its-groups-into",
-        ),
-        pytest.param(
             lambda: _schema(
-                properties=_with_entity_property(
-                    "P_nom", PropertySpec(dtype=nw.Float64())
-                )
+                properties=_with_entity_property("P_nom", PropertySpec(dtype="float"))
             ),
             "differ only in case",
             id="an-attributes-name-in-another-case",
         ),
         pytest.param(
             lambda: _schema(
-                properties=_with_entity_property(
-                    "a.b", PropertySpec(dtype=nw.Float64())
-                )
+                properties=_with_entity_property("a.b", PropertySpec(dtype="float"))
             ),
             "contains `.`",
             id="a-dotted-name",
         ),
         pytest.param(
             lambda: Schema(
-                dimensions={"bus": Dimension(dtype=nw.String())},
+                dimensions={"bus": Dimension(dtype="str")},
                 groups={"corridor": Group(over={"from": "bus", "to": "bus"})},
-                properties={"corridor": {"from": PropertySpec(dtype=nw.String())}},
+                properties={"corridor": {"from": PropertySpec(dtype="str")}},
             ),
             "share their names with its coordinates",
             id="a-group-coordinates-name",
         ),
         pytest.param(
-            lambda: _schema(
-                properties={"nope": {"kind": PropertySpec(dtype=nw.String())}}
-            ),
+            lambda: _schema(properties={"nope": {"kind": PropertySpec(dtype="str")}}),
             "undeclared dims or groups",
             id="on-an-undeclared-dim",
         ),
@@ -285,13 +257,13 @@ def _shared() -> Schema:
         properties={
             "entity": {
                 **_schema().properties["entity"],
-                "bus": PropertySpec(dtype=nw.String()),
-                "x": PropertySpec(dtype=nw.Float64()),
+                "bus": PropertySpec(dtype="str"),
+                "x": PropertySpec(dtype="float"),
             },
             "bus": {
-                "carrier": PropertySpec(dtype=nw.String()),
-                "p_nom": PropertySpec(dtype=nw.Int64()),
-                "x": PropertySpec(dtype=nw.Float64()),
+                "carrier": PropertySpec(dtype="str"),
+                "p_nom": PropertySpec(dtype="int"),
+                "x": PropertySpec(dtype="float"),
             },
         }
     )
@@ -300,11 +272,11 @@ def _shared() -> Schema:
 @pytest.mark.parametrize(
     ("name", "subject", "dtype"),
     [
-        ("p_nom", None, nw.Float64()),
-        ("bus.p_nom", "bus", nw.Int64()),
-        ("carrier", None, nw.String()),
-        ("bus.carrier", "bus", nw.String()),
-        ("entity.bus", "entity", nw.String()),
+        ("p_nom", None, "float"),
+        ("bus.p_nom", "bus", "int"),
+        ("carrier", None, "str"),
+        ("bus.carrier", "bus", "str"),
+        ("entity.bus", "entity", "str"),
     ],
 )
 def test_resolve_reads_a_property_dotted_and_a_plain_name_as_an_attribute(
@@ -345,12 +317,12 @@ def test_a_record_may_declare_no_category_at_all():
     """
     s = Schema(
         dimensions={
-            "entity": Dimension(dtype=nw.String()),
-            "timestep": Dimension(dtype=nw.Datetime()),
+            "entity": Dimension(dtype="str"),
+            "timestep": Dimension(dtype="datetime"),
         },
         attributes={
-            "p_nom": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
-            "weighting": AttributeSpec(dtype=nw.Float64(), dims={"timestep"}),
+            "p_nom": AttributeSpec(dtype="float", dims={"entity"}),
+            "weighting": AttributeSpec(dtype="float", dims={"timestep"}),
         },
         partial=frozenset(),
     )
@@ -367,7 +339,7 @@ def test_default_for_reads_a_labels_default_over_the_plain_one():
         attributes={
             **_schema().attributes,
             "sign": AttributeSpec(
-                dtype=nw.Float64(),
+                dtype="float",
                 dims={"entity"},
                 default=1.0,
                 default_by={"entity.ctype": {"Link": -1.0}},
@@ -386,9 +358,7 @@ def test_default_for_reads_a_labels_default_over_the_plain_one():
     plain = _schema(
         properties={
             "entity": {
-                "ctype": PropertySpec(
-                    dtype=nw.Enum(["Generator", "Link"]), default="Generator"
-                )
+                "ctype": PropertySpec(dtype={"one_of": "ctype"}, default="Generator")
             }
         }
     )
@@ -408,7 +378,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
         pytest.param(
             lambda: _with_x(
                 AttributeSpec(
-                    dtype=nw.Float64(),
+                    dtype="float",
                     dims={"entity"},
                     default_by={"kind": {"Link": 1.0}},
                 )
@@ -419,7 +389,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
         pytest.param(
             lambda: _with_x(
                 AttributeSpec(
-                    dtype=nw.Float64(),
+                    dtype="float",
                     dims={"entity"},
                     default_by={"entity.ctype": {"Store": 1.0}},
                 )
@@ -430,7 +400,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
         pytest.param(
             lambda: _with_x(
                 AttributeSpec(
-                    dtype=nw.Float64(),
+                    dtype="float",
                     dims={"timestep"},
                     default_by={"entity.ctype": {"Link": 1.0}},
                 )
@@ -441,7 +411,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
         pytest.param(
             lambda: _with_x(
                 AttributeSpec(
-                    dtype=nw.Float64(),
+                    dtype="float",
                     dims={"entity"},
                     default_by={
                         "entity.ctype": {"Link": 0.5},
@@ -458,7 +428,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                 properties={
                     "entity": {
                         "ctype": PropertySpec(
-                            dtype=nw.Enum(["Generator", "Link"]),
+                            dtype={"one_of": "ctype"},
                             default="Generator",
                             default_by={"entity.ctype": {"Link": "Generator"}},
                         )
@@ -471,31 +441,30 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
         pytest.param(
             lambda: _with_x(
                 AttributeSpec(
-                    dtype=nw.Float64(),
+                    dtype="float",
                     dims={"entity"},
                     default_by={"entity.kind": {"wind": 1.0}},
                 ),
                 base=lambda **kw: _schema(
-                    properties=_with_entity_property(
-                        "kind", PropertySpec(dtype=nw.String())
-                    ),
+                    properties=_with_entity_property("kind", PropertySpec(dtype="str")),
                     **kw,
                 ),
             ),
-            "is no `Enum` property",
+            'is no `\\{"one_of": <dim>\\}` property',
             id="a-string-property",
         ),
         pytest.param(
             lambda: _with_x(
                 AttributeSpec(
-                    dtype=nw.Float64(),
+                    dtype="float",
                     dims={"period"},
                     default_by={"period.era": {"old": 1.0}},
                 ),
                 base=lambda **kw: _schema(
+                    dimensions=_closed(era=["old", "new"]),
                     properties={
                         **_schema().properties,
-                        "period": {"era": PropertySpec(dtype=nw.Enum(["old", "new"]))},
+                        "period": {"era": PropertySpec(dtype={"one_of": "era"})},
                     },
                     **kw,
                 ),
@@ -506,16 +475,15 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
         pytest.param(
             lambda: _with_x(
                 AttributeSpec(
-                    dtype=nw.Float64(),
+                    dtype="float",
                     dims={"connection"},
                     default_by={"connection.role": {"in": 1.0}},
                 ),
                 base=lambda **kw: _schema(
+                    dimensions=_closed(role=["in", "out"]),
                     properties={
                         **_schema().properties,
-                        "connection": {
-                            "role": PropertySpec(dtype=nw.Enum(["in", "out"]))
-                        },
+                        "connection": {"role": PropertySpec(dtype={"one_of": "role"})},
                     },
                     partial=frozenset({"entity", "scenario", "connection"}),
                     **kw,
@@ -534,14 +502,15 @@ def test_default_by_is_validated_against_the_categories(build, match):
 def _two_subjects(**overrides) -> Schema:
     """`_schema` with `bus` categorized by `bus_type` beside `ctype`."""
     kwargs: dict[str, Any] = {
+        "dimensions": _closed(bus_type=["AC", "DC"]),
         "properties": {
             **_schema().properties,
-            "bus": {"bus_type": PropertySpec(dtype=nw.Enum(["AC", "DC"]))},
+            "bus": {"bus_type": PropertySpec(dtype={"one_of": "bus_type"})},
         },
         "attributes": {
             **_schema().attributes,
-            "v_nom": AttributeSpec(dtype=nw.Float64(), dims={"bus"}),
-            "frequency": AttributeSpec(dtype=nw.Float64(), dims={"bus"}),
+            "v_nom": AttributeSpec(dtype="float", dims={"bus"}),
+            "frequency": AttributeSpec(dtype="float", dims={"bus"}),
         },
         "partial": frozenset({"entity", "bus", "scenario"}),
     }
@@ -555,7 +524,7 @@ def test_a_category_on_bus_works_like_one_on_entity():
         attributes={
             **_two_subjects().attributes,
             "frequency": AttributeSpec(
-                dtype=nw.Float64(),
+                dtype="float",
                 dims={"bus"},
                 default=0.0,
                 default_by={"bus.bus_type": {"AC": 50.0}},
@@ -572,7 +541,7 @@ def test_a_category_on_bus_works_like_one_on_entity():
 def test_default_by_takes_the_first_key_listing_a_category():
     """Several keys may default one value; declaration order decides between them."""
     loss = AttributeSpec(
-        dtype=nw.Float64(),
+        dtype="float",
         dims={"connection"},
         default=1.0,
         default_by={"bus.bus_type": {"DC": 0.0}, "entity.ctype": {"Link": 0.5}},
@@ -597,8 +566,8 @@ def test_default_by_takes_the_first_key_listing_a_category():
     [
         pytest.param(
             lambda: Schema(
-                dimensions={"scenario": Dimension(dtype=nw.String())},
-                attributes={"p": AttributeSpec(dtype=nw.Float64(), dims={"nope"})},
+                dimensions={"scenario": Dimension(dtype="str")},
+                attributes={"p": AttributeSpec(dtype="float", dims={"nope"})},
             ),
             "undeclared",
             id="an-attribute-over-an-undeclared-dim",
@@ -629,8 +598,8 @@ def test_a_default_survives_the_manifest_round_trip(value):
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
     """
     schema = Schema(
-        dimensions={"scenario": Dimension(dtype=nw.String())},
-        attributes={"p_nom_max": AttributeSpec(dtype=nw.Float64(), default=value)},
+        dimensions={"scenario": Dimension(dtype="str")},
+        attributes={"p_nom_max": AttributeSpec(dtype="float", default=value)},
     )
     back = Schema.model_validate_json(schema.model_dump_json())
     assert repr(back.attributes["p_nom_max"].default) == repr(value)
@@ -648,13 +617,13 @@ def _restating(**attributes: AttributeSpec) -> Schema:
     "new",
     [
         pytest.param(
-            _restating(p_min_pu=AttributeSpec(dtype=nw.Float64(), dims={"scenario"})),
+            _restating(p_min_pu=AttributeSpec(dtype="float", dims={"scenario"})),
             id="adding-an-attribute",
         ),
         pytest.param(
             _restating(
                 marginal_cost=AttributeSpec(
-                    dtype=nw.Float64(),
+                    dtype="float",
                     dims={"entity", "scenario", "timestep"},
                     breakpoints=True,
                 )
@@ -668,7 +637,7 @@ def _restating(**attributes: AttributeSpec) -> Schema:
         pytest.param(
             _restating(
                 p_nom=AttributeSpec(
-                    dtype=nw.Float64(),
+                    dtype="float",
                     dims={"entity"},
                     unit="kW",
                     description="Rated power.",
@@ -698,15 +667,15 @@ def test_a_compatible_change(new):
         pytest.param(
             _schema(),
             _restating(
-                p_max_pu=AttributeSpec(dtype=nw.Float64(), dims={"entity", "scenario"})
+                p_max_pu=AttributeSpec(dtype="float", dims={"entity", "scenario"})
             ),
             "no longer varies over ['timestep']",
             id="narrowing-dims",
         ),
         pytest.param(
             _schema(),
-            _restating(p_nom=AttributeSpec(dtype=nw.Int64(), dims={"entity"})),
-            "Float64 -> Int64",
+            _restating(p_nom=AttributeSpec(dtype="int", dims={"entity"})),
+            "float -> int",
             id="changing-a-dtype",
         ),
         pytest.param(
@@ -740,14 +709,12 @@ def test_unit_and_description_are_declared_on_both():
     """
     s = Schema(
         dimensions={
-            "vintage": Dimension(
-                dtype=nw.Int64(), unit="year", description="Build year."
-            ),
-            "scenario": Dimension(dtype=nw.String(), description="One realisation."),
+            "vintage": Dimension(dtype="int", unit="year", description="Build year."),
+            "scenario": Dimension(dtype="str", description="One realisation."),
         },
         attributes={
             "p_nom": AttributeSpec(
-                dtype=nw.Float64(), unit="MW", description="Nominal power."
+                dtype="float", unit="MW", description="Nominal power."
             )
         },
     )
@@ -755,7 +722,7 @@ def test_unit_and_description_are_declared_on_both():
     assert s.attributes["p_nom"].unit == "MW"
     # An axis whose labels are not a quantity declares none.
     assert s.dimensions["scenario"].unit is None
-    assert AttributeSpec(dtype=nw.Float64(), unit="").unit == "", (
+    assert AttributeSpec(dtype="float", unit="").unit == "", (
         '`""` is "genuinely dimensionless", apart from `None`, "undeclared"'
     )
 
@@ -782,9 +749,7 @@ def test_round_trips_through_json():
     ids=["top-level", "dim", "attribute", "property", "group"],
 )
 def test_manifest_with_unknown_key_fails_to_load(path: tuple[str, ...]):
-    s = pypsa_schema(
-        attributes={"Generator": {"p_nom": AttributeSpec(dtype=nw.Float64())}}
-    )
+    s = pypsa_schema(attributes={"Generator": {"p_nom": AttributeSpec(dtype="float")}})
     manifest = json.loads(s.model_dump_json())
     reduce(dict.__getitem__, path, manifest)["misspelt"] = 1
     with pytest.raises(ValidationError, match="misspelt"):
@@ -793,18 +758,16 @@ def test_manifest_with_unknown_key_fails_to_load(path: tuple[str, ...]):
 
 def test_column_types_cover_structural_dims_and_flags():
     s = _schema()
-    assert s.column_type("entity") == nw.String()
-    assert s.column_type("timestep") == nw.Datetime()
+    assert s.column_type("entity") == sqltypes.VARCHAR
+    assert s.column_type("timestep") == sqltypes.TIMESTAMP
     # One struct per flag column, a BOOLEAN field per declared dim (https://energy-models.github.io/datarecord/design/read-path/#owner-map), so
     # the map's column set does not widen when a dim is declared.
     for column in ("varies", "broadcast"):
         column_type = s.column_type(column)
         assert column_type == flag_type(s.broadcast_dims)
-        assert column_type is not None
-        duck_types = DuckTypes(duckdb.connect())
-        assert "scenario BOOLEAN" in str(duck_types(column_type))
+        assert "scenario BOOLEAN" in str(column_type)
     assert s.column_type("value") is None
-    assert s.value_type("p_nom") == nw.Float64()
+    assert s.value_type("p_nom") == sqltypes.DOUBLE
 
 
 def test_attributes_need_at_least_one_dim():
@@ -820,7 +783,7 @@ def test_attributes_need_at_least_one_dim():
     - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
     """
     with pytest.raises(ValidationError, match="at least one dim"):
-        Schema(attributes={"p_nom": AttributeSpec(dtype=nw.Float64())})
+        Schema(attributes={"p_nom": AttributeSpec(dtype="float")})
 
 
 # -- names (https://energy-models.github.io/datarecord/design/schema/#names) -----
@@ -828,8 +791,8 @@ def test_attributes_need_at_least_one_dim():
 
 def _declaring(position: str, name: str) -> Schema:
     """A minimal schema declaring `name` in one position."""
-    dim = Dimension(dtype=nw.String())
-    attr = AttributeSpec(dtype=nw.Float64(), dims={"entity"})
+    dim = Dimension(dtype="str")
+    attr = AttributeSpec(dtype="float", dims={"entity"})
     if position == "dim":
         return Schema(dimensions={"entity": dim, name: dim}, partial={name})
     if position == "group":
@@ -901,3 +864,62 @@ def test_names_differing_only_in_case_are_refused(position):
 def test_a_name_duckdb_quotes_is_accepted(name, position):
     """A space, a keyword, mixed case or a leading digit all quote cleanly."""
     _declaring(position, name)
+
+
+# -- dtypes (https://energy-models.github.io/datarecord/design/schema/#dtypes) ---
+
+
+@pytest.mark.parametrize(
+    ("build", "match"),
+    [
+        pytest.param(
+            lambda: AttributeSpec(dtype={"one_of": ["a"]}),
+            "takes no `one_of`",
+            id="attribute-list",
+        ),
+        pytest.param(
+            lambda: AttributeSpec(dtype={"one_of": "ctype"}),
+            "takes no `one_of`",
+            id="attribute-dim",
+        ),
+        pytest.param(
+            lambda: Dimension(dtype={"one_of": "ctype"}),
+            'as \\{"one_of": \\[...\\]\\}',
+            id="dim-naming-a-dim",
+        ),
+        pytest.param(
+            lambda: PropertySpec(dtype={"one_of": ["a"]}),
+            'as \\{"one_of": "<dim>"\\}',
+            id="property-listing-labels",
+        ),
+        pytest.param(
+            lambda: PropertySpec(dtype="datetime"),
+            "none of float, int, bool, str",
+            id="datetime-property",
+        ),
+        pytest.param(
+            lambda: Dimension(dtype="bool"),
+            "none of float, int, str, datetime",
+            id="bool-dim",
+        ),
+        pytest.param(
+            lambda: Dimension(dtype={"one_of": []}),
+            "at least 1 item",
+            id="dim-listing-nothing",
+        ),
+        pytest.param(
+            lambda: Dimension(dtype={"one_of": ["a", "b", "a"]}),
+            r"lists \['a'\] more than once",
+            id="dim-listing-a-label-twice",
+        ),
+    ],
+)
+def test_a_dtype_takes_its_kinds_mathspec_forms(build, match):
+    """A dim lists labels, a property names a dim, an attribute does neither.
+
+    Notes
+    -----
+    - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+    """
+    with pytest.raises(ValidationError, match=match):
+        build()

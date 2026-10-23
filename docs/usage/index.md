@@ -38,7 +38,7 @@ record = ws.at("out/")  # a standalone directory
 ```
 
 `ws.con` is the calling thread's DuckDB cursor, so one workspace serves every
-thread; a frame belongs to the thread that built it.
+thread; a relation belongs to the thread that built it.
 
 ## The pages
 

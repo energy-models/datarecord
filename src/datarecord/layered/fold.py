@@ -173,7 +173,7 @@ class Fold:
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
-        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-an-enum-property-of-a-partial-dim)
+        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-of-a-closed-dim)
         """
         dims = self.schema.broadcast_dims
         if not categories:

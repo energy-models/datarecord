@@ -13,14 +13,13 @@ import json
 import shutil
 from pathlib import Path
 
-import narwhals as nw
 import pandas as pd
 import pytest
 
 from datarecord import Workspace
 from datarecord.layered.resolve import read_schema
 from datarecord.mutable import WorkingRecord
-from datarecord.record import EMPTY, LazyFrames
+from datarecord.record import EMPTY, LazyRelations
 from datarecord.schema import AttributeSpec, Dimension, PropertySpec, Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
@@ -58,9 +57,9 @@ class _Source:
     def _frames(self, mapping, tag):
         def build(key):
             self.built.append(f"{tag}:{key}")
-            return nw.from_native(mapping[key]).lazy()
+            return mapping[key]
 
-        return LazyFrames(tuple(mapping), build)
+        return LazyRelations(tuple(mapping), build)
 
     @property
     def dims(self):
@@ -105,6 +104,7 @@ def _long(**overrides) -> pd.DataFrame:
         "snapshot": None,
         "scenario": None,
         "period": None,
+        "ctype": None,
         "attribute": "p_nom",
         "breakpoint": None,
         "value": 1.0,
@@ -326,7 +326,7 @@ def _p_nom(value: float) -> _Source:
 
 
 def _read_p_nom(record) -> list[float]:
-    return record.attributes["p_nom"].collect()["value"].to_list()
+    return record.attributes["p_nom"].df()["value"].tolist()
 
 
 def test_a_record_written_again_at_one_uri_reads_as_itself(workspace, tmp_path):
@@ -609,15 +609,16 @@ def _plant(p_nom: frozenset[str], *, categorized: bool = False) -> Schema:
     """Entities and scenarios, `p_nom` over `p_nom`, `ctype` if `categorized`."""
     return Schema(
         dimensions={
-            "entity": Dimension(dtype=nw.String()),
-            "scenario": Dimension(dtype=nw.String()),
+            "entity": Dimension(dtype="str"),
+            "scenario": Dimension(dtype="str"),
+            "ctype": Dimension(dtype={"one_of": ["Gen", "Load"]}),
         },
         properties=(
-            {"entity": {"ctype": PropertySpec(dtype=nw.Enum(["Gen", "Load"]))}}
+            {"entity": {"ctype": PropertySpec(dtype={"one_of": "ctype"})}}
             if categorized
             else {}
         ),
-        attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims=p_nom)},
+        attributes={"p_nom": AttributeSpec(dtype="float", dims=p_nom)},
         partial=frozenset({"entity", "scenario"}),
     )
 
@@ -670,7 +671,7 @@ def test_widening_a_single_dim_attribute_reads_old_rows_in_every_scenario(store)
     staged.add("scenario", ["low", "high"])
     child = store.revision(layer.id).child(staged.edits)
 
-    rows = child.record.attributes["p_nom"].collect().to_pandas()
+    rows = child.record.attributes["p_nom"].df()
     got = dict(zip(zip(rows["entity"], rows["scenario"]), rows["value"]))
     assert got == {
         ("g1", "low"): 1.0,
@@ -707,7 +708,9 @@ def test_categories_add_one_column_to_the_entity_axis_and_nothing_else(tmp_path)
 
     (plain_files, plain_axis), (typed_files, typed_axis) = layouts[False], layouts[True]
     assert plain_files == typed_files, "the same files"
-    assert not any(f.startswith("dims/ctype") for f in typed_files), "no per-label file"
+    assert not any(f.startswith("dims/ctype") for f in typed_files), (
+        "the closed dim's labels stay in the layer that added them"
+    )
     assert set(typed_axis.columns) - set(plain_axis.columns) == {"ctype"}
     assert set(plain_axis.columns) <= set(typed_axis.columns), (
         "differing by exactly one column"
@@ -720,16 +723,16 @@ def test_categories_add_one_column_to_the_entity_axis_and_nothing_else(tmp_path)
 
 _AWKWARD = Schema(
     dimensions={
-        "entity": Dimension(dtype=nw.String()),
-        "select": Dimension(dtype=nw.String()),
-        "Horizon": Dimension(dtype=nw.String()),
+        "entity": Dimension(dtype="str"),
+        "select": Dimension(dtype="str"),
+        "Horizon": Dimension(dtype="str"),
     },
     attributes={
         "Order Size": AttributeSpec(
-            dtype=nw.Float64(), dims={"entity", "select", "Horizon"}
+            dtype="float", dims={"entity", "select", "Horizon"}
         ),
     },
-    properties={"select": {"Group": PropertySpec(dtype=nw.Float64())}},
+    properties={"select": {"Group": PropertySpec(dtype="float")}},
     partial={"select", "Horizon"},
 )
 
@@ -788,7 +791,7 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     workspace.write(child.record, out)
     again = workspace.at(out)
     assert again.schema == _AWKWARD.model_copy(update={"id": again.schema.id})
-    flat = again.attributes["Order Size"].collect().to_pandas()
+    flat = again.attributes["Order Size"].df()
     assert dict(zip(zip(flat["select"], flat["Horizon"]), flat["value"])) == got, (
         "a flattened standalone copy reads the same"
     )

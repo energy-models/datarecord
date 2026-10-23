@@ -217,6 +217,17 @@ All notable changes to datarecord are documented here. The format follows
   results of `base` it does not write again; a NULL series value, input or
   result, leaves the component at its static value on export. Every record
   is re-exported.
+- **narwhals is gone** (breaking): `record.dims`, `properties`, `groups` and
+  `attributes` hand over bare `DuckDBPyRelation`s, `Frames` and `LazyFrames`
+  are `Relations` and `LazyRelations`, and `Record` moves to
+  `datarecord.record`. `set`, `add_group` and the writer take a relation or a
+  pandas, polars or arrow frame, read by DuckDB's own scanner, and refuse
+  timestamps with a time zone; `set` and `add_group` cast a frame column only
+  to a wider type of its kind and refuse any other. A dtype is mathspec's (`float`, `int`, `bool`, `str`, `datetime`);
+  a dim may list its labels, `{"one_of": [...]}`, an `ENUM` `add` checks, and
+  a property may name a dim, `{"one_of": "<dim>"}`, which replaces `into` on
+  properties and groups. The PyPSA tool declares closed `ctype` and `role`
+  dims and a `timestep` dim. Every record is re-exported.
 
 ### Fixed
 

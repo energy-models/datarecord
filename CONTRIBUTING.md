@@ -105,9 +105,9 @@ both, and the axes those values vary along. A record is defined by the
 directory is its on-disk form. The concrete `Record` folds a tree of layers
 resolved last-writer-wins, degenerating to a scan over a single directory
 (`Record.at(uri)`), so a consumer cannot tell how many layers it holds. Queries
-are built with `narwhals` and executed by `duckdb`, staying lazy until
-collected. Beyond those and `pydantic`, core depends on nothing. Keep new
-features consistent with this schema-declared, backend-agnostic,
+are DuckDB relations, staying lazy until fetched, and dtypes are `mathspec`'s.
+Beyond `duckdb`, `pydantic` and `mathspec`, core depends on nothing. Keep new
+features consistent with this schema-declared, DuckDB-backed,
 lazily-evaluated design.
 
 ## Releasing

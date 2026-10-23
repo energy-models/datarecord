@@ -35,7 +35,7 @@ A result is exempt from both checks: its shape is a framework's business, and a 
 The input is a [`LayerData`](record.md#layerdata): "the rows of one thing, enumerated and read" — the same interface a [`LayerSource`](read-path.md#owner-map) answers for its own layer and a `Resolver` answers for a whole fold, so the writer cannot tell which it was handed and does not need to.
 A staged layer's own rows and a resolved record are both a `LayerData`, which is what lets a [`WorkingRecord`](working-record.md#edits) hand over either.
 
-A framework object exposing narwhals frames — [`Record`](record.md) rather than `LayerData` — is not itself one: the writer wraps it in a thin adapter that reads its `Frames` mappings as the enumerate-and-read pairs `LayerData` declares, so a tool stays narwhals-facing and the layered write path stays raw-relation throughout.
+A framework object exposing a [`RecordLike`](record.md)'s relations rather than a `LayerData` is not itself one: the writer wraps it in a thin adapter that reads its `Relations` mappings as the enumerate-and-read pairs `LayerData` declares, so the layered write path stays one code path. The adapter takes each value as [`set`](working-record.md#set) does — a relation on the writer's connection, or a pandas, polars or arrow frame DuckDB scans.
 
 ## A revision exists only by its file
 
