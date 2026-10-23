@@ -497,7 +497,7 @@ def test_a_property_naming_a_dim_refuses_a_label_it_lacks(classified, edit):
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
     staged = WorkingRecord(classified.record)
-    with pytest.raises(KeyError, match=r"no '(state|country)' label \['coal'\]"):
+    with pytest.raises(KeyError, match=r"names '(state|country)' labels \['coal'\]"):
         edit(staged, "coal")
 
 
@@ -529,7 +529,7 @@ def test_remove_is_refused_while_a_property_names_the_label(classified):
 
     staged.set("bus.state", None, bus="north")
     staged.remove("state", ["lower"])
-    with pytest.raises(KeyError, match=r"no 'state' label \['lower'\]"):
+    with pytest.raises(KeyError, match=r"names 'state' labels \['lower'\]"):
         staged.set("bus.state", "lower", bus="south")
     child = classified.child(staged.edits)
     assert child.record.dims["state"].df()["state"].tolist() == ["upper"]

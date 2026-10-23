@@ -1009,9 +1009,7 @@ def test_a_value_at_a_label_its_axis_lacks_is_refused(store, via, row, dim):
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     """
-    with pytest.raises(
-        (KeyError, ValueError), match=rf"no '{dim}' label|names {dim} \["
-    ):
+    with pytest.raises((KeyError, ValueError), match=rf"names '{dim}' labels \["):
         if via == "child":
             _child(store, **row)
         else:
@@ -1031,9 +1029,7 @@ def test_a_value_at_a_tuple_its_group_lacks_is_refused(store, via):
     - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
     """
     row = {"connection": _A1, "value": 1.0}
-    with pytest.raises(
-        (KeyError, ValueError), match=r"no 'connection' tuple|names connection \["
-    ):
+    with pytest.raises((KeyError, ValueError), match=r"names 'connection' tuples \["):
         if via == "child":
             _child(store, "efficiency", **row)
         else:
@@ -1049,7 +1045,7 @@ def test_set_at_a_tuple_naming_an_unknown_label_names_the_label(store):
     """
     row = {"connection": {"entity": "a", "bus": "zz"}, "value": 1.0}
     with pytest.raises(
-        KeyError, match=r"field 'bus' of 'connection' names 'bus' labels \['zz'\]"
+        KeyError, match=r"names 'bus' labels \['zz'\] in 'connection.bus'"
     ):
         _rows_layer(store, [row], "set", "efficiency")
 
@@ -1066,7 +1062,7 @@ def test_a_tuple_naming_a_label_no_axis_holds_is_refused(store, via):
     tuples = [_AB, _BB, {"entity": "a", "bus": "zz"}]
     with pytest.raises(
         (KeyError, ValueError),
-        match=r"field 'bus' names 'bus' labels \['zz'\]|names bus \['zz'\] in its field 'bus'",
+        match=r"names 'bus' labels \['zz'\] in 'connection.bus'",
     ):
         if via == "child":
             _child(store, connections=tuples)

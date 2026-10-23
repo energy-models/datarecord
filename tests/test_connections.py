@@ -419,7 +419,9 @@ def test_add_group_refuses_a_tuple_naming_a_removed_entity(store):
 
     revived = WorkingRecord(removed.record)
     frame = _connection_frame(revived, "steel_dri", "dri")
-    with pytest.raises(KeyError, match=r"field 'entity' names 'entity' labels"):
+    with pytest.raises(
+        KeyError, match=r"names 'entity' labels \['steel_dri'\] in 'connection.entity'"
+    ):
         revived.add_group("connection", frame)
 
 
@@ -437,7 +439,7 @@ def _disconnect_steel(staged):
     staged.remove_group("connection", pairs)
 
 
-_DANGLING = r"groups/connection.parquet names entity \['steel_dri'\] in its field"
+_DANGLING = r"groups/connection.parquet names 'entity' labels \['steel_dri'\]"
 
 
 @pytest.mark.parametrize(

@@ -804,7 +804,7 @@ def test_set_may_change_a_category(units):
             ("unit.site", "east"),
             {"unit": "x"},
             KeyError,
-            "no 'unit' label \\['x'\\]",
+            "names 'unit' labels \\['x'\\]",
         ),
         (
             "set",
@@ -887,7 +887,9 @@ def test_a_dim_listing_labels_holds_the_labels_added_and_removes_like_any_dim(un
     assert units.dims["tech"].df()["tech"].tolist() == ["plant"], (
         "a listed label not on the axis is absent"
     )
-    with pytest.raises(KeyError, match="no 'tech' label \\['node'\\]"):
+    with pytest.raises(
+        KeyError, match="names 'tech' labels \\['node'\\] in 'unit.tech'"
+    ):
         units.add("unit", ["n2"], tech="node")
 
     units.add("tech", ["node"])

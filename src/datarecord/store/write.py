@@ -31,8 +31,8 @@ from duckdb import StarExpression as star
 from datarecord.duck import as_relation, ex_all, fn, null_safe
 from datarecord.protocols import LayerData, RecordLike, Relations
 from datarecord.resolve.coords import (
-    first_unheld,
     refuse_twice,
+    refuse_unheld,
     resolve_coords,
     resolve_one,
 )
@@ -43,7 +43,7 @@ from datarecord.schema.schema import DERIVED, Schema
 from datarecord.store.files import Absent
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
 
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
@@ -167,14 +167,19 @@ def write_layer(
                 _validate_frame(rel, kind, key, schema)
                 uri = _write_frame(rel, staging, kind, key, schema)
                 written = workspace.con.read_parquet(uri)
+                file = f"{kind}/{key}.parquet"
                 if kind == "attributes":
                     _refuse_unordered(written, key, schema)
-                    _refuse_unheld(written, key, schema, final)
+                    coordinates = schema.coordinates_of(key)
+                    refuse_unheld(
+                        written, schema, coordinates, final, file, staged=False
+                    )
                     continue
-                if kind == "groups" and key in schema.groups:
-                    _refuse_unheld_tuples(written, key, schema, final)
+                if kind == "groups":
+                    refuse_unheld(
+                        written, schema, [key], final, file, staged=False, subject=key
+                    )
                 resolved[key] = written
-                file = f"{kind}/{key}.parquet"
                 refuse_twice(written, key, file)
                 before = resolve_one(schema, parents, workspace.con, key)
                 if before is not None:
@@ -317,80 +322,6 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
         raise ValueError(msg)
 
 
-def _refuse_unheld(
-    rel: DuckDBPyRelation,
-    attribute: str,
-    schema: Schema,
-    final: Callable[[str], DuckDBPyRelation | None],
-) -> None:
-    """Refuse a row of `attribute` naming a label or tuple the layer's final axis or group lacks.
-
-    `final` gives an axis or group after the layer: the layer's own file,
-    else its parent's resolved one. One that no layer gives holds nothing.
-    NULL is no label and passes.
-
-    Raises
-    ------
-    ValueError
-        Naming the dim or group and up to three such labels or tuples.
-
-    Notes
-    -----
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
-    """
-    named = {c: (col(c), final(c), c) for c in schema.coordinates_of(attribute)}
-    unheld = first_unheld(rel, named)
-    if unheld is None:
-        return
-    name, labels = unheld
-    if name in schema.groups:
-        file, shown = f"groups/{name}.parquet", f"[{', '.join(labels)}]"
-    else:
-        file, shown = f"dims/{name}.parquet", str(labels)
-    msg = (
-        f"attributes/{attribute}.parquet names {name} {shown}, which the "
-        f"layer's {file} does not hold; add them there or drop those rows "
-        f"(https://energy-models.github.io/datarecord/design/writing/)"
-    )
-    raise ValueError(msg)
-
-
-def _refuse_unheld_tuples(
-    rel: DuckDBPyRelation,
-    group: str,
-    schema: Schema,
-    final: Callable[[str], DuckDBPyRelation | None],
-) -> None:
-    """Refuse a tuple of `group` naming a label the layer's final axis of its field's dim lacks.
-
-    `final` is as for `_refuse_unheld`.
-
-    Raises
-    ------
-    ValueError
-        Naming the group, the field and up to three such labels.
-
-    Notes
-    -----
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
-    """
-    named = {
-        f: (fn.struct_extract(col(group), lit(f)), final(d), d)
-        for f, d in schema.groups[group].over.items()
-    }
-    unheld = first_unheld(rel, named)
-    if unheld is None:
-        return
-    field, labels = unheld
-    dim = schema.groups[group].over[field]
-    msg = (
-        f"groups/{group}.parquet names {dim} {labels} in its field {field!r}, "
-        f"which the layer's dims/{dim}.parquet does not hold; add them there "
-        f"or drop those tuples (https://energy-models.github.io/datarecord/design/writing/)"
-    )
-    raise ValueError(msg)
-
-
 def _named_rows(
     rel: DuckDBPyRelation, dims: Sequence[str], named: Sequence[str], alias: str
 ) -> DuckDBPyRelation:
@@ -461,7 +392,7 @@ def _require_living_references(
     takes its labels from a dim. A property's subject the layer restates is
     checked whole, in its final state, against every dead label; any other
     reference only for the labels the layer removes, its parent's axis minus
-    its restatement. A restated group's tuples `_refuse_unheld_tuples`
+    its restatement. A restated group's tuples `refuse_unheld`
     already holds to the final axes. Removing a label restates every group
     naming it without its tuples, which `WorkingRecord.remove` writes, and a
     property holding it must be cleared first; a layer written otherwise
