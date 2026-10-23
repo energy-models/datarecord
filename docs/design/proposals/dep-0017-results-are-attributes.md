@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | ----------------------------------- |
 | Title    | results are attributes              |
 | Author   | Jonas Hoersch                       |
-| Status   | Draft (2026-10-20)                  |
+| Status   | Implemented (2026-10-20)            |
 | Requires | [DEP 16](dep-0016-remove-traits.md) |
 | Created  | 2026-10-20                          |
 | Version  | Unreleased                          |
@@ -45,7 +45,7 @@ The distinction belongs to a framework. PyPSA marks an attribute "Output" in its
 | `results` in compatibility                          | gone; `attributes` versions as before                            |
 | `RecordLike.outputs`, `Record.outputs`              | gone; `record.attributes[name]`                                  |
 | `Kind`, `attributes(kind)`, `attribute(name, kind)` | `attributes()`, `attribute(name)`                                |
-| the read path's [outputs](../read-path.md#outputs)  | gone; a result overlays like any attribute, latest layer winning |
+| the read path's [outputs](../read-path.md)          | gone; a result overlays like any attribute, latest layer winning |
 | owner maps keyed by kind                            | one owner map: `owner_map_uri(id)`, `owner_map_<id>`             |
 | `set(..., kind="outputs")`                          | `set(name, frame)`                                               |
 | the name check of a result against `results`        | the attribute check of `set`                                     |

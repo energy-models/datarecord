@@ -55,7 +55,6 @@ class Schema(BaseModel):
 
     dimensions: dict[str, Dimension]
     attributes: dict[str, AttributeSpec]  # flat: one attribute, one spec
-    results: dict[str, AttributeSpec]  # what a solve computes, governed apart
     properties: dict[
         str, dict[str, PropertySpec]
     ]  # subject dim or group -> name -> spec
@@ -107,7 +106,7 @@ attributes = {
 **Flat, one spec per attribute**, [reaching every label it addresses](#an-attribute-reaches-every-label-it-addresses) rather than owned by a category.
 The nesting this replaces said an attribute _belongs to_ an entity type, which is false in both directions: `objective_weighting` has no type, and `p_max_pu` was three identical specs under Generator, Link and StorageUnit.
 
-The storage already disagreed with the nesting. `inputs/p_max_pu.parquet` holds every type's rows in one file with one `value` dtype, so two types declaring one attribute with **different dtypes** was expressible in the schema and unrepresentable on disk — a silent wrong read that nothing rejected.
+The storage already disagreed with the nesting. `attributes/p_max_pu.parquet` holds every type's rows in one file with one `value` dtype, so two types declaring one attribute with **different dtypes** was expressible in the schema and unrepresentable on disk — a silent wrong read that nothing rejected.
 Flat declaration makes it unrepresentable instead, which is the stronger form of the same guarantee: one attribute, one spec, one file, one dtype.
 
 `dims` is the **only addressing mechanism**, and it names dims and [groups](#groups) alike, resolved by [one rule](#addressing-dims-x): a name is the dim of that name if one is declared, and otherwise the group of that name, carried as one column.
@@ -120,28 +119,19 @@ There is no `bus` field: an attribute is a [connection](record.md#connections) a
 
 `breakpoints` answers what a bare column set cannot: whether it may carry a piecewise-linear curve, so a curve on an attribute that takes one value is rejected on write rather than reported unbuildable later ([wide and long rows](record.md#wide-and-long-rows)).
 
-Every attribute is long rows in `inputs/<attr>.parquet`, whatever its `dims` — [where a value lives](format.md#where-a-value-lives) is decided by the section a name is declared in, not by how many coordinates address it, so widening `dims` adds a column to the same file rather than moving it.
+Every attribute is long rows in `attributes/<attr>.parquet`, whatever its `dims` — [where a value lives](format.md#where-a-value-lives) is decided by the section a name is declared in, not by how many coordinates address it, so widening `dims` adds a column to the same file rather than moving it.
 
 `default_by` is a default per category, beside `default` ([below](#default_by-a-default-per-category)).
 
-## Results
+## A result is an attribute
 
-`results` is a second mapping of `AttributeSpec`, keyed and shaped exactly like `attributes`.
-What a solve computes is declared, not discovered: a result has a dtype, coordinates and a description like any other attribute, and reading one back needs its dtype as much as an input does — a string-valued result cast as a number is lost to `TRY_CAST` with nothing raised.
+What a solve computes is declared in `attributes` like any other value: a result has a dtype, coordinates and a description, and reading one back needs its dtype as much as an input does — a string-valued result cast as a number is lost to `TRY_CAST` with nothing raised.
+It is stored in `attributes/<attr>.parquet`, [overlays](read-path.md#resolving-a-relation) like any attribute, the latest layer winning, and meets the [validation of `set`](working-record.md#validation) and the write path's shape check: every label it names must resolve.
 
-It is a **separate mapping rather than a flag** because the two are governed differently at every point a caller touches them.
-A result is written to `outputs/<attr>.parquet`, never [overlays](read-path.md#outputs) a parent's, and may name an entity the record does not declare.
-An input meets the [validation of `set`](working-record.md#validation) and `add`'s wide-frame split; a result meets none of that, and keeping it out of `attributes` is what makes that structural rather than a condition repeated at each site.
-A name in both is rejected: one name is one file with one `value` column, so it is an input or a result and not both.
+**Only a tool knows which attributes it computes.** PyPSA marks them with `status` starting `"Output"`, so [the tool](tools.md#writing-results) reads its vocabulary rather than keeping a list, and an upgrade that adds a result is picked up.
+The record layer stores, validates and resolves values; whether one was solved for is a framework's distinction, kept out of core like any other ([module layout](module-layout.md)).
 
-The questions the long schema asks of a _stored_ attribute — its dtype, its coordinates — span both, since `outputs/` and `inputs/` share a layout.
-Those go through one lookup that consults each in turn.
-
-**A tool declares its results from the same registry it declares its inputs from.**
-PyPSA marks them with `status` starting `"Output"`, so the vocabulary is read rather than kept as a list, and an upgrade that adds a result is picked up.
-That is what keeps declaration from becoming a maintenance burden on the tool: the alternative — a tool attaching whatever its registry produced, unchecked — buys nothing a caller can rely on, since a consumer reading `outputs/` still needs a dtype to read it at.
-
-Results version like inputs ([versioning](#versioning)): removing one, changing its dtype, or narrowing its `dims` makes existing layers unreadable for the same reasons.
+**Results inherit.** A child that changes nothing a solve reads keeps its parent's solution; a child that changes inputs holds results computed from its parent's. Keeping them coherent is the caller's business ([open questions](open-questions.md)).
 
 ## Properties
 
@@ -170,9 +160,9 @@ properties = {
 
 **An attribute is data**: what a model reads as part of its problem and what a layer would vary. Which a name is, is the author's declaration rather than derived from its shape; a tool reads it from its registry where it can ([PyPSA](tools.md)).
 
-**A property's name is its subject's.** One name is one spec for attributes and results, each one file with one `value` dtype ([flat attributes](#attributespec)). A property is a column of its subject's file, so its name is unique there only: `x` on `bus` beside an attribute `x` — a line's reactance — and `carrier` on `entity`, on `bus` and as a dim. Refused at load are a property named like a column of its subject's key — the dim, a group's struct column or its [`into`](#into-a-group-that-classifies) — and a group's property named like one of its coordinates, the keywords a tuple is addressed by. Two spellings differing only in case stay refused record-wide ([names](#names)).
+**A property's name is its subject's.** One name is one spec for an attribute, one file with one `value` dtype ([flat attributes](#attributespec)). A property is a column of its subject's file, so its name is unique there only: `x` on `bus` beside an attribute `x` — a line's reactance — and `carrier` on `entity`, on `bus` and as a dim. Refused at load are a property named like a column of its subject's key — the dim, a group's struct column or its [`into`](#into-a-group-that-classifies) — and a group's property named like one of its coordinates, the keywords a tuple is addressed by. Two spellings differing only in case stay refused record-wide ([names](#names)).
 
-**A property is addressed as `subject.name`** — `entity.ctype`, `bus.x`, `connection.role` — wherever a caller names one: [`set`](working-record.md#set), a [`default_by`](#default_by-a-default-per-category) key, `default_for`. A plain name is an attribute or result, never a property, however few subjects declare it, so its meaning does not change when another subject declares it later. `Schema.resolve(name)` returns the `AttributeSpec`, or the subject and the `PropertySpec`, and refuses an unknown plain name naming the dotted forms of the properties so called. A column keeps its plain name: the frames of `properties[subject]` and the categories [`flags`](record.md#flags) and `default_for` take are each read against one subject already, and a [selector keyword](working-record.md#set) is bare — a coordinate of the attribute first, else any property of a dim the attribute reaches.
+**A property is addressed as `subject.name`** — `entity.ctype`, `bus.x`, `connection.role` — wherever a caller names one: [`set`](working-record.md#set), a [`default_by`](#default_by-a-default-per-category) key, `default_for`. A plain name is an attribute, never a property, however few subjects declare it, so its meaning does not change when another subject declares it later. `Schema.resolve(name)` returns the `AttributeSpec`, or the subject and the `PropertySpec`, and refuses an unknown plain name naming the dotted forms of the properties so called. A column keeps its plain name: the frames of `properties[subject]` and the categories [`flags`](record.md#flags) and `default_for` take are each read against one subject already, and a [selector keyword](working-record.md#set) is bare — a coordinate of the attribute first, else any property of a dim the attribute reaches.
 
 **A property may be `into` a dim**: its values are that dim's labels and its `dtype` is the dim's, so `entity.carrier` and `bus.carrier` above name labels of `carrier`, `bus.country` one of `country`, and any subject may declare one. A stored value that is not NULL must name a live label, checked where a group's field is: [`set` and `add`](working-record.md#validation) refuse one the record as staged lacks, the [writer](layers.md#deletion) a layer storing one it removed, and [`remove`](working-record.md#add-remove) a label one still names. NULL names none. Refused at load are `into` an undeclared dim and a `dtype` other than the dim's. It does not [categorize](#categories-an-enum-property-of-a-partial-dim): a category is a declared `Enum`, a label is data a layer adds and removes. One coordinate classified [`into`](#into-a-group-that-classifies) a dim is such a property, never a group.
 
@@ -184,7 +174,7 @@ A classification is **single-valued by declaration** rather than by construction
 
 Membership could not vary along a classification either, if it varied along anything: whether an entity exists in Germany is already settled by its bus and that bus's country, so there would be no freedom for it to vary independently ([existence does not vary](#existence-does-not-vary-along-a-dim)).
 
-**Why the split.** Without it, where a value is stored follows how many coordinates address it rather than what it is: `p_nom`, data a model optimises against, and `carrier`, a label describing a generator, would both be columns of the entity axis, and widening `p_nom` to `dims: [entity, scenario]` — a [compatible](#versioning) change — would move it to `inputs/p_nom.parquet`, away from the rows earlier layers wrote.
+**Why the split.** Without it, where a value is stored follows how many coordinates address it rather than what it is: `p_nom`, data a model optimises against, and `carrier`, a label describing a generator, would both be columns of the entity axis, and widening `p_nom` to `dims: [entity, scenario]` — a [compatible](#versioning) change — would move it to `attributes/p_nom.parquet`, away from the rows earlier layers wrote.
 
 ### Categories — an `Enum` property of a `partial` dim
 
@@ -192,7 +182,7 @@ Membership could not vary along a classification either, if it varied along anyt
 
 The two conditions are what a category needs: an `Enum`, so a category a default or a selection names is checked against a declared vocabulary; and the dim in `partial`, because only there is a dim owned per label, which a default per label needs. A schema whose entities have no kinds declares no `Enum` property of `entity`, and nothing else about it differs.
 
-**Category**, because **label** already names an axis value — what `add(dim, labels)` takes. A label's categories, its value of each categorizing property, are asked two things: which labels a category selects — [`flags(**categories)`](record.md#flags), a consumer's per-category frame, a [selector keyword](working-record.md#set) — and `default_for(name, **categories)`, the default of an attribute, result or property for such a label, each category keyed by its property's plain name.
+**Category**, because **label** already names an axis value — what `add(dim, labels)` takes. A label's categories, its value of each categorizing property, are asked two things: which labels a category selects — [`flags(**categories)`](record.md#flags), a consumer's per-category frame, a [selector keyword](working-record.md#set) — and `default_for(name, **categories)`, the default of an attribute or property for such a label, each category keyed by its property's plain name.
 
 **A category selects; it never narrows.** It says which labels a question is about, never which attributes or properties a label may hold: every label carries [every name it addresses](#an-attribute-reaches-every-label-it-addresses), whatever its categories.
 
@@ -213,7 +203,7 @@ A value read unset takes the first `default_by` key, in declaration order, whose
 
 - **Each key reachable from the value's address.** A key must categorize a dim the value reaches — `entity` directly, or through `connection`'s `entity` field for a value over the group — and a category outside its property's `Enum` is refused.
 - **Never on a categorizing property.** A category defaulted by a category is circular; such a property takes a plain `default`.
-- **Only the default varies.** `dtype`, `unit` and `description` are the spec's own, which is what keeps one name one column and one `inputs/` file.
+- **Only the default varies.** `dtype`, `unit` and `description` are the spec's own, which is what keeps one name one column and one `attributes/` file.
 
 A default is never stored. `record.properties` and `record.attributes` hand over stored rows, so a consumer applies a default through `default_for` — the PyPSA tool does, building a component's static frame.
 
@@ -250,9 +240,9 @@ A list is sugar for the dict with identical keys and values, so `over=["bus"]` i
 An attribute over a group carries the group as **one struct column named for the group**, a field per [key](#into-a-group-that-classifies) coordinate in `over` order:
 
 ```text
-inputs/efficiency.parquet       connection STRUCT(entity, bus) | timestep | attribute | breakpoint | value
-inputs/flow.parquet             corridor STRUCT("from", "to")  | timestep | attribute | breakpoint | value
-inputs/marginal_price.parquet   bus | timestep | attribute | breakpoint | value
+attributes/efficiency.parquet       connection STRUCT(entity, bus) | timestep | attribute | breakpoint | value
+attributes/flow.parquet             corridor STRUCT("from", "to")  | timestep | attribute | breakpoint | value
+attributes/marginal_price.parquet   bus | timestep | attribute | breakpoint | value
 ```
 
 The column's name says which group constrains the row, so two groups may share a coordinate set without ambiguity, and a group's coordinate never takes the column of the dim it draws on — `bus` inside `connection` is not the dim `bus` beside it.
@@ -264,7 +254,7 @@ The fold's key therefore does not vary per attribute: [`partial_dims`](#partial-
 
 **An attribute may not name a group beside a dim its key coordinate is named for.** `dims={"connection", "bus"}` is rejected: the row would hold the bus twice, free to disagree — the same "keyed twice over" rule [`into`](#into-a-group-that-classifies) states.
 
-A group's file columns are **not declared here.** They are its [properties](#properties), declared under the group's name — PyPSA's `role` on a connection is `properties: {connection: {role: ...}}`, declared by [the tool](tools.md) whose vocabulary the word is — and an attribute over the group is long rows in `inputs/` keyed by the struct ([where a value lives](format.md#where-a-value-lives)).
+A group's file columns are **not declared here.** They are its [properties](#properties), declared under the group's name — PyPSA's `role` on a connection is `properties: {connection: {role: ...}}`, declared by [the tool](tools.md) whose vocabulary the word is — and an attribute over the group is long rows in `attributes/` keyed by the struct ([where a value lives](format.md#where-a-value-lives)).
 Declaring them a second time on the `Group` would be two ways to say one thing, disagreeing eventually. A group is never categorized: its tuples carry every property it declares.
 
 **A group column broadcasts, its axis the resolved group.** A NULL struct means every tuple of the group, expanded against `groups/<group>.parquet` as a NULL dim is against `dims/<dim>.parquet` ([the broadcast rule](record.md#the-broadcast-rule)).
@@ -311,7 +301,7 @@ An entity exists or it does not. There is no declaration making membership vary 
 
 That is a deliberate narrowing. An earlier `Dimension.keys` declared exactly this, putting the dim in an entity table's key so an entity existed per scenario; it is gone, with nothing in its place, because [what it should mean is unsettled](open-questions.md) once connections are one group among several rather than a fixed second entity table.
 
-What remains is the distinction that was doing the useful work: a **value** may vary along an axis where the **thing** may not. A stochastic network holding a different `capital_cost` per scenario is expressing exactly that, and it is an attribute with `dims = {"entity", "scenario"}` — long rows in `inputs/`, not an entity that exists twice. [Where a value lives](format.md#where-a-value-lives) already places it.
+What remains is the distinction that was doing the useful work: a **value** may vary along an axis where the **thing** may not. A stochastic network holding a different `capital_cost` per scenario is expressing exactly that, and it is an attribute with `dims = {"entity", "scenario"}` — long rows in `attributes/`, not an entity that exists twice. [Where a value lives](format.md#where-a-value-lives) already places it.
 
 ## A dim is flat
 
@@ -395,7 +385,7 @@ So `partial` names only the dims and groups a layer genuinely patches value by v
 
 ## Names
 
-A declared dim, group, group coordinate, attribute, result or property name becomes a column, beside the columns datarecord writes itself. `Schema` refuses one at load that could not stand there, naming it and the reason:
+A declared dim, group, group coordinate, attribute or property name becomes a column, beside the columns datarecord writes itself. `Schema` refuses one at load that could not stand there, naming it and the reason:
 
 - **`"` or `.`.** A name reaches DuckDB as a column reference, which reads `a.b` as column `b` of table `a` and cannot spell a `"` at all. A space, mixed case, a keyword or a leading digit are fine: those quote.
 - **A column the format writes.** `attribute`, `breakpoint` and `value` on [every long row](format.md#the-long-schema), `deleted` as a [tombstone](layers.md#deletion), `varies`, `broadcast`, `breakpoints` and `layer_uuid` in [the owner map](read-path.md#owner-map), and `order_key` on a resolved frame. Ignoring case, as DuckDB resolves a column name. A collision is silent otherwise: a dim named `value` gives the long file two columns of one name, and one named `deleted` reads every label as a tombstone, dropping its rows with nothing reported.
@@ -414,7 +404,7 @@ A directory record's schema is `manifest.json` in the directory; a layered recor
 ```text
 record-root/
 ├── manifest.json               # the schema — one, for the whole tree
-└── layers/<uuid>/              # a layer: dims/, inputs/, outputs/ — no manifest
+└── layers/<uuid>/              # a layer: dims/, groups/, attributes/ — no manifest
     └── resolved/               # caches (owner map, resolved dims)
 ```
 

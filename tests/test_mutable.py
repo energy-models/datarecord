@@ -74,8 +74,8 @@ def _small(store, **declared):
     return revision.child(staged.edits)
 
 
-def _layer_rows(revision, attribute, kind="inputs"):
-    """One committed layer's own `<kind>/<attribute>.parquet`, as pandas.
+def _layer_rows(revision, attribute):
+    """One committed layer's own `attributes/<attribute>.parquet`, as pandas.
 
     The single-layer view, read through the `LayerSource` for that layer rather
     than the folding resolver: "what did this patch write" is a question about
@@ -84,7 +84,7 @@ def _layer_rows(revision, attribute, kind="inputs"):
     """
     rel = ParquetLayer(
         revision.id, read_schema(revision.store), revision.store
-    ).attribute(attribute, kind)
+    ).attribute(attribute)
     return rel.to_df() if rel is not None else pd.DataFrame()
 
 
@@ -114,9 +114,6 @@ def test_a_working_record_overrides_no_read_member():
     redefines is a place where staging stopped being just another layer. No
     behavioural test would name that, because both paths would still answer -
     they would just be two paths again.
-
-    `outputs` is the one allowed exception, results not overlaying, and it is
-    listed so that adding a second one requires editing this line.
     """
     edits = {
         "set",
@@ -127,11 +124,9 @@ def test_a_working_record_overrides_no_read_member():
         "rollback",
         "edits",
     }
-    allowed_read_override = {"outputs"}
-
     inherited = {n for n in vars(Record) if not n.startswith("_")}
     defined = {n for n in vars(WorkingRecord) if not n.startswith("_")}
-    assert inherited & defined <= allowed_read_override, (
+    assert not inherited & defined, (
         "a read member redefined here means staging is no longer just a layer"
     )
     assert defined - inherited == edits, (
@@ -438,7 +433,7 @@ def test_a_non_float_attribute_stages_and_commits(store):
 
     One staging table holds every attribute's values, so it stages `value` as
     text and casts to the declared dtype where the attribute is known - which
-    is the point at which `inputs/<attr>.parquet` is per-attribute.
+    is the point at which `attributes/<attr>.parquet` is per-attribute.
 
     The schema is amended before the `WorkingRecord` is built: a record carries
     the schema its base was resolved under, so a widening has to be in force
@@ -1055,7 +1050,7 @@ def test_a_group_property_refuses_what_is_no_field(store):
 
 
 def test_add_and_add_group_refuse_an_attribute(store):
-    """An axis or group row carries properties and keys; an attribute is long rows of `inputs/`."""
+    """An axis or group row carries properties and keys; an attribute is long rows of `attributes/`."""
     staged = WorkingRecord(_with_roles(store).record)
     with pytest.raises(ValueError, match=r"attributes \['efficiency'\].*`set"):
         staged.add("entity", ["l2"], efficiency=0.5)
@@ -1304,140 +1299,24 @@ def test_a_standalone_write_of_the_record_is_flattened(staged, root, tmp_path):
     ).fetchall(), "the write drops the owner map it held for its fold"
 
 
-# -- results through `kind="outputs"` (https://energy-models.github.io/datarecord/design/working-record/#set, https://energy-models.github.io/datarecord/design/read-path/#outputs) ---------------------------
+def test_a_string_valued_attribute_keeps_its_declared_type(staged):
+    """A value round-trips at the dtype its attribute declares, not a guessed one.
 
-
-def test_results_stage_and_read_back_without_committing(staged):
-    """A tool can attach what it solved and the record reads it.
-
-    Notes
-    -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
-    """
-    assert list(staged.outputs) == []
-    staged.set("p", 42.0, entity=["Manchester Wind"], bus="Manchester", kind="outputs")
-
-    rows = _unpacked(staged.outputs["p"])
-    assert dict(
-        zip(zip(rows["entity"], rows["bus"], strict=True), rows["value"], strict=True)
-    ) == {("Manchester Wind", "Manchester"): 42.0}, (
-        "a result over `connection` is addressed by `bus=` like an input"
-    )
-    assert "p" not in staged.attributes, "staged as a result, so it is not an input"
-
-
-def test_results_accept_a_component_type_the_record_never_declared(staged):
-    """A solve may derive a component the record has no member row for.
-
-    PyPSA's `SubNetwork` is the real case: it exists only after a solve, so
-    requiring a declared member row - which an *input* value must have -
-    would refuse a legitimate result.
+    Both halves have to hold at once: PyPSA's `sub_network` is a string-valued
+    output, and casting it as a number would `TRY_CAST` it to NULL and lose it
+    with nothing raised, while `p` must come back a number.
 
     Notes
     -----
-    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
-    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
     """
-    staged.set("sub_network", "AC", entity=["1"], kind="outputs")
-    rows = staged.outputs["sub_network"].collect().to_native().to_pandas()
-    assert rows["entity"].tolist() == ["1"]
+    staged.set("sub_network", "0", entity=["Manchester Wind"])
+    rows = staged.attributes["sub_network"].collect().to_native().to_pandas()
+    assert rows["value"].tolist() == ["0"], "a string value survives the round trip"
 
-    # The same name as an input is still rejected: membership governs inputs.
-    with pytest.raises(KeyError, match="NoSuchGenerator"):
-        staged.set("p_max_pu", 1.0, entity=["NoSuchGenerator"])
-
-
-def test_an_undeclared_result_is_rejected(staged):
-    """A result is declared like an input, so a typo is caught where it is typed.
-
-    The membership rule stays relaxed either way - it is the *attribute* that
-    must be declared, not the component it names.
-
-    Notes
-    -----
-    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
-    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
-    """
-    with pytest.raises(KeyError, match="no attribute or result .p_nom_optt."):
-        staged.set("p_nom_optt", 1.0, entity=["Manchester Wind"], kind="outputs")
-
-
-def test_a_result_may_not_vary_over_a_dim_it_does_not_declare(staged):
-    """`results` carries coordinates like `attributes`, so the scope is checked.
-
-    Notes
-    -----
-    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
-    """
-    assert "period" not in staged.schema.results["p_nom_opt"].dims
-    with pytest.raises(ValueError, match="does not vary over"):
-        staged.set(
-            "p_nom_opt", 1.0, entity=["Manchester Wind"], kind="outputs", period=2030
-        )
-
-
-def test_a_results_value_keeps_its_declared_type(staged):
-    """A result round-trips at the dtype `results` declares, not a guessed one.
-
-    Staged values are held as text, since one staging table serves every
-    attribute, and reading one back casts to the declared dtype. Both halves
-    have to hold at once: PyPSA's `sub_network` is a string-valued output, and
-    casting it as a number would `TRY_CAST` it to NULL and lose it with nothing
-    raised, while `p` must come back a number rather than the text it was held
-    as.
-
-    Notes
-    -----
-    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
-    """
-    assert "sub_network" in staged.schema.results, "declared as a result, not an input"
-    assert "sub_network" not in staged.schema.attributes
-    staged.set("sub_network", "0", entity=["Manchester Wind"], kind="outputs")
-
-    rows = staged.outputs["sub_network"].collect().to_native().to_pandas()
-    assert rows["value"].tolist() == ["0"], "a string result survives the round trip"
-
-    # The other half: dropping the cast altogether would answer '42.0' here,
-    # a number read back as the text the staging column holds it as.
-    staged.set("p", 42.0, entity=["Manchester Wind"], bus="Manchester", kind="outputs")
-    numeric = staged.outputs["p"].collect().to_native().to_pandas()
-    assert numeric["value"].tolist() == [42.0], "a numeric result comes back a number"
-
-
-def test_a_multi_type_results_frame_stages_by_name_alone(staged, root):
-    """One frame spanning types is one call, keyed by name alone.
-
-    `Tool.results` hands over one frame per attribute carrying every type's rows; with names unique there is no type to stamp, so the frame needs no
-    `ctype` and nothing can be silently relabelled.
-
-    Notes
-    -----
-    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-    - [results through kind="outputs"](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-    """
-    frame = staged.con.sql(
-        "SELECT {'entity': entity, 'bus': bus} AS connection, value "
-        "FROM (VALUES ('Manchester Wind', 'Manchester', 1.0), ('0', 'Norway', 2.0)) "
-        "t(entity, bus, value)"
-    )
-    staged.set("p", frame, kind="outputs")
-    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
-
-    rows = _unpacked(staged.outputs["p"])
-    assert dict(zip(rows["entity"], rows["value"], strict=True)) == {
-        "Manchester Wind": 1.0,
-        "0": 2.0,
-    }
-
-    child = root.child(staged.edits)
-    got = root.store.layer(child.id).outputs["p"]
-    assert set(_unpacked(got)["entity"]) == {"Manchester Wind", "0"}, (
-        "results survive the commit into the layer's own `outputs/`"
-    )
-    assert "ctype" not in got.collect_schema().names()
-    assert not _layer_rows(child, "p_nom").empty, "the inputs went where inputs go"
+    staged.set("p", 42.0, entity=["Manchester Wind"], bus="Manchester")
+    numeric = staged.attributes["p"].collect().to_native().to_pandas()
+    assert numeric["value"].tolist() == [42.0], "a numeric value comes back a number"
 
 
 def test_one_call_spans_component_types(staged):

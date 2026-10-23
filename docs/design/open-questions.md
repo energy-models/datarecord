@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
   What it cost to keep was a second question with no good answer: what an entity tombstone means for a connection keyed by fewer dims. Deleting an entity in one scenario removed a connection that was not scenario-scoped, even though the entity survived elsewhere, and no projection recovers the difference — the connection row has no scenario column to write it into. The conservative reading was implemented and pinned by an `xfail`.
 
-  What it cost to drop is narrower than it looks. A **value** may still vary along any axis; it is the **thing** that may not. A stochastic network with a different `capital_cost` per scenario is an attribute over `{entity, scenario}`, which [the file split](format.md#where-a-value-lives) already places in `inputs/`. Only membership itself is unrepresentable.
+  What it cost to drop is narrower than it looks. A **value** may still vary along any axis; it is the **thing** that may not. A stochastic network with a different `capital_cost` per scenario is an attribute over `{entity, scenario}`, which [the file split](format.md#where-a-value-lives) already places in `attributes/`. Only membership itself is unrepresentable.
 
   Reopening it means deciding all three: whether it is needed at all, whether an entity table and a group may disagree about which dims scope them, and what the coarser one's rows mean if they may.
 
@@ -21,10 +21,16 @@ SPDX-License-Identifier: CC-BY-4.0
   So `set("p_max_pu", 0.9)` reaches an entity added in a child only while the ancestor is unmaterialised.
   One level down, a `WorkingRecord` folds its committed prefix once, so a label staged there is not reached by a parent's NULL even while the parent is unmaterialised.
 
-- **Whether staged results should be invalidated by a later input edit.** Results attached through [`set(..., kind="outputs")`](working-record.md#results-through-kindoutputs) were computed from the inputs pending at that moment, so editing an input afterwards leaves them describing a record that no longer exists.
+- **Whether results should be invalidated by a later input edit.** A result is [an attribute](schema.md#a-result-is-an-attribute) and inherits, so a child that edits an input holds results computed from its parent's inputs, describing a record that no longer exists.
   Dropping them on the next input edit was considered and rejected: it silently discards work the caller may have wanted, and a record that guesses which of the two the caller meant to keep is worse than one that keeps both and says so.
-  Coherence is the caller's business, and writing `edits` writes whatever is staged.
+  Coherence is the caller's business.
   If this bites in practice, a `pending`-level warning is the cheap next step rather than a silent truncation.
+
+- **Detecting intermediate results that no longer fit their inputs.** A [results layer](tools.md#writing-results) replaces the SubNetworks of its base, but a child editing the topology keeps its parent's until the next solve; telling them stale needs provenance of which inputs each came from.
+
+- **Clearing a result a re-solve no longer produces.** A results layer writes only the results the solve fills, so one it leaves empty — `mu_*` duals under `assign_all_duals=False` — keeps the parent's value by inheritance rather than reading as absent.
+
+- **Filtering a record before `build`.** Selecting one period or chosen outputs is a separate feature, not designed.
 
 - **Whether a `WorkingRecord` over an open record stages against a snapshot.** Writing into an open record invalidates its owner-map cache.
   A mutable record would need the same invalidation per edit, or to stage against a snapshot taken at construction.

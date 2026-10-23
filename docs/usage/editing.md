@@ -29,7 +29,6 @@ w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
 w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped to one scenario
 w.set("entity.carrier", "solar", entity="g2")  # a property, by its subject
 w.set("bus.x", 10.2, bus="north")  # not `x`, an attribute of its own
-w.set("p", solved_frame, kind="outputs")  # a result
 ```
 
 **Every coordinate is a keyword**, a group's fields included — `bus="north"` with `entity="dc"` addresses one connection, `from=`/`to=` one corridor. A coordinate no keyword names is NULL, which means "every label of it": every entity, loads included, and ones added later. A group's fields must all be given or none, since a group value is a whole tuple ([design](../design/working-record.md#set)).
@@ -119,6 +118,6 @@ Writing clears nothing: a `WorkingRecord` still holding its edits reads exactly 
 
 An edit replaces the rows it names, so restating a coordinate overwrites it and the last write is what stands. A `remove` after a `set` wins regardless of order — a deleted label has no values — and an `add` after a `remove` brings the label back, without its group tuples.
 
-Neither write carries a **base's** results across: an edit changes the inputs a result was computed from. What it does carry is results staged into this record through `set(..., kind="outputs")`, which were computed against these pending inputs ([design](../design/working-record.md#results-through-kindoutputs)).
+A base's results are attributes and carry like any other: a child written from `edits` inherits them, though an edited input may no longer support them. A solve's results are written by the tool, not staged ([tools](tools.md#solving-and-writing-results-back)).
 
 Edit-level mistakes are caught when the edit is **staged**, not at write, so a typo is reported at the line that typed it ([design](../design/working-record.md#validation)).

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The tool interface: verify a record, build a model, read results back.
+"""The tool interface: verify a record, build a model, read it back.
 
 The seam between a tool-agnostic record and one modelling framework. The call runs from the tool inward (`PyPSA.build(revision.record)`), so the
 record layer imports nothing from here, and a tool reads through `Record`.
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
     import narwhals as nw
 
-    from datarecord.record import Frames, RecordLike
+    from datarecord.record import RecordLike
 
 
 @dataclass(frozen=True)
@@ -295,7 +295,14 @@ class Tool(Protocol):
         """The tool's model object, built from the resolved record."""
         ...
 
-    def to_datarecord(self, model: Any, con: DuckDBPyConnection) -> RecordLike:
+    def to_datarecord(
+        self,
+        model: Any,
+        con: DuckDBPyConnection,
+        *,
+        results_only: bool = False,
+        base: RecordLike | None = None,
+    ) -> RecordLike:
         """`model` presented as a layer `write_layer` can persist.
 
         The inverse of `build`. Framework-specific: undoing a framework's own
@@ -306,34 +313,22 @@ class Tool(Protocol):
         con
             The connection the frames are planned on - in practice `ws.con` of
             the workspace that will write them.
+        results_only
+            Present only what a solve produced - its result attributes and the
+            intermediates they need - as a thin layer to write as a child of
+            `base`.
+        base
+            The record `model` was built from: required with `results_only`,
+            refused without it.
+
+        Raises
+        ------
+        ValueError
+            If `base` is given without `results_only`, or missing with it.
 
         Notes
         -----
         - [the record format](https://energy-models.github.io/datarecord/design/format/)
-        """
-        ...
-
-    def results(self, model: Any, con: DuckDBPyConnection) -> Frames:
-        """This model's result attributes in the record's long form.
-
-        Keyed by attribute, each frame in the long schema - `name`, the dim
-        columns, `value` - the same shape `Record.outputs` presents, so results
-        go straight to `write_layer` or to `set(..., kind="outputs")`. One frame
-        spans every category, needing no category column.
-
-        Narwhals frames, so the seam names no one dataframe library, and lazy so
-        an implementation may fetch a result attribute on demand rather than
-        materialising every one.
-
-        Parameters
-        ----------
-        con
-            The connection the frames are planned on - in practice the `con` of
-            the record they are `set` on.
-
-        Notes
-        -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
         """
         ...

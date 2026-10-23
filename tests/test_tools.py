@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The tool layer: verify a record, build a model, read results back.
+"""The tool layer: verify a record, build a model, read it back.
 
 Notes
 -----
@@ -25,13 +25,13 @@ from datarecord.tools.pypsa import (
     CTYPE,
     PyPSA,
     _colliding_names,
+    _input_names,
     _registry_schema,
     _weightings,
 )
 from tests.fixtures import (
     empty_child,
     export_network,
-    outputs,
     relation,
     schema,
     unpacked,
@@ -64,6 +64,25 @@ def exported(single_revision, workspace, tmp_path):
     shutil.copytree(single_revision.store.uri, uri)
     (revision,) = workspace.store(uri).revisions()
     return revision
+
+
+def _results_over(revision, n):
+    """`n`'s results, written as a thin layer over `revision`."""
+    layer = PyPSA.to_datarecord(
+        n, revision.record.con, results_only=True, base=revision.record
+    )
+    return revision.child(layer)
+
+
+def _sub_networks(revision) -> list[str]:
+    entities = revision.record.properties["entity"]
+    sub_networks = entities.filter(nw.col("ctype") == "SubNetwork")
+    return sorted(sub_networks.collect().to_pandas()["entity"])
+
+
+def _prices(revision) -> pd.DataFrame:
+    price = revision.record.attributes["marginal_price"].collect().to_pandas()
+    return price.pivot(index="snapshot", columns="bus", values="value")
 
 
 def _flat(frame) -> pd.DataFrame:
@@ -609,13 +628,11 @@ def test_sub_networks_are_suffixed_off_the_lines(store, ac_dc):
     n.determine_network_topology()
     assert set(n.c["SubNetwork"].static.index) & set(n.c["Line"].static.index)
 
-    record = export_network(n, store).record
-    entities = record.properties["entity"]
-    sub_networks = entities.filter(nw.col("ctype") == "SubNetwork")
-    names = sub_networks.collect().to_pandas()["entity"]
-    assert sorted(names) == [f"{i} SubNetwork" for i in range(4)]
-    results = PyPSA.results(n, store.workspace.con)
-    pointed = set(results["sub_network"].collect().to_pandas()["value"])
+    revision = export_network(n, store)
+    record = revision.record
+    names = _sub_networks(revision)
+    assert names == [f"{i} SubNetwork" for i in range(4)]
+    pointed = set(record.attributes["sub_network"].collect().to_pandas()["value"])
     assert pointed <= set(names), "a `sub_network` value names a SubNetwork entity"
 
     built = PyPSA.build(record)
@@ -707,8 +724,8 @@ def test_schema_renames_and_computes():
         Attr(name="x", source=("a", "b"))
 
 
-def test_results_extracts_long_form_outputs(single_revision, solved):
-    """A solved network's results come back keyed by attribute, long-form.
+def test_a_solved_network_exports_its_results_long_form(single_revision, solved):
+    """A solved network's results are attributes, keyed by name, long-form.
 
     Notes
     -----
@@ -716,7 +733,7 @@ def test_results_extracts_long_form_outputs(single_revision, solved):
     """
     n = solved
 
-    results = PyPSA.results(n, single_revision.record.con)
+    results = PyPSA.to_datarecord(n, single_revision.record.con).attributes
     assert "p" in results
     assert "p_nom_opt" in results
 
@@ -740,50 +757,22 @@ def test_results_extracts_long_form_outputs(single_revision, solved):
     # differs from the default appear (some generators solve to p_nom_opt=0).
     nom = results["p_nom_opt"].collect()
     nom = nom.filter(nw.col("entity").is_in(list(gens)))
-    assert nom["snapshot"].is_null().all()
+    assert "snapshot" not in nom.columns
     nonzero = n.c["Generator"].static["p_nom_opt"] != 0.0
     assert set(nom["entity"].to_list()) == set(n.c["Generator"].static.index[nonzero])
 
 
-def test_results_skips_outputs_still_at_their_default(single_revision):
-    """An unsolved network yields no `p`/`p_nom_opt` rows (the outputs default rule).
+def test_an_export_skips_results_still_at_their_default(single_revision):
+    """An unsolved network yields no `p`/`p_nom_opt` rows.
 
     Notes
     -----
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
     """
     n = PyPSA.build(single_revision.record)
-    results = PyPSA.results(n, single_revision.record.con)
+    results = PyPSA.to_datarecord(n, single_revision.record.con).attributes
     assert "p" not in results
     assert "p_nom_opt" not in results
-
-
-def test_results_set_on_the_working_record_they_were_planned_on(
-    single_revision, solved
-):
-    """Every result lands as an output on `w.con`, as the documented loop sets it.
-
-    Notes
-    -----
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-    """
-    from datarecord.mutable import WorkingRecord
-
-    n = solved
-
-    w = WorkingRecord(single_revision.record)
-    results = PyPSA.results(n, w.con)
-    undeclared = set(results) - set(w.schema.results)
-    assert not undeclared, f"results the schema does not declare: {sorted(undeclared)}"
-    for attr, frame in results.items():
-        w.set(attr, frame, kind="outputs")
-
-    assert not {"p0", "p1"} & set(results), "port flows land in `p`, not per port"
-    p = _flat(w.outputs["p"])
-    gens = list(n.c["Generator"].static.index)
-    assert p["entity"].isin(gens).sum() == len(n.snapshots) * len(gens)
-    assert p["bus"].notna().all(), "a staged `p` keeps the bus of its connection"
 
 
 def test_a_solved_p_is_one_row_per_connection(single_revision, solved):
@@ -795,7 +784,7 @@ def test_a_solved_p_is_one_row_per_connection(single_revision, solved):
     """
     n = solved
 
-    p = _flat(PyPSA.results(n, single_revision.record.con)["p"])
+    p = _flat(PyPSA.to_datarecord(n, single_revision.record.con).attributes["p"])
     connections = unpacked(single_revision.record.groups["connection"])
     per_connection = p.groupby(["entity", "bus"]).size()
     assert set(per_connection.index) == set(
@@ -814,33 +803,30 @@ def test_a_solved_p_is_one_row_per_connection(single_revision, solved):
         )
 
 
-def test_bus_results_are_keyed_by_bus(single_revision, solved):
+def test_bus_results_are_keyed_by_bus(exported, solved):
     """`marginal_price`, `v_mag_pu` and `v_ang` are over `bus`; `Bus.p` and the rest are derived.
 
-    `build` sets the bus results back from `outputs`.
+    `build` copies a result into the network like any attribute.
 
     Notes
     -----
     - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
     """
-    from datarecord.mutable import WorkingRecord
-
+    revision = _results_over(exported, solved)
+    schema = revision.record.schema
     over_bus = {
-        a for a, spec in _registry_schema().results.items() if "bus" in spec.dims
+        a for a, spec in _registry_schema().attributes.items() if "bus" in spec.dims
     }
-    assert over_bus == {"marginal_price", "v_mag_pu", "v_ang"}
+    assert over_bus - _input_names() == {"marginal_price", "v_mag_pu", "v_ang"}
     assert not solved.c["Bus"].dynamic["p"].empty, "PyPSA did compute a `Bus.p`"
+    assert "bus" not in schema.attributes["p"].dims
 
-    w = WorkingRecord(single_revision.record)
-    for attr, frame in PyPSA.results(solved, w.con).items():
-        w.set(attr, frame, kind="outputs")
-    price = w.outputs["marginal_price"].collect().to_pandas()
-    assert "entity" not in price
-    wide = price.pivot(index="snapshot", columns="bus", values="value")
     expected = solved.c["Bus"].dynamic["marginal_price"]
+    wide = _prices(revision)
     assert np.allclose(wide[expected.columns].reindex(expected.index), expected)
 
-    built = PyPSA.build(w).c["Bus"].dynamic["marginal_price"]
+    built = PyPSA.build(revision.record).c["Bus"].dynamic["marginal_price"]
     pd.testing.assert_frame_equal(
         built[expected.columns],
         expected,
@@ -848,6 +834,59 @@ def test_bus_results_are_keyed_by_bus(single_revision, solved):
         check_freq=False,
         check_index_type=False,
     )
+
+
+def test_a_child_reads_its_parents_results_and_the_latest_wins(exported, solved):
+    """A result is an attribute: it inherits through layers, a later one standing over it.
+
+    Notes
+    -----
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    """
+    revision = _results_over(exported, solved)
+    expected = _prices(revision)
+    pd.testing.assert_frame_equal(_prices(empty_child(revision)), expected)
+
+    n = PyPSA.build(revision.record)
+    n.c["Bus"].dynamic["marginal_price"] *= 2
+    resolved = _results_over(revision, n)
+    pd.testing.assert_frame_equal(_prices(empty_child(resolved)), expected * 2)
+
+
+def test_a_re_solve_leaves_no_stale_sub_network(exported, solved):
+    """A results layer replaces `base`'s SubNetworks rather than adding to them.
+
+    Notes
+    -----
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    """
+    revision = _results_over(exported, solved)
+    *kept, dropped = sorted(solved.c["SubNetwork"].static.index)
+    assert _sub_networks(revision) == [f"{i} SubNetwork" for i in (*kept, dropped)]
+
+    n = PyPSA.build(revision.record)
+    n.remove("SubNetwork", dropped)
+    resolved = _results_over(revision, n)
+    assert _sub_networks(resolved) == [f"{i} SubNetwork" for i in kept]
+    slack = resolved.record.attributes["slack_bus"].collect().to_pandas()
+    assert f"{dropped} SubNetwork" not in set(slack["entity"]), (
+        "its results went with it"
+    )
+
+
+@pytest.mark.parametrize("results_only", [True, False])
+def test_results_only_takes_base_exactly_with_it(single_revision, solved, results_only):
+    """A results layer is written over the record it was built from, a full export over nothing.
+
+    Notes
+    -----
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    """
+    base = None if results_only else single_revision.record
+    with pytest.raises(ValueError, match="takes `base` exactly when"):
+        PyPSA.to_datarecord(
+            solved, single_revision.record.con, results_only=results_only, base=base
+        )
 
 
 def test_link_internal_power_is_p_internal(single_revision, solved):
@@ -859,13 +898,13 @@ def test_link_internal_power_is_p_internal(single_revision, solved):
     """
     n = solved
 
-    results = PyPSA.results(n, single_revision.record.con)
+    results = PyPSA.to_datarecord(n, single_revision.record.con).attributes
     internal = results["p_internal"].collect()
     links = list(n.c["Link"].static.index)
     assert "bus" not in internal.columns
     assert set(internal["entity"].to_list()) == set(links)
     assert len(internal) == len(n.snapshots) * len(links)
-    assert "p_internal" in _registry_schema().results
+    assert "p_internal" in _registry_schema().attributes
 
 
 def _three_port_link():
@@ -884,20 +923,17 @@ def test_a_third_port_result_lands_on_its_connection(workspace):
 
     Notes
     -----
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
     - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
     """
     n = _three_port_link()
     n.c["Link"].dynamic["p2"] = pd.DataFrame({"split": [1.0, 2.0]}, index=n.snapshots)
 
-    results = PyPSA.results(n, workspace.con)
+    results = PyPSA.to_datarecord(n, workspace.con).attributes
     assert "p2" not in results
-    assert "p" in _registry_schema().results, "the bare registry declares `p`"
+    assert "p" in _registry_schema().attributes, "the bare registry declares `p`"
     p = _flat(results["p"])
     assert p["bus"].to_list() == ["c", "c"], "a third port's flow is on bus2"
     assert p["value"].to_list() == [1.0, 2.0]
-    inputs = PyPSA.to_datarecord(n, workspace.con).attributes
-    assert "p" not in inputs, "p2 must not land in inputs"
 
 
 def test_a_three_port_record_writes_p_on_each_connection(store):
@@ -914,7 +950,7 @@ def test_a_three_port_record_writes_p_on_each_connection(store):
 
     revision = export_network(n, store)
 
-    p = _flat(outputs(revision, "p")).sort_values(["bus", "snapshot"])
+    p = _flat(relation(revision, "p")).sort_values(["bus", "snapshot"])
     assert p.groupby("bus")["value"].apply(list).to_dict() == {
         "a": flows["p0"],
         "b": flows["p1"],
@@ -1089,7 +1125,7 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
     )
     child = root.child(staged.edits)
 
-    inputs = Path(store.layer_dir(child.id)) / "inputs"
+    inputs = Path(store.layer_dir(child.id)) / "attributes"
     written = {p.stem for p in inputs.glob("*.parquet")} if inputs.exists() else set()
     assert not {"sign", "p_min_pu"} & written, "a default is never stored"
 
@@ -1222,10 +1258,7 @@ def test_a_second_tool_needs_no_record_change():
         def build(self, record):
             return "fake-model"
 
-        def results(self, model, con):
-            return {("Thing", "x"): model}
-
-        def to_datarecord(self, model, con):
+        def to_datarecord(self, model, con, *, results_only=False, base=None):
             return f"layer-of-{model}"
 
     assert isinstance(FakeTool(), Tool), "conformance to `Tool` is structural"

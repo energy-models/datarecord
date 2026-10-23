@@ -85,7 +85,7 @@ Every other group would be a column NULL on every row of the map, widening the k
 
 - the entity-type group, whose rows are the entity axis and which no attribute names beside `entity`;
 - a group addressed only alone, whose attributes are [columns of its own file](../format.md#where-a-value-lives) — `role` on `connection`, were it the only one;
-- a group only results name, `outputs/` [never overlaying](../read-path.md#outputs);
+- a group only results name, `outputs/` [never overlaying](../read-path.md);
 - a group nothing names.
 
 So the map's membership columns are `entity` and `Schema.group_columns`, derived like `partial_dims` rather than declared.

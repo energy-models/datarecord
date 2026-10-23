@@ -2,13 +2,13 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The PyPSA tool: record -> `pypsa.Network` -> results.
+"""The PyPSA tool: record -> `pypsa.Network` -> record.
 
 The only module that knows PyPSA's network shape - that its axes are
 `snapshot`/`period`/`scenario`, that a stochastic network is indexed by
 `(scenario, name)`, that its buses and carriers are the `bus` and `carrier`
 axes, and how its static/series split maps onto the record's `dims/` +
-`inputs/` split.
+`attributes/` split.
 
 Notes
 -----
@@ -24,7 +24,7 @@ import warnings
 from collections.abc import Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache, cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 from uuid import uuid4
 
 import narwhals as nw
@@ -43,7 +43,7 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import DuckTypes, ex_all, fn, struct_of
 from datarecord.layered.categories import matching, with_defaults
-from datarecord.record import Flags, Frames, LazyFrames, RecordLike
+from datarecord.record import EMPTY, Flags, Frames, LazyFrames, RecordLike
 from datarecord.schema import (
     AttributeSpec,
     Dimension,
@@ -408,7 +408,7 @@ def _assign_static(
     # An entity exists once, whatever the scenario, so the record's member
     # frame carries one row per entity - where PyPSA's static container is
     # `(scenario, name)`-indexed. Repeated here, and any attribute that really
-    # differs between scenarios arrived as `inputs/` rows and is assigned over
+    # differs between scenarios arrived as `attributes/` rows and is assigned over
     # the repeats below.
     if shape.stochastic and SCENARIO not in static.columns:
         static = scenarios.expand(
@@ -728,7 +728,7 @@ def _clashing_columns(n: pypsa.Network) -> frozenset[tuple[str, str]]:
     """`(type, column)` of `_custom_columns` whose attribute is declared over other dims.
 
     A custom column is an attribute over its type's dim, and one name is one
-    spec among attributes and results: so it clashes with one the registry
+    spec: so it clashes with one the registry
     declares otherwise, and with a custom column of the same name on a type of
     another dim (`Bus.country` beside `Generator.country`). A property of the
     same name is its subject's column and does not clash.
@@ -749,7 +749,7 @@ def _clashing_columns(n: pypsa.Network) -> frozenset[tuple[str, str]]:
         for name in columns
         if len(dims[name]) > 1
         or (
-            (spec := declared.spec_for(name)) is not None
+            (spec := declared.attributes.get(name)) is not None
             and spec.dims != frozenset({_dim_of(ctype)})
         )
     )
@@ -976,7 +976,7 @@ def _add_component_type(
         n._import_series_from_df(wide, ctype, attr)
 
 
-# -- results (https://energy-models.github.io/datarecord/design/read-path/#outputs) ---------------------------------------------------------
+# -- results (https://energy-models.github.io/datarecord/design/tools/#writing-results) ---------------------------------------------------------
 
 
 def _output_attributes(c: pypsa.Components) -> frozenset[str]:
@@ -1016,6 +1016,11 @@ bus, so they are an entity-level result beside the connection-level `p`, and
 one name holds one spec record-wide.
 """
 
+_INTERNAL_COLUMNS: dict[str, str] = {
+    name: attr for attr, name in _INTERNAL_RESULTS.items()
+}
+"""`_INTERNAL_RESULTS` back to PyPSA's names, for `build`."""
+
 
 def _result_attributes(c: pypsa.Components, inputs: Container[str]) -> dict[str, str]:
     """`c`'s PyPSA outputs -> the result each lands in, the rule schema and frames share.
@@ -1031,7 +1036,7 @@ def _result_attributes(c: pypsa.Components, inputs: Container[str]) -> dict[str,
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
     - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
     """
     per_port = _port_stems(c)
@@ -1158,7 +1163,7 @@ def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
     list (`["0", "1"]` plus `additional_ports`), so the port count comes from
     the network rather than a guessed bound. `role` is the row's one
     property; every per-port input, `delay` included, is long rows of
-    `inputs/` keyed by the connection.
+    `attributes/` keyed by the connection.
 
     Notes
     -----
@@ -1500,13 +1505,17 @@ class PyPSATool(Tool):
                 # scoped to this type's members here: every consumer joins it
                 # on `entity` against them (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
                 long = _unpack_connection(self.schema.resolve(record, ctype, attr))
+                if ctype == _SUB_NETWORK:
+                    long = _sub_network_unnamed(long, ENTITY)
+                if attr == "sub_network":
+                    long = _sub_network_unnamed(long, "value")
                 if CONNECTION in schema.attributes[attr].dims:
                     for column, rows in _port_columns(
                         long, attr, connections, ctype, con
                     ).items():
                         attributes[column] = (rows, flags)
                 else:
-                    attributes[attr] = (long, flags)
+                    attributes[_INTERNAL_COLUMNS.get(attr, attr)] = (long, flags)
 
             _add_component_type(n, ctype, static, attributes, shape, con)
 
@@ -1525,8 +1534,8 @@ class PyPSATool(Tool):
         """Add an `_AXIS_TYPES` type's members: its dim's labels, as `n.buses` or `n.carriers`.
 
         Each label with its properties, defaults applied, then the attributes
-        over the dim, a series by its flags, and the results over it from
-        `outputs`, so a solved bus keeps its `marginal_price`. Keyed as
+        over the dim, a series by its flags, so a solved bus keeps its
+        `marginal_price`. Keyed as
         `entity`, the static frame and the series pivot are a component's.
 
         Notes
@@ -1555,69 +1564,13 @@ class PyPSATool(Tool):
         }
         _add_component_type(n, ctype, static, attributes, shape, con)
 
-        results = [
-            attr
-            for attr, spec in schema.results.items()
-            if dim in spec.dims and attr in record.outputs
-        ]
-        scenarios = Index.of(n.scenarios, con)
-        snapshots = Index.of(n.snapshots, con, shape.snapshots[[SNAPSHOT]])
-        for attr in results:
-            rows = _keyed_as_entity(to_relation(record.outputs[attr]), dim)
-            wide = _series_frame(
-                rows.filter(col(SNAPSHOT).isnotnull()),
-                shape,
-                scenarios,
-                snapshots,
-                n.c[ctype].static.index,
-                con,
-            )
-            n._import_series_from_df(wide, ctype, attr)
-
-    def results(self, model: pypsa.Network, con: DuckDBPyConnection) -> Frames:
-        """A solved network's result attributes in the record's long form.
-
-        Keyed by attribute, matching `outputs/<attr>.parquet`: every component
-        type's rows for one attribute are concatenated into one frame, exactly as
-        `attributes` presents `inputs/`. The union needs no
-        `ctype` to tell the arms apart. Which attributes count as
-        results comes from PyPSA's registry, so an upgrade that adds one is
-        picked up, by the same rule the schema declares `results` by: a per-port
-        result (`p0`, `p1`, a Generator's `p`) is one `p` row per connection,
-        keyed by its `connection` struct, a bus's by `bus`, `Bus.p`/`q` and the
-        other derived bus values are not written, `Link.p` is `p_internal`, and
-        a name PyPSA also registers as an input (`SubNetwork.carrier`) is none.
-
-        Each frame is a lazy DuckDB relation on `con` over the network's
-        containers, melted wide->long by `UNPIVOT`, so nothing is computed until
-        collected.
-
-        Rows still at the attribute's default are dropped: a static output like
-        `Line.sub_network` carries its default whether or not the network was solved,
-        and an absent output file means exactly "take the default".
-
-        Notes
-        -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-        - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
-        """
-        # The same wide->long melt `write_layer` uses, kept lazy. `outputs`
-        # keys every registry result; a result absent on this network unions to
-        # `None` and is dropped here rather than surfaced, since a reader takes
-        # the default for it (the outputs default rule) - no key, no collect.
-        source = _NetworkSource(model, con)
-        frames = {
-            attr: rel
-            for attr, ctypes in source._output_names.items()
-            if (rel := source._output_rel(attr, ctypes)) is not None
-        }
-        return {attr: nw.from_native(rel).lazy() for attr, rel in frames.items()}
-
     def to_datarecord(
-        self, model: pypsa.Network, con: DuckDBPyConnection
+        self,
+        model: pypsa.Network,
+        con: DuckDBPyConnection,
+        *,
+        results_only: bool = False,
+        base: RecordLike | None = None,
     ) -> RecordLike:
         """Present a `Network` as the `Record` `write_layer` persists.
 
@@ -1626,11 +1579,19 @@ class PyPSATool(Tool):
         `bus0`/`bus1`/`efficiency2` become connection rows carrying a `role`,
         and `n.buses` and `n.carriers` the `bus` and `carrier` axes, in PyPSA's
         order, with every carrier named but not listed added and `""` stored as
-        NULL. Key sets are read off the network, so listing unpivots nothing and
-        a lookup only what is asked for.
+        NULL. Its outputs, by the registry's status "Output", are attributes
+        like any other, those still at their default left out. Key sets are
+        read off the network, so listing unpivots no input.
+
+        With `results_only` the record is a thin layer over `base`: the
+        outputs, at their default too, and the SubNetworks they name as
+        entities, `base`'s SubNetworks this solve did not number again
+        tombstoned.
 
         Raises
         ------
+        ValueError
+            If `base` is given without `results_only`, or missing with it.
         UnsupportedRecordError
             If two entity types share a name: PyPSA scopes names per type, a
             record record-wide, and this reports rather than renames. Likewise
@@ -1645,13 +1606,23 @@ class PyPSATool(Tool):
         - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
         - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
         """
+        if results_only != (base is not None):
+            msg = (
+                "`to_datarecord` takes `base` exactly when `results_only=True`: "
+                "a results layer is written over the record the network was "
+                "built from, and a full export over nothing"
+            )
+            raise ValueError(msg)
         clashing = _colliding_names(model)
         columns = _clashing_columns(model)
         if clashing or columns:
             raise UnsupportedRecordError(
                 self.name, Requirements(names=clashing, columns=columns)
             )
+        if base is not None:
+            return _ResultsSource(model, con, base)
         return _NetworkSource(model, con)
 
 
@@ -1774,16 +1745,21 @@ def _registry_schema() -> RecordSchema:
 
 
 def _registry_carries() -> dict[str, frozenset[str]]:
-    """Per entity type, the input names PyPSA's registry declares for it (`_registry`)."""
+    """Per entity type, the names PyPSA's registry declares for it (`_registry`)."""
     return _registry()[1]
 
 
-@cache
-def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]]]:
-    """The record schema PyPSA's whole component registry declares, and what each entity type takes.
+def _input_names() -> frozenset[str]:
+    """Every input the registry schema declares, attribute or property of any subject (`_registry`)."""
+    return _registry()[2]
 
-    Every network exports against this one schema: its dims, groups, attributes
-    and results describe every PyPSA component type and attribute, not
+
+@cache
+def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]]:
+    """The record schema PyPSA's whole component registry declares, what each entity type takes, and its inputs.
+
+    Every network exports against this one schema: its dims, groups and
+    attributes describe every PyPSA component type and attribute, not
     only the ones a given network holds. Declaring a type or attribute a network
     lacks writes no file and is rejected by nothing - the enum only rejects an
     *unknown* type - so a network-independent schema is both correct and the
@@ -1792,15 +1768,16 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]]]:
     does not change within a process.
 
     `c.defaults` already declares what an `AttributeSpec` asks for, so this reads
-    it rather than restating it. Results go to `results` rather than
-    `attributes`, read off the same registry (`status` starting "Output"), so a
-    PyPSA upgrade adding one is picked up rather than needing a list kept here;
-    which names they are is `_result_attributes`, the rule `PyPSA.results`
-    keys its frames by, a per-port one declared over the `connection` group
-    like a per-port input.
+    it rather than restating it. Results are attributes too, read off the same
+    registry (`status` starting "Output"), so a PyPSA upgrade adding one is
+    picked up rather than needing a list kept here; which names they are is
+    `_result_attributes`, the rule `to_datarecord` keys its frames by, a
+    per-port one declared over the `connection` group like a per-port input.
 
-    The second item names, per entity type, the inputs it declares - stems and
-    `entity` properties alike - which `build` keeps its values to (`_taken`).
+    The second item names, per entity type, the names it declares - stems,
+    `entity` properties and results alike - which `build` keeps its values to
+    (`_taken`). The third is every input, which no result may be named
+    (`_result_attributes`).
     One spec per name record-wide: the first type
     declaring a name gives its spec, and a default differing per type is
     `default_by` (`_with_default_by`). A per-port column collapses to its stem
@@ -1820,7 +1797,7 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]]]:
     - [the schema](https://energy-models.github.io/datarecord/design/schema/)
     - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
     - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
     """
     import pypsa
@@ -1886,21 +1863,26 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]]]:
             name: _property(name, specs.pop(name)) for name in _PROPERTIES[dim]
         }
         attributes |= specs
-    inputs = {*attributes, *(name for named in properties.values() for name in named)}
+    inputs = frozenset(
+        {*attributes, *(name for named in properties.values() for name in named)}
+    )
     results: dict[str, AttributeSpec] = {}
     for ctype in exported:
         c = n.components[ctype]
         per_port = _port_stems(c)
-        for attr, name in sorted(_result_attributes(c, inputs).items()):
+        named = _result_attributes(c, inputs)
+        for attr, name in sorted(named.items()):
             over = CONNECTION if attr in per_port else _dim_of(ctype)
             results.setdefault(name, _attribute_spec(c.defaults.loc[attr], over=over))
+        if ctype not in _AXIS_TYPES and named:
+            carries[ctype] = carries.get(ctype, frozenset()) | set(named.values())
     properties[CONNECTION] = {
         ROLE: PropertySpec(
             dtype=nw.Enum(_ROLES),
             description="Which end of the component this attachment is.",
         )
     }
-    return RecordSchema(
+    schema = RecordSchema(
         dimensions={
             SNAPSHOT: Dimension(
                 dtype=nw.Datetime(),
@@ -1928,16 +1910,16 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]]]:
                 description="An entity's attachment to one bus.",
             ),
         },
-        attributes=attributes,
-        results=results,
+        attributes=attributes | results,
         partial=frozenset({ENTITY, BUS, SCENARIO, CONNECTION}),
-    ), carries
+    )
+    return schema, carries, inputs
 
 
 def _taken(schema: RecordSchema, ctype: str, names: Iterable[str]) -> list[str]:
     """Those of `names` a `ctype` takes, in order: what no other type claims, or its own.
 
-    A type claims its registry inputs (`_registry_carries`) and the custom
+    A type claims its registry names (`_registry_carries`) and the custom
     columns its network was exported with (`meta`). A name no type claims - an
     attribute a record adds - reaches every type.
 
@@ -1953,13 +1935,6 @@ def _taken(schema: RecordSchema, ctype: str, names: Iterable[str]) -> list[str]:
     everyone = frozenset().union(*claimed.values(), *map(frozenset, custom.values()))
     own = claimed.get(ctype, frozenset(custom.get(ctype, ())))
     return [n for n in names if n in own or n not in everyone]
-
-
-@cache
-def _input_names() -> frozenset[str]:
-    """Every input the registry schema declares, attribute or property of any subject."""
-    schema = _registry_schema()
-    return frozenset(schema.attributes).union(*schema.properties.values())
 
 
 @dataclass(frozen=True)
@@ -1986,7 +1961,7 @@ class _NetworkSource:
     def schema(self) -> RecordSchema:
         """The layer's schema: the registry-derived schema, widened to this network.
 
-        The dims, groups, results and the registry's attributes are the same for
+        The dims, groups and the registry's attributes are the same for
         every network - `_registry_schema` derives them once from PyPSA's whole
         component registry. What varies is `meta`, which carries this network's
         own attributes and `n.meta` for read-back and, per entity type, the
@@ -2328,11 +2303,16 @@ class _NetworkSource:
 
     @property
     def attributes(self) -> LazyFrames:
-        """Every input that is no property, the weightings of each axis the network holds among them."""
+        """Every input that is no property, the weightings of each axis the network holds among them, and every result with rows."""
         names = self._attribute_names
-        return LazyFrames(
-            tuple(names), lambda attr: self._long_frame(attr, names[attr])
-        )
+        results = self._result_rels
+
+        def frame(attr: str) -> nw.LazyFrame:
+            if attr in results:
+                return nw.from_native(results[attr]).lazy()
+            return self._long_frame(attr, names[attr])
+
+        return LazyFrames((*names, *results), frame)
 
     @cached_property
     def _attribute_names(self) -> dict[str, list[str]]:
@@ -2374,26 +2354,6 @@ class _NetworkSource:
         )
         return nw.from_native(rel).lazy()
 
-    @property
-    def outputs(self) -> LazyFrames:
-        """Result attributes, keyed by name, from PyPSA's own registry.
-
-        Keys are named per type by the registry and merged, matching the file
-        layout - one `outputs/<attr>.parquet` across types, like `inputs/`.
-        A network that was never solved still names them; the frame is then
-        empty and `write_layer` writes an empty file rather than none, which
-        reads back as "take the default" either way.
-
-        Notes
-        -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-        """
-        names = self._output_names
-        return LazyFrames(
-            tuple(names), lambda attr: self._output_frame(attr, names[attr])
-        )
-
     @cached_property
     def _output_names(self) -> dict[str, list[str]]:
         """Result attribute -> the exported types declaring it, as the schema does."""
@@ -2402,6 +2362,26 @@ class _NetworkSource:
             for attr in sorted(set(results.values())):
                 names.setdefault(attr, []).append(ctype)
         return names
+
+    #: Whether a result's static rows still at their default are left out.
+    _DROP_RESULT_DEFAULTS: ClassVar[bool] = True
+
+    @cached_property
+    def _result_rels(self) -> dict[str, DuckDBPyRelation]:
+        """Result attribute -> its long rows across types, where any type has rows.
+
+        Built when listed, unlike an input, since a result the network holds
+        no rows of has no file: a network never solved writes none.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+        """
+        return {
+            attr: rel
+            for attr, ctypes in self._output_names.items()
+            if (rel := self._output_rel(attr, ctypes)) is not None
+        }
 
     @cached_property
     def _results(self) -> dict[str, dict[str, str]]:
@@ -2459,17 +2439,16 @@ class _NetworkSource:
     def _record_attributes(self, c: pypsa.Components) -> list[str]:
         """`c`'s input attributes, in the record's vocabulary: every input but a property.
 
-        Each goes to `inputs/` whatever it varies over. Per-port attributes
+        Each goes to `attributes/` whatever it varies over. Per-port attributes
         collapse to their stem (`efficiency2` -> `efficiency`), a record keying
         them by bus rather than position; `bus` is the connection itself, and
-        outputs belong to `outputs/`. A custom column the registry has no
+        outputs are `_result_rels`. A custom column the registry has no
         entry for (`ac_dc_meshed`'s `Bus.country`) is an attribute too.
 
         Notes
         -----
         - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
         defaults = c.defaults
         skipped = {"name", *_output_attributes(c), *_PROPERTIES[_dim_of(c.name)]}
@@ -2656,38 +2635,10 @@ class _NetworkSource:
             )
         )
 
-    def _output_frame(self, attribute: str, ctypes: list[str]) -> nw.LazyFrame:
-        """One result attribute's long rows, across every type that has it.
-
-        `drop_defaults` matters here as it does in `results`: a static output
-        carries its default whether or not the network was solved, and an
-        absent value means exactly "take the default" to a reader.
-
-        Notes
-        -----
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-        """
-        rels = self._output_rels(attribute, ctypes)
-        return self._union_select(rels, self._output_columns(attribute))
-
     def _output_rel(self, attribute: str, ctypes: list[str]) -> DuckDBPyRelation | None:
-        """`_output_frame` as a relation, `None` where no type contributes."""
+        """One result attribute's long rows across types, `None` where no type contributes."""
         rels = self._output_rels(attribute, ctypes)
-        return self._union_rel(rels, self._output_columns(attribute))
-
-    def _output_columns(self, attribute: str) -> list[str]:
-        """A result's long columns: `connection` or `bus` where it is over either.
-
-        The melt's `snapshot` and `scenario`, whether or not the result varies
-        over them.
-
-        Notes
-        -----
-        - [results on connections](https://energy-models.github.io/datarecord/design/tools/#results-on-connections)
-        """
-        spec = _registry_schema().results[attribute]
-        member = next((d for d in (CONNECTION, BUS) if d in spec.dims), ENTITY)
-        return [member, SNAPSHOT, SCENARIO, "attribute", "breakpoint", "value"]
+        return self._union_rel(rels, list(self.schema.long_columns_for(attribute)))
 
     def _output_rels(self, attribute: str, ctypes: list[str]) -> list[DuckDBPyRelation]:
         """One result attribute's per-type long relations, empties dropped.
@@ -2703,13 +2654,14 @@ class _NetworkSource:
             for column, name in sorted(self._results[ctype].items()):
                 if name != attribute:
                     continue
+                drop = self._DROP_RESULT_DEFAULTS
                 try:
                     rel = (
                         self._port_long_rel(
-                            c, name, column, ports[column][1], drop_defaults=True
+                            c, name, column, ports[column][1], drop_defaults=drop
                         )
                         if column in ports
-                        else self._tagged_long_rel(c, name, column, drop_defaults=True)
+                        else self._tagged_long_rel(c, name, column, drop_defaults=drop)
                     )
                 except (AttributeError, KeyError):
                     # Not every registry output has a container on every network.
@@ -2750,6 +2702,78 @@ class _NetworkSource:
                 **{c: schema.column_type(c) or nw.String() for c in columns}
             )
         return nw.from_native(rel).lazy()
+
+
+@dataclass(frozen=True)
+class _ResultsSource(_NetworkSource):
+    """A solved `pypsa.Network`'s results, as a thin layer over `base`.
+
+    Its result attributes and the SubNetworks they name, entities of their
+    own: `base`'s SubNetworks this solve does not write again are tombstoned,
+    so a re-solve numbering them differently leaves none behind. A result's
+    rows at their default are written too, standing over `base`'s.
+
+    Notes
+    -----
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/#writing-results)
+    """
+
+    #: The record the network was built from.
+    base: RecordLike
+
+    _DROP_RESULT_DEFAULTS: ClassVar[bool] = False
+
+    @cached_property
+    def schema(self) -> RecordSchema:
+        """`base`'s schema: a results layer declares nothing the record does not."""
+        return self.base.schema
+
+    @cached_property
+    def _sub_networks(self) -> pd.DataFrame:
+        """This solve's SubNetwork entities, then `base`'s it drops, tombstoned."""
+        live = _none_for_empty(
+            self._static_frame(_SUB_NETWORK).assign(**{CTYPE: _SUB_NETWORK})
+        )
+        frame = self.base.properties.get(ENTITY)
+        named = (
+            []
+            if frame is None
+            else frame.filter(nw.col(CTYPE) == _SUB_NETWORK)
+            .select(ENTITY)
+            .collect()[ENTITY]
+            .to_list()
+        )
+        stale = sorted(set(named) - set(live[ENTITY]))
+        dead = pd.DataFrame({ENTITY: stale, "deleted": True})
+        return pd.concat([live, dead], ignore_index=True)
+
+    @property
+    def dims(self) -> LazyFrames:
+        """The `entity` axis: SubNetworks, live or tombstoned."""
+        return LazyFrames(
+            (ENTITY,),
+            lambda _: nw.from_native(self._sub_networks[[ENTITY, "deleted"]]).lazy(),
+        )
+
+    @property
+    def properties(self) -> LazyFrames:
+        """The live SubNetworks' `ctype` and the properties of `entity` they carry."""
+        live = self._sub_networks[~self._sub_networks["deleted"].astype(bool)]
+        declared = [ENTITY, *self.schema.properties[ENTITY]]
+        columns = [c for c in live.columns if c in declared]
+        return LazyFrames((ENTITY,), lambda _: nw.from_native(live[columns]).lazy())
+
+    @property
+    def groups(self) -> LazyFrames:
+        return EMPTY
+
+    @property
+    def attributes(self) -> LazyFrames:
+        """Every result with rows."""
+        results = self._result_rels
+        return LazyFrames(
+            tuple(results), lambda attr: nw.from_native(results[attr]).lazy()
+        )
 
 
 def _required_attributes(ctype: str) -> frozenset[str]:
@@ -2846,7 +2870,7 @@ class _TypeMembers:
     def columns(self) -> frozenset[str]:
         """The properties the members carry, defaults applied.
 
-        A required input among them needs no `inputs/` row to be resolvable.
+        A required input among them needs no `attributes/` row to be resolvable.
 
         Notes
         -----

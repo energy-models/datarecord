@@ -320,7 +320,7 @@ class AttributeSpec(_ValueSpec):
     dims
         Dims and groups this attribute may vary over; a subset of those
         declared. Whatever they are, its values are long rows of
-        `inputs/<attr>.parquet`.
+        `attributes/<attr>.parquet`.
     default
         The value a coordinate no row covers takes.
     default_by
@@ -474,7 +474,7 @@ class Schema(_Declared):
         Every declared axis, keyed by dim name.
     attributes
         Attribute -> spec, flat and record-wide. One attribute is one spec and
-        one `inputs/<attr>.parquet`, so a dtype cannot differ per type.
+        one `attributes/<attr>.parquet`, so a dtype cannot differ per type.
     properties
         Subject dim or group -> property name -> spec: the columns of
         `dims/{dim}.parquet` or `groups/{group}.parquet` that describe its
@@ -503,17 +503,6 @@ class Schema(_Declared):
     version: int = 1
     dimensions: dict[str, Dimension] = Field(default_factory=dict)
     attributes: dict[str, AttributeSpec] = Field(default_factory=dict)
-    results: dict[str, AttributeSpec] = Field(default_factory=dict)
-    """What a solve computes, keyed like `attributes` and shaped the same.
-
-    Separate because the two are governed differently, not because they are
-    stored differently: a result is written to `outputs/<attr>.parquet` rather
-    than `inputs/`, never overlays a parent's, and may name an entity the
-    record does not declare. Keeping it out of `attributes` is what keeps it
-    from `add`'s wide-frame split and the input validation, neither of which a
-    result should meet.
-    """
-
     properties: dict[str, dict[str, PropertySpec]] = Field(default_factory=dict)
     groups: dict[str, Group] = Field(default_factory=dict)
     partial: frozenset[str] | None = None
@@ -535,7 +524,7 @@ class Schema(_Declared):
         # Attributes but no axes is a table, not a record (https://energy-models.github.io/datarecord/design/schema/#dimensions). Rejected here
         # so the owner map never needs a struct with no fields, which DuckDB has
         # no type for. A wholly empty `Schema()` stays legal: "no manifest yet".
-        if (self.attributes or self.results) and not declared:
+        if self.attributes and not declared:
             msg = (
                 "a schema declaring attributes must declare at least one dim; "
                 "attribute data varying over no axis is not a record (https://energy-models.github.io/datarecord/design/schema/#dimensions)"
@@ -583,7 +572,7 @@ class Schema(_Declared):
         self._check_properties()
 
         addressable = declared | set(self.groups)
-        for attr, attr_spec in (*self.attributes.items(), *self.results.items()):
+        for attr, attr_spec in self.attributes.items():
             unknown = sorted(attr_spec.dims - addressable)
             if unknown:
                 msg = (
@@ -677,7 +666,7 @@ class Schema(_Declared):
                     s,
                     frozenset(d for d in self.dimensions if self.addresses(a, d)),
                 )
-                for a, s in (*self.attributes.items(), *self.results.items())
+                for a, s in self.attributes.items()
             ),
         ]
         for what, spec, reached in valued:
@@ -742,19 +731,14 @@ class Schema(_Declared):
         property's, in its subject's file only. Two spellings of one name
         differing only in case are refused record-wide, DuckDB resolving both
         to one column; one spelling declared twice is left to the rules that
-        govern it - except across attributes and results, where one name is one
-        spec, and a property named like a column of its subject's file or a
-        coordinate of its group.
+        govern it - except a property named like a column of its subject's file
+        or a coordinate of its group.
 
         Notes
         -----
         - [names](https://energy-models.github.io/datarecord/design/schema/#names)
         - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
         """
-        valued = [
-            *(("attribute", a) for a in self.attributes),
-            *(("result", r) for r in self.results),
-        ]
         declared = [
             *(("dim", d) for d in self.dimensions),
             *(("group", g) for g in self.groups),
@@ -763,7 +747,7 @@ class Schema(_Declared):
                 for g, spec in self.groups.items()
                 for c in spec.over
             ),
-            *valued,
+            *(("attribute", a) for a in self.attributes),
             *(
                 (f"property of {s!r}", p)
                 for s, specs in self.properties.items()
@@ -793,18 +777,6 @@ class Schema(_Declared):
                     f"rename the properties"
                 )
                 raise ValueError(msg)
-        kinds: dict[str, list[str]] = {}
-        for kind, name in valued:
-            kinds.setdefault(name, []).append(kind)
-        clashing = {n: k for n, k in kinds.items() if len(k) > 1}
-        if clashing:
-            detail = "; ".join(
-                f"{n!r} as {' and '.join(k)}" for n, k in clashing.items()
-            )
-            msg = (
-                f"one name is one spec, but these are declared more than once: {detail}"
-            )
-            raise ValueError(msg)
         spellings: dict[str, dict[str, str]] = {}
         for kind, name in declared:
             spellings.setdefault(name.lower(), {}).setdefault(name, kind)
@@ -875,7 +847,7 @@ class Schema(_Declared):
         - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
-        spec = self.spec_for(attribute)
+        spec = self.attributes.get(attribute)
         if spec is None:
             return ()
         return (*self.groups_of(attribute), *(d for d in self.dims if d in spec.dims))
@@ -964,21 +936,20 @@ class Schema(_Declared):
                 raise ValueError(msg)
 
     def long_columns_for(self, attribute: str) -> tuple[str, ...]:
-        """One attribute's full long column set, in order - input or result.
+        """One attribute's full long column set, in order.
 
         An attribute carries the coordinates its `dims` name and no others, so a
         per-snapshot weighting has no column for any other dim.
 
-        An attribute neither vocabulary declares is `long_columns` - every
+        An undeclared attribute is `long_columns` - every
         declared dim, the widest shape. That is a schema with no manifest yet,
         every declared attribute having its own coordinates.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [results](https://energy-models.github.io/datarecord/design/working-record/#results-through-kindoutputs)
         """
-        if self.spec_for(attribute) is None:
+        if self.attributes.get(attribute) is None:
             return self.long_columns
         return (*self.coordinates_of(attribute), *LONG_TAIL)
 
@@ -1052,7 +1023,7 @@ class Schema(_Declared):
                 raise ValueError(msg)
 
     def default_for(self, name: str, **categories: str) -> Any:
-        """The default of attribute, result or `subject.name` property `name` for a label of `categories`.
+        """The default of attribute or `subject.name` property `name` for a label of `categories`.
 
         `categories` are keyed by each categorizing property's own name. The
         first `default_by` key listing the label's category decides, else
@@ -1086,20 +1057,20 @@ class Schema(_Declared):
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
         """
-        spec = self.spec_for(attribute)
+        spec = self.attributes.get(attribute)
         return (spec is not None and dim in spec.dims) or any(
             dim in self.groups[g].over.values() for g in self.groups_of(attribute)
         )
 
     def resolve(self, name: str) -> AttributeSpec | tuple[str, PropertySpec]:
-        """What `name` addresses: an attribute or result, or a property as `subject.name`.
+        """What `name` addresses: an attribute, or a property as `subject.name`.
 
         Read off the name alone: a plain name is never a property.
 
         Returns
         -------
         AttributeSpec or tuple of str and PropertySpec
-            The attribute's or result's spec, or a property's subject and spec.
+            The attribute's spec, or a property's subject and spec.
 
         Raises
         ------
@@ -1118,14 +1089,14 @@ class Schema(_Declared):
                 msg = f"the schema declares no property {name!r}"
                 raise KeyError(msg)
             return subject, spec
-        attribute = self.spec_for(name)
+        attribute = self.attributes.get(name)
         if attribute is not None:
             return attribute
         dotted = sorted(
             f"`{s}.{name}`" for s, specs in self.properties.items() if name in specs
         )
         hint = f"; did you mean {' or '.join(dotted)}" if dotted else ""
-        msg = f"the schema declares no attribute or result {name!r}{hint}"
+        msg = f"the schema declares no attribute {name!r}{hint}"
         raise KeyError(msg)
 
     def field_over(self, group: str, dim: str) -> str | None:
@@ -1222,7 +1193,7 @@ class Schema(_Declared):
         return (*self.partial_dims, "attribute")
 
     def groups_of(self, attribute: str) -> tuple[str, ...]:
-        """Which declared groups address `attribute`, input or result, in declaration order.
+        """Which declared groups address `attribute`, in declaration order.
 
         An attribute is a connection attribute because its `dims` name the
         `connection` group - not because a separate field says so. That is
@@ -1232,7 +1203,7 @@ class Schema(_Declared):
         -----
         - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
         """
-        spec = self.spec_for(attribute)
+        spec = self.attributes.get(attribute)
         if spec is None:
             return ()
         return tuple(g for g in self.groups if g in spec.dims)
@@ -1301,26 +1272,10 @@ class Schema(_Declared):
             return flag_type(self.broadcast_dims) if self.broadcast_dims else None
         return None
 
-    def spec_for(self, attribute: str) -> AttributeSpec | None:
-        """`attribute`'s spec, whether it is an input or a result.
-
-        The one lookup that spans both vocabularies, for the questions the long
-        schema asks of a stored attribute regardless of which file holds it -
-        its dtype and its coordinates. Anything governing how an attribute may
-        be *written* asks `attributes` or `results` directly, the two differing
-        exactly there.
-
-        Notes
-        -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-        """
-        return self.attributes.get(attribute) or self.results.get(attribute)
-
     def value_type(self, attribute: str) -> nw.dtypes.DType | None:
-        """The `value` column's type for one attribute, input or result.
+        """The `value` column's type for one attribute.
 
-        No `ctype`: one attribute is one `<kind>/<attr>.parquet` with one
+        No `ctype`: one attribute is one `attributes/<attr>.parquet` with one
         `value` column, so the dtype is the attribute's alone. A narwhals
         dtype, translated to DuckDB (`duck.DuckTypes`) only where a caller builds
         a column of it.
@@ -1329,7 +1284,7 @@ class Schema(_Declared):
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         """
-        spec = self.spec_for(attribute)
+        spec = self.attributes.get(attribute)
         return None if spec is None else spec.dtype
 
     # -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) --------------------------------------------------
@@ -1362,27 +1317,21 @@ class Schema(_Declared):
             if now.dtype != was.dtype:
                 problems.append(f"dim {dim!r} dtype {was.dtype} -> {now.dtype}")
 
-        # Results version like inputs: a layer's `outputs/<attr>.parquet` is
-        # unreadable for the same reasons its `inputs/` counterpart would be.
-        for kind, mine, theirs in (
-            ("attribute", self.attributes, other.attributes),
-            ("result", self.results, other.results),
-        ):
-            for attr, was_spec in theirs.items():
-                now_spec = mine.get(attr)
-                if now_spec is None:
-                    problems.append(f"{kind} {attr!r} removed")
-                    continue
-                if now_spec.dtype != was_spec.dtype:
-                    problems.append(
-                        f"{kind} {attr!r} dtype {was_spec.dtype} -> {now_spec.dtype}"
-                    )
-                narrowed = was_spec.dims - now_spec.dims
-                if narrowed:
-                    problems.append(
-                        f"{kind} {attr!r} no longer varies over {sorted(narrowed)}; "
-                        f"rows setting those dims have no valid reading"
-                    )
+        for attr, was_spec in other.attributes.items():
+            now_spec = self.attributes.get(attr)
+            if now_spec is None:
+                problems.append(f"attribute {attr!r} removed")
+                continue
+            if now_spec.dtype != was_spec.dtype:
+                problems.append(
+                    f"attribute {attr!r} dtype {was_spec.dtype} -> {now_spec.dtype}"
+                )
+            narrowed = was_spec.dims - now_spec.dims
+            if narrowed:
+                problems.append(
+                    f"attribute {attr!r} no longer varies over {sorted(narrowed)}; "
+                    f"rows setting those dims have no valid reading"
+                )
 
         for dim, specs in other.properties.items():
             for name, was_prop in specs.items():
