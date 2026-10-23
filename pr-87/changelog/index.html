@@ -1143,15 +1143,13 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong><code>set</code> no longer takes an expression</strong> (breaking): an <code>nw.Expr</code> value
-  is refused with a <code>TypeError</code>. Compute the new values from
-  <code>attributes[name]</code> and <code>set</code> the frame.</li>
-<li><strong>A dim is flat</strong> (breaking): <code>Dimension.within</code> is gone, every axis is
-  keyed by its label alone, and a manifest declaring <code>within</code> fails to load
-  naming the replacement, a property <code>into</code> the parent dim
-  (<code>snapshot.period</code> into <code>period</code>), with labels unique across the dim.
-  Every earlier manifest carries <code>within</code>, if only as <code>[]</code>, so none loads:
-  drop the key, or re-export the record.
+<li><strong><code>set</code> no longer takes an expression</strong> (breaking): compute the new
+  values from <code>attributes[name]</code> and <code>set</code> the frame.</li>
+<li><strong>A dim is flat</strong> (breaking): <code>Dimension.within</code> is gone and every axis is
+  keyed by its label alone. A nested dim becomes a property <code>into</code> the
+  parent dim (<code>snapshot.period</code> into <code>period</code>), with labels unique across
+  the dim. Every earlier manifest carries <code>within</code>, if only as <code>[]</code>, so none
+  loads: drop the key, or re-export the record.
   <code>add</code> takes no parent keys, and <code>set</code> on a property, <code>remove</code>'s refusal and
   group cascade, the writer's live-label check and the label and trait check
   of <code>set</code> now cover every dim. <code>Schema.axis_key</code> is gone. <code>PyPSA.results</code>
