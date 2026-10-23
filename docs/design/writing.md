@@ -17,8 +17,6 @@ Three calls make something, one per place it can go, and each is named for what 
 Each writes `source` as a new layer.
 An existing layer directory is an error rather than an overwrite or a merge, so a whole-record write can never half-replace what a record holds.
 
-`outputs/` is written only for a source whose [`outputs` mapping](record.md) is non-empty, so a record with no results produces a layer with no `outputs/` rather than an empty directory.
-
 Keys are looked up one at a time and each file written before the next is built, so a lazily-building source does one read per file written rather than one per key up front.
 Locally, frames are staged into a sibling directory and renamed on success, so a frame the fold could not resolve leaves no layer rather than half of one.
 
@@ -28,8 +26,7 @@ Without that a source may hand over an all-NULL column its dataframe library typ
 Validation is structural: a long frame carries [its attribute's own coordinates](format.md#the-long-schema), and an entity frame carries every dim it is keyed by.
 Which entity types are valid belongs to [the schema's vocabulary](schema.md), which the record layer does not interpret.
 
-An **input attribute the schema does not declare is rejected**, unlike an entity type: its [`dims`](schema.md#attributespec) are what say which columns its file carries, so an undeclared one has no shape to write it in and would leave a file no reader could derive the columns of.
-A **result is exempt** — [`Tool.results`](tools.md) derives which attributes count as results from a framework's own registry, so an unknown name is an error for an input and simply unknowable for a result.
+An **attribute the schema does not declare is rejected**, unlike an entity type, a [result](schema.md#a-result-is-an-attribute) like any other: its [`dims`](schema.md#attributespec) are what say which columns its file carries, so an undeclared one has no shape to write it in and would leave a file no reader could derive the columns of.
 
 A frame carrying a column its attribute is **not** addressed by is rejected too, rather than narrowed on the way out.
 The read path projects an attribute's own coordinates, so such a column would be written and never read — and a source emitting one means something different by the attribute than the schema does, which is worth reporting rather than absorbing.
@@ -52,7 +49,7 @@ The manifest check comes after the layer, so a layer whose schema turns out inco
 
 Two writers creating a location's first layers, or widening its schema, at once race on `manifest.json`. So the manifest is written through a [conditional write](layers.md#files-local-and-remote): read with its version — `Absent` where there is none — checked for compatibility, and written only if still at that version. A writer that lost re-reads and checks again, so two writers widening at once end with both widenings, where the later one's schema includes the earlier's, or with the later one's incompatibility reported, never one silently lost. The retry is bounded: a writer that loses ten times, backing off with jitter in between, gives up with an error. That is also what a credential that can write `manifest.json` but not read it meets, since a remote read answered 403 counts as missing and every create-only write then fails.
 
-`materialise()` follows the same rule. `owner_map/inputs.parquet` is what [says a node is materialised](layers.md#materialised-node-caches), so it is written last, after the other maps, the resolved dims and groups. Locally each file is written under a temporary name and renamed, because a parquet file appears at its final path before it is complete and a reader meeting it mid-write fails rather than misses. Two writers materialising one node write the same content, so that race is harmless.
+`materialise()` follows the same rule. `owner_map.parquet` is what [says a node is materialised](layers.md#materialised-node-caches), so it is written last, after the resolved dims and groups. Locally each file is written under a temporary name and renamed, because a parquet file appears at its final path before it is complete and a reader meeting it mid-write fails rather than misses. Two writers materialising one node write the same content, so that race is harmless.
 
 ## A standalone directory
 

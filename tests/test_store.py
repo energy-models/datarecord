@@ -293,7 +293,7 @@ def _folded_then_widened(store, partial=frozenset(), *, materialised=False):
     assert "scenario" not in str(before.types[before.columns.index("varies")])
     if materialised:
         revision.materialise()
-        uri = f"{store.resolved_dir(revision.id)}owner_map/inputs.parquet"
+        uri = store.owner_map_uri(revision.id)
         persisted = store.workspace.con.sql(f"SELECT varies FROM read_parquet('{uri}')")
         assert "scenario" not in str(persisted.types[0]), (
             "the map on disk knows nothing of `scenario`"
@@ -413,7 +413,7 @@ def test_an_enum_dim_resolves_from_fold_tables_after_a_widening(store):
 
 
 def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkeypatch):
-    """`owner_map/inputs.parquet` is the cache's presence, so it is written last.
+    """`owner_map.parquet` is the cache's presence, so it is written last.
 
     Notes
     -----
@@ -426,7 +426,7 @@ def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkey
     def fail(*args, **kwargs):
         raise RuntimeError("the owner map write fails")
 
-    monkeypatch.setattr(resolve, "_fold_kind", fail)
+    monkeypatch.setattr(resolve, "_fold_map", fail)
     with pytest.raises(RuntimeError):
         root.materialise()
     assert Path(store.resolved_dir(root.id), "dims", "entity.parquet").exists()

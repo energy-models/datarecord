@@ -207,6 +207,16 @@ All notable changes to datarecord are documented here. The format follows
   `verify`, and `to_datarecord` records a network's custom entity columns
   per type in the schema's `meta`. Every record declaring traits is
   re-exported.
+- **Results are attributes** (breaking): a layer holds every attribute in
+  one `attributes/` directory; `Schema.results`, `Record.outputs`, `Kind`,
+  `set(..., kind=...)` and `Tool.results` are gone, and a result inherits
+  through layers like any attribute. The PyPSA tool declares its outputs as
+  attributes, `build` copies them, and
+  `to_datarecord(n, con, results_only=True, base=record)` writes a solve as a
+  thin layer replacing `base`'s SubNetworks and restating as NULL the
+  results of `base` it does not write again; a NULL series value, input or
+  result, leaves the component at its static value on export. Every record
+  is re-exported.
 
 ### Fixed
 

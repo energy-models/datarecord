@@ -246,7 +246,7 @@ def test_per_connection_attribute_varies_by_snapshot(store):
 
 
 def test_connection_tombstone_removes_one_connection(store):
-    """A connection tombstone drops its connection row and its `inputs/` rows."""
+    """A connection tombstone drops its connection row and its `attributes/` rows."""
     root = _root(store)
     root.materialise()
 
@@ -329,7 +329,7 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
     """
     root = _root(store)
     child = empty_child(root)
-    target = Path(store.layer_dir(child.id), "inputs")
+    target = Path(store.layer_dir(child.id), "attributes")
     target.mkdir(parents=True, exist_ok=True)
     duckdb.sql(
         """
@@ -538,7 +538,7 @@ def _contract_root(store) -> Revision:
             {"contract": {"from": "plant", "to": "smelter"}},
         ],
     )
-    Path(layer, "inputs").mkdir(parents=True, exist_ok=True)
+    Path(layer, "attributes").mkdir(parents=True, exist_ok=True)
     duckdb.sql(
         """
         SELECT {'from': 'plant', 'to': c}::STRUCT("from" VARCHAR, "to" VARCHAR)
@@ -546,7 +546,7 @@ def _contract_root(store) -> Revision:
                NULL::TIMESTAMP AS snapshot, 'price' AS attribute, v AS value
         FROM (VALUES ('mill', 10.0), ('smelter', 20.0)) t(c, v)
         """
-    ).to_parquet(str(Path(layer, "inputs", "price.parquet")))
+    ).to_parquet(str(Path(layer, "attributes", "price.parquet")))
     return revision
 
 

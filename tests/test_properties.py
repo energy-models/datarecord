@@ -188,14 +188,13 @@ def test_a_name_shared_by_attribute_property_and_dim_reaches_its_own(record):
     [
         (("carrier", "solar"), {}, KeyError, "did you mean `entity.carrier`"),
         (("p_set", 2.0), {"entity.carrier": "wind"}, ValueError, "a keyword is bare"),
-        (("entity.sign", 1.0), {"kind": "outputs"}, ValueError, "never a result"),
     ],
-    ids=["plain-property", "dotted-keyword", "outputs"],
+    ids=["plain-property", "dotted-keyword"],
 )
 def test_set_names_a_property_dotted_and_selects_by_it_bare(
     record, args, kwargs, error, match
 ):
-    """A plain name is no property, a keyword never dotted, a property never a result.
+    """A plain name is no property, and a keyword never dotted.
 
     Notes
     -----

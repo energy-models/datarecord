@@ -313,14 +313,14 @@ class Store:
         """
         return f"{self.layer_dir(id)}resolved/"
 
-    def owner_map_uri(self, id: UUID | str, kind: str) -> str:
-        """Where revision `id`'s `kind` owner map is materialised.
+    def owner_map_uri(self, id: UUID | str) -> str:
+        """Where revision `id`'s owner map is materialised.
 
         Notes
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
         """
-        return f"{self.resolved_dir(id)}owner_map/{kind}.parquet"
+        return f"{self.resolved_dir(id)}owner_map.parquet"
 
     def _revision_uri(self, id: UUID | str) -> str:
         return f"{self.uri}/revisions/{id}.json"

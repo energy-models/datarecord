@@ -9,13 +9,13 @@ SPDX-License-Identifier: CC-BY-4.0
 ## Owner map
 
 The owner map answers, for a node, which layer owns each key.
-**One map: `inputs`.** It is the only relation whose winning _key_ and winning row's _values_ live in different files — an attribute's ownership spans every `inputs/<attr>.parquet`, so the map names the owning layer per key and a read then goes to that layer's file for the value.
+**One map, over every attribute.** It is the only relation whose winning _key_ and winning row's _values_ live in different files — an attribute's ownership spans every `attributes/<attr>.parquet`, so the map names the owning layer per key and a read then goes to that layer's file for the value.
 Every axis — a [dim](schema.md#partial-the-granularity-of-an-override)'s coordinates, the entity axis among them, and a [group](schema.md#groups) — is a single keyed file whose winning row _is_ the whole row, so none needs a map; each folds to a [resolved relation](#one-fold-for-every-axis) read inline.
 
-The inputs map's columns, keys first:
+The map's columns, keys first:
 
 ```text
-# inputs
+# owner map
 <partial dims>          -- the fold key: exactly the partial dims and groups
   <owned_per coordinates> -- e.g. entity, scenario; a partial group as one STRUCT: connection STRUCT(entity, bus)
 attribute
@@ -88,7 +88,7 @@ SELECT u.timestep,
        COALESCE(u.scenario, o.__owned_scenario) AS scenario,   -- one per owned_per coordinate, entity likewise
        u.attribute, u.breakpoint, u.value
 FROM ( -- one arm per distinct layer the map names for this attribute
-  SELECT ?::UUID AS layer_uuid, * FROM read_parquet(<layer>/inputs/<attr>.parquet)
+  SELECT ?::UUID AS layer_uuid, * FROM read_parquet(<layer>/attributes/<attr>.parquet)
   UNION ALL BY NAME
   ...
 ) u
@@ -157,15 +157,10 @@ Tables are shared between cursors — the `revisions` cache, the staging tables,
 - **Nothing but a relation holds a cursor.** A store, a revision, a `Resolver` and a layer source hold their workspace and look up `workspace.con` per call, so every relation they build lands on the calling thread's cursor, and a `Record` is usable from any thread. What they cache besides is plain data any thread computes the same.
 - **A relation, a narwhals frame over one, and a `WorkingRecord` belong to the thread that built them.** One reaching another thread's write path is rejected as [a relation from another connection](#a-relation-from-another-connection-is-rejected) is.
 
-**What a fold caches is shared, not held.** The frozen prefix's folded axes and groups are tables, `dims_<dim>_<id>` and `group_<name>_<id>`, beside the `owner_map_<kind>_<id>` [owner map](#owner-map); a last `coords_<id>` table lists them and is created after them, so a reader finding it finds them all. A dim or group name is hashed into the table name, being a caller's string. `<id>` is the node whose frozen layers were folded: a revision's id, the base's for a `WorkingRecord`, the [id its manifest carries](schema.md#one-schema-per-record) for a standalone directory. The schema is not in the key, so a fold made before the manifest widened is read as it is under the wider one. A [compatible widening](schema.md#versioning) changes no column a table already has and only adds; the one addition a table can lack is the new dim's field in the [flag structs](#owner-map), and each reader of a flag takes a missing field as unset, decided from the struct's type when the query is built rather than per row. Nor are they cast to the declared types as a materialised map is: each holds what the same fold would return uncached.
+**What a fold caches is shared, not held.** The frozen prefix's folded axes and groups are tables, `dims_<dim>_<id>` and `group_<name>_<id>`, beside the `owner_map_<id>` [owner map](#owner-map); a last `coords_<id>` table lists them and is created after them, so a reader finding it finds them all. A dim or group name is hashed into the table name, being a caller's string. `<id>` is the node whose frozen layers were folded: a revision's id, the base's for a `WorkingRecord`, the [id its manifest carries](schema.md#one-schema-per-record) for a standalone directory. The schema is not in the key, so a fold made before the manifest widened is read as it is under the wider one. A [compatible widening](schema.md#versioning) changes no column a table already has and only adds; the one addition a table can lack is the new dim's field in the [flag structs](#owner-map), and each reader of a flag takes a missing field as unset, decided from the struct's type when the query is built rather than per row. Nor are they cast to the declared types as a materialised map is: each holds what the same fold would return uncached.
 
 A fold one thread builds serves every thread. Two threads missing at once both fold and both create, and DuckDB fails the second with a write-write conflict rather than a name clash; the miss path catches that and reads the winner's table. The duplicate fold is wasted, not wrong.
 
 ### A relation from another connection is rejected
 
 Copying a relation onto the target connection would collect it on its own — a full materialisation the caller never asked for, which fails anyway if that connection has been closed. So `as_relation`, the boundary every frame handed to a write or an edit crosses, binds it to the target cursor first, which costs no read and fails for a relation from another connection or another thread's cursor, and re-raises that as a `ValueError` naming the fix: build the frame on `record.con` in this thread, or hand over a non-DuckDB frame to land.
-
-## Outputs
-
-`outputs/<attr>.parquet` does not overlay.
-An output relation reads the node's own layer only: if that layer has no `outputs/`, the record has no results, and an ancestor's are not inherited.

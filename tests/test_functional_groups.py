@@ -311,7 +311,7 @@ def test_a_property_of_the_into_dim_is_a_column_of_its_axis(store):
     """`co2_budget` is a property of the country, so it rides on the axis file.
 
     An attribute addressed by `country` alone, `target`, is long rows of
-    `inputs/target.parquet` instead: the section decides, not the shape.
+    `attributes/target.parquet` instead: the section decides, not the shape.
     """
     revision = empty_root(store)
     schema = _budget_schema()

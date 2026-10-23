@@ -327,7 +327,7 @@ def test_resolve_reads_a_property_dotted_and_a_plain_name_as_an_attribute(
     [
         ("x", "did you mean `bus.x` or `entity.x`"),
         ("bus", "did you mean `entity.bus`"),
-        ("nope", "no attribute or result 'nope'\"$"),
+        ("nope", "no attribute 'nope'\"$"),
         ("bus.nope", "no property 'bus.nope'"),
         ("entity.p_nom", "no property 'entity.p_nom'"),
     ],
@@ -842,12 +842,10 @@ def _declaring(position: str, name: str) -> Schema:
             dimensions={"entity": dim, "bus": dim},
             groups={"connection": Group(over={"entity": "entity", name: "bus"})},
         )
-    if position == "attribute":
-        return Schema(dimensions={"entity": dim}, attributes={name: attr})
-    return Schema(dimensions={"entity": dim}, results={name: attr})
+    return Schema(dimensions={"entity": dim}, attributes={name: attr})
 
 
-POSITIONS = ["dim", "group", "coordinate", "attribute", "result"]
+POSITIONS = ["dim", "group", "coordinate", "attribute"]
 
 WRITTEN = {
     "attribute": "a column datarecord writes",

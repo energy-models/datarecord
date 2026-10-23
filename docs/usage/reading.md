@@ -15,8 +15,7 @@ record.schema  # what may exist: the axes, the properties, the attributes
 record.dims["entity"]  # axis labels, keyed by dim
 record.properties["entity"]  # stored property values, keyed by dim or group
 record.groups["connection"]  # group rows, keyed by group — one frame each
-record.attributes["p_max_pu"]  # long input frames, keyed by attribute
-record.outputs["p"]  # long result frames, keyed by attribute
+record.attributes["p_max_pu"]  # long frames, results included, keyed by attribute
 record.flags(ctype="Generator")  # which axes each attribute actually uses
 ```
 
@@ -42,7 +41,7 @@ One category's labels are `properties[dim]` filtered on a categorizing property 
 
 ## Wide and long
 
-`dims`, `properties` and `groups` are **wide** — one row per label or tuple. `attributes` and `outputs` are **long** — one row per value:
+`dims`, `properties` and `groups` are **wide** — one row per label or tuple. `attributes` are **long** — one row per value:
 
 ```text
 <coordinate> ... | attribute | breakpoint | value
@@ -89,6 +88,5 @@ record/
 ├── manifest.json            # the schema, and the record's id
 ├── dims/<dim>.parquet       # one axis per declared dim: labels and their properties
 ├── groups/<group>.parquet   # which tuples of the group exist, and their properties
-├── inputs/<attr>.parquet    # one input attribute per file, whatever its dims
-└── outputs/<attr>.parquet   # one result attribute per file
+└── attributes/<attr>.parquet  # one attribute per file, whatever its dims, results included
 ```

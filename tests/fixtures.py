@@ -65,7 +65,7 @@ def write_input(
     snapshot_dtype="datetime64[ns]",
     connection: bool | None = None,
 ) -> None:
-    """Write `inputs/<attribute>.parquet` in the long schema.
+    """Write `attributes/<attribute>.parquet` in the long schema.
 
     Each row needs at least `name` and `value`; missing dimension columns
     default to NULL, i.e. "applies to the whole axis".
@@ -97,7 +97,7 @@ def write_input(
     df["breakpoint"] = df["breakpoint"].astype("float64")
     df["value"] = df["value"].astype("float64")
 
-    target = Path(layer, "inputs")
+    target = Path(layer, "attributes")
     target.mkdir(parents=True, exist_ok=True)
     rel = duckdb.connect().from_df(df[LONG_COLUMNS])
     if connection:
@@ -427,7 +427,7 @@ def _default_attributes(
     is declared: that is what puts a `connection` struct column on its file.
 
     `weight` is the other, addressed by `scenario` alone - long rows of
-    `inputs/weight.parquet` like any attribute, whatever its `dims`.
+    `attributes/weight.parquet` like any attribute, whatever its `dims`.
     """
     varying = {"entity", *dims}
     connection = "connection" if "connection" in groups else "entity"
@@ -518,22 +518,11 @@ def schema(
 
 
 def relation(revision, attribute: str):
-    """The resolved long relation for one input attribute, as a DuckDB relation.
+    """The resolved long relation for one attribute, as a DuckDB relation.
 
     A test helper rather than a `Revision` method: `Revision` presents its data
     through `.record` (a `Record`), and a DuckDB-shaped accessor beside it would
-    duplicate `record.attributes[attr]` while inverting what `outputs` means -
-    a relation on the revision against a `Frames` mapping on the record. Tests
-    want relations because they assert on `.df()`, so the affordance lives here.
+    duplicate `record.attributes[attr]`. Tests want relations because they
+    assert on `.df()`, so the affordance lives here.
     """
     return revision.resolver.attribute(attribute)
-
-
-def outputs(revision, attribute: str):
-    """One result attribute as a DuckDB relation; outputs do not overlay.
-
-    Notes
-    -----
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-    """
-    return revision.resolver.attribute(attribute, "outputs")
