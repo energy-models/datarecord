@@ -180,7 +180,7 @@ def write_layer(
                         written, schema, [key], final, file, staged=False, subject=key
                     )
                 resolved[key] = written
-                refuse_twice(written, key, file)
+                refuse_twice(written, [key], file)
                 before = resolve_one(schema, parents, workspace.con, key)
                 if before is not None:
                     _refuse_reordered(written, before, key, file)
@@ -250,7 +250,7 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
     names a dim the other leaves NULL, it has none to keep. `breakpoint` is
     part of a row, so the rows of one curve are no such pair.
 
-    Rows naming the same dims are found by one group-by over the coordinates.
+    Rows naming the same dims are found by `refuse_twice` over the coordinates.
     Only the distinct NULL patterns are paired, and they are few. Each pair is
     joined on the distinct coordinates its rows name, so one series is not
     multiplied against another. `rel` is the file as written, so the source
@@ -266,26 +266,13 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
     dims = schema.coordinates_of(attribute)
-    key = ", ".join(str(col(c)) for c in (*dims, "breakpoint"))
-    twin = (
-        rel.aggregate(f"{key}, count(*) AS _rows", key)
-        .filter(col("_rows") > lit(1))
-        .limit(1)
-        .fetchone()
+    refuse_twice(
+        rel,
+        [*dims, "breakpoint"],
+        f"attributes/{attribute}.parquet",
+        "they name the same dims, so neither is the more specific there. Keep "
+        "one of them (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)",
     )
-    if twin is not None:
-        *values, rows = twin
-        at = ", ".join(
-            f"{c}={v}"
-            for c, v in zip((*dims, "breakpoint"), values, strict=True)
-            if v is not None
-        )
-        msg = (
-            f"attributes/{attribute}.parquet holds {rows} rows at "
-            f"{at or 'every coordinate'} naming the same dims, so neither is the "
-            f"more specific there. Keep one of them (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
-        )
-        raise ValueError(msg)
     if len(dims) < 2:
         return
     patterns = [

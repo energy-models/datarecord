@@ -690,7 +690,7 @@ def test_an_axis_file_holding_a_label_twice_is_refused(store, by):
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    with pytest.raises(ValueError, match=re.escape("holds scenario 'high' in 2 rows")):
+    with pytest.raises(ValueError, match=re.escape("holds 2 rows at scenario=high;")):
         by(store, pd.DataFrame({"scenario": ["high", "low", "high"]}))
 
 
@@ -1211,7 +1211,7 @@ def test_a_layer_with_two_rows_naming_the_same_dims_is_refused(store, rows, coor
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
     with pytest.raises(
-        ValueError, match=rf"p_nom\.parquet holds 2 rows at {coordinate} "
+        ValueError, match=rf"p_nom\.parquet holds 2 rows at {coordinate};"
     ):
         _rows_layer(store, rows, "write_layer")
 
