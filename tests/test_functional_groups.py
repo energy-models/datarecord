@@ -18,6 +18,7 @@ Notes
 from typing import Any
 
 import duckdb
+import pandas as pd
 import pytest
 from duckdb import sqltypes
 from pydantic import ValidationError
@@ -33,6 +34,7 @@ from tests.fixtures import (
     write_group,
     write_schema,
 )
+from tests.test_write import _Source
 
 
 def _schema(**overrides) -> Schema:
@@ -485,12 +487,24 @@ EDITS = [
     pytest.param(lambda w, v: w.set("bus.state", {"north": v}), id="set-mapping"),
     pytest.param(lambda w, v: w.add("bus", ["east"], state=v), id="add"),
     pytest.param(lambda w, v: w.set("bus_state.country", v), id="set-on-a-group"),
+    pytest.param(
+        lambda w, v: w.add_group(
+            "bus_state",
+            w.con.sql(
+                "SELECT {'bus': 'south', 'state': 'upper'}"
+                "::STRUCT(bus VARCHAR, state VARCHAR) AS bus_state, "
+                "?::VARCHAR AS country",
+                params=[v],
+            ),
+        ),
+        id="add-group",
+    ),
 ]
 
 
 @pytest.mark.parametrize("edit", EDITS)
 def test_a_property_naming_a_dim_refuses_a_label_it_lacks(classified, edit):
-    """`set` and `add` refuse a value naming no label of the dim, as staged.
+    """`set`, `add` and `add_group` refuse a value naming no label of the dim, as staged.
 
     Notes
     -----
@@ -536,7 +550,7 @@ def test_remove_is_refused_while_a_property_names_the_label(classified):
 
 
 def test_the_writer_refuses_a_property_naming_a_removed_label(classified):
-    """`add_group` checks no label, so the writer is what catches it.
+    """A source written whole is not staged, so the writer checks it.
 
     Notes
     -----
@@ -546,13 +560,9 @@ def test_the_writer_refuses_a_property_naming_a_removed_label(classified):
     staged.remove("country", ["NO"])
     removed = classified.child(staged.edits)
 
-    revived = WorkingRecord(removed.record)
-    revived.add_group(
-        "bus_state",
-        revived.con.sql(
-            "SELECT {'bus': 'south', 'state': 'upper'}"
-            "::STRUCT(bus VARCHAR, state VARCHAR) AS bus_state, 'NO' AS country"
-        ),
+    tuples = pd.DataFrame(
+        {"bus_state": [{"bus": "south", "state": "upper"}], "country": ["NO"]}
     )
+    source = _Source(_schema(), connections={"bus_state": tuples}, dims={})
     with pytest.raises(ValueError, match=r"a removed country in 'country'"):
-        removed.child(revived.edits)
+        removed.child(source)

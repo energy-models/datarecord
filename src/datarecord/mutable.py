@@ -16,7 +16,6 @@ Notes
 from __future__ import annotations
 
 import operator
-import re
 import sys
 from collections.abc import Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -25,7 +24,6 @@ from hashlib import sha256
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 
-import duckdb
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
@@ -48,7 +46,7 @@ from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.record import Record
 from datarecord.schema.categories import matching
-from datarecord.schema.dtypes import enum_labels, takes
+from datarecord.schema.dtypes import takes
 from datarecord.schema.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
@@ -1110,36 +1108,7 @@ class WorkingRecord(Record):
         )
         if key is not None:
             self._delete_covered(projected, table, key, broadcast)
-        try:
-            projected.insert_into(table)
-        except duckdb.ConversionException as exc:
-            # The column of a dim listing its labels reaches DuckDB as an
-            # `ENUM`, so this is what rejects a label it does not list - as a
-            # conversion to `UINT8`,
-            # the enum's storage type, naming neither the dim nor its labels.
-            # The source column is in the message, which is what makes it
-            # restatable.
-            match = re.search(r"casting from source column (\w+)", str(exc))
-            if match is None:
-                raise
-            source = match.group(1)
-            subject = next(
-                (
-                    k.removeprefix(_AXIS_PREFIX)
-                    for (k, a), n in self._staged.items()
-                    if n == table and a is None
-                ),
-                None,
-            )
-            dtype = self.schema.column_type(source, subject)
-            listed = None if dtype is None else enum_labels(dtype)
-            if listed is None:
-                raise
-            msg = (
-                f"{source!r} names a label its dim does not list; "
-                f"that dim lists {list(listed)}"
-            )
-            raise ValueError(msg) from exc
+        projected.insert_into(table)
 
     def _insert_long(
         self,
@@ -1317,8 +1286,7 @@ class WorkingRecord(Record):
         parameter, unnested beside the others.
 
         A `None` in `schema` is inferred, as `set` leaves the `value` column.
-        An `ENUM` is built as text and cast by the insert, which is what
-        rejects a label it does not list with the column named (`_insert`).
+        An `ENUM` is built as text and cast by the insert.
         """
         params = [[_scalar(v) for v in values] for values in columns.values()]
         built = {
@@ -1547,7 +1515,8 @@ class WorkingRecord(Record):
         ------
         KeyError
             On a tuple naming a label that its field's axis, as staged, does
-            not hold.
+            not hold, or a value of a property that takes its labels from a
+            dim and that its axis, as staged, does not hold.
         ValueError
             On a missing group column, an attribute column, a column whose type
             does not fit its dtype, and as `Schema.check_group_columns` does.
@@ -1565,7 +1534,7 @@ class WorkingRecord(Record):
         self._reject_undeclared(call, _group_columns(self.schema, group), rel.columns)
         rel = self.schema.require_takes(rel, call, subject=group)
         refuse_unheld(
-            rel, self.schema, [group], self._held, call, staged=True, subject=group
+            rel, self.schema, rel.columns, self._held, call, staged=True, subject=group
         )
         table = self._ensure(group)
         self._insert_snapshot(
