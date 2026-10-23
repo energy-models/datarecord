@@ -107,18 +107,20 @@ def write_layer(
     FileExistsError
         If the layer directory already exists locally.
     ValueError
-        If a long frame is missing a long-schema column, or the schema declares a key
-        dim no frame carries - either would make the fold misresolve the layer.
-        If a group tuple or a property that takes its labels from a dim names a label
-        dead after the layer, in a subject the layer restates or whose rows
-        name a label the layer removes.
+        If a long frame is missing a long-schema column, or the schema
+        declares a key dim no frame carries - either would make the fold
+        misresolve the layer.
+        If a group tuple or a property that takes its labels from a dim names
+        a label dead after the layer, in a subject the layer restates or whose
+        rows name a label the layer removes.
         If a column's type does not fit its dtype, naming the attribute,
         property or dim that declares the column, and the dtype.
         If two rows of one attribute cover one coordinate and both name the
         same dims, or each names a dim the other leaves NULL, naming the
         attribute and the coordinate.
-        If an axis or group file holds one label twice, or orders its parent's labels otherwise than the parent,
-        naming the first label out of place.
+        If an axis or group file holds one label twice, naming it, or orders
+        its parent's labels otherwise than the parent, naming the first label
+        out of place.
         If a group tuple names a label that the layer's final axis of that
         dim does not hold, naming the group, the field and up to three such
         labels.
