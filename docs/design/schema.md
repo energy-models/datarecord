@@ -85,7 +85,7 @@ It does not declare which dims an _attribute_ varies over (that is [per attribut
 
 ## Dtypes
 
-A dtype is mathspec's: `DimensionDtype` and `ParameterDtype` from `mathspec.program`, stored as the plain string a mathspec model declares, so the manifest and the model a record feeds speak one language. Each maps to one DuckDB type, one constant in `duck.py` read wherever a column is typed:
+A dtype is mathspec's: `DimensionDtype` and `ParameterDtype` from `mathspec.program`, stored as the plain string a mathspec model declares, so the manifest and the model a record feeds speak one language. Each maps to one DuckDB type, one constant in `schema/dtypes.py` read wherever a column is typed:
 
 | declares                 | declaration        | DuckDB type                |
 | ------------------------ | ------------------ | -------------------------- |
@@ -393,7 +393,7 @@ Two things this buys.
 The schema can distinguish `p_max_pu` from `p_nom`, which a dim-level flag cannot: that would say every attribute is owned per scenario, including those a scenario must not change.
 And a `p_nom` row carrying a non-NULL `scenario` becomes a write-time violation rather than something the NULL-broadcast rule absorbs — a first-stage decision quietly turned into a per-scenario one is the error worth catching.
 
-What the fold does with this is unchanged: the inputs key is one fixed tuple over all attributes, and an attribute not varying over a dim writes NULL there.
+What the fold does with this is unchanged: the owner-map key is one fixed tuple over all attributes, and an attribute not varying over a dim writes NULL there.
 So the declarations constrain and validate; they do not make the key vary per row.
 
 **An axis file is owned the same way**, and the [properties it carries](format.md#where-a-value-lives) do not argue for adding it — save one: a dim with a [category](#categories-labels-a-dim-lists) must be in `partial`, since only there is it checked per label.

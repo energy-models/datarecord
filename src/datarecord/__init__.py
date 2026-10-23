@@ -11,15 +11,14 @@ except importlib.metadata.PackageNotFoundError as e:  # pragma: no cover
     warnings.warn(f"Could not determine version of {__name__}\n{e!s}", stacklevel=2)
     __version__ = "unknown"
 
-from datarecord.layered.revision import Revision
 from datarecord.mutable import WorkingRecord
-from datarecord.record import (
+from datarecord.protocols import (
     Flags,
     LazyRelations,
-    Record,
     RecordLike,
     Relations,
 )
+from datarecord.resolve import Record
 from datarecord.schema import (
     AttributeSpec,
     Dimension,
@@ -27,7 +26,7 @@ from datarecord.schema import (
     PropertySpec,
     Schema,
 )
-from datarecord.store import Store, Workspace
+from datarecord.store import Revision, Store, Workspace
 
 __all__ = [
     "AttributeSpec",

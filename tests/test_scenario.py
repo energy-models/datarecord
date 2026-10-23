@@ -23,7 +23,7 @@ from tests.fixtures import (
     export_network,
     relation,
     rename_components,
-    write_input,
+    write_attribute,
     write_scenarios,
 )
 from tests.test_roundtrip import assert_networks_equal
@@ -77,8 +77,8 @@ def test_map_is_scenario_expanded(store, parent, stochastic):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
-    schema = parent.resolver.schema
-    df = parent.resolver.inputs.df()
+    schema = parent.record.schema
+    df = parent.record._fold.owner_map.df()
     by_scenario = df[
         [
             "scenario" in schema.coordinates_of(str(a))
@@ -98,7 +98,7 @@ def test_partial_scenario_override(store, parent, stochastic):
     """A child may replace one scenario and leave the others to the parent."""
     scenario = stochastic.scenarios[0]
     child = empty_child(parent)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [
@@ -110,7 +110,7 @@ def test_partial_scenario_override(store, parent, stochastic):
         ],
     )
 
-    df = child.resolver.inputs.df()
+    df = child.record._fold.owner_map.df()
     solar = df[
         (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
     ]
@@ -140,7 +140,7 @@ def test_child_adds_new_scenario(store, parent, stochastic):
         store.layer_dir(child.id),
         [{"scenario": s} for s in ("high", "low", "med", "extra")],
     )
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "scenario_weight",
         [
@@ -148,7 +148,7 @@ def test_child_adds_new_scenario(store, parent, stochastic):
             for s, w in (("high", 0.27), ("low", 0.36), ("med", 0.27), ("extra", 0.1))
         ],
     )
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [
@@ -171,7 +171,7 @@ def test_child_adds_new_scenario(store, parent, stochastic):
 def test_scenario_order_survives_a_chain_of_closed_layers(store, parent, stochastic):
     """Axis row order stays root-first, then each layer's own append order.
 
-    `fold_axis` tags each layer's row order (`_row`) before the cross-layer
+    `_fold_axis` tags each layer's row order (`_row`) before the cross-layer
     `UNION ALL` in `union_all_by_name`, not after: a bare `row_number()` on
     the unioned relation would have no defined order to draw from and could
     silently permute which scenario counts as "first introduced". A single
@@ -192,7 +192,7 @@ def test_scenario_order_survives_a_chain_of_closed_layers(store, parent, stochas
         rec.materialise()
         added.append(name)
 
-    scenarios = rec.resolver.dims.axes["scenario"].df()["scenario"].tolist()
+    scenarios = rec.record.dims["scenario"].df()["scenario"].tolist()
     assert scenarios == list(stochastic.scenarios) + added
 
 
@@ -226,13 +226,13 @@ def test_scenario_axis_survives_closed_grandchild(store, parent, stochastic):
     middle = empty_child(parent)
     middle.materialise()
     grandchild = empty_child(middle)
-    write_input(
+    write_attribute(
         store.layer_dir(grandchild.id),
         "p_max_pu",
         [{"entity": "solar Gen", "value": 0.88}],
     )
 
-    df = grandchild.resolver.inputs.df()
+    df = grandchild.record._fold.owner_map.df()
     solar = df[
         (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
     ]

@@ -32,10 +32,10 @@ A frame carrying a column its attribute is **not** addressed by is rejected too,
 The read path projects an attribute's own coordinates, so such a column would be written and never read — and a source emitting one means something different by the attribute than the schema does, which is worth reporting rather than absorbing.
 A result is exempt from both checks: its shape is a framework's business, and a name it shares with an input says nothing about which coordinates the result varies over.
 
-The input is a [`LayerData`](record.md#layerdata): "the rows of one thing, enumerated and read" — the same interface a [`LayerSource`](read-path.md#owner-map) answers for its own layer and a `Resolver` answers for a whole fold, so the writer cannot tell which it was handed and does not need to.
-A staged layer's own rows and a resolved record are both a `LayerData`, which is what lets a [`WorkingRecord`](working-record.md#edits) hand over either.
+The input is a [`LayerData`](record.md#layerdata): "the rows of one layer, enumerated and read" — the interface a [`LayerSource`](read-path.md#owner-map) answers for its own layer.
+A staged layer's own rows are a `LayerData`, which is what lets a [`WorkingRecord`](working-record.md#edits) hand over its edits as they are.
 
-A framework object exposing a [`RecordLike`](record.md)'s relations rather than a `LayerData` is not itself one: the writer wraps it in a thin adapter that reads its `Relations` mappings as the enumerate-and-read pairs `LayerData` declares, so the layered write path stays one code path. The adapter takes each value as [`set`](working-record.md#set) does — a relation on the writer's connection, or a pandas, polars or arrow frame DuckDB scans.
+A [`RecordLike`](record.md) is not itself a `LayerData`, whether it is a `Record`, a `WorkingRecord` included, or a framework object exposing a record's relations: the writer wraps it in a thin adapter that reads its `Relations` mappings as the enumerate-and-read pairs `LayerData` declares, so the layered write path stays one code path. The adapter takes each value as [`set`](working-record.md#set) does — a relation on the writer's connection, or a pandas, polars or arrow frame DuckDB scans.
 
 ## A revision exists only by its file
 

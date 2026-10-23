@@ -18,18 +18,13 @@ import pyarrow as pa
 import pytest
 
 from datarecord import Workspace
-from datarecord.layered.resolve import read_schema, write_schema
-from datarecord.layered.sources import ParquetLayer
 from datarecord.mutable import WorkingRecord, normalise_value
-from datarecord.record import Record
-from datarecord.schema import (
-    AttributeSpec,
-    Dimension,
-    Group,
-    PropertySpec,
-    Schema,
-)
-from tests.fixtures import empty_root, export_network, schema, unpacked
+from datarecord.resolve.record import Record
+from datarecord.resolve.sources import ParquetLayer
+from datarecord.schema.schema import Schema
+from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
+from datarecord.store.manifest import read_schema
+from tests.fixtures import empty_root, export_network, schema, unpacked, write_schema
 
 GEN = "Generator"
 
@@ -83,7 +78,7 @@ def _layer_rows(revision, attribute):
     """One committed layer's own `attributes/<attribute>.parquet`, as pandas.
 
     The single-layer view, read through the `LayerSource` for that layer rather
-    than the folding resolver: "what did this patch write" is a question about
+    than the folding record: "what did this patch write" is a question about
     one layer's file, not the resolved record, so `Store.layer` - which folds a
     source through the whole-tree machinery - is the wrong lens for it.
     """
@@ -415,7 +410,7 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
 def test_a_pointwise_edit_keeps_the_rest_of_the_series(staged):
     """An edit naming a coordinate displaces that one only.
 
-    Keying the overlay on the input key alone would drop the whole series here,
+    Keying the overlay on the owner-map key alone would drop the whole series here,
     since it excludes the dims an attribute is not owned per.
 
     Notes
@@ -540,6 +535,108 @@ def test_a_staged_edit_is_read_back_and_then_re_read(staged, root):
 
     committed = _entity_values(root.child(staged.edits).record, "p_nom")
     assert committed["Manchester Wind"] == 22.0, "the later edit to a key commits"
+
+
+@pytest.mark.parametrize(
+    "materialised",
+    [None, "root", "base"],
+    ids=["live", "root-materialised", "base-materialised"],
+)
+def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
+    """Edits fold onto the base's fold tables and read as every layer folded from files.
+
+    The base is three layers deep. It has removed a label and a tuple, each in
+    a layer above the one that added it, and a snapshot, so the tables the
+    edits fold onto hold a fold, dead labels included: a removed snapshot's
+    values stay in its layer, and only its dead label drops them. The edits add
+    the removed label and tuple back, and each comes where it is added again.
+    Writing the edits as a child folds every layer from its files, which the
+    seeded fold has to match: the same labels, tuples, properties and values,
+    in member order. One case materialises the root, below every removal, and
+    one the base, above them, where its node cache keeps a removed key at most
+    as a dead label. In every case a child over the base reads the same once
+    the base is materialised.
+
+    Notes
+    -----
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
+    """
+    root = _small(store)
+    first = WorkingRecord(root.record)
+    first.add("bus", ["Manchester", "Oslo"])
+    first.add_group(
+        "connection",
+        pd.DataFrame(
+            {
+                "connection": [
+                    {"entity": "Manchester Wind", "bus": "Manchester"},
+                    {"entity": "Norway Wind", "bus": "Norway"},
+                    {"entity": "Norway Wind", "bus": "Oslo"},
+                ]
+            }
+        ),
+    )
+    first.remove("entity", ["Norway"])
+    snapshots = [pd.Timestamp("2030-01-01"), pd.Timestamp("2030-01-02")]
+    first.add("snapshot", snapshots)
+    first.set("p_max_pu", 0.5, entity="Norway Wind", snapshot=snapshots)
+    first.remove("snapshot", snapshots[1:])
+    one = root.child(first.edits)
+    second = WorkingRecord(one.record)
+    second.remove_group("connection", [("Norway Wind", "Norway")])
+    base = one.child(second.edits)
+    if materialised:
+        {"root": root, "base": base}[materialised].materialise()
+
+    w = WorkingRecord(base.record)
+    w.remove("entity", ["Manchester Wind"])
+    w.add("entity", ["Solar"], ctype=GEN)
+    w.add("entity", ["Norway"], ctype="Bus")
+    w.remove_group("connection", [("Norway Wind", "Oslo")])
+    w.add_group(
+        "connection",
+        pd.DataFrame(
+            {
+                "connection": [
+                    {"entity": "Solar", "bus": "Oslo"},
+                    {"entity": "Norway Wind", "bus": "Norway"},
+                ]
+            }
+        ),
+    )
+    w.set("p_nom", 5.0, entity=["Solar"])
+    child = base.child(w.edits)
+
+    def read(record):
+        return (
+            {d: record.dims[d].fetchall() for d in record.dims},
+            {g: record.groups[g].fetchall() for g in record.groups},
+            {s: record.properties[s].fetchall() for s in record.properties},
+            {
+                a: sorted(record.attributes[a].fetchall(), key=str)
+                for a in record.attributes
+            },
+        )
+
+    assert w.dims["entity"].fetchall() == [
+        ("Norway Wind",),
+        ("Solar",),
+        ("Norway",),
+    ], "a staged removal goes, and a label added back comes where it is added again"
+    assert [c for (c,) in w.groups["connection"].fetchall()] == [
+        {"entity": "Solar", "bus": "Oslo"},
+        {"entity": "Norway Wind", "bus": "Norway"},
+    ], "a tuple added back comes where it is added again"
+    assert w.attributes["p_max_pu"].project("snapshot").fetchall() == [
+        (snapshots[0],)
+    ], "the base's dead snapshot drops its value"
+    folded = read(child.record)
+    assert read(w) == folded, "the seeded fold reads as the fold over every layer"
+    base.materialise()
+    assert read(base.child(w.edits).record) == folded, (
+        "materialising the base changes nothing a child of it reads"
+    )
 
 
 # -- value dtypes (https://energy-models.github.io/datarecord/design/record/#flags, https://energy-models.github.io/datarecord/design/schema/#attributespec) -----------------------------------------------
@@ -876,7 +973,7 @@ def test_remove_tombstones_without_enumerating_attributes(staged, root):
     assert "Norway Gas" not in _entity_axis(staged).index, "it reads back at once"
 
     child = root.child(staged.edits)
-    assert "Norway Gas" not in set(child.resolver.axis("entity").df()["entity"])
+    assert "Norway Gas" not in set(child.record.dims["entity"].df()["entity"])
 
 
 def test_a_tombstone_drops_that_labels_staged_attributes(staged, root):
@@ -910,7 +1007,7 @@ def test_remove_group_stages_a_tombstone(staged, root):
     assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
     child = root.child(staged.edits)
-    rows = unpacked(child.resolver.group_frame("connection"))
+    rows = unpacked(child.record.groups["connection"])
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     # The component's other port survives: deletion is per connection, not per
@@ -1107,7 +1204,7 @@ def test_a_layer_touching_no_tuple_resolves_no_ancestry_to_check(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    import datarecord.layered.write as write
+    import datarecord.store.write as write
 
     def unwanted(*_):
         pytest.fail("resolved the ancestry for a layer with nothing to check")
@@ -1337,6 +1434,21 @@ def test_rollback_discards_everything_staged(staged, root):
     )
 
 
+def test_a_key_set_read_before_rollback_raises_after_it(store):
+    """An attribute only the staged layer owned is owned by no layer after `rollback()`.
+
+    Notes
+    -----
+    - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
+    """
+    staged = WorkingRecord(_small(store).record)
+    staged.set("p_max_pu", 0.5, entity=["Norway Wind"])
+    attributes = staged.attributes
+    staged.rollback()
+    with pytest.raises(KeyError, match="p_max_pu"):
+        attributes["p_max_pu"]
+
+
 def test_writing_the_edits_clears_nothing(staged, root):
     """A `WorkingRecord` still holding its edits after a write reads the same.
 
@@ -1445,7 +1557,7 @@ def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root):
 def test_an_edit_over_a_directory_base_reads_back(root):
     """A staged edit must win over a directory base, as it does over a layered one.
 
-    The two are separate sources of one fold, and `source_for` tells them apart
+    The two are separate sources of one fold, and `_source_for` tells them apart
     by `layer_uuid` alone - so a base and a staging area sharing an id would
     send every staged win to the base and read the edit back as the base's
     value, with a correct-looking owner map above it. The unstaged fixtures
@@ -1509,7 +1621,7 @@ def test_a_directory_uri_reads_the_same_with_or_without_a_trailing_slash(
     without = workspace.at(bare)
     assert list(without.attributes) == list(with_slash.attributes)
     assert list(without.attributes), "the fixture must have written attributes"
-    assert without.resolver.revision_id == with_slash.resolver.revision_id, (
+    assert without.revision_id == with_slash.revision_id, (
         "one directory is one layer, however its URI was spelled"
     )
 
@@ -1519,8 +1631,8 @@ def test_edits_read_under_the_base_records_schema(store, workspace, tmp_path):
 
     Which matters for a standalone base, whose schema is its own directory's
     rather than any store's: the staged layer is one more source over that
-    base, so `with_source` has to carry the schema along. A store on the same
-    workspace declaring something else must not reach the edit.
+    base, so the `WorkingRecord` has to carry the schema along. A store on the
+    same workspace declaring something else must not reach the edit.
 
     Notes
     -----

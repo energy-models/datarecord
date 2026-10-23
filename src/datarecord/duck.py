@@ -24,7 +24,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from functools import partial, reduce
 from glob import glob
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import duckdb
 from duckdb import CoalesceOperator as coalesce
@@ -35,72 +35,9 @@ from duckdb import (
     DuckDBPyRelation,
     Expression,
     FunctionExpression,
-    sqltypes,
 )
 from duckdb import SQLExpression as sql
-from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
-
-DUCK_TYPES: Mapping[str, DuckDBPyType] = {
-    "float": sqltypes.DOUBLE,
-    "int": sqltypes.BIGINT,
-    "bool": sqltypes.BOOLEAN,
-    "str": sqltypes.VARCHAR,
-    "datetime": sqltypes.TIMESTAMP,
-}
-"""The DuckDB type of each mathspec dtype; every declared column is typed through this map.
-
-Notes
------
-- [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
-"""
-
-
-def enum_type(labels: Iterable[str]) -> DuckDBPyType:
-    """Return the `ENUM` type of `labels`, in their order: the type of a dim that lists its labels."""
-    quoted = ", ".join("'" + label.replace("'", "''") + "'" for label in labels)
-    return DuckDBPyType(f"ENUM({quoted})")
-
-
-def enum_labels(dtype: DuckDBPyType) -> tuple[str, ...] | None:
-    """Return the labels of `dtype` if it is an `ENUM`, else None."""
-    if dtype.id != "enum":
-        return None
-    return tuple(cast("list[str]", dict(dtype.children)["values"]))
-
-
-_INTEGERS = {"tinyint", "smallint", "integer", "utinyint", "usmallint", "uinteger"}
-
-_WIDENS = {
-    "bigint": _INTEGERS,
-    "double": {*_INTEGERS, "bigint", "float", "decimal"},
-    "timestamp": {"timestamp_s", "timestamp_ms", "timestamp_ns"},
-    "varchar": {"enum"},
-    "enum": {"varchar"},
-}
-"""For each declared type id, the type ids of a caller's column that are cast to it."""
-
-
-def takes(declared: DuckDBPyType, given: DuckDBPyType) -> bool:
-    """Return whether type `given` fits type `declared`, that is, a column of it is cast to it.
-
-    It is where the types are equal, `given` is NULL, `_WIDENS` lists the
-    widening, or both are structs and each field of `declared` fits the
-    field of `given` of the same name. An `ENUM` and text are cast both ways,
-    and the cast checks the labels. A widening keeps the kind of value, not
-    every digit: an integer past 2^53 rounds as `DOUBLE`, and a nanosecond
-    timestamp truncates to microseconds.
-    """
-    if given.id == "null" or given == declared:
-        return True
-    if declared.id == "struct":
-        fields = dict(given.children) if given.id == "struct" else {}
-        return all(
-            name in fields
-            and takes(cast("DuckDBPyType", t), cast("DuckDBPyType", fields[name]))
-            for name, t in declared.children
-        )
-    return given.id == declared.id or given.id in _WIDENS.get(declared.id, ())
 
 
 class _Functions:
@@ -383,121 +320,3 @@ def empty_relation(
     return con.values(
         tuple(lit(None).cast(t).alias(n) for n, t in columns.items())
     ).limit(0)  # type: ignore[arg-type]
-
-
-def fold_axis(
-    axes: Sequence[DuckDBPyRelation | None],
-    key: str,
-    con: DuckDBPyConnection,
-) -> DuckDBPyRelation | None:
-    """Fold one keyed relation over each layer's, keyed by `key`, in member order.
-
-    The one fold for every axis - a dim's coordinates, a group.
-    `axes` is root first, one entry per layer - `None` where that layer has no
-    rows. Last-writer-wins per `key`, the dim for a dim or the group's struct
-    column for a group.
-
-    A `deleted = true` row is a tombstone: it removes its key unless a still-
-    deeper layer restates it, and never survives into the output, which carries
-    no `deleted` column. The output is returned **in first-introduced member
-    order** - root first, then within a layer file order - so a reader recovers
-    member order from the resolved file's own row order without a persisted
-    `order_key`.
-
-    `_row` is tagged **per layer, before any union**: `UNION ALL` defines no
-    order, so a bare `row_number() OVER ()` over the unioned relation would
-    silently scramble which row counts as first-introduced.
-
-    Notes
-    -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-    - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-    """
-    layers = []
-    for depth, rel in enumerate(axes):
-        if rel is None:
-            continue
-        layers.append(
-            rel.project(
-                lit(depth).alias("_depth"),
-                sql("row_number() OVER ()").alias("_row"),
-                star(),
-            )
-        )
-    if not layers:
-        return None
-
-    union = union_all_by_name(layers, con)
-    has_deleted = "deleted" in union.columns
-    partition = str(col(key))
-    # `OVER (PARTITION BY ...)` stays text below: DuckDB's expression API has no
-    # window construct, so only what the window wraps is built as an expression.
-    ranked = union.project(
-        star(),
-        sql(f"row_number() OVER (PARTITION BY {partition} ORDER BY _depth DESC)").alias(
-            "_rank"
-        ),
-        # The first-introducing (depth, row) pair, as one orderable struct -
-        # `min()` over two separate window aggregates would answer "smallest
-        # _depth" and "smallest _row" independently, not the pair belonging
-        # to the earliest actual row.
-        sql(
-            f"{fn.min(struct_of({'d': col('_depth'), 'r': col('_row')}))} "
-            f"OVER (PARTITION BY {partition})"
-        ).alias("_first"),
-    )
-    winners = ranked.filter(col("_rank") == lit(1))
-    # The deepest statement of a key wins; a tombstone there removes it.
-    if has_deleted:
-        # A row from a layer whose file lacks the column reads `deleted` as NULL
-        # once unioned by name; NULL is not a tombstone, so coalesce to false
-        # rather than letting `~NULL` drop a live row.
-        winners = winners.filter(~coalesce(col("deleted"), lit(False)))  # noqa: FBT003
-    scaffold = [
-        "_depth",
-        "_rank",
-        "_row",
-        "_first",
-        *(["deleted"] if has_deleted else []),
-    ]
-    return winners.order("_first").project(star(exclude=scaffold))
-
-
-def dead_keys(
-    axes: Sequence[DuckDBPyRelation | None],
-    key: str,
-    con: DuckDBPyConnection,
-) -> DuckDBPyRelation | None:
-    """The keys `fold_axis` drops: those whose deepest row is a tombstone.
-
-    A hash aggregate rather than `fold_axis`'s window, there being no row to
-    carry and no order to keep. `None` where no layer carries a `deleted`
-    column, so nothing is dead.
-
-    Notes
-    -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
-    """
-    present = [(depth, rel) for depth, rel in enumerate(axes) if rel is not None]
-    if not any("deleted" in rel.columns for _, rel in present):
-        return None
-    layers = [
-        rel.project(
-            col(key),
-            lit(depth).alias("_depth"),
-            (
-                coalesce(col("deleted"), lit(False))  # noqa: FBT003
-                if "deleted" in rel.columns
-                else lit(False)  # noqa: FBT003
-            ).alias("_dead"),
-        )
-        for depth, rel in present
-    ]
-    deepest = union_all_by_name(layers, con).aggregate(
-        [
-            col(key),
-            fn.arg_max(col("_dead"), col("_depth")).alias("_dead"),
-        ]
-    )
-    return deepest.filter(col("_dead")).project(col(key))

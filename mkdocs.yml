@@ -66,13 +66,14 @@ nav:
           - "DEP 16: Remove traits": design/proposals/dep-0016-remove-traits.md
           - "DEP 17: Results are attributes": design/proposals/dep-0017-results-are-attributes.md
           - "DEP 18: Drop narwhals": design/proposals/dep-0018-drop-narwhals.md
+          - "DEP 19: One Record and a package layout": design/proposals/dep-0019-one-record-and-a-package-layout.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:
       - api/index.md
       - Record: api/record.md
       - Schema: api/schema.md
-      - Layered: api/layered.md
+      - Store: api/store.md
       - WorkingRecord: api/mutable.md
       - Tools: api/tools.md
 

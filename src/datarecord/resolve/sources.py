@@ -23,13 +23,13 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID
 
 from datarecord.duck import parquet_names, try_read_parquet
-from datarecord.layered.fold import Fold
+from datarecord.resolve.fold import Fold
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
-    from datarecord.schema import Schema
-    from datarecord.store import Store, Workspace
+    from datarecord.schema.schema import Schema
+    from datarecord.store.store import Store, Workspace
 
 
 @runtime_checkable
@@ -152,7 +152,7 @@ class LayerSource(Protocol):
     def all_attributes(self) -> DuckDBPyRelation | None:
         """Every `attributes/*.parquet` unioned by name, unprojected.
 
-        Only attributes have one: they share `input_key`, so a single scan
+        Only attributes have one: they share `owner_map_key`, so a single scan
         answers the ownership `GROUP BY` for every attribute at once. An axis or
         a group folds on a key of its own, so a union across them would have
         nothing to fold on.

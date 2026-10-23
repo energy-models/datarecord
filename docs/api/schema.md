@@ -6,8 +6,8 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Schema
 
-::: datarecord.schema.Schema
+::: datarecord.schema.schema.Schema
 
-::: datarecord.schema.Dimension
+::: datarecord.schema.specs.Dimension
 
-::: datarecord.schema.AttributeSpec
+::: datarecord.schema.specs.AttributeSpec
