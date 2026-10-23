@@ -1055,7 +1055,7 @@ SPDX-License-Identifier: CC-BY-4.0
   rebuilt.</li>
 <li>A group file is keyed by one struct column named for the group, as an
   axis file is by its dim: <code>groups/connection.parquet</code> is
-  <code>connection STRUCT(entity, bus) | role | deleted</code>, an <code>into</code> label a plain
+  <code>connection STRUCT(entity, bus) | role</code>, an <code>into</code> label a plain
   column beside it. This is an on-disk format change. <code>Record.groups[...]</code>
   hands back that shape; <code>add_group</code> takes the struct column and rejects the
   coordinates flat; <code>remove_group</code> still takes a tuple per key. The PyPSA
@@ -1093,11 +1093,11 @@ SPDX-License-Identifier: CC-BY-4.0
   connection; <code>on_connection</code> is gone.</li>
 <li>A schema declaring a dim, group, group coordinate, attribute or result
   whose name holds <code>"</code> or <code>.</code>, starts with <code>_</code>, or is a column datarecord
-  writes itself (<code>value</code>, <code>deleted</code>, <code>layer_uuid</code>, ... ignoring case, and
+  writes itself (<code>value</code>, <code>layer_uuid</code>, ... ignoring case, and
   <code>entity_type</code> for an attribute), or that differs from another declared
   name only in case, is refused at load, naming each offender.
-  Such a name used to collide silently: a dim named <code>deleted</code> read every
-  label as a tombstone. A manifest declaring one no longer loads; rename it.
+  Such a name used to collide silently: a dim named <code>value</code> gave the long
+  file two columns of one name. A manifest declaring one no longer loads; rename it.
   Based on #26 by @FBumann.</li>
 <li>The PyPSA tool stores per-port results on connections, like per-port
   inputs: <code>p0</code>, <code>p1</code>, <code>p2</code>, ... and a one-port type's <code>p</code> are one result <code>p</code>
@@ -1182,7 +1182,9 @@ SPDX-License-Identifier: CC-BY-4.0
   for a <code>partial</code> dim, and at a tuple that its group, as staged, does not
   hold (breaking); a tuple naming an unknown label is refused for the label.
   <code>add_group</code> refuses a tuple naming a label that its
-  field's axis, as staged, does not hold (breaking). <code>write_layer</code> refuses
+  field's axis, as staged, does not hold, and a value of a property that
+  takes its labels from a dim that its axis, as staged, does not hold
+  (breaking). <code>write_layer</code> refuses
   an attribute row naming a label or a tuple that the layer's final axis or
   group does not hold, and a group tuple naming a label that the layer's
   final axis does not hold, so a layer written by hand or by a tool meets
