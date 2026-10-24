@@ -28,7 +28,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import as_relation, ex_all, fn, null_safe
+from datarecord.duck import as_relation, ex_all, first_row, fn, null_safe
 from datarecord.protocols import LayerData, RecordLike, Relations
 from datarecord.resolve.coords import (
     refuse_twice,
@@ -294,10 +294,8 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
             else rows_a.cross(rows_b)
         )
         union = [d for d in dims if d in a or d in b]
-        row = (
+        row = first_row(
             joined.project(*(col("a" if d in a else "b", d) for d in union))
-            .limit(1)
-            .fetchone()
         )
         if row is None:
             continue
@@ -353,12 +351,8 @@ def _refuse_reordered(
         sql("row_number() OVER (ORDER BY _mine)").alias("_a"),
         sql("row_number() OVER (ORDER BY _theirs)").alias("_b"),
     )
-    first = (
-        ranked.filter(col("_a") != col("_b"))
-        .order("_mine")
-        .project(col(key))
-        .limit(1)
-        .fetchone()
+    first = first_row(
+        ranked.filter(col("_a") != col("_b")).order("_mine").project(col(key))
     )
     if first is not None:
         msg = (
@@ -426,7 +420,7 @@ def _require_living_references(
                 how="anti",
             )
         )
-        if gone.limit(1).fetchone() is not None:
+        if first_row(gone) is not None:
             killed[dim] = gone
     if not whole and not killed:
         return

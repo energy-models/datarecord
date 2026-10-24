@@ -381,13 +381,24 @@ class Index:
             coalesce(col(rel.alias, column), col("_ax", column)).alias(column),
         )
 
-    def left_join(self, other: DuckDBPyRelation, on: Sequence[str]) -> DuckDBPyRelation:
-        """LEFT JOIN `other` onto this index, restored to `index`'s row order."""
-        return self.rel.join(
+    def left_join(
+        self, other: DuckDBPyRelation, on: Sequence[str], columns: Sequence[str]
+    ) -> DuckDBPyRelation:
+        """LEFT JOIN `other` onto this index: its `columns`, in `index`'s row order."""
+        joined = self.rel.join(
             other,
             ex_all(col(self.rel.alias, f) == col(other.alias, f) for f in on),
             how="left",
-        ).order(f"{self.rel.alias}._pos")
+        )
+        # Ordered after the projection: DuckDB 2 hides a join's aliases from a
+        # projection above an `order`.
+        return (
+            joined.project(
+                *(col(other.alias, c) for c in columns), col(self.rel.alias, "_pos")
+            )
+            .order("_pos")
+            .project(*(col(c) for c in columns))
+        )
 
 
 def _assign_static(
@@ -504,16 +515,15 @@ def _left_join_values(
             exprs[name] = (
                 coalesce(value, col("s", name)) if name in static.columns else value
             ).alias(name)
+        kept = [c for c in static.columns if c not in exprs and c != "_pos"]
+        # Ordered after the projection: DuckDB 2 hides a join's aliases from a
+        # projection above an `order`.
         return (
-            joined.order("s._pos")
-            .project(
-                *(
-                    col("s", c)
-                    for c in static.columns
-                    if c not in exprs and c != "_pos"
-                ),
-                *exprs.values(),
+            joined.project(
+                *(col("s", c) for c in kept), *exprs.values(), col("s", "_pos")
             )
+            .order("_pos")
+            .project(*(col(c) for c in [*kept, *exprs]))
             .df()
         )
     finally:
@@ -568,11 +578,9 @@ def _series_frame(
     if not present:
         return pd.DataFrame(index=snapshots.index, columns=static_index[:0])
 
-    wide = (
-        snapshots.left_join(piv.set_alias("piv"), group_by)
-        .project(*(col("piv", str(p)) for p in present))
-        .df()
-    )
+    wide = snapshots.left_join(
+        piv.set_alias("piv"), group_by, [str(p) for p in present]
+    ).df()
     wide.index = snapshots.index
     wide.columns = static_index[[p - 1 for p in present]]
     return wide

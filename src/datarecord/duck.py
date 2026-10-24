@@ -313,10 +313,30 @@ def empty_relation(
     from the relation, so a shape is built as expressions rather than
     assembled as DDL text. One row of typed NULLs, kept for its types and
     dropped for its rows.
+    """
+    return values_row(
+        con, [lit(None).cast(t).alias(n) for n, t in columns.items()]
+    ).limit(0)
+
+
+def values_row(
+    con: DuckDBPyConnection, columns: Sequence[Expression]
+) -> DuckDBPyRelation:
+    """Return a one-row relation of `columns`, each named by its alias.
+
+    DuckDB 2 names a `values` relation's columns `col0`, `col1`, … whatever
+    the expressions' aliases, so the names are put back by position.
 
     A tuple rather than a list is what routes `values` to its expression
     overload; the stub types only the scalar one.
     """
-    return con.values(
-        tuple(lit(None).cast(t).alias(n) for n, t in columns.items())
-    ).limit(0)  # type: ignore[arg-type]
+    rel = con.values(tuple(columns))  # type: ignore[arg-type]
+    return rel.project(
+        *(col(c).alias(e.get_name()) for c, e in zip(rel.columns, columns, strict=True))
+    )
+
+
+def first_row(rel: DuckDBPyRelation) -> tuple[Any, ...] | None:
+    """Return `rel`'s first row, `None` where it holds none."""
+    rows = rel.limit(1).fetchall()
+    return rows[0] if rows else None

@@ -1495,7 +1495,7 @@ def test_a_set_on_some_snapshots_keeps_the_rest_of_the_series(
     from datarecord.mutable import WorkingRecord
 
     record = multiperiod_revision.record
-    first = record.dims["snapshot"].fetchone()[0]
+    first = record.dims["snapshot"].limit(1).fetchall()[0][0]
     periods = multiperiod.snapshots.get_level_values("period")
     selector, changed = {
         "period": ({"period": 2040}, periods == 2040),

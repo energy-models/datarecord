@@ -359,7 +359,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
 
     rel = revision.record.attributes["p_max_pu"]
     stored = len(names) * snapshots
-    assert rel.count("*").fetchone() == (stored,), "one row per stored value"
+    assert rel.count("*").fetchall() == [(stored,)], "one row per stored value"
     assert _largest_intermediate(store, rel) <= stored, (
         "no operator produces more rows than the layer holds"
     )
@@ -403,5 +403,7 @@ def test_the_fold_broadcasts_by_hash_join(store):
     record = base.child(staged.edits).record
 
     plan = _fold_map(record.sources, record.con, record.schema).explain()
-    assert "HASH_JOIN" in plan, "the fold joins at all"
-    assert "NL_JOIN" not in plan and "NESTED_LOOP" not in plan, plan
+    # DuckDB 1 prints `HASH_JOIN`, DuckDB 2 `Hash Join`.
+    operators = plan.upper().replace(" ", "_")
+    assert "HASH_JOIN" in operators, "the fold joins at all"
+    assert "NL_JOIN" not in operators and "NESTED_LOOP" not in operators, plan

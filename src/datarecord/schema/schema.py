@@ -33,7 +33,7 @@ from duckdb import SQLExpression as sql
 from duckdb.sqltypes import DuckDBPyType
 from pydantic import Field, model_validator
 
-from datarecord.duck import fn
+from datarecord.duck import first_row, fn
 from datarecord.schema.dtypes import DUCK_TYPES, enum_type, takes
 from datarecord.schema.specs import (
     AttributeSpec,
@@ -597,7 +597,7 @@ class Schema(_Declared):
                 f"{fn.struct_extract(col(group), lit(c))} IS NULL" for c in key
             )
             partly = sql(f"{col(group)} IS NOT NULL AND ({some})")
-            if rel.filter(partly).limit(1).fetchone() is not None:
+            if first_row(rel.filter(partly)) is not None:
                 msg = (
                     f"{carrier} carries a {group!r} with some fields NULL; a "
                     f"group value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
@@ -1039,7 +1039,7 @@ class Schema(_Declared):
             found = self.declared(c, subject, attribute)
             if found is None or takes(found[1], given):
                 continue
-            if rel.filter(col(c).isnotnull()).limit(1).fetchone() is None:
+            if first_row(rel.filter(col(c).isnotnull())) is None:
                 nulls[c] = found[1]
                 continue
             name, _, shown = found

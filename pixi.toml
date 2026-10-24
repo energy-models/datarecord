@@ -21,11 +21,16 @@ uv = "*"
 
 [dependencies]
 datarecord = { path = "." }
-duckdb = ">=1.5.4,<2"
 pydantic = ">=2.12"
 
 [pypi-dependencies]
+# From PyPI until conda-forge ships python-duckdb 2.
+duckdb = ">=2,<3"
 mathspec = { git = "https://github.com/energy-models/mathspec.git", rev = "9f180255a180ce7cc1f046fdc75020cdbfc9d90e" }
+
+# DuckDB 2.0.0 is younger than the workspace's `exclude-newer` window.
+[pypi-exclude-newer]
+duckdb = "0d"
 
 [feature.test.dependencies]
 pytest = "*"

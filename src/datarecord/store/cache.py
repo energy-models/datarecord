@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
-from datarecord.duck import ensure_local_dir, try_read_parquet
+from datarecord.duck import ensure_local_dir, first_row, try_read_parquet
 from datarecord.resolve.coords import resolve_coords
 from datarecord.resolve.owner_map import _fold_map
 from datarecord.resolve.sources import LayerSource, ParquetLayer
@@ -144,7 +144,7 @@ def _to_parquet_unless_empty(
     rel.create(table)
     try:
         rows = con.table(table)
-        if rows.limit(1).fetchone() is not None:
+        if first_row(rows) is not None:
             _to_parquet(rows, uri)
     finally:
         con.execute(f"DROP TABLE {table}")

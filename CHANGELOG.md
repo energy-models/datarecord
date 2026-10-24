@@ -13,6 +13,10 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- **DuckDB 2** is required (`duckdb>=2,<3`), taken from PyPI until conda-forge
+  ships it. DuckDB 2 drops `DuckDBPyRelation.fetchone`, names a `values`
+  relation's columns `col0`, `col1`, … whatever their aliases, and hides a
+  join's aliases from a projection above an `order`.
 - **Buses and carriers are dims** in the PyPSA tool, carried by two core
   changes:
   - **A property's name is its subject's**, addressed as `subject.name`:

@@ -35,6 +35,7 @@ from duckdb.sqltypes import DuckDBPyType
 from datarecord.duck import (
     as_relation,
     empty_relation,
+    first_row,
     fn,
     is_frame,
     null_safe,
@@ -902,7 +903,7 @@ class WorkingRecord(Record):
                 fn.struct_extract(col(group), lit(field)).isin(*map(lit, labels))
             )
         rel = tuples.project(col(group))
-        if coords and rel.limit(1).fetchone() is None:
+        if coords and first_row(rel) is None:
             scope = ", ".join(f"{c}={v!r}" for c, v in coords.items())
             msg = f"`{call}` selects no tuple of {group!r} at {scope}"
             raise KeyError(msg)
@@ -1393,7 +1394,7 @@ class WorkingRecord(Record):
                     for f in fields
                 ),
             )
-            if groups[g].filter(naming).limit(1).fetchone() is None:
+            if first_row(groups[g].filter(naming)) is None:
                 continue
             table = self._ensure(g)
             for f in fields:

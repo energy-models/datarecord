@@ -25,7 +25,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb import StarExpression as star
 
-from datarecord.duck import ex_all, null_safe
+from datarecord.duck import ex_all, null_safe, values_row
 from datarecord.schema.schema import Schema
 
 Categories = Mapping[str, "str | Sequence[str]"]
@@ -156,14 +156,15 @@ def _per_combination(
     types = dict(zip(rel.columns, rel.types, strict=True))
 
     def row(combo: Sequence[Any]) -> DuckDBPyRelation:
-        return con.values(
-            (
+        return values_row(
+            con,
+            [
                 *(
                     lit(c).cast(types[k]).alias(k)
                     for k, c in zip(keys, combo, strict=True)
                 ),
                 *columns(_categories_of(keys, combo)),
-            )  # type: ignore[arg-type]
+            ],
         )
 
     table = (

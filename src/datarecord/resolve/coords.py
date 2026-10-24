@@ -22,7 +22,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb.sqltypes import VARCHAR
 
-from datarecord.duck import fn
+from datarecord.duck import first_row, fn
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.sources import LayerSource
 from datarecord.schema.schema import Schema
@@ -75,11 +75,8 @@ def refuse_twice(
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
     key = ", ".join(str(col(k)) for k in keys)
-    twin = (
-        rel.aggregate(f"{key}, count(*) AS _rows", key)
-        .filter(col("_rows") > lit(1))
-        .limit(1)
-        .fetchone()
+    twin = first_row(
+        rel.aggregate(f"{key}, count(*) AS _rows", key).filter(col("_rows") > lit(1))
     )
     if twin is None:
         return
@@ -208,12 +205,10 @@ def _first_unheld(
         )
     if not parts:
         return None
-    first = (
+    first = first_row(
         reduce(DuckDBPyRelation.union, parts)
         .aggregate("_i, list(DISTINCT _label ORDER BY _label)[1:3] AS _labels", "_i")
         .order("_i")
-        .limit(1)
-        .fetchone()
     )
     if first is None:
         return None
@@ -243,7 +238,7 @@ def _dead_keys(
         col("h", key) == col("f", key),
         how="anti",
     )
-    if dead.limit(1).fetchone() is None:
+    if first_row(dead) is None:
         return None
     return dead
 
